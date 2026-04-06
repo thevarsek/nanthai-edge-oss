@@ -1,0 +1,834 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── NanthAI design tokens ─────────────────────────────────────── */
+
+:root {
+  --nanth-background: 0 0% 2%;
+  --nanth-foreground: 220 30% 96%;
+  --nanth-primary: 14 100% 62%;
+  --nanth-secondary: 220 15% 18%;
+  --nanth-muted: 220 15% 14%;
+  --nanth-accent: 14 100% 58%;
+  --nanth-input: 220 15% 12%;
+  --nanth-code: 220 20% 10%;
+  --nanth-border: 220 15% 18%;
+  --nanth-ring: 14 100% 62%;
+  --nanth-destructive: 0 72% 51%;
+  --nanth-success: 142 76% 36%;
+  --nanth-warning: 38 92% 50%;
+  --nanth-sidebar-width: 280px;
+  --nanth-radius: 12px;
+}
+
+.light,
+[data-theme="light"] {
+  --nanth-background: 220 20% 97%;
+  --nanth-foreground: 220 25% 8%;
+  --nanth-primary: 14 90% 52%;
+  --nanth-secondary: 220 15% 90%;
+  --nanth-muted: 220 15% 94%;
+  --nanth-accent: 14 85% 48%;
+  --nanth-input: 220 15% 98%;
+  --nanth-code: 220 15% 92%;
+  --nanth-border: 220 15% 85%;
+  --nanth-ring: 14 90% 52%;
+}
+
+/* System preference — overridden by data-theme attribute */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --nanth-background: 220 20% 97%;
+    --nanth-foreground: 220 25% 8%;
+    --nanth-primary: 14 90% 52%;
+    --nanth-secondary: 220 15% 90%;
+    --nanth-muted: 220 15% 94%;
+    --nanth-accent: 14 85% 48%;
+    --nanth-input: 220 15% 98%;
+    --nanth-code: 220 15% 92%;
+    --nanth-border: 220 15% 85%;
+    --nanth-ring: 14 90% 52%;
+  }
+}
+
+/* ── Color Themes (override primary/accent/ring per theme) ─────── */
+/* Vibrant (#FF6B3D) is the default — no override needed             */
+/* These selectors layer on top of both light and dark modes         */
+
+[data-color-theme="highContrast"] {
+  --nanth-primary: 10 78% 47%;
+  --nanth-accent: 10 78% 43%;
+  --nanth-ring: 10 78% 47%;
+}
+
+[data-color-theme="teal"] {
+  --nanth-primary: 189 100% 43%;
+  --nanth-accent: 189 100% 38%;
+  --nanth-ring: 189 100% 43%;
+}
+
+[data-color-theme="lilac"] {
+  --nanth-primary: 254 82% 72%;
+  --nanth-accent: 254 82% 65%;
+  --nanth-ring: 254 82% 72%;
+}
+
+/* ── Surface tokens (dark default) ─────────────────────────────── */
+/* surface-1: slightly elevated card/modal over page background     */
+/* surface-2: list rows, grouped cells, input fields                */
+/* surface-3: hover states, pill badges, subtle fills               */
+
+:root {
+  --nanth-surface-1: 220 18% 9%;
+  --nanth-surface-2: 220 15% 13%;
+  --nanth-surface-3: 220 15% 18%;
+}
+
+.light,
+[data-theme="light"] {
+  --nanth-surface-1: 220 20% 98%;
+  --nanth-surface-2: 220 18% 93%;
+  --nanth-surface-3: 220 15% 87%;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --nanth-surface-1: 220 20% 98%;
+    --nanth-surface-2: 220 18% 93%;
+    --nanth-surface-3: 220 15% 87%;
+  }
+}
+
+/* ── Convenience utility aliases (mirrors nanth.* Tailwind tokens) ─ */
+/* bg-surface-1/2/3, bg-accent, text-accent, text-primary, etc. are  */
+/* handled by tailwind.config.js color extensions with opacity support */
+
+@layer utilities {
+  /* text-muted / text-secondary use foreground-with-opacity, not a color key */
+  .text-muted     { color: hsl(var(--nanth-foreground) / 0.45); }
+  .text-secondary { color: hsl(var(--nanth-foreground) / 0.65); }
+  .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  /* placeholder-muted: Tailwind's placeholder-muted resolves to the muted
+     *background* color (near-black in dark mode), making placeholders invisible
+     on dark surfaces. Override to use foreground-with-opacity instead. */
+  .placeholder-muted::placeholder { color: hsl(var(--nanth-foreground) / 0.35); }
+  /* border-border defaults to full opacity border token */
+  .border-border  { border-color: hsl(var(--nanth-border)); }
+}
+
+/* ── Base reset ─────────────────────────────────────────────────── */
+
+* {
+  border-color: hsl(var(--nanth-border));
+}
+
+body {
+  margin: 0;
+  background: hsl(var(--nanth-background));
+  color: hsl(var(--nanth-foreground));
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent flash of wrong theme */
+html {
+  color-scheme: dark;
+}
+html.light, html[data-theme="light"] {
+  color-scheme: light;
+}
+
+/* ── Range slider — follow theme primary color ─────────────────── */
+
+input[type="range"] {
+  accent-color: hsl(var(--nanth-primary));
+}
+
+/* ── Scrollbars ─────────────────────────────────────────────────── */
+
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--nanth-border)); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--nanth-secondary)); }
+
+/* ── Focus ──────────────────────────────────────────────────────── */
+
+:focus-visible {
+  outline: 2px solid hsl(var(--nanth-ring));
+  outline-offset: 2px;
+}
+
+/* ── Typography ─────────────────────────────────────────────────── */
+
+.nanth-display {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+code, pre, .nanth-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+/* ── Edge site shell (marketing pages) ──────────────────────────── */
+
+.edge-site-shell {
+  --edge-cyan: #00E0D0;
+  --edge-coral: #FF6B6B;
+  --edge-amber: #FFBE76;
+  --edge-blue: #4C8DFF;
+  --edge-peach: #FFB5A7;
+  --edge-surface: #0A0A0F;
+  --edge-surface-elevated: rgba(255, 255, 255, 0.025);
+
+  /* Foreground / background primitives — dark default */
+  --edge-bg: #050507;
+  --edge-fg: 255, 255, 255;          /* RGB channel for opacity modifiers */
+  --edge-fg-solid: #E2E6ED;          /* Body text (no alpha) */
+  --edge-fg-heading: #ffffff;        /* Headings / strong text */
+  --edge-legal-heading: #f0f3f8;     /* Legal page h2/h3 */
+  --edge-legal-body: rgba(226, 230, 237, 0.75);
+  --edge-legal-strong: #ffffff;
+  --edge-legal-link: var(--edge-cyan);
+
+  /* CTA button (white on dark, dark on light) */
+  --edge-cta-bg: #ffffff;
+  --edge-cta-fg: #050507;
+  --edge-cta-shadow: rgba(0, 224, 208, 0.15);
+
+  /* Card glass tint */
+  --edge-glass-border: rgba(255, 255, 255, 0.05);
+  --edge-glass-border-hover: rgba(255, 255, 255, 0.10);
+  --edge-glass-bg-hover: rgba(255, 255, 255, 0.04);
+
+  /* Chips */
+  --edge-chip-border: rgba(255, 255, 255, 0.07);
+  --edge-chip-bg: rgba(255, 255, 255, 0.03);
+  --edge-chip-fg: rgba(226, 230, 237, 0.6);
+
+  /* Grain / scanline overlay */
+  --edge-grain-opacity: 0.022;
+  --edge-scanline-opacity: 0.012;
+  --edge-scanline-tint: rgba(255, 255, 255, 0.03);
+
+  /* Section rule */
+  --edge-rule-color: rgba(255, 255, 255, 0.06);
+
+  /* Gradient line (decorative) */
+  --edge-gline: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 20%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.04) 80%, transparent 100%);
+
+  /* Stroke text */
+  --edge-stroke-color: rgba(255, 255, 255, 0.95);
+  --edge-stroke-color-sm: rgba(255, 255, 255, 0.85);
+
+  /* Shimmer */
+  --edge-shimmer-from: rgba(255,255,255,0.4);
+  --edge-shimmer-mid: rgba(255,255,255,0.8);
+
+  /* Top-edge highlight */
+  --edge-top-highlight: rgba(255, 255, 255, 0.08);
+
+  background: var(--edge-bg);
+  color: var(--edge-fg-solid);
+}
+
+/* ── Light-mode overrides ───────────────────────────────────────── */
+
+[data-theme="light"] .edge-site-shell {
+  --edge-surface: #F0F1F5;
+  --edge-surface-elevated: rgba(0, 0, 0, 0.025);
+  --edge-bg: #F5F6F8;
+  --edge-fg: 20, 20, 40;
+  --edge-fg-solid: #2A2A3C;
+  --edge-fg-heading: #1A1A2E;
+  --edge-legal-heading: #1A1A2E;
+  --edge-legal-body: rgba(42, 42, 60, 0.72);
+  --edge-legal-strong: #1A1A2E;
+  --edge-legal-link: #0090A0;
+
+  --edge-cta-bg: #1A1A2E;
+  --edge-cta-fg: #FFFFFF;
+  --edge-cta-shadow: rgba(0, 180, 170, 0.12);
+
+  --edge-glass-border: rgba(0, 0, 0, 0.06);
+  --edge-glass-border-hover: rgba(0, 0, 0, 0.12);
+  --edge-glass-bg-hover: rgba(0, 0, 0, 0.03);
+
+  --edge-chip-border: rgba(0, 0, 0, 0.08);
+  --edge-chip-bg: rgba(0, 0, 0, 0.03);
+  --edge-chip-fg: rgba(42, 42, 60, 0.65);
+
+  --edge-grain-opacity: 0.012;
+  --edge-scanline-opacity: 0;
+  --edge-scanline-tint: transparent;
+
+  --edge-rule-color: rgba(0, 0, 0, 0.08);
+
+  --edge-gline: linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.04) 20%, rgba(0,0,0,0.08) 50%, rgba(0,0,0,0.04) 80%, transparent 100%);
+
+  --edge-stroke-color: rgba(20, 20, 40, 0.9);
+  --edge-stroke-color-sm: rgba(20, 20, 40, 0.8);
+
+  --edge-shimmer-from: rgba(20,20,40,0.3);
+  --edge-shimmer-mid: rgba(20,20,40,0.7);
+
+  --edge-top-highlight: rgba(0, 0, 0, 0.04);
+}
+
+/* ── Edge site foreground utilities ─────────────────────────────── */
+/* These map text-white/XX patterns to theme-aware equivalents      */
+/* using the --edge-fg RGB channel variable.                        */
+
+.edge-site-shell .efg-90  { color: rgba(var(--edge-fg), 0.90); }
+.edge-site-shell .efg-85  { color: rgba(var(--edge-fg), 0.85); }
+.edge-site-shell .efg-80  { color: rgba(var(--edge-fg), 0.80); }
+.edge-site-shell .efg-70  { color: rgba(var(--edge-fg), 0.70); }
+.edge-site-shell .efg-65  { color: rgba(var(--edge-fg), 0.65); }
+.edge-site-shell .efg-60  { color: rgba(var(--edge-fg), 0.60); }
+.edge-site-shell .efg-55  { color: rgba(var(--edge-fg), 0.55); }
+.edge-site-shell .efg-50  { color: rgba(var(--edge-fg), 0.50); }
+.edge-site-shell .efg-45  { color: rgba(var(--edge-fg), 0.45); }
+.edge-site-shell .efg-40  { color: rgba(var(--edge-fg), 0.40); }
+.edge-site-shell .efg-35  { color: rgba(var(--edge-fg), 0.35); }
+.edge-site-shell .efg-30  { color: rgba(var(--edge-fg), 0.30); }
+.edge-site-shell .efg-25  { color: rgba(var(--edge-fg), 0.25); }
+.edge-site-shell .efg-20  { color: rgba(var(--edge-fg), 0.20); }
+.edge-site-shell .efg-15  { color: rgba(var(--edge-fg), 0.15); }
+.edge-site-shell .efg-10  { color: rgba(var(--edge-fg), 0.10); }
+.edge-site-shell .efg-heading { color: var(--edge-fg-heading); }
+
+/* Hover variants — escaped colon matches Tailwind JIT class names */
+.edge-site-shell .hover\:efg-70:hover  { color: rgba(var(--edge-fg), 0.70); }
+.edge-site-shell .hover\:efg-80:hover  { color: rgba(var(--edge-fg), 0.80); }
+.edge-site-shell .hover\:efg-heading:hover { color: var(--edge-fg-heading); }
+
+/* Background utilities */
+.edge-site-shell .ebg-shell     { background-color: var(--edge-bg); }
+.edge-site-shell .ebg-glass-02  { background: rgba(var(--edge-fg), 0.02); }
+.edge-site-shell .ebg-glass-03  { background: rgba(var(--edge-fg), 0.03); }
+.edge-site-shell .ebg-glass-04  { background: rgba(var(--edge-fg), 0.04); }
+.edge-site-shell .ebg-glass-06  { background: rgba(var(--edge-fg), 0.06); }
+
+/* Border utilities */
+.edge-site-shell .eborder-04  { border-color: rgba(var(--edge-fg), 0.04); }
+.edge-site-shell .eborder-05  { border-color: rgba(var(--edge-fg), 0.05); }
+.edge-site-shell .eborder-06  { border-color: rgba(var(--edge-fg), 0.06); }
+.edge-site-shell .eborder-08  { border-color: rgba(var(--edge-fg), 0.08); }
+.edge-site-shell .eborder-12  { border-color: rgba(var(--edge-fg), 0.12); }
+
+/* CTA button */
+.edge-site-shell .ecta { background: var(--edge-cta-bg); color: var(--edge-cta-fg); }
+.edge-site-shell .ecta:hover { box-shadow: 0 0 50px var(--edge-cta-shadow); }
+
+/* Grain overlay — finer, more cinematic */
+.edge-site-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: var(--edge-grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='5' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 512px 512px;
+}
+
+/* Horizontal scanline effect — very subtle */
+.edge-site-shell::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  opacity: var(--edge-scanline-opacity);
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    var(--edge-scanline-tint) 2px,
+    var(--edge-scanline-tint) 4px
+  );
+}
+
+/* ── Typography ──────────────────────────────────────────────────── */
+
+.edge-display {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 0.95;
+}
+
+.edge-display-xl {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+  line-height: 0.9;
+}
+
+.edge-body, .edge-sans {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
+
+.edge-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-feature-settings: "ss01", "ss02";
+}
+
+.edge-label {
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 500;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* ── Cards ────────────────────────────────────────────────────────── */
+
+.edge-card {
+  border: 1px solid var(--edge-glass-border);
+  background: var(--edge-surface-elevated);
+  backdrop-filter: blur(40px) saturate(1.15);
+  -webkit-backdrop-filter: blur(40px) saturate(1.15);
+  transition: border-color 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+              background 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.edge-card:hover {
+  border-color: var(--edge-glass-border-hover);
+  background: var(--edge-glass-bg-hover);
+}
+
+/* ── Chips / Labels ──────────────────────────────────────────────── */
+
+.edge-chip {
+  border: 1px solid var(--edge-chip-border);
+  background: var(--edge-chip-bg);
+  color: var(--edge-chip-fg);
+  font-family: "Inter", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.06em;
+}
+
+/* ── Brand gradient text ─────────────────────────────────────────── */
+
+.edge-gradient-text {
+  background: linear-gradient(135deg, var(--edge-cyan) 0%, var(--edge-amber) 55%, var(--edge-coral) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.edge-gradient-text-subtle {
+  background: linear-gradient(135deg, rgba(0, 224, 208, 0.85) 0%, rgba(255, 190, 118, 0.85) 55%, rgba(255, 107, 107, 0.85) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Outline / stroke text — transparent fill with white stroke.
+   Stroke width scaled to match the visual weight of the solid display text.
+   For large hero headlines, prefer the SVG <text> approach (HeroOutlineText)
+   which uses stroke-linejoin:round for cleaner counters on A, P, R, Y, W. */
+.edge-text-outline {
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 3px var(--edge-stroke-color);
+  paint-order: stroke fill;
+  text-transform: uppercase;
+}
+
+/* Small-scale outline for header logo / inline use.
+   Much thinner stroke so it reads cleanly at body-text sizes. */
+.edge-text-outline-sm {
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1px var(--edge-stroke-color-sm);
+  paint-order: stroke fill;
+  text-transform: uppercase;
+}
+
+@media (min-width: 768px) {
+  .edge-text-outline {
+    -webkit-text-stroke-width: 4px;
+  }
+}
+
+/* Monochrome shimmer for elegant emphasis */
+.edge-shimmer-text {
+  background: linear-gradient(90deg, var(--edge-shimmer-from) 0%, var(--edge-shimmer-mid) 50%, var(--edge-shimmer-from) 100%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: edgeShimmer 4s ease-in-out infinite;
+}
+
+/* ── Brand gradient line (decorative) ────────────────────────────── */
+
+.edge-gradient-line {
+  height: 1px;
+  background: var(--edge-gline);
+}
+
+/* Accent version */
+.edge-gradient-line-accent {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--edge-cyan) 20%, var(--edge-amber) 50%, var(--edge-coral) 80%, transparent 100%);
+  opacity: 0.25;
+}
+
+/* ── Animations ──────────────────────────────────────────────────── */
+
+@keyframes edgePhoneFloat {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -14px, 0); }
+}
+
+.edge-phone-float {
+  animation: edgePhoneFloat 12s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes edgeFadeUp {
+  from { opacity: 0; transform: translateY(40px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Slow cinematic reveal — pure opacity, no movement */
+@keyframes edgeMaterialize {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.edge-materialize {
+  animation: edgeMaterialize 1.4s cubic-bezier(0.25, 0.1, 0.25, 1) both;
+}
+
+/* Scroll-triggered variant — starts invisible, revealed by JS adding .is-visible */
+.edge-materialize-scroll {
+  opacity: 0;
+  transition: opacity 1.4s cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+.edge-materialize-scroll.is-visible {
+  opacity: 1;
+}
+
+/* Stagger delays for materialize (used on subline, chips, CTA) */
+.edge-mat-delay-1 { animation-delay: 0.25s; transition-delay: 0.25s; }
+.edge-mat-delay-2 { animation-delay: 0.45s; transition-delay: 0.45s; }
+.edge-mat-delay-3 { animation-delay: 0.65s; transition-delay: 0.65s; }
+
+@keyframes edgeSlideIn {
+  from { opacity: 0; transform: translateX(-30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes edgeSlideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes edgeScaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes edgeGlow {
+  0%, 100% { opacity: 0.3; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(1.05); }
+}
+
+@keyframes edgeFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  33% { transform: translateY(-10px) rotate(0.3deg); }
+  66% { transform: translateY(5px) rotate(-0.2deg); }
+}
+
+@keyframes edgeShimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes edgePulseGlow {
+  0%, 100% { box-shadow: 0 0 30px rgba(0, 224, 208, 0.08); }
+  50% { box-shadow: 0 0 60px rgba(0, 224, 208, 0.15); }
+}
+
+@keyframes edgeDriftUp {
+  from { opacity: 0; transform: translateY(60px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.edge-fade-up {
+  animation: edgeFadeUp 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.edge-drift-up {
+  animation: edgeDriftUp 1.1s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.edge-scale-in {
+  animation: edgeScaleIn 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.edge-stagger-1 { animation-delay: 0s; }
+.edge-stagger-2 { animation-delay: 0.08s; }
+.edge-stagger-3 { animation-delay: 0.16s; }
+.edge-stagger-4 { animation-delay: 0.24s; }
+.edge-stagger-5 { animation-delay: 0.32s; }
+.edge-stagger-6 { animation-delay: 0.40s; }
+.edge-stagger-7 { animation-delay: 0.48s; }
+.edge-stagger-8 { animation-delay: 0.56s; }
+
+@media (prefers-reduced-motion: reduce) {
+  .edge-phone-float,
+  .edge-fade-up,
+  .edge-drift-up,
+  .edge-scale-in,
+  .edge-materialize,
+  .edge-shimmer-text { animation: none; }
+  .edge-materialize-scroll { opacity: 1; transition: none; }
+}
+
+/* ── Hover glow effect for cards ─────────────────────────────────── */
+
+.edge-hover-glow {
+  position: relative;
+  overflow: hidden;
+}
+
+.edge-hover-glow::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  background: radial-gradient(700px circle at var(--mouse-x, 50%) var(--mouse-y, 50%), rgba(0, 224, 208, 0.05), transparent 40%);
+  pointer-events: none;
+}
+
+.edge-hover-glow:hover::before {
+  opacity: 1;
+}
+
+/* Lift effect on hover for showcase cards */
+.edge-card-lift {
+  transition: transform 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+              box-shadow 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.edge-card-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 60px rgba(var(--edge-fg), 0.08);
+}
+
+/* ── Section divider — thin rule with number ─────────────────────── */
+
+.edge-section-rule {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.edge-section-rule::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--edge-rule-color);
+}
+
+/* ── Legal pages ─────────────────────────────────────────────────── */
+
+.edge-legal h2 {
+  margin-top: 2.5rem;
+  margin-bottom: 0.85rem;
+  font-family: "Inter", system-ui, sans-serif;
+  font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--edge-legal-heading);
+}
+
+.edge-legal h3 {
+  margin-top: 1.6rem;
+  margin-bottom: 0.55rem;
+  font-family: "Inter", -apple-system, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--edge-legal-heading);
+}
+
+.edge-legal p, .edge-legal li {
+  font-family: "Inter", -apple-system, sans-serif;
+  font-weight: 300;
+  color: var(--edge-legal-body);
+  line-height: 1.85;
+}
+
+.edge-legal ul {
+  margin-top: 0.7rem;
+  margin-bottom: 1rem;
+  padding-left: 1.2rem;
+}
+
+.edge-legal a { color: var(--edge-legal-link); text-decoration: none; }
+.edge-legal a:hover { text-decoration: underline; }
+.edge-legal strong { color: var(--edge-legal-strong); }
+
+/* ── App-specific animations ────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.animate-fade-in { animation: fadeIn 0.2s ease-out; }
+.animate-slide-in-right { animation: slideInRight 0.25s ease-out; }
+.animate-slide-in-left { animation: slideInLeft 0.25s ease-out; }
+.animate-scale-in { animation: scaleIn 0.2s ease-out; }
+
+/* ── Streaming cursor ───────────────────────────────────────────── */
+
+.streaming-cursor::after {
+  content: "▋";
+  opacity: 1;
+  animation: pulse 0.9s ease-in-out infinite;
+  color: hsl(var(--nanth-primary));
+  font-size: 0.85em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-slide-in-right,
+  .animate-slide-in-left,
+  .animate-scale-in,
+  .streaming-cursor::after {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  html:focus-within {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── Markdown content ───────────────────────────────────────────── */
+
+.prose-nanth {
+  color: hsl(var(--nanth-foreground));
+  max-width: none;
+}
+
+.prose-nanth h1, .prose-nanth h2, .prose-nanth h3,
+.prose-nanth h4, .prose-nanth h5, .prose-nanth h6 {
+  color: hsl(var(--nanth-foreground));
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+}
+
+.prose-nanth p { margin: 0.75em 0; line-height: 1.7; }
+.prose-nanth p:first-child { margin-top: 0; }
+.prose-nanth p:last-child { margin-bottom: 0; }
+
+.prose-nanth code {
+  background: hsl(var(--nanth-code));
+  border: 1px solid hsl(var(--nanth-border));
+  border-radius: 4px;
+  padding: 0.15em 0.4em;
+  font-size: 0.875em;
+  color: hsl(var(--nanth-primary));
+}
+
+.prose-nanth pre {
+  background: hsl(var(--nanth-code));
+  border: 1px solid hsl(var(--nanth-border));
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.prose-nanth pre code {
+  background: none;
+  border: none;
+  padding: 0;
+  color: hsl(var(--nanth-foreground));
+  font-size: 0.875rem;
+}
+
+.prose-nanth blockquote {
+  border-left: 3px solid hsl(var(--nanth-primary) / 0.5);
+  padding-left: 1rem;
+  margin: 0.75em 0;
+  color: hsl(var(--nanth-foreground) / 0.7);
+  font-style: italic;
+}
+
+.prose-nanth ul, .prose-nanth ol {
+  padding-left: 1.5em;
+  margin: 0.75em 0;
+}
+
+.prose-nanth li { margin: 0.3em 0; line-height: 1.6; }
+
+.prose-nanth table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.9em;
+}
+
+.prose-nanth th {
+  background: hsl(var(--nanth-muted));
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  border: 1px solid hsl(var(--nanth-border));
+}
+
+.prose-nanth td {
+  padding: 0.4rem 0.75rem;
+  border: 1px solid hsl(var(--nanth-border));
+}
+
+.prose-nanth tr:nth-child(even) td {
+  background: hsl(var(--nanth-muted) / 0.4);
+}
+
+.prose-nanth a {
+  color: hsl(var(--nanth-primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.prose-nanth hr {
+  border-color: hsl(var(--nanth-border));
+  margin: 1.5em 0;
+}
+
+/* ── KaTeX math ─────────────────────────────────────────────────── */
+.katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5em 0; }

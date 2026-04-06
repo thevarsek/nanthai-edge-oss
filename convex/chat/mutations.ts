@@ -1,0 +1,194 @@
+// convex/chat/mutations.ts
+// =============================================================================
+// Stable chat mutation registrations.
+// Keep exported function IDs here; implementation is extracted to helpers.
+// =============================================================================
+
+import { mutation, internalMutation } from "../_generated/server";
+import { v } from "convex/values";
+import {
+  cancelActiveGenerationArgs,
+  cancelGenerationArgs,
+  createChatArgs,
+  createMemoryArgs,
+  deleteKnowledgeBaseFileArgs,
+  finalizeGenerationArgs,
+  isJobCancelledArgs,
+  patchMessageAudioArgs,
+  reinforceMemoryArgs,
+  requestAudioGenerationArgs,
+  retryMessageArgs,
+  sendMessageArgs,
+  storeGenerationUsageArgs,
+  storeAncillaryCostArgs,
+  supersedeMemoryArgs,
+  touchMemoriesArgs,
+  updateChatTitleArgs,
+  updateJobStatusArgs,
+  updateMessageContentArgs,
+  updateMessageReasoningArgs,
+  updateMessageToolCallsArgs,
+} from "./mutations_args";
+import {
+  cancelActiveGenerationHandler,
+  cancelGenerationHandler,
+  createChatHandler,
+  createUploadUrlHandler,
+  deleteKnowledgeBaseFileHandler,
+  requestAudioGenerationHandler,
+  sendMessageHandler,
+} from "./mutations_public_handlers";
+import { retryMessageHandler } from "./mutations_retry_handler";
+import {
+  createMemoryHandler,
+  finalizeGenerationHandler,
+  isJobCancelledHandler,
+  patchMessageAudioHandler,
+  storeGenerationUsageHandler,
+  storeAncillaryCostHandler,
+  updateChatTitleHandler,
+  updateJobStatusHandler,
+  updateMessageContentHandler,
+  updateMessageReasoningHandler,
+  updateMessageToolCallsHandler,
+} from "./mutations_internal_handlers";
+import {
+  reinforceMemoryHandler,
+  supersedeMemoryHandler,
+  touchMemoriesHandler,
+} from "./mutations_memory_lifecycle_handlers";
+
+export const createChat = mutation({
+  args: createChatArgs,
+  returns: v.id("chats"),
+  handler: createChatHandler,
+});
+
+export const createUploadUrl = mutation({
+  args: {},
+  returns: v.string(),
+  handler: createUploadUrlHandler,
+});
+
+export const sendMessage = mutation({
+  args: sendMessageArgs,
+  returns: v.object({
+    userMessageId: v.id("messages"),
+    assistantMessageIds: v.array(v.id("messages")),
+  }),
+  handler: sendMessageHandler,
+});
+
+export const cancelGeneration = mutation({
+  args: cancelGenerationArgs,
+  handler: cancelGenerationHandler,
+});
+
+export const cancelActiveGeneration = mutation({
+  args: cancelActiveGenerationArgs,
+  returns: v.object({ cancelledCount: v.number() }),
+  handler: cancelActiveGenerationHandler,
+});
+
+export const retryMessage = mutation({
+  args: retryMessageArgs,
+  returns: v.object({
+    assistantMessageIds: v.array(v.id("messages")),
+  }),
+  handler: retryMessageHandler,
+});
+
+export const requestAudioGeneration = mutation({
+  args: requestAudioGenerationArgs,
+  returns: v.object({ scheduled: v.literal(true), alreadyExists: v.optional(v.boolean()) }),
+  handler: requestAudioGenerationHandler,
+});
+
+export const updateMessageContent = internalMutation({
+  args: updateMessageContentArgs,
+  handler: updateMessageContentHandler,
+});
+
+export const updateMessageReasoning = internalMutation({
+  args: updateMessageReasoningArgs,
+  handler: updateMessageReasoningHandler,
+});
+
+export const patchMessageAudio = internalMutation({
+  args: patchMessageAudioArgs,
+  handler: patchMessageAudioHandler,
+});
+
+// Clears the audioGenerating flag if TTS generation fails, so the user can retry.
+export const clearAudioGenerating = internalMutation({
+  args: { messageId: v.id("messages") },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.messageId, { audioGenerating: undefined });
+  },
+});
+
+// M10 — Live tool-call streaming: progressively patch toolCalls during generation.
+export const updateMessageToolCalls = internalMutation({
+  args: updateMessageToolCallsArgs,
+  handler: updateMessageToolCallsHandler,
+});
+
+export const finalizeGeneration = internalMutation({
+  args: finalizeGenerationArgs,
+  handler: finalizeGenerationHandler,
+});
+
+export const updateJobStatus = internalMutation({
+  args: updateJobStatusArgs,
+  handler: updateJobStatusHandler,
+});
+
+export const isJobCancelled = internalMutation({
+  args: isJobCancelledArgs,
+  returns: v.boolean(),
+  handler: isJobCancelledHandler,
+});
+
+export const updateChatTitle = internalMutation({
+  args: updateChatTitleArgs,
+  handler: updateChatTitleHandler,
+});
+
+export const createMemory = internalMutation({
+  args: createMemoryArgs,
+  returns: v.id("memories"),
+  handler: createMemoryHandler,
+});
+
+export const reinforceMemory = internalMutation({
+  args: reinforceMemoryArgs,
+  handler: reinforceMemoryHandler,
+});
+
+export const supersedeMemory = internalMutation({
+  args: supersedeMemoryArgs,
+  handler: supersedeMemoryHandler,
+});
+
+export const touchMemories = internalMutation({
+  args: touchMemoriesArgs,
+  handler: touchMemoriesHandler,
+});
+
+// KB — Delete a file from the user's knowledge base (generated or uploaded).
+export const deleteKnowledgeBaseFile = mutation({
+  args: deleteKnowledgeBaseFileArgs,
+  handler: deleteKnowledgeBaseFileHandler,
+});
+
+// Stores authoritative usage data fetched from the OpenRouter Generations API.
+export const storeGenerationUsage = internalMutation({
+  args: storeGenerationUsageArgs,
+  handler: storeGenerationUsageHandler,
+});
+
+// M23: Stores ancillary (non-generation) API usage costs.
+export const storeAncillaryCost = internalMutation({
+  args: storeAncillaryCostArgs,
+  handler: storeAncillaryCostHandler,
+});

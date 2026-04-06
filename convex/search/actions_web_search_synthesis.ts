@@ -1,0 +1,135 @@
+import { internal } from "../_generated/api";
+import { ActionCtx } from "../_generated/server";
+import {
+  callOpenRouterStreaming,
+  ChatRequestParameters,
+  gateParameters,
+} from "../lib/openrouter";
+import { buildRequestMessages } from "../chat/helpers";
+import { GenerationCancelledError } from "../chat/generation_helpers";
+import { clampMessageContent } from "../chat/action_image_helpers";
+import { StreamWriter } from "../chat/stream_writer";
+import {
+  buildSearchSynthesisPrompt,
+  CITATION_SYSTEM_PROMPT_SUFFIX,
+  SEARCH_TRANSFORMS,
+  SearchResult,
+} from "./helpers";
+import { WebSearchActionArgs } from "./actions_web_search_shared";
+import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+
+export async function synthesizeWithStreaming(
+  ctx: ActionCtx,
+  args: WebSearchActionArgs,
+  searchResults: SearchResult[],
+): Promise<void> {
+  const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
+  const allMessages = await ctx.runQuery(
+    internal.chat.queries.listAllMessages,
+    { chatId: args.chatId },
+  );
+
+  let systemPrompt = args.systemPrompt;
+  if (!systemPrompt && args.personaId) {
+    const persona = await ctx.runQuery(internal.chat.queries.getPersona, {
+      personaId: args.personaId,
+      userId: args.userId,
+    });
+    if (persona) {
+      systemPrompt = persona.systemPrompt;
+    }
+  }
+
+  const searchSynthesis = buildSearchSynthesisPrompt(searchResults);
+  const effectiveSystemPrompt = systemPrompt
+    ? `${systemPrompt}\n\n${searchSynthesis}${CITATION_SYSTEM_PROMPT_SUFFIX}`
+    : `${searchSynthesis}${CITATION_SYSTEM_PROMPT_SUFFIX}`;
+
+  const requestMessages = buildRequestMessages({
+    messages: allMessages,
+    excludeMessageId: args.assistantMessageId,
+    systemPrompt: effectiveSystemPrompt,
+    memoryContext: undefined,
+    expandMultiModelGroups: args.expandMultiModelGroups,
+    maxContextTokens: 75_000,
+  });
+
+  if (requestMessages.length === 0) {
+    throw new Error("No request messages for synthesis");
+  }
+
+  const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+    modelId: args.modelId,
+  });
+
+  const rawParams: ChatRequestParameters = {
+    temperature: args.temperature ?? 0.7,
+    maxTokens: args.maxTokens ?? null,
+    includeReasoning: args.includeReasoning ?? null,
+    reasoningEffort: args.reasoningEffort ?? null,
+    transforms: SEARCH_TRANSFORMS,
+    webSearchEnabled: false,
+  };
+  const gatedParams = gateParameters(
+    rawParams,
+    caps?.supportedParameters,
+    caps?.hasImageGeneration,
+    caps?.hasReasoning,
+  );
+
+  const writer = new StreamWriter({
+    ctx,
+    messageId: args.assistantMessageId,
+    transformContent: clampMessageContent,
+  });
+  let deltaEventsSinceCancelCheck = 0;
+
+  const result = await callOpenRouterStreaming(
+    apiKey,
+    args.modelId,
+    requestMessages,
+    gatedParams,
+    {
+      onDelta: async (delta) => {
+        await writer.handleContentDeltaBoundary(delta.length);
+        await writer.appendContent(delta);
+        await writer.patchContentIfNeeded();
+
+        deltaEventsSinceCancelCheck += 1;
+        if (deltaEventsSinceCancelCheck % 10 === 0) {
+          const cancelled = await ctx.runMutation(
+            internal.chat.mutations.isJobCancelled,
+            { jobId: args.jobId },
+          );
+          if (cancelled) throw new GenerationCancelledError();
+        }
+      },
+      onReasoningDelta: async (delta) => {
+        await writer.appendReasoning(delta);
+        await writer.patchReasoningIfNeeded(writer.hasSeenContentDelta);
+      },
+    },
+    { emptyStreamRetries: 2, emptyStreamBackoffs: [500, 1500] },
+  );
+
+  await writer.flush();
+
+  let finalContent = writer.totalContent.trim();
+  if (!finalContent && (result.reasoning || writer.totalReasoning)) {
+    finalContent = "Model returned reasoning only.";
+  } else if (!finalContent) {
+    finalContent = "[No response received from model]";
+  }
+  finalContent = clampMessageContent(finalContent);
+
+  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+    messageId: args.assistantMessageId,
+    jobId: args.jobId,
+    chatId: args.chatId,
+    content: finalContent,
+    status: "completed",
+    usage: result.usage ?? undefined,
+    reasoning: result.reasoning || writer.totalReasoning || undefined,
+    userId: args.userId,
+  });
+}

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NanthAI Edge | AI Workspace</title>
+    <meta name="description" content="NanthAI Edge is the native mobile AI workspace with multi-model chat, personas, search, files, scheduled jobs, and connected tools." />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#000000" />
+
+    <link rel="icon" href="/favicon.ico" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+    <!-- Marketing site fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+    <!-- PWA / iOS Safari -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="NanthAI Edge" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://nanthai.tech" />
+    <meta property="og:title" content="NanthAI Edge | AI Workspace" />
+    <meta property="og:description" content="NanthAI Edge is the native mobile AI workspace with multi-model chat, personas, search, files, scheduled jobs, and connected tools." />
+    <meta property="og:image" content="https://nanthai.tech/apple-splash-1200x630.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="NanthAI Edge" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="NanthAI Edge | AI Workspace" />
+    <meta name="twitter:description" content="NanthAI Edge is the native mobile AI workspace with multi-model chat, personas, search, files, scheduled jobs, and connected tools." />
+    <meta name="twitter:image" content="https://nanthai.tech/apple-splash-1200x630.png" />
+
+    <link rel="alternate" type="text/plain" href="https://nanthai.tech/llms.txt" />
+
+    <!--
+      Dark-mode no-flash script.
+      Runs synchronously before the first paint to apply the correct theme class
+      based on persisted preference or system setting. Prevents a flash of the
+      wrong theme (FOUT) when the page loads.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("nanth_theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = stored === "light" || stored === "dark" ? stored : (prefersDark ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", theme);
+          // Sync theme-color meta tag
+          document.querySelector('meta[name="theme-color"]').setAttribute(
+            "content",
+            theme === "dark" ? "#000000" : "#f5f7fb"
+          );
+          // Apply color theme (vibrant is default — no attribute needed)
+          var colorTheme = localStorage.getItem("nanth_color_theme");
+          if (colorTheme && colorTheme !== "vibrant") {
+            document.documentElement.setAttribute("data-color-theme", colorTheme);
+          }
+        } catch (_) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <!-- Skip to main content — screen reader / keyboard a11y -->
+    <a
+      href="#main-content"
+      class="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:px-4 focus:py-2 focus:rounded-lg focus:bg-black focus:text-white focus:text-sm focus:font-medium focus:outline-none focus:ring-2 focus:ring-white"
+    >
+      Skip to main content
+    </a>
+
+    <div id="root"></div>
+
+    <!-- Static content for crawlers and users without JavaScript -->
+    <noscript>
+      <div style="max-width:720px;margin:2rem auto;padding:0 1rem;font-family:system-ui,sans-serif;color:#222">
+        <h1>NanthAI Edge &mdash; AI Workspace</h1>
+        <p>NanthAI Edge is the native mobile AI workspace with multi-model chat, personas, memory, search, files, scheduled jobs, and connected tools. 150+ models through OpenRouter. One-time Pro unlock.</p>
+        <h2>Quick links</h2>
+        <ul>
+          <li><a href="/privacy">Privacy Policy</a></li>
+          <li><a href="/terms">Terms of Service</a></li>
+          <li><a href="/support">Support</a></li>
+          <li><a href="/llms.txt">AI-readable site index (llms.txt)</a></li>
+        </ul>
+        <h2>Core capabilities</h2>
+        <ul>
+          <li>Multi-model conversations &mdash; run multiple models in the same thread</li>
+          <li>Personas and memory &mdash; AI personas with their own model, tools, and voice</li>
+          <li>Search and research &mdash; fast web search and deep research flows</li>
+          <li>Scheduled jobs &mdash; recurring AI tasks that run in the background</li>
+          <li>Files and knowledge &mdash; images, PDFs, and a reference knowledge base</li>
+          <li>Connected tools &mdash; Google, Microsoft, Notion, and Apple Calendar</li>
+        </ul>
+        <p>Contact: <a href="mailto:support@nanthai.tech">support@nanthai.tech</a></p>
+      </div>
+    </noscript>
+
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,383 @@
+# Data Model (Convex)
+
+> All data lives in Convex tables. SwiftData was fully removed in M8. iOS uses Codable DTOs decoded from Convex subscriptions.
+
+## Schema Overview
+
+The Convex schema is defined across 4 files imported into `convex/schema.ts` — 36 app tables total (core: 14, catalog: 6, user: 12, runtime: 4), plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+
+### Tables
+
+| Table | Purpose | Key Fields |
+|-------|---------|------------|
+| `chats` | Conversations | title, userId, folderId, activeBranchLeafId, mode (`chatMode` validator: `"chat"` / `"ideascape"`), isPinned, pinnedAt, source (M13), sourceJobId (M13), sourceJobName (M13), subagentOverride, temperatureOverride, maxTokensOverride, includeReasoningOverride, reasoningEffortOverride, webSearchOverride, searchModeOverride, searchComplexityOverride, discoverableSkillIds (M18), disabledSkillIds (M18), autoAudioResponseOverride (M20). `activeBranchLeafId` remains the only persisted branch-selection field; per-fork pill switching is resolved canonically by `chat/manage:switchBranchAtFork`. |
+| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (post-M14), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
+| `streamingMessages` | Active streaming overlay rows | messageId, chatId, content, reasoning, status, toolCalls, createdAt, updatedAt. Written by `StreamWriter` during generation so live token patches avoid invalidating heavy `listMessages` subscriptions. |
+| `chatParticipants` | Models/personas in a chat | chatId, modelId, personaId, sortOrder, personaName, personaEmoji, personaAvatarImageUrl, createdAt |
+| `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed) |
+| `autonomousSessions` | Group chat orchestration | chatId, status, cycleCount, maxCycles |
+| `subagentBatches` | Parent delegation batches | parentMessageId, parentJobId, status, tool-call round metadata, child counters, params snapshot |
+| `subagentRuns` | Child delegated runs | batchId, childIndex, title, taskPrompt, status, streamed content/reasoning, continuation snapshot |
+| `searchSessions` | Web search / research paper sessions | chatId, status, complexity, searchCallCount, perplexityModelTier, participantCount |
+| `searchContexts` | Search run context snapshots | messageId, phase metadata, retrieval context |
+| `searchPhases` | Search workflow phase state | sessionId, phase, status, result metadata |
+| `skills` | AI skill definitions (system catalog + user-authored) | slug, name, summary, instructionsRaw, instructionsCompiled?, compilationStatus, scope (system/user), origin, visibility, lockState, status, runtimeMode, requiredToolIds, requiredToolProfiles, requiredIntegrationIds, requiredCapabilities, unsupportedCapabilityCodes, validationWarnings, version. Indexed by scope+status+visibility, slug, ownerUserId. |
+| `generatedFiles` | AI-generated file metadata (M10) | userId, chatId, messageId, storageId, filename, mimeType, sizeBytes, toolName |
+| `generatedCharts` | AI-generated native chart metadata (M19) | userId, chatId, messageId, toolName, chartType, title?, xLabel?, yLabel?, xUnit?, yUnit?, elements |
+| `fileAttachments` | Uploaded file attachment metadata | userId, chatId, messageId, storageId, filename, mimeType, sizeBytes |
+| `personas` | Custom AI personas | displayName, personaDescription, modelId, avatarEmoji, avatarImageStorageId, avatarSFSymbol, avatarColor, temperature, enabledIntegrations (M10), discoverableSkillIds (M18) |
+| `memories` | Extracted memories | content, category, isPending (boolean), memoryType, importanceScore, retrievalMode (post-M14), scopeType (post-M14), personaIds (post-M14), sourceType (post-M14), sourceFileName (post-M14), tags (post-M14), citationChatId, citationMessageId |
+| `memoryEmbeddings` | Memory vector index rows | memoryId, embedding, model metadata |
+| `cachedModels` | OpenRouter model catalog + benchmark guidance cache | modelId, name, provider, canonicalSlug, pricing, contextLength, supportsImages, supportsTools, benchmarkLlm, benchmarkMedia, openRouterUseCases, guidanceMatch, derivedGuidance |
+| `usageRecords` | Per-message API cost tracking (M23) | userId, chatId, messageId, modelId, promptTokens, completionTokens, totalTokens, cost, source (M23: `"generation"` / `"title"` / `"compaction"` / `"memory_extraction"` / `"memory_embedding"` / `"search_query_gen"` / `"search_perplexity"` / `"search_planning"` / `"search_analysis"` / `"search_synthesis"` / `"subagent"`), token breakdowns (cached, reasoning, audio, image, video), upstreamInferenceCost. Indexes: `by_user`, `by_user_model`, `by_chat`, `by_message` (M23) |
+| `folders` | Chat organization | name, userId, sortOrder |
+| `userPreferences` | Global user settings | defaultModelId, temperature, maxTokens, hapticFeedback, onboardingCompleted (M14), defaultSearchMode (M13.5), defaultSearchComplexity (M13.5), subagentsEnabledByDefault, autoAudioResponse (M20), preferredVoice (M20), showBalanceInChat (post-M21), showAdvancedStats (M23), hasSeenIdeascapeHelp (M17), hasSeenMainHelp (post-M21), etc. |
+| `modelSettings` | Per-model overrides | openRouterId, temperature, maxTokens, systemPrompt |
+| `nodePositions` | Ideascape spatial layout | chatId, messageId, x, y, width, height |
+| `oauthConnections` | External integration OAuth tokens (M10) | userId, provider (google/microsoft/notion), accessToken, refreshToken, expiresAt, scopes, email, status |
+| `integrationRequestGates` | Per-user integration approval state | userId, provider, gating metadata, timestamps |
+| `purchaseEntitlements` | Cross-platform Pro entitlement source of truth | userId, platform, source, productId, externalPurchaseId, status, activatedAt, revokedAt, lastVerifiedAt |
+| `scheduledJobs` | User-created recurring AI tasks (M13) | userId, name, prompt, personaId, modelId, cronExpression, recurrence, status, searchMode (M13.5), searchComplexity (M13.5), includeReasoning, reasoningEffort, steps (post-M14), activeExecutionId (post-M14), activeExecutionChatId (post-M14), activeExecutionStartedAt (post-M14), activeStepIndex (post-M14), activeStepCount (post-M14), activeUserMessageId (post-M14), activeAssistantMessageId (post-M14), activeGenerationJobId (post-M14) |
+| `jobRuns` | Execution history for scheduled jobs (M13) | jobId, userId, status, chatId, startedAt, completedAt, errorMessage |
+| `userSecrets` | Server-side API key storage (M13) | userId, apiKey — synced during PKCE exchange + app launch |
+| `deviceTokens` | Provider-based push notification tokens (M13.5/M16) | userId, token, platform (`ios`/`android`), provider (`apns`/`fcm`), optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider` |
+| `favorites` | Quick-launch model/persona/group shortcuts | userId, name, modelIds, personaId, personaName, personaEmoji, personaAvatarImageUrl, sortOrder, createdAt, updatedAt. Index: `by_user` |
+| `userCapabilities` | Internal/manual feature grants layered on top of purchase entitlements | userId, capability (`pro` / `sandboxRuntime` / `mcpRuntime`), source, status, grantedAt, expiresAt?, metadata |
+| `sandboxSessions` | Per-chat E2B runtime sessions | userId, chatId, providerSandboxId, templateName, templateVersion, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
+| `sandboxArtifacts` | Runtime artifact bookkeeping | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
+| `sandboxEvents` | Runtime observability trail | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
+| `_scheduled_functions` | Convex system table | Scheduled function execution |
+
+### Identity & Scoping
+
+- All user-facing tables include a `userId` field = `ctx.auth.getUserIdentity().subject` (Clerk user ID)
+- Queries filter by authenticated user automatically
+- No cross-user data leakage possible at the query level
+
+### IDs
+
+- All Convex document IDs are strings (e.g., `"j57..."`)
+- iOS DTOs use `String` for all ID fields (was `UUID` with SwiftData)
+- Convex IDs are typed per-table in the backend: `Id<"chats">`, `Id<"messages">`, etc.
+
+## iOS DTO Types
+
+All Convex data is decoded into Swift structs defined in `Models/DTOs/ConvexTypes.swift`:
+
+```swift
+struct ConvexChat: Codable, Identifiable, Hashable {
+    let _id: String
+    let title: String
+    let userId: String
+    let folderId: String?
+    let activeBranchLeafId: String?
+    let mode: String?             // "chat" or "ideascape" (chatMode validator)
+    let source: String?           // M13: "manual" | "scheduled"
+    let sourceJobId: String?      // M13: Id<"scheduledJobs">
+    let sourceJobName: String?    // M13: denormalized job name for chat list display
+    let isPinned: Bool?           // Pin to top of chat list
+    let pinnedAt: Double?         // Timestamp when pinned (for sort order)
+    // Per-chat search overrides (nil = inherit global default)
+    let webSearchOverride: Bool?
+    let searchModeOverride: String?   // "basic" | "web" | "paper"
+    let searchComplexityOverride: Double?  // 1 | 2 | 3
+    let _creationTime: Double
+    var id: String { _id }
+}
+
+struct ConvexMessage: Codable, Identifiable, Hashable {
+    let _id: String
+    let chatId: String
+    let role: String
+    let content: String
+    let modelId: String?
+    let parentMessageIds: [String]?
+    let status: String?
+    let reasoning: String?
+    let userId: String?           // M13: denormalized for search index filterFields
+    let _creationTime: Double
+    var id: String { _id }
+}
+```
+
+Additional DTOs: `ConvexChatParticipant`, `ConvexPersona`, `ConvexFolder`, `ConvexCachedModel`, `ConvexModelSummary` (lightweight projection — M9.5), `ConvexMemory`, `ConvexNodePosition`, `ConvexUserPreferences`, `ConvexModelSettings`, `ConvexGenerationJob`, `ConvexAutonomousSession`, `ConvexSearchSession`, `ConvexToolCall`, `ConvexToolResult`, `ConvexGeneratedFile` (M10), `ConvexGeneratedChart` (M19), `ConvexOAuthConnection` (M10), `ConvexScheduledJob` (M13), `ConvexJobRun` (M13), `ConvexUserSecrets` (M13), `ConvexProStatus` (M16), `ConvexFavorite`, `ConvexSkill` (M18), and account-capability payloads returned by `capabilities/queries:getAccountCapabilitiesPublic`.
+
+`ConvexSkill` now also carries optional profile-routing metadata:
+
+- `requiredToolProfiles?: [String]`
+- `requiredCapabilities?: [String]`
+
+These are persisted for both built-in and user-authored skills and are normalized on create/update to keep runtime and integration requirements internally consistent.
+
+Subagent DTOs are defined separately in `Models/DTOs/ConvexTypes+Subagents.swift`:
+
+- `ConvexSubagentBatch`
+- `ConvexSubagentRun`
+- `ConvexSubagentBatchView`
+
+### Enums
+
+Two enums previously embedded in SwiftData models are now standalone in `ConvexTypes.swift`:
+
+```swift
+enum MessageRole: String, Codable, Sendable {
+    case system, user, assistant
+}
+
+enum MemoryGatingMode: String, Codable, Sendable {
+    case auto, always, never, ask
+}
+```
+
+## Convex Schema Definition
+
+The authoritative schema is `convex/schema.ts`. Key design patterns:
+
+- **Indexes**: Every table has indexes for common query patterns (e.g., `by_chat` on messages, `by_userId` on chats, `by_user_pinned` on chats for pinned conversation queries, `by_user` on favorites)
+- **Vector indexes**: `memories` table has a vector index for semantic search (1536 dimensions, cosine similarity)
+- **Optional relationships**: Foreign key fields (`folderId`, `personaId`) are optional (`v.optional(v.id("table"))`)
+- **String enums**: Role, status, and category fields use `v.union(v.literal("..."), ...)` for type safety
+- **Shared validators**: `schema_validators.ts` exports reusable validators (`scheduledJobStatus`, `scheduledJobRecurrence`, `jobRunStatus`, `chatSource`, `memoryRetrievalMode` (post-M14), `memoryScopeType` (post-M14), `memorySourceType` (post-M14), `scheduledJobStep` (post-M14)) used by both schema and function argument validators
+- **Search indexes**: `messages` table has a search index on `content` with `userId` in `filterFields` for cross-chat search scoped to the authenticated user
+- **Timestamps**: `_creationTime` is automatic; `updatedAt` is manual where needed
+
+## Migration from SwiftData
+
+| SwiftData (Pre-M8) | Convex (Post-M8) |
+|---------------------|-------------------|
+| `@Model final class Chat` | `chats` table + `ConvexChat` DTO |
+| `@Model final class Message` | `messages` table + `ConvexMessage` DTO |
+| `@Relationship` | Foreign key IDs (e.g., `chatId: v.id("chats")`) |
+| `ModelContainer` + `ModelContext` | `ConvexService` subscriptions |
+| `@Query` in views | `convex.subscribe(to:)` in ViewModels |
+| `modelContext.insert()` / `.delete()` | `convex.mutation()` calls |
+| `UUID` identifiers | `String` Convex document IDs |
+| CloudKit sync | Convex realtime WebSocket |
+| `SchemaV1` / migration plans | Convex schema push (automatic) |
+
+---
+
+## M9.5 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Removed `messageChunks` table** | Was write-only waste — iOS client never read it during streaming. The replacement architecture patches `streamingMessages` during generation, then persists the final content/reasoning back into `messages` during `finalizeGeneration`. |
+| **Added telemetry to `searchSessions`** | `searchCallCount`, `perplexityModelTier`, `participantCount` fields for cost tracking. |
+| **Added `listModelSummaries` query** | Lightweight projection returning only 10 fields per model (vs 20+ in full `cachedModels`). Used by `SharedAppDataStore` for views that don't need full model data. |
+| **Added `before` param to `listMessages`** | Cursor-based pagination — iOS subscribes with `limit: 50` for the recent window, loads older messages on demand. |
+| **Added `getAttachmentUrl` query** | On-demand attachment URL resolution by `storageId`, replacing the per-subscription-tick `withRefreshedAttachmentUrls` call. |
+
+---
+
+## M10 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `generatedFiles` table** | AI-generated file metadata: storageId, filename, mimeType, sizeBytes, toolName. Indexes: `by_user`, `by_chat`, `by_message`. |
+| **Added `oauthConnections` table** | External integration OAuth tokens. Stores provider (google/microsoft/notion), access/refresh tokens, expiry, scopes, user email, status. Indexes: `by_user`, `by_user_provider`, `by_status`. Notion uses HTTP Basic Auth for token exchange (no PKCE). |
+| **Added tool fields to `messages`** | `toolCalls` (v.optional array), `toolResults` (v.optional array), `generatedFileIds` (v.optional array of Id<"generatedFiles">). |
+| **Added `enabledIntegrations` to `personas`** | `v.optional(v.array(v.string()))` — per-persona default integration toggles (e.g., `["gmail", "drive", "outlook"]`). |
+| **Added `enabledIntegrations` to `sendMessageArgs`** | Passed from iOS to backend; backend intersects with actual provider connection status. |
+| **Schema split** | `convex/schema.ts` now imports from 4 table definition files: `schema_tables_core.ts` (14 tables), `schema_tables_catalog.ts` (6 tables), `schema_tables_user.ts` (12 tables), `schema_tables_runtime.ts` (4 tables). |
+
+---
+
+## M13 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `scheduledJobs` table** | User-created recurring AI tasks: name, prompt, personaId, modelId, cronExpression, recurrence, status, nextRunAt, lastRunAt, includeReasoning, reasoningEffort. Indexes: `by_user`, `by_status`, `by_nextRunAt`. |
+| **Added `jobRuns` table** | Execution history: jobId, userId, status (pending/running/completed/failed), chatId, startedAt, completedAt, errorMessage. Indexes: `by_job`, `by_user`. |
+| **Added `userSecrets` table** | Server-side API key storage: userId, openRouterApiKey. Synced during PKCE exchange + on every app launch. Index: `by_userId`. |
+| **Added `schema_validators.ts`** | Shared validators (`scheduledJobStatus`, `scheduledJobRecurrence`, `jobRunStatus`, `chatSource`) used by schema and function args. |
+| **Added `source`, `sourceJobId`, `sourceJobName` to `chats`** | Chat provenance for scheduled jobs. `sourceJobName` denormalized to avoid extra query in chat list. |
+| **Added `userId` to `messages`** | Denormalized for efficient cross-user search scoping via search index `filterFields`. |
+| **Added search index on `messages`** | Full-text search on `content` with `userId` in `filterFields`. |
+| **Added `isProUnlocked`, `proUnlockedAt` to `userPreferences`** | Legacy Pro mirror fields. **Removed** in the post-M21 entitlement schema cleanup — `purchaseEntitlements` is the sole source of truth for Pro status. |
+| **Added `includeReasoning`, `reasoningEffort` to `scheduledJobs`** | Reasoning overrides for reasoning-capable models in jobs. |
+| **New cron: `cleanOldJobRuns`** | Daily at 5 UTC — prunes job runs older than 30 days. 7 system crons total (including `cleanStaleSearchPhases` at 4 UTC). |
+| **Table count: 19 → 22** | 3 new tables: `scheduledJobs`, `jobRuns`, `userSecrets`. |
+
+---
+
+## M13.5 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `defaultSearchMode`, `defaultSearchComplexity` to `userPreferences`** | Default internet search tier (`"basic"` / `"web"` / `"paper"`) and complexity (1-3) for new chats. |
+| **Added `webSearchOverride`, `searchModeOverride`, `searchComplexityOverride` to `chats`** | Per-chat search setting overrides. `nil` = inherit global default from `userPreferences`. Once a user explicitly toggles search within a chat, the override is persisted and survives navigation, backgrounding, and app relaunch. Follows the same pattern as `temperatureOverride`, `maxTokensOverride`, etc. |
+| **Replaced `webSearchEnabled` on `scheduledJobs`** | New fields: `searchMode` (`"none"` / `"basic"` / `"web"` / `"research"`) and `searchComplexity` (1-3). Backward compat: absent `searchMode` + `webSearchEnabled: true` → `"basic"`. |
+| **Added `deviceTokens` table** | Provider-based push notification tokens: userId, token, platform, provider, optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider`. Table count: 22 → 23. |
+
+---
+
+## M14 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `originalTransactionId` to `userPreferences`** | `v.optional(v.string())` — legacy StoreKit audit field retained for migration/backward compatibility. |
+| **Added `onboardingCompleted` to `userPreferences`** | `v.boolean()` — set `true` after the user completes onboarding (OpenRouter key stored). Convex value takes precedence over UserDefaults to handle reinstalls and new devices. |
+
+> **Note:** `isProUnlocked` and `proUnlockedAt` have been removed from the `userPreferences` schema (post-M21 entitlement cleanup). `originalTransactionId` remains for StoreKit audit compatibility. Pro state comes exclusively from `purchaseEntitlements` via `preferences/entitlements.ts` and `preferences/queries:getProStatus`.
+
+No new tables. Table count remains 23.
+
+### `userPreferences` (legacy fields + onboarding)
+
+The following legacy and onboarding fields remain on `userPreferences`:
+
+```typescript
+originalTransactionId: v.optional(v.string()), // legacy StoreKit audit field
+onboardingCompleted: v.boolean(),             // M14: has user completed onboarding carousel
+```
+
+### iOS DTO Update
+
+`ConvexUserPreferences` still includes onboarding and non-billing preference fields, while Pro UI now reads `preferences/queries:getProStatus`:
+
+```swift
+let onboardingCompleted: Bool
+
+struct ConvexProStatus {
+    let isPro: Bool
+    let source: String
+}
+```
+
+---
+
+## M16 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `purchaseEntitlements` table** | Cross-platform Pro source of truth for App Store + Play Billing purchases. Clients now read `preferences/queries:getProStatus` instead of inferring billing from `userPreferences`. |
+| **Added `integrationRequestGates` table** | Server-owned gating state for integration request flows and approval metadata. |
+| **Added `searchContexts` + `searchPhases` tables** | Persisted search workflow context and per-phase progress for shared iOS/Android deep research surfaces. |
+| **Added `fileAttachments` table** | Canonical metadata for uploaded conversation attachments and generated file associations. |
+| **Added `memoryEmbeddings` table** | Separated embedding rows from logical memory records to support richer memory indexing. |
+| **Added `usageRecords` table** | Usage and cost telemetry records for backend-side reporting and budgeting. |
+| **Android client contract added** | Android consumes the same schema through Kotlin DTOs in `android/app/src/main/java/com/nanthai/edge/data/ConvexDTOs.kt`. |
+
+## Model Guidance System (2026-03-15)
+
+The model catalog is no longer just a cached OpenRouter pricing/capabilities list. `cachedModels` now also stores benchmark and trend metadata used by the guided picker and "Help me choose" flows on both iOS and Android.
+
+### `cachedModels` guidance fields
+
+| Field | Type | Details |
+|-------|------|---------|
+| `canonicalSlug` | `v.optional(v.string())` | Stable-ish OpenRouter canonical slug used for family matching and display. |
+| `benchmarkLlm` | optional object | Artificial Analysis LLM benchmark snapshot: source, externalId, slug, creator fields, intelligence/coding/math/agentic scores, speed, latency, AA pricing, `syncedAt`. |
+| `benchmarkMedia` | optional object | Artificial Analysis text-to-image benchmark snapshot. |
+| `openRouterUseCases` | optional array | OpenRouter weekly category ranks stored as trend hints (`category`, `returnedRank`, `syncedAt`). |
+| `guidanceMatch` | optional object | Match metadata from the OpenRouter ↔ Artificial Analysis family matcher (`strategy`, `confidence`). |
+| `derivedGuidance` | optional object | Locale-agnostic labels, supported intents, normalized scores, per-category ranks, `totalRanked`, `lastDerivedAt`. |
+
+### Model guidance backend modules
+
+- `convex/models/sync.ts` — OpenRouter catalog sync + public re-exports
+- `convex/models/artificial_analysis_sync.ts` — fetch AA benchmark datasets
+- `convex/models/artificial_analysis_apply.ts` — match, normalize, score, and patch guidance fields
+- `convex/models/openrouter_usecase_sync.ts` — fetch/store OpenRouter trend hints
+- `convex/models/guidance_matching.ts` — family-based OpenRouter ↔ AA matcher
+- `convex/models/guidance_scoring*.ts` — normalized picker scores, ranks, labels, wizard scoring
+- `convex/models/queries.ts` — `listModels`, `listModelSummaries`, `getModel`
+
+### Mobile numeric gotcha
+
+Although rank-like values are conceptually integers, they are still stored as Convex `v.number()` fields. On the mobile wire they may arrive as `3.0` / `129.0` / `135.0`. Android hit this on 2026-03-15 when `derivedGuidance.ranks.*` and `totalRanked` were modeled as `Int` in Kotlin DTOs, breaking the entire models subscription. Client DTOs should decode these guidance numeric fields as floating-point and convert later.
+
+---
+
+## M18 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `skills` table** | AI skill definitions (system catalog + user-authored): slug, name, summary, instructionsRaw, instructionsCompiled?, compilationStatus, scope, ownerUserId, origin, visibility, lockState, status, runtimeMode, requiredToolIds, requiredIntegrationIds, unsupportedCapabilityCodes, validationWarnings, version, createdAt, updatedAt. 20+ fields, 4 indexes (`by_scope`, `by_owner`, `by_slug`, `by_status`). Table count: 29 → 30. |
+| **Added `discoverableSkillIds` to `personas`** | `v.optional(v.array(v.id("skills")))` — skills visible in the catalog for chats using this persona. |
+| **Added `discoverableSkillIds`, `disabledSkillIds` to `chats`** | `v.optional(v.array(v.id("skills")))` — per-chat skill overrides (add/remove from catalog). |
+
+---
+
+## M19 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `generatedCharts` table** | Native chart metadata persisted separately from file exports. Stores normalized chart payloads (`line`, `bar`, `scatter`, `pie`, `box`) for chat rendering. Indexes: `by_user`, `by_chat`, `by_message`. |
+| **Added runtime/capability schema file** | `convex/schema_tables_runtime.ts` introduces 4 tables: `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
+| **Added `generatedChartIds` to `messages`** | Assistant messages can now reference chart records alongside generated files. |
+| **Capability model added** | `userCapabilities` stores internal/manual grants such as `sandboxRuntime`, layered on top of entitlement-derived `pro`. |
+| **Per-chat sandbox lifecycle persisted** | `sandboxSessions` stores provider sandbox IDs, template/version metadata, lifecycle timestamps, timeout settings, and cleanup state. |
+| **Runtime artifacts and observability persisted** | `sandboxArtifacts` tracks exported files related to a sandbox; `sandboxEvents` stores lifecycle and analytics events. |
+| **Table count: 30 → 35** | 5 new tables: `generatedCharts`, `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
+
+---
+
+## Post-M14 Weekend Sprint Schema Changes (2026-03-07 → 2026-03-09)
+
+### `memories` table — Memory Personalization Overhaul (PR #29)
+
+| Field | Type | Details |
+|-------|------|---------|
+| `retrievalMode` | `v.optional(memoryRetrievalMode)` | `"auto"` / `"always"` / `"keyword"` — controls how the memory is retrieved for injection |
+| `scopeType` | `v.optional(memoryScopeType)` | `"global"` / `"persona"` — whether memory applies to all personas or specific ones |
+| `personaIds` | `v.optional(v.array(v.id("personas")))` | Persona-scoped memories — only injected when one of these personas is active |
+| `sourceType` | `v.optional(memorySourceType)` | `"extraction"` / `"manual"` / `"document_import"` — provenance of the memory |
+| `sourceFileName` | `v.optional(v.string())` | Original filename for document-imported memories |
+| `tags` | `v.optional(v.array(v.string()))` | User-defined tags for organization and retrieval |
+
+New shared validators in `schema_validators.ts`: `memoryRetrievalMode`, `memoryScopeType`, `memorySourceType`.
+
+Memory categories expanded to 10 (defined in `convex/memory/shared.ts` as single source of truth).
+
+### `scheduledJobs` table — Multi-Step Pipelines (PR #31)
+
+| Field | Type | Details |
+|-------|------|---------|
+| `steps` | `v.optional(v.array(scheduledJobStep))` | Array of step configs — each step has its own prompt, persona, model, and settings. `getScheduledJobSteps()` normalizes legacy single-step jobs to the new format for backward compatibility. |
+| `activeExecutionId` | `v.optional(v.id("jobRuns"))` | Currently executing job run ID |
+| `activeExecutionChatId` | `v.optional(v.id("chats"))` | Chat created for current execution |
+| `activeExecutionStartedAt` | `v.optional(v.number())` | Timestamp when current execution started |
+| `activeStepIndex` | `v.optional(v.number())` | Current step being executed (0-indexed) |
+| `activeStepCount` | `v.optional(v.number())` | Total number of steps in current execution |
+| `activeUserMessageId` | `v.optional(v.id("messages"))` | User message ID for current step |
+| `activeAssistantMessageId` | `v.optional(v.id("messages"))` | Assistant message ID for current step |
+| `activeGenerationJobId` | `v.optional(v.id("generationJobs"))` | Generation job tracking current step |
+
+New shared validator: `scheduledJobStep` (in `schema_validators.ts`).
+
+### `messages` table — Integration Tracking (PR #30)
+
+| Field | Type | Details |
+|-------|------|---------|
+| `enabledIntegrations` | `v.optional(v.array(v.string()))` | Per-message record of which integrations were active when the message was sent (e.g., `["gmail", "drive", "notion"]`) |
+
+No new tables. Table count remains 23.
+
+---
+
+*Last updated: 2026-03-20 — M19 Max Runtime: added `generatedCharts`, runtime/capability tables, `messages.generatedChartIds`, and chart/capability DTO surfaces.*
+
+---
+
+## M20 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added audio fields to `messages`** | `audioStorageId` (v.optional(v.id("_storage"))), `audioTranscript` (v.optional(v.string())), `audioDurationMs` (v.optional(v.number())), `audioVoice` (v.optional(v.string())), `audioGeneratedAt` (v.optional(v.number())), `audioLastPlayedAt` (v.optional(v.number())), `audioGenerating` (v.optional(v.boolean())). |
+| **Added `by_audio_storage` index to `messages`** | Index on `audioStorageId` for orphaned audio cleanup queries. |
+| **Added audio preference fields to `userPreferences`** | `autoAudioResponse` (v.optional(v.boolean())), `preferredVoice` (v.optional(v.string())). |
+| **Added `autoAudioResponseOverride` to `chats`** | `v.optional(v.boolean())` — per-chat override for auto-audio preference. |
+
+No new tables. Table count remains 35.
+
+---
+
+## M21 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `rate_limit` table** | Backend rate limiting for abuse prevention. Fields: `userId`, `action`, `windowStart`, `count`, `updatedAt`. Indexed by `by_user_action`. Table count: 35 → 36. |
+| **Added `by_status` index to `generationJobs`** | Enables indexed cleanup of stale generation jobs instead of full table scan. |
+| **Added `audioGenerating` flag to `messages`** | Transient boolean flag indicating TTS generation is in progress, patched false on completion or failure. |
+| **Split `repairInvalidMessagePersonas`** | Not a schema change but a migration pattern: large repair mutations are chunked (process N documents per call, reschedule if more remain) to stay within Convex's mutation time budget. |

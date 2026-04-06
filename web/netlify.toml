@@ -1,0 +1,129 @@
+# Netlify configuration for NanthAI Edge web PWA
+# The web app lives in /web within the monorepo.
+
+[build]
+  base = "web"
+  command = "npm install && npx vite build"
+  publish = "dist"
+
+# ── Static pages for crawlers / AI bots ──
+# Netlify serves real files before evaluating redirect rules, so
+# /privacy → privacy.html already works. These explicit rewrites are
+# belt-and-suspenders: they guarantee the static HTML is served even if
+# a later catch-all redirect is added, and they return correct paths
+# when a trailing slash is used.
+[[redirects]]
+  from = "/privacy/"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms/"
+  to = "/terms.html"
+  status = 200
+
+[[redirects]]
+  from = "/support/"
+  to = "/support.html"
+  status = 200
+
+# ── SPA fallback — serve index.html for app routes ──
+[[redirects]]
+  from = "/features/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/app/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/sign-in/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/sign-up/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/onboarding/*"
+  to = "/index.html"
+  status = 200
+
+# Headers — cache immutable hashed assets aggressively, everything else revalidates.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/workbox-*.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+# Security headers
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
+
+# Static legal/support pages — revalidate often so crawlers always get fresh content
+[[headers]]
+  for = "/privacy.html"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+[[headers]]
+  for = "/terms.html"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+[[headers]]
+  for = "/support.html"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+# Sitemaps and robots — short cache so search engines and AI crawlers pick up changes quickly
+[[headers]]
+  for = "/robots.txt"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+[[headers]]
+  for = "/sitemap.xml"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+    Content-Type = "application/xml; charset=utf-8"
+
+[[headers]]
+  for = "/sitemap-edge.xml"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+    Content-Type = "application/xml; charset=utf-8"
+
+# LLM-readable content — revalidate so AI crawlers always get latest
+[[headers]]
+  for = "/llms.txt"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+
+[[headers]]
+  for = "/llms/*"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"

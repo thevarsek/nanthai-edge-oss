@@ -1,0 +1,153 @@
+Copyright (c) 2026 Ferdinando Valsecchi
+
+NanthAI Edge — Source-Available License
+
+This license governs use of the NanthAI software and associated source code
+("Software").
+
+================================================================================
+
+1. Grant of Rights (Non-Commercial)
+
+You are granted a limited, non-exclusive, non-transferable, revocable license
+to:
+
+  - View, use, and modify the Software for personal use
+  - Use the Software for internal evaluation or testing purposes
+  - Self-host the Software for personal, non-commercial use
+  - Experiment, learn from, and adapt the code in non-commercial contexts
+
+This license does not grant you rights to the NanthAI name, logo, or branding.
+
+================================================================================
+
+2. Restrictions
+
+You may NOT, without a valid Commercial License:
+
+  - Use the Software in any commercial environment
+  - Use the Software within a company or organisation beyond evaluation
+  - Rebrand, white-label, or redistribute the Software
+  - Offer the Software as a hosted or SaaS service
+  - Sell, sublicense, or otherwise monetise the Software or derivatives
+  - Remove or alter any copyright notices, license headers, or attribution
+
+================================================================================
+
+3. Definition of Commercial Use
+
+"Commercial Use" includes any use:
+
+  - By a business, organisation, or public body
+  - Intended to generate revenue or support business operations
+  - In production environments (internal or external)
+  - As part of a product, service, or internal tooling
+  - By employees or contractors acting on behalf of a commercial entity
+
+For the avoidance of doubt, the following are NOT Commercial Use:
+
+  - Personal self-hosting for your own individual use
+  - Academic or educational use by students and researchers
+  - Use by non-profit organisations for non-revenue activities
+  - Evaluation or proof-of-concept work (up to 30 days)
+
+================================================================================
+
+4. Commercial License
+
+To use the Software commercially, you must obtain a paid Commercial License
+from the author.
+
+A Commercial License grants additional rights, which may include:
+
+  - Internal business use
+  - Rebranding and white-labelling
+  - Modification and extension for business purposes
+  - Deployment within your organisation
+  - Priority support and updates
+
+Commercial License terms, pricing, and scope are defined separately per
+agreement.
+
+To obtain a Commercial License, contact:
+
+  Email:   support@nanthai.tech
+  Web:     https://nanthai.tech/licensing
+
+================================================================================
+
+5. Contributions
+
+By submitting a pull request, patch, or any other contribution to this
+repository, you:
+
+  (a) Represent that you have the right to make the contribution.
+
+  (b) Grant the author (Ferdinando Valsecchi) an irrevocable, worldwide,
+      royalty-free, non-exclusive license to use, reproduce, modify, display,
+      perform, sublicense, and distribute your contribution as part of the
+      Software, under any license terms — including commercial terms.
+
+  (c) Acknowledge that your contribution will be available to all users of the
+      Software under the terms of this license, and to Commercial License
+      holders under their respective terms.
+
+This "inbound = outbound" model ensures contributions benefit the entire
+community while allowing the author to sustain the project through commercial
+licensing.
+
+================================================================================
+
+6. Ownership
+
+The Software is licensed, not sold. All rights, title, and interest in the
+Software — including all intellectual property rights — remain with the author
+(Ferdinando Valsecchi).
+
+================================================================================
+
+7. No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING FROM,
+OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+================================================================================
+
+8. Termination
+
+This license is automatically terminated if you violate any of its terms.
+
+Upon termination, you must:
+
+  - Immediately stop all use of the Software
+  - Delete all copies of the Software in your possession or control
+  - Confirm deletion in writing if requested by the author
+
+The author may also terminate this license at any time with 30 days' written
+notice.
+
+================================================================================
+
+9. Severability
+
+If any provision of this license is found to be unenforceable, the remaining
+provisions shall continue in full force and effect.
+
+================================================================================
+
+10. Future Licensing
+
+The author reserves the right to offer the Software under different license
+terms in the future. Any such change applies only to versions released after
+the change and does not retroactively alter the terms for versions already
+obtained under this license.
+
+================================================================================
+
+For questions about this license, contact: support@nanthai.tech

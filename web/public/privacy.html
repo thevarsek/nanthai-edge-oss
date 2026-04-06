@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy | NanthAI Edge</title>
+  <meta name="description" content="How NanthAI Edge collects, uses, stores, and deletes account data, chat content, memories, files, and connected integration data." />
+  <meta name="robots" content="index, follow" />
+  <link rel="canonical" href="https://nanthai.tech/privacy" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://nanthai.tech/privacy" />
+  <meta property="og:title" content="Privacy Policy | NanthAI Edge" />
+  <meta property="og:description" content="How NanthAI Edge collects, uses, stores, and deletes account data, chat content, memories, files, and connected integration data." />
+  <meta property="og:image" content="https://nanthai.tech/apple-splash-1200x630.png" />
+
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Privacy Policy | NanthAI Edge" />
+  <meta name="twitter:description" content="How NanthAI Edge collects, uses, stores, and deletes account data, chat content, memories, files, and connected integration data." />
+  <meta name="twitter:image" content="https://nanthai.tech/apple-splash-1200x630.png" />
+
+  <link rel="alternate" type="text/plain" href="https://nanthai.tech/llms.txt" />
+  <link rel="alternate" type="text/markdown" href="https://nanthai.tech/llms/edge-privacy.md" />
+
+  <link rel="icon" href="/favicon.ico" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=2" />
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+      background: #080808;
+      color: #f4f7fb;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    .bg-cone-teal {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background: radial-gradient(ellipse at 50% 0%, rgba(0,224,208,0.07) 0%, transparent 60%);
+    }
+    .bg-cone-warm {
+      position: fixed; bottom: 10vh; right: -10vw; pointer-events: none; z-index: 0;
+      width: 40vh; height: 40vh; border-radius: 50%;
+      background: radial-gradient(circle, rgba(255,190,118,0.04) 0%, transparent 70%);
+    }
+    .bg-top-line {
+      position: fixed; top: 0; left: 0; right: 0; height: 1px; pointer-events: none; z-index: 1;
+      background: linear-gradient(to right, transparent, rgba(255,255,255,0.08), transparent);
+    }
+
+    a { color: #91efff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* Layout */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 1rem; }
+    .header {
+      position: sticky; top: 0; z-index: 50;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      background: color-mix(in srgb, #080808 70%, transparent);
+      backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+    }
+    .header-inner {
+      max-width: 1200px; margin: 0 auto; padding: 0 1rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1.5rem;
+      height: 4rem;
+    }
+    .logo { display: flex; align-items: center; gap: 0.75rem; text-decoration: none; color: inherit; }
+    .logo-icon {
+      height: 2.25rem; width: 2.25rem; display: flex; align-items: center; justify-content: center;
+      border-radius: 0.5rem;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+    }
+    .logo-icon img { height: 1.5rem; width: 1.5rem; object-fit: contain; }
+    .logo-title {
+      font-size: 0.92rem; font-weight: 700; letter-spacing: -0.02em; color: rgba(255,255,255,0.85);
+    }
+    .logo-title .accent { color: #FF6B3D; }
+
+    nav { display: flex; align-items: center; gap: 0.25rem; }
+    nav a {
+      padding: 0.5rem 0.875rem; font-size: 0.82rem;
+      color: rgba(255,255,255,0.35); text-decoration: none; transition: color 0.15s;
+    }
+    nav a:hover { color: rgba(255,255,255,0.7); text-decoration: none; }
+    nav a.active { color: rgba(255,255,255,0.9); font-weight: 500; }
+
+    .header-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .btn-signin {
+      display: inline-flex; align-items: center; gap: 0.25rem;
+      padding: 0.5rem 1rem; font-size: 0.8rem;
+      color: rgba(255,255,255,0.4); text-decoration: none; transition: color 0.15s;
+    }
+    .btn-signin:hover { color: rgba(255,255,255,0.8); text-decoration: none; }
+
+    /* Cards */
+    .card {
+      border: 1px solid rgba(255,255,255,0.08);
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+      box-shadow: 0 28px 70px -30px rgba(0,0,0,0.68), inset 0 1px 0 rgba(255,255,255,0.05);
+      backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+      border-radius: 1rem; padding: 2rem 2.5rem;
+    }
+    .chip {
+      display: inline-flex; border-radius: 9999px; padding: 0.375rem 0.875rem;
+      font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.32em;
+      border: 1px solid rgba(255,255,255,0.1); background: rgba(255,255,255,0.04);
+      color: rgba(244,247,251,0.7);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+    .display {
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+      font-weight: 700; letter-spacing: -0.03em;
+    }
+
+    /* Legal article */
+    .legal h2 {
+      margin-top: 2.5rem; margin-bottom: 0.85rem;
+      font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", sans-serif;
+      font-size: clamp(1.9rem, 2.4vw, 2.5rem); line-height: 1; letter-spacing: -0.03em; color: #f7fbff;
+    }
+    .legal h3 {
+      margin-top: 1.6rem; margin-bottom: 0.55rem;
+      font-size: 1.05rem; font-weight: 600; color: #f7fbff;
+    }
+    .legal p, .legal li { color: rgba(231,238,247,0.82); line-height: 1.8; }
+    .legal ul { margin-top: 0.7rem; margin-bottom: 1rem; padding-left: 1.2rem; }
+    .legal a { color: #91efff; }
+    .legal strong { color: #fff; }
+
+    /* Footer */
+    .footer { border-top: 1px solid rgba(255,255,255,0.04); margin-top: 6rem; }
+    .footer-inner {
+      max-width: 1200px; margin: 0 auto; padding: 4rem 1rem;
+      display: flex; flex-wrap: wrap; gap: 3rem; justify-content: space-between; align-items: flex-start;
+    }
+    .footer-brand { max-width: 20rem; }
+    .footer-brand p { font-size: 0.84rem; font-weight: 300; line-height: 1.6; color: rgba(255,255,255,0.45); margin-top: 1.25rem; }
+    .footer-cols { display: flex; gap: 4rem; }
+    .footer-col { display: flex; flex-direction: column; gap: 0.75rem; }
+    .footer-col-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.3em; color: rgba(255,255,255,0.2); margin-bottom: 0.25rem; }
+    .footer-col a { font-size: 0.84rem; color: rgba(255,255,255,0.4); text-decoration: none; transition: color 0.15s; }
+    .footer-col a:hover { color: rgba(255,255,255,0.8); }
+    .footer-bottom {
+      max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem;
+      display: flex; align-items: center; justify-content: space-between;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .footer-bottom p { font-size: 0.72rem; font-weight: 300; letter-spacing: 0.05em; color: rgba(255,255,255,0.15); }
+    .footer-v { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.65rem; color: rgba(255,255,255,0.1); }
+
+    main { position: relative; z-index: 1; padding: 3.5rem 1rem 5rem; }
+
+    @media (max-width: 768px) {
+      nav, .header-actions { display: none; }
+      .card { padding: 1.5rem; }
+      main { padding: 2rem 1rem 3rem; }
+      .footer-cols { gap: 2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-cone-teal" aria-hidden="true"></div>
+  <div class="bg-cone-warm" aria-hidden="true"></div>
+  <div class="bg-top-line" aria-hidden="true"></div>
+
+  <header class="header">
+    <div class="header-inner">
+      <a href="/" class="logo" aria-label="NanthAI Edge home">
+        <div class="logo-icon">
+          <img src="/edge-brand/nanthai_edge_monogram_v2_transp.png" alt="NanthAI Edge monogram" />
+        </div>
+        <span class="logo-title">NanthAi<span class="accent">:</span><span class="accent">Edge</span></span>
+      </a>
+      <nav>
+        <a href="/features">Features</a>
+        <a href="/privacy" class="active">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/licensing">Licensing</a>
+        <a href="/support">Support</a>
+      </nav>
+      <div class="header-actions">
+        <a href="/sign-in" class="btn-signin">Sign in ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div style="max-width:56rem;margin:0 auto">
+      <div class="card">
+        <div class="chip">Privacy policy</div>
+        <h1 class="display" style="margin-top:1.5rem;font-size:clamp(2.5rem,5vw,3.75rem);color:#fff">
+          A plain-language view of how Edge handles data.
+        </h1>
+        <p style="margin-top:1.25rem;max-width:48rem;font-size:1.125rem;line-height:2;color:rgba(255,255,255,0.74)">
+          NanthAI Edge is a native mobile app backed by cloud services that store chats, personas,
+          scheduled jobs, connected accounts, and other data needed to make the product work. This
+          policy explains what we collect, why we collect it, when provider data is used, how it is
+          stored, and how you can request deletion or support.
+        </p>
+        <p style="margin-top:1rem;font-size:0.875rem;text-transform:uppercase;letter-spacing:0.25em;color:rgba(255,255,255,0.42)">
+          Last updated March 7, 2026
+        </p>
+      </div>
+
+      <article class="legal card" style="margin-top:2rem">
+        <h2>1. What this policy covers</h2>
+        <p>
+          This Privacy Policy applies to the NanthAI Edge mobile apps, related support operations, and the
+          backend services used to operate Edge. It covers information we collect directly from you,
+          information generated as you use the app, and information we receive when you connect external
+          providers such as Google, Microsoft, Notion, or Apple Calendar.
+        </p>
+
+        <h2>2. Information we collect</h2>
+        <h3>Account and identity information</h3>
+        <p>
+          When you sign in, we use Clerk for authentication. This may include identifiers such as your
+          email address, account ID, session metadata, and basic profile information required to keep your
+          account signed in and secure.
+        </p>
+
+        <h3>App content you create or store</h3>
+        <ul>
+          <li>Chats, messages, and related conversation metadata.</li>
+          <li>Personas, persona images, persona settings, and avatar assets.</li>
+          <li>Memories and memory embeddings when memory is enabled for your account.</li>
+          <li>Uploaded files, generated files, and file attachment metadata.</li>
+          <li>Scheduled jobs, recurring prompts, execution history, and job settings.</li>
+          <li>Model preferences, tool settings, and integration preferences.</li>
+        </ul>
+
+        <h3>Connected account and integration data</h3>
+        <p>
+          If you connect third-party services, we store the minimum tokens, credentials, or connection
+          metadata required to use those integrations on your behalf. Depending on the provider, this may
+          include access tokens, refresh tokens, expiry times, scopes, account email addresses, workspace
+          identifiers, or connection status.
+        </p>
+        <p>
+          For Apple Calendar, the current connection flow uses your Apple Account email plus an Apple
+          app-specific password for iCloud Calendar access. Those credentials are stored server-side so
+          Edge can perform calendar actions for you until you disconnect the integration or revoke the
+          password in your Apple Account settings.
+        </p>
+
+        <h3>Diagnostics and device information</h3>
+        <p>
+          We may collect device tokens for notifications, app diagnostics, error logs, feature usage
+          signals, and basic technical metadata needed to keep the service stable, investigate problems,
+          and improve the product.
+        </p>
+
+        <h2>3. How we use information</h2>
+        <ul>
+          <li>To authenticate you and keep your account secure.</li>
+          <li>To deliver chat, persona, memory, file, and scheduled-task features.</li>
+          <li>To connect to external providers you explicitly authorize.</li>
+          <li>To run requested or scheduled user-facing actions across connected tools.</li>
+          <li>To troubleshoot bugs, provide support, and improve product quality.</li>
+          <li>To enforce product limits, entitlements, and anti-abuse protections.</li>
+        </ul>
+
+        <h2>4. External services and processors</h2>
+        <p>
+          NanthAI Edge relies on third-party services to operate. These currently include services such as
+          Clerk for identity, Convex for backend data and functions, OpenRouter for model access when you
+          connect it, Apple and Google for app store billing and platform services, and provider APIs such as Google,
+          Microsoft, Notion, or iCloud when you choose to connect them. Those providers process data under
+          their own terms and privacy policies.
+        </p>
+
+        <h2>5. How connected provider data is used</h2>
+        <p>
+          Connected provider data is only accessed when you explicitly connect that provider and then use a
+          related feature, such as a chat tool call, a scheduled job, or a provider-specific action. We do
+          not connect providers silently in the background.
+        </p>
+        <p>
+          When you ask Edge to use a connected provider, the provider response may be read by the app,
+          stored in backend records needed to complete the request, and included in the context sent to the
+          AI model you selected through OpenRouter or another model provider. This happens only to deliver
+          the feature you requested, such as summarising an email, drafting a reply, creating a calendar
+          event, or updating a Notion page.
+        </p>
+
+        <h3>Google Workspace data</h3>
+        <p>
+          If you connect Google, Edge may access Gmail, Google Drive, and Google Calendar data that is
+          necessary for the tools you enable. This may include email message content and metadata, file
+          metadata and file contents, and calendar event data.
+        </p>
+        <p>
+          Google Workspace data is used only to provide or improve user-facing features that you request
+          inside Edge. We do not sell Google user data and do not use it for advertising. We do not let
+          humans read Google Workspace data except when reasonably necessary for security, support, legal
+          compliance, or with your explicit request or consent.
+        </p>
+
+        <h3>Microsoft 365 data</h3>
+        <p>
+          If you connect Microsoft 365, Edge may access Outlook mail data, OneDrive file data, and
+          Microsoft calendar data that is necessary for the tools you enable. This data is used only to
+          execute the actions you request through chats or scheduled jobs.
+        </p>
+
+        <h3>Notion data</h3>
+        <p>
+          If you connect Notion, Edge may access pages, blocks, databases, and workspace metadata that you
+          explicitly authorize through Notion's connection flow. This data is used only to provide the
+          Notion features you trigger in the app.
+        </p>
+
+        <h3>Apple Calendar data</h3>
+        <p>
+          If you connect Apple Calendar, Edge may access iCloud Calendar metadata and event content needed
+          to list, create, update, or delete events on your behalf. The Apple Calendar connection is
+          performed using your Apple Account email and an Apple app-specific password that you provide.
+        </p>
+
+        <h2>6. Payments and Pro features</h2>
+        <p>
+          Purchases and refunds for paid features are handled through the platform stores (Apple App Store and Google Play). NanthAI Edge stores
+          entitlement state needed to unlock or remove paid functionality. Certain paid features, including
+          memory, may be disabled when Pro access is revoked. If Pro access is revoked or refunded, Edge
+          may delete memory data associated with that paid feature in accordance with the product design.
+        </p>
+
+        <h2>7. Data retention and deletion</h2>
+        <p>
+          We retain data for as long as your account or product usage requires it, unless we need to keep
+          it longer for security, legal, or operational reasons.
+        </p>
+        <ul>
+          <li>Chats, personas, files, and settings are retained until you delete them or delete your account.</li>
+          <li>Connected-provider tokens or credentials are retained until you disconnect the provider, revoke access, or delete your account.</li>
+          <li>Apple Calendar credentials are retained until you disconnect Apple Calendar, delete your account, or revoke the app-specific password.</li>
+          <li>Memory data is retained until deleted, your account is deleted, or Pro revocation triggers a memory purge.</li>
+          <li>Some operational records, such as stale search or job-run records, may be retained only for limited periods for reliability and debugging.</li>
+        </ul>
+        <p>
+          You can delete some data directly in the app. Edge also includes an in-app account deletion flow.
+          If you want your account or related app data deleted, contact
+          <a href="mailto:support@nanthai.tech">support@nanthai.tech</a>.
+        </p>
+
+        <h2>8. Security</h2>
+        <p>
+          We use commercially reasonable technical and organizational measures to protect data, including
+          secure authentication, backend access controls, and platform storage mechanisms. No internet or
+          cloud system is perfectly secure, so we cannot guarantee absolute security.
+        </p>
+
+        <h2>9. Your choices and revocation</h2>
+        <ul>
+          <li>You can choose whether to connect third-party services.</li>
+          <li>You can remove connected integrations inside the app.</li>
+          <li>You can disable optional features such as memory where supported.</li>
+          <li>You can request deletion of your account or stored data.</li>
+          <li>You can revoke provider access from the provider side, such as your Google, Microsoft, Notion, or Apple account settings.</li>
+        </ul>
+        <p>
+          For Apple Calendar specifically, you can revoke access by deleting the app-specific password in
+          your Apple Account settings. For Google, Microsoft, and Notion, you can revoke the integration in
+          the relevant provider's account permissions or app management settings.
+        </p>
+
+        <h2>10. Sale, advertising, and training</h2>
+        <p>
+          We do not sell your personal data. We do not use connected-provider data for advertising.
+          Connected-provider data is processed only to deliver the user-facing features you request. If
+          such data is sent to an AI model provider you selected through OpenRouter or another model
+          access layer, that provider's handling is governed by its own terms, privacy policy, and
+          account settings.
+        </p>
+        <p>
+          The use of information received from Google Workspace APIs will adhere to the Google User Data
+          Policy, including the Limited Use requirements.
+        </p>
+
+        <h2>11. Children</h2>
+        <p>
+          NanthAI Edge is not directed to children under 16, and we do not knowingly collect personal
+          information from children under 16.
+        </p>
+
+        <h2>12. Changes to this policy</h2>
+        <p>
+          We may update this policy as the product evolves. When we make material changes, we will update
+          the date at the top of this page and may provide additional notice in the app or through support
+          channels when appropriate.
+        </p>
+
+        <h2>13. Contact</h2>
+        <p>
+          Privacy questions, deletion requests, or support issues can be sent to
+          <a href="mailto:support@nanthai.tech">support@nanthai.tech</a>.
+        </p>
+      </article>
+    </div>
+  </main>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-brand">
+        <div style="display:flex;align-items:center;gap:0.75rem">
+          <div class="logo-icon">
+            <img src="/edge-brand/nanthai_edge_monogram_v2_transp.png" alt="NanthAI Edge monogram" />
+          </div>
+          <span class="logo-title">NanthAi<span class="accent">:</span><span class="accent">Edge</span></span>
+        </div>
+        <p>The AI you need. At the price you want.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col">
+          <span class="footer-col-label">Product</span>
+          <a href="/features">Features</a>
+          <a href="https://chat.nanthai.tech" target="_blank" rel="noreferrer">Web App</a>
+        </div>
+        <div class="footer-col">
+          <span class="footer-col-label">Legal</span>
+          <a href="/privacy">Privacy</a>
+          <a href="/terms">Terms</a>
+          <a href="/licensing">Licensing</a>
+          <a href="/support">Support</a>
+        </div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>&copy; 2026 NanthAI</p>
+      <span class="footer-v">v2.0</span>
+    </div>
+  </footer>
+</body>
+</html>
