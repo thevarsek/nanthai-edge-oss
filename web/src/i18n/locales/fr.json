@@ -2571,6 +2571,7 @@
   "lic_hero_desc": "NanthAI Edge est source-available. Le code source est gratuit pour l'auto-hébergement personnel et l'apprentissage. Les entreprises et organisations souhaitant déployer, renommer ou développer sur la base de code ont besoin d'une Licence Commerciale.",
   "lic_note_title": "Vous cherchez à utiliser NanthAI Edge comme produit ?",
   "lic_note_body": "Vous n'avez pas besoin d'une licence de code source pour utiliser NanthAI Edge. Inscrivez-vous, connectez votre clé OpenRouter et c'est parti. Les fonctionnalités Pro sont débloquées par un achat unique. Cette page concerne spécifiquement la licence du code source pour l'auto-hébergement ou l'utilisation commerciale.",
+  "lic_note_github": "Voir le code source sur GitHub →",
   "lic_s1_title": "1. Licence par défaut",
   "lic_s1_body": "Le code source de NanthAI Edge est disponible sous une licence source-available qui autorise l'utilisation personnelle, l'auto-hébergement, l'évaluation et l'apprentissage — mais pas l'utilisation commerciale. Le texte complet de la licence se trouve dans le fichier LICENSE du dépôt.",
   "lic_s2_title": "2. Qu'est-ce qui constitue un usage commercial ?",

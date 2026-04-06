@@ -2571,6 +2571,7 @@
   "lic_hero_desc": "NanthAI Edge 是源代码可用的。源代码可免费用于个人自托管和学习。希望部署、重新品牌化或基于代码库开发的企业和组织需要商业许可证。",
   "lic_note_title": "想将 NanthAI Edge 作为产品使用？",
   "lic_note_body": "使用 NanthAI Edge 不需要源代码许可证。只需注册，连接你的 OpenRouter 密钥即可开始。Pro 功能通过一次性购买解锁。本页面专门介绍用于自托管或商业用途的源代码许可。",
+  "lic_note_github": "在 GitHub 上查看源代码 →",
   "lic_s1_title": "1. 默认许可证",
   "lic_s1_body": "NanthAI Edge 源代码在源代码可用许可证下提供，允许个人使用、自托管、评估和学习——但不允许商业使用。完整的许可证文本在代码仓库的 LICENSE 文件中。",
   "lic_s2_title": "2. 什么算商业使用？",

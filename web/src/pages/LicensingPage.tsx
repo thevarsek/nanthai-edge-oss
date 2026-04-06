@@ -47,6 +47,16 @@ export function LicensingPage() {
               {t("edge_nav_features")}
             </Link>
           </p>
+          <p className="edge-sans mt-3 text-[0.85rem] font-light leading-[1.8] efg-50">
+            <a
+              href="https://github.com/thevarsek/nanthai-edge-oss"
+              target="_blank"
+              rel="noreferrer"
+              className="text-[#91efff] hover:underline"
+            >
+              {t("lic_note_github")}
+            </a>
+          </p>
         </div>
 
         <article className="edge-legal edge-card edge-fade-up edge-stagger-3 mt-4 rounded-2xl p-8 md:p-10">

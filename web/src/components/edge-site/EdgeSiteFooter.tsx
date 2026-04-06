@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { Github } from "lucide-react";
 
 const footerLinks = [
   { to: "/privacy", labelKey: "edge_nav_privacy" },
@@ -55,6 +56,15 @@ export function EdgeSiteFooter() {
                 className="text-[0.84rem] efg-40 transition-colors hover:efg-80"
               >
                 {t("edge_footer_web_app")}
+              </a>
+              <a
+                href="https://github.com/thevarsek/nanthai-edge-oss"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
+              >
+                <Github className="h-3.5 w-3.5" />
+                GitHub
               </a>
             </div>
             <div className="flex flex-col gap-3">

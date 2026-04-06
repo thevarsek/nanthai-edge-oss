@@ -2571,6 +2571,7 @@
   "lic_hero_desc": "NanthAI Edge ist Source-Available. Der Quellcode ist kostenlos für persönliches Selbst-Hosting und Lernen. Unternehmen und Organisationen, die den Code bereitstellen, umbenennen oder darauf aufbauen möchten, benötigen eine kommerzielle Lizenz.",
   "lic_note_title": "Möchten Sie NanthAI Edge als Produkt nutzen?",
   "lic_note_body": "Sie benötigen keine Quellcode-Lizenz, um NanthAI Edge zu nutzen. Registrieren Sie sich einfach, verbinden Sie Ihren OpenRouter-Schlüssel und legen Sie los. Pro-Funktionen werden durch einen einmaligen Kauf freigeschaltet. Diese Seite behandelt ausschließlich die Lizenzierung des Quellcodes für Selbst-Hosting oder kommerzielle Nutzung.",
+  "lic_note_github": "Quellcode auf GitHub ansehen →",
   "lic_s1_title": "1. Standardlizenz",
   "lic_s1_body": "Der NanthAI Edge Quellcode ist unter einer Source-Available-Lizenz verfügbar, die persönliche Nutzung, Selbst-Hosting, Evaluierung und Lernen erlaubt — aber keine kommerzielle Nutzung. Der vollständige Lizenztext befindet sich in der LICENSE-Datei des Repositorys.",
   "lic_s2_title": "2. Was gilt als kommerzielle Nutzung?",
