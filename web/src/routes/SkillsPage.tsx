@@ -9,6 +9,8 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
 import { useVisibleSkills } from "@/hooks/useSharedData";
+import { useToast } from "@/components/shared/Toast.context";
+import { convexErrorMessage } from "@/lib/convexErrors";
 
 // ─── Skill card ─────────────────────────────────────────────────────────────
 
@@ -101,9 +103,27 @@ function SkillsPageContent() {
   const skills = useVisibleSkills();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Id<"skills"> | null>(null);
+  const { toast } = useToast();
 
   const deleteSkill = useMutation(api.skills.mutations.deleteSkill);
   const duplicateSkill = useMutation(api.skills.mutations.duplicateSystemSkill);
+
+  async function handleDuplicate(id: Id<"skills">) {
+    try {
+      await duplicateSkill({ skillId: id });
+      toast({ message: t("skill_duplicated"), variant: "success" });
+    } catch (e) {
+      toast({ message: convexErrorMessage(e, t("skill_duplicate_failed")), variant: "error" });
+    }
+  }
+
+  async function handleDelete(id: Id<"skills">) {
+    try {
+      await deleteSkill({ skillId: id });
+    } catch (e) {
+      toast({ message: convexErrorMessage(e, t("skill_delete_failed")), variant: "error" });
+    }
+  }
 
   const filteredSkills: SkillDoc[] = ((skills ?? []) as SkillDoc[]).filter(
     (s) => !search || s.name.toLowerCase().includes(search.toLowerCase()),
@@ -159,7 +179,7 @@ function SkillsPageContent() {
                         key={skill._id}
                         skill={skill}
                         onDelete={(id) => setDeleteTarget(id)}
-                        onDuplicate={(id) => void duplicateSkill({ skillId: id })}
+                        onDuplicate={(id) => void handleDuplicate(id)}
                         currentUserId={skill.ownerUserId}
                       />
                     ))}
@@ -177,7 +197,7 @@ function SkillsPageContent() {
                         key={skill._id}
                         skill={skill}
                         onDelete={(id) => setDeleteTarget(id)}
-                        onDuplicate={(id) => void duplicateSkill({ skillId: id })}
+                        onDuplicate={(id) => void handleDuplicate(id)}
                         currentUserId={skill.ownerUserId}
                       />
                     ))}
@@ -211,7 +231,7 @@ function SkillsPageContent() {
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={() => {
-          if (deleteTarget) void deleteSkill({ skillId: deleteTarget });
+          if (deleteTarget) void handleDelete(deleteTarget);
           setDeleteTarget(null);
         }}
         title={t("skills_delete_confirm_title")}

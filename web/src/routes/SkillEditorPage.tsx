@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { ChevronLeft, Check } from "lucide-react";
 import { ProGateWrapper } from "@/hooks/useProGate";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { SkillEditorMetadataSection } from "./SkillEditorMetadataSection";
 import {
   cloneSkillMetadataSelection,
@@ -115,7 +116,7 @@ function SkillEditorPageContent() {
       }
       navigate("/app/settings/skills");
     } catch (e) {
-      setError(e instanceof Error ? e.message : t("skill_save_failed"));
+      setError(convexErrorMessage(e, t("skill_save_failed")));
     } finally {
       setSaving(false);
     }
@@ -172,7 +173,7 @@ function SkillEditorPageContent() {
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-4 space-y-4">
           {error && (
-            <div className="p-3 rounded-xl bg-red-400/10 text-red-400 text-sm">
+            <div className="p-3 rounded-xl bg-red-400/10 text-red-400 text-sm whitespace-pre-wrap max-h-40 overflow-y-auto">
               {error}
             </div>
           )}

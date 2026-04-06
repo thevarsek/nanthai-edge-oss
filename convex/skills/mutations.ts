@@ -7,7 +7,7 @@
 // =============================================================================
 
 import { mutation, internalMutation, MutationCtx } from "../_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { hasCapability } from "../capabilities/shared";
@@ -93,9 +93,10 @@ async function checkSystemSlugCollision(
     .collect();
   const systemMatch = existing.find((s) => s.scope === "system" && s.status === "active");
   if (systemMatch) {
-    throw new Error(
-      `The slug "${slug}" is used by a system skill ("${systemMatch.name}"). Choose a different name.`,
-    );
+    throw new ConvexError({
+      code: "SLUG_COLLISION" as const,
+      message: `The name "${slug}" is already used by a built-in skill ("${systemMatch.name}"). Please choose a different name.`,
+    });
   }
 }
 
@@ -133,28 +134,100 @@ async function validateAndNormalizeSkillMetadata(
     allowSandboxRuntime,
   });
   if (!validation.isCompatible) {
-    const reasons = validation.findings
-      .filter((f) => f.severity === "error")
-      .map((f) => f.message)
-      .join("; ");
-    throw new Error(`SKILL_INCOMPATIBLE: ${reasons}`);
+    const errorFindings = validation.findings.filter((f) => f.severity === "error");
+    const reasons = errorFindings.map((f) => f.message);
+    const codes = errorFindings.map((f) => f.code);
+
+    // Build a user-friendly explanation for why the skill was rejected.
+    const detailLines: string[] = [];
+    for (const finding of errorFindings) {
+      switch (finding.code) {
+        case "USES_BASH":
+          detailLines.push(
+            "• References shell commands (bash, terminal, CLI, npm, pip, etc.).",
+          );
+          break;
+        case "USES_FILESYSTEM":
+          detailLines.push(
+            "• References local files or scripts (scripts/*.py, references/*.md, assets/*, etc.).",
+          );
+          break;
+        case "USES_BROWSER":
+          detailLines.push(
+            "• References browser automation (Playwright, Puppeteer, screenshots, etc.).",
+          );
+          break;
+        case "USES_MCP":
+          detailLines.push(
+            "• References MCP servers or external process management.",
+          );
+          break;
+        case "USES_RAW_FETCH":
+          detailLines.push(
+            "• References raw HTTP requests (fetch, curl, wget, axios, etc.).",
+          );
+          break;
+        case "USES_BUNDLED_SCRIPTS":
+          detailLines.push(
+            "• References bundled scripts that must be executed locally.",
+          );
+          break;
+        case "USES_GIT":
+          detailLines.push(
+            "• References git operations (clone, push, commit, etc.).",
+          );
+          break;
+        default:
+          detailLines.push(`• ${finding.message}`);
+      }
+    }
+
+    const userMessage =
+      "This skill can't be saved because it references capabilities that " +
+      "aren't available in NanthAI. The AI doesn't have a secure environment " +
+      "to run code, access the filesystem, or execute shell commands.\n\n" +
+      "Issues found:\n" +
+      detailLines.join("\n") +
+      "\n\nTo fix this, remove the references to local scripts, shell commands, " +
+      "and file paths from your skill instructions. Focus the instructions on " +
+      "what the AI should know and how it should respond — not on tools it " +
+      "should run.";
+
+    throw new ConvexError({
+      code: "SKILL_INCOMPATIBLE" as const,
+      message: userMessage,
+      reasons,
+      codes,
+    });
   }
 
   const unknownTools = validateToolIds(requiredToolIds);
   if (unknownTools.length > 0) {
-    throw new Error(`Unknown tool IDs: ${unknownTools.join(", ")}`);
+    throw new ConvexError({
+      code: "UNKNOWN_TOOL_IDS" as const,
+      message: `Unknown tool IDs: ${unknownTools.join(", ")}. Check the tool IDs and try again.`,
+    });
   }
   const unknownProfiles = validateToolProfileIds(requiredToolProfiles);
   if (unknownProfiles.length > 0) {
-    throw new Error(`Unknown tool profile IDs: ${unknownProfiles.join(", ")}`);
+    throw new ConvexError({
+      code: "UNKNOWN_TOOL_PROFILES" as const,
+      message: `Unknown tool profile IDs: ${unknownProfiles.join(", ")}. Check the profile IDs and try again.`,
+    });
   }
   const unknownIntegrations = validateIntegrationIds(requiredIntegrationIds);
   if (unknownIntegrations.length > 0) {
-    throw new Error(`Unknown integration IDs: ${unknownIntegrations.join(", ")}`);
+    throw new ConvexError({
+      code: "UNKNOWN_INTEGRATIONS" as const,
+      message: `Unknown integration IDs: ${unknownIntegrations.join(", ")}. Check the integration IDs and try again.`,
+    });
   }
   const unknownCapabilities = validateCapabilityIds(requiredCapabilities);
   if (unknownCapabilities.length > 0) {
-    throw new Error(`Unknown capability IDs: ${unknownCapabilities.join(", ")}`);
+    throw new ConvexError({
+      code: "UNKNOWN_CAPABILITIES" as const,
+      message: `Unknown capability IDs: ${unknownCapabilities.join(", ")}. Check the capability IDs and try again.`,
+    });
   }
 
   const normalized = normalizeSkillMetadata(
@@ -503,7 +576,10 @@ export const createSkill = mutation({
       .collect();
     const duplicate = existing.find((s) => s.slug === slug);
     if (duplicate) {
-      throw new Error(`A skill with the slug "${slug}" already exists. Choose a different name.`);
+      throw new ConvexError({
+        code: "DUPLICATE_SLUG" as const,
+        message: `You already have a skill named "${slug}". Please choose a different name.`,
+      });
     }
 
     const { validation, normalized } = await validateAndNormalizeSkillMetadata(
@@ -562,9 +638,9 @@ export const updateSkill = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const skill = await ctx.db.get(args.skillId);
-    if (!skill) throw new Error("Skill not found.");
-    if (skill.ownerUserId !== userId) throw new Error("Not authorized.");
-    if (skill.lockState === "locked") throw new Error("This skill is locked.");
+    if (!skill) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Skill not found." });
+    if (skill.ownerUserId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized to edit this skill." });
+    if (skill.lockState === "locked") throw new ConvexError({ code: "LOCKED" as const, message: "This skill is locked and cannot be edited." });
 
     const now = Date.now();
     const updates: Record<string, unknown> = { updatedAt: now };
@@ -579,7 +655,10 @@ export const updateSkill = mutation({
           .collect();
         const duplicate = userSkills.find((s) => s.slug === newSlug && String(s._id) !== String(args.skillId));
         if (duplicate) {
-          throw new Error(`A skill with the slug "${newSlug}" already exists. Choose a different name.`);
+          throw new ConvexError({
+            code: "DUPLICATE_SLUG" as const,
+            message: `You already have a skill named "${newSlug}". Please choose a different name.`,
+          });
         }
       }
       updates.name = args.name.trim();
@@ -633,9 +712,9 @@ export const archiveSkill = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const skill = await ctx.db.get(skillId);
-    if (!skill) throw new Error("Skill not found.");
-    if (skill.scope === "system") throw new Error("System skills cannot be archived.");
-    if (skill.ownerUserId !== userId) throw new Error("Not authorized.");
+    if (!skill) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Skill not found." });
+    if (skill.scope === "system") throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "System skills cannot be archived." });
+    if (skill.ownerUserId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
 
     await ctx.db.patch(skillId, { status: "archived", updatedAt: Date.now() });
   },
@@ -653,9 +732,9 @@ export const deleteSkill = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const skill = await ctx.db.get(skillId);
-    if (!skill) throw new Error("Skill not found.");
-    if (skill.scope === "system") throw new Error("System skills cannot be deleted.");
-    if (skill.ownerUserId !== userId) throw new Error("Not authorized.");
+    if (!skill) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Skill not found." });
+    if (skill.scope === "system") throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "System skills cannot be deleted." });
+    if (skill.ownerUserId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
 
     await removeSkillReferences(ctx, skillId, userId);
     await ctx.db.delete(skillId);
@@ -673,8 +752,8 @@ export const duplicateSystemSkill = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const source = await ctx.db.get(skillId);
-    if (!source) throw new Error("Source skill not found.");
-    if (source.scope !== "system") throw new Error("Can only duplicate system skills.");
+    if (!source) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Source skill not found." });
+    if (source.scope !== "system") throw new ConvexError({ code: "INVALID_ARGS" as const, message: "Can only duplicate system skills." });
 
     const now = Date.now();
 
@@ -730,8 +809,8 @@ export const setPersonaSkillsPublic = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const persona = await ctx.db.get(personaId);
-    if (!persona) throw new Error("Persona not found.");
-    if (persona.userId !== userId) throw new Error("Not authorized.");
+    if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
+    if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
 
     await ctx.db.patch(personaId, {
       discoverableSkillIds,
@@ -750,8 +829,8 @@ export const setChatSkillsPublic = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const chat = await ctx.db.get(chatId);
-    if (!chat) throw new Error("Chat not found.");
-    if (chat.userId !== userId) throw new Error("Not authorized.");
+    if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
+    if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
     if (discoverableSkillIds !== undefined) updates.discoverableSkillIds = discoverableSkillIds;

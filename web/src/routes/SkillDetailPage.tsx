@@ -16,6 +16,8 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
 import { useVisibleSkills } from "@/hooks/useSharedData";
+import { useToast } from "@/components/shared/Toast.context";
+import { convexErrorMessage } from "@/lib/convexErrors";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -91,6 +93,7 @@ function SkillDetailContent() {
   const { t } = useTranslation();
   const skills = useVisibleSkills();
   const [showDelete, setShowDelete] = useState(false);
+  const { toast } = useToast();
 
   const deleteSkill = useMutation(api.skills.mutations.deleteSkill);
   const duplicateSkill = useMutation(api.skills.mutations.duplicateSystemSkill);
@@ -141,13 +144,21 @@ function SkillDetailContent() {
     requiredCapabilities.length > 0;
 
   async function handleDuplicate() {
-    await duplicateSkill({ skillId: skill!._id });
-    navigate("/app/settings/skills");
+    try {
+      await duplicateSkill({ skillId: skill!._id });
+      navigate("/app/settings/skills");
+    } catch (e) {
+      toast({ message: convexErrorMessage(e, t("skill_duplicate_failed")), variant: "error" });
+    }
   }
 
   async function handleDelete() {
-    await deleteSkill({ skillId: skill!._id });
-    navigate("/app/settings/skills");
+    try {
+      await deleteSkill({ skillId: skill!._id });
+      navigate("/app/settings/skills");
+    } catch (e) {
+      toast({ message: convexErrorMessage(e, t("skill_delete_failed")), variant: "error" });
+    }
   }
 
   return (
