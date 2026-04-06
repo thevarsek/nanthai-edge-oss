@@ -16,6 +16,13 @@ import {
 } from "./schema_validators";
 
 export const catalogSchemaTables = {
+  // ── Sync metadata (singleton rows, one per sync job) ────────────────
+  syncMeta: defineTable({
+    key: v.string(), // e.g. "modelCatalog"
+    contentHash: v.string(), // SHA-256 of the last-seen API response
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   personas: defineTable({
     userId: v.string(),
     displayName: v.string(),

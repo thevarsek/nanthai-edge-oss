@@ -1,17 +1,59 @@
 // convex/models/sync.ts
 // =============================================================================
 // Model catalog sync: fetches OpenRouter /api/v1/models and upserts into
-// cachedModels table. Called by cron every hour.
+// cachedModels table. Called by cron every 4 hours.
+//
+// Hash-based skip: computes a SHA-256 hash of the sorted model IDs + pricing
+// from the API response. If the hash matches the last-seen value stored in
+// syncMeta, the entire upsertBatch loop is skipped — saving ~250 MB/month
+// in DB bandwidth from reads that produce no writes.
 //
 // This eliminates per-user model catalog fetches — all clients subscribe
 // to queries.listModels() reactively.
 // =============================================================================
 
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "../_generated/server";
+import { internalAction, internalMutation, internalQuery } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { filterExcludedOpenRouterProviders } from "./provider_filters";
 import { hasFieldsChanged, primitiveArraysEqual, deepEqual } from "./sync_diff";
+
+// -- Sync metadata helpers ----------------------------------------------------
+
+/** Read the current catalog hash from syncMeta. */
+export const getCatalogHash = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const meta = await ctx.db
+      .query("syncMeta")
+      .withIndex("by_key", (q) => q.eq("key", "modelCatalog"))
+      .first();
+    return meta?.contentHash ?? null;
+  },
+});
+
+/** Store the catalog hash in syncMeta (upsert). */
+export const setCatalogHash = internalMutation({
+  args: { contentHash: v.string() },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("syncMeta")
+      .withIndex("by_key", (q) => q.eq("key", "modelCatalog"))
+      .first();
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        contentHash: args.contentHash,
+        updatedAt: Date.now(),
+      });
+    } else {
+      await ctx.db.insert("syncMeta", {
+        key: "modelCatalog",
+        contentHash: args.contentHash,
+        updatedAt: Date.now(),
+      });
+    }
+  },
+});
 
 // -- Model sync action --------------------------------------------------------
 
@@ -34,11 +76,37 @@ export const syncFromOpenRouter = internalAction({
     }
 
     const data = await response.json();
+    const rawModels = Array.isArray(data.data) ? data.data : [];
+
+    // Compute a content hash from the fields we actually sync.
+    // Sorted by model ID for deterministic ordering.
+    const hashInput = rawModels
+      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
+      .sort()
+      .join("\n");
+    const hashBuffer = await crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(hashInput),
+    );
+    const contentHash = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    // Check if the catalog has changed since last sync
+    const previousHash = await ctx.runQuery(
+      internal.models.sync.getCatalogHash,
+      {},
+    );
+    if (previousHash === contentHash) {
+      console.log("Model catalog unchanged (hash match) — skipping upsert");
+      return;
+    }
+
     const models = filterExcludedOpenRouterProviders(
-      Array.isArray(data.data) ? data.data.map((model: Record<string, unknown>) => ({
+      rawModels.map((model: Record<string, unknown>) => ({
         ...model,
         provider: extractProvider((model.id as string) ?? ""),
-      })) : [],
+      })),
     );
 
     if (models.length === 0) {
@@ -80,7 +148,12 @@ export const syncFromOpenRouter = internalAction({
       });
     }
 
-    console.log(`Model catalog synced: ${models.length} models`);
+    // Store the new hash only after successful upsert
+    await ctx.runMutation(internal.models.sync.setCatalogHash, {
+      contentHash,
+    });
+
+    console.log(`Model catalog synced: ${models.length} models (hash updated)`);
   },
 });
 

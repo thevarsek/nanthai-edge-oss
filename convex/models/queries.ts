@@ -11,22 +11,8 @@ import { internalQuery, query } from "../_generated/server";
 import {
   filterExcludedOpenRouterProviders,
   isExcludedOpenRouterProvider,
-} from "./provider_filters";
-
-/** Minimum context length (tokens) a model must have to appear in the app. */
-const MIN_CONTEXT_LENGTH = 100_000;
-
-/** Google models have a lower threshold — many capable models are 32K–65K. */
-const MIN_CONTEXT_LENGTH_GOOGLE = 32_000;
-
-function meetsMinContext(
-  contextLength: number | undefined,
-  provider: string | undefined,
-): boolean {
-  const min =
-    provider === "google" ? MIN_CONTEXT_LENGTH_GOOGLE : MIN_CONTEXT_LENGTH;
-  return (contextLength ?? 0) >= min;
-}
+  isEligibleModel,
+} from "./model_filters";
 
 /**
  * Safety cap for unfiltered model catalog queries. The OpenRouter catalog
@@ -47,9 +33,7 @@ export const listModels = query({
           .withIndex("by_provider", (q) => q.eq("provider", args.provider!))
           .collect()
       : await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP);
-    return filterExcludedOpenRouterProviders(raw).filter((m) =>
-      meetsMinContext(m.contextLength, m.provider)
-    );
+    return filterExcludedOpenRouterProviders(raw).filter(isEligibleModel);
   },
 });
 
@@ -80,7 +64,7 @@ export const listModelSummaries = query({
       : await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP);
 
     return filterExcludedOpenRouterProviders(raw)
-      .filter((m) => meetsMinContext(m.contextLength, m.provider))
+      .filter(isEligibleModel)
       .map((m) => ({
         _id: m._id,
         modelId: m.modelId,

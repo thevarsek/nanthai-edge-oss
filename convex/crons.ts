@@ -9,10 +9,13 @@ import { internal } from "./_generated/api";
 
 const crons = cronJobs();
 
-// Refresh model catalog from OpenRouter every hour
+// Refresh model catalog from OpenRouter every 4 hours.
+// Models change infrequently; hourly was burning ~250 MB/month in DB bandwidth
+// just for upsertBatch reads. Combined with hash-based skip (sync.ts), most
+// invocations now do zero mutations.
 crons.interval(
   "refreshModelCatalog",
-  { hours: 1 },
+  { hours: 4 },
   internal.models.sync.syncFromOpenRouter,
 );
 

@@ -22,6 +22,7 @@ import {
   deriveSupportedIntents,
 } from "./guidance_scoring_labels";
 import { deepEqual } from "./sync_diff";
+import { isEligibleModel } from "./model_filters";
 
 export const benchmarkSyncArgs = {
   llmModels: v.array(
@@ -104,14 +105,6 @@ export function prepareBenchmarkUpdates(
   totalModels: number;
   patches: BenchmarkPatch[];
 } {
-  const MIN_CONTEXT = 100_000;
-  const MIN_CONTEXT_GOOGLE = 32_000;
-
-  function meetsMinContext(ctxLen?: number, provider?: string): boolean {
-    const min = provider === "google" ? MIN_CONTEXT_GOOGLE : MIN_CONTEXT;
-    return (ctxLen ?? 0) >= min;
-  }
-
   const aaLlmEntries: AaLlmEntry[] = args.llmModels.map((m) => ({
     slug: m.slug,
     name: m.aaName,
@@ -216,7 +209,7 @@ export function prepareBenchmarkUpdates(
     scoredResults.push({ ...r, scores });
   }
 
-  const visibleScored = scoredResults.filter((r) => meetsMinContext(r.contextLength, r.provider));
+  const visibleScored = scoredResults.filter((r) => isEligibleModel(r));
   const ranksInput = visibleScored.map((r) => ({ id: r.docId, scores: r.scores }));
   const ranksMap = computeAllRanks(ranksInput);
   const totalRanked = visibleScored.length;
