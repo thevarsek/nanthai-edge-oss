@@ -25,6 +25,7 @@ import { HeroSpotlight } from "@/components/edge-site/HeroSpotlight";
 import { HeroVantaNet } from "@/components/edge-site/HeroVantaNet";
 import { HeroOutlineText } from "@/components/edge-site/HeroOutlineText";
 import { buildBreadcrumbsJsonLd, buildOrganizationJsonLd } from "@/lib/seo";
+import { StoreUrls } from "@/lib/constants";
 
 // ── Data (functions accepting t) ────────────────────────────────────
 
@@ -223,6 +224,7 @@ export function HomePage() {
             image: "https://nanthai.tech/apple-splash-1200x630.png",
             description:
               "AI workspace with multi-model chat, personas, memory, scheduled jobs, search, files, and connected tools.",
+            installUrl: [StoreUrls.ios, StoreUrls.android],
             offers: {
               "@type": "Offer",
               price: "0",
@@ -336,7 +338,7 @@ function HomeHeroSection() {
               ))}
             </div>
 
-            <div className={`edge-materialize-scroll edge-mat-delay-3 ${vis} mt-8 flex justify-end`}>
+            <div className={`edge-materialize-scroll edge-mat-delay-3 ${vis} mt-8 flex flex-col items-end gap-5`}>
               <Link
                 to={appHref}
                 className="group relative inline-flex items-center gap-2.5 rounded-full ecta px-8 py-4 text-[0.92rem] font-medium transition-all"
@@ -344,6 +346,24 @@ function HomeHeroSection() {
                 {appLabel}
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
               </Link>
+
+              {/* Official store badges — Apple first per App Store guidelines */}
+              <div className="flex items-center gap-3">
+                <a href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" className="transition-opacity hover:opacity-80">
+                  <img
+                    src="/edge-brand/download-on-app-store.svg"
+                    alt="Download on the App Store"
+                    className="h-[40px] w-auto"
+                  />
+                </a>
+                <a href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" className="transition-opacity hover:opacity-80">
+                  <img
+                    src="/edge-brand/get-it-on-google-play.png"
+                    alt="Get it on Google Play"
+                    className="h-[60px] w-auto"
+                  />
+                </a>
+              </div>
             </div>
           </div>
         </div>
@@ -695,6 +715,22 @@ function HomeFinalCTA() {
               {appLabel}
               <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
             </Link>
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <a href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" className="transition-opacity hover:opacity-80">
+              <img
+                src="/edge-brand/download-on-app-store.svg"
+                alt="Download on the App Store"
+                className="h-[40px] w-auto"
+              />
+            </a>
+            <a href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" className="transition-opacity hover:opacity-80">
+              <img
+                src="/edge-brand/get-it-on-google-play.png"
+                alt="Get it on Google Play"
+                className="h-[60px] w-auto"
+              />
+            </a>
           </div>
         </div>
       </div>

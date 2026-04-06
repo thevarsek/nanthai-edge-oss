@@ -196,6 +196,12 @@ export const convexSiteUrl = (() => {
   return convexUrl?.replace(".convex.cloud", ".convex.site") ?? "";
 })();
 
+/** Native app store URLs */
+export const StoreUrls = {
+  ios: "https://apps.apple.com/us/app/nanthai-edge-multi-ai-chat/id6760239881",
+  android: "https://play.google.com/store/apps/details?id=com.nanthai.edge",
+} as const;
+
 /** App-wide defaults */
 export const Defaults = {
   model: APP_DEFAULT_MODEL_ID,

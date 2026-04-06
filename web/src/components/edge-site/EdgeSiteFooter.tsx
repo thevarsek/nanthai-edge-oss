@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Github } from "lucide-react";
+import { Github, Smartphone, TabletSmartphone } from "lucide-react";
+import { StoreUrls } from "../../lib/constants";
 
 const footerLinks = [
   { to: "/privacy", labelKey: "edge_nav_privacy" },
@@ -65,6 +66,24 @@ export function EdgeSiteFooter() {
               >
                 <Github className="h-3.5 w-3.5" />
                 GitHub
+              </a>
+              <a
+                href={StoreUrls.ios}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
+              >
+                <Smartphone className="h-3.5 w-3.5" />
+                iOS App
+              </a>
+              <a
+                href={StoreUrls.android}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
+              >
+                <TabletSmartphone className="h-3.5 w-3.5" />
+                Android App
               </a>
             </div>
             <div className="flex flex-col gap-3">
