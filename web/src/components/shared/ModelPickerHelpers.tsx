@@ -26,6 +26,8 @@ export interface ModelSummary {
   hasReasoning?: boolean;
   inputPricePer1M?: number;
   outputPricePer1M?: number;
+  /** Server-provided: true when modelId ends with `:free`. */
+  isFree?: boolean;
   architecture?: { modality?: string };
   supportedParameters?: string[];
   derivedGuidance?: {
@@ -115,7 +117,7 @@ export function ModelInfoSheet({
   const ranks = g?.ranks;
   const total = g?.totalRanked;
   const useCases = model.openRouterUseCases ?? [];
-  const isFree = (model.inputPricePer1M ?? 0) === 0 && (model.outputPricePer1M ?? 0) === 0;
+  const isFree = model.isFree ?? model.modelId.endsWith(":free");
   const hasAudio = model.supportedParameters?.includes("audio") ?? false;
   const hasFileInput = model.architecture?.modality?.includes("file") ?? false;
   const hasVideo = model.architecture?.modality?.includes("video") ?? false;

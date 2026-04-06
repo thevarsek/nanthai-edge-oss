@@ -45,7 +45,7 @@ export const CAP_FILTERS: CapFilterEntry[] = [
 ];
 
 export function matchesFilter(m: ModelSummary, f: CapFilter): boolean {
-  const isFree = (m.inputPricePer1M ?? 0) === 0 && (m.outputPricePer1M ?? 0) === 0;
+  const isFree = m.isFree ?? m.modelId.endsWith(":free");
   switch (f) {
     case "free": return isFree;
     case "excludeFree": return !isFree;

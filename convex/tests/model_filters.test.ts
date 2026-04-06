@@ -135,3 +135,39 @@ describe("isEligibleModel", () => {
     );
   });
 });
+
+// -- isFree (:free suffix convention) -----------------------------------------
+// The isFree field in listModelSummaries uses `modelId.endsWith(":free")`.
+// These tests document the convention and guard against regressions.
+
+describe("isFree (modelId :free suffix)", () => {
+  /** Mirror of the server-side isFree derivation in queries.ts. */
+  const isFree = (modelId: string) => modelId.endsWith(":free");
+
+  it("identifies :free-suffixed models as free", () => {
+    assert.equal(isFree("openai/gpt-4o-mini:free"), true);
+    assert.equal(isFree("google/gemma-3-1b-it:free"), true);
+    assert.equal(isFree("meta-llama/llama-3-8b-instruct:free"), true);
+  });
+
+  it("does NOT mark zero-price models without :free suffix as free", () => {
+    // Audio models like Lyria report $0 token prices but charge per request
+    assert.equal(isFree("google/lyria-3-clip-preview"), false);
+    assert.equal(isFree("google/lyria-3-pro-preview"), false);
+  });
+
+  it("does NOT mark standard paid models as free", () => {
+    assert.equal(isFree("openai/gpt-4o"), false);
+    assert.equal(isFree("anthropic/claude-sonnet-4"), false);
+    assert.equal(isFree("google/gemini-2.5-pro-preview"), false);
+  });
+
+  it("handles edge cases", () => {
+    // Substring ":free" not at end
+    assert.equal(isFree("some-model:free-preview"), false);
+    // Empty string
+    assert.equal(isFree(""), false);
+    // Just the suffix
+    assert.equal(isFree(":free"), true);
+  });
+});

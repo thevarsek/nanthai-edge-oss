@@ -76,6 +76,10 @@ export const listModelSummaries = query({
         hasReasoning: (m.supportedParameters ?? []).includes("reasoning"),
         inputPricePer1M: m.inputPricePer1M,
         outputPricePer1M: m.outputPricePer1M,
+        // A model is free only if its modelId uses the `:free` route suffix.
+        // Zero pricing alone is NOT a reliable signal — some models (e.g.
+        // audio/image generators) report $0 token prices but charge per request.
+        isFree: m.modelId.endsWith(":free"),
         // Capability derivation data — allows clients to compute
         // hasVision, hasFileInput, hasAudioInput, etc. without a
         // full listModels subscription.
