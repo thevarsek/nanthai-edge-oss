@@ -18,6 +18,25 @@ import {
   RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL,
   runtimeWorkspacePaths,
 } from "./shared";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+
+const defaultRuntimeAnalyticsDeps = {
+  exportWorkspaceFile,
+  ensureSandboxForChat,
+  markSandboxSessionRunning,
+  importOwnedStorageFileToWorkspace,
+  buildChartDataArtifact,
+  buildChartPreviewArtifact,
+  normalizeE2BChart,
+};
+
+export type RuntimeAnalyticsDeps = typeof defaultRuntimeAnalyticsDeps;
+
+export function createRuntimeAnalyticsDepsForTest(
+  overrides: DeepPartial<RuntimeAnalyticsDeps> = {},
+): RuntimeAnalyticsDeps {
+  return mergeTestDeps(defaultRuntimeAnalyticsDeps, overrides);
+}
 
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
@@ -95,12 +114,13 @@ export async function runDataPythonExec(
     captureCharts?: boolean;
     timeoutMs?: number;
   },
+  deps: RuntimeAnalyticsDeps = defaultRuntimeAnalyticsDeps,
 ) {
   const chatId = requireChatId(toolCtx);
-  const session = await ensureSandboxForChat(toolCtx);
+  const session = await deps.ensureSandboxForChat(toolCtx);
   const importedFiles = [];
   for (const file of args.inputFiles ?? []) {
-    importedFiles.push(await importOwnedStorageFileToWorkspace(
+    importedFiles.push(await deps.importOwnedStorageFileToWorkspace(
       toolCtx,
       file.storageId,
       file.filename,
@@ -112,7 +132,7 @@ export async function runDataPythonExec(
     `${buildRuntimeShim(chatId)}\n${args.code}`,
     { timeoutMs: args.timeoutMs ?? 120_000 },
   );
-  await markSandboxSessionRunning(toolCtx, session);
+  await deps.markSandboxSessionRunning(toolCtx, session);
 
   if (execution.error) {
     throw new Error(`${execution.error.name}: ${execution.error.value}`);
@@ -138,7 +158,7 @@ export async function runDataPythonExec(
 
     for (const [index, result] of limitedResults.entries()) {
       if (result?.chart) {
-        const normalized = normalizeE2BChart(result.chart);
+        const normalized = deps.normalizeE2BChart(result.chart);
         if (normalized) {
           chartsCreated.push(normalized);
           if (result.png && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
@@ -146,10 +166,17 @@ export async function runDataPythonExec(
               toolCtx,
               session.sessionId as Id<"sandboxSessions">,
               `${runtimeWorkspacePaths(chatId).charts}/${index + 1}.png`,
-              buildChartPreviewArtifact(result.png, index + 1, normalized.title),
+              deps.buildChartPreviewArtifact(
+                result.png,
+                index + 1,
+                normalized.title,
+              ),
             ));
           }
-          const companion = buildChartDataArtifact(normalized, index + 1);
+          const companion = deps.buildChartDataArtifact(
+            normalized,
+            index + 1,
+          );
           if (companion && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
             exportedFiles.push(await storeDurableArtifact(
               toolCtx,
@@ -164,7 +191,7 @@ export async function runDataPythonExec(
             toolCtx,
             session.sessionId as Id<"sandboxSessions">,
             `${runtimeWorkspacePaths(chatId).charts}/${index + 1}.png`,
-            buildChartPreviewArtifact(result.png, index + 1),
+            deps.buildChartPreviewArtifact(result.png, index + 1),
           ));
         }
       } else if (result?.png && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
@@ -172,7 +199,7 @@ export async function runDataPythonExec(
           toolCtx,
           session.sessionId as Id<"sandboxSessions">,
           `${runtimeWorkspacePaths(chatId).charts}/${index + 1}.png`,
-          buildChartPreviewArtifact(result.png, index + 1),
+          deps.buildChartPreviewArtifact(result.png, index + 1),
         ));
       }
     }
@@ -183,7 +210,10 @@ export async function runDataPythonExec(
       warnings.push(`Only the first ${RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL} exported files were persisted.`);
       break;
     }
-    const exported = await exportWorkspaceFile(toolCtx, exportPath);
+    const exported = await deps.exportWorkspaceFile(
+      toolCtx,
+      exportPath,
+    );
     exportedFiles.push({
       path: exported.path,
       filename: exported.filename,

@@ -10,12 +10,21 @@ import {
   RUNTIME_TEMPLATE_VERSION,
   RUNTIME_TIMEOUT_MS,
 } from "./shared";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
-export const runtimeServiceArtifactsDeps = {
+const defaultRuntimeServiceArtifactsDeps = {
   killE2BSandbox,
   ensureSandboxForChat,
   ensureWorkspaceDirectories,
 };
+
+export type RuntimeServiceArtifactsDeps = typeof defaultRuntimeServiceArtifactsDeps;
+
+export function createRuntimeServiceArtifactsDepsForTest(
+  overrides: DeepPartial<RuntimeServiceArtifactsDeps> = {},
+): RuntimeServiceArtifactsDeps {
+  return mergeTestDeps(defaultRuntimeServiceArtifactsDeps, overrides);
+}
 
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
@@ -28,9 +37,10 @@ export async function exportWorkspaceFile(
   toolCtx: ToolExecutionContext,
   path: string,
   filename?: string,
+  deps: RuntimeServiceArtifactsDeps = defaultRuntimeServiceArtifactsDeps,
 ) {
   const chatId = requireChatId(toolCtx);
-  const session = await runtimeServiceArtifactsDeps.ensureSandboxForChat(toolCtx);
+  const session = await deps.ensureSandboxForChat(toolCtx);
   const blob = await session.sandbox.files.read(path, { format: "blob" });
   const finalFilename = filename?.trim() || path.split("/").pop() || "runtime-artifact";
   const storageId = await toolCtx.ctx.storage.store(blob);
@@ -71,7 +81,10 @@ export async function exportWorkspaceFile(
   };
 }
 
-export async function resetWorkspace(toolCtx: ToolExecutionContext) {
+export async function resetWorkspace(
+  toolCtx: ToolExecutionContext,
+  deps: RuntimeServiceArtifactsDeps = defaultRuntimeServiceArtifactsDeps,
+) {
   const chatId = requireChatId(toolCtx);
   const existing = await toolCtx.ctx.runQuery(internal.runtime.queries.getSessionByChatInternal, {
     userId: toolCtx.userId,
@@ -80,7 +93,7 @@ export async function resetWorkspace(toolCtx: ToolExecutionContext) {
 
   if (existing?.providerSandboxId) {
     try {
-      await runtimeServiceArtifactsDeps.killE2BSandbox(existing.providerSandboxId);
+      await deps.killE2BSandbox(existing.providerSandboxId);
     } catch {
       // Best-effort reset.
     }
@@ -110,8 +123,8 @@ export async function resetWorkspace(toolCtx: ToolExecutionContext) {
     });
   }
 
-  const session = await runtimeServiceArtifactsDeps.ensureSandboxForChat(toolCtx);
-  await runtimeServiceArtifactsDeps.ensureWorkspaceDirectories(session.sandbox, chatId);
+  const session = await deps.ensureSandboxForChat(toolCtx);
+  await deps.ensureWorkspaceDirectories(session.sandbox, chatId);
   await toolCtx.ctx.runMutation(internal.runtime.mutations.upsertSessionInternal, {
     sessionId: session.sessionId as any,
     userId: toolCtx.userId,

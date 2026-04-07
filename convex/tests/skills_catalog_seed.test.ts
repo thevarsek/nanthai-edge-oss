@@ -220,9 +220,18 @@ test("SYSTEM_SKILL_CATALOG: all system skills are locked", () => {
   }
 });
 
-test("SYSTEM_SKILL_CATALOG: all system skills are active", () => {
+test("SYSTEM_SKILL_CATALOG: only the archived integration-discovery skills are not active", () => {
+  const archivedSlugs = new Set([
+    "apple-calendar",
+    "gmail",
+    "google-calendar",
+    "google-drive",
+    "google-workspace",
+  ]);
+
   for (const skill of SYSTEM_SKILL_CATALOG) {
-    assert.equal(skill.status, "active", `${skill.slug} should be active`);
+    const expectedStatus = archivedSlugs.has(skill.slug) ? "archived" : "active";
+    assert.equal(skill.status, expectedStatus, `${skill.slug} should be ${expectedStatus}`);
   }
 });
 

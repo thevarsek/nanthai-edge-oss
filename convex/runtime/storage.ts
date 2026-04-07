@@ -6,11 +6,20 @@ import { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
 import { ensureSandboxForChat, markSandboxSessionRunning } from "./service";
 import { runtimeWorkspacePaths } from "./shared";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
-export const runtimeStorageDeps = {
+const defaultRuntimeStorageDeps = {
   ensureSandboxForChat,
   markSandboxSessionRunning,
 };
+
+export type RuntimeStorageDeps = typeof defaultRuntimeStorageDeps;
+
+export function createRuntimeStorageDepsForTest(
+  overrides: DeepPartial<RuntimeStorageDeps> = {},
+): RuntimeStorageDeps {
+  return mergeTestDeps(defaultRuntimeStorageDeps, overrides);
+}
 
 interface OwnedStorageFile {
   storageId: Id<"_storage">;
@@ -72,9 +81,10 @@ export async function importOwnedStorageFileToWorkspace(
   storageId: string,
   filename?: string,
   targetPath?: string,
+  deps: RuntimeStorageDeps = defaultRuntimeStorageDeps,
 ) {
   const chatId = requireChatId(toolCtx);
-  const session = await runtimeStorageDeps.ensureSandboxForChat(toolCtx);
+  const session = await deps.ensureSandboxForChat(toolCtx);
   const workspace = runtimeWorkspacePaths(chatId);
   const { record, blob } = await resolveOwnedStorageFile(toolCtx, storageId);
   const finalFilename = filename?.trim() || record.filename;
@@ -88,7 +98,7 @@ export async function importOwnedStorageFileToWorkspace(
 
   await session.sandbox.files.makeDir(parentDir);
   await session.sandbox.files.write(destination, blob);
-  await runtimeStorageDeps.markSandboxSessionRunning(toolCtx, session);
+  await deps.markSandboxSessionRunning(toolCtx, session);
   await toolCtx.ctx.runMutation(internal.runtime.mutations.recordSandboxEventInternal, {
     sandboxSessionId: session.sessionId as Id<"sandboxSessions">,
     userId: toolCtx.userId,

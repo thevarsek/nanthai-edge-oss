@@ -17,6 +17,7 @@ import {
 } from "./helpers";
 import { WebSearchActionArgs } from "./actions_web_search_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 function createStreamWriter(
   args: ConstructorParameters<typeof StreamWriter>[0],
@@ -24,7 +25,7 @@ function createStreamWriter(
   return new StreamWriter(args);
 }
 
-export const searchSynthesisDeps = {
+const defaultSearchSynthesisDeps = {
   callOpenRouterStreaming,
   gateParameters,
   buildRequestMessages,
@@ -33,12 +34,21 @@ export const searchSynthesisDeps = {
   createStreamWriter,
 };
 
+export type SearchSynthesisDeps = typeof defaultSearchSynthesisDeps;
+
+export function createSearchSynthesisDepsForTest(
+  overrides: DeepPartial<SearchSynthesisDeps> = {},
+): SearchSynthesisDeps {
+  return mergeTestDeps(defaultSearchSynthesisDeps, overrides);
+}
+
 export async function synthesizeWithStreaming(
   ctx: ActionCtx,
   args: WebSearchActionArgs,
   searchResults: SearchResult[],
+  deps: SearchSynthesisDeps = defaultSearchSynthesisDeps,
 ): Promise<void> {
-  const apiKey = await searchSynthesisDeps.getRequiredUserOpenRouterApiKey(
+  const apiKey = await deps.getRequiredUserOpenRouterApiKey(
     ctx,
     args.userId,
   );
@@ -63,7 +73,7 @@ export async function synthesizeWithStreaming(
     ? `${systemPrompt}\n\n${searchSynthesis}${CITATION_SYSTEM_PROMPT_SUFFIX}`
     : `${searchSynthesis}${CITATION_SYSTEM_PROMPT_SUFFIX}`;
 
-  const requestMessages = searchSynthesisDeps.buildRequestMessages({
+  const requestMessages = deps.buildRequestMessages({
     messages: allMessages,
     excludeMessageId: args.assistantMessageId,
     systemPrompt: effectiveSystemPrompt,
@@ -88,21 +98,21 @@ export async function synthesizeWithStreaming(
     transforms: SEARCH_TRANSFORMS,
     webSearchEnabled: false,
   };
-  const gatedParams = searchSynthesisDeps.gateParameters(
+  const gatedParams = deps.gateParameters(
     rawParams,
     caps?.supportedParameters,
     caps?.hasImageGeneration,
     caps?.hasReasoning,
   );
 
-  const writer = searchSynthesisDeps.createStreamWriter({
+  const writer = deps.createStreamWriter({
     ctx,
     messageId: args.assistantMessageId,
-    transformContent: searchSynthesisDeps.clampMessageContent,
+    transformContent: deps.clampMessageContent,
   });
   let deltaEventsSinceCancelCheck = 0;
 
-  const result = await searchSynthesisDeps.callOpenRouterStreaming(
+  const result = await deps.callOpenRouterStreaming(
     apiKey,
     args.modelId,
     requestMessages,
@@ -138,7 +148,7 @@ export async function synthesizeWithStreaming(
   } else if (!finalContent) {
     finalContent = "[No response received from model]";
   }
-  finalContent = searchSynthesisDeps.clampMessageContent(finalContent);
+  finalContent = deps.clampMessageContent(finalContent);
 
   await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
     messageId: args.assistantMessageId,

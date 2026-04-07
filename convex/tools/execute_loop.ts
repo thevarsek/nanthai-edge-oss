@@ -24,10 +24,19 @@ import {
   ToolRegistry,
   ToolResult,
 } from "./registry";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
-export const toolCallLoopDeps = {
+const defaultToolCallLoopDeps = {
   callOpenRouterStreaming,
 };
+
+export type ToolCallLoopDeps = typeof defaultToolCallLoopDeps;
+
+export function createToolCallLoopDepsForTest(
+  overrides: DeepPartial<ToolCallLoopDeps> = {},
+): ToolCallLoopDeps {
+  return mergeTestDeps(defaultToolCallLoopDeps, overrides);
+}
 
 /** Maximum number of tool-call rounds before we force the model to stop. */
 const MAX_TOOL_ROUNDS = 20;
@@ -208,6 +217,7 @@ function truncateForStorage(str: string): string {
 export async function runToolCallLoop(
   initialResult: StreamResult,
   options: ToolCallLoopOptions,
+  deps: ToolCallLoopDeps = defaultToolCallLoopDeps,
 ): Promise<ToolCallLoopResult> {
   let currentResult = initialResult;
   let conversationMessages = [...options.messages];
@@ -324,7 +334,7 @@ export async function runToolCallLoop(
       ...(isLastAllowedRound ? { toolChoice: "none" as const } : {}),
     };
 
-    currentResult = await toolCallLoopDeps.callOpenRouterStreaming(
+    currentResult = await deps.callOpenRouterStreaming(
       options.apiKey,
       options.model,
       conversationMessages,

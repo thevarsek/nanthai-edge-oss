@@ -14,7 +14,7 @@ import {
   getStepTitle,
   mirrorFirstStep,
 } from "../scheduledJobs/shared";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 test("shared scheduled job helpers normalize legacy and step-based job shapes", () => {
   const legacy = getScheduledJobSteps({

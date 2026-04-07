@@ -23,6 +23,27 @@ import {
   RetryConfig,
   StreamResult,
 } from "./openrouter_types";
+import { DeepPartial, mergeTestDeps } from "./test_deps";
+
+const defaultOpenRouterStreamingDeps = {
+  fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
+  sleep,
+  buildRequestBody,
+  extractErrorMessage,
+  normalizeUnsupportedParameterName,
+  parseUnsupportedParameter,
+  processSSEBodyStream,
+  processSSETextStream,
+  stripParameter,
+};
+
+export type OpenRouterStreamingDeps = typeof defaultOpenRouterStreamingDeps;
+
+export function createOpenRouterStreamingDepsForTest(
+  overrides: DeepPartial<OpenRouterStreamingDeps> = {},
+): OpenRouterStreamingDeps {
+  return mergeTestDeps(defaultOpenRouterStreamingDeps, overrides);
+}
 
 /**
  * Call OpenRouter with streaming. Processes SSE events and invokes callbacks.
@@ -40,6 +61,7 @@ export async function callOpenRouterStreaming(
     onReasoningDelta?: OnReasoningDelta;
   },
   retryConfig: RetryConfig = {},
+  deps: OpenRouterStreamingDeps = defaultOpenRouterStreamingDeps,
 ): Promise<StreamResult> {
   const {
     emptyStreamRetries = 2,
@@ -66,6 +88,7 @@ export async function callOpenRouterStreaming(
         currentParams,
         callbacks,
         retryOnUnsupportedParam && attempt === 0,
+        deps,
       );
 
       // Check for empty response
@@ -80,7 +103,7 @@ export async function callOpenRouterStreaming(
           console.warn("[openrouter:stream] empty response, retrying", {
             model: currentModel, attempt: attempt + 1, delayMs: delay, msgCount,
           });
-          await sleep(delay);
+          await deps.sleep(delay);
           attempt++;
           continue;
         }
@@ -132,7 +155,7 @@ export async function callOpenRouterStreaming(
           model: currentModel, networkAttempt, maxNetworkRetries: networkRetries,
           delayMs: networkRetryDelayMs,
         });
-        await sleep(networkRetryDelayMs);
+        await deps.sleep(networkRetryDelayMs);
         continue;
       }
 
@@ -182,6 +205,7 @@ async function streamOnce(
     onReasoningDelta?: OnReasoningDelta;
   },
   retryOnUnsupportedParam: boolean,
+  deps: OpenRouterStreamingDeps,
 ): Promise<StreamResult> {
   let currentParams = { ...params };
   const strippedParams = new Set<string>();
@@ -190,7 +214,12 @@ async function streamOnce(
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const body = buildRequestBody(model, messages, currentParams, true);
+    const body = deps.buildRequestBody(
+      model,
+      messages,
+      currentParams,
+      true,
+    );
 
     const controller = new AbortController();
     let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -206,7 +235,7 @@ async function streamOnce(
     resetTimeout();
 
     try {
-      const response = await fetch(OPENROUTER_API_URL, {
+      const response = await deps.fetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -222,7 +251,7 @@ async function streamOnce(
       // Handle non-2xx responses
       if (!response.ok) {
         const errorText = await response.text();
-        const errorMessage = extractErrorMessage(errorText);
+        const errorMessage = deps.extractErrorMessage(errorText);
 
         if (
           response.status === 429 &&
@@ -236,18 +265,22 @@ async function streamOnce(
           console.warn("[openrouter:stream] rate limited, retrying", {
             model, retry: rateLimitRetries, delayMs, status: response.status,
           });
-          await sleep(delayMs);
+          await deps.sleep(delayMs);
           continue;
         }
 
         // Unsupported parameter retry
         if (response.status === 400 && retryOnUnsupportedParam) {
           const paramName =
-            parseUnsupportedParameter(errorText) ??
-            parseUnsupportedParameter(errorMessage);
+            deps.parseUnsupportedParameter(errorText) ??
+            deps.parseUnsupportedParameter(errorMessage);
           if (paramName) {
-            const stripped = stripParameter(paramName, currentParams);
-            const normalizedName = normalizeUnsupportedParameterName(paramName);
+            const stripped = deps.stripParameter(
+              paramName,
+              currentParams,
+            );
+            const normalizedName = deps
+              .normalizeUnsupportedParameterName(paramName);
             if (
               stripped &&
               !strippedParams.has(normalizedName) &&
@@ -282,7 +315,7 @@ async function streamOnce(
             }
             : undefined,
         };
-        return await processSSEBodyStream(
+        return await deps.processSSEBodyStream(
           response.body,
           refreshOnStreamActivity,
           resetTimeout,
@@ -291,7 +324,7 @@ async function streamOnce(
 
       // Fallback for environments without a readable body stream.
       const text = await response.text();
-      return processSSETextStream(text, callbacks);
+      return deps.processSSETextStream(text, callbacks);
     } catch (error) {
       if (error instanceof Error) {
         const cause = (error as NodeJS.ErrnoException).cause

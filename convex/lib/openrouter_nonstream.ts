@@ -23,6 +23,26 @@ import {
   OpenRouterMessage,
   RetryConfig,
 } from "./openrouter_types";
+import { DeepPartial, mergeTestDeps } from "./test_deps";
+
+const defaultOpenRouterNonStreamingDeps = {
+  fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
+  sleep,
+  buildRequestBody,
+  extractErrorMessage,
+  extractContentFromNonStreamingPayload,
+  normalizeUnsupportedParameterName,
+  parseUnsupportedParameter,
+  stripParameter,
+};
+
+export type OpenRouterNonStreamingDeps = typeof defaultOpenRouterNonStreamingDeps;
+
+export function createOpenRouterNonStreamingDepsForTest(
+  overrides: DeepPartial<OpenRouterNonStreamingDeps> = {},
+): OpenRouterNonStreamingDeps {
+  return mergeTestDeps(defaultOpenRouterNonStreamingDeps, overrides);
+}
 
 /**
  * Call OpenRouter without streaming (for title generation, etc.).
@@ -33,6 +53,7 @@ export async function callOpenRouterNonStreaming(
   messages: OpenRouterMessage[],
   params: ChatRequestParameters,
   retryConfig: RetryConfig = {},
+  deps: OpenRouterNonStreamingDeps = defaultOpenRouterNonStreamingDeps,
 ): Promise<NonStreamResult> {
   const { fallbackModel, retryOnUnsupportedParam = true } = retryConfig;
 
@@ -46,13 +67,18 @@ export async function callOpenRouterNonStreaming(
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const body = buildRequestBody(currentModel, messages, currentParams, false);
+    const body = deps.buildRequestBody(
+      currentModel,
+      messages,
+      currentParams,
+      false,
+    );
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(OPENROUTER_API_URL, {
+      const response = await deps.fetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -68,7 +94,9 @@ export async function callOpenRouterNonStreaming(
       const responseText = await response.text();
 
       if (!response.ok) {
-        const errorMessage = extractErrorMessage(responseText);
+        const errorMessage = deps.extractErrorMessage(
+          responseText,
+        );
 
         if (
           response.status === 429 &&
@@ -82,18 +110,22 @@ export async function callOpenRouterNonStreaming(
           console.warn("[openrouter:nonstream] rate limited, retrying", {
             model: currentModel, retry: rateLimitRetries, delayMs, status: response.status,
           });
-          await sleep(delayMs);
+          await deps.sleep(delayMs);
           continue;
         }
 
         // Unsupported parameter retry
         if (response.status === 400 && retryOnUnsupportedParam) {
           const paramName =
-            parseUnsupportedParameter(responseText) ??
-            parseUnsupportedParameter(errorMessage);
+            deps.parseUnsupportedParameter(responseText) ??
+            deps.parseUnsupportedParameter(errorMessage);
           if (paramName) {
-            const stripped = stripParameter(paramName, currentParams);
-            const normalizedName = normalizeUnsupportedParameterName(paramName);
+            const stripped = deps.stripParameter(
+              paramName,
+              currentParams,
+            );
+            const normalizedName = deps
+              .normalizeUnsupportedParameterName(paramName);
             if (
               stripped &&
               !strippedParams.has(normalizedName) &&
@@ -135,14 +167,18 @@ export async function callOpenRouterNonStreaming(
 
       // Check for 200-wrapped error
       if (parsed.error) {
-        const errorMessage = extractErrorMessage(parsed);
+        const errorMessage = deps.extractErrorMessage(parsed);
         if (retryOnUnsupportedParam) {
           const paramName =
-            parseUnsupportedParameter(parsed) ??
-            parseUnsupportedParameter(errorMessage);
+            deps.parseUnsupportedParameter(parsed) ??
+            deps.parseUnsupportedParameter(errorMessage);
           if (paramName) {
-            const stripped = stripParameter(paramName, currentParams);
-            const normalizedName = normalizeUnsupportedParameterName(paramName);
+            const stripped = deps.stripParameter(
+              paramName,
+              currentParams,
+            );
+            const normalizedName = deps
+              .normalizeUnsupportedParameterName(paramName);
             if (
               stripped &&
               !strippedParams.has(normalizedName) &&
@@ -167,7 +203,7 @@ export async function callOpenRouterNonStreaming(
         throw new Error(`OpenRouter API error (200-wrapped): ${errorMessage}`);
       }
 
-      const extracted = extractContentFromNonStreamingPayload(parsed);
+      const extracted = deps.extractContentFromNonStreamingPayload(parsed);
       const result: NonStreamResult = {
         content: extracted.content,
         usage: extracted.usage,

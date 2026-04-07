@@ -1,23 +1,19 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import test from "node:test";
 import { getFunctionName } from "convex/server";
 
 import { internal } from "../_generated/api";
 import {
-  searchSynthesisDeps,
+  createSearchSynthesisDepsForTest,
   synthesizeWithStreaming,
 } from "../search/actions_web_search_synthesis";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 const listAllMessagesRef = getFunctionName(internal.chat.queries.listAllMessages);
 const getPersonaRef = getFunctionName(internal.chat.queries.getPersona);
 const getModelCapabilitiesRef = getFunctionName(internal.chat.queries.getModelCapabilities);
 
-test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-only outputs", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-only outputs", async () => {
   const mutationCalls: Record<string, unknown>[] = [];
   const builtRequests: Record<string, unknown>[] = [];
   const gatedParams: Record<string, unknown>[] = [];
@@ -38,21 +34,19 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
     flush: async () => undefined,
   };
 
-  mock.method(searchSynthesisDeps, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(searchSynthesisDeps, "buildRequestMessages", (args: unknown) => {
-    builtRequests.push(args as Record<string, unknown>);
-    return [{ role: "user", content: "req" }] as any;
-  });
-  mock.method(searchSynthesisDeps, "gateParameters", (params: unknown) => {
-    gatedParams.push(params as Record<string, unknown>);
-    return params as any;
-  });
-  mock.method(searchSynthesisDeps, "clampMessageContent", (content: string) => content.trim());
-  mock.method(searchSynthesisDeps, "createStreamWriter", () => writer as any);
-  mock.method(
-    searchSynthesisDeps,
-    "callOpenRouterStreaming",
-    async (
+  const deps = createSearchSynthesisDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    buildRequestMessages: (args: unknown) => {
+      builtRequests.push(args as Record<string, unknown>);
+      return [{ role: "user", content: "req" }] as any;
+    },
+    gateParameters: (params: unknown) => {
+      gatedParams.push(params as Record<string, unknown>);
+      return params as any;
+    },
+    clampMessageContent: (content: string) => content.trim(),
+    createStreamWriter: () => writer as any,
+    callOpenRouterStreaming: async (
       _apiKey: unknown,
       _modelId: unknown,
       _messages: unknown,
@@ -74,7 +68,7 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
         generationId: "gen_1",
       };
     },
-  );
+  });
 
   const ctx = createMockCtx({
     runQuery: async (ref: unknown) => {
@@ -116,6 +110,7 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
       expandMultiModelGroups: false,
     } as any,
     [{ query: "swift actors", success: true, content: "Actor info", citations: [] }],
+    deps,
   );
 
   assert.match(builtRequests[0]?.systemPrompt as string, /cite/i);
@@ -124,32 +119,26 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
   assert.equal(mutationCalls.at(-1)?.reasoning, "Reasoning only");
 });
 
-test("synthesizeWithStreaming checks cancellation every ten deltas", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("synthesizeWithStreaming checks cancellation every ten deltas", async () => {
   let cancellationChecks = 0;
 
-  mock.method(searchSynthesisDeps, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(searchSynthesisDeps, "buildRequestMessages", () => [{ role: "user", content: "req" }] as any);
-  mock.method(searchSynthesisDeps, "gateParameters", (params: unknown) => params as any);
-  mock.method(searchSynthesisDeps, "clampMessageContent", (content: string) => content);
-  mock.method(searchSynthesisDeps, "createStreamWriter", () => ({
-    totalContent: "",
-    totalReasoning: "",
-    hasSeenContentDelta: false,
-    handleContentDeltaBoundary: async () => undefined,
-    appendContent: async () => undefined,
-    patchContentIfNeeded: async () => undefined,
-    appendReasoning: async () => undefined,
-    patchReasoningIfNeeded: async () => undefined,
-    flush: async () => undefined,
-  }) as any);
-  mock.method(
-    searchSynthesisDeps,
-    "callOpenRouterStreaming",
-    async (
+  const deps = createSearchSynthesisDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    buildRequestMessages: () => [{ role: "user", content: "req" }] as any,
+    gateParameters: (params: unknown) => params as any,
+    clampMessageContent: (content: string) => content,
+    createStreamWriter: () => ({
+      totalContent: "",
+      totalReasoning: "",
+      hasSeenContentDelta: false,
+      handleContentDeltaBoundary: async () => undefined,
+      appendContent: async () => undefined,
+      patchContentIfNeeded: async () => undefined,
+      appendReasoning: async () => undefined,
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+    }) as any,
+    callOpenRouterStreaming: async (
       _apiKey: unknown,
       _modelId: unknown,
       _messages: unknown,
@@ -173,7 +162,7 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async (t) =
         generationId: null,
       };
     },
-  );
+  });
 
   const ctx = createMockCtx({
     runQuery: async (ref: unknown) => {
@@ -216,6 +205,7 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async (t) =
           expandMultiModelGroups: false,
         } as any,
         [{ query: "swift actors", success: true, content: "Actor info", citations: [] }],
+        deps,
       ),
     /cancelled/i,
   );

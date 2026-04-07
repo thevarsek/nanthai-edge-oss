@@ -1,17 +1,17 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import test from "node:test";
 
 import {
+  createRuntimeServiceArtifactsDepsForTest,
   exportWorkspaceFile,
   resetWorkspace,
-  runtimeServiceArtifactsDeps,
 } from "../runtime/service_artifacts";
 import {
+  createRuntimeStorageDepsForTest,
   importOwnedStorageFileToWorkspace,
   resolveOwnedStorageFile,
-  runtimeStorageDeps,
 } from "../runtime/storage";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 test("resolveOwnedStorageFile rejects inaccessible storage ids", async () => {
   await assert.rejects(
@@ -30,11 +30,7 @@ test("resolveOwnedStorageFile rejects inaccessible storage ids", async () => {
   );
 });
 
-test("importOwnedStorageFileToWorkspace requires chatId and imports files into the workspace", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("importOwnedStorageFileToWorkspace requires chatId and imports files into the workspace", async () => {
   await assert.rejects(
     () =>
       importOwnedStorageFileToWorkspace(
@@ -65,8 +61,10 @@ test("importOwnedStorageFileToWorkspace requires chatId and imports files into t
   };
   const eventCalls: Record<string, unknown>[] = [];
 
-  mock.method(runtimeStorageDeps, "ensureSandboxForChat", async () => sandboxSession as any);
-  mock.method(runtimeStorageDeps, "markSandboxSessionRunning", async () => undefined);
+  const storageDeps = createRuntimeStorageDepsForTest({
+    ensureSandboxForChat: async () => sandboxSession as any,
+    markSandboxSessionRunning: async () => undefined,
+  });
 
   const result = await importOwnedStorageFileToWorkspace(
     {
@@ -91,6 +89,7 @@ test("importOwnedStorageFileToWorkspace requires chatId and imports files into t
     "storage_1",
     undefined,
     "nested/output.txt",
+    storageDeps,
   );
 
   assert.deepEqual(makeDirCalls, ["/tmp/nanthai-edge/chat_1/nested"]);
@@ -100,12 +99,7 @@ test("importOwnedStorageFileToWorkspace requires chatId and imports files into t
   assert.equal(eventCalls[0]?.eventType, "storage_file_imported");
 });
 
-test("exportWorkspaceFile prefers CONVEX_SITE_URL", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-    delete process.env.CONVEX_SITE_URL;
-  });
-
+test("exportWorkspaceFile prefers CONVEX_SITE_URL", async () => {
   process.env.CONVEX_SITE_URL = "https://edge.example";
   const mutationCalls: Record<string, unknown>[] = [];
 
@@ -121,7 +115,9 @@ test("exportWorkspaceFile prefers CONVEX_SITE_URL", async (t) => {
     },
   };
 
-  mock.method(runtimeServiceArtifactsDeps, "ensureSandboxForChat", async () => exportSession as any);
+  const artifactsDeps = createRuntimeServiceArtifactsDepsForTest({
+    ensureSandboxForChat: async () => exportSession as any,
+  });
 
   const ctx = createMockCtx({
     storage: {
@@ -140,6 +136,8 @@ test("exportWorkspaceFile prefers CONVEX_SITE_URL", async (t) => {
       ctx,
     } as any,
     "/tmp/nanthai-edge/chat_1/outputs/report.md",
+    undefined,
+    artifactsDeps,
   );
 
   assert.equal(
@@ -148,13 +146,10 @@ test("exportWorkspaceFile prefers CONVEX_SITE_URL", async (t) => {
   );
   assert.equal(exported.mimeType, "text/markdown");
   assert.equal(mutationCalls.length > 0, true);
+  delete process.env.CONVEX_SITE_URL;
 });
 
-test("resetWorkspace recreates the sandbox after teardown errors", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("resetWorkspace recreates the sandbox after teardown errors", async () => {
   const recreatedSession = {
     sessionId: "session_new",
     cwd: "/tmp/nanthai-edge/chat_1",
@@ -167,13 +162,15 @@ test("resetWorkspace recreates the sandbox after teardown errors", async (t) => 
   let ensureCalls = 0;
   const mutationCalls: Record<string, unknown>[] = [];
 
-  mock.method(runtimeServiceArtifactsDeps, "ensureSandboxForChat", async () => {
-    ensureCalls += 1;
-    return recreatedSession as any;
-  });
-  mock.method(runtimeServiceArtifactsDeps, "ensureWorkspaceDirectories", async () => undefined as any);
-  mock.method(runtimeServiceArtifactsDeps, "killE2BSandbox", async () => {
-    throw new Error("sandbox already gone");
+  const artifactsDeps = createRuntimeServiceArtifactsDepsForTest({
+    ensureSandboxForChat: async () => {
+      ensureCalls += 1;
+      return recreatedSession as any;
+    },
+    ensureWorkspaceDirectories: async () => undefined as any,
+    killE2BSandbox: async () => {
+      throw new Error("sandbox already gone");
+    },
   });
 
   const ctx = createMockCtx({
@@ -203,6 +200,7 @@ test("resetWorkspace recreates the sandbox after teardown errors", async (t) => 
       chatId: "chat_1",
       ctx,
     } as any,
+    artifactsDeps,
   );
 
   assert.equal(reset.sandboxId, "sandbox_new");

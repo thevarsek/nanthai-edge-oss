@@ -20,8 +20,9 @@ import {
   normalizeMemoryRecord,
   normalizeMemoryRetrievalMode,
 } from "./shared";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
-export const memoryImportDeps = {
+const defaultMemoryImportDeps = {
   callOpenRouterNonStreaming,
   getRequiredUserOpenRouterApiKey,
   // Keep this dependency at module scope so tests can control the private
@@ -29,6 +30,14 @@ export const memoryImportDeps = {
   extractDocxContent,
   requireAuth,
 };
+
+export type MemoryImportDeps = typeof defaultMemoryImportDeps;
+
+export function createMemoryImportDepsForTest(
+  overrides: DeepPartial<MemoryImportDeps> = {},
+): MemoryImportDeps {
+  return mergeTestDeps(defaultMemoryImportDeps, overrides);
+}
 
 interface ImportFileDescriptor {
   storageId: Id<"_storage">;
@@ -59,14 +68,18 @@ async function ensureProOnAction(ctx: ActionCtx, userId: string): Promise<void> 
   }
 }
 
-async function extractPlainText(file: ImportFileDescriptor, blob: Blob): Promise<string> {
+async function extractPlainText(
+  file: ImportFileDescriptor,
+  blob: Blob,
+  deps: MemoryImportDeps,
+): Promise<string> {
   const mime = file.mimeType.toLowerCase();
   const ext = file.filename.split(".").pop()?.toLowerCase() ?? "";
   if (
     mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     ext === "docx"
   ) {
-    const extraction = await memoryImportDeps.extractDocxContent(
+    const extraction = await deps.extractDocxContent(
       new Uint8Array(await blob.arrayBuffer()),
     );
     return extraction.markdown || extraction.text;
@@ -77,6 +90,7 @@ async function extractPlainText(file: ImportFileDescriptor, blob: Blob): Promise
 async function buildImportMessages(
   file: ImportFileDescriptor,
   blob: Blob,
+  deps: MemoryImportDeps,
 ): Promise<OpenRouterMessage[]> {
   const system = `You are curating long-term user memory from an uploaded profile document.
 Extract durable, user-centric memories only.
@@ -120,7 +134,7 @@ Exclude contact details unless the user explicitly asked to remember them.`;
     ];
   }
 
-  const extractedText = await extractPlainText(file, blob);
+  const extractedText = await extractPlainText(file, blob, deps);
   return [
     { role: "system", content: system },
     {
@@ -139,10 +153,11 @@ export async function extractImportCandidatesHandler(
     extractionModel?: string;
     allowContactDetails?: boolean;
   },
+  deps: MemoryImportDeps = defaultMemoryImportDeps,
 ): Promise<Array<Record<string, unknown>>> {
-  const { userId } = await memoryImportDeps.requireAuth(ctx);
+  const { userId } = await deps.requireAuth(ctx);
   await ensureProOnAction(ctx, userId);
-  const apiKey = await memoryImportDeps.getRequiredUserOpenRouterApiKey(ctx, userId);
+  const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, userId);
   const existingMemories = await ctx.runQuery(internal.chat.queries.getUserMemories, {
     userId,
   });
@@ -155,8 +170,8 @@ export async function extractImportCandidatesHandler(
     const blob = await ctx.storage.get(file.storageId);
     if (!blob) continue;
 
-    const messages = await buildImportMessages(file, blob);
-    const result = await memoryImportDeps.callOpenRouterNonStreaming(
+    const messages = await buildImportMessages(file, blob, deps);
+    const result = await deps.callOpenRouterNonStreaming(
       apiKey,
       args.extractionModel?.trim() || MODEL_IDS.memoryImportExtraction,
       messages,

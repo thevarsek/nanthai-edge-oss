@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import test from "node:test";
 
 import type { StreamResult, ToolCall } from "../lib/openrouter_types";
-import { runToolCallLoop, toolCallLoopDeps } from "../tools/execute_loop";
+import { createToolCallLoopDepsForTest, runToolCallLoop } from "../tools/execute_loop";
 import { createTool, ToolRegistry } from "../tools/registry";
 
 function makeStreamResult(overrides: Partial<StreamResult> = {}): StreamResult {
@@ -36,16 +36,14 @@ function makeToolCall(
   };
 }
 
-test("runToolCallLoop returns immediately when the initial result has no tool calls", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
+test("runToolCallLoop returns immediately when the initial result has no tool calls", async () => {
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () => {
+      streamCalls += 1;
+      return makeStreamResult();
+    },
   });
-
-  const streamMock = mock.method(
-    toolCallLoopDeps,
-    "callOpenRouterStreaming",
-    async () => makeStreamResult(),
-  );
 
   const registry = new ToolRegistry();
   const initial = makeStreamResult({ content: "hello", finishReason: "stop" });
@@ -57,18 +55,14 @@ test("runToolCallLoop returns immediately when the initial result has no tool ca
     callbacks: {},
     registry,
     toolCtx: { ctx: {} as any, userId: "user_1" },
-  });
+  }, deps);
 
-  assert.equal(streamMock.mock.callCount(), 0);
+  assert.equal(streamCalls, 0);
   assert.equal(result.streamResult.content, "hello");
   assert.deepEqual(result.conversationMessages, [{ role: "user", content: "hi" }]);
 });
 
-test("runToolCallLoop executes multi-round tool recursion and applies next-turn params", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runToolCallLoop executes multi-round tool recursion and applies next-turn params", async () => {
   const registry = new ToolRegistry();
   registry.register(
     createTool({
@@ -86,10 +80,8 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   );
 
   let streamCalls = 0;
-  const streamMock = mock.method(
-    toolCallLoopDeps,
-    "callOpenRouterStreaming",
-    async (
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async (
       _apiKey: unknown,
       _model: unknown,
       _messages: unknown,
@@ -104,7 +96,7 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
       }
       return makeStreamResult({ content: "done", finishReason: "stop" });
     },
-  );
+  });
 
   const rounds: string[] = [];
   const result = await runToolCallLoop(
@@ -135,21 +127,18 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
         }
       },
     },
+    deps,
   );
 
   assert.deepEqual(rounds, ["start:1", "end:1", "start:2", "end:2"]);
-  assert.equal(streamMock.mock.callCount(), 2);
+  assert.equal(streamCalls, 2);
   assert.equal(result.streamResult.content, "done");
   assert.equal(result.allToolCalls.length, 2);
   assert.equal(result.allToolResults.length, 2);
   assert.equal(result.finalParams.temperature, 0.4);
 });
 
-test("runToolCallLoop captures deferred tool rounds without re-calling the model", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runToolCallLoop captures deferred tool rounds without re-calling the model", async () => {
   const registry = new ToolRegistry();
   registry.register(
     createTool({
@@ -164,11 +153,13 @@ test("runToolCallLoop captures deferred tool rounds without re-calling the model
     }),
   );
 
-  const streamMock = mock.method(
-    toolCallLoopDeps,
-    "callOpenRouterStreaming",
-    async () => makeStreamResult(),
-  );
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () => {
+      streamCalls += 1;
+      return makeStreamResult();
+    },
+  });
 
   const result = await runToolCallLoop(
     makeStreamResult({
@@ -184,18 +175,15 @@ test("runToolCallLoop captures deferred tool rounds without re-calling the model
       registry,
       toolCtx: { ctx: {} as any, userId: "user_1" },
     },
+    deps,
   );
 
-  assert.equal(streamMock.mock.callCount(), 0);
+  assert.equal(streamCalls, 0);
   assert.equal(result.deferredToolRound?.deferredResults[0]?.toolName, "spawn_subagents");
   assert.equal(result.deferredToolRound?.resumeConversationMessages.length, 3);
 });
 
-test("runToolCallLoop supports early exit and truncates stored tool metadata", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runToolCallLoop supports early exit and truncates stored tool metadata", async () => {
   const registry = new ToolRegistry();
   registry.register(
     createTool({
@@ -209,15 +197,13 @@ test("runToolCallLoop supports early exit and truncates stored tool metadata", a
     }),
   );
 
-  mock.method(
-    toolCallLoopDeps,
-    "callOpenRouterStreaming",
-    async () =>
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () =>
       makeStreamResult({
         finishReason: "tool_calls",
         toolCalls: [makeToolCall("call_2", "big_tool", { input: "again" })],
       }),
-  );
+  });
 
   const result = await runToolCallLoop(
     makeStreamResult({
@@ -243,6 +229,7 @@ test("runToolCallLoop supports early exit and truncates stored tool metadata", a
       toolCtx: { ctx: {} as any, userId: "user_1" },
       shouldExitLoop: async () => true,
     },
+    deps,
   );
 
   assert.equal(result.exitedEarly, true);

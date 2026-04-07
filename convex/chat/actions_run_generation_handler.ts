@@ -15,10 +15,11 @@ import {
 } from "../tools/index";
 import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
 import { attachmentTriggeredReadToolNames } from "./helpers_attachment_utils";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 export type { RunGenerationArgs } from "./actions_run_generation_types";
 
-export const runGenerationHandlerDeps = {
+const defaultRunGenerationHandlerDeps = {
   now: () => Date.now(),
   generation: {
     failPendingParticipants,
@@ -38,15 +39,24 @@ export const runGenerationHandlerDeps = {
   },
 };
 
+export type RunGenerationHandlerDeps = typeof defaultRunGenerationHandlerDeps;
+
+export function createRunGenerationHandlerDepsForTest(
+  overrides: DeepPartial<RunGenerationHandlerDeps> = {},
+): RunGenerationHandlerDeps {
+  return mergeTestDeps(defaultRunGenerationHandlerDeps, overrides);
+}
+
 export async function runGenerationHandler(
   ctx: ActionCtx,
   args: RunGenerationArgs,
+  deps: RunGenerationHandlerDeps = defaultRunGenerationHandlerDeps,
 ): Promise<void> {
-  const actionStartTime = runGenerationHandlerDeps.now();
+  const actionStartTime = deps.now();
   try {
     const { allMessages, memoryContext, modelCapabilities } =
-      await runGenerationHandlerDeps.generation.prepareGenerationContext(ctx, args);
-    const apiKey = await runGenerationHandlerDeps.generation.getRequiredUserOpenRouterApiKey(
+      await deps.generation.prepareGenerationContext(ctx, args);
+    const apiKey = await deps.generation.getRequiredUserOpenRouterApiKey(
       ctx,
       args.userId,
     );
@@ -66,7 +76,7 @@ export async function runGenerationHandler(
     const currentUserMessage = allMessages.find(
       (message) => message._id === args.userMessageId,
     );
-    const directToolNames = runGenerationHandlerDeps.tools.attachmentTriggeredReadToolNames(
+    const directToolNames = deps.tools.attachmentTriggeredReadToolNames(
       currentUserMessage?.attachments,
     );
 
@@ -84,25 +94,25 @@ export async function runGenerationHandler(
       // Check connections in parallel for speed
       const [grantedGoogleIntegrations, hasMicrosoft, hasApple, hasNotion] = await Promise.all([
         wantsGoogle
-          ? runGenerationHandlerDeps.integrations.getGrantedGoogleIntegrations(
+          ? deps.integrations.getGrantedGoogleIntegrations(
               ctx,
               args.userId,
             )
           : Promise.resolve([]),
         wantsMicrosoft
-          ? runGenerationHandlerDeps.integrations.checkMicrosoftConnection(
+          ? deps.integrations.checkMicrosoftConnection(
               ctx,
               args.userId,
             )
           : Promise.resolve(false),
         wantsApple
-          ? runGenerationHandlerDeps.integrations.checkAppleCalendarConnection(
+          ? deps.integrations.checkAppleCalendarConnection(
               ctx,
               args.userId,
             )
           : Promise.resolve(false),
         wantsNotion
-          ? runGenerationHandlerDeps.integrations.checkNotionConnection(
+          ? deps.integrations.checkNotionConnection(
               ctx,
               args.userId,
             )
@@ -130,7 +140,7 @@ export async function runGenerationHandler(
         );
       }
     }
-    const toolRegistry = runGenerationHandlerDeps.tools.buildProgressiveToolRegistry({
+    const toolRegistry = deps.tools.buildProgressiveToolRegistry({
       enabledIntegrations: effectiveIntegrations,
       isPro: isProUser,
       allowSubagents: args.subagentsEnabled === true && args.participants.length === 1,
@@ -140,7 +150,7 @@ export async function runGenerationHandler(
 
     const generationResults = await Promise.all(
       args.participants.map((participant) =>
-        runGenerationHandlerDeps.generation.generateForParticipant({
+        deps.generation.generateForParticipant({
           ctx,
           args,
           participant,
@@ -199,7 +209,7 @@ export async function runGenerationHandler(
           patch: {
             status: "cancelled",
             currentPhase: "cancelled",
-            completedAt: runGenerationHandlerDeps.now(),
+            completedAt: deps.now(),
           },
         });
       } else if (allCancelledOrFailed) {
@@ -210,7 +220,7 @@ export async function runGenerationHandler(
             status: "failed",
             currentPhase: "failed",
             errorMessage: "All generation participants failed",
-            completedAt: runGenerationHandlerDeps.now(),
+            completedAt: deps.now(),
           },
         });
       } else {
@@ -220,7 +230,7 @@ export async function runGenerationHandler(
             status: "completed",
             progress: 100,
             currentPhase: "completed",
-            completedAt: runGenerationHandlerDeps.now(),
+            completedAt: deps.now(),
           },
         });
         if (anyCancelled || anyFailed) {
@@ -247,7 +257,7 @@ export async function runGenerationHandler(
             status: wasCancelled ? "cancelled" : "failed",
             currentPhase: wasCancelled ? "cancelled" : "failed",
             errorMessage: wasCancelled ? undefined : errorMessage,
-            completedAt: runGenerationHandlerDeps.now(),
+            completedAt: deps.now(),
           },
         });
       } catch (sessionError) {
@@ -257,6 +267,6 @@ export async function runGenerationHandler(
         );
       }
     }
-    await runGenerationHandlerDeps.generation.failPendingParticipants(ctx, args, error);
+    await deps.generation.failPendingParticipants(ctx, args, error);
   }
 }

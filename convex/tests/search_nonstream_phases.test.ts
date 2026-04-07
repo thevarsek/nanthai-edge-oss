@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import test from "node:test";
 
 import {
+  createWorkflowNonstreamDepsForTest,
   runAnalysisPhase,
   runDepthSearchPhase,
   runInitialSearchPhase,
   runPlanningPhase,
   runSynthesisPhase,
-  workflowNonstreamDeps,
 } from "../search/workflow_nonstream_phases";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 function buildArgs() {
   return {
@@ -30,35 +30,29 @@ function buildArgs() {
   } as any;
 }
 
-test("runPlanningPhase falls back to the raw query when orchestration JSON is invalid", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runPlanningPhase falls back to the raw query when orchestration JSON is invalid", async () => {
   const updateCalls: Record<string, unknown>[] = [];
   const mutationCalls: Record<string, unknown>[] = [];
   const ancillaryCalls: Record<string, unknown>[] = [];
 
-  mock.method(
-    workflowNonstreamDeps,
-    "updateSession",
-    async (_ctx: unknown, _id: unknown, patch: unknown) => {
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async (_ctx: unknown, _id: unknown, patch: unknown) => {
       updateCalls.push(patch as Record<string, unknown>);
     },
-  );
-  mock.method(workflowNonstreamDeps, "callOpenRouterNonStreaming", async () => ({
-    content: "not valid json",
-    usage: {
-      promptTokens: 10,
-      completionTokens: 5,
-      totalTokens: 15,
-      cost: 0.12,
-    },
-    finishReason: "stop",
-    audioBase64: "",
-    audioTranscript: "",
-    generationId: "gen_1",
-  }));
+    callOpenRouterNonStreaming: async () => ({
+      content: "not valid json",
+      usage: {
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+        cost: 0.12,
+      },
+      finishReason: "stop",
+      audioBase64: "",
+      audioTranscript: "",
+      generationId: "gen_1",
+    }),
+  });
 
   const ctx = createMockCtx({
     runQuery: async () => null,
@@ -72,7 +66,7 @@ test("runPlanningPhase falls back to the raw query when orchestration JSON is in
     },
   });
 
-  const result = await runPlanningPhase(ctx, buildArgs(), 3, 1);
+  const result = await runPlanningPhase(ctx, buildArgs(), 3, 1, deps);
 
   assert.equal(updateCalls[0]?.status, "planning");
   assert.deepEqual(result, {
@@ -83,40 +77,29 @@ test("runPlanningPhase falls back to the raw query when orchestration JSON is in
   assert.equal(ancillaryCalls[0]?.source, "search_planning");
 });
 
-test("runInitialSearchPhase and runDepthSearchPhase persist results and track search costs", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runInitialSearchPhase and runDepthSearchPhase persist results and track search costs", async () => {
   const updates: Record<string, unknown>[] = [];
   const trackCalls: Record<string, unknown>[] = [];
   const writes: Record<string, unknown>[] = [];
 
-  mock.method(
-    workflowNonstreamDeps,
-    "updateSession",
-    async (_ctx: unknown, _id: unknown, patch: unknown) => {
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async (_ctx: unknown, _id: unknown, patch: unknown) => {
       updates.push(patch as Record<string, unknown>);
     },
-  );
-  mock.method(workflowNonstreamDeps, "executePerplexitySearch", async (queries: unknown) =>
-    (queries as string[]).map((query) => ({
-      query,
-      success: true,
-      content: `result:${query}`,
-      citations: ["https://example.com"],
-    })),
-  );
-  mock.method(
-    workflowNonstreamDeps,
-    "trackPerplexitySearchCosts",
-    async (_ctx: unknown, results: unknown, meta: unknown) => {
+    executePerplexitySearch: async (queries: unknown) =>
+      (queries as string[]).map((query) => ({
+        query,
+        success: true,
+        content: `result:${query}`,
+        citations: ["https://example.com"],
+      })),
+    trackPerplexitySearchCosts: async (_ctx: unknown, results: unknown, meta: unknown) => {
       trackCalls.push({
         count: (results as unknown[]).length,
         ...(meta as Record<string, unknown>),
       });
     },
-  );
+  });
 
   const ctx = createMockCtx({
     runQuery: async () => null,
@@ -132,6 +115,7 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
     ["swift actors"],
     "perplexity/sonar",
     2,
+    deps,
   );
   const depth = await runDepthSearchPhase(
     ctx,
@@ -140,6 +124,7 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
     "perplexity/sonar",
     3,
     1,
+    deps,
   );
 
   assert.equal(initial[0]?.query, "swift actors");
@@ -151,26 +136,16 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   assert.equal(writes[1]?.phaseType, "depth_iteration");
 });
 
-test("runAnalysisPhase uses persona system prompts and falls back when JSON parsing fails", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runAnalysisPhase uses persona system prompts and falls back when JSON parsing fails", async () => {
   const updates: Record<string, unknown>[] = [];
   const writes: Record<string, unknown>[] = [];
   let capturedMessages: Array<{ role: string; content: string }> = [];
 
-  mock.method(
-    workflowNonstreamDeps,
-    "updateSession",
-    async (_ctx: unknown, _id: unknown, patch: unknown) => {
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async (_ctx: unknown, _id: unknown, patch: unknown) => {
       updates.push(patch as Record<string, unknown>);
     },
-  );
-  mock.method(
-    workflowNonstreamDeps,
-    "callOpenRouterNonStreaming",
-    async (_apiKey: unknown, _modelId: unknown, messages: unknown) => {
+    callOpenRouterNonStreaming: async (_apiKey: unknown, _modelId: unknown, messages: unknown) => {
       capturedMessages = messages as Array<{ role: string; content: string }>;
       return {
         content: "still not json",
@@ -181,7 +156,7 @@ test("runAnalysisPhase uses persona system prompts and falls back when JSON pars
         generationId: null,
       };
     },
-  );
+  });
 
   const ctx = createMockCtx({
     runQuery: async () => ({
@@ -203,6 +178,7 @@ test("runAnalysisPhase uses persona system prompts and falls back when JSON pars
     2,
     4,
     1,
+    deps,
   );
 
   assert.equal(updates[0]?.status, "analyzing");
@@ -215,35 +191,29 @@ test("runAnalysisPhase uses persona system prompts and falls back when JSON pars
   assert.equal(writes[0]?.phaseType, "analysis");
 });
 
-test("runSynthesisPhase serializes parsed JSON or falls back when output is empty", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runSynthesisPhase serializes parsed JSON or falls back when output is empty", async () => {
   const updates: Record<string, unknown>[] = [];
   const writes: Record<string, unknown>[] = [];
   const ancillaryCalls: Record<string, unknown>[] = [];
 
-  mock.method(
-    workflowNonstreamDeps,
-    "updateSession",
-    async (_ctx: unknown, _id: unknown, patch: unknown) => {
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async (_ctx: unknown, _id: unknown, patch: unknown) => {
       updates.push(patch as Record<string, unknown>);
     },
-  );
-  mock.method(workflowNonstreamDeps, "callOpenRouterNonStreaming", async () => ({
-    content: "{\"findings\":\"Done\",\"sources\":[\"https://example.com\"]}",
-    usage: {
-      promptTokens: 10,
-      completionTokens: 5,
-      totalTokens: 15,
-      cost: 0.2,
-    },
-    finishReason: "stop",
-    audioBase64: "",
-    audioTranscript: "",
-    generationId: "gen_synth",
-  }));
+    callOpenRouterNonStreaming: async () => ({
+      content: "{\"findings\":\"Done\",\"sources\":[\"https://example.com\"]}",
+      usage: {
+        promptTokens: 10,
+        completionTokens: 5,
+        totalTokens: 15,
+        cost: 0.2,
+      },
+      finishReason: "stop",
+      audioBase64: "",
+      audioTranscript: "",
+      generationId: "gen_synth",
+    }),
+  });
 
   const ctx = createMockCtx({
     runQuery: async () => null,
@@ -269,6 +239,7 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
       },
     ],
     5,
+    deps,
   );
 
   assert.equal(updates[0]?.status, "synthesizing");

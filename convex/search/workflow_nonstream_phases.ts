@@ -12,15 +12,24 @@ import {
 import { MODEL_IDS } from "../lib/model_constants";
 import { computeProgress, PipelineArgs, updateSession } from "./workflow_shared";
 import { trackPerplexitySearchCosts } from "./actions_web_search_shared";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 type PipelineArgsWithApiKey = PipelineArgs & { apiKey: string };
 
-export const workflowNonstreamDeps = {
+const defaultWorkflowNonstreamDeps = {
   callOpenRouterNonStreaming,
   executePerplexitySearch,
   updateSession,
   trackPerplexitySearchCosts,
 };
+
+export type WorkflowNonstreamDeps = typeof defaultWorkflowNonstreamDeps;
+
+export function createWorkflowNonstreamDepsForTest(
+  overrides: DeepPartial<WorkflowNonstreamDeps> = {},
+): WorkflowNonstreamDeps {
+  return mergeTestDeps(defaultWorkflowNonstreamDeps, overrides);
+}
 
 interface PlanningResult {
   plan: string;
@@ -63,8 +72,9 @@ export async function runPlanningPhase(
   args: PipelineArgsWithApiKey,
   breadth: number,
   phaseOrder: number,
+  deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
 ): Promise<PlanningResult> {
-  await workflowNonstreamDeps.updateSession(ctx, args.sessionId, {
+  await deps.updateSession(ctx, args.sessionId, {
     status: "planning",
     progress: computeProgress(args.complexity, "planning", 0),
     currentPhase: "planning",
@@ -73,7 +83,7 @@ export async function runPlanningPhase(
 
   const prompt = buildResearchPlanningPrompt(args.query, breadth);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await workflowNonstreamDeps.callOpenRouterNonStreaming(
+  const result = await deps.callOpenRouterNonStreaming(
     args.apiKey,
     args.modelId,
     messages,
@@ -136,22 +146,23 @@ export async function runInitialSearchPhase(
   queries: string[],
   searchModel: string,
   phaseOrder: number,
+  deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
 ): Promise<SearchResult[]> {
-  await workflowNonstreamDeps.updateSession(ctx, args.sessionId, {
+  await deps.updateSession(ctx, args.sessionId, {
     status: "searching",
     progress: computeProgress(args.complexity, "initial_search", 0),
     currentPhase: "searching",
     phaseOrder,
   });
 
-  const results = await workflowNonstreamDeps.executePerplexitySearch(
+  const results = await deps.executePerplexitySearch(
     queries,
     searchModel,
     args.apiKey,
   );
 
   // M23: Track Perplexity search costs.
-  await workflowNonstreamDeps.trackPerplexitySearchCosts(ctx, results, {
+  await deps.trackPerplexitySearchCosts(ctx, results, {
     messageId: args.assistantMessageId,
     chatId: args.chatId,
     userId: args.userId,
@@ -175,8 +186,9 @@ export async function runAnalysisPhase(
   breadth: number,
   phaseOrder: number,
   iteration: number,
+  deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
 ): Promise<AnalysisResult> {
-  await workflowNonstreamDeps.updateSession(ctx, args.sessionId, {
+  await deps.updateSession(ctx, args.sessionId, {
     status: "analyzing",
     progress: computeProgress(args.complexity, "analysis", iteration),
     currentPhase: "analyzing",
@@ -190,7 +202,7 @@ export async function runAnalysisPhase(
 
   const prompt = buildResearchAnalysisPrompt(priorSummary, breadth);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await workflowNonstreamDeps.callOpenRouterNonStreaming(
+  const result = await deps.callOpenRouterNonStreaming(
     args.apiKey,
     args.modelId,
     messages,
@@ -255,22 +267,23 @@ export async function runDepthSearchPhase(
   searchModel: string,
   phaseOrder: number,
   iteration: number,
+  deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
 ): Promise<SearchResult[]> {
-  await workflowNonstreamDeps.updateSession(ctx, args.sessionId, {
+  await deps.updateSession(ctx, args.sessionId, {
     status: "deepening",
     progress: computeProgress(args.complexity, "depth_iteration", iteration),
     currentPhase: "deepening",
     phaseOrder,
   });
 
-  const results = await workflowNonstreamDeps.executePerplexitySearch(
+  const results = await deps.executePerplexitySearch(
     queries,
     searchModel,
     args.apiKey,
   );
 
   // M23: Track Perplexity search costs.
-  await workflowNonstreamDeps.trackPerplexitySearchCosts(ctx, results, {
+  await deps.trackPerplexitySearchCosts(ctx, results, {
     messageId: args.assistantMessageId,
     chatId: args.chatId,
     userId: args.userId,
@@ -293,8 +306,9 @@ export async function runSynthesisPhase(
   args: PipelineArgsWithApiKey,
   allResults: SearchResult[],
   phaseOrder: number,
+  deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
 ): Promise<string> {
-  await workflowNonstreamDeps.updateSession(ctx, args.sessionId, {
+  await deps.updateSession(ctx, args.sessionId, {
     status: "synthesizing",
     progress: computeProgress(args.complexity, "synthesis", 0),
     currentPhase: "synthesizing",
@@ -313,7 +327,7 @@ export async function runSynthesisPhase(
 
   const prompt = buildResearchSynthesisPrompt(allResultsSummary);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await workflowNonstreamDeps.callOpenRouterNonStreaming(
+  const result = await deps.callOpenRouterNonStreaming(
     args.apiKey,
     args.modelId,
     messages,

@@ -1,23 +1,21 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import test from "node:test";
 import { getFunctionName } from "convex/server";
 
 import { internal } from "../_generated/api";
 import {
+  createMemoryImportDepsForTest,
   extractImportCandidatesHandler,
-  memoryImportDeps,
 } from "../memory/operations_import_handlers";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 const checkProStatusRef = getFunctionName(internal.preferences.queries.checkProStatus);
 const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
 
-test("extractImportCandidatesHandler requires Pro", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
+test("extractImportCandidatesHandler requires Pro", async () => {
+  const deps = createMemoryImportDepsForTest({
+    requireAuth: async () => ({ userId: "user_1" }),
   });
-
-  mock.method(memoryImportDeps, "requireAuth", async () => ({ userId: "user_1" }));
 
   const ctx = createMockCtx({
     runQuery: async (ref: unknown) =>
@@ -28,28 +26,24 @@ test("extractImportCandidatesHandler requires Pro", async (t) => {
     () =>
       extractImportCandidatesHandler(ctx, {
         files: [],
-      }),
+      }, deps),
     /PRO_REQUIRED/,
   );
 });
 
-test("extractImportCandidatesHandler handles text, pdf, and docx imports while filtering duplicates and contact details", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("extractImportCandidatesHandler handles text, pdf, and docx imports while filtering duplicates and contact details", async () => {
   const openRouterCalls: Array<{ messages: unknown; params: Record<string, unknown> }> = [];
 
-  mock.method(memoryImportDeps, "requireAuth", async () => ({ userId: "user_1" }));
-  mock.method(memoryImportDeps, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(memoryImportDeps, "extractDocxContent", async () => ({
-    text: "User writes board updates.",
-    markdown: "",
-  }));
-  mock.method(
-    memoryImportDeps,
-    "callOpenRouterNonStreaming",
-    async (
+  const deps = createMemoryImportDepsForTest({
+    requireAuth: async () => ({ userId: "user_1" }),
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    extractDocxContent: async () => ({
+      text: "User writes board updates.",
+      markdown: "",
+      paragraphs: [],
+      wordCount: 4,
+    }),
+    callOpenRouterNonStreaming: async (
       _apiKey: unknown,
       _modelId: unknown,
       messages: unknown,
@@ -92,7 +86,7 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
         generationId: null,
       };
     },
-  );
+  });
 
   const blob = new Blob(["hello"], { type: "text/plain" });
   const ctx = createMockCtx({
@@ -111,31 +105,35 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
     },
   });
 
-  const result = await extractImportCandidatesHandler(ctx, {
-    files: [
-      {
-        storageId: "text_1" as any,
-        filename: "notes.txt",
-        mimeType: "text/plain",
-        textContent: "User prefers concise updates.",
-      },
-      {
-        storageId: "pdf_1" as any,
-        filename: "profile.pdf",
-        mimeType: "application/pdf",
-      },
-      {
-        storageId: "docx_1" as any,
-        filename: "resume.docx",
-        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      },
-      {
-        storageId: "missing" as any,
-        filename: "missing.txt",
-        mimeType: "text/plain",
-      },
-    ],
-  });
+  const result = await extractImportCandidatesHandler(
+    ctx,
+    {
+      files: [
+        {
+          storageId: "text_1" as any,
+          filename: "notes.txt",
+          mimeType: "text/plain",
+          textContent: "User prefers concise updates.",
+        },
+        {
+          storageId: "pdf_1" as any,
+          filename: "profile.pdf",
+          mimeType: "application/pdf",
+        },
+        {
+          storageId: "docx_1" as any,
+          filename: "resume.docx",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        },
+        {
+          storageId: "missing" as any,
+          filename: "missing.txt",
+          mimeType: "text/plain",
+        },
+      ],
+    },
+    deps,
+  );
 
   assert.equal(result.length, 2);
   assert.deepEqual(
@@ -151,29 +149,29 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
   );
 });
 
-test("extractImportCandidatesHandler caps accepted candidates at 32", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("extractImportCandidatesHandler caps accepted candidates at 32", async () => {
   let callIndex = 0;
-  mock.method(memoryImportDeps, "requireAuth", async () => ({ userId: "user_1" }));
-  mock.method(memoryImportDeps, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(memoryImportDeps, "extractDocxContent", async () => ({
-    text: "",
-    markdown: "",
-  }));
-  mock.method(memoryImportDeps, "callOpenRouterNonStreaming", async () => {
-    callIndex += 1;
-    return {
-      content:
-        `[{"content":"User topic${callIndex} skill${callIndex} region${callIndex} project${callIndex} hobby${callIndex}","category":"skills"}]`,
-      usage: null,
-      finishReason: "stop",
-      audioBase64: "",
-      audioTranscript: "",
-      generationId: null,
-    };
+  const deps = createMemoryImportDepsForTest({
+    requireAuth: async () => ({ userId: "user_1" }),
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    extractDocxContent: async () => ({
+      text: "",
+      markdown: "",
+      paragraphs: [],
+      wordCount: 0,
+    }),
+    callOpenRouterNonStreaming: async () => {
+      callIndex += 1;
+      return {
+        content:
+          `[{"content":"User topic${callIndex} skill${callIndex} region${callIndex} project${callIndex} hobby${callIndex}","category":"skills"}]`,
+        usage: null,
+        finishReason: "stop",
+        audioBase64: "",
+        audioTranscript: "",
+        generationId: null,
+      };
+    },
   });
 
   const ctx = createMockCtx({
@@ -199,7 +197,7 @@ test("extractImportCandidatesHandler caps accepted candidates at 32", async (t) 
     textContent: `Profile ${i + 1}`,
   }));
 
-  const result = await extractImportCandidatesHandler(ctx, { files });
+  const result = await extractImportCandidatesHandler(ctx, { files }, deps);
 
   assert.equal(result.length, 32);
   assert.equal(result[0]?.content, "User topic1 skill1 region1 project1 hobby1.");

@@ -18,17 +18,43 @@ import {
 } from "./actions_run_cycle_session";
 import { runParticipantTurn } from "./actions_run_cycle_turn";
 import { RunCycleArgs } from "./actions_run_cycle_types";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 export type { RunCycleArgs } from "./actions_run_cycle_types";
+
+const defaultRunCycleHandlerDeps = {
+  checkConsensusInternal,
+  loadModelCapabilities,
+  normalizeRunCycleArgs,
+  resolveLinearCycleParentIds,
+  resolveStartParticipantIndex,
+  resolveTurnParticipants,
+  completeSessionFailedIfRunning,
+  pauseBetweenTurnsWithHeartbeat,
+  shouldSessionContinue,
+  runParticipantTurn,
+};
+
+export type RunCycleHandlerDeps = typeof defaultRunCycleHandlerDeps;
+
+export function createRunCycleHandlerDepsForTest(
+  overrides: DeepPartial<RunCycleHandlerDeps> = {},
+): RunCycleHandlerDeps {
+  return mergeTestDeps(defaultRunCycleHandlerDeps, overrides);
+}
 
 export async function runCycleHandler(
   ctx: ActionCtx,
   args: RunCycleArgs,
+  deps: RunCycleHandlerDeps = defaultRunCycleHandlerDeps,
 ): Promise<void> {
-  const normalized = normalizeRunCycleArgs(args);
+  const normalized = deps.normalizeRunCycleArgs(args);
 
   try {
-    const shouldContinue = await shouldSessionContinue(ctx, args.sessionId);
+    const shouldContinue = await deps.shouldSessionContinue(
+      ctx,
+      args.sessionId,
+    );
     if (!shouldContinue) return;
 
     const session = await ctx.runQuery(internal.autonomous.queries.getSession, {
@@ -36,7 +62,7 @@ export async function runCycleHandler(
     });
     if (!session) return;
 
-    const turnParticipants = resolveTurnParticipants(
+    const turnParticipants = deps.resolveTurnParticipants(
       session.turnOrder,
       normalized.participants,
     );
@@ -50,7 +76,7 @@ export async function runCycleHandler(
       return;
     }
 
-    const startParticipantIndex = resolveStartParticipantIndex(
+    const startParticipantIndex = deps.resolveStartParticipantIndex(
       args.startParticipantIndex,
       turnParticipants.length,
     );
@@ -65,15 +91,21 @@ export async function runCycleHandler(
           : undefined,
     });
 
-    let cycleParentIds: Id<"messages">[] = resolveLinearCycleParentIds(
+    let cycleParentIds: Id<"messages">[] = deps.resolveLinearCycleParentIds(
       session.parentMessageIds,
     );
-    const modelCapabilities = await loadModelCapabilities(ctx, turnParticipants);
+    const modelCapabilities = await deps.loadModelCapabilities(
+      ctx,
+      turnParticipants,
+    );
 
     for (let i = startParticipantIndex; i < turnParticipants.length; i += 1) {
       const participant = turnParticipants[i];
 
-      const stillRunning = await shouldSessionContinue(ctx, args.sessionId);
+      const stillRunning = await deps.shouldSessionContinue(
+        ctx,
+        args.sessionId,
+      );
       if (!stillRunning) return;
 
       await ctx.runMutation(internal.autonomous.mutations.updateProgress, {
@@ -82,7 +114,7 @@ export async function runCycleHandler(
         currentParticipantIndex: i,
       });
 
-      const outcome = await runParticipantTurn({
+      const outcome = await deps.runParticipantTurn({
         ctx,
         sessionId: args.sessionId,
         chatId: session.chatId,
@@ -110,7 +142,7 @@ export async function runCycleHandler(
       }
 
       if (session.pauseBetweenTurns > 0 && i < turnParticipants.length - 1) {
-        const resumed = await pauseBetweenTurnsWithHeartbeat(
+        const resumed = await deps.pauseBetweenTurnsWithHeartbeat(
           ctx,
           args.sessionId,
           session.pauseBetweenTurns,
@@ -120,7 +152,7 @@ export async function runCycleHandler(
     }
 
     if (session.autoStopOnConsensus) {
-      const consensus = await checkConsensusInternal(
+      const consensus = await deps.checkConsensusInternal(
         ctx,
         session.chatId,
         turnParticipants.length,
@@ -137,7 +169,10 @@ export async function runCycleHandler(
     }
 
     if (args.cycle < session.maxCycles) {
-      const stillRunning = await shouldSessionContinue(ctx, args.sessionId);
+      const stillRunning = await deps.shouldSessionContinue(
+        ctx,
+        args.sessionId,
+      );
       if (!stillRunning) return;
 
       await ctx.scheduler.runAfter(0, internal.autonomous.actions.runCycle, {
@@ -160,6 +195,10 @@ export async function runCycleHandler(
     const reason =
       error instanceof Error ? error.message : "Unknown autonomous error";
     console.error("Autonomous cycle failed:", reason);
-    await completeSessionFailedIfRunning(ctx, args.sessionId, reason);
+    await deps.completeSessionFailedIfRunning(
+      ctx,
+      args.sessionId,
+      reason,
+    );
   }
 }

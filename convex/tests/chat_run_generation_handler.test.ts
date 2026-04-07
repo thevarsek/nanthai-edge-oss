@@ -1,12 +1,11 @@
 import assert from "node:assert/strict";
-import test, { mock } from "node:test";
+import test from "node:test";
 
-import { internal } from "../_generated/api";
 import {
+  createRunGenerationHandlerDepsForTest,
   runGenerationHandler,
-  runGenerationHandlerDeps,
 } from "../chat/actions_run_generation_handler";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 function buildArgs() {
   return {
@@ -26,42 +25,46 @@ function buildArgs() {
   } as any;
 }
 
-test("runGenerationHandler intersects enabled integrations and schedules post-processing for successful runs", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runGenerationHandler intersects enabled integrations and schedules post-processing for successful runs", async () => {
   const registry = { tag: "registry" };
   const registryArgs: Record<string, unknown>[] = [];
   const participantCalls: Array<Record<string, unknown>> = [];
   const scheduledCalls: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
 
-  mock.method(runGenerationHandlerDeps, "now", () => 123);
-  mock.method(runGenerationHandlerDeps.generation, "prepareGenerationContext", async () => ({
-    allMessages: [
-      {
-        _id: "msg_user",
-        attachments: [{ storageId: "file_1", mimeType: "application/pdf" }],
+  const deps = createRunGenerationHandlerDepsForTest({
+    now: () => 123,
+    generation: {
+      prepareGenerationContext: async () => ({
+        allMessages: [
+          {
+            _id: "msg_user",
+            attachments: [{ storageId: "file_1", mimeType: "application/pdf" }],
+          },
+        ],
+        memoryContext: undefined,
+        modelCapabilities: new Map(),
+      }),
+      getRequiredUserOpenRouterApiKey: async () => "key",
+      generateForParticipant: async (args: unknown) => {
+        participantCalls.push(args as Record<string, unknown>);
+        return { deferredForSubagents: false, cancelled: false, failed: false };
       },
-    ],
-    memoryContext: undefined,
-    modelCapabilities: new Map(),
-  }));
-  mock.method(runGenerationHandlerDeps.generation, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(runGenerationHandlerDeps.integrations, "getGrantedGoogleIntegrations", async () => ["drive"]);
-  mock.method(runGenerationHandlerDeps.integrations, "checkMicrosoftConnection", async () => true);
-  mock.method(runGenerationHandlerDeps.integrations, "checkAppleCalendarConnection", async () => false);
-  mock.method(runGenerationHandlerDeps.integrations, "checkNotionConnection", async () => true);
-  mock.method(runGenerationHandlerDeps.tools, "attachmentTriggeredReadToolNames", () => ["read_docx"]);
-  mock.method(runGenerationHandlerDeps.tools, "buildProgressiveToolRegistry", (args: unknown) => {
-    registryArgs.push(args as Record<string, unknown>);
-    return registry as any;
+      failPendingParticipants: async () => undefined,
+    },
+    integrations: {
+      getGrantedGoogleIntegrations: async () => ["drive"],
+      checkMicrosoftConnection: async () => true,
+      checkAppleCalendarConnection: async () => false,
+      checkNotionConnection: async () => true,
+    },
+    tools: {
+      attachmentTriggeredReadToolNames: () => ["read_docx"],
+      buildProgressiveToolRegistry: (args: unknown) => {
+        registryArgs.push(args as Record<string, unknown>);
+        return registry as any;
+      },
+    },
   });
-  mock.method(runGenerationHandlerDeps.generation, "generateForParticipant", async (args: unknown) => {
-    participantCalls.push(args as Record<string, unknown>);
-    return { deferredForSubagents: false, cancelled: false, failed: false };
-  });
-  mock.method(runGenerationHandlerDeps.generation, "failPendingParticipants", async () => undefined);
 
   const ctx = createMockCtx({
     runQuery: async () => ({
@@ -76,7 +79,7 @@ test("runGenerationHandler intersects enabled integrations and schedules post-pr
     },
   });
 
-  await runGenerationHandler(ctx, buildArgs());
+  await runGenerationHandler(ctx, buildArgs(), deps);
 
   assert.deepEqual(registryArgs[0], {
     enabledIntegrations: ["drive", "ms_calendar", "notion"],
@@ -88,38 +91,38 @@ test("runGenerationHandler intersects enabled integrations and schedules post-pr
   assert.equal(participantCalls.length, 2);
   assert.equal(participantCalls[0]?.toolRegistry, registry);
   assert.equal(participantCalls[0]?.runtimeProfile, "mobileSandbox");
-  assert.deepEqual(scheduledCalls[0]?.args, {
-    chatId: "chat_1",
-    userMessageId: "msg_user",
-    assistantMessageIds: ["msg_assistant_1", "msg_assistant_2"],
-    userId: "user_1",
-  });
+  assert.equal(scheduledCalls[0]?.args.chatId, "chat_1");
+  assert.equal(scheduledCalls[0]?.args.userMessageId, "msg_user");
+  assert.deepEqual(scheduledCalls[0]?.args.assistantMessageIds, ["msg_assistant_1", "msg_assistant_2"]);
+  assert.equal(scheduledCalls[0]?.args.userId, "user_1");
 });
 
-test("runGenerationHandler marks mixed search outcomes as completed when any participant succeeds", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runGenerationHandler marks mixed search outcomes as completed when any participant succeeds", async () => {
   const patches: Record<string, unknown>[] = [];
   let participantIndex = 0;
 
-  mock.method(runGenerationHandlerDeps, "now", () => 999);
-  mock.method(runGenerationHandlerDeps.generation, "prepareGenerationContext", async () => ({
-    allMessages: [],
-    memoryContext: undefined,
-    modelCapabilities: new Map(),
-  }));
-  mock.method(runGenerationHandlerDeps.generation, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(runGenerationHandlerDeps.tools, "attachmentTriggeredReadToolNames", () => []);
-  mock.method(runGenerationHandlerDeps.tools, "buildProgressiveToolRegistry", () => ({}) as any);
-  mock.method(runGenerationHandlerDeps.generation, "generateForParticipant", async (_args: unknown) => {
-    const index = participantIndex;
-    participantIndex += 1;
-    if (index === 0) return { deferredForSubagents: false, cancelled: true, failed: false };
-    return { deferredForSubagents: false, cancelled: false, failed: false };
+  const deps = createRunGenerationHandlerDepsForTest({
+    now: () => 999,
+    generation: {
+      prepareGenerationContext: async () => ({
+        allMessages: [],
+        memoryContext: undefined,
+        modelCapabilities: new Map(),
+      }),
+      getRequiredUserOpenRouterApiKey: async () => "key",
+      generateForParticipant: async () => {
+        const index = participantIndex;
+        participantIndex += 1;
+        if (index === 0) return { deferredForSubagents: false, cancelled: true, failed: false };
+        return { deferredForSubagents: false, cancelled: false, failed: false };
+      },
+      failPendingParticipants: async () => undefined,
+    },
+    tools: {
+      attachmentTriggeredReadToolNames: () => [],
+      buildProgressiveToolRegistry: () => ({}) as any,
+    },
   });
-  mock.method(runGenerationHandlerDeps.generation, "failPendingParticipants", async () => undefined);
 
   const ctx = createMockCtx({
     runQuery: async () => ({
@@ -139,7 +142,7 @@ test("runGenerationHandler marks mixed search outcomes as completed when any par
     searchSessionId: "search_1",
   };
 
-  await runGenerationHandler(ctx, args);
+  await runGenerationHandler(ctx, args, deps);
 
   assert.deepEqual(patches[0], {
     sessionId: "search_1",
@@ -152,29 +155,31 @@ test("runGenerationHandler marks mixed search outcomes as completed when any par
   });
 });
 
-test("runGenerationHandler marks fully failed search runs as failed and skips post-process", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runGenerationHandler marks fully failed search runs as failed and skips post-process", async () => {
   const scheduledCalls: unknown[] = [];
   const patches: Record<string, unknown>[] = [];
 
-  mock.method(runGenerationHandlerDeps, "now", () => 456);
-  mock.method(runGenerationHandlerDeps.generation, "prepareGenerationContext", async () => ({
-    allMessages: [],
-    memoryContext: undefined,
-    modelCapabilities: new Map(),
-  }));
-  mock.method(runGenerationHandlerDeps.generation, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(runGenerationHandlerDeps.tools, "attachmentTriggeredReadToolNames", () => []);
-  mock.method(runGenerationHandlerDeps.tools, "buildProgressiveToolRegistry", () => ({}) as any);
-  mock.method(
-    runGenerationHandlerDeps.generation,
-    "generateForParticipant",
-    async () => ({ deferredForSubagents: false, cancelled: false, failed: true }),
-  );
-  mock.method(runGenerationHandlerDeps.generation, "failPendingParticipants", async () => undefined);
+  const deps = createRunGenerationHandlerDepsForTest({
+    now: () => 456,
+    generation: {
+      prepareGenerationContext: async () => ({
+        allMessages: [],
+        memoryContext: undefined,
+        modelCapabilities: new Map(),
+      }),
+      getRequiredUserOpenRouterApiKey: async () => "key",
+      generateForParticipant: async () => ({
+        deferredForSubagents: false,
+        cancelled: false,
+        failed: true,
+      }),
+      failPendingParticipants: async () => undefined,
+    },
+    tools: {
+      attachmentTriggeredReadToolNames: () => [],
+      buildProgressiveToolRegistry: () => ({}) as any,
+    },
+  });
 
   const ctx = createMockCtx({
     runQuery: async () => ({
@@ -194,7 +199,7 @@ test("runGenerationHandler marks fully failed search runs as failed and skips po
   await runGenerationHandler(ctx, {
     ...buildArgs(),
     searchSessionId: "search_2",
-  });
+  }, deps);
 
   assert.equal(scheduledCalls.length, 0);
   assert.deepEqual(patches[0], {
@@ -208,33 +213,31 @@ test("runGenerationHandler marks fully failed search runs as failed and skips po
   });
 });
 
-test("runGenerationHandler propagates cancellation failures to the search session and failPendingParticipants", async (t) => {
-  t.after(() => {
-    mock.restoreAll();
-  });
-
+test("runGenerationHandler propagates cancellation failures to the search session and failPendingParticipants", async () => {
   const patches: Record<string, unknown>[] = [];
   const failureCalls: unknown[] = [];
 
-  mock.method(runGenerationHandlerDeps, "now", () => 777);
-  mock.method(runGenerationHandlerDeps.generation, "prepareGenerationContext", async () => ({
-    allMessages: [],
-    memoryContext: undefined,
-    modelCapabilities: new Map(),
-  }));
-  mock.method(runGenerationHandlerDeps.generation, "getRequiredUserOpenRouterApiKey", async () => "key");
-  mock.method(runGenerationHandlerDeps.tools, "attachmentTriggeredReadToolNames", () => []);
-  mock.method(runGenerationHandlerDeps.tools, "buildProgressiveToolRegistry", () => ({}) as any);
-  mock.method(runGenerationHandlerDeps.generation, "generateForParticipant", async () => {
-    throw new Error("Generation cancelled by user");
-  });
-  mock.method(
-    runGenerationHandlerDeps.generation,
-    "failPendingParticipants",
-    async (_ctx: unknown, _args: unknown, error: unknown) => {
-      failureCalls.push(error);
+  const deps = createRunGenerationHandlerDepsForTest({
+    now: () => 777,
+    generation: {
+      prepareGenerationContext: async () => ({
+        allMessages: [],
+        memoryContext: undefined,
+        modelCapabilities: new Map(),
+      }),
+      getRequiredUserOpenRouterApiKey: async () => "key",
+      generateForParticipant: async () => {
+        throw new Error("Generation cancelled by user");
+      },
+      failPendingParticipants: async (_ctx: unknown, _args: unknown, error: unknown) => {
+        failureCalls.push(error);
+      },
     },
-  );
+    tools: {
+      attachmentTriggeredReadToolNames: () => [],
+      buildProgressiveToolRegistry: () => ({}) as any,
+    },
+  });
 
   const ctx = createMockCtx({
     runQuery: async () => ({
@@ -253,7 +256,7 @@ test("runGenerationHandler propagates cancellation failures to the search sessio
     ...buildArgs(),
     participants: [{ modelId: "openai/gpt-5", messageId: "msg_assistant_1", jobId: "job_1" }],
     searchSessionId: "search_3",
-  });
+  }, deps);
 
   assert.equal(failureCalls.length, 1);
   assert.deepEqual(patches[0], {

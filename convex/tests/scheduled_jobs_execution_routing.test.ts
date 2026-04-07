@@ -4,7 +4,7 @@ import { getFunctionName } from "convex/server";
 
 import { internal } from "../_generated/api";
 import { enqueueStep } from "../scheduledJobs/actions_execution";
-import { createMockCtx } from "./helpers/mock_ctx";
+import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 const createScheduledExecutionTurnRef = getFunctionName(
   internal.scheduledJobs.mutations.createScheduledExecutionTurn,
