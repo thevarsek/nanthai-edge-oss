@@ -169,6 +169,8 @@ export const upsertConnection = internalMutation({
       }
       if (args.email) patch.email = args.email;
       if (args.displayName) patch.displayName = args.displayName;
+      if (args.workspaceId) patch.workspaceId = args.workspaceId;
+      if (args.workspaceName) patch.workspaceName = args.workspaceName;
       await ctx.db.patch(existing._id, patch);
       return existing._id;
     } else {
@@ -182,6 +184,8 @@ export const upsertConnection = internalMutation({
         scopes: args.scopes,
         email: args.email,
         displayName: args.displayName,
+        workspaceId: args.workspaceId,
+        workspaceName: args.workspaceName,
         status: "active",
         connectedAt: now,
       });
@@ -216,6 +220,8 @@ export const getNotionConnection = query({
       id: connection._id,
       email: connection.email ?? null,
       displayName: connection.displayName ?? null,
+      workspaceId: connection.workspaceId ?? null,
+      workspaceName: connection.workspaceName ?? null,
       status: connection.status,
       scopes: connection.scopes,
       connectedAt: connection.connectedAt,

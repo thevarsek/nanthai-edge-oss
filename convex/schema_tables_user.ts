@@ -139,6 +139,8 @@ export const userSchemaTables = {
     scopes: v.array(v.string()),
     email: v.optional(v.string()),
     displayName: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    workspaceName: v.optional(v.string()),
     clientType: v.optional(v.string()),
     status: v.string(), // "active" | "expired" | "revoked" | "error"
     connectedAt: v.number(),
