@@ -95,6 +95,8 @@ export async function callOpenRouterStreaming(
       if (
         !result.content &&
         !result.reasoning &&
+        !result.audioBase64 &&
+        !result.audioTranscript &&
         result.imageUrls.length === 0 &&
         result.toolCalls.length === 0
       ) {

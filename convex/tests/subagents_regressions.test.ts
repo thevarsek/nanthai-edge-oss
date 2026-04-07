@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import { sendMessageHandler, cancelActiveGenerationHandler } from "../chat/mutations_public_handlers";
 import { updateChatHandler } from "../chat/manage_handlers";
@@ -8,6 +8,30 @@ import { runSubagentRunHandler } from "../subagents/actions_run_subagent";
 import { addParticipant } from "../participants/mutations";
 import { revokeEntitlement } from "../preferences/mutations";
 import { SUBAGENT_RECOVERY_LEASE_MS } from "../subagents/shared";
+
+function textResponse(status: number, text: string) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    headers: { get: () => null },
+    text: async () => text,
+  } as any;
+}
+
+function sseTextResponse(content: string, generationId = "subagent_gen_1") {
+  return textResponse(
+    200,
+    [
+      `data: ${JSON.stringify({ id: generationId, choices: [{ delta: { content } }] })}`,
+      `data: ${JSON.stringify({
+        choices: [{ finish_reason: "stop" }],
+        usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16, cost: 0.02 },
+      })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n"),
+  );
+}
 
 test("sendMessageHandler downgrades stale non-Pro subagent requests", async () => {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
@@ -528,6 +552,149 @@ test("runSubagentRunHandler fails stale streaming runs instead of replaying them
       && call.status === "failed"
       && typeof call.error === "string"
       && call.error.includes("lease expired")));
+});
+
+test("runSubagentRunHandler cancels claimed work when the batch is already cancelled", async () => {
+  const runMutationCalls: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+
+  const ctx = {
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      runMutationCalls.push(args);
+      if ("expectedStatuses" in args) return true;
+      if ("runId" in args && "status" in args) return { batchId: "batch_1", allTerminal: false };
+      return null;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) {
+        return {
+          _id: "run_1",
+          batchId: "batch_1",
+          status: "queued",
+          title: "Research",
+          taskPrompt: "Find the answer.",
+          content: "",
+          reasoning: "",
+          toolCalls: [],
+          toolResults: [],
+        };
+      }
+      if ("batchId" in args) {
+        return {
+          _id: "batch_1",
+          status: "cancelled",
+          userId: "user_1",
+          chatId: "chat_1",
+          parentMessageId: "parent_1",
+          childConversationSeed: [],
+          paramsSnapshot: { requestParams: {} },
+          participantSnapshot: { userId: "user_1", chatId: "chat_1", participant: { modelId: "openai/gpt-5" } },
+        };
+      }
+      if ("userId" in args) return "sk-test";
+      return null;
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
+    },
+  } as any;
+
+  await runSubagentRunHandler(ctx, { runId: "run_1" } as any);
+
+  assert.equal(scheduled.some((entry) => entry.runId === "run_1"), true);
+  assert.ok(runMutationCalls.some((call) =>
+    call.runId === "run_1"
+      && call.status === "cancelled"
+      && call.error === "Subagent batch was cancelled."));
+});
+
+test("runSubagentRunHandler completes a simple streaming run and schedules parent continuation", async (t) => {
+  t.after(() => mock.restoreAll());
+
+  mock.method(globalThis, "fetch", async () => sseTextResponse("Child answer complete.")) as any;
+
+  const runMutationCalls: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  const run = {
+    _id: "run_1",
+    batchId: "batch_1",
+    status: "queued",
+    title: "Research",
+    taskPrompt: "Find the answer.",
+    content: "",
+    reasoning: "",
+    toolCalls: [],
+    toolResults: [],
+    continuationCount: 0,
+  };
+  const batch = {
+    _id: "batch_1",
+    status: "running_children",
+    userId: "user_1",
+    chatId: "chat_1",
+    parentMessageId: "parent_1",
+    childConversationSeed: [{ role: "assistant", content: "Seed context." }],
+    paramsSnapshot: {
+      requestParams: {},
+    },
+    participantSnapshot: {
+      userId: "user_1",
+      chatId: "chat_1",
+      participant: { modelId: "openai/gpt-5" },
+    },
+  };
+
+  const ctx = {
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      runMutationCalls.push(args);
+      if ("expectedStatuses" in args) return true;
+      if ("runId" in args && args.status === "completed") {
+        return { batchId: "batch_1", allTerminal: true };
+      }
+      if ("batchId" in args && args.status === "waiting_to_resume") return true;
+      return null;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) return run;
+      if ("batchId" in args) return batch;
+      if ("modelId" in args) {
+        return {
+          supportedParameters: [],
+          hasImageGeneration: false,
+          hasReasoning: false,
+          contextLength: 128_000,
+        };
+      }
+      if ("userId" in args) {
+        if (Object.keys(args).length === 1) return "sk-test";
+        return { isPro: false, hasSandboxRuntime: false };
+      }
+      return null;
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
+    },
+  } as any;
+
+  await runSubagentRunHandler(ctx, { runId: "run_1" } as any);
+
+  assert.ok(runMutationCalls.some((call) =>
+    call.runId === "run_1"
+      && call.status === "completed"
+      && call.content === "Child answer complete."));
+  assert.ok(runMutationCalls.some((call) =>
+    call.batchId === "batch_1" && call.status === "waiting_to_resume"));
+  assert.equal(scheduled.some((entry) => entry.source === "subagent"), true);
+  assert.equal(
+    scheduled.some((entry) => entry.batchId === "batch_1" && !("source" in entry)),
+    true,
+  );
 });
 
 test("addParticipant clears an enabled subagent override when chat becomes multi-model", async () => {
