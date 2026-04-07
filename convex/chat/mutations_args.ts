@@ -172,6 +172,10 @@ export const finalizeGenerationArgs = {
     url: v.string(),
     title: v.string(),
   }))),
+  // M26 — Lyria music generation: inline audio attached during generation
+  audioStorageId: v.optional(v.id("_storage")),
+  audioDurationMs: v.optional(v.number()),
+  audioGeneratedAt: v.optional(v.number()),
   triggerUserMessageId: v.optional(v.id("messages")),
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId: v.optional(v.string()),

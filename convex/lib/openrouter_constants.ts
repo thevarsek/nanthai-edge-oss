@@ -1,6 +1,6 @@
 export const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 export const HTTP_REFERER = "https://nanthai.tech";
-export const X_TITLE = "N:EDGE";
+export const X_TITLE = "NanthAi:Edge";
 export const REQUEST_TIMEOUT_MS = 180_000;
 export const STREAM_REQUEST_TIMEOUT_MS = 900_000;
 export const MAX_RATE_LIMIT_RETRIES = 3;

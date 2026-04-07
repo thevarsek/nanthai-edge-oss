@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 import {
   continueScheduledJobExecutionHandler,
   executeScheduledJobHandler,
@@ -57,8 +58,8 @@ export const fetchOpenRouterCredits = action({
     const resp = await fetch("https://openrouter.ai/api/v1/credits", {
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://nanthai.tech",
-        "X-Title": "NanthAi:Edge",
+        "HTTP-Referer": HTTP_REFERER,
+        "X-Title": X_TITLE,
       },
     });
     if (!resp.ok) {

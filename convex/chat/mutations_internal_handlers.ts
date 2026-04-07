@@ -3,7 +3,7 @@ import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
-import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
+import { isAudioBasedUserMessage, isLyriaModel, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import {
   deleteStreamingMessage,
   getStreamingMessageByMessageId,
@@ -112,6 +112,10 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   }>;
   /** Perplexity citation annotations (structured for rich UI rendering). */
   citations?: Array<{ url: string; title: string }>;
+  // M26 — Lyria inline audio
+  audioStorageId?: Id<"_storage">;
+  audioDurationMs?: number;
+  audioGeneratedAt?: number;
   triggerUserMessageId?: Id<"messages">;
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId?: string;
@@ -177,6 +181,13 @@ export async function finalizeGenerationHandler(
   if (args.toolResults) msgPatch.toolResults = args.toolResults;
   if (args.citations && args.citations.length > 0) msgPatch.citations = args.citations;
 
+  // M26: Lyria inline audio — persist audio fields directly onto the message.
+  if (args.audioStorageId) {
+    msgPatch.audioStorageId = args.audioStorageId;
+    if (args.audioDurationMs != null) msgPatch.audioDurationMs = args.audioDurationMs;
+    if (args.audioGeneratedAt != null) msgPatch.audioGeneratedAt = args.audioGeneratedAt;
+  }
+
   // M10: Insert generatedFiles rows and collect their IDs.
   let fileIds = args.generatedFileIds;
   if (args.generatedFiles && args.generatedFiles.length > 0) {
@@ -220,6 +231,24 @@ export async function finalizeGenerationHandler(
     }
   }
   if (chartIds && chartIds.length > 0) msgPatch.generatedChartIds = chartIds;
+
+  // M26: Insert a generatedFiles row for Lyria audio so it appears in Knowledge Base.
+  if (args.audioStorageId) {
+    const audioFileId = await ctx.db.insert("generatedFiles", {
+      userId: args.userId,
+      chatId: args.chatId,
+      messageId: args.messageId,
+      storageId: args.audioStorageId,
+      filename: "lyria-music.mp3",
+      mimeType: "audio/mpeg",
+      sizeBytes: undefined,
+      toolName: "lyria_music_generation",
+      createdAt: now,
+    });
+    // Append to any existing file IDs.
+    const allFileIds = fileIds ? [...fileIds, audioFileId] : [audioFileId];
+    msgPatch.generatedFileIds = allFileIds;
+  }
 
   await ctx.db.patch(args.messageId, msgPatch);
   await deleteStreamingMessage(ctx, args.messageId);
@@ -305,7 +334,7 @@ export async function finalizeGenerationHandler(
         },
       );
     }
-    if (finalStatus === "completed" && args.triggerUserMessageId) {
+    if (finalStatus === "completed" && args.triggerUserMessageId && !args.audioStorageId) {
       await maybeScheduleAutoAudio(ctx, args.messageId, args.chatId, args.triggerUserMessageId);
     }
     return;
@@ -385,7 +414,7 @@ export async function finalizeGenerationHandler(
     );
   }
 
-  if (args.triggerUserMessageId) {
+  if (args.triggerUserMessageId && !args.audioStorageId) {
     await maybeScheduleAutoAudio(ctx, args.messageId, args.chatId, args.triggerUserMessageId);
   }
 }

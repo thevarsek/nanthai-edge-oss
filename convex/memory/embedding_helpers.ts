@@ -1,4 +1,5 @@
 import { MODEL_IDS } from "../lib/model_constants";
+import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 
 /** M23: Embedding result including optional usage for cost tracking. */
 export interface EmbeddingResult {
@@ -22,8 +23,8 @@ export async function computeEmbedding(
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
-          "HTTP-Referer": "https://nanthai.tech",
-          "X-Title": "N:EDGE",
+          "HTTP-Referer": HTTP_REFERER,
+          "X-Title": X_TITLE,
         },
         body: JSON.stringify({
           model: MODEL_IDS.embedding,

@@ -9,6 +9,11 @@ import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import type { Message } from "@/hooks/useChat";
 import type { Id } from "@convex/_generated/dataModel";
 
+const LYRIA_MODEL_IDS = new Set([
+  "google/lyria-3-clip-preview",
+  "google/lyria-3-pro-preview",
+]);
+
 interface Props {
   messages: Message[];
 }
@@ -16,6 +21,11 @@ interface Props {
 /** Returns true if the message is a user message with recorded audio. */
 function isAudioUserMessage(m: Message): boolean {
   return m.role === "user" && !!m.audioStorageId;
+}
+
+/** Lyria messages carry their own inline audio — don't auto-play via TTS path. */
+function isLyriaMusic(m: Message): boolean {
+  return !!m.audioStorageId && !!m.modelId && LYRIA_MODEL_IDS.has(m.modelId);
 }
 
 /**
@@ -46,7 +56,8 @@ export function AutoAudioWatcher({ messages }: Props) {
         m.role !== "assistant" ||
         !m.audioStorageId ||
         m.status !== "completed" ||
-        seenAudioRef.current.has(m._id)
+        seenAudioRef.current.has(m._id) ||
+        isLyriaMusic(m)
       ) continue;
 
       // Mark as seen regardless of whether we auto-play.

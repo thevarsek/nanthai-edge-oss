@@ -29,6 +29,7 @@ import {
   RunGenerationArgs,
 } from "./actions_run_generation_types";
 import { appendCurrentTurnAudioInput } from "./audio_input_request";
+import { isLyriaModel, LYRIA_MP3_MIME_TYPE, parseMp3DurationMs } from "./audio_shared";
 import { CITATION_SYSTEM_PROMPT_SUFFIX } from "../search/helpers";
 import {
   buildNanthAIPrelude,
@@ -603,6 +604,25 @@ export async function generateForParticipant(
     const generatedFilesMeta = extractGeneratedFiles(collectedToolResults);
     const generatedChartsMeta = extractGeneratedCharts(collectedToolResults);
 
+    // M26: Lyria music generation — persist inline audio from the stream result.
+    let audioStorageId: undefined | Awaited<ReturnType<typeof ctx.storage.store>>;
+    let audioDurationMs: number | undefined;
+    let audioGeneratedAt: number | undefined;
+    if (result.audioBase64) {
+      const audioBuffer = Buffer.from(result.audioBase64, "base64");
+      audioDurationMs = parseMp3DurationMs(audioBuffer);
+      // Fall back to a conservative estimate if frame parsing yields 0
+      // (shouldn't happen for valid Lyria MP3, but be defensive).
+      if (audioDurationMs === 0) {
+        // Rough estimate: MP3 ~128kbps → bytes * 8 / 128000 * 1000
+        audioDurationMs = Math.round((audioBuffer.length * 8) / 128000 * 1000);
+      }
+      audioStorageId = await ctx.storage.store(
+        new Blob([new Uint8Array(audioBuffer)], { type: LYRIA_MP3_MIME_TYPE }),
+      );
+      audioGeneratedAt = Date.now();
+    }
+
     const usageToStore = genResult.totalUsage ?? result.usage ?? undefined;
 
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
@@ -622,6 +642,10 @@ export async function generateForParticipant(
       generatedCharts: generatedChartsMeta.length > 0 ? generatedChartsMeta : undefined,
       // Perplexity citations (structured array for rich UI rendering)
       citations: citationsForStorage,
+      // M26: Lyria inline audio
+      audioStorageId,
+      audioDurationMs,
+      audioGeneratedAt,
       triggerUserMessageId: args.userMessageId,
       openrouterGenerationId: result.generationId ?? undefined,
     });

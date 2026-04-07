@@ -246,6 +246,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               isGenerating={message.audioGenerating} role="assistant"
               playbackState={audio.state} onPlay={handlePlayAudio}
               onPause={audio.pause} onSeek={audio.seek} onCycleSpeed={audio.cycleSpeed}
+              modelId={message.modelId}
             />
           </div>
         )}
@@ -316,9 +317,11 @@ export const AssistantMessage = memo(function AssistantMessage({
             <button onClick={onFork} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Fork chat">
               <GitFork size={13} />
             </button>
-            <button onClick={handlePlayAudio} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title={hasAudio ? "Play audio" : "Generate audio"}>
-                <Volume2 size={13} />
-            </button>
+            {!(message.modelId && (message.modelId === "google/lyria-3-clip-preview" || message.modelId === "google/lyria-3-pro-preview")) && (
+              <button onClick={handlePlayAudio} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title={hasAudio ? "Play audio" : "Generate audio"}>
+                  <Volume2 size={13} />
+              </button>
+            )}
           </div>
         )}
 

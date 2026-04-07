@@ -17,6 +17,7 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import { filterExcludedOpenRouterProviders } from "./provider_filters";
 import { hasFieldsChanged, primitiveArraysEqual, deepEqual } from "./sync_diff";
+import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 
 // -- Sync metadata helpers ----------------------------------------------------
 
@@ -63,8 +64,8 @@ export const syncFromOpenRouter = internalAction({
     // Fetch the OpenRouter model catalog
     const response = await fetch("https://openrouter.ai/api/v1/models", {
       headers: {
-        "HTTP-Referer": "https://nanthai.tech",
-        "X-Title": "N:EDGE",
+        "HTTP-Referer": HTTP_REFERER,
+        "X-Title": X_TITLE,
       },
     });
 

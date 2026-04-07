@@ -5,6 +5,132 @@ export const STREAMING_TTS_FORMAT = "pcm16";
 export const TTS_WAV_MIME_TYPE = "audio/wav";
 export const TTS_PCM_SAMPLE_RATE_HZ = 24_000;
 
+// ── Lyria (Google Music Generation) ────────────────────────────────────
+export const LYRIA_CLIP_MODEL = "google/lyria-3-clip-preview";
+export const LYRIA_PRO_MODEL = "google/lyria-3-pro-preview";
+export const LYRIA_MP3_MIME_TYPE = "audio/mpeg";
+
+/** Returns true when `modelId` is one of the Lyria music-generation models. */
+export function isLyriaModel(modelId: string | null | undefined): boolean {
+  if (!modelId) return false;
+  return modelId === LYRIA_CLIP_MODEL || modelId === LYRIA_PRO_MODEL;
+}
+
+/**
+ * Parse the duration of an MP3 buffer by walking MPEG sync frames.
+ *
+ * Returns duration in milliseconds, or 0 if no valid frames are found.
+ * Handles ID3v2 tags at the start and skips non-sync data gracefully.
+ *
+ * Supports MPEG-1 Layer III (the format Lyria returns) as well as
+ * MPEG-2 and MPEG-2.5 Layer II/III for robustness.
+ */
+export function parseMp3DurationMs(buf: Buffer): number {
+  const len = buf.length;
+  let offset = 0;
+
+  // Skip ID3v2 header if present
+  if (len >= 10 && buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33) {
+    // ID3v2 size is stored as 4 × 7-bit "synchsafe" integers
+    const size =
+      ((buf[6] & 0x7f) << 21) |
+      ((buf[7] & 0x7f) << 14) |
+      ((buf[8] & 0x7f) << 7) |
+      (buf[9] & 0x7f);
+    offset = 10 + size;
+  }
+
+  // MPEG version → sample-rate table index
+  //   0b11 = MPEG1, 0b10 = MPEG2, 0b00 = MPEG2.5
+  const sampleRates: Record<number, number[]> = {
+    0b11: [44100, 48000, 32000],
+    0b10: [22050, 24000, 16000],
+    0b00: [11025, 12000, 8000],
+  };
+
+  // Samples-per-frame by [version][layer]
+  //   Layer indices: 0b11=I, 0b10=II, 0b01=III
+  const samplesPerFrame: Record<number, Record<number, number>> = {
+    0b11: { 0b11: 384, 0b10: 1152, 0b01: 1152 },  // MPEG1
+    0b10: { 0b11: 384, 0b10: 1152, 0b01: 576 },    // MPEG2
+    0b00: { 0b11: 384, 0b10: 1152, 0b01: 576 },    // MPEG2.5
+  };
+
+  // Bitrate tables (kbps) indexed by [version-layer key][bitrateIndex]
+  // MPEG1 Layer III
+  const bitratesMpeg1L3 = [
+    0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0,
+  ];
+  // MPEG2/2.5 Layer III
+  const bitratesMpeg2L3 = [
+    0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0,
+  ];
+
+  let totalDurationMs = 0;
+  let framesFound = 0;
+
+  while (offset + 4 <= len) {
+    // Look for sync word: 0xFF followed by 0xE0+ (11 sync bits)
+    if (buf[offset] !== 0xff || (buf[offset + 1] & 0xe0) !== 0xe0) {
+      offset++;
+      continue;
+    }
+
+    const b1 = buf[offset + 1];
+    const b2 = buf[offset + 2];
+
+    const versionBits = (b1 >> 3) & 0x03; // 0b11=V1, 0b10=V2, 0b00=V2.5, 0b01=reserved
+    const layerBits = (b1 >> 1) & 0x03;   // 0b11=I, 0b10=II, 0b01=III, 0b00=reserved
+    const bitrateIdx = (b2 >> 4) & 0x0f;
+    const srIdx = (b2 >> 2) & 0x03;
+    const padding = (b2 >> 1) & 0x01;
+
+    // Skip reserved combinations
+    if (versionBits === 0b01 || layerBits === 0b00 || bitrateIdx === 0 || bitrateIdx === 15 || srIdx === 3) {
+      offset++;
+      continue;
+    }
+
+    const srTable = sampleRates[versionBits];
+    const spf = samplesPerFrame[versionBits]?.[layerBits];
+    if (!srTable || !spf) {
+      offset++;
+      continue;
+    }
+    const sampleRate = srTable[srIdx];
+
+    // Select bitrate table
+    const bitrate =
+      versionBits === 0b11 && layerBits === 0b01
+        ? bitratesMpeg1L3[bitrateIdx]
+        : layerBits === 0b01
+          ? bitratesMpeg2L3[bitrateIdx]
+          : 0; // We only need Layer III for Lyria; skip others
+
+    if (bitrate === 0) {
+      offset++;
+      continue;
+    }
+
+    // Frame size (bytes)
+    const frameSize =
+      layerBits === 0b11 // Layer I
+        ? Math.floor(((12 * bitrate * 1000) / sampleRate + padding) * 4)
+        : Math.floor((spf / 8) * ((bitrate * 1000) / sampleRate) + padding);
+
+    if (frameSize < 1) {
+      offset++;
+      continue;
+    }
+
+    totalDurationMs += (spf / sampleRate) * 1000;
+    framesFound++;
+    offset += frameSize;
+  }
+
+  return framesFound > 0 ? Math.round(totalDurationMs) : 0;
+}
+
 export function pcm16Base64ToWavBuffer(
   audioBase64: string,
   sampleRateHz: number = TTS_PCM_SAMPLE_RATE_HZ,

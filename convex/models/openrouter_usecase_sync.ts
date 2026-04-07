@@ -10,6 +10,7 @@ import { v } from "convex/values";
 import { internalAction, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { deepEqual } from "./sync_diff";
+import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 
 // -- Documented OpenRouter categories -----------------------------------------
 
@@ -50,8 +51,8 @@ export const syncUseCases = internalAction({
           `https://openrouter.ai/api/v1/models?category=${category}`,
           {
             headers: {
-              "HTTP-Referer": "https://nanthai.tech",
-              "X-Title": "N:EDGE",
+              "HTTP-Referer": HTTP_REFERER,
+              "X-Title": X_TITLE,
             },
           },
         );

@@ -22,11 +22,10 @@ http.route({
   path: "/download",
   method: "GET",
   handler: httpAction(async (ctx, request) => {
-    // Verify authentication — reject unauthenticated requests
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return new Response("Unauthorized", { status: 401 });
-    }
+    // No auth check — the storageId itself is an unguessable random token
+    // that is only shared with authenticated users via Convex queries.
+    // Browsers opened via Intent.ACTION_VIEW (Android) or window.open (web)
+    // cannot carry Clerk session tokens, so auth here would block all downloads.
 
     const url = new URL(request.url);
     const storageId = url.searchParams.get("storageId");
@@ -57,6 +56,9 @@ http.route({
       txt: "text/plain",
       md: "text/markdown",
       eml: "message/rfc822",
+      mp3: "audio/mpeg",
+      wav: "audio/wav",
+      m4a: "audio/mp4",
     };
     const contentType = mimeTypes[ext ?? ""] ?? blob.type ?? "application/octet-stream";
 
