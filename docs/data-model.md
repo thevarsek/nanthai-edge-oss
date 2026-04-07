@@ -381,3 +381,31 @@ No new tables. Table count remains 35.
 | **Added `by_status` index to `generationJobs`** | Enables indexed cleanup of stale generation jobs instead of full table scan. |
 | **Added `audioGenerating` flag to `messages`** | Transient boolean flag indicating TTS generation is in progress, patched false on completion or failure. |
 | **Split `repairInvalidMessagePersonas`** | Not a schema change but a migration pattern: large repair mutations are chunked (process N documents per call, reschedule if more remain) to stay within Convex's mutation time budget. |
+
+---
+
+## M23 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Extended `usageRecords` with `source` labels** | 11 previously-untracked cost sources (title, compaction, memory extraction/embedding, search query/perplexity/planning/analysis/synthesis, subagent) now have `source` field + `by_message` index for per-message cost aggregation. |
+| **Added `showAdvancedStats` to `userPreferences`** | `v.optional(v.boolean())` — toggle for per-message/chat cost display. |
+
+No new tables. Table count remains 36.
+
+---
+
+## M26 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **No new schema fields** | M26 reuses existing M20 audio fields (`audioStorageId`, `audioDurationMs`, `audioGeneratedAt`) for Lyria music. The `generatedFiles` table's existing schema accommodates Lyria audio with `toolName: "lyria_music_generation"` and `mimeType: "audio/mpeg"`. |
+| **Extended `openrouter_request.ts`** | Added `cache_control: { type: "ephemeral" }` for Anthropic models (prompt caching opt-in). Not a schema change but affects request shape. |
+| **Extended `http.ts` MIME map** | Added `mp3: "audio/mpeg"`, `wav: "audio/wav"`, `m4a: "audio/mp4"` to the `/download` endpoint. |
+| **Extended `listModelSummaries` response** | `isFree` field now computed server-side via `:free` slug suffix instead of zero-price check. All clients decode this field. |
+
+No new tables. Table count remains 36.
+
+---
+
+*Last updated: 2026-04-07 — M26 Lyria music generation (no schema additions, reuses M20 audio fields). M23 usageRecords source labels. Table count: 36.*

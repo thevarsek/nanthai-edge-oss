@@ -521,4 +521,4 @@ ViewModels catch these and present user-facing error states. The `AppError` enum
 
 ---
 
-*Last updated: 2026-03-22 — M20 audio messages: ChatViewModel+Attachments handles recording, transcription (SFSpeechRecognizer), playback (AVPlayer), auto-audio TTS generation, concurrent loading guards. SettingsViewModel manages voice preference and autoAudioResponse via PreferenceWriteBuffer. Android uses Compose-local MediaPlayer/MediaRecorder with DisposableEffect lifecycle. Backend audio pipeline: gpt-audio-mini TTS via OpenRouter, PCM16→WAV encoding, Convex \_storage blobs.*
+*Last updated: 2026-04-07 — M26 Lyria music generation: AudioPlayerView.swift (iOS AVPlayer inline player with speed/seek/download), LyriaAudioPlayer.kt (Android MediaPlayer Compose player), enhanced AudioMessageBubble.tsx (Web). Server-side MP3 storage in generateForParticipant() eliminates client audio handling. M20 audio messages: ChatViewModel+Attachments handles recording, transcription (SFSpeechRecognizer), playback (AVPlayer), auto-audio TTS generation. Backend audio pipeline: gpt-audio-mini TTS + Lyria MP3 via OpenRouter, Convex \_storage blobs.*

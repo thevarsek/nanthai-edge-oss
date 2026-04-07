@@ -232,4 +232,60 @@ Content-Type: application/json
 
 ---
 
-*Source: Extracted from `plan.md` §9 — OpenRouter API Reference*
+## Audio Model Responses (Lyria)
+
+Google Lyria music generation models (`google/lyria-3-clip-preview`, `google/lyria-3-pro-preview`) use the standard `chat/completions` endpoint with no special request parameters — standard `model` + `messages` payload. The response arrives as three distinct SSE phases:
+
+### Phase 1: Text Content
+Standard `delta.content` (string) containing timestamped lyrics and a caption. Identical to any other model.
+
+### Phase 2: Audio Data
+A single event with `delta.audio.data` containing a base64-encoded MP3 chunk:
+
+```
+data: {"choices":[{"delta":{"audio":{"data":"SUQzBAAAAAAAI1RTU0UAAAAP..."}}}]}
+```
+
+Key differences from OpenAI GPT audio:
+- No special request parameters needed (no `modalities`, no `audio` config)
+- `delta.content` is always a string (never an array of content parts)
+- Audio lives in `delta.audio.data`, not `delta.content`
+- Format is MP3 (ID3v2.3.0 + MPEG frames) — must be inferred, no MIME type in response
+- One single audio chunk per response (not interleaved)
+
+### Phase 3: Stop
+```
+data: {"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{...}}
+data: [DONE]
+```
+
+### Pricing
+| Model | Output | Price |
+|-------|--------|-------|
+| `google/lyria-3-clip-preview` | 30-second clips | $0.04/request |
+| `google/lyria-3-pro-preview` | Full-length songs (~3 min) | $0.08/request |
+
+Note: Lyria models report $0 token prices but charge per-request. The `:free` slug suffix is the reliable way to detect free models.
+
+---
+
+## Prompt Caching
+
+Anthropic models require explicit opt-in for prompt caching via a top-level `cache_control` field:
+
+```json
+{
+  "model": "anthropic/claude-sonnet-4",
+  "messages": [...],
+  "stream": true,
+  "cache_control": { "type": "ephemeral" }
+}
+```
+
+This lets Anthropic place cache breakpoints at the last cacheable block, reusing previous context as the conversation grows. Other providers (OpenAI, DeepSeek, Gemini 2.5, Grok, Groq) cache automatically — no special handling needed.
+
+NanthAI adds `cache_control` automatically for all `anthropic/` model requests in `openrouter_request.ts`.
+
+---
+
+*Source: Extracted from `plan.md` §9 — OpenRouter API Reference. Last updated: 2026-04-07 — Lyria audio model SSE format, prompt caching.*

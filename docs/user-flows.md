@@ -593,3 +593,48 @@ User Input → ViewModel → ConvexService/ChatRepository → Convex Mutation
 Convex Mutation → Scheduled Action → OpenRouter API → Stream Writer
 Stream Writer → Convex Document Update → Subscription → ViewModel → UI
 ```
+
+---
+
+## M26: Lyria Music Generation Flow
+
+### User Flow
+
+```
+1. User selects a Lyria model (Lyria Clip or Lyria Pro) in the model picker
+2. User types a music prompt (e.g., "Write an upbeat pop song about summer")
+3. User taps Send
+4. Assistant message appears with text content (timestamped lyrics + caption)
+5. Audio player appears inline above/below the lyrics when audioStorageId is patched
+6. User can: play/pause, seek, adjust speed (0.5x–2x), download MP3
+7. Generated audio file appears in Knowledge Base
+```
+
+### Technical Flow
+
+```
+User sends prompt
+  → sendMessage mutation → schedules runGeneration action
+  → Convex action streams from OpenRouter
+  → SSE parser detects delta.content (lyrics) → patches message.content
+  → SSE parser detects delta.audio.data (base64 MP3)
+  → Stream completes:
+    → Decode base64 → parseMp3DurationMs (frame-walk)
+    → ctx.storage.store(Blob) → audioStorageId
+    → finalizeGeneration: patch message + insert generatedFiles
+  → Client subscription fires with updated message
+  → isLyriaMusic check (audioStorageId + modelId) → show AudioPlayerView
+  → getMessageAudioUrl query → signed storage URL → AVPlayer/MediaPlayer/Audio
+```
+
+### Platform Components
+
+| Platform | Detection | Player | Download |
+|----------|-----------|--------|----------|
+| iOS | `ConvexMessage.isLyriaMusic` | `AudioPlayerView.swift` (AVPlayer) | Share sheet via UIActivityViewController |
+| Android | `ChatMessage.isLyriaMusic` | `LyriaAudioPlayer.kt` (MediaPlayer) | Intent.ACTION_VIEW to /download endpoint |
+| Web | `isLyria` computed in AudioMessageBubble | `AudioMessageBubble.tsx` (HTML5 Audio) | Programmatic `<a>` download click |
+
+---
+
+*Last updated: 2026-04-07 — M26 Lyria music generation user/technical flow.*

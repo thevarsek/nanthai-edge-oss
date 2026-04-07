@@ -1,6 +1,6 @@
 # Project Structure
 
-> Complete project directory tree for NanthAI Edge (post-M25 Android tablet adaptive — iOS/Android/Convex).
+> Complete project directory tree for NanthAI Edge (post-M26 Lyria music generation — iOS/Android/Convex/Web).
 > SwiftData models removed. Convex backend at repo root. `messageChunks` table removed.
 
 ```
@@ -14,7 +14,7 @@ nanthai-edge/                              # Repository root
 │   ├── schema_validators.ts                # Shared validators (scheduledJobStatus, scheduledJobRecurrence, jobRunStatus, chatSource, scheduledJobStep, memoryRetrievalMode, memoryScopeType, memorySourceType, subagent statuses, skillScope, skillOrigin, skillVisibility, skillLockState, skillStatus, skillRuntimeMode, skillCompilationStatus)
 │   ├── convex.config.ts                    # Convex project config
 │   ├── auth.config.ts                      # Clerk JWT auth config
-│   ├── crons.ts                            # Scheduled jobs — 9 crons (model sync hourly, AA daily 2 UTC, use-cases 6h, stale jobs 15m, memory consolidation daily 3 UTC, stale search phases daily 4 UTC, old job runs daily 5 UTC, markRuntimeCleanupCandidates hourly, cleanupRuntimeSandboxes daily 6 UTC)
+│   ├── crons.ts                            # Scheduled jobs — 9 crons (model sync 4h, AA daily 2 UTC, use-cases 6h, stale jobs 15m, memory consolidation daily 3 UTC, stale search phases daily 4 UTC, old job runs daily 5 UTC, markRuntimeCleanupCandidates hourly, cleanupRuntimeSandboxes daily 6 UTC)
 │   ├── health.ts                           # Health check endpoint
 │   ├── http.ts                             # HTTP router — /download endpoint for file storage (M10)
 │   ├── capabilities/
@@ -70,7 +70,7 @@ nanthai-edge/                              # Repository root
 │   │   ├── helpers_video_url_utils.ts     # Video URL extraction/parsing helpers
 │   │   ├── audio_actions.ts               # TTS generation action — gpt-audio-mini via OpenRouter (M20)
 │   │   ├── audio_public_handlers.ts       # Public mutation/query handlers for audio (M20)
-│   │   ├── audio_shared.ts                # Audio constants, PCM→WAV encoder, voice helpers (M20)
+│   │   ├── audio_shared.ts                # Audio constants, PCM→WAV encoder, voice helpers, Lyria model IDs, MP3 frame parser (M20/M26)
 │   │   └── audio_trigger.ts               # Auto-audio trigger wired into generation completion (M20)
 │   ├── tools/                              # Tool infrastructure (M10/M14/M18/M19)
 │   │   ├── index.ts                        # buildToolRegistry() — shared builder for all entry points
@@ -276,6 +276,7 @@ nanthai-edge/                              # Repository root
 │           │   ├── features/               # Auth/chat/settings + advanced parity feature routes
 │           │   │   ├── chat/               # Chat list, detail, favorites strip
 │           │   │   │   ├── FavoritesStrip.kt  # Horizontal scrollable favorites strip (Compose)
+│           │   │   │   ├── LyriaAudioPlayer.kt # Inline Lyria music audio player — play/pause, seek, speed, download (M26)
 │           │   │   │   ├── ChatSkillsDialog.kt # Per-chat skill picker dialog (M18.1)
 │           │   │   │   └── (ChatDetailComposerComponents, ChatDetailDialogs, ChatDetailRoute, ChatDetailViewModel updated for skills)
 │           │   │   ├── favorites/           # Manage favorites feature
@@ -398,6 +399,7 @@ nanthai-edge/                              # Repository root
 │   │   │   │   ├── ChatSubagentsSheet.swift  # Per-chat subagent override sheet
 │   │   │   │   ├── SubagentBatchPanel.swift  # Inline child-run panel in parent assistant bubble
 │   │   │   │   ├── MessageActionBar.swift     # Inline action bar replacing context menus (post-M14)
+│   │   │   │   ├── AudioPlayerView.swift      # Inline music audio player — play/pause, seek, speed, download (M26)
 │   │   │   │   ├── MessageContextMenu.swift  # Long-press actions (retained for fallback)
 │   │   │   │   ├── MultiModelResponseView.swift # Side-by-side model responses
 │   │   │   │   ├── MentionAutocompleteView.swift # @-mention autocomplete
@@ -614,7 +616,9 @@ nanthai-edge/                              # Repository root
 │   # Additional files currently in this directory include:
 │   # integration_request_gates.test.ts, preferences_entitlements.test.ts,
 │   # preferences_purchase_transitions.test.ts, push_mutations.test.ts,
-│   # push_payloads.test.ts, subagents_claims.test.ts, subagents_regressions.test.ts
+│   # push_payloads.test.ts, subagents_claims.test.ts, subagents_regressions.test.ts,
+│   # lyria_audio.test.ts (M26), prompt_caching.test.ts, model_sync_noop_patch.test.ts,
+│   # model_filters.test.ts (isFree tests)
 │
 ├── e2b-template/                            # Custom E2B template build scripts + package list (M19)
 ├── package.json                             # npm deps (convex, e2b, docx, jszip, zod, etc.)
@@ -695,4 +699,4 @@ The following files were deleted as part of the Convex migration:
 
 ---
 
-*Last updated: 2026-04-03 — M25 Android tablet adaptive: AdaptiveChatPane, SettingsNavHost, auth race condition fix. M24 Google Coming Soon gate.*
+*Last updated: 2026-04-07 — M26 Lyria music generation: AudioPlayerView.swift (iOS), LyriaAudioPlayer.kt (Android), audio_shared.ts Lyria constants + MP3 parser. Prompt caching + model sync test files. M25 Android tablet adaptive.*

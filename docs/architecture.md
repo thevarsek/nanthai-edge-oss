@@ -140,7 +140,7 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `chat/manage` | updateChat, switchBranchAtFork, deleteChat, bulkDeleteChats, forkChat, duplicateChat, reorderPinnedChats | Chat management — archive, canonical fork switching, duplicate, fork, pin/unpin, reorder pinned |
 | `chat/queries` | listChats, getMessages, getChat, getAttachmentUrl, listModelSummaries, listKnowledgeBaseFiles | Reactive data subscriptions |
 | `chat/audio_actions` | generateAudioForMessage, previewVoice | TTS generation via `gpt-audio-mini`, PCM→WAV encoding, Convex storage (M20) |
-| `chat/audio_shared` | constants, pcmToWav, voice helpers | Audio constants, encoder, 6-voice catalog (M20) |
+| `chat/audio_shared` | constants, pcmToWav, voice helpers, isLyriaModel, parseMp3DurationMs | Audio constants, encoder, 6-voice catalog (M20), Lyria model IDs + MP3 frame parser (M26) |
 | `chat/audio_trigger` | autoAudioTrigger | Wired into finalizeGenerationHandler for auto-audio responses (M20) |
 | `chat/audio_public_handlers` | requestAudioGeneration, getMessageAudioUrl | Public mutation/query handlers for audio (M20) |
 | `tools/` | registry, execute_loop, progressive_registry, profile registries, index | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. |
@@ -443,7 +443,7 @@ Current Pro gating implementation:
 
 ---
 
-*Last updated: 2026-04-03 — M25 Android tablet adaptive navigation. M24 complete.*
+*Last updated: 2026-04-07 — M26 Lyria music generation, Anthropic prompt caching, model sync bandwidth reduction. M25 Android tablet adaptive navigation. M24 complete.*
 
 ---
 
@@ -878,4 +878,57 @@ For the current M16 stage, the project intentionally avoids automated GitHub wor
 
 ---
 
-*Last updated: 2026-03-23 — M20 audio pipeline architecture, M21 scalability audit (batch deletes, rate limiting, indexed cleanup, split repair mutations).*
+## M26 Lyria Music Generation Architecture
+
+### Lyria Audio Pipeline
+
+Google Lyria models (`google/lyria-3-clip-preview` for 30s clips, `google/lyria-3-pro-preview` for full songs) produce MP3 audio from text prompts. The audio pipeline is entirely **server-side** — clients never handle raw audio bytes.
+
+```
+User sends prompt to Lyria model
+  → Convex action streams from OpenRouter SSE
+  → SSE parser detects delta.audio.data (single base64 MP3 chunk)
+  → Stream completes → generateForParticipant() decodes base64
+    → parseMp3DurationMs() walks MPEG frames for exact duration
+    → ctx.storage.store(Blob) → audioStorageId
+    → finalizeGeneration patches message: audioStorageId, audioDurationMs, audioGeneratedAt
+    → Inserts generatedFiles record (toolName: "lyria_music_generation", mimeType: "audio/mpeg")
+  → Clients reactively receive audioStorageId via Convex subscription
+    → Query getMessageAudioUrl for signed storage URL → play audio
+```
+
+### Key Design Decisions
+
+- **Server-side storage** — audio is decoded and stored within the same Convex action that runs the SSE stream. No client-to-server upload needed.
+- **MP3 format** — Lyria outputs MP3 directly (not PCM). No conversion step. The `parseMp3DurationMs()` function walks MPEG frame headers to extract exact duration.
+- **Auto-audio suppression** — `finalizeGenerationHandler` skips `maybeScheduleAutoAudio` when `audioStorageId` is already present, preventing TTS from reading out music lyrics.
+- **isFree detection** — Lyria models report $0 token prices but charge per-request. `isFree` now uses `:free` slug suffix across all platforms instead of zero-price check.
+- **Knowledge Base** — generated audio files are registered in `generatedFiles` and downloadable via the `/download` HTTP endpoint (which now includes `mp3: "audio/mpeg"` MIME type).
+
+### Client Audio Players
+
+All three platforms have inline audio player components for Lyria messages:
+
+| Platform | Component | Features |
+|----------|-----------|----------|
+| iOS | `AudioPlayerView.swift` | AVPlayer, play/pause, seekable progress bar, M:SS time, 6-speed (0.5x–2x), download via share sheet |
+| Android | `LyriaAudioPlayer.kt` | MediaPlayer, play/pause, tap/drag-to-seek, M:SS time, 6-speed, download via Intent.ACTION_VIEW |
+| Web | `AudioMessageBubble.tsx` (enhanced) | HTML5 Audio, existing waveform/progress/speed UI + download button + Lyria header |
+
+Detection: each platform checks `audioStorageId != nil/null` AND model ID matches a Lyria slug (`isLyriaMusic` extension property).
+
+---
+
+## Post-M26 Backend Optimizations
+
+### Anthropic Prompt Caching
+
+Anthropic models require explicit opt-in for prompt caching. `openrouter_request.ts` now adds `cache_control: { type: "ephemeral" }` at the top level for all `anthropic/` model requests. Other providers (OpenAI, DeepSeek, Gemini 2.5, Grok, Groq) cache automatically — no special handling needed.
+
+### Model Sync Bandwidth Reduction
+
+The model catalog sync cron was reduced from hourly to every 4 hours. Combined with hash-based skip logic in `sync.ts` (compares a hash of the fetched data against the previous sync), most invocations now do zero mutations. This reduces DB bandwidth by ~75% (~250 MB/month savings). A $50 price cap filter also excludes extremely expensive models from the catalog.
+
+---
+
+*Last updated: 2026-04-07 — M26 Lyria music generation, Anthropic prompt caching, model sync optimization, isFree fix. M20/M21 audio pipeline and scalability audit.*
