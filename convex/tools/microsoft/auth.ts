@@ -16,6 +16,7 @@
 // default V8 runtime without "use node".
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 
@@ -78,15 +79,17 @@ export async function getMicrosoftAccessToken(
     )) as StoredMicrosoftConnection | null;
 
     if (!connection) {
-      throw new Error(
-        "No Microsoft account connected. Ask the user to connect Microsoft in Settings → Connected Accounts.",
-      );
+      throw new ConvexError({
+        code: "INTEGRATION_NOT_CONNECTED" as const,
+        message: "No Microsoft account connected. Ask the user to connect Microsoft in Settings → Connected Accounts.",
+      });
     }
 
     if (connection.status !== "active") {
-      throw new Error(
-        `Microsoft connection is ${connection.status}. Ask the user to reconnect Microsoft in Settings.`,
-      );
+      throw new ConvexError({
+        code: "INTEGRATION_NOT_CONNECTED" as const,
+        message: `Microsoft connection is ${connection.status}. Ask the user to reconnect Microsoft in Settings.`,
+      });
     }
 
     // Check if access token needs refresh
@@ -112,14 +115,18 @@ export async function getMicrosoftAccessToken(
 
     // Token expired or expiring soon — refresh it
     if (!connection.refreshToken) {
-      throw new Error(
-        "Microsoft access token expired and no refresh token available. Ask the user to reconnect Microsoft.",
-      );
+      throw new ConvexError({
+        code: "TOKEN_REFRESH_FAILED" as const,
+        message: "Microsoft access token expired and no refresh token available. Ask the user to reconnect Microsoft.",
+      });
     }
 
     const clientId = process.env.MICROSOFT_CLIENT_ID;
     if (!clientId) {
-      throw new Error("MICROSOFT_CLIENT_ID environment variable not set.");
+      throw new ConvexError({
+        code: "MISSING_CONFIG" as const,
+        message: "MICROSOFT_CLIENT_ID environment variable not set.",
+      });
     }
 
     // Public/native clients must NOT send client_secret — Microsoft rejects
@@ -146,9 +153,10 @@ export async function getMicrosoftAccessToken(
         errorMessage: `Token refresh failed (HTTP ${response.status})`,
       });
 
-      throw new Error(
-        `Microsoft token refresh failed (HTTP ${response.status}). Ask the user to reconnect Microsoft.`,
-      );
+      throw new ConvexError({
+        code: "TOKEN_REFRESH_FAILED" as const,
+        message: `Microsoft token refresh failed (HTTP ${response.status}). Ask the user to reconnect Microsoft.`,
+      });
     }
 
     const tokens = (await response.json()) as {
@@ -199,7 +207,8 @@ export async function getMicrosoftAccessToken(
   }
 
   // Exhausted retries — should be extremely rare.
-  throw new Error(
-    "Failed to refresh Microsoft token after multiple attempts. Ask the user to reconnect Microsoft.",
-  );
+  throw new ConvexError({
+    code: "TOKEN_REFRESH_FAILED" as const,
+    message: "Failed to refresh Microsoft token after multiple attempts. Ask the user to reconnect Microsoft.",
+  });
 }

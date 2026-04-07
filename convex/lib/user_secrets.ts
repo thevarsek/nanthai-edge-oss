@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 
@@ -18,7 +19,7 @@ export async function getRequiredUserOpenRouterApiKey(
 ): Promise<string> {
   const apiKey = await getOptionalUserOpenRouterApiKey(ctx, userId);
   if (!apiKey || apiKey.trim().length === 0) {
-    throw new Error("[MISSING_API_KEY] No OpenRouter API key found. Reconnect OpenRouter in Settings.");
+    throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key found. Reconnect OpenRouter in Settings." });
   }
   return apiKey;
 }

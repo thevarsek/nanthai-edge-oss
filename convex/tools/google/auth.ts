@@ -14,6 +14,7 @@
 // default V8 runtime without "use node".
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { resolveStoredGoogleOAuthClientConfig } from "../../oauth/google_client_config";
@@ -121,15 +122,17 @@ export async function getGoogleAccessToken(
     )) as StoredGoogleConnection | null;
 
     if (!connection) {
-      throw new Error(
-        "No Google account connected. Ask the user to connect Google in Settings → Connected Accounts.",
-      );
+      throw new ConvexError({
+        code: "INTEGRATION_NOT_CONNECTED" as const,
+        message: "No Google account connected. Ask the user to connect Google in Settings → Connected Accounts.",
+      });
     }
 
     if (connection.status !== "active") {
-      throw new Error(
-        `Google connection is ${connection.status}. Ask the user to reconnect Google in Settings.`,
-      );
+      throw new ConvexError({
+        code: "INTEGRATION_NOT_CONNECTED" as const,
+        message: `Google connection is ${connection.status}. Ask the user to reconnect Google in Settings.`,
+      });
     }
 
     assertGoogleCapabilityGranted(connection, requiredIntegration);
@@ -157,9 +160,10 @@ export async function getGoogleAccessToken(
 
     // Token expired or expiring soon — refresh it
     if (!connection.refreshToken) {
-      throw new Error(
-        "Google access token expired and no refresh token available. Ask the user to reconnect Google.",
-      );
+      throw new ConvexError({
+        code: "TOKEN_REFRESH_FAILED" as const,
+        message: "Google access token expired and no refresh token available. Ask the user to reconnect Google.",
+      });
     }
 
     const clientConfig = resolveStoredGoogleOAuthClientConfig(connection.clientType);
@@ -190,9 +194,10 @@ export async function getGoogleAccessToken(
         errorMessage: `Token refresh failed (HTTP ${response.status})`,
       });
 
-      throw new Error(
-        `Google token refresh failed (HTTP ${response.status}). Ask the user to reconnect Google.`,
-      );
+      throw new ConvexError({
+        code: "TOKEN_REFRESH_FAILED" as const,
+        message: `Google token refresh failed (HTTP ${response.status}). Ask the user to reconnect Google.`,
+      });
     }
 
     const tokens = (await response.json()) as {
@@ -241,7 +246,8 @@ export async function getGoogleAccessToken(
   }
 
   // Exhausted retries — should be extremely rare.
-  throw new Error(
-    "Failed to refresh Google token after multiple attempts. Ask the user to reconnect Google.",
-  );
+  throw new ConvexError({
+    code: "TOKEN_REFRESH_FAILED" as const,
+    message: "Failed to refresh Google token after multiple attempts. Ask the user to reconnect Google.",
+  });
 }

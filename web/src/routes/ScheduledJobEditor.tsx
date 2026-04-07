@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { ChevronLeft, Loader2 } from "lucide-react";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import {
   StepListSection,
@@ -293,7 +294,7 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
       }
       onDone();
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : t("job_save_error"));
+      setError(convexErrorMessage(e, t("job_save_error")));
       setIsSaving(false);
     }
   };

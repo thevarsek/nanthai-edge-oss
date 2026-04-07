@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import { Sandbox } from "@e2b/code-interpreter";
 import {
   RUNTIME_TEMPLATE_NAME,
@@ -8,7 +9,7 @@ import {
 
 export function assertE2BConfigured(): void {
   if (!process.env.E2B_API_KEY?.trim()) {
-    throw new Error("E2B_API_KEY is not configured for runtime sandboxes.");
+    throw new ConvexError({ code: "MISSING_CONFIG" as const, message: "E2B_API_KEY is not configured for runtime sandboxes." });
   }
 }
 

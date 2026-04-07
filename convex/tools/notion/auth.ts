@@ -15,6 +15,7 @@
 // default V8 runtime without "use node".
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 
@@ -58,15 +59,17 @@ export async function getNotionAccessToken(
   )) as StoredNotionConnection | null;
 
   if (!connection) {
-    throw new Error(
-      "No Notion account connected. Ask the user to connect Notion in Settings → Connected Accounts.",
-    );
+    throw new ConvexError({
+      code: "INTEGRATION_NOT_CONNECTED" as const,
+      message: "No Notion account connected. Ask the user to connect Notion in Settings → Connected Accounts.",
+    });
   }
 
   if (connection.status !== "active") {
-    throw new Error(
-      `Notion connection is ${connection.status}. Ask the user to reconnect Notion in Settings.`,
-    );
+    throw new ConvexError({
+      code: "INTEGRATION_NOT_CONNECTED" as const,
+      message: `Notion connection is ${connection.status}. Ask the user to reconnect Notion in Settings.`,
+    });
   }
 
   // Notion access tokens do not expire — return directly.

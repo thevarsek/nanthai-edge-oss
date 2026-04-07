@@ -51,7 +51,8 @@ test("createSkill infers docs profile and rejects duplicate user slug", async ()
     requiredToolIds: ["generate_docx"],
   });
 
-  assert.equal(created, "skill_new");
+  assert.equal(created.skillId, "skill_new");
+  assert.ok(Array.isArray(created.validationWarnings));
   assert.equal(inserts[0]?.table, "skills");
   assert.deepEqual(inserts[0]?.value.requiredToolProfiles, ["docs"]);
 

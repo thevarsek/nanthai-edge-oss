@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 // convex/search/helpers.ts
 // =============================================================================
 // Shared search helpers for M9 — Internet Search.
@@ -185,9 +186,10 @@ async function callPerplexity(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `Perplexity API error (${response.status}): ${errorText.slice(0, 300)}`,
-      );
+      throw new ConvexError({
+        code: "INTERNAL_ERROR" as const,
+        message: `Perplexity API error (${response.status}): ${errorText.slice(0, 300)}`,
+      });
     }
 
     const parsed = await response.json();

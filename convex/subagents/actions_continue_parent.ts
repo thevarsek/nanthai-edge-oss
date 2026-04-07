@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -256,7 +257,7 @@ export async function continueParentAfterSubagentsHandler(
     });
 
     if (generationResult.deferredForSubagents) {
-      throw new Error("Parent continuation unexpectedly deferred to subagents again.");
+      throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Parent continuation unexpectedly deferred to subagents again." });
     }
 
     const childGeneratedFiles = runs.flatMap((run) => run.generatedFiles ?? []);

@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
@@ -40,7 +41,7 @@ export function createRuntimeAnalyticsDepsForTest(
 
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
-    throw new Error("Workspace tools require chatId in the tool execution context.");
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Workspace tools require chatId in the tool execution context." });
   }
   return toolCtx.chatId;
 }
@@ -135,7 +136,7 @@ export async function runDataPythonExec(
   await deps.markSandboxSessionRunning(toolCtx, session);
 
   if (execution.error) {
-    throw new Error(`${execution.error.name}: ${execution.error.value}`);
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `${execution.error.name}: ${execution.error.value}` });
   }
 
   const warnings: string[] = [];

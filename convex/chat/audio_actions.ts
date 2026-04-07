@@ -3,6 +3,7 @@
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import { ConvexError } from "convex/values";
 import { requireAuth } from "../lib/auth";
 import { callOpenRouterStreaming } from "../lib/openrouter";
 import {
@@ -75,7 +76,7 @@ async function synthesizeText(
   );
 
   if (!result.audioBase64) {
-    throw new Error("Audio generation returned no audio payload.");
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Audio generation returned no audio payload." });
   }
 
   const pcmByteCount = Buffer.from(result.audioBase64, "base64").length;
@@ -100,11 +101,11 @@ export async function generateAudioForMessageHandler(
     messageId: args.messageId,
   });
   if (!message || message.role !== "assistant") {
-    throw new Error("Only assistant messages can generate audio.");
+    throw new ConvexError({ code: "INVALID_INPUT" as const, message: "Only assistant messages can generate audio." });
   }
   const textToVoice = args.previewText?.trim() || message.content?.trim();
   if (!textToVoice) {
-    throw new Error("Assistant message has no content to voice.");
+    throw new ConvexError({ code: "INVALID_INPUT" as const, message: "Assistant message has no content to voice." });
   }
   if (message.audioStorageId && !args.previewText && !args.voiceOverride) {
     return {
@@ -120,7 +121,7 @@ export async function generateAudioForMessageHandler(
   });
   const userId = chat?.userId;
   if (!userId) {
-    throw new Error("Chat not found for message.");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found for message." });
   }
 
   let generated: Awaited<ReturnType<typeof synthesizeText>>;
@@ -132,7 +133,7 @@ export async function generateAudioForMessageHandler(
       ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId }),
     ]);
     if (!apiKey) {
-      throw new Error("[MISSING_API_KEY] No OpenRouter API key available for audio generation.");
+      throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key available for audio generation." });
     }
 
     voice = args.voiceOverride?.trim() || preferredVoiceFromPreferences(preferences);
@@ -178,7 +179,7 @@ export async function previewVoiceHandler(
   const { userId } = await requireAuth(ctx);
   const apiKey = await ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId });
   if (!apiKey) {
-    throw new Error("[MISSING_API_KEY] No OpenRouter API key found. Reconnect OpenRouter in Settings.");
+    throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key found. Reconnect OpenRouter in Settings." });
   }
   const voice = args.voice.trim() || DEFAULT_TTS_VOICE;
   const generated = await synthesizeText(apiKey, PREVIEW_TEXT, voice);

@@ -8,6 +8,7 @@ import { ChevronLeft, Check } from "lucide-react";
 import { ProGateWrapper } from "@/hooks/useProGate";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { useToast } from "@/components/shared/Toast.context";
 import { SkillEditorMetadataSection } from "./SkillEditorMetadataSection";
 import {
   cloneSkillMetadataSelection,
@@ -47,6 +48,7 @@ function SkillEditorPageContent() {
 
   const createSkill = useMutation(api.skills.mutations.createSkill);
   const updateSkill = useMutation(api.skills.mutations.updateSkill);
+  const { toast } = useToast();
 
   const [form, setForm] = useState<SkillFormState>({
     name: "",
@@ -92,8 +94,9 @@ function SkillEditorPageContent() {
     setSaving(true);
     setError(null);
     try {
+      let warnings: string[] = [];
       if (isEditing && skillId) {
-        await updateSkill({
+        const result = await updateSkill({
           skillId: skillId as Id<"skills">,
           name: form.name,
           summary: form.summary,
@@ -103,8 +106,9 @@ function SkillEditorPageContent() {
           requiredCapabilities: requiredCapabilitiesForSkill(form.metadataSelection),
           requiredIntegrationIds: Array.from(form.metadataSelection.selectedIntegrationIds).sort(),
         });
+        warnings = result.validationWarnings;
       } else {
-        await createSkill({
+        const result = await createSkill({
           name: form.name,
           summary: form.summary,
           instructionsRaw: form.instructionsRaw,
@@ -113,6 +117,10 @@ function SkillEditorPageContent() {
           requiredCapabilities: requiredCapabilitiesForSkill(form.metadataSelection),
           requiredIntegrationIds: Array.from(form.metadataSelection.selectedIntegrationIds).sort(),
         });
+        warnings = result.validationWarnings;
+      }
+      if (warnings.length > 0) {
+        toast({ message: warnings.join(" "), variant: "default" });
       }
       navigate("/app/settings/skills");
     } catch (e) {

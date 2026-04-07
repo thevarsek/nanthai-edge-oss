@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import {
   HTTP_REFERER,
   MAX_RATE_LIMIT_RETRIES,
@@ -134,6 +135,8 @@ export async function callOpenRouterStreaming(
       });
       return result;
     } catch (error) {
+      // Re-throw ConvexError as-is (don't wrap structured errors)
+      if (error instanceof ConvexError) throw error;
       const durationMs = Date.now() - startTime;
       const errMsg = error instanceof Error ? error.message : String(error);
       const cause = error instanceof Error && (error as NodeJS.ErrnoException).cause
@@ -295,9 +298,10 @@ async function streamOnce(
           }
         }
 
-        throw new Error(
-          `OpenRouter API error (${response.status}): ${errorMessage}`,
-        );
+        throw new ConvexError({
+          code: "INTERNAL_ERROR" as const,
+          message: `OpenRouter API error (${response.status}): ${errorMessage}`,
+        });
       }
 
       // Process SSE stream and stop as soon as [DONE] arrives instead of
@@ -328,6 +332,8 @@ async function streamOnce(
       const text = await response.text();
       return deps.processSSETextStream(text, callbacks);
     } catch (error) {
+      // Re-throw ConvexError as-is (don't wrap structured errors)
+      if (error instanceof ConvexError) throw error;
       if (error instanceof Error) {
         const cause = (error as NodeJS.ErrnoException).cause
           ? String((error as NodeJS.ErrnoException).cause)
@@ -336,19 +342,19 @@ async function streamOnce(
           console.error("[openrouter:stream:once] timeout", {
             model, timeoutMs: STREAM_REQUEST_TIMEOUT_MS, rateLimitRetries,
           });
-          throw new Error(
-            `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}`,
-            { cause: error },
-          );
+          // Re-throw as a regular Error so the caller's retry logic can inspect it
+          const abortMsg = `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`;
+          throw new Error(abortMsg);
         }
         if (error.message === "fetch failed") {
           console.error("[openrouter:stream:once] fetch failed", {
             model, error: error.message, ...(cause ? { cause } : {}), rateLimitRetries,
           });
-          throw new Error(
-            `OpenRouter fetch failed for model ${model}${cause ? `: ${cause}` : ""}`,
-            { cause: error },
-          );
+          // Re-throw as a regular Error so the caller's retry logic can inspect it
+          const fetchMsg = `OpenRouter fetch failed for model ${model}${cause ? `: ${cause}` : ""}`;
+          const fetchErr = new Error(fetchMsg);
+          (fetchErr as NodeJS.ErrnoException).cause = cause;
+          throw fetchErr;
         }
       }
       throw error;

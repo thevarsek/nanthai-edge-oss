@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import * as path from "node:path";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -31,7 +32,7 @@ interface OwnedStorageFile {
 
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
-    throw new Error("Workspace tools require chatId in the tool execution context.");
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Workspace tools require chatId in the tool execution context." });
   }
   return toolCtx.chatId;
 }
@@ -65,12 +66,12 @@ export async function resolveOwnedStorageFile(
     { userId: toolCtx.userId, storageId: storageId as Id<"_storage"> },
   );
   if (!owned) {
-    throw new Error("The requested file is not available to this user.");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "The requested file is not available to this user." });
   }
 
   const blob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
   if (!blob) {
-    throw new Error("The requested file could not be loaded from storage.");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "The requested file could not be loaded from storage." });
   }
 
   return { record: owned, blob };

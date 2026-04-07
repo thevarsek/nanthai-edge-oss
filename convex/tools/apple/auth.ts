@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 
@@ -31,21 +32,24 @@ export async function getAppleCalendarCredentials(
   )) as StoredAppleCalendarConnection | null;
 
   if (!connection) {
-    throw new Error(
-      "No Apple Calendar account connected. Ask the user to connect Apple Calendar in Settings → Connected Accounts.",
-    );
+    throw new ConvexError({
+      code: "INTEGRATION_NOT_CONNECTED" as const,
+      message: "No Apple Calendar account connected. Ask the user to connect Apple Calendar in Settings → Connected Accounts.",
+    });
   }
 
   if (connection.status !== "active") {
-    throw new Error(
-      `Apple Calendar connection is ${connection.status}. Ask the user to reconnect Apple Calendar in Settings.`,
-    );
+    throw new ConvexError({
+      code: "INTEGRATION_NOT_CONNECTED" as const,
+      message: `Apple Calendar connection is ${connection.status}. Ask the user to reconnect Apple Calendar in Settings.`,
+    });
   }
 
   if (!connection.email || !connection.accessToken) {
-    throw new Error(
-      "Apple Calendar credentials are incomplete. Ask the user to reconnect Apple Calendar in Settings.",
-    );
+    throw new ConvexError({
+      code: "INTEGRATION_NOT_CONNECTED" as const,
+      message: "Apple Calendar credentials are incomplete. Ask the user to reconnect Apple Calendar in Settings.",
+    });
   }
 
   return {

@@ -19,7 +19,9 @@ test("user secret helpers return the optional key and reject missing required ke
   assert.equal(await getOptionalUserOpenRouterApiKey(ctx, "user_2"), "   ");
   await assert.rejects(
     () => getRequiredUserOpenRouterApiKey(ctx, "user_2"),
-    /\[MISSING_API_KEY]/,
+    (error: unknown) =>
+      error instanceof ConvexError &&
+      String(error.data?.code) === "MISSING_API_KEY",
   );
 });
 

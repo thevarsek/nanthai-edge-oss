@@ -7,6 +7,7 @@
 // and dispatches tool-call execution by name.
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { ToolCall, ToolDefinition } from "../lib/openrouter_types";
 
@@ -134,7 +135,10 @@ export class ToolRegistry {
   register(...tools: RegisteredTool[]): void {
     for (const tool of tools) {
       if (this.tools.has(tool.name)) {
-        throw new Error(`Tool "${tool.name}" is already registered`);
+        throw new ConvexError({
+          code: "DUPLICATE_TOOL" as const,
+          message: `Tool "${tool.name}" is already registered`,
+        });
       }
       this.tools.set(tool.name, tool);
     }

@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import type { ToolExecutionContext } from "../registry";
 import { getAppleCalendarCredentials } from "./auth";
@@ -62,7 +63,10 @@ export async function loadAppleCalendars(toolCtx: ToolExecutionContext) {
   });
 
   if (calendars.length === 0) {
-    throw new Error("No Apple calendars were found for this account.");
+    throw new ConvexError({
+      code: "NOT_FOUND" as const,
+      message: "No Apple calendars were found for this account.",
+    });
   }
 
   return { client, calendars };
@@ -95,7 +99,8 @@ export async function findAppleCalendarEventByUrl(
     }
   }
 
-  throw new Error(
-    `Apple Calendar event '${eventUrl}' was not found for this account.`,
-  );
+  throw new ConvexError({
+    code: "NOT_FOUND" as const,
+    message: `Apple Calendar event '${eventUrl}' was not found for this account.`,
+  });
 }

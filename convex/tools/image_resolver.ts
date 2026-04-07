@@ -11,6 +11,7 @@
 // expected by pptxgenjs: "image/png;base64,iVBOR..."
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 
@@ -62,12 +63,18 @@ export async function resolveImage(
       input.imageStorageId as Id<"_storage">,
     );
     if (!blob) {
-      throw new Error(`Image not found in storage: ${input.imageStorageId}`);
+      throw new ConvexError({
+        code: "NOT_FOUND" as const,
+        message: `Image not found in storage: ${input.imageStorageId}`,
+      });
     }
 
     const buffer = await blob.arrayBuffer();
     if (buffer.byteLength === 0) {
-      throw new Error(`Image is empty (0 bytes): ${input.imageStorageId}`);
+      throw new ConvexError({
+        code: "INVALID_INPUT" as const,
+        message: `Image is empty (0 bytes): ${input.imageStorageId}`,
+      });
     }
 
     const mimeType = blob.type || "image/png";
@@ -83,9 +90,10 @@ export async function resolveImage(
     return { data: input.data, altText };
   }
 
-  throw new Error(
-    `Image ${index + 1}: provide either 'imageStorageId' (from fetch_image) or 'data' (base64)`,
-  );
+  throw new ConvexError({
+    code: "INVALID_INPUT" as const,
+    message: `Image ${index + 1}: provide either 'imageStorageId' (from fetch_image) or 'data' (base64)`,
+  });
 }
 
 /**

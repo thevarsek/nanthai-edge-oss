@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+
 export interface AppleCalendarEventFields {
   uid: string;
   summary: string;
@@ -77,7 +79,10 @@ export function updateAppleCalendarEvent(
   const endIndex = lines.indexOf("END:VEVENT");
 
   if (beginIndex < 0 || endIndex < 0 || endIndex <= beginIndex) {
-    throw new Error("The Apple Calendar event could not be parsed.");
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: "The Apple Calendar event could not be parsed.",
+    });
   }
 
   const merged: AppleCalendarEventFields = {
@@ -93,7 +98,10 @@ export function updateAppleCalendarEvent(
   };
 
   if (!merged.startTime || !merged.endTime) {
-    throw new Error("Apple Calendar updates require a valid start and end time.");
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: "Apple Calendar updates require a valid start and end time.",
+    });
   }
 
   const preservedEventLines = lines
@@ -152,9 +160,10 @@ function encodeDateProperty(
   }
 
   if (!hasExplicitTimezone(value) && !timezone) {
-    throw new Error(
-      `Apple Calendar ${name.toLowerCase()} requires either an ISO offset or a timezone.`,
-    );
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: `Apple Calendar ${name.toLowerCase()} requires either an ISO offset or a timezone.`,
+    });
   }
 
   if (!hasExplicitTimezone(value) && timezone) {
@@ -240,9 +249,10 @@ function formatDateTimeValue(value: string): string {
 function formatFloatingDateTime(value: string): string {
   const trimmed = value.trim();
   if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/.test(trimmed)) {
-    throw new Error(
-      "Apple Calendar requires local times in 'YYYY-MM-DDTHH:mm:ss' format when using timezone.",
-    );
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: "Apple Calendar requires local times in 'YYYY-MM-DDTHH:mm:ss' format when using timezone.",
+    });
   }
 
   const [datePart, timePart] = trimmed.split("T");
@@ -253,7 +263,10 @@ function formatFloatingDateTime(value: string): string {
 function formatUTCDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`Invalid Apple Calendar date/time: '${value}'.`);
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: `Invalid Apple Calendar date/time: '${value}'.`,
+    });
   }
 
   const year = date.getUTCFullYear();

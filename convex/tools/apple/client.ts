@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import type { DAVCalendar } from "tsdav";
 import { createDAVClient } from "tsdav";
 
@@ -62,7 +63,10 @@ export function findCalendarById(
   calendarId?: string,
 ): DAVCalendar {
   if (calendars.length === 0) {
-    throw new Error("No Apple calendars are available for this account.");
+    throw new ConvexError({
+      code: "NOT_FOUND" as const,
+      message: "No Apple calendars are available for this account.",
+    });
   }
 
   if (!calendarId) {
@@ -71,9 +75,10 @@ export function findCalendarById(
 
   const calendar = calendars.find((entry) => entry.url === calendarId);
   if (!calendar) {
-    throw new Error(
-      `Apple Calendar '${calendarId}' was not found for this account.`,
-    );
+    throw new ConvexError({
+      code: "NOT_FOUND" as const,
+      message: `Apple Calendar '${calendarId}' was not found for this account.`,
+    });
   }
   return calendar;
 }

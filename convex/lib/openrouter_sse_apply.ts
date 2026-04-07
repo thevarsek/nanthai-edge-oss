@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { ToolCallDelta } from "./openrouter_types";
 import { SSEAccumulator, SSECallbacks, SSEEventResult } from "./openrouter_sse_types";
 
@@ -55,7 +56,7 @@ export async function applySSEEventResult(
   callbacks: SSECallbacks,
 ): Promise<boolean> {
   if (result.error) {
-    throw new Error(`OpenRouter stream error: ${result.error}`);
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `OpenRouter stream error: ${result.error}` });
   }
 
   // Accumulate reasoning BEFORE content so that when the content callback

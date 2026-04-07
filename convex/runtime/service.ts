@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ToolExecutionContext } from "../tools/registry";
@@ -18,7 +19,7 @@ const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
-    throw new Error("Workspace tools require chatId in the tool execution context.");
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Workspace tools require chatId in the tool execution context." });
   }
   return toolCtx.chatId;
 }
@@ -262,7 +263,7 @@ export async function writeWorkspaceFile(
   const session = await ensureSandboxForChat(toolCtx);
   const exists = await session.sandbox.files.exists(path);
   if (exists && !overwrite) {
-    throw new Error(`File already exists at ${path}. Pass overwrite=true to replace it.`);
+    throw new ConvexError({ code: "INVALID_INPUT" as const, message: `File already exists at ${path}. Pass overwrite=true to replace it.` });
   }
   await session.sandbox.files.write(path, content);
   await markSandboxSessionRunning(toolCtx, session);

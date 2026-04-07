@@ -1,4 +1,4 @@
-import { v, type PropertyValidators } from "convex/values";
+import { ConvexError, v, type PropertyValidators } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
@@ -112,7 +112,7 @@ export const regeneratePaperAction = internalAction({
       );
       const userMessageId = assistantMsg?.parentMessageIds?.[0];
       if (!userMessageId) {
-        throw new Error("Could not resolve user message for regeneration");
+        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Could not resolve user message for regeneration" });
       }
 
       // Hand off to the full generation pipeline so the model gets skills,

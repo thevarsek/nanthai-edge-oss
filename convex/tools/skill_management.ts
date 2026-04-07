@@ -9,6 +9,7 @@
 // Follows the same pattern as `persona.ts`.
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { createTool } from "./registry";
@@ -171,7 +172,7 @@ export const createSkill = createTool({
     }
 
     try {
-      const skillId = await toolCtx.ctx.runMutation(
+      const result = await toolCtx.ctx.runMutation(
         internal.skills.mutations.createSkillInternal,
         {
           userId: toolCtx.userId,
@@ -186,28 +187,32 @@ export const createSkill = createTool({
         },
       );
 
+      const warningNote = result.validationWarnings.length > 0
+        ? ` Warnings: ${result.validationWarnings.join("; ")}`
+        : "";
       return {
         success: true,
         data: {
-          skillId,
+          skillId: result.skillId,
           name: name.trim(),
           message:
             `Created skill "${name.trim()}". Metadata and profiles were normalized automatically. ` +
-            `The user can assign it to personas or chats, or it can be loaded via load_skill.`,
+            `The user can assign it to personas or chats, or it can be loaded via load_skill.${warningNote}`,
         },
       };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
       // Surface validation errors cleanly
-      if (msg.startsWith("SKILL_INCOMPATIBLE:")) {
+      if (e instanceof ConvexError && typeof e.data === "object" && e.data !== null && "code" in e.data && e.data.code === "SKILL_INCOMPATIBLE") {
+        const detail = "message" in e.data ? String(e.data.message) : "";
         return {
           success: false,
           data: null,
           error:
-            `The instructions contain incompatible content. ${msg.replace("SKILL_INCOMPATIBLE: ", "")} ` +
+            `The instructions contain incompatible content. ${detail} ` +
             `Remove references to local shell, filesystem, bash, browser automation, or MCP servers.`,
         };
       }
+      const msg = e instanceof Error ? e.message : String(e);
       return {
         success: false,
         data: null,
@@ -338,7 +343,7 @@ export const updateSkill = createTool({
         }
       }
 
-      await toolCtx.ctx.runMutation(
+      const updateResult = await toolCtx.ctx.runMutation(
         internal.skills.mutations.updateSkillInternal,
         {
           skillId: resolvedId,
@@ -354,23 +359,27 @@ export const updateSkill = createTool({
         },
       );
 
+      const warningNote = updateResult.validationWarnings.length > 0
+        ? ` Warnings: ${updateResult.validationWarnings.join("; ")}`
+        : "";
       return {
         success: true,
         data: {
           skillId: resolvedId,
           message:
-            `Updated skill. ${args.instructionsRaw ? "Instructions and profile metadata were revalidated." : ""}`,
+            `Updated skill. ${args.instructionsRaw ? "Instructions and profile metadata were revalidated." : ""}${warningNote}`,
         },
       };
     } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      if (msg.startsWith("SKILL_INCOMPATIBLE:")) {
+      if (e instanceof ConvexError && typeof e.data === "object" && e.data !== null && "code" in e.data && e.data.code === "SKILL_INCOMPATIBLE") {
+        const detail = "message" in e.data ? String(e.data.message) : "";
         return {
           success: false,
           data: null,
-          error: `Incompatible instructions: ${msg.replace("SKILL_INCOMPATIBLE: ", "")}`,
+          error: `Incompatible instructions: ${detail}`,
         };
       }
+      const msg = e instanceof Error ? e.message : String(e);
       return { success: false, data: null, error: `Failed to update skill: ${msg}` };
     }
   },

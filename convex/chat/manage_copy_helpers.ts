@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { Doc, Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import {
@@ -19,7 +20,7 @@ export async function loadMessagesForFork(
 
   const forkIdx = allMessages.findIndex((message) => message._id === atMessageId);
   if (forkIdx === -1) {
-    throw new Error("Fork message not found in chat");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Fork message not found in chat" });
   }
 
   return allMessages.slice(0, forkIdx + 1);

@@ -1,5 +1,5 @@
 import { internalMutation } from "../_generated/server";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 export const setUserCapabilityInternal = internalMutation({
   args: {
@@ -21,7 +21,7 @@ export const setUserCapabilityInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     if (args.active && args.capability === "pro") {
-      throw new Error("Pro grants are managed via purchase entitlements. Use purchase entitlements instead.");
+      throw new ConvexError({ code: "FORBIDDEN" as const, message: "Pro grants are managed via purchase entitlements. Use purchase entitlements instead." });
     }
 
     const now = Date.now();

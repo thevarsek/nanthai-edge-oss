@@ -12,6 +12,8 @@ import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
+import { useToast } from "@/components/shared/Toast.context";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { ScheduledJobEditor } from "./ScheduledJobEditor";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -330,6 +332,7 @@ function JobRow({ job, onSelect }: { job: JobDoc; onSelect: () => void }) {
 function ScheduledJobsPageContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Id<"scheduledJobs"> | null>(null);
   const [selectedJobId, setSelectedJobId] = useState<Id<"scheduledJobs"> | null>(null);
@@ -353,9 +356,13 @@ function ScheduledJobsPageContent() {
     else navigate("/app/settings");
   };
 
-  const handleToggle = (id: Id<"scheduledJobs">, status: string) => {
-    if (status === "active") void pauseJob({ jobId: id });
-    else void resumeJob({ jobId: id });
+  const handleToggle = async (id: Id<"scheduledJobs">, status: string) => {
+    try {
+      if (status === "active") await pauseJob({ jobId: id });
+      else await resumeJob({ jobId: id });
+    } catch (e) {
+      toast({ message: convexErrorMessage(e, t("something_went_wrong")), variant: "error" });
+    }
   };
 
   // ── Editor views ──
@@ -392,7 +399,13 @@ function ScheduledJobsPageContent() {
               job={selectedJob}
               onEdit={() => setView("edit")}
               onToggle={() => handleToggle(selectedJob._id, selectedJob.status)}
-              onRunNow={() => void runJobNow({ jobId: selectedJob._id })}
+              onRunNow={async () => {
+                try {
+                  await runJobNow({ jobId: selectedJob._id });
+                } catch (e) {
+                  toast({ message: convexErrorMessage(e, t("something_went_wrong")), variant: "error" });
+                }
+              }}
               onDelete={() => setDeleteTarget(selectedJob._id)}
             />
           ) : (
@@ -469,11 +482,18 @@ function ScheduledJobsPageContent() {
       <ConfirmDialog
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) void deleteJob({ jobId: deleteTarget });
-          setDeleteTarget(null);
-          setSelectedJobId(null);
-          setView("list");
+        onConfirm={async () => {
+          if (deleteTarget) {
+            try {
+              await deleteJob({ jobId: deleteTarget });
+              setDeleteTarget(null);
+              setSelectedJobId(null);
+              setView("list");
+            } catch (e) {
+              setDeleteTarget(null);
+              toast({ message: convexErrorMessage(e, t("something_went_wrong")), variant: "error" });
+            }
+          }
         }}
         title={t("delete_job_title")}
         description={t("delete_job_description")}

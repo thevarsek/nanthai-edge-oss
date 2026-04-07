@@ -1,3 +1,5 @@
+import { ConvexError } from "convex/values";
+
 const HTTP_PROTOCOLS = new Set(["http:", "https:"]);
 
 function trimEnv(name: string): string | undefined {
@@ -39,9 +41,10 @@ export function resolveStoredGoogleOAuthClientConfig(
 function resolveNativeGoogleOAuthClientConfig(): GoogleOAuthClientConfig {
   const clientId = trimEnv("GOOGLE_CLIENT_ID");
   if (!clientId) {
-    throw new Error(
-      "Google native OAuth is not configured. Set GOOGLE_CLIENT_ID environment variable.",
-    );
+    throw new ConvexError({
+      code: "MISSING_CONFIG" as const,
+      message: "Google native OAuth is not configured. Set GOOGLE_CLIENT_ID environment variable.",
+    });
   }
 
   return { clientId, clientType: "native" };
@@ -50,9 +53,10 @@ function resolveNativeGoogleOAuthClientConfig(): GoogleOAuthClientConfig {
 function resolveWebGoogleOAuthClientConfig(): GoogleOAuthClientConfig {
   const clientId = trimEnv("GOOGLE_WEB_CLIENT_ID") || trimEnv("GOOGLE_CLIENT_ID");
   if (!clientId) {
-    throw new Error(
-      "Google web OAuth is not configured. Set GOOGLE_WEB_CLIENT_ID environment variable.",
-    );
+    throw new ConvexError({
+      code: "MISSING_CONFIG" as const,
+      message: "Google web OAuth is not configured. Set GOOGLE_WEB_CLIENT_ID environment variable.",
+    });
   }
 
   const clientSecret = trimEnv("GOOGLE_WEB_CLIENT_SECRET") || trimEnv("GOOGLE_CLIENT_SECRET");

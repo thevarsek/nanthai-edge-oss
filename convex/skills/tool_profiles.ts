@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import type { ValidationFinding } from "./validators";
 
 const PROFILE_ORDER = [
@@ -172,12 +173,13 @@ export function normalizeSkillMetadata(
   }
 
   if (requiredCapabilities.has("sandboxRuntime") && !input.allowSandboxRuntime) {
-    throw new Error(
-      "This skill requires sandboxRuntime, but the user does not have workspace runtime access.",
-    );
+    throw new ConvexError({
+      code: "SANDBOX_NOT_AVAILABLE" as const,
+      message: "This skill requires sandboxRuntime, but the user does not have workspace runtime access.",
+    });
   }
 
-  ensureIntegrationProfileRequirements(inferredProfiles, requiredIntegrationIds);
+  pruneOrphanedIntegrationProfiles(inferredProfiles, requiredIntegrationIds, metadataWarnings);
 
   if (inferredProfiles.has("docs") && !requiredToolIds.some((toolId) => DOC_TOOL_IDS.has(toolId))) {
     metadataWarnings.push(
@@ -220,21 +222,40 @@ export function normalizeSkillMetadata(
   };
 }
 
-function ensureIntegrationProfileRequirements(
+/**
+ * Auto-remove integration profiles that have no backing integration IDs
+ * selected. This can happen when the instruction text mentions an integration
+ * keyword (e.g. "outlook") but the user explicitly deselected all integrations
+ * for that provider. Instead of blocking the save, we silently drop the
+ * orphaned profile and add a metadata warning so the user knows what happened.
+ */
+function pruneOrphanedIntegrationProfiles(
   inferredProfiles: Set<SkillToolProfileId>,
   requiredIntegrationIds: string[],
+  metadataWarnings: string[],
 ): void {
-  if (inferredProfiles.has("google") && !requiredIntegrationIds.some((id) => INTEGRATION_PROFILE_BY_ID[id] === "google")) {
-    throw new Error("Google profile requires at least one of gmail, drive, or calendar.");
-  }
-  if (inferredProfiles.has("microsoft") && !requiredIntegrationIds.some((id) => INTEGRATION_PROFILE_BY_ID[id] === "microsoft")) {
-    throw new Error("Microsoft profile requires at least one of outlook, onedrive, or ms_calendar.");
-  }
-  if (inferredProfiles.has("notion") && !requiredIntegrationIds.includes("notion")) {
-    throw new Error("Notion profile requires the notion integration.");
-  }
-  if (inferredProfiles.has("appleCalendar") && !requiredIntegrationIds.includes("apple_calendar")) {
-    throw new Error("Apple Calendar profile requires the apple_calendar integration.");
+  const integrationProfilePairs: Array<{
+    profile: SkillToolProfileId;
+    label: string;
+  }> = [
+    { profile: "google", label: "Google" },
+    { profile: "microsoft", label: "Microsoft" },
+    { profile: "notion", label: "Notion" },
+    { profile: "appleCalendar", label: "Apple Calendar" },
+  ];
+
+  for (const { profile, label } of integrationProfilePairs) {
+    if (
+      inferredProfiles.has(profile) &&
+      !requiredIntegrationIds.some(
+        (id) => INTEGRATION_PROFILE_BY_ID[id] === profile,
+      )
+    ) {
+      inferredProfiles.delete(profile);
+      metadataWarnings.push(
+        `${label} profile was inferred from instructions but no ${label} integrations are enabled — profile removed.`,
+      );
+    }
   }
 }
 

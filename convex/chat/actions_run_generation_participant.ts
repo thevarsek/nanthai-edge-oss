@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
@@ -295,7 +296,7 @@ export async function generateForParticipant(
         : toolRegistry;
 
     if (requestMessages.length === 0) {
-      throw new Error("No request messages to send");
+      throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "No request messages to send" });
     }
 
     if (promotedRequest.events.length > 0) {
@@ -516,7 +517,7 @@ export async function generateForParticipant(
         genResult.deferredToolRound.toolCalls.map((entry) => entry.id),
       );
       if (tasks.length === 0) {
-        throw new Error("Subagent tool paused without valid tasks.");
+        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Subagent tool paused without valid tasks." });
       }
 
       const batchResult = await ctx.runMutation(internal.subagents.mutations.createBatch, {

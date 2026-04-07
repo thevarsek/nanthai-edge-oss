@@ -278,7 +278,10 @@ export const createSkillInternal = internalMutation({
       .collect();
     const duplicate = existing.find((s) => s.slug === slug);
     if (duplicate) {
-      throw new Error(`A skill with the slug "${slug}" already exists. Choose a different name.`);
+      throw new ConvexError({
+        code: "DUPLICATE_SLUG" as const,
+        message: `A skill with the slug "${slug}" already exists. Choose a different name.`,
+      });
     }
 
     const { validation, normalized } = await validateAndNormalizeSkillMetadata(
@@ -314,7 +317,10 @@ export const createSkillInternal = internalMutation({
       updatedAt: now,
     });
 
-    return skillId;
+    return { skillId, validationWarnings: [
+      ...validation.validationWarnings,
+      ...normalized.metadataWarnings,
+    ] };
   },
 });
 
@@ -336,9 +342,9 @@ export const updateSkillInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const skill = await ctx.db.get(args.skillId);
-    if (!skill) throw new Error("Skill not found.");
-    if (skill.ownerUserId !== args.userId) throw new Error("Not authorized to edit this skill.");
-    if (skill.lockState === "locked") throw new Error("This skill is locked and cannot be edited.");
+    if (!skill) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Skill not found." });
+    if (skill.ownerUserId !== args.userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized to edit this skill." });
+    if (skill.lockState === "locked") throw new ConvexError({ code: "LOCKED" as const, message: "This skill is locked and cannot be edited." });
 
     const now = Date.now();
     const updates: Record<string, unknown> = { updatedAt: now };
@@ -353,7 +359,10 @@ export const updateSkillInternal = internalMutation({
           .collect();
         const duplicate = userSkills.find((s) => s.slug === newSlug && String(s._id) !== String(args.skillId));
         if (duplicate) {
-          throw new Error(`A skill with the slug "${newSlug}" already exists. Choose a different name.`);
+          throw new ConvexError({
+            code: "DUPLICATE_SLUG" as const,
+            message: `A skill with the slug "${newSlug}" already exists. Choose a different name.`,
+          });
         }
       }
       updates.name = args.name.trim();
@@ -385,21 +394,22 @@ export const updateSkillInternal = internalMutation({
     updates.requiredIntegrationIds = normalized.requiredIntegrationIds;
     updates.requiredCapabilities = normalized.requiredCapabilities;
     updates.unsupportedCapabilityCodes = validation.unsupportedCapabilityCodes;
-    updates.validationWarnings = [
+    const validationWarnings = [
       ...validation.validationWarnings,
       ...normalized.metadataWarnings,
     ];
+    updates.validationWarnings = validationWarnings;
 
     updates.version = (skill.version ?? 0) + 1;
 
     await ctx.db.patch(args.skillId, updates);
 
-    return args.skillId;
+    return { skillId: args.skillId, validationWarnings };
   },
 });
 
 /**
- * Archive a user skill (soft delete).
+ * Archive a user skill from the Settings UI.
  */
 export const archiveSkillInternal = internalMutation({
   args: {
@@ -408,9 +418,9 @@ export const archiveSkillInternal = internalMutation({
   },
   handler: async (ctx, { skillId, userId }) => {
     const skill = await ctx.db.get(skillId);
-    if (!skill) throw new Error("Skill not found.");
-    if (skill.scope === "system") throw new Error("System skills cannot be archived.");
-    if (skill.ownerUserId !== userId) throw new Error("Not authorized.");
+    if (!skill) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Skill not found." });
+    if (skill.scope === "system") throw new ConvexError({ code: "FORBIDDEN" as const, message: "System skills cannot be archived." });
+    if (skill.ownerUserId !== userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized." });
 
     await ctx.db.patch(skillId, {
       status: "archived",
@@ -429,9 +439,9 @@ export const deleteSkillInternal = internalMutation({
   },
   handler: async (ctx, { skillId, userId }) => {
     const skill = await ctx.db.get(skillId);
-    if (!skill) throw new Error("Skill not found.");
-    if (skill.scope === "system") throw new Error("System skills cannot be deleted.");
-    if (skill.ownerUserId !== userId) throw new Error("Not authorized.");
+    if (!skill) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Skill not found." });
+    if (skill.scope === "system") throw new ConvexError({ code: "FORBIDDEN" as const, message: "System skills cannot be deleted." });
+    if (skill.ownerUserId !== userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized." });
 
     await removeSkillReferences(ctx, skillId, userId);
     await ctx.db.delete(skillId);
@@ -448,8 +458,8 @@ export const duplicateSystemSkillInternal = internalMutation({
   },
   handler: async (ctx, { skillId, userId }) => {
     const source = await ctx.db.get(skillId);
-    if (!source) throw new Error("Source skill not found.");
-    if (source.scope !== "system") throw new Error("Can only duplicate system skills.");
+    if (!source) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Source skill not found." });
+    if (source.scope !== "system") throw new ConvexError({ code: "FORBIDDEN" as const, message: "Can only duplicate system skills." });
 
     const now = Date.now();
     let newSlug = `${source.slug}-custom`;
@@ -507,8 +517,8 @@ export const setPersonaSkills = internalMutation({
   },
   handler: async (ctx, { personaId, userId, discoverableSkillIds }) => {
     const persona = await ctx.db.get(personaId);
-    if (!persona) throw new Error("Persona not found.");
-    if (persona.userId !== userId) throw new Error("Not authorized.");
+    if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
+    if (persona.userId !== userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized." });
 
     await ctx.db.patch(personaId, {
       discoverableSkillIds,
@@ -529,8 +539,8 @@ export const setChatSkills = internalMutation({
   },
   handler: async (ctx, { chatId, userId, discoverableSkillIds, disabledSkillIds }) => {
     const chat = await ctx.db.get(chatId);
-    if (!chat) throw new Error("Chat not found.");
-    if (chat.userId !== userId) throw new Error("Not authorized.");
+    if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
+    if (chat.userId !== userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized." });
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
     if (discoverableSkillIds !== undefined) {
@@ -615,7 +625,10 @@ export const createSkill = mutation({
       updatedAt: now,
     });
 
-    return skillId;
+    return { skillId, validationWarnings: [
+      ...validation.validationWarnings,
+      ...normalized.metadataWarnings,
+    ] };
   },
 });
 
@@ -689,15 +702,16 @@ export const updateSkill = mutation({
     updates.requiredIntegrationIds = normalized.requiredIntegrationIds;
     updates.requiredCapabilities = normalized.requiredCapabilities;
     updates.unsupportedCapabilityCodes = validation.unsupportedCapabilityCodes;
-    updates.validationWarnings = [
+    const validationWarnings = [
       ...validation.validationWarnings,
       ...normalized.metadataWarnings,
     ];
+    updates.validationWarnings = validationWarnings;
 
     updates.version = (skill.version ?? 0) + 1;
     await ctx.db.patch(args.skillId, updates);
 
-    return args.skillId;
+    return { skillId: args.skillId, validationWarnings };
   },
 });
 

@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { Doc } from "../_generated/dataModel";
 
 export const DEFAULT_TTS_VOICE = "nova";
@@ -236,7 +237,7 @@ export function guessAudioInputFormat(
 export async function fetchBinaryAsBase64(url: string): Promise<string> {
   const response = await fetch(url);
   if (!response.ok) {
-    throw new Error(`Failed to fetch audio payload (${response.status})`);
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `Failed to fetch audio payload (${response.status})` });
   }
   const arrayBuffer = await response.arrayBuffer();
   return Buffer.from(arrayBuffer).toString("base64");

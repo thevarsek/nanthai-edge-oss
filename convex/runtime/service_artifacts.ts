@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { ToolExecutionContext } from "../tools/registry";
 import { killE2BSandbox } from "./e2b_client";
@@ -28,7 +29,7 @@ export function createRuntimeServiceArtifactsDepsForTest(
 
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
-    throw new Error("Workspace tools require chatId in the tool execution context.");
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Workspace tools require chatId in the tool execution context." });
   }
   return toolCtx.chatId;
 }

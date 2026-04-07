@@ -225,7 +225,7 @@ export const removePersonaInternal = internalMutation({
   handler: async (ctx, args) => {
     const persona = await ctx.db.get(args.personaId);
     if (!persona || persona.userId !== args.userId) {
-      throw new Error("Persona not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found or unauthorized" });
     }
     if (persona.avatarImageStorageId) {
       await ctx.storage.delete(persona.avatarImageStorageId);

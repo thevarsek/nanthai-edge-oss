@@ -10,6 +10,7 @@
 // — banned in Convex's sandboxed V8 runtime.
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import JSZip from "jszip";
 
 export interface DocxParagraph {
@@ -49,9 +50,10 @@ export async function extractDocxContent(
 
   const docFile = zip.file("word/document.xml");
   if (!docFile) {
-    throw new Error(
-      "Invalid .docx: missing word/document.xml — file may be corrupt or not a Word document",
-    );
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: "Invalid .docx: missing word/document.xml — file may be corrupt or not a Word document",
+    });
   }
 
   const xml = await docFile.async("string");

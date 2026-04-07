@@ -16,6 +16,7 @@
 // Convex's sandboxed V8 runtime.
 // =============================================================================
 
+import { ConvexError } from "convex/values";
 import JSZip from "jszip";
 
 // ---------------------------------------------------------------------------
@@ -277,9 +278,10 @@ export async function extractPptxContent(
 
   const slidePaths = await getOrderedSlideFiles(zip);
   if (slidePaths.length === 0) {
-    throw new Error(
-      "Invalid .pptx: no slides found — file may be corrupt or not a PowerPoint file",
-    );
+    throw new ConvexError({
+      code: "INVALID_INPUT" as const,
+      message: "Invalid .pptx: no slides found — file may be corrupt or not a PowerPoint file",
+    });
   }
 
   const slides: PptxSlideExtraction[] = [];

@@ -1,5 +1,6 @@
 "use node";
 
+import { ConvexError } from "convex/values";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import { ToolRegistry, type RegisteredTool } from "./registry";
 import { fetchImage } from "./fetch_image";
@@ -240,7 +241,7 @@ function registerWorkspaceSubset(
     temp.getDefinitions().map((definition) => {
       const tool = scratch.get(definition.function.name);
       if (!tool) {
-        throw new Error(`Workspace tool "${definition.function.name}" was not found in the full registry.`);
+        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `Workspace tool "${definition.function.name}" was not found in the full registry.` });
       }
       return tool;
     }),

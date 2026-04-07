@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { PaywallModal } from "@/components/shared/PaywallModal";
 import { useToast } from "@/components/shared/Toast.context";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { buildPersonaParticipants, launchChat } from "@/lib/chatLaunch";
 import { Defaults } from "@/lib/constants";
 
@@ -92,7 +93,7 @@ export function PersonasPage() {
         navigate(`/app/chat/${chatId}`);
       } catch (error) {
         toast({
-          message: error instanceof Error ? error.message : t("something_went_wrong"),
+          message: convexErrorMessage(error, t("something_went_wrong")),
           variant: "error",
         });
       }
@@ -111,10 +112,15 @@ export function PersonasPage() {
     if (!deleteId) return;
     try {
       await removePersona({ personaId: deleteId });
+    } catch (e) {
+      toast({
+        message: convexErrorMessage(e, t("persona_delete_failed")),
+        variant: "error",
+      });
     } finally {
       setDeleteId(null);
     }
-  }, [deleteId, removePersona]);
+  }, [deleteId, removePersona, toast, t]);
 
   // ── Render ─────────────────────────────────────────────────────────────
 

@@ -605,19 +605,22 @@ export const createJobInternal = internalMutation({
     const recurrence = args.recurrence as Recurrence;
     const validationError = validateRecurrence(recurrence);
     if (validationError) {
-      throw new Error(`Invalid recurrence: ${validationError}`);
+      throw new ConvexError({
+        code: "INVALID_RECURRENCE" as const,
+        message: `Invalid recurrence: ${validationError}`,
+      });
     }
 
     // Validate name
     const trimmedName = args.name.trim();
-    if (!trimmedName) throw new Error("Job name is required");
-    if (trimmedName.length > 200) throw new Error("Job name too long (max 200 characters)");
+    if (!trimmedName) throw new ConvexError({ code: "INVALID_ARGS" as const, message: "Job name is required" });
+    if (trimmedName.length > 200) throw new ConvexError({ code: "INVALID_ARGS" as const, message: "Job name too long (max 200 characters)" });
 
     // Validate target folder if provided
     if (args.targetFolderId) {
       const folder = await ctx.db.get(args.targetFolderId);
       if (!folder || folder.userId !== args.userId) {
-        throw new Error("Target folder not found or unauthorized");
+        throw new ConvexError({ code: "NOT_FOUND" as const, message: "Target folder not found or unauthorized" });
       }
     }
 
@@ -678,7 +681,7 @@ export const deleteJobInternal = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== args.userId) {
-      throw new Error("Job not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
 
     // Cancel pending scheduled function
@@ -719,10 +722,10 @@ export const createJobChat = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job) {
-      throw new Error("Scheduled job not found");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Scheduled job not found" });
     }
     if (job.activeExecutionId !== args.executionId) {
-      throw new Error("Scheduled job execution no longer active");
+      throw new ConvexError({ code: "EXECUTION_STALE" as const, message: "Scheduled job execution no longer active" });
     }
 
     const now = Date.now();
@@ -956,13 +959,13 @@ export const createScheduledExecutionTurn = internalMutation({
   handler: async (ctx, args) => {
     const job = await ctx.db.get(args.jobId);
     if (!job) {
-      throw new Error("Scheduled job not found");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Scheduled job not found" });
     }
     if (job.activeExecutionId !== args.executionId) {
-      throw new Error("Scheduled job execution no longer active");
+      throw new ConvexError({ code: "EXECUTION_STALE" as const, message: "Scheduled job execution no longer active" });
     }
     if (job.activeExecutionChatId !== args.chatId) {
-      throw new Error("Scheduled job execution chat mismatch");
+      throw new ConvexError({ code: "EXECUTION_MISMATCH" as const, message: "Scheduled job execution chat mismatch" });
     }
 
     const currentStepIndex = job.activeStepIndex ?? -1;
@@ -979,11 +982,11 @@ export const createScheduledExecutionTurn = internalMutation({
           created: false,
         };
       }
-      throw new Error("Scheduled job step already created");
+      throw new ConvexError({ code: "DUPLICATE_STEP" as const, message: "Scheduled job step already created" });
     }
 
     if (currentStepIndex !== args.stepIndex - 1) {
-      throw new Error("Scheduled job step order mismatch");
+      throw new ConvexError({ code: "STEP_ORDER" as const, message: "Scheduled job step order mismatch" });
     }
 
     const now = Date.now();

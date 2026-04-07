@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
 import {
@@ -83,7 +84,7 @@ export async function synthesizeWithStreaming(
   });
 
   if (requestMessages.length === 0) {
-    throw new Error("No request messages for synthesis");
+    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "No request messages for synthesis" });
   }
 
   const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {

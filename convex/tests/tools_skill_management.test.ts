@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ConvexError } from "convex/values";
 
 import {
   assignSkillToPersona,
@@ -77,7 +78,7 @@ test("createSkill validates input, creates skills, and surfaces compatibility fa
   const created = await createSkill.execute(createToolCtx({
     runMutation: async (args) => {
       mutations.push(args);
-      return "skill_new";
+      return { skillId: "skill_new", validationWarnings: [] };
     },
   }), {
     name: "  Legal Brief Writer ",
@@ -103,7 +104,7 @@ test("createSkill validates input, creates skills, and surfaces compatibility fa
 
   const incompatible = await createSkill.execute(createToolCtx({
     runMutation: async () => {
-      throw new Error("SKILL_INCOMPATIBLE: Uses bash");
+      throw new ConvexError({ code: "SKILL_INCOMPATIBLE" as const, message: "Uses bash" });
     },
   }), {
     name: "Shell skill",
@@ -133,6 +134,7 @@ test("updateSkill resolves by name, detects ambiguity, validates runtime mode, a
   const updated = await updateSkill.execute(createToolCtx({
     runMutation: async (args) => {
       mutations.push(args);
+      return { skillId: "skill_1", validationWarnings: [] };
     },
   }), {
     skillId: "skill_1",
@@ -156,7 +158,7 @@ test("updateSkill resolves by name, detects ambiguity, validates runtime mode, a
 
   const incompatible = await updateSkill.execute(createToolCtx({
     runMutation: async () => {
-      throw new Error("SKILL_INCOMPATIBLE: Uses MCP");
+      throw new ConvexError({ code: "SKILL_INCOMPATIBLE" as const, message: "Uses MCP" });
     },
   }), {
     skillId: "skill_1",

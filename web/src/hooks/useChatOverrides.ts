@@ -193,7 +193,8 @@ export function useChatOverrides({
         return;
       }
       setPendingParamOverrides(nextOverrides);
-      void persistParamOverrides(chatId, nextOverrides).catch(() => {
+      void persistParamOverrides(chatId, nextOverrides).catch((err) => {
+        console.error("[useChatOverrides] persistParamOverrides failed:", err);
         setPendingParamOverrides(null);
       });
     },
@@ -226,7 +227,8 @@ export function useChatOverrides({
 
     const next = applyToggle(enabledSkillIds);
     setPendingEnabledSkillIds(next);
-    void persistSkillOverrides(chatId, next).catch(() => {
+    void persistSkillOverrides(chatId, next).catch((err) => {
+      console.error("[useChatOverrides] persistSkillOverrides failed:", err);
       setPendingEnabledSkillIds(null);
     });
   }, [chatId, enabledSkillIds, persistSkillOverrides]);

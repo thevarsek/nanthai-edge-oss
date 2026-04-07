@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import {
   HTTP_REFERER,
   MAX_RATE_LIMIT_RETRIES,
@@ -150,9 +151,10 @@ export async function callOpenRouterNonStreaming(
           model: currentModel, status: response.status, durationMs: Date.now() - startTime,
           msgCount, error: errorMessage,
         });
-        throw new Error(
-          `OpenRouter API error (${response.status}): ${errorMessage}`,
-        );
+        throw new ConvexError({
+          code: "INTERNAL_ERROR" as const,
+          message: `OpenRouter API error (${response.status}): ${errorMessage}`,
+        });
       }
 
       // Parse response
@@ -160,9 +162,10 @@ export async function callOpenRouterNonStreaming(
       try {
         parsed = JSON.parse(responseText);
       } catch {
-        throw new Error(
-          `OpenRouter returned invalid JSON: ${responseText.slice(0, 200)}`,
-        );
+        throw new ConvexError({
+          code: "INTERNAL_ERROR" as const,
+          message: `OpenRouter returned invalid JSON: ${responseText.slice(0, 200)}`,
+        });
       }
 
       // Check for 200-wrapped error
@@ -200,7 +203,7 @@ export async function callOpenRouterNonStreaming(
           model: currentModel, durationMs: Date.now() - startTime, msgCount,
           error: errorMessage,
         });
-        throw new Error(`OpenRouter API error (200-wrapped): ${errorMessage}`);
+        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `OpenRouter API error (200-wrapped): ${errorMessage}` });
       }
 
       const extracted = deps.extractContentFromNonStreamingPayload(parsed);
@@ -223,6 +226,8 @@ export async function callOpenRouterNonStreaming(
       });
       return result;
     } catch (error) {
+      // Re-throw ConvexError as-is (don't wrap structured errors)
+      if (error instanceof ConvexError) throw error;
       if (error instanceof Error) {
         const cause = (error as NodeJS.ErrnoException).cause
           ? String((error as NodeJS.ErrnoException).cause)
@@ -231,20 +236,20 @@ export async function callOpenRouterNonStreaming(
           console.error("[openrouter:nonstream] timeout", {
             model: currentModel, timeoutMs: REQUEST_TIMEOUT_MS, durationMs: Date.now() - startTime, msgCount,
           });
-          throw new Error(
-            `OpenRouter non-stream timeout after ${REQUEST_TIMEOUT_MS}ms for model ${currentModel}`,
-            { cause: error },
-          );
+          // Keep as plain Error so callers with retry loops can inspect and retry
+          const abortMsg = `OpenRouter non-stream timeout after ${REQUEST_TIMEOUT_MS}ms for model ${currentModel}${cause ? `: ${cause}` : ""}`;
+          throw new Error(abortMsg);
         }
         if (error.message === "fetch failed") {
           console.error("[openrouter:nonstream] fetch failed", {
             model: currentModel, error: error.message, ...(cause ? { cause } : {}),
             durationMs: Date.now() - startTime, msgCount,
           });
-          throw new Error(
-            `OpenRouter fetch failed for model ${currentModel}${cause ? `: ${cause}` : ""}`,
-            { cause: error },
-          );
+          // Keep as plain Error so callers with retry loops can inspect and retry
+          const fetchMsg = `OpenRouter fetch failed for model ${currentModel}${cause ? `: ${cause}` : ""}`;
+          const fetchErr = new Error(fetchMsg);
+          (fetchErr as NodeJS.ErrnoException).cause = cause;
+          throw fetchErr;
         }
       }
       throw error;

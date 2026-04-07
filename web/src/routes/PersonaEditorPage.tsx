@@ -11,6 +11,7 @@ import { SettingsSection } from "@/components/settings/SettingsHelpers";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import {
   EmojiPicker,
   SkillRow,
@@ -126,7 +127,7 @@ export function PersonaEditorPage() {
         try {
           await connectProviderWithPopup("google", { requestedIntegration: key });
         } catch (err) {
-          setError(err instanceof Error ? err.message : t("google_signin_failed"));
+          setError(convexErrorMessage(err, t("google_signin_failed")));
           return;
         }
       }
@@ -206,7 +207,7 @@ export function PersonaEditorPage() {
       });
       navigate("/app/personas");
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("persona_save_failed"));
+      setError(convexErrorMessage(err, t("persona_save_failed")));
     } finally {
       setIsSaving(false);
     }
