@@ -64,6 +64,14 @@ export function buildRequestBody(
   if (params.webSearchEnabled) plugins.push({ id: "web" });
   if (plugins.length > 0) body.plugins = plugins;
 
+  // Prompt caching — Anthropic requires explicit opt-in via top-level
+  // cache_control. Other providers (OpenAI, DeepSeek, Gemini 2.5, Grok, Groq)
+  // cache automatically. The "automatic" mode lets Anthropic place the cache
+  // breakpoint at the last cacheable block and advance it as conversation grows.
+  if (model.startsWith("anthropic/")) {
+    body.cache_control = { type: "ephemeral" };
+  }
+
   // Transforms — default to ["middle-out"] unless explicitly disabled.
   if (params.transforms === null) {
     // Omit transforms entirely.
