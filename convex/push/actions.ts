@@ -14,6 +14,7 @@ import type { Id } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import webpush from "web-push";
+import http2 from "node:http2";
 import { buildApnsPayload, buildFcmPayload, buildWebPushPayload, splitPushTokensByProvider } from "./payloads";
 import { signAPNsJWT } from "./apns_jwt";
 
@@ -133,37 +134,90 @@ async function sendApnsNotifications(
     ? "api.push.apple.com"
     : "api.sandbox.push.apple.com";
 
-  for (const tokenDoc of args.tokens) {
-    const url = `https://${host}/3/device/${tokenDoc.token}`;
+  // APNs requires HTTP/2 — Node's built-in fetch (undici) only supports HTTP/1.1.
+  // Use the node:http2 module to open a single session and send all notifications.
+  const session = http2.connect(`https://${host}`);
 
-    try {
-      const response = await fetch(url, {
-        method: "POST",
-        headers: {
-          "authorization": `bearer ${jwt}`,
-          "apns-topic": args.bundleId,
-          "apns-push-type": "alert",
-          "apns-priority": "10",
-          "content-type": "application/json",
-        },
-        body: payloadStr,
-      });
+  // Catch session-level errors (TLS failures, connection resets, APNs
+  // unreachable) so they don't surface as unhandled 'error' events and
+  // crash the entire action. The error is stored and checked before each
+  // per-token request so we can bail out gracefully.
+  let sessionError: Error | null = null;
+  session.on("error", (err) => {
+    sessionError = err;
+    console.error("[push] APNs HTTP/2 session error:", err);
+  });
 
-      if (response.status === 200) {
-        console.log(`[push] APNs sent to ${tokenDoc.token.slice(0, 8)}...`);
-      } else if (response.status === 410) {
-        console.log(`[push] APNs token ${tokenDoc.token.slice(0, 8)}... is stale (410), deleting`);
-        await ctx.runMutation(internal.push.mutations_internal.deleteStaleToken, {
-          tokenId: tokenDoc._id,
-        });
-      } else {
-        const errorBody = await response.text();
-        console.error(`[push] APNs ${response.status}: ${errorBody}`);
+  try {
+    for (const tokenDoc of args.tokens) {
+      // If the session died, skip remaining tokens instead of hanging.
+      if (sessionError || session.closed || session.destroyed) {
+        console.error(`[push] APNs session down, skipping ${tokenDoc.token.slice(0, 8)}...`);
+        continue;
       }
-    } catch (error) {
-      console.error(`[push] APNs failed for ${tokenDoc.token.slice(0, 8)}...:`, error);
+      try {
+        const { status, body: responseBody } = await sendApnsRequest(session, {
+          token: tokenDoc.token,
+          jwt,
+          bundleId: args.bundleId,
+          payloadStr,
+        });
+
+        if (status === 200) {
+          console.log(`[push] APNs sent to ${tokenDoc.token.slice(0, 8)}...`);
+        } else if (status === 410) {
+          console.log(`[push] APNs token ${tokenDoc.token.slice(0, 8)}... is stale (410), deleting`);
+          await ctx.runMutation(internal.push.mutations_internal.deleteStaleToken, {
+            tokenId: tokenDoc._id,
+          });
+        } else {
+          console.error(`[push] APNs ${status}: ${responseBody}`);
+        }
+      } catch (error) {
+        console.error(`[push] APNs failed for ${tokenDoc.token.slice(0, 8)}...:`, error);
+      }
     }
+  } finally {
+    session.close();
   }
+}
+
+/** Send a single APNs request over an existing HTTP/2 session. */
+function sendApnsRequest(
+  session: http2.ClientHttp2Session,
+  args: { token: string; jwt: string; bundleId: string; payloadStr: string },
+): Promise<{ status: number; body: string }> {
+  return new Promise((resolve, reject) => {
+    const req = session.request({
+      [http2.constants.HTTP2_HEADER_METHOD]: "POST",
+      [http2.constants.HTTP2_HEADER_PATH]: `/3/device/${args.token}`,
+      [http2.constants.HTTP2_HEADER_SCHEME]: "https",
+      "authorization": `bearer ${args.jwt}`,
+      "apns-topic": args.bundleId,
+      "apns-push-type": "alert",
+      "apns-priority": "10",
+      "content-type": "application/json",
+    });
+
+    req.on("error", reject);
+
+    let status = 0;
+    const chunks: Buffer[] = [];
+
+    req.on("response", (headers) => {
+      status = Number(headers[http2.constants.HTTP2_HEADER_STATUS]) || 0;
+    });
+
+    req.on("data", (chunk: Buffer) => {
+      chunks.push(chunk);
+    });
+
+    req.on("end", () => {
+      resolve({ status, body: Buffer.concat(chunks).toString("utf-8") });
+    });
+
+    req.end(args.payloadStr);
+  });
 }
 
 async function sendFcmNotifications(

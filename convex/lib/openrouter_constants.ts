@@ -2,7 +2,12 @@ export const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions
 export const HTTP_REFERER = "https://nanthai.tech";
 export const X_TITLE = "NanthAi:Edge";
 export const REQUEST_TIMEOUT_MS = 180_000;
-export const STREAM_REQUEST_TIMEOUT_MS = 900_000;
+// Per-chunk idle timeout: abort if no SSE data arrives within this window.
+// Resets on every received chunk. Must be well below Convex's 600s action
+// limit so a stalled stream is detected before the platform hard-kills us.
+// 3 minutes accommodates slow initial responses from audio generation,
+// deep search, and large-context models.
+export const STREAM_REQUEST_TIMEOUT_MS = 180_000;
 export const MAX_RATE_LIMIT_RETRIES = 3;
 export const RATE_LIMIT_BACKOFF_MS = [1000, 2000, 4000];
 

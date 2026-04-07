@@ -4,6 +4,7 @@ import { Id } from "../_generated/dataModel";
 import { callOpenRouterNonStreaming, OpenRouterMessage } from "../lib/openrouter";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { MODEL_IDS } from "../lib/model_constants";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import {
   fallbackTitleFromSource,
   isPlaceholderTitle,
@@ -11,6 +12,19 @@ import {
 } from "./title_helpers";
 
 const DEFAULT_TITLE_MODEL = MODEL_IDS.titleGeneration;
+
+const defaultGenerateTitleHandlerDeps = {
+  callOpenRouterNonStreaming,
+  getRequiredUserOpenRouterApiKey,
+};
+
+export type GenerateTitleHandlerDeps = typeof defaultGenerateTitleHandlerDeps;
+
+export function createGenerateTitleHandlerDepsForTest(
+  overrides: DeepPartial<GenerateTitleHandlerDeps> = {},
+): GenerateTitleHandlerDeps {
+  return mergeTestDeps(defaultGenerateTitleHandlerDeps, overrides);
+}
 
 export interface GenerateTitleArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
@@ -34,6 +48,7 @@ function canUpdateChatTitle(
 export async function generateTitleHandler(
   ctx: ActionCtx,
   args: GenerateTitleArgs,
+  deps: GenerateTitleHandlerDeps = defaultGenerateTitleHandlerDeps,
 ): Promise<void> {
   const currentChat = await ctx.runQuery(internal.chat.queries.getChatInternal, {
     chatId: args.chatId,
@@ -82,12 +97,12 @@ export async function generateTitleHandler(
   ];
 
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
+    const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, args.userId);
     const model =
       args.titleModel?.trim().length
         ? args.titleModel.trim()
         : DEFAULT_TITLE_MODEL;
-    const result = await callOpenRouterNonStreaming(
+    const result = await deps.callOpenRouterNonStreaming(
       apiKey,
       model,
       messages,

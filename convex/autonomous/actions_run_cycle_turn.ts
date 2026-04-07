@@ -17,9 +17,31 @@ import {
 } from "./actions_helpers";
 import { ModelCapabilities, TurnOutcome } from "./actions_run_cycle_types";
 import { loadMemoryContext } from "./actions_run_cycle_context";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 const EMPTY_STREAM_RETRY_DELAYS = [500, 1500];
 const CANCELLED_TURN_ERROR = "AUTONOMOUS_SESSION_CANCELLED";
+
+const defaultRunParticipantTurnDeps = {
+  now: () => Date.now(),
+  getRequiredUserOpenRouterApiKey,
+  generateModeratorDirective,
+  buildRequestMessages,
+  promoteLatestUserVideoUrls,
+  createStreamWriter: (options: ConstructorParameters<typeof StreamWriter>[0]) =>
+    new StreamWriter(options),
+  loadMemoryContext,
+  gateParameters,
+  callOpenRouterStreaming,
+};
+
+export type RunParticipantTurnDeps = typeof defaultRunParticipantTurnDeps;
+
+export function createRunParticipantTurnDepsForTest(
+  overrides: DeepPartial<RunParticipantTurnDeps> = {},
+): RunParticipantTurnDeps {
+  return mergeTestDeps(defaultRunParticipantTurnDeps, overrides);
+}
 
 function isCancelledTurnError(error: unknown): boolean {
   return error instanceof Error && error.message === CANCELLED_TURN_ERROR;
@@ -65,6 +87,7 @@ export interface RunParticipantTurnParams {
 
 export async function runParticipantTurn(
   params: RunParticipantTurnParams,
+  deps: RunParticipantTurnDeps = defaultRunParticipantTurnDeps,
 ): Promise<TurnOutcome> {
   const {
     ctx,
@@ -107,10 +130,10 @@ export async function runParticipantTurn(
   };
 
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
+    const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, userId);
     let moderatorDirective: string | undefined;
     if (moderatorConfig) {
-      moderatorDirective = await generateModeratorDirective(
+      moderatorDirective = await deps.generateModeratorDirective(
         ctx,
         moderatorConfig,
         participant,
@@ -128,7 +151,7 @@ export async function runParticipantTurn(
       effectiveSystemPrompt = parts.join("\n\n");
     }
 
-    const now = Date.now();
+    const now = deps.now();
     messageId = await ctx.runMutation(
       internal.autonomous.mutations_helpers.createAutonomousMessage,
       {
@@ -162,14 +185,14 @@ export async function runParticipantTurn(
     const currentMessages = await ctx.runQuery(internal.chat.queries.listAllMessages, {
       chatId,
     });
-    const resolvedMemoryContext = await loadMemoryContext(
+    const resolvedMemoryContext = await deps.loadMemoryContext(
       ctx,
       userId,
       participant.personaId,
       chatId,
     );
 
-    const baseRequestMessages = buildRequestMessages({
+    const baseRequestMessages = deps.buildRequestMessages({
       messages: currentMessages,
       excludeMessageId: messageId,
       systemPrompt: effectiveSystemPrompt,
@@ -180,7 +203,7 @@ export async function runParticipantTurn(
     });
 
     const caps = modelCapabilities.get(participant.modelId);
-    const promotedRequest = promoteLatestUserVideoUrls(baseRequestMessages, {
+    const promotedRequest = deps.promoteLatestUserVideoUrls(baseRequestMessages, {
       modelId: participant.modelId,
       provider: caps?.provider,
       hasVideoInput: caps?.hasVideoInput,
@@ -223,7 +246,7 @@ export async function runParticipantTurn(
       reasoningEffort: participant.reasoningEffort ?? null,
       webSearchEnabled,
     };
-    const gatedParams = gateParameters(
+    const gatedParams = deps.gateParameters(
       rawParams,
       caps?.supportedParameters,
       caps?.hasImageGeneration,
@@ -246,13 +269,13 @@ export async function runParticipantTurn(
       throw new Error(CANCELLED_TURN_ERROR);
     };
 
-    const writer = new StreamWriter({
+    const writer = deps.createStreamWriter({
       ctx,
       messageId,
       beforePatch: assertTurnStillActive,
     });
 
-    const result = await callOpenRouterStreaming(
+    const result = await deps.callOpenRouterStreaming(
       apiKey,
       participant.modelId,
       requestMessages,

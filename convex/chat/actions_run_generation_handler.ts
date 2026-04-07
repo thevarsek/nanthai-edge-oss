@@ -53,6 +53,13 @@ export async function runGenerationHandler(
   deps: RunGenerationHandlerDeps = defaultRunGenerationHandlerDeps,
 ): Promise<void> {
   const actionStartTime = deps.now();
+  console.info("[runGeneration] started", {
+    chatId: args.chatId,
+    userMessageId: args.userMessageId,
+    userId: args.userId,
+    participants: args.participants.map((p) => p.modelId),
+    searchSessionId: args.searchSessionId ?? null,
+  });
   try {
     const { allMessages, memoryContext, modelCapabilities } =
       await deps.generation.prepareGenerationContext(ctx, args);
@@ -240,7 +247,23 @@ export async function runGenerationHandler(
         }
       }
     }
+    const durationMs = deps.now() - actionStartTime;
+    console.info("[runGeneration] completed", {
+      chatId: args.chatId,
+      userMessageId: args.userMessageId,
+      userId: args.userId,
+      durationMs,
+      allCancelledOrFailed,
+    });
   } catch (error) {
+    const durationMs = deps.now() - actionStartTime;
+    console.error("[runGeneration] failed", {
+      chatId: args.chatId,
+      userMessageId: args.userMessageId,
+      userId: args.userId,
+      durationMs,
+      error: error instanceof Error ? error.message : String(error),
+    });
     // If this runGeneration was scheduled from a search path, propagate the
     // failure (or cancellation) to the search session so the UI shows the
     // correct state.

@@ -41,6 +41,7 @@ import {
 } from "../tools/execute_loop";
 import { ToolExecutionContext, ToolRegistry, ToolResult } from "../tools/registry";
 import { StreamWriter } from "./stream_writer";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -97,6 +98,25 @@ export interface GenerationLoopOptions {
   initialToolCalls?: RecordedToolCall[];
   initialToolResults?: RecordedToolResult[];
   initialCompactionCount?: number;
+}
+
+const defaultRunGenerationWithCompactionDeps = {
+  callOpenRouterStreaming,
+  runToolCallLoop,
+  isContextOverflow,
+  isApproachingTimeout,
+  pruneToolOutputs,
+  compactMessages,
+  buildCompactedMessages,
+};
+
+export type RunGenerationWithCompactionDeps =
+  typeof defaultRunGenerationWithCompactionDeps;
+
+export function createRunGenerationWithCompactionDepsForTest(
+  overrides: DeepPartial<RunGenerationWithCompactionDeps> = {},
+): RunGenerationWithCompactionDeps {
+  return mergeTestDeps(defaultRunGenerationWithCompactionDeps, overrides);
 }
 
 // ---------------------------------------------------------------------------
@@ -186,6 +206,7 @@ function findLastUserMessage(
  */
 export async function runGenerationWithCompaction(
   options: GenerationLoopOptions,
+  deps: RunGenerationWithCompactionDeps = defaultRunGenerationWithCompactionDeps,
 ): Promise<GenerationLoopResult> {
   const {
     apiKey,
@@ -217,7 +238,7 @@ export async function runGenerationWithCompaction(
   // eslint-disable-next-line no-constant-condition
   while (true) {
     // --- 1. Initial streaming call ---
-    const streamResult = await callOpenRouterStreaming(
+    const streamResult = await deps.callOpenRouterStreaming(
       apiKey,
       model,
       currentMessages,
@@ -275,14 +296,14 @@ export async function runGenerationWithCompaction(
       shouldExitLoop: async (_round, roundResult) => {
         const roundUsage = roundResult.usage;
         const contextOverflow = roundUsage
-          ? isContextOverflow(roundUsage.promptTokens, modelContextLimit)
+          ? deps.isContextOverflow(roundUsage.promptTokens, modelContextLimit)
           : false;
-        const timeoutApproaching = isApproachingTimeout(actionStartTime);
+        const timeoutApproaching = deps.isApproachingTimeout(actionStartTime);
         return contextOverflow || timeoutApproaching;
       },
     };
 
-    const loopResult = await runToolCallLoop(streamResult, loopOptions);
+    const loopResult = await deps.runToolCallLoop(streamResult, loopOptions);
 
     // Preserve any progressive registry/params expansions from the inner loop
     // so they survive compaction cycles.
@@ -313,9 +334,9 @@ export async function runGenerationWithCompaction(
     // --- 4. Check if compaction is needed ---
     const lastUsage = loopResult.streamResult.usage;
     const needsContextCompaction = lastUsage
-      ? isContextOverflow(lastUsage.promptTokens, modelContextLimit)
+      ? deps.isContextOverflow(lastUsage.promptTokens, modelContextLimit)
       : false;
-    const needsTimeoutCompaction = isApproachingTimeout(actionStartTime);
+    const needsTimeoutCompaction = deps.isApproachingTimeout(actionStartTime);
 
     // If the loop did not exit early for compaction and there is no further
     // tool work to do, we're done.
@@ -343,7 +364,7 @@ export async function runGenerationWithCompaction(
     // AUDIT-5: Also strip webSearchEnabled to avoid a $0.02 Exa charge.
     if (compactionCount >= COMPACTION.MAX_CONTINUATIONS) {
       const finalMessages = loopResult.conversationMessages;
-      const finalResult = await callOpenRouterStreaming(
+      const finalResult = await deps.callOpenRouterStreaming(
         apiKey,
         model,
         finalMessages,
@@ -379,7 +400,7 @@ export async function runGenerationWithCompaction(
     const fullConversation = loopResult.conversationMessages;
 
     // Step 5a: Try pruning first.
-    const pruneResult = pruneToolOutputs(fullConversation);
+    const pruneResult = deps.pruneToolOutputs(fullConversation);
 
     // Short-circuit: if pruning recovered significant tokens and we triggered
     // on context overflow (not timeout), continue with pruned messages directly
@@ -399,7 +420,10 @@ export async function runGenerationWithCompaction(
     const systemPrompt = extractSystemPrompt(options.messages);
     const lastUserMessage = findLastUserMessage(options.messages);
 
-    const compactionResult = await compactMessages(conversationToCompact, apiKey);
+    const compactionResult = await deps.compactMessages(
+      conversationToCompact,
+      apiKey,
+    );
 
     // M23: Collect compaction usage for ancillary cost tracking.
     if (compactionResult.usage) {
@@ -411,7 +435,7 @@ export async function runGenerationWithCompaction(
     }
 
     // Step 5c: Replace message history with compacted context.
-    currentMessages = buildCompactedMessages(
+    currentMessages = deps.buildCompactedMessages(
       systemPrompt,
       compactionResult.summary,
       lastUserMessage,

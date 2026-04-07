@@ -18,6 +18,7 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 const OPENROUTER_GENERATIONS_URL = "https://openrouter.ai/api/v1/generation";
 
@@ -54,25 +55,53 @@ interface GenerationsResponse {
   data?: GenerationData;
 }
 
+const defaultFetchGenerationDataDeps = {
+  fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
+  sleep: (ms: number) => new Promise((resolve) => setTimeout(resolve, ms)),
+};
+
+export type FetchGenerationDataDeps = typeof defaultFetchGenerationDataDeps;
+
+export function createFetchGenerationDataDepsForTest(
+  overrides: DeepPartial<FetchGenerationDataDeps> = {},
+): FetchGenerationDataDeps {
+  return mergeTestDeps(defaultFetchGenerationDataDeps, overrides);
+}
+
+const defaultFetchAndStoreGenerationUsageHandlerDeps = {
+  getOptionalUserOpenRouterApiKey,
+  fetchGenerationData,
+};
+
+export type FetchAndStoreGenerationUsageHandlerDeps =
+  typeof defaultFetchAndStoreGenerationUsageHandlerDeps;
+
+export function createFetchAndStoreGenerationUsageHandlerDepsForTest(
+  overrides: DeepPartial<FetchAndStoreGenerationUsageHandlerDeps> = {},
+): FetchAndStoreGenerationUsageHandlerDeps {
+  return mergeTestDeps(defaultFetchAndStoreGenerationUsageHandlerDeps, overrides);
+}
+
 /**
  * Fetch generation data with retry-on-404/empty-tokens.
  * Returns null only after all retries are exhausted.
  */
-async function fetchGenerationData(
+export async function fetchGenerationData(
   apiKey: string,
   generationId: string,
+  deps: FetchGenerationDataDeps = defaultFetchGenerationDataDeps,
 ): Promise<GenerationData | null> {
   const url = `${OPENROUTER_GENERATIONS_URL}?id=${encodeURIComponent(generationId)}`;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (attempt > 0) {
       const delay = BACKOFF_DELAYS[attempt - 1] ?? 8000;
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await deps.sleep(delay);
     }
 
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await deps.fetch(url, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey}`,
@@ -129,11 +158,16 @@ export interface FetchAndStoreGenerationUsageArgs
 export async function fetchAndStoreGenerationUsageHandler(
   ctx: ActionCtx,
   args: FetchAndStoreGenerationUsageArgs,
+  deps: FetchAndStoreGenerationUsageHandlerDeps =
+    defaultFetchAndStoreGenerationUsageHandlerDeps,
 ): Promise<void> {
-  const apiKey = await getOptionalUserOpenRouterApiKey(ctx, args.userId);
+  const apiKey = await deps.getOptionalUserOpenRouterApiKey(ctx, args.userId);
   if (!apiKey) return;
 
-  const data = await fetchGenerationData(apiKey, args.openrouterGenerationId);
+  const data = await deps.fetchGenerationData(
+    apiKey,
+    args.openrouterGenerationId,
+  );
   if (!data) return;
 
   const promptTokens = data.tokens_prompt ?? 0;

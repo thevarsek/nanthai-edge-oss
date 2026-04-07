@@ -1,6 +1,7 @@
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { isPlaceholderTitle } from "./title_helpers";
 
 export interface PostProcessArgs extends Record<string, unknown> {
@@ -12,9 +13,22 @@ export interface PostProcessArgs extends Record<string, unknown> {
 
 const MIN_MEMORY_USER_CONTENT_LENGTH = 10;
 
+const defaultPostProcessHandlerDeps = {
+  isPlaceholderTitle,
+};
+
+export type PostProcessHandlerDeps = typeof defaultPostProcessHandlerDeps;
+
+export function createPostProcessHandlerDepsForTest(
+  overrides: DeepPartial<PostProcessHandlerDeps> = {},
+): PostProcessHandlerDeps {
+  return mergeTestDeps(defaultPostProcessHandlerDeps, overrides);
+}
+
 export async function postProcessHandler(
   ctx: ActionCtx,
   args: PostProcessArgs,
+  deps: PostProcessHandlerDeps = defaultPostProcessHandlerDeps,
 ): Promise<void> {
   // Parallelize independent reads: chat, user message, and preferences
   const [chat, userMsg, prefs] = await Promise.all([
@@ -52,7 +66,7 @@ export async function postProcessHandler(
     "\n\n<assistant_response_separator>\n\n",
   );
 
-  const needsTitle = isPlaceholderTitle(chat.title);
+  const needsTitle = deps.isPlaceholderTitle(chat.title);
   const sourceContentForTitle = userContent || assistantContent;
   if (needsTitle && sourceContentForTitle) {
     const configuredTitleModel = prefs?.titleModelId?.trim() || undefined;
