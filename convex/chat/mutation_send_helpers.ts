@@ -1,5 +1,6 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
+import { ConvexError } from "convex/values";
 
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -52,7 +53,7 @@ export async function normalizeMessageAttachments(
           resolvedUrl = await ctx.storage.getUrl(attachment.storageId) ?? undefined;
         }
         if (!resolvedUrl || resolvedUrl.length === 0) {
-          throw new Error("Attachment upload failed. Please retry.");
+          throw new ConvexError({ code: "VALIDATION", message: "Attachment upload failed. Please retry." });
         }
 
         return {
@@ -84,7 +85,7 @@ export async function normalizeMessageAttachments(
       return sum + size;
     }, 0);
     if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
-      throw new Error("Attachments too large. Max total size is 25 MB.");
+      throw new ConvexError({ code: "VALIDATION", message: "Attachments too large. Max total size is 25 MB." });
     }
   }
 

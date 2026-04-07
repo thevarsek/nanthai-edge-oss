@@ -6,7 +6,7 @@
 // Supports batch upsert for layout engine output.
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
@@ -18,7 +18,7 @@ async function assertChatOwnership(
 ) {
   const chat = await ctx.db.get(chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found or unauthorized" });
   }
 }
 
@@ -29,7 +29,7 @@ async function assertMessageInChat(
 ) {
   const message = await ctx.db.get(messageId);
   if (!message || message.chatId !== chatId) {
-    throw new Error("Message not found in chat");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Message not found in chat" });
   }
 }
 

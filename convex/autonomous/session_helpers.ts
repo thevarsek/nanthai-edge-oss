@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 
@@ -16,22 +17,20 @@ export function assertTurnConfiguration(
 ): void {
   const uniqueTurnOrder = dedupeParticipantIds(turnOrder);
   if (uniqueTurnOrder.length < 2) {
-    throw new Error("Autonomous mode requires at least 2 active turn-takers");
+    throw new ConvexError({ code: "VALIDATION", message: "Autonomous mode requires at least 2 active turn-takers" });
   }
   if (
     moderatorParticipantId &&
     uniqueTurnOrder.includes(moderatorParticipantId)
   ) {
-    throw new Error("Moderator cannot also be in autonomous turn order");
+    throw new ConvexError({ code: "VALIDATION", message: "Moderator cannot also be in autonomous turn order" });
   }
   const configuredParticipantIds = new Set(
     participantConfigs.map((config) => config.participantId),
   );
   for (const participantId of uniqueTurnOrder) {
     if (!configuredParticipantIds.has(participantId)) {
-      throw new Error(
-        `Missing participant config for turn-taker: ${participantId}`,
-      );
+      throw new ConvexError({ code: "VALIDATION", message: `Missing participant config for turn-taker: ${participantId}` });
     }
   }
 }

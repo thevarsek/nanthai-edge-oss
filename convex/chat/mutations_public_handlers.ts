@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { requireAuth, requirePro, getIsProUnlocked } from "../lib/auth";
 import { assertRateLimit } from "../lib/rate_limit";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
@@ -126,7 +127,7 @@ export async function sendMessageHandler(
     normalizeMessageAttachments(ctx, args.attachments),
   ]);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
   }
 
   const trimmedText = args.text.trim();
@@ -135,7 +136,7 @@ export async function sendMessageHandler(
     (!args.attachments || args.attachments.length === 0) &&
     !args.recordedAudio
   ) {
-    throw new Error("Empty input");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Empty input" });
   }
 
   const effectiveSearchMode = args.searchMode ?? undefined;
@@ -146,7 +147,7 @@ export async function sendMessageHandler(
     effectiveComplexity === 3 &&
     (normalizedAttachments?.length ?? 0) > 0
   ) {
-    throw new Error("Complexity 3 search does not support attachments.");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Complexity 3 search does not support attachments." });
   }
 
   const participants = normalizeParticipants(
@@ -191,7 +192,7 @@ export async function sendMessageHandler(
     isAudioAttachment(attachment),
   ).length ?? 0;
   if (args.recordedAudio && audioAttachmentCount > 0) {
-    throw new Error("Choose one audio source before sending.");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Choose one audio source before sending." });
   }
   const audioTranscript =
     args.recordedAudio?.transcript?.trim() ||
@@ -382,7 +383,7 @@ export async function cancelGenerationHandler(
 
   const job = await ctx.db.get(args.jobId);
   if (!job || job.userId !== userId) {
-    throw new Error("Job not found");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found" });
   }
 
   if (job.status === "completed" || job.status === "failed") {
@@ -437,7 +438,7 @@ export async function cancelActiveGenerationHandler(
 
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
   }
 
   const now = Date.now();
@@ -571,7 +572,7 @@ export async function deleteKnowledgeBaseFileHandler(
       .first();
 
     if (!file || file.userId !== userId) {
-      throw new Error("File not found or not owned by user.");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "File not found or not owned by user." });
     }
 
     // Remove from parent message's generatedFileIds
@@ -597,7 +598,7 @@ export async function deleteKnowledgeBaseFileHandler(
       .first();
 
     if (!fileAtt || fileAtt.userId !== userId) {
-      throw new Error("Attachment not found or not owned by user.");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Attachment not found or not owned by user." });
     }
 
     // Also remove the attachment entry from the parent message

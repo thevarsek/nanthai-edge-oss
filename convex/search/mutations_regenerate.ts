@@ -1,5 +1,5 @@
 import { mutation, MutationCtx } from "../_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
@@ -52,18 +52,18 @@ export async function regeneratePaperHandler(
 
   const sourceSession = await ctx.db.get(args.sessionId);
   if (!sourceSession || sourceSession.userId !== userId) {
-    throw new Error("Search session not found");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Search session not found" });
   }
   if (sourceSession.mode !== "paper") {
-    throw new Error("Can only regenerate research paper sessions");
+    throw new ConvexError({ code: "VALIDATION", message: "Can only regenerate research paper sessions" });
   }
   if (sourceSession.status !== "completed" && sourceSession.status !== "failed") {
-    throw new Error("Can only regenerate from a completed or failed research paper");
+    throw new ConvexError({ code: "VALIDATION", message: "Can only regenerate from a completed or failed research paper" });
   }
 
   const originalMessage = await ctx.db.get(sourceSession.assistantMessageId);
   if (!originalMessage) {
-    throw new Error("Original message not found");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Original message not found" });
   }
 
   const assistantMessageId = await ctx.db.insert("messages", {

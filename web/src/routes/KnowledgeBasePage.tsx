@@ -8,6 +8,7 @@ import { ChevronLeft, Search, FileText, Trash2, Download, Files } from "lucide-r
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -165,7 +166,7 @@ function KnowledgeBasePageContent() {
     } catch (error) {
       setUploadError(
         t("upload_failed_arg", {
-          var1: error instanceof Error ? error.message : "Unknown error",
+          var1: convexErrorMessage(error, "Unknown error"),
         }),
       );
     } finally {

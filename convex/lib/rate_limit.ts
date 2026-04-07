@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { QueryCtx, MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 
 const RATE_WINDOW_MS = 60 * 1000; // 1 minute
 const MAX_MESSAGES_PER_MINUTE = 30; // generous for normal usage, blocks abuse
@@ -34,8 +35,9 @@ export async function assertRateLimit(
     .take(MAX_MESSAGES_PER_MINUTE + 1);
 
   if (recentRecords.length > MAX_MESSAGES_PER_MINUTE) {
-    throw new Error(
-      "Rate limit exceeded — please wait a moment before sending more messages.",
-    );
+    throw new ConvexError({
+      code: "RATE_LIMIT" as const,
+      message: "Rate limit exceeded — please wait a moment before sending more messages.",
+    });
   }
 }

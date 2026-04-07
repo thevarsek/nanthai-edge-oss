@@ -9,6 +9,7 @@
 // =============================================================================
 
 import { action } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { requireAuth } from "../lib/auth";
 
 /**
@@ -25,9 +26,7 @@ export const createCheckoutSession = action({
     const appUrl = (process.env.WEB_APP_URL ?? "").replace(/\/$/, "");
 
     if (!secretKey || !priceId || !appUrl) {
-      throw new Error(
-        "Stripe is not configured — missing one or more env vars: STRIPE_SECRET_KEY, STRIPE_PRICE_ID, WEB_APP_URL."
-      );
+      throw new ConvexError({ code: "CONFIG_ERROR", message: "Stripe is not configured — missing one or more env vars: STRIPE_SECRET_KEY, STRIPE_PRICE_ID, WEB_APP_URL." });
     }
 
     const body = new URLSearchParams({
@@ -51,7 +50,7 @@ export const createCheckoutSession = action({
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Stripe checkout error: ${response.status} ${text}`);
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Stripe checkout error: ${response.status} ${text}` });
     }
 
     const session = (await response.json()) as { url: string };

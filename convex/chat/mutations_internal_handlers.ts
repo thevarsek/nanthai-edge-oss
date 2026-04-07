@@ -3,7 +3,7 @@ import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
-import { isAudioBasedUserMessage, isLyriaModel, resolveAutoAudioResponseEnabled } from "./audio_shared";
+import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import {
   deleteStreamingMessage,
   getStreamingMessageByMessageId,

@@ -30,6 +30,7 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ModelPicker } from "@/components/shared/ModelPicker";
 import { useToast } from "@/components/shared/Toast.context";
 import { Defaults } from "@/lib/constants";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import {
   useChatScroll, useChatSearchWiring, useMentionSuggestions, useSubagentOverride,
   useSearchMode,
@@ -123,7 +124,7 @@ export function ChatPage() {
           await connectProviderWithPopup("google", { requestedIntegration: key });
         } catch (error) {
           toast({
-            message: error instanceof Error ? error.message : t("google_signin_failed"),
+            message: convexErrorMessage(error, t("google_signin_failed")),
             variant: "error",
           });
           return;

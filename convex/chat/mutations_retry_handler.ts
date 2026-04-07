@@ -68,12 +68,12 @@ export async function retryMessageHandler(
 
   const originalMsg = await ctx.db.get(args.messageId);
   if (!originalMsg || originalMsg.role !== "assistant") {
-    throw new Error("Message not found or not an assistant message");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Message not found or not an assistant message" });
   }
 
   const chat = await ctx.db.get(originalMsg.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found" });
   }
 
   const participants: SendParticipantConfig[] = args.participants ?? [

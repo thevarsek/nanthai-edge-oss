@@ -29,7 +29,7 @@ import {
   RunGenerationArgs,
 } from "./actions_run_generation_types";
 import { appendCurrentTurnAudioInput } from "./audio_input_request";
-import { isLyriaModel, LYRIA_MP3_MIME_TYPE, parseMp3DurationMs } from "./audio_shared";
+import { LYRIA_MP3_MIME_TYPE, parseMp3DurationMs } from "./audio_shared";
 import { CITATION_SYSTEM_PROMPT_SUFFIX } from "../search/helpers";
 import {
   buildNanthAIPrelude,

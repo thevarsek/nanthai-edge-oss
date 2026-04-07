@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
@@ -20,7 +20,7 @@ async function assertNoActiveAutonomousSession(
       session.status === "running" || session.status === "paused",
   );
   if (hasActive) {
-    throw new Error("Cannot edit participants while autonomous mode is active");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Cannot edit participants while autonomous mode is active" });
   }
 }
 
@@ -55,7 +55,7 @@ export const addParticipant = mutation({
     // Verify chat ownership
     const chat = await ctx.db.get(args.chatId);
     if (!chat || chat.userId !== userId) {
-      throw new Error("Chat not found");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
     }
     await assertNoActiveAutonomousSession(ctx, args.chatId);
 
@@ -66,7 +66,7 @@ export const addParticipant = mutation({
       .collect();
 
     if (existing.length >= 3) {
-      throw new Error("Maximum 3 participants per chat");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Maximum 3 participants per chat" });
     }
 
     const sortOrder =
@@ -103,7 +103,7 @@ export const removeParticipant = mutation({
 
     const participant = await ctx.db.get(args.participantId);
     if (!participant || participant.userId !== userId) {
-      throw new Error("Participant not found");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Participant not found" });
     }
     await assertNoActiveAutonomousSession(ctx, participant.chatId);
 
@@ -114,7 +114,7 @@ export const removeParticipant = mutation({
       .collect();
 
     if (siblings.length <= 1) {
-      throw new Error("Cannot remove the last participant");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Cannot remove the last participant" });
     }
 
     await ctx.db.delete(args.participantId);
@@ -151,7 +151,7 @@ export const updateParticipant = mutation({
 
     const participant = await ctx.db.get(args.participantId);
     if (!participant || participant.userId !== userId) {
-      throw new Error("Participant not found");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Participant not found" });
     }
     await assertNoActiveAutonomousSession(ctx, participant.chatId);
 
@@ -195,15 +195,15 @@ export const setParticipants = mutation({
 
     const chat = await ctx.db.get(args.chatId);
     if (!chat || chat.userId !== userId) {
-      throw new Error("Chat not found");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
     }
     await assertNoActiveAutonomousSession(ctx, args.chatId);
 
     if (args.participants.length === 0) {
-      throw new Error("At least one participant required");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "At least one participant required" });
     }
     if (args.participants.length > 3) {
-      throw new Error("Maximum 3 participants per chat");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Maximum 3 participants per chat" });
     }
 
     // Delete existing

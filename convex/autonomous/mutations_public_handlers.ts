@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import { Id, type Id as ConvexId } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import {
   assertTurnConfiguration,
@@ -59,7 +60,7 @@ export async function startSessionHandler(
 
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found or unauthorized" });
   }
 
   const existingSessions = await ctx.db
@@ -70,7 +71,7 @@ export async function startSessionHandler(
     (session) => session.status === "running" || session.status === "paused",
   );
   if (hasActive) {
-    throw new Error("An autonomous session is already active for this chat");
+    throw new ConvexError({ code: "CONFLICT", message: "An autonomous session is already active for this chat" });
   }
 
   const parentMessageIds = await resolveInitialParentMessageIds(
@@ -121,7 +122,7 @@ export async function pauseSessionHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new Error("Session not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
   }
   if (session.status !== "running") {
     return;
@@ -148,7 +149,7 @@ export async function resumeSessionHandler(
   await requirePro(ctx, userId);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new Error("Session not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
   }
   if (session.status !== "paused") {
     return;
@@ -202,7 +203,7 @@ export async function stopSessionHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new Error("Session not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
   }
   if (session.status !== "running" && session.status !== "paused") {
     return;
@@ -227,7 +228,7 @@ export async function handleUserInterventionHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new Error("Session not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
   }
   if (session.status !== "running" && session.status !== "paused") {
     return;

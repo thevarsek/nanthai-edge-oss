@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
@@ -52,7 +52,7 @@ export const fetchOpenRouterCredits = action({
       { userId },
     );
     if (!apiKey) {
-      throw new Error("No OpenRouter API key found. Please connect OpenRouter first.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No OpenRouter API key found. Please connect OpenRouter first." });
     }
 
     const resp = await fetch("https://openrouter.ai/api/v1/credits", {
@@ -63,7 +63,7 @@ export const fetchOpenRouterCredits = action({
       },
     });
     if (!resp.ok) {
-      throw new Error(`OpenRouter credits API returned ${resp.status}`);
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `OpenRouter credits API returned ${resp.status}` });
     }
     const data = (await resp.json()) as {
       data?: { total_credits?: number; total_usage?: number };

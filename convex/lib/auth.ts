@@ -41,7 +41,7 @@ export async function requireAuth(
 ): Promise<{ userId: string; email?: string; name?: string }> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
-    throw new Error("Authentication required. Please sign in.");
+    throw new ConvexError({ code: "AUTH_REQUIRED" as const, message: "Authentication required. Please sign in." });
   }
   return {
     userId: identity.subject, // Clerk user ID (e.g., "user_2x...")

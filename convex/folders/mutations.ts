@@ -3,7 +3,7 @@
 // Folder CRUD mutations for chat organization.
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
 import { resolveNextFolderSortOrder } from "./shared";
@@ -47,7 +47,7 @@ export const update = mutation({
     const { userId } = await requireAuth(ctx);
     const folder = await ctx.db.get(args.folderId);
     if (!folder || folder.userId !== userId) {
-      throw new Error("Folder not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Folder not found or unauthorized" });
     }
 
     const { folderId, ...updates } = args;
@@ -65,7 +65,7 @@ export const remove = mutation({
     const { userId } = await requireAuth(ctx);
     const folder = await ctx.db.get(args.folderId);
     if (!folder || folder.userId !== userId) {
-      throw new Error("Folder not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Folder not found or unauthorized" });
     }
 
     // Un-file chats in this folder
@@ -94,14 +94,14 @@ export const moveChat = mutation({
     const { userId } = await requireAuth(ctx);
     const chat = await ctx.db.get(args.chatId);
     if (!chat || chat.userId !== userId) {
-      throw new Error("Chat not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found or unauthorized" });
     }
 
     // Verify folder exists if provided
     if (args.folderId) {
       const folder = await ctx.db.get(args.folderId);
       if (!folder || folder.userId !== userId) {
-        throw new Error("Folder not found or unauthorized");
+        throw new ConvexError({ code: "NOT_FOUND", message: "Folder not found or unauthorized" });
       }
     }
 

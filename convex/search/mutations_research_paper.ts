@@ -1,5 +1,5 @@
 import { mutation, MutationCtx } from "../_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
@@ -57,7 +57,7 @@ export const startResearchPaper = mutation({
 
     const chat = await ctx.db.get(args.chatId);
     if (!chat || chat.userId !== userId) {
-      throw new Error("Chat not found");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found" });
     }
 
     const participantCount = await ctx.db
@@ -65,12 +65,12 @@ export const startResearchPaper = mutation({
       .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
       .collect();
     if (participantCount.length > 1) {
-      throw new Error("Research Paper requires a single participant.");
+      throw new ConvexError({ code: "VALIDATION", message: "Research Paper requires a single participant." });
     }
 
     const trimmedText = args.text.trim();
     if (!trimmedText) {
-      throw new Error("Empty input");
+      throw new ConvexError({ code: "VALIDATION", message: "Empty input" });
     }
 
     const complexity = Math.max(1, Math.min(3, Math.round(args.complexity)));
@@ -82,10 +82,10 @@ export const startResearchPaper = mutation({
       isAudioAttachment(attachment),
     ).length ?? 0;
     if (args.recordedAudio && audioAttachmentCount > 0) {
-      throw new Error("Choose one audio source before sending.");
+      throw new ConvexError({ code: "VALIDATION", message: "Choose one audio source before sending." });
     }
     if (complexity === 3 && (normalizedAttachments?.length ?? 0) > 0) {
-      throw new Error("Complexity 3 search does not support attachments.");
+      throw new ConvexError({ code: "VALIDATION", message: "Complexity 3 search does not support attachments." });
     }
 
     const expandMultiModelGroups = args.expandMultiModelGroups ?? true;
@@ -235,7 +235,7 @@ export async function cancelResearchPaperHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new Error("Search session not found");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Search session not found" });
   }
 
   if (

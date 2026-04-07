@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   action,
   internalMutation,
@@ -22,7 +22,7 @@ export const connectAppleCalendar = action({
     const appSpecificPassword = args.appSpecificPassword.trim();
 
     if (!appleId || !appSpecificPassword) {
-      throw new Error("Apple ID and app-specific password are required.");
+      throw new ConvexError({ code: "VALIDATION", message: "Apple ID and app-specific password are required." });
     }
 
     let calendars;
@@ -34,17 +34,13 @@ export const connectAppleCalendar = action({
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.toLowerCase().includes("invalid credentials")) {
-        throw new Error(
-          "Apple Calendar sign-in failed. Confirm you're using the Apple ID that owns the iCloud Calendar and an Apple app-specific password."
-        );
+        throw new ConvexError({ code: "UNAUTHORIZED", message: "Apple Calendar sign-in failed. Confirm you're using the Apple ID that owns the iCloud Calendar and an Apple app-specific password." });
       }
-      throw new Error(
-        "Apple Calendar connection failed. Check the credentials and try again."
-      );
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: "Apple Calendar connection failed. Check the credentials and try again." });
     }
 
     if (calendars.length === 0) {
-      throw new Error("No Apple calendars were found for this account.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No Apple calendars were found for this account." });
     }
 
     await ctx.runMutation(internal.oauth.apple_calendar.upsertConnection, {
@@ -149,7 +145,7 @@ export const disconnectAppleCalendar = action({
     );
 
     if (!connection) {
-      throw new Error("No Apple Calendar connection found.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No Apple Calendar connection found." });
     }
 
     await ctx.runMutation(internal.oauth.apple_calendar.deleteConnection, {

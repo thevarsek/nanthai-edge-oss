@@ -5,6 +5,7 @@ import { api } from "@convex/_generated/api";
 import { useConnectedAccounts } from "@/hooks/useSharedData";
 import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import {
   buildProviderAuthorizationUrl,
   clearOAuthContext,
@@ -91,11 +92,7 @@ function AppleCalendarModal({
       await connectAppleCalendar({ appleId: email, appSpecificPassword: password });
       onClose();
     } catch (connectionError) {
-      setError(
-        connectionError instanceof Error && connectionError.message.trim().length > 0
-          ? connectionError.message
-          : t("connection_failed"),
-      );
+      setError(convexErrorMessage(connectionError, t("connection_failed")));
     } finally {
       setLoading(false);
     }
@@ -220,7 +217,7 @@ export function ConnectedAccountsSection() {
       setPendingProvider(provider);
     } catch (error) {
       clearOAuthContext(provider);
-      setProviderError(error instanceof Error ? error.message : t("sign_in_cancelled_arg", { var1: labelForProvider(provider) }));
+      setProviderError(convexErrorMessage(error, t("sign_in_cancelled_arg", { var1: labelForProvider(provider) })));
     }
   };
 
@@ -233,11 +230,7 @@ export function ConnectedAccountsSection() {
       await fn();
       return true;
     } catch (error) {
-      setProviderError(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : t("connection_failed"),
-      );
+      setProviderError(convexErrorMessage(error, t("connection_failed")));
       return false;
     } finally {
       setBusyAction(null);

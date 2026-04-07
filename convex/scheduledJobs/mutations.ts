@@ -3,7 +3,7 @@
 // Scheduled job CRUD + execution lifecycle mutations.
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -67,7 +67,7 @@ function buildStepsFromInput(args: {
   }
 
   if (!args.prompt || !args.modelId) {
-    throw new Error("Either 'steps' or legacy 'prompt' and 'modelId' are required");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Either 'steps' or legacy 'prompt' and 'modelId' are required" });
   }
 
   return [{
@@ -104,7 +104,7 @@ async function validateKnowledgeBaseFileIds(
           .first();
     const ownerFile = genFile ?? attachment;
     if (!ownerFile || ownerFile.userId !== userId) {
-      throw new Error("Knowledge base file not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Knowledge base file not found or unauthorized" });
     }
   }
 }
@@ -120,24 +120,24 @@ async function validateScheduledSteps(
   steps: ScheduledJobStepConfig[],
 ): Promise<ScheduledJobStepConfig[]> {
   if (steps.length < 1 || steps.length > 5) {
-    throw new Error("Scheduled jobs must contain between 1 and 5 steps");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Scheduled jobs must contain between 1 and 5 steps" });
   }
 
   const result: ScheduledJobStepConfig[] = [];
 
   for (const [index, step] of steps.entries()) {
     if (!step.prompt.trim()) {
-      throw new Error(`Step ${index + 1} prompt is required`);
+      throw new ConvexError({ code: "VALIDATION" as const, message: `Step ${index + 1} prompt is required` });
     }
     if (!step.modelId.trim()) {
-      throw new Error(`Step ${index + 1} model is required`);
+      throw new ConvexError({ code: "VALIDATION" as const, message: `Step ${index + 1} model is required` });
     }
 
     let resolvedModelId = step.modelId;
     if (step.personaId) {
       const persona = await ctx.db.get(step.personaId);
       if (!persona || persona.userId !== userId) {
-        throw new Error(`Step ${index + 1} persona not found or unauthorized`);
+        throw new ConvexError({ code: "NOT_FOUND" as const, message: `Step ${index + 1} persona not found or unauthorized` });
       }
       resolvedModelId = persona.modelId ?? step.modelId;
     }
@@ -201,19 +201,19 @@ export const createJob = mutation({
     const recurrence = args.recurrence as Recurrence;
     const validationError = validateRecurrence(recurrence);
     if (validationError) {
-      throw new Error(`Invalid recurrence: ${validationError}`);
+      throw new ConvexError({ code: "VALIDATION" as const, message: `Invalid recurrence: ${validationError}` });
     }
 
     // Validate name
     const trimmedName = args.name.trim();
-    if (!trimmedName) throw new Error("Job name is required");
-    if (trimmedName.length > 200) throw new Error("Job name too long (max 200 characters)");
+    if (!trimmedName) throw new ConvexError({ code: "VALIDATION" as const, message: "Job name is required" });
+    if (trimmedName.length > 200) throw new ConvexError({ code: "VALIDATION" as const, message: "Job name too long (max 200 characters)" });
 
     // Validate target folder if provided
     if (args.targetFolderId) {
       const folder = await ctx.db.get(args.targetFolderId);
       if (!folder || folder.userId !== userId) {
-        throw new Error("Target folder not found or unauthorized");
+        throw new ConvexError({ code: "NOT_FOUND" as const, message: "Target folder not found or unauthorized" });
       }
     }
 
@@ -295,14 +295,14 @@ export const updateJob = mutation({
     await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
-      throw new Error("Job not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
 
     if (args.name !== undefined) {
       const trimmedName = args.name.trim();
-      if (!trimmedName) throw new Error("Job name is required");
+      if (!trimmedName) throw new ConvexError({ code: "VALIDATION" as const, message: "Job name is required" });
       updates.name = trimmedName;
     }
     if (args.timezone !== undefined) updates.timezone = args.timezone;
@@ -310,7 +310,7 @@ export const updateJob = mutation({
       if (args.targetFolderId) {
         const folder = await ctx.db.get(args.targetFolderId);
         if (!folder || folder.userId !== userId) {
-          throw new Error("Target folder not found or unauthorized");
+          throw new ConvexError({ code: "NOT_FOUND" as const, message: "Target folder not found or unauthorized" });
         }
       }
       updates.targetFolderId = args.targetFolderId ?? undefined;
@@ -350,7 +350,7 @@ export const updateJob = mutation({
     if (args.recurrence !== undefined) {
       const validationError = validateRecurrence(recurrence);
       if (validationError) {
-        throw new Error(`Invalid recurrence: ${validationError}`);
+        throw new ConvexError({ code: "VALIDATION" as const, message: `Invalid recurrence: ${validationError}` });
       }
       updates.recurrence = args.recurrence;
     }
@@ -397,7 +397,7 @@ export const pauseJob = mutation({
     await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
-      throw new Error("Job not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
     if (job.status === "paused") return;
 
@@ -427,7 +427,7 @@ export const resumeJob = mutation({
     await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
-      throw new Error("Job not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
     if (job.status === "active") return;
 
@@ -465,7 +465,7 @@ export const deleteJob = mutation({
     await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
-      throw new Error("Job not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
 
     // Cancel pending scheduled function
@@ -503,14 +503,14 @@ export const runJobNow = mutation({
     await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
-      throw new Error("Job not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
 
     // Block paused manual jobs from running (for non-manual jobs, allow one-off)
     // Actually per spec: "Paused manual jobs cannot be run via Run Now"
     // But for non-manual paused jobs, allow one-off execution without un-pausing
     if (job.status === "paused" && (job.recurrence as Recurrence).type === "manual") {
-      throw new Error("Cannot run a paused manual job — resume it first");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Cannot run a paused manual job — resume it first" });
     }
 
     // Fire immediately
@@ -532,7 +532,7 @@ export const upsertApiKey = mutation({
   args: { apiKey: v.string() },
   handler: async (ctx, args) => {
     if (!args.apiKey || args.apiKey.trim().length === 0) {
-      throw new Error("API key cannot be empty.");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "API key cannot be empty." });
     }
     const { userId } = await requireAuth(ctx);
     const existing = await ctx.db

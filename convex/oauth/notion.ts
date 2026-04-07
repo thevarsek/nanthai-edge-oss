@@ -10,7 +10,7 @@
 // token endpoint, NOT form-encoded client credentials.
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   action,
   internalMutation,
@@ -45,9 +45,7 @@ export const exchangeNotionCode = action({
     const clientId = process.env.NOTION_CLIENT_ID;
     const clientSecret = process.env.NOTION_CLIENT_SECRET;
     if (!clientId || !clientSecret) {
-      throw new Error(
-        "Notion OAuth is not configured. Set NOTION_CLIENT_ID and NOTION_CLIENT_SECRET environment variables.",
-      );
+      throw new ConvexError({ code: "CONFIG_ERROR", message: "Notion OAuth is not configured. Set NOTION_CLIENT_ID and NOTION_CLIENT_SECRET environment variables." });
     }
 
     // Notion uses HTTP Basic Auth: base64(client_id:client_secret)
@@ -70,9 +68,7 @@ export const exchangeNotionCode = action({
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error("Notion token exchange failed:", errorText);
-      throw new Error(
-        `Notion token exchange failed (HTTP ${tokenResponse.status})`,
-      );
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Notion token exchange failed (HTTP ${tokenResponse.status})` });
     }
 
     const tokens = (await tokenResponse.json()) as {
@@ -94,7 +90,7 @@ export const exchangeNotionCode = action({
     };
 
     if (!tokens.access_token) {
-      throw new Error("Notion did not return an access token.");
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: "Notion did not return an access token." });
     }
 
     // Extract user info from the token response (Notion includes it directly)
@@ -248,7 +244,7 @@ export const disconnectNotion = action({
     );
 
     if (!connection) {
-      throw new Error("No Notion connection found.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No Notion connection found." });
     }
 
     // Delete the connection from the database

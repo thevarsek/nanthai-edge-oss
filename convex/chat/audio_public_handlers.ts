@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { requireAuth } from "../lib/auth";
 import { getAuthorizedMessage } from "./query_helpers";
 
@@ -11,10 +12,10 @@ export async function requestAudioGenerationHandler(
   const { userId } = await requireAuth(ctx);
   const message = await getAuthorizedMessage(ctx, args.messageId, userId);
   if (!message || message.role !== "assistant") {
-    throw new Error("Assistant message not found.");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Assistant message not found." });
   }
   if (!message.content?.trim()) {
-    throw new Error("Message has no text to voice.");
+    throw new ConvexError({ code: "VALIDATION", message: "Message has no text to voice." });
   }
 
   // Guard: skip duplicate generation if audio already exists or is currently being generated.

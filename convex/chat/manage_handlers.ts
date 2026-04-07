@@ -1,6 +1,7 @@
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import { safeDeleteAudioBlob } from "./manage_delete_helpers";
 import {
@@ -67,7 +68,7 @@ async function assertOwnedFolder(
 
   const folder = await ctx.db.get(folderId as Id<"folders">);
   if (!folder || folder.userId !== userId) {
-    throw new Error("Folder not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Folder not found or unauthorized" });
   }
 }
 
@@ -135,7 +136,7 @@ export async function updateChatHandler(
   const { userId } = await requireAuth(ctx);
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found or unauthorized" });
   }
   await assertOwnedFolder(ctx, userId, args.folderId);
 
@@ -161,7 +162,7 @@ export async function updateChatHandler(
     if (args.subagentOverride === "enabled") {
       await requirePro(ctx, userId);
       if (!(await isSingleParticipantChat(ctx, args.chatId))) {
-        throw new Error("Subagents are only available in single-model chats.");
+        throw new ConvexError({ code: "VALIDATION" as const, message: "Subagents are only available in single-model chats." });
       }
     }
     patch.subagentOverride = args.subagentOverride ?? undefined;
@@ -199,7 +200,7 @@ export async function updateChatHandler(
   if (args.activeBranchLeafId !== undefined) {
     const leaf = await ctx.db.get(args.activeBranchLeafId);
     if (!leaf || leaf.chatId !== args.chatId) {
-      throw new Error("Active branch leaf must belong to the chat.");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Active branch leaf must belong to the chat." });
     }
     patch.activeBranchLeafId = args.activeBranchLeafId;
   }
@@ -220,7 +221,7 @@ export async function switchBranchAtForkHandler(
   const { userId } = await requireAuth(ctx);
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found or unauthorized" });
   }
 
   const messages = await loadAllChatMessages(ctx, args.chatId);
@@ -231,10 +232,10 @@ export async function switchBranchAtForkHandler(
     (message: (typeof messages)[number]) => message._id === args.targetSiblingMessageId,
   );
   if (!currentSibling || !targetSibling) {
-    throw new Error("Branch message not found in chat");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Branch message not found in chat" });
   }
   if (!areSiblingMessages(currentSibling, targetSibling)) {
-    throw new Error("Target message is not a sibling at the selected fork");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Target message is not a sibling at the selected fork" });
   }
 
   const nextLeafId = resolveSwitchedBranchLeaf({
@@ -244,7 +245,7 @@ export async function switchBranchAtForkHandler(
     targetSiblingMessageId: args.targetSiblingMessageId as string,
   });
   if (!nextLeafId) {
-    throw new Error("Unable to resolve branch leaf for selected fork");
+    throw new ConvexError({ code: "VALIDATION" as const, message: "Unable to resolve branch leaf for selected fork" });
   }
 
   await ctx.db.patch(args.chatId, {
@@ -266,7 +267,7 @@ export async function deleteChatHandler(
   const { userId } = await requireAuth(ctx);
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found or unauthorized" });
   }
 
   const deletingAt = Date.now();
@@ -339,12 +340,12 @@ export async function deleteMessageHandler(
   const { userId } = await requireAuth(ctx);
   const message = await ctx.db.get(args.messageId);
   if (!message) {
-    throw new Error("Message not found");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Message not found" });
   }
 
   const chat = await ctx.db.get(message.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Unauthorized");
+    throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Unauthorized" });
   }
 
   // Clean up audio storage blob — guarded to avoid destroying a blob still
@@ -424,7 +425,7 @@ export async function forkChatHandler(
   const { userId } = await requireAuth(ctx);
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found or unauthorized" });
   }
 
   const now = Date.now();
@@ -486,7 +487,7 @@ export async function duplicateChatHandler(
   const { userId } = await requireAuth(ctx);
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new Error("Chat not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found or unauthorized" });
   }
 
   const now = Date.now();
@@ -550,10 +551,10 @@ export async function reorderPinnedChatsHandler(
   for (let i = 0; i < args.orderedChatIds.length; i++) {
     const chat = await ctx.db.get(args.orderedChatIds[i]);
     if (!chat || chat.userId !== userId) {
-      throw new Error("Chat not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found or unauthorized" });
     }
     if (!chat.isPinned) {
-      throw new Error("Cannot reorder an unpinned chat");
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Cannot reorder an unpinned chat" });
     }
     // Descending pinnedAt: first item gets highest timestamp.
     // Pin reordering is a display-layer operation — don't bump updatedAt.

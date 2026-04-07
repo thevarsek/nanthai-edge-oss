@@ -7,7 +7,7 @@
 // during generation without round-tripping to the client.
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { mutation, internalMutation } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
@@ -105,7 +105,7 @@ export const update = mutation({
     await requirePro(ctx, userId);
     const persona = await ctx.db.get(args.personaId);
     if (!persona || persona.userId !== userId) {
-      throw new Error("Persona not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Persona not found or unauthorized" });
     }
 
     const now = Date.now();
@@ -161,7 +161,7 @@ export const remove = mutation({
     await requirePro(ctx, userId);
     const persona = await ctx.db.get(args.personaId);
     if (!persona || persona.userId !== userId) {
-      throw new Error("Persona not found or unauthorized");
+      throw new ConvexError({ code: "NOT_FOUND", message: "Persona not found or unauthorized" });
     }
     if (persona.avatarImageStorageId) {
       await ctx.storage.delete(persona.avatarImageStorageId);

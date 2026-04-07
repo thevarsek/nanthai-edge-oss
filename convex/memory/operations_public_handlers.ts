@@ -1,6 +1,7 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import {
   normalizeMemoryRecord,
@@ -22,7 +23,7 @@ async function assertOwnedMemory(
 ) {
   const memory = await ctx.db.get(memoryId);
   if (!memory || memory.userId !== userId) {
-    throw new Error("Memory not found or unauthorized");
+    throw new ConvexError({ code: "NOT_FOUND", message: "Memory not found or unauthorized" });
   }
   return memory;
 }
@@ -175,7 +176,7 @@ export async function updateHandler(
 
   const content = args.content?.trim() ?? memory.content;
   if (!content) {
-    throw new Error("Memory content cannot be empty");
+    throw new ConvexError({ code: "VALIDATION", message: "Memory content cannot be empty" });
   }
   const rawPersonaIds = args.personaIds ?? memory.personaIds;
   const scopeType = normalizeMemoryScopeType(args.scopeType ?? memory.scopeType, rawPersonaIds);
@@ -221,7 +222,7 @@ export async function createManualHandler(
     sourceType: "manual",
     tags: args.tags,
   });
-  if (!normalized.content) throw new Error("Memory content cannot be empty");
+  if (!normalized.content) throw new ConvexError({ code: "VALIDATION", message: "Memory content cannot be empty" });
 
   const memoryId = await ctx.db.insert("memories", {
     userId,

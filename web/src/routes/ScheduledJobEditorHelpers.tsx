@@ -9,6 +9,7 @@ import { Toggle } from "@/components/shared/Toggle";
 import { ChatKBPicker } from "@/components/chat/ChatKBPicker";
 import { useToast } from "@/components/shared/Toast.context";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import {
   type DraftStep,
   type RecurrenceType,
@@ -291,7 +292,7 @@ export function StepIntegrationsSection({
         await connectProviderWithPopup("google", { requestedIntegration: integrationId });
       } catch (error) {
         toast({
-          message: error instanceof Error ? error.message : t("google_signin_failed"),
+          message: convexErrorMessage(error, t("google_signin_failed")),
           variant: "error",
         });
         return;

@@ -11,7 +11,7 @@
 // sent in any token request (Microsoft rejects it with AADSTS90023).
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   action,
   internalMutation,
@@ -52,9 +52,7 @@ export const exchangeMicrosoftCode = action({
 
     const clientId = process.env.MICROSOFT_CLIENT_ID;
     if (!clientId) {
-      throw new Error(
-        "Microsoft OAuth is not configured. Set MICROSOFT_CLIENT_ID environment variable.",
-      );
+      throw new ConvexError({ code: "CONFIG_ERROR", message: "Microsoft OAuth is not configured. Set MICROSOFT_CLIENT_ID environment variable." });
     }
 
     // Build token exchange params.
@@ -77,9 +75,7 @@ export const exchangeMicrosoftCode = action({
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error("Microsoft token exchange failed:", errorText);
-      throw new Error(
-        `Microsoft token exchange failed (HTTP ${tokenResponse.status})`,
-      );
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Microsoft token exchange failed (HTTP ${tokenResponse.status})` });
     }
 
     const tokens = (await tokenResponse.json()) as {
@@ -91,7 +87,7 @@ export const exchangeMicrosoftCode = action({
     };
 
     if (!tokens.access_token) {
-      throw new Error("Microsoft did not return an access token.");
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: "Microsoft did not return an access token." });
     }
 
     // Fetch user info (email, name) from Microsoft Graph
@@ -263,7 +259,7 @@ export const disconnectMicrosoft = action({
     );
 
     if (!connection) {
-      throw new Error("No Microsoft connection found.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No Microsoft connection found." });
     }
 
     // Delete the connection from the database

@@ -7,7 +7,7 @@
 //   3. Tokens are stored in the oauthConnections table
 // =============================================================================
 
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import {
   action,
   internalMutation,
@@ -79,9 +79,7 @@ export const exchangeGoogleCode = action({
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
       console.error("Google token exchange failed:", errorText);
-      throw new Error(
-        `Google token exchange failed (HTTP ${tokenResponse.status})`,
-      );
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Google token exchange failed (HTTP ${tokenResponse.status})` });
     }
 
     const tokens = (await tokenResponse.json()) as {
@@ -93,7 +91,7 @@ export const exchangeGoogleCode = action({
     };
 
     if (!tokens.access_token) {
-      throw new Error("Google did not return an access token.");
+      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: "Google did not return an access token." });
     }
 
     // Fetch user info (email, name) using the access token
@@ -271,7 +269,7 @@ export const disconnectGoogle = action({
     );
 
     if (!connection) {
-      throw new Error("No Google connection found.");
+      throw new ConvexError({ code: "NOT_FOUND", message: "No Google connection found." });
     }
 
     // Attempt to revoke the token with Google (best-effort)
