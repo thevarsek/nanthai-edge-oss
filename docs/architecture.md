@@ -773,7 +773,7 @@ Ideascape canvas gained context resolution, geometry utilities, and user onboard
 
 ### Backend Test Coverage
 
-43 total backend test files in `convex/tests/` (up from ~20 pre-sprint).
+138 total backend test files in `convex/tests/` (up from ~20 pre-sprint).
 
 ---
 

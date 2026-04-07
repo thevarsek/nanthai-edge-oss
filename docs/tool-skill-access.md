@@ -181,9 +181,13 @@ On create/update, NanthAI normalizes skill metadata like this:
 | Rule | Outcome |
 |---|---|
 | Runtime-capable user skill without `sandboxRuntime` access | rejected by backend normalization |
-| Integration profile without matching integration ID | rejected |
+| Integration profile without matching integration ID | orphaned profile pruned with warning (returned in `validationWarnings`) |
 | Skill with runtime profile | visibility can be gated by `requiredCapabilities` |
 | User-facing editor | shows simplified toggles instead of raw profile IDs |
+
+### Mutation return shape
+
+`createSkill` and `updateSkill` now return `{ skillId, validationWarnings }` instead of just `skillId`. The `validationWarnings` array contains human-readable strings about auto-corrections applied during save (orphaned integration profiles pruned, inferred capabilities added, etc.). Clients should surface these warnings in the editor UI after a successful save.
 
 ## What Each Tier Actually Feels Like
 

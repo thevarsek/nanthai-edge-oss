@@ -226,9 +226,10 @@ nanthai-edge/                              # Repository root
 │   │   │   ├── pptx.ts
 │   │   │   └── xlsx.ts
 │   │   ├── helpers.ts                      # buildSkillCatalogFromDocs, formatSkillCatalogXml
-│   │   ├── mutations.ts                    # CRUD + persona/chat assignment
+│   │   ├── mutations.ts                    # CRUD + persona/chat assignment (returns { skillId, validationWarnings })
 │   │   ├── mutations_seed.ts               # Upsert logic for catalog seeding
 │   │   ├── queries.ts                      # listSkills, getSkill
+│   │   ├── tool_profiles.ts                # inferToolProfiles, pruneOrphanedIntegrationProfiles
 │   │   └── validators.ts                   # validateSkillInstructions, slugify
 │   ├── jobs/
 │   │   └── cleanup.ts                      # Stale generation job cleanup
@@ -271,7 +272,8 @@ nanthai-edge/                              # Repository root
 │           │   ├── app/                    # App container, root VM, Navigation Compose host
 │           │   │   └── navigation/         # AppDestination.kt, AppNavHost.kt, AdaptiveChatPane.kt (M25), SettingsNavHost.kt (M25)
 │           │   ├── data/                   # Auth/Convex bridge interfaces + repositories + fake gateway state
-│           │   │   └── SkillsRepository.kt # Skills repository wrapping ConvexGateway skill methods (M18.1)
+│           │   │   ├── SkillsRepository.kt # Skills repository wrapping ConvexGateway skill methods (M18.1)
+│           │   │   └── ConvexErrorExtractor.kt # Cross-platform ConvexError message extraction utility
 │           │   ├── domain/                 # Reserved for light orchestration (empty scaffold)
 │           │   ├── features/               # Auth/chat/settings + advanced parity feature routes
 │           │   │   ├── chat/               # Chat list, detail, favorites strip
@@ -535,6 +537,7 @@ nanthai-edge/                              # Repository root
 │   │   │   ├── HapticEngine.swift            # Structured haptic feedback
 │   │   │   ├── Theme.swift                   # App theme constants
 │   │   │   ├── ConvexNull.swift              # Convex null/undefined interop helper
+│   │   │   ├── ConvexErrorExtractor.swift   # Cross-platform ConvexError message extraction utility
 │   │   │   ├── RuntimePlatform.swift         # iPad-for-Mac / device class detection
 │   │   │   ├── StartupLoadFailure.swift      # Startup load failure enum
 │   │   │   ├── AsyncTimeout.swift            # Async timeout utility
@@ -579,7 +582,7 @@ nanthai-edge/                              # Repository root
 │       ├── NanthAi_EdgeUITests.swift
 │       └── NanthAi_EdgeUITestsLaunchTests.swift
 │
-├── convex/tests/                            # Convex backend tests (52 test files, subset listed below)
+├── convex/tests/                            # Convex backend tests (138 test files, subset listed below)
 │   ├── chat_stream_patch_throttle.test.ts   # Stream patch cadence unit tests (M9.5)
 │   ├── chat_stream_writer.test.ts           # StreamWriter unit tests
 │   ├── chat_title_helpers.test.ts           # Title helper tests

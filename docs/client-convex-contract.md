@@ -143,3 +143,28 @@ When a shared feature adds or changes its canonical Convex path, document it in 
 - the relevant feature doc in `docs/` or milestone spec, if it is feature-specific
 
 The goal is simple: shared behavior should be solved once in Convex, then rendered consistently by every client.
+
+## Error Format Contract
+
+All Convex mutations and actions use structured `ConvexError` with a `{ code, message }` payload:
+
+```typescript
+throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found" });
+throw new ConvexError({ code: "UNAUTHORIZED", message: "Not authenticated" });
+throw new ConvexError({ code: "FORBIDDEN", message: "Not the chat owner" });
+throw new ConvexError({ code: "VALIDATION_ERROR", message: "Name is required" });
+```
+
+This replaced the previous `throw new Error(string)` pattern across ~370 throw sites. The `code` field enables programmatic error handling; the `message` field is user-facing.
+
+### Cross-Platform Error Extraction
+
+Each client has a dedicated extractor that unwraps the nested `ConvexError` JSON structure into a display-ready string:
+
+| Platform | File | Usage |
+|----------|------|-------|
+| iOS | `Utilities/ConvexErrorExtractor.swift` | `ConvexErrorExtractor.message(from: error)` |
+| Android | `data/ConvexErrorExtractor.kt` | `ConvexErrorExtractor.extractMessage(throwable)` |
+| Web | `lib/convexErrors.ts` | `convexErrorMessage(error)` |
+
+All three extractors handle the same nested JSON shape (`data.data.message` or `data.message`) and fall back to the raw error string when the structured payload is absent.

@@ -512,13 +512,28 @@ These services were deleted — their logic now lives in Convex backend function
 
 ## Error Handling
 
-Post-M8, errors come from two sources:
+Post-M8, errors come from three sources:
 
 1. **ConvexMobile `ClientError`** — subscription/mutation/action failures
 2. **Clerk SDK errors** — auth failures
+3. **Convex backend `ConvexError`** — structured errors thrown by mutations/actions
+
+### Structured `ConvexError` Contract
+
+All Convex backend mutations and actions throw `ConvexError({ code, message })` for user-facing errors. The `code` field is a machine-readable string (e.g., `"UNAUTHORIZED"`, `"NOT_FOUND"`, `"VALIDATION_ERROR"`, `"INTERNAL_ERROR"`, `"SKILL_INCOMPATIBLE"`, `"TOOL_CAPABLE_MODEL_REQUIRED"`). The `message` field is a human-readable string suitable for display.
+
+Each platform has an error extraction utility:
+
+| Platform | Utility | Location |
+|----------|---------|----------|
+| iOS | `ConvexErrorExtractor.extractMessage(_:)` | `Utilities/ConvexErrorExtractor.swift` |
+| Android | `ConvexErrorExtractor.extractMessage(throwable)` | `data/ConvexErrorExtractor.kt` |
+| Web | `convexErrorMessage(error)` | `web/src/lib/convexErrors.ts` |
+
+All three parse the structured `{ code, message }` payload from `ConvexError` and extract the `message` field for display. If the error is not a `ConvexError`, they fall back to the raw error message string.
 
 ViewModels catch these and present user-facing error states. The `AppError` enum pattern is retained for structured error display.
 
 ---
 
-*Last updated: 2026-04-07 — M26 Lyria music generation: AudioPlayerView.swift (iOS AVPlayer inline player with speed/seek/download), LyriaAudioPlayer.kt (Android MediaPlayer Compose player), enhanced AudioMessageBubble.tsx (Web). Server-side MP3 storage in generateForParticipant() eliminates client audio handling. M20 audio messages: ChatViewModel+Attachments handles recording, transcription (SFSpeechRecognizer), playback (AVPlayer), auto-audio TTS generation. Backend audio pipeline: gpt-audio-mini TTS + Lyria MP3 via OpenRouter, Convex \_storage blobs.*
+*Last updated: 2026-04-07 — Structured ConvexError contract: all backend mutations/actions throw ConvexError({ code, message }), cross-platform error extractors (ConvexErrorExtractor on iOS/Android, convexErrorMessage on web). M26 Lyria music generation: AudioPlayerView.swift (iOS AVPlayer inline player with speed/seek/download), LyriaAudioPlayer.kt (Android MediaPlayer Compose player), enhanced AudioMessageBubble.tsx (Web). Server-side MP3 storage in generateForParticipant() eliminates client audio handling. M20 audio messages: ChatViewModel+Attachments handles recording, transcription (SFSpeechRecognizer), playback (AVPlayer), auto-audio TTS generation. Backend audio pipeline: gpt-audio-mini TTS + Lyria MP3 via OpenRouter, Convex \_storage blobs.*
