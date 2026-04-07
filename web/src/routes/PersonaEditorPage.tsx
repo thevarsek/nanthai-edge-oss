@@ -550,7 +550,8 @@ export function PersonaEditorPage() {
                 onToggle={() => toggleSkill(skill._id)}
                 disabled={
                   !form.selectedSkillIds.has(skill._id)
-                  && (skill.requiredIntegrationIds ?? []).some((id) => !form.enabledIntegrations.has(id as IntegrationKey))
+                  && (skill.requiredIntegrationIds ?? []).length > 0
+                  && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
                 }
               />
             ))}
@@ -568,7 +569,8 @@ export function PersonaEditorPage() {
                 onToggle={() => toggleSkill(skill._id)}
                 disabled={
                   !form.selectedSkillIds.has(skill._id)
-                  && (skill.requiredIntegrationIds ?? []).some((id) => !form.enabledIntegrations.has(id as IntegrationKey))
+                  && (skill.requiredIntegrationIds ?? []).length > 0
+                  && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
                 }
               />
             ))}

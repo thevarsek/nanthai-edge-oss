@@ -29,7 +29,8 @@ Use this skill for tasks that require Google Drive.
   origin: "nanthaiBuiltin",
   visibility: "visible",
   lockState: "locked",
-  status: "active",
+  // Archived per M24: Google scope approval pending. Reinstate when Google integration is re-enabled.
+  status: "archived",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
     "drive_upload",

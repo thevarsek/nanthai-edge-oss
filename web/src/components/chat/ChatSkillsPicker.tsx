@@ -124,7 +124,7 @@ export function ChatSkillsPicker({ enabledSkillIds, enabledIntegrations, onToggl
                     skill={s}
                     selected={false}
                     onToggle={() => onToggle(s._id)}
-                    disabled={(s.requiredIntegrationIds ?? []).some((id) => !enabledIntegrations.has(id as IntegrationKey))}
+                    disabled={(s.requiredIntegrationIds ?? []).length > 0 && (s.requiredIntegrationIds ?? []).every((id) => !enabledIntegrations.has(id as IntegrationKey))}
                   />
                 ))}
               </Section>

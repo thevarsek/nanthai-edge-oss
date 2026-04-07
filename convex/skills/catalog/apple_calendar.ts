@@ -1,5 +1,8 @@
 import { SystemSkillSeedData } from "../mutations_seed";
 
+// Archived: Calendar Scheduler skill now covers Apple Calendar as a unified
+// cross-provider skill. Kept in seed catalog so upsert archives the DB record.
+// Reinstate as a standalone skill only if there is a clear token-savings need.
 export const APPLE_CALENDAR_SKILL: SystemSkillSeedData = {
   slug: "apple-calendar",
   name: "Apple Calendar",
@@ -29,7 +32,7 @@ Use this skill for Apple Calendar tasks.
   origin: "nanthaiBuiltin",
   visibility: "visible",
   lockState: "locked",
-  status: "active",
+  status: "archived",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
     "apple_calendar_list",

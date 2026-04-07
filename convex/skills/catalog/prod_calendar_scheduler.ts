@@ -11,17 +11,12 @@ export const CALENDAR_SCHEDULER_SKILL: SystemSkillSeedData = {
   name: "Calendar Scheduler",
   summary:
     "Manage calendar events — schedule meetings, check availability, set reminders, and " +
-    "organize your day. Works with Google Calendar, Microsoft Calendar, and Apple Calendar.",
+    "organize your day. Works with Microsoft Calendar and Apple Calendar.",
   instructionsRaw: `# Calendar Scheduler
 
-Manage calendar events across Google Calendar, Microsoft Calendar, and Apple Calendar. Schedule meetings, check availability, block focus time, and keep your day organized.
+Manage calendar events across Microsoft Calendar and Apple Calendar. Schedule meetings, check availability, block focus time, and keep your day organized.
 
 ## Available Tools
-
-### Google Calendar
-- **calendar_list** — List events in a date range
-- **calendar_create** — Create a new event
-- **calendar_delete** — Delete an event
 
 ### Microsoft Calendar (Outlook/365)
 - **ms_calendar_list** — List events in a date range
@@ -90,7 +85,7 @@ Manage calendar events across Google Calendar, Microsoft Calendar, and Apple Cal
 ### After Scheduling
 **Created:** [Event Title]
 - **When:** [Day], [Date] at [Time] - [End Time] ([Timezone])
-- **Calendar:** [Google / Microsoft / Apple]
+- **Calendar:** [Microsoft / Apple]
 - **Duration:** [X] minutes
 - **Conflicts:** None found (or list any that were detected)
 
@@ -122,7 +117,7 @@ Manage calendar events across Google Calendar, Microsoft Calendar, and Apple Cal
 ## Quality Checklist
 
 - [ ] Conflicts were checked before creating any event
-- [ ] The correct calendar (Google/Microsoft/Apple) was used
+- [ ] The correct calendar (Microsoft/Apple) was used
 - [ ] Event details (title, time, duration) were confirmed with the user
 - [ ] Timezone is explicit when relevant
 - [ ] Buffer time between meetings was considered
@@ -137,9 +132,6 @@ Manage calendar events across Google Calendar, Microsoft Calendar, and Apple Cal
   status: "active",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
-    "calendar_list",
-    "calendar_create",
-    "calendar_delete",
     "ms_calendar_list",
     "ms_calendar_create",
     "ms_calendar_delete",
@@ -148,6 +140,6 @@ Manage calendar events across Google Calendar, Microsoft Calendar, and Apple Cal
     "apple_calendar_update",
     "apple_calendar_delete",
   ],
-  requiredToolProfiles: ["google", "microsoft", "appleCalendar"],
-  requiredIntegrationIds: ["calendar", "ms_calendar", "apple_calendar"],
+  requiredToolProfiles: ["microsoft", "appleCalendar"],
+  requiredIntegrationIds: ["ms_calendar", "apple_calendar"],
 };

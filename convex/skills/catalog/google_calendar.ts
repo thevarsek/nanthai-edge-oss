@@ -1,5 +1,8 @@
 import { SystemSkillSeedData } from "../mutations_seed";
 
+// Archived: Calendar Scheduler skill now covers Google Calendar as a unified
+// cross-provider skill. Additionally paused per M24 (Google scope approval pending).
+// Reinstate when Google integration is re-enabled and if a standalone skill is needed.
 export const GOOGLE_CALENDAR_SKILL: SystemSkillSeedData = {
   slug: "google-calendar",
   name: "Google Calendar",
@@ -28,7 +31,7 @@ Use this skill for tasks that require Google Calendar.
   origin: "nanthaiBuiltin",
   visibility: "visible",
   lockState: "locked",
-  status: "active",
+  status: "archived",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
     "google_calendar_list",

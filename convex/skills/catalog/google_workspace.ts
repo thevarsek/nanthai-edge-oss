@@ -26,7 +26,8 @@ Use this skill for tasks that require Gmail, Google Drive, or Google Calendar.
   origin: "nanthaiBuiltin",
   visibility: "visible",
   lockState: "locked",
-  status: "active",
+  // Archived per M24: Google scope approval pending. Reinstate when Google integration is re-enabled.
+  status: "archived",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
     "gmail_send", "gmail_read", "gmail_search", "gmail_delete", "gmail_modify_labels", "gmail_list_labels",
