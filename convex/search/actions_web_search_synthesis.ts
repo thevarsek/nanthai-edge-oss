@@ -18,12 +18,30 @@ import {
 import { WebSearchActionArgs } from "./actions_web_search_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 
+function createStreamWriter(
+  args: ConstructorParameters<typeof StreamWriter>[0],
+): StreamWriter {
+  return new StreamWriter(args);
+}
+
+export const searchSynthesisDeps = {
+  callOpenRouterStreaming,
+  gateParameters,
+  buildRequestMessages,
+  clampMessageContent,
+  getRequiredUserOpenRouterApiKey,
+  createStreamWriter,
+};
+
 export async function synthesizeWithStreaming(
   ctx: ActionCtx,
   args: WebSearchActionArgs,
   searchResults: SearchResult[],
 ): Promise<void> {
-  const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
+  const apiKey = await searchSynthesisDeps.getRequiredUserOpenRouterApiKey(
+    ctx,
+    args.userId,
+  );
   const allMessages = await ctx.runQuery(
     internal.chat.queries.listAllMessages,
     { chatId: args.chatId },
@@ -45,7 +63,7 @@ export async function synthesizeWithStreaming(
     ? `${systemPrompt}\n\n${searchSynthesis}${CITATION_SYSTEM_PROMPT_SUFFIX}`
     : `${searchSynthesis}${CITATION_SYSTEM_PROMPT_SUFFIX}`;
 
-  const requestMessages = buildRequestMessages({
+  const requestMessages = searchSynthesisDeps.buildRequestMessages({
     messages: allMessages,
     excludeMessageId: args.assistantMessageId,
     systemPrompt: effectiveSystemPrompt,
@@ -70,21 +88,21 @@ export async function synthesizeWithStreaming(
     transforms: SEARCH_TRANSFORMS,
     webSearchEnabled: false,
   };
-  const gatedParams = gateParameters(
+  const gatedParams = searchSynthesisDeps.gateParameters(
     rawParams,
     caps?.supportedParameters,
     caps?.hasImageGeneration,
     caps?.hasReasoning,
   );
 
-  const writer = new StreamWriter({
+  const writer = searchSynthesisDeps.createStreamWriter({
     ctx,
     messageId: args.assistantMessageId,
-    transformContent: clampMessageContent,
+    transformContent: searchSynthesisDeps.clampMessageContent,
   });
   let deltaEventsSinceCancelCheck = 0;
 
-  const result = await callOpenRouterStreaming(
+  const result = await searchSynthesisDeps.callOpenRouterStreaming(
     apiKey,
     args.modelId,
     requestMessages,
@@ -120,7 +138,7 @@ export async function synthesizeWithStreaming(
   } else if (!finalContent) {
     finalContent = "[No response received from model]";
   }
-  finalContent = clampMessageContent(finalContent);
+  finalContent = searchSynthesisDeps.clampMessageContent(finalContent);
 
   await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
     messageId: args.assistantMessageId,

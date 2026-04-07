@@ -123,16 +123,19 @@ test("progressive registry profiles add only the tools unlocked by profile and r
 
   registerBaseTools(registry, false, ["generate_eml"]);
   registerProfileTools(registry, "docs", {
+    isPro: true,
     hasSandboxRuntime: false,
     allowSubagents: false,
     enabledIntegrations: [],
   });
   registerProfileTools(registry, "analytics", {
+    isPro: true,
     hasSandboxRuntime: true,
     allowSubagents: false,
     enabledIntegrations: [],
   });
   registerProfileTools(registry, "google", {
+    isPro: true,
     hasSandboxRuntime: false,
     allowSubagents: false,
     enabledIntegrations: ["gmail"],

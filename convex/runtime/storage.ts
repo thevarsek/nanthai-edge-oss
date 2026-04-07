@@ -7,6 +7,11 @@ import { ToolExecutionContext } from "../tools/registry";
 import { ensureSandboxForChat, markSandboxSessionRunning } from "./service";
 import { runtimeWorkspacePaths } from "./shared";
 
+export const runtimeStorageDeps = {
+  ensureSandboxForChat,
+  markSandboxSessionRunning,
+};
+
 interface OwnedStorageFile {
   storageId: Id<"_storage">;
   filename: string;
@@ -69,7 +74,7 @@ export async function importOwnedStorageFileToWorkspace(
   targetPath?: string,
 ) {
   const chatId = requireChatId(toolCtx);
-  const session = await ensureSandboxForChat(toolCtx);
+  const session = await runtimeStorageDeps.ensureSandboxForChat(toolCtx);
   const workspace = runtimeWorkspacePaths(chatId);
   const { record, blob } = await resolveOwnedStorageFile(toolCtx, storageId);
   const finalFilename = filename?.trim() || record.filename;
@@ -83,7 +88,7 @@ export async function importOwnedStorageFileToWorkspace(
 
   await session.sandbox.files.makeDir(parentDir);
   await session.sandbox.files.write(destination, blob);
-  await markSandboxSessionRunning(toolCtx, session);
+  await runtimeStorageDeps.markSandboxSessionRunning(toolCtx, session);
   await toolCtx.ctx.runMutation(internal.runtime.mutations.recordSandboxEventInternal, {
     sandboxSessionId: session.sessionId as Id<"sandboxSessions">,
     userId: toolCtx.userId,

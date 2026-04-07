@@ -25,6 +25,10 @@ import {
   ToolResult,
 } from "./registry";
 
+export const toolCallLoopDeps = {
+  callOpenRouterStreaming,
+};
+
 /** Maximum number of tool-call rounds before we force the model to stop. */
 const MAX_TOOL_ROUNDS = 20;
 
@@ -320,7 +324,7 @@ export async function runToolCallLoop(
       ...(isLastAllowedRound ? { toolChoice: "none" as const } : {}),
     };
 
-    currentResult = await callOpenRouterStreaming(
+    currentResult = await toolCallLoopDeps.callOpenRouterStreaming(
       options.apiKey,
       options.model,
       conversationMessages,

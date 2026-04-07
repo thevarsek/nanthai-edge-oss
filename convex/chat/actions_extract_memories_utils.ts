@@ -143,11 +143,13 @@ export function detectMemoryExclusionRules(source: string): MemoryExclusionRules
     /(don't|do not|never|exclude|avoid|without|keep|leave|out of)\s+.{0,48}(memory|remember|save|store)/i;
   const phoneSignal = /(phone|mobile|telephone|number)/i;
   const emailSignal = /\bemail\b/i;
+  const contactDetailsSignal = /\b(contact details?|contact info(?:rmation)?)\b/i;
   const hasExclusionContext = exclusionSignal.test(source);
+  const excludesContactDetails = hasExclusionContext && contactDetailsSignal.test(source);
 
   return {
-    excludePhone: hasExclusionContext && phoneSignal.test(source),
-    excludeEmail: hasExclusionContext && emailSignal.test(source),
+    excludePhone: excludesContactDetails || (hasExclusionContext && phoneSignal.test(source)),
+    excludeEmail: excludesContactDetails || (hasExclusionContext && emailSignal.test(source)),
   };
 }
 

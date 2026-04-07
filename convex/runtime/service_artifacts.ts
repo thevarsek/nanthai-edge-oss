@@ -11,6 +11,12 @@ import {
   RUNTIME_TIMEOUT_MS,
 } from "./shared";
 
+export const runtimeServiceArtifactsDeps = {
+  killE2BSandbox,
+  ensureSandboxForChat,
+  ensureWorkspaceDirectories,
+};
+
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
     throw new Error("Workspace tools require chatId in the tool execution context.");
@@ -24,7 +30,7 @@ export async function exportWorkspaceFile(
   filename?: string,
 ) {
   const chatId = requireChatId(toolCtx);
-  const session = await ensureSandboxForChat(toolCtx);
+  const session = await runtimeServiceArtifactsDeps.ensureSandboxForChat(toolCtx);
   const blob = await session.sandbox.files.read(path, { format: "blob" });
   const finalFilename = filename?.trim() || path.split("/").pop() || "runtime-artifact";
   const storageId = await toolCtx.ctx.storage.store(blob);
@@ -74,7 +80,7 @@ export async function resetWorkspace(toolCtx: ToolExecutionContext) {
 
   if (existing?.providerSandboxId) {
     try {
-      await killE2BSandbox(existing.providerSandboxId);
+      await runtimeServiceArtifactsDeps.killE2BSandbox(existing.providerSandboxId);
     } catch {
       // Best-effort reset.
     }
@@ -104,8 +110,8 @@ export async function resetWorkspace(toolCtx: ToolExecutionContext) {
     });
   }
 
-  const session = await ensureSandboxForChat(toolCtx);
-  await ensureWorkspaceDirectories(session.sandbox, chatId);
+  const session = await runtimeServiceArtifactsDeps.ensureSandboxForChat(toolCtx);
+  await runtimeServiceArtifactsDeps.ensureWorkspaceDirectories(session.sandbox, chatId);
   await toolCtx.ctx.runMutation(internal.runtime.mutations.upsertSessionInternal, {
     sessionId: session.sessionId as any,
     userId: toolCtx.userId,
