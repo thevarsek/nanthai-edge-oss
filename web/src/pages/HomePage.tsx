@@ -300,7 +300,7 @@ function HomeHeroSection() {
             <h1 className="edge-display-xl edge-materialize uppercase text-[clamp(3.5rem,11vw,10rem)] efg-heading">
               {t("home_hero1_line1")}
               <br />
-              {t("home_hero1_line2")}<span className="text-[#FF6B3D]">.</span>
+              {t("home_hero1_line2")}<span className="edge-accent">.</span>
             </h1>
           </div>
         </section>
@@ -391,7 +391,7 @@ function HomeHowItWorksSection() {
             <h2 className="edge-display edge-fade-up edge-stagger-2 text-[clamp(2.4rem,5vw,4.5rem)] efg-heading">
               {t("home_hiw_heading_line1")}
               <br />
-              <span className="text-[#FF6B3D]">{t("home_hiw_heading_line2")}</span>
+              <span className="edge-accent">{t("home_hiw_heading_line2")}</span>
             </h2>
           </div>
           <p className="edge-fade-up edge-stagger-3 edge-sans max-w-xl text-[0.95rem] font-light leading-[1.8] efg-55 lg:text-right">
@@ -449,7 +449,7 @@ function HomeCapabilitiesSection() {
             <h2 className="edge-display edge-fade-up edge-stagger-2 text-[clamp(2.4rem,5vw,4.5rem)] efg-heading">
               {t("home_cap_heading_line1")}
               <br />
-              <span className="text-[#FF6B3D]">{t("home_cap_heading_line2")}</span>
+              <span className="edge-accent">{t("home_cap_heading_line2")}</span>
             </h2>
           </div>
           <p className="edge-fade-up edge-stagger-3 edge-sans max-w-xl text-[0.95rem] font-light leading-[1.8] efg-55 lg:text-right">
@@ -512,7 +512,7 @@ function HomeIntegrationsSection() {
             <h2 className="edge-display edge-fade-up edge-stagger-2 text-[clamp(2.4rem,5vw,4.5rem)] efg-heading">
               {t("home_int_heading_line1")}
               <br />
-              <span className="text-[#FF6B3D]">{t("home_int_heading_line2")}</span>
+              <span className="edge-accent">{t("home_int_heading_line2")}</span>
             </h2>
           </div>
           <p className="edge-fade-up edge-stagger-3 edge-sans max-w-xl text-[0.95rem] font-light leading-[1.8] efg-55 lg:text-right">
@@ -588,7 +588,7 @@ function HomePricingSection() {
             <h2 className="edge-display edge-fade-up edge-stagger-2 text-[clamp(2.4rem,5vw,4.5rem)] efg-heading">
               {t("home_pricing_heading_line1")}
               <br />
-              <span className="text-[#FF6B3D]">{t("home_pricing_heading_line2")}</span>
+              <span className="edge-accent">{t("home_pricing_heading_line2")}</span>
             </h2>
           </div>
           <p className="edge-fade-up edge-stagger-3 edge-sans max-w-xl text-[0.95rem] font-light leading-[1.8] efg-55 lg:text-right">
@@ -654,7 +654,7 @@ function HomePricingSection() {
               {proFeatures.map((feature, i) => (
                 <li key={i} className="flex items-start gap-2.5">
                   <div className="mt-1 flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded-full bg-[#FF6B3D]/25">
-                    <Check className="h-2 w-2 text-[#FF6B3D]" />
+                    <Check className="h-2 w-2 edge-accent" />
                   </div>
                   <span className="edge-sans text-[0.82rem] font-light leading-relaxed efg-65">
                     {feature}
@@ -702,7 +702,7 @@ function HomeFinalCTA() {
           <h2 className="edge-display text-[clamp(2.4rem,5vw,4.5rem)] efg-heading">
             {t("home_cta_heading_line1")}
             <br />
-            <span className="text-[#FF6B3D]">{t("home_cta_heading_line2")}</span>
+            <span className="edge-accent">{t("home_cta_heading_line2")}</span>
           </h2>
           <p className="edge-sans mx-auto mt-8 max-w-lg text-[0.95rem] font-light leading-[1.8] efg-55">
             {t("home_cta_desc")}

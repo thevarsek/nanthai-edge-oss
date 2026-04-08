@@ -1,11 +1,6 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes } from "react-router-dom";
-import { HomePage } from "./pages/HomePage";
-import { PrivacyPage } from "./pages/PrivacyPage";
-import { TermsPage } from "./pages/TermsPage";
-import { SupportPage } from "./pages/SupportPage";
-import { LicensingPage } from "./pages/LicensingPage";
-import { FeaturesIndexPage } from "./pages/features/FeaturesIndexPage";
+import { Route, Routes, Link } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { OpenRouterCallbackPage } from "./pages/OpenRouterCallbackPage";
 import { SignInPage } from "./routes/SignInPage";
 import { AuthGuard } from "./routes/AuthGuard";
@@ -13,6 +8,26 @@ import { RootLayout } from "./routes/RootLayout";
 import { AppEmptyState } from "./components/shared/AppEmptyState";
 import { LoadingSpinner } from "./components/shared/LoadingSpinner";
 import { ProviderOAuthCallbackPage } from "./routes/ProviderOAuthCallbackPage";
+
+// Lazy-loaded marketing/public pages
+const HomePage = lazy(() =>
+  import("./pages/HomePage").then((m) => ({ default: m.HomePage })),
+);
+const PrivacyPage = lazy(() =>
+  import("./pages/PrivacyPage").then((m) => ({ default: m.PrivacyPage })),
+);
+const TermsPage = lazy(() =>
+  import("./pages/TermsPage").then((m) => ({ default: m.TermsPage })),
+);
+const SupportPage = lazy(() =>
+  import("./pages/SupportPage").then((m) => ({ default: m.SupportPage })),
+);
+const LicensingPage = lazy(() =>
+  import("./pages/LicensingPage").then((m) => ({ default: m.LicensingPage })),
+);
+const FeaturesIndexPage = lazy(() =>
+  import("./pages/features/FeaturesIndexPage").then((m) => ({ default: m.FeaturesIndexPage })),
+);
 
 // Lazy-loaded app routes
 const ChatPage = lazy(() =>
@@ -128,17 +143,30 @@ function AppSuspense({ children }: { children: React.ReactNode }) {
   );
 }
 
+function NotFound() {
+  const { t } = useTranslation();
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center bg-background text-foreground gap-4">
+      <h1 className="text-5xl font-bold text-foreground/20">404</h1>
+      <p className="text-lg text-foreground/60">{t("page_not_found", "Page not found")}</p>
+      <Link to="/" className="text-sm text-primary hover:underline">
+        {t("go_home", "Go home")}
+      </Link>
+    </div>
+  );
+}
+
 export function App() {
   return (
     <Routes>
       {/* Public / marketing routes */}
-      <Route path="/" element={<HomePage />} />
-      <Route path="/privacy" element={<PrivacyPage />} />
-      <Route path="/terms" element={<TermsPage />} />
-      <Route path="/support" element={<SupportPage />} />
-      <Route path="/licensing" element={<LicensingPage />} />
+      <Route path="/" element={<AppSuspense><HomePage /></AppSuspense>} />
+      <Route path="/privacy" element={<AppSuspense><PrivacyPage /></AppSuspense>} />
+      <Route path="/terms" element={<AppSuspense><TermsPage /></AppSuspense>} />
+      <Route path="/support" element={<AppSuspense><SupportPage /></AppSuspense>} />
+      <Route path="/licensing" element={<AppSuspense><LicensingPage /></AppSuspense>} />
       {/* Feature pages */}
-      <Route path="/features" element={<FeaturesIndexPage />} />
+      <Route path="/features" element={<AppSuspense><FeaturesIndexPage /></AppSuspense>} />
       <Route
         path="/features/multi-model-chat"
         element={
@@ -451,6 +479,9 @@ export function App() {
           </AuthGuard>
         }
       />
+
+      {/* 404 catch-all */}
+      <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }

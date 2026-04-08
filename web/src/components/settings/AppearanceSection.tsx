@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSharedData } from "@/hooks/useSharedData";
@@ -50,19 +50,24 @@ export function AppearanceSection() {
   const currentColorTheme: ColorTheme =
     (prefs?.colorTheme as ColorTheme | undefined) ?? "vibrant";
 
-  const applyTheme = (mode: AppearanceMode) => {
+  const applyTheme = useCallback((mode: AppearanceMode) => {
+    const root = document.documentElement;
+    // Enable smooth color transition
+    root.classList.add("theme-transition");
     if (mode === "dark") {
-      document.documentElement.setAttribute("data-theme", "dark");
+      root.setAttribute("data-theme", "dark");
       localStorage.setItem("nanth_theme", "dark");
     } else if (mode === "light") {
-      document.documentElement.setAttribute("data-theme", "light");
+      root.setAttribute("data-theme", "light");
       localStorage.setItem("nanth_theme", "light");
     } else {
       const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      document.documentElement.setAttribute("data-theme", prefersDark ? "dark" : "light");
+      root.setAttribute("data-theme", prefersDark ? "dark" : "light");
       localStorage.removeItem("nanth_theme");
     }
-  };
+    // Remove the transition class after the transition completes
+    setTimeout(() => root.classList.remove("theme-transition"), 350);
+  }, []);
 
   const applyColorTheme = (theme: ColorTheme) => {
     if (theme === "vibrant") {
@@ -133,7 +138,7 @@ export function AppearanceSection() {
               >
                 {/* Color dot */}
                 <span
-                  className="w-4 h-4 rounded-full flex-shrink-0 border border-border/30"
+                  className="w-5 h-5 rounded-full flex-shrink-0 border border-border/30 shadow-sm"
                   style={{ background: hex }}
                 />
                 <span className="flex-1 text-sm">{t(labelKey)}</span>

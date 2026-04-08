@@ -38,7 +38,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
             />
           </div>
           <span className="edge-display efg-85 text-[0.92rem] tracking-[-0.02em]">
-            NanthAi<span className="text-[#FF6B3D]">:</span><span className="text-[#FF6B3D]">Edge</span>
+            NanthAi<span className="edge-accent">:</span><span className="edge-accent">Edge</span>
           </span>
         </Link>
 

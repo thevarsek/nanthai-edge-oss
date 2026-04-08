@@ -29,7 +29,7 @@ export function LicensingPage() {
           <h1 className="edge-display mt-6 text-[clamp(2.4rem,5vw,4rem)] efg-heading">
             {t("lic_hero_title")}
             <br />
-            <span className="text-[#FF6B3D]">{t("lic_hero_title_2")}</span>
+            <span className="edge-accent">{t("lic_hero_title_2")}</span>
           </h1>
           <p className="edge-sans mt-6 max-w-3xl text-[0.95rem] font-light leading-[1.8] efg-60">
             {t("lic_hero_desc")}

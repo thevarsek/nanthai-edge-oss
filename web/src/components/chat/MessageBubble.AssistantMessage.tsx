@@ -23,6 +23,7 @@ import { useStreaming } from "@/hooks/useStreaming";
 import type { Message, Participant } from "@/hooks/useChat";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
+import { IconButton } from "@/components/shared/IconButton";
 import { useModelSummaries } from "@/hooks/useSharedData";
 import { buildModelNameMap, getModelDisplayName } from "@/lib/modelDisplay";
 import { formatCost } from "@/hooks/useChatCosts";
@@ -47,11 +48,14 @@ function StreamingCursor() {
 
 function WaitingIndicator() {
   return (
-    <span
-      className="inline-block text-base leading-6 font-medium tracking-[0.18em] animate-pulse"
-      style={{ color: "hsl(var(--nanth-foreground) / 0.72)" }}
-    >
-      ...
+    <span className="inline-flex gap-1 items-center h-6">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="w-1.5 h-1.5 rounded-full bg-foreground/40 animate-pulse"
+          style={{ animationDelay: `${i * 200}ms` }}
+        />
+      ))}
     </span>
   );
 }
@@ -285,15 +289,15 @@ export const AssistantMessage = memo(function AssistantMessage({
         {/* Error state — show retry actions inline so the user can act */}
         {message.status === "failed" && (
           <div className="mt-2">
-            <p className="text-red-400 text-xs italic mb-1.5">{t("generation_failed")}</p>
+            <p className="text-destructive text-xs italic mb-1.5">{t("generation_failed")}</p>
             <div className="flex items-center gap-0.5">
-              <button onClick={onRetry} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Retry">
+              <IconButton label="Retry" variant="ghost" size="xs" onClick={onRetry}>
                 <RefreshCw size={13} />
-              </button>
+              </IconButton>
               {onRetryWithDifferentModel && (
-                <button onClick={onRetryWithDifferentModel} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Retry with different model">
+                <IconButton label="Retry with different model" variant="ghost" size="xs" onClick={onRetryWithDifferentModel}>
                   <RefreshCcw size={13} />
-                </button>
+                </IconButton>
               )}
             </div>
           </div>
@@ -303,30 +307,30 @@ export const AssistantMessage = memo(function AssistantMessage({
         {/* iOS order: Copy, Retry, Retry-different-model, Fork, Listen */}
         {showActions && (
           <div className="flex items-center gap-0.5 mt-2">
-            <button onClick={handleCopy} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Copy">
+            <IconButton label="Copy" variant="ghost" size="xs" onClick={handleCopy}>
               {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
-            </button>
-            <button onClick={onRetry} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Retry">
+            </IconButton>
+            <IconButton label="Retry" variant="ghost" size="xs" onClick={onRetry}>
               <RefreshCw size={13} />
-            </button>
+            </IconButton>
             {onRetryWithDifferentModel && (
-              <button onClick={onRetryWithDifferentModel} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Retry with different model">
+              <IconButton label="Retry with different model" variant="ghost" size="xs" onClick={onRetryWithDifferentModel}>
                 <RefreshCcw size={13} />
-              </button>
+              </IconButton>
             )}
-            <button onClick={onFork} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title="Fork chat">
+            <IconButton label="Fork chat" variant="ghost" size="xs" onClick={onFork}>
               <GitFork size={13} />
-            </button>
+            </IconButton>
             {!(message.modelId && (message.modelId === "google/lyria-3-clip-preview" || message.modelId === "google/lyria-3-pro-preview")) && (
-              <button onClick={handlePlayAudio} className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors" title={hasAudio ? "Play audio" : "Generate audio"}>
-                  <Volume2 size={13} />
-              </button>
+              <IconButton label={hasAudio ? "Play audio" : "Generate audio"} variant="ghost" size="xs" onClick={handlePlayAudio}>
+                <Volume2 size={13} />
+              </IconButton>
             )}
           </div>
         )}
 
         {/* Timestamp */}
-        <p className="text-[10px] text-muted mt-1 font-mono">
+        <p className="text-[11px] text-muted mt-1 font-mono tabular-nums">
           {formatTimestamp(message._creationTime)}
           {showAdvancedStats && (
             <span className="ml-1">

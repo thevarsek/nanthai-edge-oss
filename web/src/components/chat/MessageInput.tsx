@@ -74,7 +74,7 @@ export function MessageInput({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
   }, []);
 
   const handleTextChange = useCallback(
@@ -245,7 +245,7 @@ export function MessageInput({
             <Plus size={18} strokeWidth={2.5} />
           </button>
         ) : isGenerating ? (
-          <button onClick={() => { void onCancel(); }} className="w-10 h-10 rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors shrink-0 flex items-center justify-center" title={t("stop_generation")}>
+          <button onClick={() => { void onCancel(); }} className="w-10 h-10 rounded-full bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors shrink-0 flex items-center justify-center" title={t("stop_generation")}>
             <Square size={16} fill="currentColor" />
           </button>
         ) : canSend ? (
@@ -264,7 +264,7 @@ export function MessageInput({
       </div>
 
       {isUploading && <p className="text-xs text-muted mt-1 ml-12">{t("uploading")}</p>}
-      {recorderState.error && <p className="text-xs text-red-400 mt-1 ml-12">{recorderState.error}</p>}
+      {recorderState.error && <p className="text-xs text-destructive mt-1 ml-12">{recorderState.error}</p>}
     </div>
   );
 }

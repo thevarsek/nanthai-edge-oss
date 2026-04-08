@@ -85,7 +85,7 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
                 className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-[0.82rem] efg-50 hover:efg-80 hover:ebg-glass-04 transition-colors text-left"
               >
                 <span>{nativeLabel}</span>
-                {isActive && <Check className="h-3.5 w-3.5 text-[#FF6B3D]" />}
+                {isActive && <Check className="h-3.5 w-3.5 text-primary" />}
               </button>
             );
           })}

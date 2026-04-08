@@ -116,12 +116,25 @@
   .placeholder-muted::placeholder { color: hsl(var(--nanth-foreground) / 0.35); }
   /* border-border defaults to full opacity border token */
   .border-border  { border-color: hsl(var(--nanth-border)); }
+
+  /* ── Edge-site brand accent (marketing pages) ────────────────── */
+  /* Centralizes the hardcoded #FF6B3D references into a single class */
+  .edge-accent { color: var(--edge-brand, #FF6B3D); }
 }
 
 /* ── Base reset ─────────────────────────────────────────────────── */
 
 * {
   border-color: hsl(var(--nanth-border));
+}
+
+/* Smooth theme transition — avoids jarring flash on light/dark switch */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition: background-color 0.25s ease, color 0.15s ease, border-color 0.2s ease !important;
+  transition-delay: 0s !important;
 }
 
 body {
@@ -181,6 +194,7 @@ code, pre, .nanth-mono {
   --edge-amber: #FFBE76;
   --edge-blue: #4C8DFF;
   --edge-peach: #FFB5A7;
+  --edge-brand: #FF6B3D;
   --edge-surface: #0A0A0F;
   --edge-surface-elevated: rgba(255, 255, 255, 0.025);
 
@@ -355,30 +369,30 @@ code, pre, .nanth-mono {
 /* ── Typography ──────────────────────────────────────────────────── */
 
 .edge-display {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Geist Sans", "Geist", system-ui, sans-serif;
   font-weight: 700;
   letter-spacing: -0.04em;
   line-height: 0.95;
 }
 
 .edge-display-xl {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Geist Sans", "Geist", system-ui, sans-serif;
   font-weight: 900;
   letter-spacing: -0.05em;
   line-height: 0.9;
 }
 
 .edge-body, .edge-sans {
-  font-family: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  font-family: "Geist Sans", "Geist", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
 }
 
 .edge-mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-feature-settings: "ss01", "ss02";
 }
 
 .edge-label {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Geist Sans", "Geist", system-ui, sans-serif;
   font-weight: 500;
   font-size: 0.72rem;
   letter-spacing: 0.18em;
@@ -408,7 +422,7 @@ code, pre, .nanth-mono {
   border: 1px solid var(--edge-chip-border);
   background: var(--edge-chip-bg);
   color: var(--edge-chip-fg);
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Geist Sans", "Geist", system-ui, sans-serif;
   font-weight: 400;
   letter-spacing: 0.06em;
 }
@@ -643,7 +657,7 @@ code, pre, .nanth-mono {
 .edge-legal h2 {
   margin-top: 2.5rem;
   margin-bottom: 0.85rem;
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Geist Sans", "Geist", system-ui, sans-serif;
   font-size: clamp(1.6rem, 2.4vw, 2.2rem);
   font-weight: 700;
   line-height: 1.1;
@@ -654,14 +668,14 @@ code, pre, .nanth-mono {
 .edge-legal h3 {
   margin-top: 1.6rem;
   margin-bottom: 0.55rem;
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: "Geist Sans", "Geist", -apple-system, sans-serif;
   font-size: 1.05rem;
   font-weight: 500;
   color: var(--edge-legal-heading);
 }
 
 .edge-legal p, .edge-legal li {
-  font-family: "Inter", -apple-system, sans-serif;
+  font-family: "Geist Sans", "Geist", -apple-system, sans-serif;
   font-weight: 300;
   color: var(--edge-legal-body);
   line-height: 1.85;

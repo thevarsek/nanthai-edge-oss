@@ -8,6 +8,7 @@ import type { Message } from "@/hooks/useChat";
 import { AudioMessageBubble } from "./AudioMessageBubble";
 import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import { MessageAttachments } from "./MessageAttachments";
+import { IconButton } from "@/components/shared/IconButton";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -72,26 +73,18 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
       {/* Action bar — iOS: right-aligned (Spacer on left), below bubble */}
       <div className="flex items-center gap-0.5 mr-1">
         {hasAudio && (
-          <button
-            onClick={handlePlayAudio}
-            className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
-            title={t("play_audio")}
-          >
+          <IconButton label={t("play_audio")} variant="ghost" size="xs" onClick={handlePlayAudio}>
             <Volume2 size={13} />
-          </button>
+          </IconButton>
         )}
         {/* Copy */}
-        <button
-          onClick={handleCopy}
-          className="p-1.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
-            title={t("copy")}
-        >
+        <IconButton label={t("copy")} variant="ghost" size="xs" onClick={handleCopy}>
           {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
-        </button>
+        </IconButton>
       </div>
 
       {/* Timestamp */}
-      <p className="text-[10px] text-muted mr-1 font-mono">
+      <p className="text-[11px] text-muted mr-1 font-mono tabular-nums">
         {formatTimestamp(message._creationTime)}
       </p>
     </div>

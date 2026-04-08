@@ -12,10 +12,11 @@ import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useNavigate, useParams } from "react-router-dom";
-import { Settings, SquarePen, Search, X, Loader2, PanelLeftClose } from "lucide-react";
+import { Settings, SquarePen, Search, X, Loader2, PanelLeftClose, MessageSquare } from "lucide-react";
 import { useSharedData } from "@/hooks/useSharedData";
 import { FavoritesStrip } from "@/components/chat-list/FavoritesStrip";
 import { BrandWordmark } from "@/components/shared/BrandWordmark";
+import { EmptyState } from "@/components/shared/EmptyState";
 import { useToast } from "@/components/shared/Toast.context";
 import { getTimeGroup, debounce } from "@/lib/utils";
 import { buildDefaultParticipants, launchChat, type PersonaLike } from "@/lib/chatLaunch";
@@ -286,14 +287,14 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   return (
     <>
-      <div className="w-full h-full bg-background md:bg-muted border-r-0 md:border md:border-border/70 md:rounded-[2rem] md:shadow-[0_14px_36px_rgba(15,23,42,0.08)] dark:md:shadow-[0_18px_44px_rgba(0,0,0,0.32)] flex-shrink-0 flex flex-col overflow-hidden">
+        <div className="w-full h-full bg-background md:bg-muted border-r-0 md:border md:border-border/70 md:rounded-[2rem] md:shadow-lg dark:md:shadow-2xl flex-shrink-0 flex flex-col overflow-hidden">
         {/* ── Top bar ── */}
         <div className="flex-shrink-0 flex items-center justify-between px-4 pt-5 pb-3">
           <div className="flex items-center gap-2 min-w-0">
             {onToggleCollapse && (
               <button
                 onClick={onToggleCollapse}
-                className="p-1.5 rounded-lg hover:bg-foreground/6 text-muted hover:text-foreground transition-colors flex-shrink-0"
+                className="p-1.5 rounded-lg hover:bg-foreground/6 text-muted hover:text-foreground active:scale-95 transition-all flex-shrink-0"
                 title={t("collapse_sidebar")}
               >
                 <PanelLeftClose size={16} />
@@ -303,7 +304,7 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
           </div>
           <button
             onClick={() => navigate("/app/settings")}
-            className="p-1.5 rounded-lg hover:bg-foreground/6 text-muted hover:text-foreground transition-colors"
+            className="p-1.5 rounded-lg hover:bg-foreground/6 text-muted hover:text-foreground active:scale-95 transition-all"
             title={t("settings")}
           >
             <Settings size={17} />
@@ -317,16 +318,16 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-1.5 pb-2 min-h-0">
           {isInitialLoad ? (
             <div className="flex flex-col gap-2 px-2 pt-2">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-14 rounded-xl bg-foreground/4 animate-pulse" />
+              {[65, 45, 72, 55, 38, 60].map((w, i) => (
+                <div key={i} className="h-14 rounded-xl bg-foreground/4 animate-pulse" style={{ width: `${w}%` }} />
               ))}
             </div>
           ) : chats.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-40 text-center px-6">
-              <p className="text-sm text-foreground/40">
-                {isSearching ? t("no_chats_match_search") : showScheduledOnly ? t("no_scheduled_chats") : t("no_chats_yet")}
-              </p>
-            </div>
+            <EmptyState
+              icon={<MessageSquare size={28} />}
+              title={isSearching ? t("no_chats_match_search") : showScheduledOnly ? t("no_scheduled_chats") : t("no_chats_yet")}
+              className="h-40"
+            />
           ) : (
             <div className="flex flex-col gap-1">
               {pinnedChats.length > 0 && (
@@ -403,7 +404,7 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
             </div>
             <button
               onClick={() => void handleNewChat()}
-              className="p-2 rounded-xl hover:bg-primary/12 text-primary transition-colors flex-shrink-0"
+              className="p-2 rounded-xl hover:bg-primary/12 text-primary active:scale-95 transition-all flex-shrink-0"
               title={t("new_chat_shortcut")}
             >
             <SquarePen size={18} />

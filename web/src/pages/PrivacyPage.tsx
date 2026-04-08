@@ -41,7 +41,7 @@ function PrivacyHeader({ lastUpdated }: { lastUpdated: string }) {
       <h1 className="edge-display mt-6 text-[clamp(2.4rem,5vw,4rem)] efg-heading">
         {t("priv_hero_title")}
         <br />
-        <span className="text-[#FF6B3D]">{t("priv_hero_title_accent")}</span>
+        <span className="edge-accent">{t("priv_hero_title_accent")}</span>
       </h1>
       <p className="edge-sans mt-6 max-w-3xl text-[0.95rem] font-light leading-[1.8] efg-60">
         {t("priv_hero_desc")}

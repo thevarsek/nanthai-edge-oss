@@ -31,7 +31,7 @@ export function TermsPage() {
           <h1 className="edge-display mt-6 text-[clamp(2.4rem,5vw,4rem)] efg-heading">
             {t("tos_hero_title")}
             <br />
-            <span className="text-[#FF6B3D]">NanthAI Edge.</span>
+             <span className="edge-accent">NanthAI Edge.</span>
           </h1>
           <p className="edge-sans mt-6 max-w-3xl text-[0.95rem] font-light leading-[1.8] efg-60">
             {t("tos_hero_desc")}
