@@ -46,7 +46,7 @@ function TrendBadge({ model }: { model: ModelSummary }) {
   if (bestRank > 10) return null;
   const isPopular = bestRank <= 3;
   return (
-    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${isPopular ? "bg-orange-500/12 text-orange-400" : "bg-foreground/8 text-muted"}`}>
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${isPopular ? "bg-warning/12 text-warning" : "bg-foreground/8 text-muted"}`}>
       {isPopular ? <Flame size={8} /> : <TrendingUp size={8} />}
       {isPopular ? t("popular") : t("trending")}
     </span>

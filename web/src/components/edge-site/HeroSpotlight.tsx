@@ -53,13 +53,15 @@ export function HeroSpotlight({
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (mq.matches) return;
 
-    const el = containerRef.current;
-    if (!el) return;
+    // Listen on the parent element so pointer-events-none on our children
+    // doesn't block the mousemove from firing.
+    const parent = containerRef.current?.parentElement;
+    if (!parent) return;
 
-    el.addEventListener("mousemove", handleMove, { passive: true });
+    parent.addEventListener("mousemove", handleMove, { passive: true });
 
     return () => {
-      el.removeEventListener("mousemove", handleMove);
+      parent.removeEventListener("mousemove", handleMove);
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, [handleMove]);
@@ -67,12 +69,12 @@ export function HeroSpotlight({
   return (
     <div
       ref={containerRef}
-      className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}
+      className={`pointer-events-none absolute inset-0 ${className}`}
       aria-hidden="true"
     >
       <div
         ref={spotRef}
-        className="absolute transition-transform duration-[800ms] ease-out"
+        className="absolute pointer-events-none transition-transform duration-[800ms] ease-out"
         style={{
           width: size,
           height: size,

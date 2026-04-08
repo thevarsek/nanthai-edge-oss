@@ -74,7 +74,7 @@ export function ConfirmDialog({
       />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-sm mx-4 rounded-xl bg-surface-1 border border-white/10 shadow-2xl p-6 space-y-4">
+      <div className="relative z-10 w-full max-w-sm mx-4 rounded-xl bg-surface-1 border border-border/20 shadow-2xl p-6 space-y-4">
         <h2
           id="confirm-dialog-title"
           className="text-base font-semibold text-foreground"
@@ -90,7 +90,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm rounded-lg text-secondary hover:bg-white/5 transition-colors"
+            className="px-4 py-2 text-sm rounded-lg text-secondary hover:bg-foreground/5 transition-colors"
           >
             {t("cancel")}
           </button>
@@ -100,8 +100,8 @@ export function ConfirmDialog({
             className={cn(
               "px-4 py-2 text-sm rounded-lg font-medium transition-colors",
               confirmVariant === "destructive"
-                ? "bg-red-600 hover:bg-red-500 text-white"
-                : "bg-primary hover:opacity-90 text-white",
+                ? "bg-destructive hover:bg-destructive/90 text-white"
+                : "bg-primary hover:bg-primary/90 text-primary-foreground",
             )}
           >
             {resolvedConfirmLabel}

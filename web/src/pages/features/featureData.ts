@@ -251,7 +251,7 @@ export const features: FeatureMeta[] = [
     title: "Pro vs Free",
     tagline: "Everything you get for free — and what Pro unlocks.",
     indexDescription:
-      "The free tier is a complete multi-model AI chat. Pro is a one-time $4.99 purchase that unlocks personas, memory, scheduled jobs, advanced search, integrations, and more.",
+      "The free tier is a complete multi-model AI chat. Pro is a one-time £4.99 purchase that unlocks personas, memory, scheduled jobs, advanced search, integrations, and more.",
     tier: "none",
     icon: Crown,
     accentClass: "text-[var(--edge-coral)]",

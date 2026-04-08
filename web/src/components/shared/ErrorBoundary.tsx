@@ -61,7 +61,7 @@ export class ErrorBoundary extends Component<Props, State> {
             </button>
             <button
               onClick={this.handleReload}
-              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:opacity-90 transition-opacity"
+              className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
             >
               Reload page
             </button>

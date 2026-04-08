@@ -15,6 +15,7 @@
   --nanth-code: 220 20% 10%;
   --nanth-border: 220 15% 18%;
   --nanth-ring: 14 100% 62%;
+  --nanth-primary-foreground: 0 0% 100%;
   --nanth-destructive: 0 72% 51%;
   --nanth-success: 142 76% 36%;
   --nanth-warning: 38 92% 50%;
@@ -27,6 +28,7 @@
   --nanth-background: 220 20% 97%;
   --nanth-foreground: 220 25% 8%;
   --nanth-primary: 14 90% 52%;
+  --nanth-primary-foreground: 0 0% 100%;
   --nanth-secondary: 220 15% 90%;
   --nanth-muted: 220 15% 94%;
   --nanth-accent: 14 85% 48%;
@@ -42,6 +44,7 @@
     --nanth-background: 220 20% 97%;
     --nanth-foreground: 220 25% 8%;
     --nanth-primary: 14 90% 52%;
+    --nanth-primary-foreground: 0 0% 100%;
     --nanth-secondary: 220 15% 90%;
     --nanth-muted: 220 15% 94%;
     --nanth-accent: 14 85% 48%;
@@ -318,6 +321,19 @@ code, pre, .nanth-mono {
 .edge-site-shell .hover\:efg-70:hover  { color: rgba(var(--edge-fg), 0.70); }
 .edge-site-shell .hover\:efg-80:hover  { color: rgba(var(--edge-fg), 0.80); }
 .edge-site-shell .hover\:efg-heading:hover { color: var(--edge-fg-heading); }
+
+/* Group-hover variants — for cards/links using Tailwind's group pattern */
+.edge-site-shell .group:hover .group-hover\:efg-95 { color: rgba(var(--edge-fg), 0.95); }
+.edge-site-shell .group:hover .group-hover\:efg-90 { color: rgba(var(--edge-fg), 0.90); }
+.edge-site-shell .group:hover .group-hover\:efg-80 { color: rgba(var(--edge-fg), 0.80); }
+.edge-site-shell .group:hover .group-hover\:efg-70 { color: rgba(var(--edge-fg), 0.70); }
+.edge-site-shell .group:hover .group-hover\:efg-60 { color: rgba(var(--edge-fg), 0.60); }
+.edge-site-shell .group:hover .group-hover\:efg-50 { color: rgba(var(--edge-fg), 0.50); }
+.edge-site-shell .group:hover .group-hover\:efg-heading { color: var(--edge-fg-heading); }
+.edge-site-shell .group:hover .group-hover\:eborder-08 { border-color: rgba(var(--edge-fg), 0.08); }
+.edge-site-shell .group:hover .group-hover\:eborder-12 { border-color: rgba(var(--edge-fg), 0.12); }
+.edge-site-shell .group:hover .group-hover\:ebg-glass-04 { background: rgba(var(--edge-fg), 0.04); }
+.edge-site-shell .group:hover .group-hover\:ebg-glass-06 { background: rgba(var(--edge-fg), 0.06); }
 
 /* Background utilities */
 .edge-site-shell .ebg-shell     { background-color: var(--edge-bg); }

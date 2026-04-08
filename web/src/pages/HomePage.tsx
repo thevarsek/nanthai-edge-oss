@@ -269,7 +269,7 @@ function HomeHeroSection() {
   const headlinePoints = getHeadlinePoints(t);
 
   return (
-      <div className="relative">
+      <div className="relative overflow-hidden">
         {/* Two Vanta nets stacked — orange masked to top, teal masked to bottom. */}
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           <div

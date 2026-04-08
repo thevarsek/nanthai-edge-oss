@@ -354,7 +354,7 @@ function UserProfileContent() {
                 </div>
                 <span className="text-sm flex-1 truncate">{email.emailAddress}</span>
                 {email.id === user.primaryEmailAddressId && (
-                  <span className="text-[10px] font-semibold text-green-400 bg-green-400/12 px-2 py-0.5 rounded-full">
+                  <span className="text-[10px] font-semibold text-success bg-success/12 px-2 py-0.5 rounded-full">
                     {t("primary_email_badge")}
                   </span>
                 )}

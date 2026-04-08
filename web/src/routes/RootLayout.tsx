@@ -43,6 +43,7 @@ export function RootLayout() {
   const [sidebarWidth, setSidebarWidth] = useState(readStoredWidth);
   const [isCollapsed, setIsCollapsed] = useState(readStoredCollapsed);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
@@ -100,6 +101,7 @@ export function RootLayout() {
   const onDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     isDragging.current = true;
+    setIsResizing(true);
     dragStartX.current = e.clientX;
     dragStartWidth.current = sidebarWidth;
     document.body.style.cursor = "col-resize";
@@ -116,6 +118,7 @@ export function RootLayout() {
     function onMouseUp() {
       if (!isDragging.current) return;
       isDragging.current = false;
+      setIsResizing(false);
       document.body.style.cursor = "";
       document.body.style.userSelect = "";
     }
@@ -157,7 +160,7 @@ export function RootLayout() {
   }, [isCollapsed]);
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div className="flex min-h-dvh h-dvh bg-background overflow-hidden">
       {isMobileSidebarOpen && (
         <div className="fixed inset-0 z-40 md:hidden" role="dialog" aria-modal="true" aria-label={t("chat_list_aria")}>
           <div className="absolute inset-0 bg-black/40" onClick={closeMobileSidebar} />
@@ -170,7 +173,7 @@ export function RootLayout() {
       {/* Desktop sidebar — resizable chat list panel */}
       <aside
         className="hidden md:flex flex-shrink-0 h-full relative"
-        style={{ width: isCollapsed ? 0 : sidebarWidth }}
+        style={{ width: isCollapsed ? 0 : sidebarWidth, transition: isResizing ? "none" : "width 200ms ease" }}
         aria-label={t("chat_list_aria")}
       >
         {!isCollapsed && (

@@ -258,7 +258,7 @@ function ContextMenu({
         {/* Delete */}
         <button
           onClick={() => { onDelete(); onClose(); }}
-          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left text-red-400 hover:bg-red-500/10 transition-colors"
+          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-left text-destructive hover:bg-destructive/10 transition-colors"
         >
           <Trash2 size={14} />
           {t("delete")}

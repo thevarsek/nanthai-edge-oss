@@ -46,6 +46,7 @@ export default {
         foreground:  "hsl(var(--nanth-foreground) / <alpha-value>)",
         accent:      "hsl(var(--nanth-accent) / <alpha-value>)",
         primary:     "hsl(var(--nanth-primary) / <alpha-value>)",
+        "primary-foreground": "hsl(var(--nanth-primary-foreground) / <alpha-value>)",
         secondary:   "hsl(var(--nanth-secondary) / <alpha-value>)",
         muted:       "hsl(var(--nanth-muted) / <alpha-value>)",
         border:      "hsl(var(--nanth-border) / <alpha-value>)",

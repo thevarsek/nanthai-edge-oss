@@ -50,9 +50,9 @@ export function HeroOutlineText({
   const svgRef = useRef<SVGSVGElement>(null);
   const [viewBox, setViewBox] = useState<string>("0 0 1000 200");
 
-  // Font: Inter 900, matching .edge-display-xl
+  // Font: Geist Sans 900, matching .edge-display-xl
   const fontStyle: React.CSSProperties = {
-    fontFamily: '"Inter", system-ui, sans-serif',
+    fontFamily: '"Geist Sans", "Geist", system-ui, sans-serif',
     fontWeight: 900,
     letterSpacing: "-0.05em",
     textTransform: "uppercase" as const,

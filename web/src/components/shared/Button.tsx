@@ -64,8 +64,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       className={cn(
         // Base
         "inline-flex shrink-0 items-center justify-center font-medium",
-        "transition-colors duration-150",
-        "active:scale-[0.98] active:transition-transform active:duration-75",
+        "transition-[colors,transform] duration-150",
+        "active:scale-[0.98] active:duration-75",
         "disabled:pointer-events-none disabled:opacity-40",
         // Variant + size
         sizeClasses[size],
