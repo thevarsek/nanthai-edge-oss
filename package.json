@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@types/web-push": "^3.6.4",
+    "pyodide": "^0.29.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
