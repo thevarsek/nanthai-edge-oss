@@ -113,5 +113,6 @@ test("extractGeneratedCharts reads analytics chart payloads", () => {
       { label: "NA", value: 10, group: "2026" },
       { label: "EU", value: 8, group: "2026" },
     ],
+    pngBase64: undefined,
   }]);
 });

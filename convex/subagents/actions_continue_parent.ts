@@ -218,7 +218,6 @@ export async function continueParentAfterSubagentsHandler(
     enabledIntegrations: paramsSnapshot.enabledIntegrations,
     isPro: isProUser,
     allowSubagents: false,
-    hasSandboxRuntime: accountCapabilities.hasSandboxRuntime,
   });
   const apiKey = await getRequiredUserOpenRouterApiKey(ctx, participantSnapshot.userId);
 
@@ -245,12 +244,9 @@ export async function continueParentAfterSubagentsHandler(
       progressiveTools: {
         enabledIntegrations: paramsSnapshot.enabledIntegrations ?? [],
         allowSubagents: false,
-        hasSandboxRuntime: accountCapabilities.hasSandboxRuntime,
       },
       isPro: isProUser,
-      runtimeProfile: accountCapabilities.hasSandboxRuntime
-        ? "mobileSandbox"
-        : "mobileBasic",
+      runtimeProfile: "mobileBasic",
       apiKey,
       requestMessagesOverride: requestMessages,
       actionStartTime: Date.now(),

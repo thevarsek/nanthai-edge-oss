@@ -1,4 +1,3 @@
-import { ConvexError } from "convex/values";
 import type { ValidationFinding } from "./validators";
 
 const PROFILE_ORDER = [
@@ -24,7 +23,6 @@ export interface SkillMetadataInput {
   requiredIntegrationIds: string[];
   requiredCapabilities: string[];
   requiredToolProfiles?: string[];
-  allowSandboxRuntime: boolean;
 }
 
 export interface SkillMetadataNormalizationResult {
@@ -47,6 +45,7 @@ const DOC_TOOL_IDS = new Set([
 const ANALYTICS_TOOL_IDS = new Set([
   "workspace_import_file",
   "data_python_exec",
+  "data_python_sandbox",
 ]);
 
 const WORKSPACE_TOOL_IDS = new Set([
@@ -132,7 +131,9 @@ export function normalizeSkillMetadata(
 ): SkillMetadataNormalizationResult {
   const requiredToolIds = uniqueSorted(input.requiredToolIds);
   const requiredIntegrationIds = uniqueSorted(input.requiredIntegrationIds);
-  const requiredCapabilities = new Set(input.requiredCapabilities);
+  const requiredCapabilities = new Set(
+    input.requiredCapabilities,
+  );
   const inferredProfiles = new Set<SkillToolProfileId>(
     (input.requiredToolProfiles ?? []).filter(Boolean) as SkillToolProfileId[],
   );
@@ -165,18 +166,9 @@ export function normalizeSkillMetadata(
 
   let runtimeMode = input.runtimeMode;
   if (inferredProfiles.has("analytics") || inferredProfiles.has("workspace")) {
-    requiredCapabilities.add("sandboxRuntime");
-    runtimeMode = "sandboxAugmented";
+    runtimeMode = "toolAugmented";
   } else if (runtimeMode === "sandboxAugmented" && inferredProfiles.size === 0) {
     inferredProfiles.add("workspace");
-    requiredCapabilities.add("sandboxRuntime");
-  }
-
-  if (requiredCapabilities.has("sandboxRuntime") && !input.allowSandboxRuntime) {
-    throw new ConvexError({
-      code: "SANDBOX_NOT_AVAILABLE" as const,
-      message: "This skill requires sandboxRuntime, but the user does not have workspace runtime access.",
-    });
   }
 
   pruneOrphanedIntegrationProfiles(inferredProfiles, requiredIntegrationIds, metadataWarnings);

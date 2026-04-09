@@ -139,8 +139,7 @@ export const createSkill = createTool({
         type: "array",
         items: { type: "string" },
         description:
-          "Capability IDs required by the skill, such as ['sandboxRuntime']. " +
-          "Only needed for skills gated on internal Max runtime features.",
+          "Optional internal capability IDs required by the skill. Rarely needed.",
       },
     },
     required: ["name", "summary", "instructionsRaw"],

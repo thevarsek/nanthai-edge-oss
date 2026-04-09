@@ -151,7 +151,6 @@ export async function runGenerationHandler(
       enabledIntegrations: effectiveIntegrations,
       isPro: isProUser,
       allowSubagents: args.subagentsEnabled === true && args.participants.length === 1,
-      hasSandboxRuntime: accountCapabilities.hasSandboxRuntime,
       directToolNames,
     });
 
@@ -169,13 +168,10 @@ export async function runGenerationHandler(
             enabledIntegrations: effectiveIntegrations,
             allowSubagents:
               args.subagentsEnabled === true && args.participants.length === 1,
-            hasSandboxRuntime: accountCapabilities.hasSandboxRuntime,
             directToolNames,
           },
           isPro: isProUser,
-          runtimeProfile: accountCapabilities.hasSandboxRuntime
-            ? "mobileSandbox"
-            : "mobileBasic",
+          runtimeProfile: "mobileBasic",
           apiKey,
           actionStartTime,
         }),

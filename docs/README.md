@@ -13,7 +13,7 @@
 | [`data-model.md`](data-model.md) | Convex schema — 35 tables (4 schema files), runtime/capability tables, DTO types, indexes, identity scoping |
 | [`service-layer.md`](service-layer.md) | Service protocols, ConvexService, SharedAppDataStore, capability subscriptions, generated-chart UI seams, OAuth VMs, tool auth helpers, error types |
 | [`project-structure.md`](project-structure.md) | Complete directory tree for Xcode project, tests, and utilities |
-| [`max-runtime-analytics.md`](max-runtime-analytics.md) | Max runtime architecture — capabilities, per-chat E2B sandboxes, workspace/analytics tools, generated charts, iOS status, Android follow-up |
+| [`max-runtime-analytics.md`](max-runtime-analytics.md) | Max runtime architecture — capabilities, three-tier execution (just-bash, Pyodide, Vercel Sandbox), workspace/analytics tools, generated charts, iOS/Android status |
 | [`tool-skill-access.md`](tool-skill-access.md) | Product-facing access matrix for tiers, tools, skills, connected apps, and internal Max/runtime capability |
 | [`subagents.md`](subagents.md) | Depth-1 delegated child runs — gating, lifecycle, async parent resume, child continuation |
 | [`openrouter-api.md`](openrouter-api.md) | OpenRouter API endpoints, OAuth PKCE flow, chat completion request/response, SSE stream format, required headers |

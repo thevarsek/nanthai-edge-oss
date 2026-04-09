@@ -9,7 +9,6 @@ type CapabilityCtx = QueryCtx | MutationCtx;
 export interface AccountCapabilities {
   capabilities: CapabilityName[];
   isPro: boolean;
-  hasSandboxRuntime: boolean;
   hasMcpRuntime: boolean;
 }
 
@@ -91,7 +90,6 @@ export async function getAccountCapabilities(
   return {
     capabilities,
     isPro: capabilities.includes("pro"),
-    hasSandboxRuntime: capabilities.includes("sandboxRuntime"),
     hasMcpRuntime: capabilities.includes("mcpRuntime"),
   };
 }

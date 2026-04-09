@@ -1,7 +1,7 @@
 // convex/crons.ts
 // =============================================================================
 // Scheduled jobs: model catalog sync, benchmark sync, stale job cleanup,
-// memory consolidation.
+// memory consolidation, sandbox session cleanup.
 // =============================================================================
 
 import { cronJobs } from "convex/server";
@@ -61,18 +61,14 @@ crons.cron(
   internal.scheduledJobs.mutations.cleanOldJobRuns,
 );
 
-// Max runtime: mark paused sandbox sessions eligible for cleanup every hour.
+// M27: Clean up stale sandbox sessions every 30 minutes.
+// Marks "running" or "pendingCreate" sessions with no activity for 1 hour
+// as "deleted", and attempts best-effort Sandbox.stop() to free VM resources.
+// Also cleans up "failed" records older than 24 hours (DB hygiene).
 crons.interval(
-  "markRuntimeCleanupCandidates",
-  { hours: 1 },
-  internal.runtime.mutations.markCleanupCandidatesInternal,
-);
-
-// Max runtime: delete marked paused sandbox sessions daily at 6:00 UTC.
-crons.cron(
-  "cleanupRuntimeSandboxes",
-  "0 6 * * *",
-  internal.runtime.actions.cleanupMarkedSessions,
+  "cleanStaleSandboxSessions",
+  { minutes: 30 },
+  internal.runtime.cleanup.cleanStaleSandboxSessions,
 );
 
 export default crons;

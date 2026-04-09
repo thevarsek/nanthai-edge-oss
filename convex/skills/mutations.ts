@@ -10,7 +10,6 @@ import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
-import { hasCapability } from "../capabilities/shared";
 import { skillToolProfile } from "../schema_validators";
 import {
   validateSkillInstructions,
@@ -110,8 +109,8 @@ interface SkillMetadataArgs {
 }
 
 async function validateAndNormalizeSkillMetadata(
-  ctx: MutationCtx,
-  userId: string,
+  _ctx: MutationCtx,
+  _userId: string,
   args: SkillMetadataArgs,
   existing?: {
     instructionsRaw: string;
@@ -122,7 +121,6 @@ async function validateAndNormalizeSkillMetadata(
     requiredCapabilities?: string[];
   },
 ) {
-  const allowSandboxRuntime = await hasCapability(ctx, userId, "sandboxRuntime");
   const instructionsRaw = args.instructionsRaw ?? existing?.instructionsRaw ?? "";
   const runtimeMode = args.runtimeMode ?? existing?.runtimeMode ?? "textOnly";
   const requiredToolIds = args.requiredToolIds ?? existing?.requiredToolIds ?? [];
@@ -130,9 +128,7 @@ async function validateAndNormalizeSkillMetadata(
   const requiredIntegrationIds = args.requiredIntegrationIds ?? existing?.requiredIntegrationIds ?? [];
   const requiredCapabilities = args.requiredCapabilities ?? existing?.requiredCapabilities ?? [];
 
-  const validation = validateSkillInstructions(instructionsRaw, {
-    allowSandboxRuntime,
-  });
+  const validation = validateSkillInstructions(instructionsRaw);
   if (!validation.isCompatible) {
     const errorFindings = validation.findings.filter((f) => f.severity === "error");
     const reasons = errorFindings.map((f) => f.message);
@@ -238,7 +234,6 @@ async function validateAndNormalizeSkillMetadata(
       requiredToolProfiles,
       requiredIntegrationIds,
       requiredCapabilities,
-      allowSandboxRuntime,
     },
     validation.findings,
   );

@@ -286,5 +286,4 @@ print(f"Difference: {diff:.4f}, 95% CI: [{ci_diff[0]:.4f}, {ci_diff[1]:.4f}]")
   requiredToolIds: ["workspace_import_file", "data_python_exec", "workspace_export_file"],
   requiredToolProfiles: ["analytics"],
   requiredIntegrationIds: [],
-  requiredCapabilities: ["sandboxRuntime"],
 };

@@ -36,6 +36,7 @@ const TOOL_DISPLAY: Record<string, string> = {
   workspace_reset: "Reset Workspace",
   workspace_import_file: "Import File",
   data_python_exec: "Python Execution",
+  data_python_sandbox: "Python Sandbox",
   generate_chart: "Generate Chart",
   generate_docx: "Generate Document",
   generate_xlsx: "Generate Spreadsheet",

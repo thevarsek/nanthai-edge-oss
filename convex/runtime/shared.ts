@@ -1,11 +1,3 @@
-export const RUNTIME_TEMPLATE_NAME =
-  process.env.E2B_TEMPLATE_NAME?.trim() || "nanthai-max-v1";
-export const RUNTIME_TEMPLATE_VERSION =
-  process.env.E2B_TEMPLATE_VERSION?.trim() || "v1";
-export const RUNTIME_TIMEOUT_MS = 5 * 60 * 1000;
-export const RUNTIME_INACTIVITY_DELETE_MS = 7 * 24 * 60 * 60 * 1000;
-export const RUNTIME_CAP_EXCESS_DELETE_MS = 24 * 60 * 60 * 1000;
-export const RUNTIME_MAX_PAUSED_PER_USER = 3;
 export const RUNTIME_DEFAULT_CWD_ROOT = "/tmp/nanthai-edge";
 export const RUNTIME_MAX_CHARTS_PER_TOOL_CALL = 5;
 export const RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL = 10;
@@ -50,6 +42,9 @@ export function guessMimeTypeFromPath(path: string): string {
   if (lower.endsWith(".ts")) return "text/typescript";
   if (lower.endsWith(".js")) return "text/javascript";
   if (lower.endsWith(".html")) return "text/html";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".pdf")) return "application/pdf";
   if (lower.endsWith(".docx")) {
     return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   }

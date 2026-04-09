@@ -17,7 +17,6 @@ test("buildProgressiveToolRegistry: base Pro registry omits docs and runtime too
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
   });
 
   assert.ok(registry.get("load_skill"));
@@ -34,7 +33,6 @@ test("buildProgressiveToolRegistry: direct attachment read tools can be exposed 
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
     directToolNames: ["read_text_file", "read_docx"],
   });
 
@@ -49,7 +47,6 @@ test("buildProgressiveToolRegistry: docs profile adds document tools", () => {
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
     activeProfiles: ["docs"],
   });
 
@@ -62,17 +59,16 @@ test("buildProgressiveToolRegistry: workspace and analytics profiles expand sepa
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: true,
     activeProfiles: ["analytics"],
   });
   assert.ok(analyticsRegistry.get("data_python_exec"));
+  assert.ok(analyticsRegistry.get("data_python_sandbox"), "analytics profile should include data_python_sandbox");
   assert.equal(analyticsRegistry.get("workspace_exec"), undefined);
 
   const workspaceRegistry = buildProgressiveToolRegistry({
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: true,
     activeProfiles: ["workspace"],
   });
   assert.ok(workspaceRegistry.get("workspace_exec"));
@@ -84,7 +80,6 @@ test("buildProgressiveToolRegistry: integration profiles only add enabled integr
     isPro: true,
     enabledIntegrations: ["gmail"],
     allowSubagents: false,
-    hasSandboxRuntime: false,
     activeProfiles: ["google"],
   });
 
@@ -98,7 +93,6 @@ test("buildProgressiveToolRegistry: subagents profile adds spawn_subagents only 
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: true,
-    hasSandboxRuntime: false,
     activeProfiles: ["subagents"],
   });
   assert.ok(allowed.get("spawn_subagents"));
@@ -107,7 +101,6 @@ test("buildProgressiveToolRegistry: subagents profile adds spawn_subagents only 
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
     activeProfiles: ["subagents"],
   });
   assert.equal(blocked.get("spawn_subagents"), undefined);
@@ -118,7 +111,6 @@ test("availableProgressiveProfiles: reflects integrations and runtime capability
     isPro: true,
     enabledIntegrations: ["gmail", "notion"],
     allowSubagents: true,
-    hasSandboxRuntime: true,
   });
 
   assert.ok(profiles.includes("docs"));
@@ -135,7 +127,6 @@ test("buildRegistryParams: includes tools and auto choice when registry is non-e
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
   });
   const params = buildRegistryParams(registry);
   assert.equal(params.toolChoice, "auto");
@@ -214,7 +205,6 @@ test("historically loaded profiles can seed the next request registry", () => {
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: true,
     activeProfiles: restoredProfiles,
   });
 
@@ -254,7 +244,6 @@ test("patchSameRoundProgressiveToolErrors: rewrites same-step unknown tool error
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
     activeProfiles: ["docs"],
   });
 
@@ -312,7 +301,6 @@ test("retrySameRoundProgressiveToolCalls: executes newly unlocked tools after lo
     isPro: true,
     enabledIntegrations: [],
     allowSubagents: false,
-    hasSandboxRuntime: false,
     activeProfiles: ["docs"],
   });
 

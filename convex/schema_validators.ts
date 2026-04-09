@@ -186,7 +186,6 @@ export const purchaseEntitlementStatus = v.union(
 /** Internal capability grant name. */
 export const userCapability = v.union(
   v.literal("pro"),
-  v.literal("sandboxRuntime"),
   v.literal("mcpRuntime"),
 );
 
@@ -207,10 +206,7 @@ export const userCapabilityStatus = v.union(
 export const sandboxSessionStatus = v.union(
   v.literal("pendingCreate"),
   v.literal("running"),
-  v.literal("paused"),
-  v.literal("resuming"),
   v.literal("failed"),
-  v.literal("resetting"),
   v.literal("deleted"),
 );
 

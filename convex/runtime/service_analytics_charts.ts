@@ -1,6 +1,27 @@
 "use node";
 
+// convex/runtime/service_analytics_charts.ts
+// =============================================================================
+// Chart helpers for the Pyodide analytics pipeline.
+//
+// Pyodide outputs raw PNG bytes from matplotlib's Agg backend — there is no
+// structured chart JSON, only PNG images.
+//
+// This module provides:
+//   - buildChartPreviewArtifact: wrap PNG bytes in a RuntimeArtifactBlob for storage
+//   - buildChartFromPngBytes: create a NormalizedGeneratedChart from PNG bytes
+//   - buildChartDataArtifact: serialize NormalizedGeneratedChart elements to CSV
+//
+// NOTE: buildChartFromPngBytes creates a "png_image" chart type — a pass-through
+// type for charts where we only have the image (no structured data to parse).
+// The iOS/Android chart renderer handles this type by displaying the PNG preview.
+// =============================================================================
+
 import { Buffer } from "node:buffer";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function sanitizeStem(value: string | undefined, fallback: string): string {
   const stem = value?.trim().toLowerCase().replace(/[^a-z0-9._-]+/g, "-");
@@ -16,15 +37,21 @@ function toFiniteNumber(value: unknown): number | null {
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
 export interface NormalizedGeneratedChart {
   toolName: string;
-  chartType: "line" | "bar" | "scatter" | "pie" | "box";
+  chartType: "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
   title?: string;
   xLabel?: string;
   yLabel?: string;
   xUnit?: string;
   yUnit?: string;
   elements: unknown[];
+  /** For png_image charts: base64-encoded PNG for inline preview */
+  pngBase64?: string;
 }
 
 export interface RuntimeArtifactBlob {
@@ -33,97 +60,23 @@ export interface RuntimeArtifactBlob {
   blob: Blob;
 }
 
-export function normalizeE2BChart(
-  chart: any,
-  toolName = "data_python_exec",
-): NormalizedGeneratedChart | null {
-  if (!chart || typeof chart !== "object" || typeof chart.type !== "string") {
-    return null;
-  }
-
-  if (chart.type === "line" || chart.type === "scatter") {
-    const elements = (Array.isArray(chart.elements) ? chart.elements : []).flatMap((series: any) => {
-      if (!series || !Array.isArray(series.points)) return [];
-      return series.points.map((point: [string | number, string | number]) => ({
-        x: point[0],
-        y: toFiniteNumber(point[1]) ?? 0,
-        group: typeof series.label === "string" && series.label.length > 0 ? series.label : undefined,
-      }));
-    });
-    return {
-      toolName,
-      chartType: chart.type,
-      title: chart.title,
-      xLabel: chart.x_label,
-      yLabel: chart.y_label,
-      xUnit: chart.x_unit,
-      yUnit: chart.y_unit,
-      elements,
-    };
-  }
-
-  if (chart.type === "bar") {
-    return {
-      toolName,
-      chartType: "bar",
-      title: chart.title,
-      xLabel: chart.x_label,
-      yLabel: chart.y_label,
-      xUnit: chart.x_unit,
-      yUnit: chart.y_unit,
-      elements: (Array.isArray(chart.elements) ? chart.elements : []).map((item: any) => ({
-        label: String(item?.label ?? ""),
-        value: toFiniteNumber(item?.value) ?? 0,
-        group: typeof item?.group === "string" && item.group.length > 0 ? item.group : undefined,
-      })),
-    };
-  }
-
-  if (chart.type === "pie") {
-    return {
-      toolName,
-      chartType: "pie",
-      title: chart.title,
-      elements: (Array.isArray(chart.elements) ? chart.elements : []).map((item: any) => ({
-        label: String(item?.label ?? ""),
-        value: toFiniteNumber(item?.angle) ?? 0,
-      })),
-    };
-  }
-
-  if (chart.type === "box_and_whisker") {
-    return {
-      toolName,
-      chartType: "box",
-      title: chart.title,
-      xLabel: chart.x_label,
-      yLabel: chart.y_label,
-      xUnit: chart.x_unit,
-      yUnit: chart.y_unit,
-      elements: (Array.isArray(chart.elements) ? chart.elements : []).map((item: any) => ({
-        label: String(item?.label ?? ""),
-        min: toFiniteNumber(item?.min) ?? 0,
-        q1: toFiniteNumber(item?.first_quartile) ?? 0,
-        median: toFiniteNumber(item?.median) ?? 0,
-        q3: toFiniteNumber(item?.third_quartile) ?? 0,
-        max: toFiniteNumber(item?.max) ?? 0,
-        outliers: Array.isArray(item?.outliers)
-          ? item.outliers.map((outlier: unknown) => toFiniteNumber(outlier) ?? 0)
-          : [],
-      })),
-    };
-  }
-
-  return null;
-}
+// ---------------------------------------------------------------------------
+// buildChartPreviewArtifact
+//
+// Wraps raw PNG bytes in a RuntimeArtifactBlob ready for Convex storage.
+// Accepts Uint8Array (from Pyodide FS) or a base64 string.
+// ---------------------------------------------------------------------------
 
 export function buildChartPreviewArtifact(
-  pngBase64: string,
+  pngBytesOrBase64: Uint8Array | string,
   index: number,
   title?: string,
 ): RuntimeArtifactBlob {
   const filename = `${sanitizeStem(title, `chart-${index}`)}.png`;
-  const bytes = Buffer.from(pngBase64, "base64");
+  const bytes =
+    typeof pngBytesOrBase64 === "string"
+      ? Buffer.from(pngBytesOrBase64, "base64")
+      : Buffer.from(pngBytesOrBase64);
   return {
     filename,
     mimeType: "image/png",
@@ -131,10 +84,45 @@ export function buildChartPreviewArtifact(
   };
 }
 
+// ---------------------------------------------------------------------------
+// buildChartFromPngBytes
+//
+// Creates a NormalizedGeneratedChart from raw PNG bytes.
+// chartType is "png_image" — a pass-through for image-only charts.
+// ---------------------------------------------------------------------------
+
+export function buildChartFromPngBytes(
+  pngBytes: Uint8Array,
+  index: number,
+  filename?: string,
+  toolName = "data_python_exec",
+): NormalizedGeneratedChart | null {
+  if (!pngBytes || pngBytes.length === 0) return null;
+  const pngBase64 = Buffer.from(pngBytes).toString("base64");
+  const title = filename ? filename.replace(/\.png$/i, "").replace(/-/g, " ") : `Chart ${index + 1}`;
+  return {
+    toolName,
+    chartType: "png_image",
+    title,
+    elements: [],
+    pngBase64,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// buildChartDataArtifact
+//
+// Serializes NormalizedGeneratedChart elements to CSV.
+// For "png_image" charts, no CSV is produced (no structured data).
+// ---------------------------------------------------------------------------
+
 export function buildChartDataArtifact(
   chart: NormalizedGeneratedChart,
   index: number,
 ): RuntimeArtifactBlob | null {
+  // PNG-only charts have no structured data to export
+  if (chart.chartType === "png_image") return null;
+
   const stem = sanitizeStem(chart.title, `chart-${index}-data`);
   let headers: string[] = [];
   let rows: string[][] = [];
@@ -190,9 +178,19 @@ export function buildChartDataArtifact(
   };
 }
 
+// ---------------------------------------------------------------------------
+// escapeCsv
+// ---------------------------------------------------------------------------
+
 function escapeCsv(value: string): string {
   if (/[,"\n]/.test(value)) {
     return `"${value.replace(/"/g, "\"\"")}"`;
   }
   return value;
 }
+
+// ---------------------------------------------------------------------------
+// toFiniteNumber (re-exported for tests)
+// ---------------------------------------------------------------------------
+
+export { toFiniteNumber };

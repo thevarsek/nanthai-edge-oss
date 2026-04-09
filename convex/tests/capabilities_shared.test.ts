@@ -10,7 +10,7 @@ type EntitlementDoc = {
 
 type CapabilityDoc = {
   userId: string;
-  capability: "pro" | "sandboxRuntime" | "mcpRuntime";
+  capability: "pro" | "mcpRuntime";
   status: "active" | "revoked";
   expiresAt?: number;
 };
@@ -79,36 +79,33 @@ test("manual pro capability does not unlock Pro without an active entitlement", 
     entitlement: null,
     grants: [
       { userId: "user_1", capability: "pro", status: "active" },
-      { userId: "user_1", capability: "sandboxRuntime", status: "active" },
+      { userId: "user_1", capability: "mcpRuntime", status: "active" },
     ],
   });
 
-  assert.deepEqual(await listActiveCapabilities(ctx, "user_1"), ["sandboxRuntime"]);
+  assert.deepEqual(await listActiveCapabilities(ctx, "user_1"), ["mcpRuntime"]);
   assert.equal(await hasCapability(ctx, "user_1", "pro"), false);
 
   const account = await getAccountCapabilities(ctx, "user_1");
   assert.equal(account.isPro, false);
-  assert.equal(account.hasSandboxRuntime, true);
-  assert.deepEqual(account.capabilities, ["sandboxRuntime"]);
+  assert.deepEqual(account.capabilities, ["mcpRuntime"]);
 });
 
 test("active entitlement contributes Pro while runtime capabilities still come from userCapabilities", async () => {
   const ctx = buildCtx({
     entitlement: { userId: "user_1", status: "active" },
     grants: [
-      { userId: "user_1", capability: "sandboxRuntime", status: "active" },
       { userId: "user_1", capability: "mcpRuntime", status: "active" },
     ],
   });
 
   assert.deepEqual(
     await listActiveCapabilities(ctx, "user_1"),
-    ["pro", "sandboxRuntime", "mcpRuntime"],
+    ["pro", "mcpRuntime"],
   );
   assert.equal(await hasCapability(ctx, "user_1", "pro"), true);
 
   const account = await getAccountCapabilities(ctx, "user_1");
   assert.equal(account.isPro, true);
-  assert.equal(account.hasSandboxRuntime, true);
   assert.equal(account.hasMcpRuntime, true);
 });

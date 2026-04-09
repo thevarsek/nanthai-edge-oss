@@ -199,5 +199,4 @@ Produce these outputs:
   requiredToolIds: ["workspace_import_file", "data_python_exec", "workspace_export_file"],
   requiredToolProfiles: ["analytics"],
   requiredIntegrationIds: [],
-  requiredCapabilities: ["sandboxRuntime"],
 };

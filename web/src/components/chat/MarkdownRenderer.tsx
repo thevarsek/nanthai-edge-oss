@@ -12,7 +12,36 @@ import rehypeRaw from "rehype-raw";
 import { useTranslation } from "react-i18next";
 import type { Components } from "react-markdown";
 import type { PluggableList } from "unified";
-import type { Element } from "hast";
+
+// ─── Convex image URL detection ───────────────────────────────────────────────
+
+const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
+
+/** Check if a URL is a Convex storage download link pointing to an image file. */
+function isConvexImageUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    if (!parsed.hostname.endsWith(".convex.site") && !parsed.hostname.endsWith(".convex.cloud")) {
+      return false;
+    }
+    if (parsed.pathname !== "/download") return false;
+    const filename = parsed.searchParams.get("filename");
+    if (!filename) return false;
+    const ext = filename.slice(filename.lastIndexOf(".")).toLowerCase();
+    return IMAGE_EXTENSIONS.has(ext);
+  } catch {
+    return false;
+  }
+}
+
+/** Extract the filename from a convex download URL. */
+function getFilenameFromUrl(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get("filename");
+  } catch {
+    return null;
+  }
+}
 
 // ─── Static plugin arrays (stable references — never recreated) ──────────────
 const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath];
@@ -71,7 +100,7 @@ function CodeBlock({
 
   if (inline) {
     return (
-      <code className="px-1.5 py-0.5 rounded text-[0.85em] font-mono bg-nanth-code text-foreground">
+      <code className="text-[0.85em] font-mono text-primary">
         {children}
       </code>
     );
@@ -140,11 +169,13 @@ function MarkdownTable({
 function buildComponents(content: string): Components {
   return {
     // Code — inline vs block differentiated by the `inline` prop
-    code({ className, children, node }) {
-      const hNode = node as Element | undefined;
-      const isInline =
-        hNode?.tagName === "code" &&
-        hNode?.properties?.["data-inline"] === true;
+    code({ className, children }) {
+      // Fenced code blocks (``` ... ```) always get a className from
+      // rehype-highlight (at minimum "hljs"); inline backtick code
+      // (`word`) never does. We also treat multi-line content as a
+      // block even if className is absent (un-highlighted fenced block).
+      const text = String(children ?? "").replace(/\n$/, "");
+      const isInline = !className && !text.includes("\n");
 
       return (
         <CodeBlock
@@ -237,8 +268,20 @@ function buildComponents(content: string): Components {
       return <hr className="my-4 border-border/20" />;
     },
 
-    // Links — open in new tab, never navigate away
+    // Links — render convex.site image URLs as inline <img>, others as links
     a({ href, children }) {
+      if (href && isConvexImageUrl(href)) {
+        return (
+          <a href={href} target="_blank" rel="noopener noreferrer" className="block my-3">
+            <img
+              src={href}
+              alt={typeof children === "string" ? children : getFilenameFromUrl(href) ?? "Generated image"}
+              className="max-w-full rounded-xl border border-border/20 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
+              loading="lazy"
+            />
+          </a>
+        );
+      }
       return (
         <a
           href={href}

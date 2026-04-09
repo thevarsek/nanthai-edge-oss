@@ -39,6 +39,7 @@ import { ChatHeader, EmptyChatState, ChatModalPanels } from "@/routes/ChatPage.h
 import { ChatSearchContext } from "@/components/chat/ChatSearchContext";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
+import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 import {
   DEFAULT_PARAMETER_OVERRIDES,
   buildBaseParticipants,
@@ -326,7 +327,7 @@ export function ChatPage() {
   };
   const kbAttachments = useMemo(
     (): ChatAttachment[] => (selectedKBFiles ?? []).map((file) => ({
-      type: file.mimeType?.startsWith("image/") ? "image" : "file",
+      type: file.mimeType ? attachmentTypeForMime(file.mimeType) : "file",
       storageId: file.storageId as Id<"_storage">,
       name: file.filename,
       mimeType: file.mimeType,

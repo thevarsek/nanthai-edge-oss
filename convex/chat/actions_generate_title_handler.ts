@@ -79,8 +79,14 @@ export async function generateTitleHandler(
         "You are a chat title generator. Your ONLY job is to produce a short title " +
         "(max 6 words) that summarises WHAT THE USER IS ASKING ABOUT — their topic " +
         "or intent, NOT an answer to their question.\n\n" +
+        "LANGUAGE DETECTION (CRITICAL):\n" +
+        "- Determine the title language EXCLUSIVELY from the <user_message> block.\n" +
+        "- IGNORE all code snippets, variable names, function names, technical terms, " +
+        "and English-language programming keywords when detecting language.\n" +
+        "- IGNORE the assistant response language — it is provided only for topic context.\n" +
+        "- If the user's natural-language text (excluding code) is in French, title in French. " +
+        "If in Japanese, title in Japanese. If in English, title in English. Etc.\n\n" +
         "Rules:\n" +
-        "- Generate the title in the SAME LANGUAGE as the user's message. If the user writes in French, title in French. If in Japanese, title in Japanese. Etc.\n" +
         "- Describe the subject/topic, never answer or interpret the question.\n" +
         "- Use neutral, descriptive language (e.g. \"React useEffect cleanup\" not \"How to fix useEffect\").\n" +
         "- No punctuation, quotes, or prefixes like \"Title:\".\n" +
@@ -91,8 +97,8 @@ export async function generateTitleHandler(
     {
       role: "user",
       content: args.assistantContent
-        ? `User message: ${args.sourceContent}\nAssistant response: ${args.assistantContent}`
-        : `User message: ${args.sourceContent}`,
+        ? `<user_message>\n${args.sourceContent}\n</user_message>\n\n<assistant_response>\n${args.assistantContent}\n</assistant_response>`
+        : `<user_message>\n${args.sourceContent}\n</user_message>`,
     },
   ];
 

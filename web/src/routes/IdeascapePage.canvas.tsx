@@ -35,6 +35,7 @@ import {
   validateSendState as validateChatSendState,
   type SharedPreferences,
 } from "@/lib/chatRequestResolution";
+import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 
 // ─── Viewport persistence ───────────────────────────────────────────────────
 
@@ -317,7 +318,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const startResearchPaper = useMutation(api.search.mutations.startResearchPaper);
   const kbAttachments = useMemo(
     () => (selectedKBFiles ?? []).map((file) => ({
-      type: file.mimeType?.startsWith("image/") ? "image" : "file",
+      type: file.mimeType ? attachmentTypeForMime(file.mimeType) : "file",
       storageId: file.storageId as Id<"_storage">,
       name: file.filename,
       mimeType: file.mimeType,

@@ -7,7 +7,6 @@ import {
   formatSkillCatalogXml,
   buildRuntimeGuard,
   NANTHAI_RUNTIME_GUARD_BASIC,
-  NANTHAI_RUNTIME_GUARD_SANDBOX,
   SKILL_DISCOVERY_INSTRUCTION,
   SkillCatalogEntry,
 } from "../skills/helpers";
@@ -143,7 +142,7 @@ test("buildSkillCatalogFromDocs: excludes skills whose profiles are unavailable"
   const runtimeSkill = makeSkillDoc({
     slug: "code-workspace",
     requiredToolProfiles: ["workspace"],
-    requiredCapabilities: ["sandboxRuntime"],
+    requiredCapabilities: ["mcpRuntime"],
   });
 
   const result = buildSkillCatalogFromDocs([docsSkill, runtimeSkill], [], [], [], {
@@ -241,10 +240,10 @@ test("formatSkillCatalogXml: skill with capability requirements includes require
     requiredToolIds: ["workspace_exec"],
     requiredToolProfiles: ["workspace"],
     requiredIntegrationIds: [],
-    requiredCapabilities: ["sandboxRuntime"],
+    requiredCapabilities: ["mcpRuntime"],
   };
   const xml = formatSkillCatalogXml([entry]);
-  assert.ok(xml.includes("<requires_capabilities>sandboxRuntime</requires_capabilities>"));
+  assert.ok(xml.includes("<requires_capabilities>mcpRuntime</requires_capabilities>"));
 });
 
 test("formatSkillCatalogXml: escapes XML special characters", () => {
@@ -301,9 +300,7 @@ test("formatSkillCatalogXml: multiple skills produce multiple <skill> entries", 
 
 test("runtime guards are non-empty strings", () => {
   assert.ok(typeof NANTHAI_RUNTIME_GUARD_BASIC === "string");
-  assert.ok(typeof NANTHAI_RUNTIME_GUARD_SANDBOX === "string");
   assert.ok(NANTHAI_RUNTIME_GUARD_BASIC.length > 50);
-  assert.ok(NANTHAI_RUNTIME_GUARD_SANDBOX.length > 50);
 });
 
 test("buildNanthAIPrelude: basic profile emphasises direct conversation and skills", () => {
@@ -313,15 +310,8 @@ test("buildNanthAIPrelude: basic profile emphasises direct conversation and skil
   assert.ok(!prompt.includes("coding, file-processing"));
 });
 
-test("buildNanthAIPrelude: sandbox profile mentions runtime workflows", () => {
-  const prompt = buildNanthAIPrelude("mobileSandbox");
-  assert.ok(prompt.includes("coding, file-processing"));
-  assert.ok(prompt.includes("ordinary search"));
-});
-
-test("buildRuntimeGuard returns the correct guard for each profile", () => {
+test("buildRuntimeGuard returns the basic guard for mobileBasic profile", () => {
   assert.equal(buildRuntimeGuard("mobileBasic"), NANTHAI_RUNTIME_GUARD_BASIC);
-  assert.equal(buildRuntimeGuard("mobileSandbox"), NANTHAI_RUNTIME_GUARD_SANDBOX);
 });
 
 test("basic runtime guard mentions key restrictions", () => {
@@ -329,11 +319,6 @@ test("basic runtime guard mentions key restrictions", () => {
   assert.ok(NANTHAI_RUNTIME_GUARD_BASIC.includes("filesystem"));
   assert.ok(NANTHAI_RUNTIME_GUARD_BASIC.includes("Browser"));
   assert.ok(NANTHAI_RUNTIME_GUARD_BASIC.includes("MCP"));
-});
-
-test("sandbox runtime guard mentions the temporary workspace", () => {
-  assert.ok(NANTHAI_RUNTIME_GUARD_SANDBOX.includes("temporary code workspace"));
-  assert.ok(NANTHAI_RUNTIME_GUARD_SANDBOX.includes("exporting files"));
 });
 
 test("SKILL_DISCOVERY_INSTRUCTION is a non-empty string mentioning load_skill", () => {

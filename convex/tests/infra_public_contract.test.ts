@@ -6,7 +6,6 @@ import { deleteUserTableBatch } from "../account/mutations";
 import { getGoogleConnection, upsertConnection as upsertGoogleConnection } from "../oauth/google";
 import { getMicrosoftConnection, upsertConnection as upsertMicrosoftConnection } from "../oauth/microsoft";
 import { getNotionConnection } from "../oauth/notion";
-import { cleanupMarkedSessions } from "../runtime/actions";
 
 function buildAuth(userId: string | null = "user_1") {
   return {
@@ -223,51 +222,4 @@ test("deleteUserTableBatch cancels scheduled functions before deleting scheduled
   assert.equal(result.deleted, 2);
   assert.deepEqual(cancelled, ["fn_1"]);
   assert.deepEqual(deleted, ["job_1", "job_2"]);
-});
-
-test("cleanupMarkedSessions skips chats with active generations and tombstones eligible sessions", async () => {
-  const mutations: Array<{ fn: unknown; args: Record<string, unknown> }> = [];
-
-  await (cleanupMarkedSessions as any)._handler({
-    runQuery: async (fnRef: unknown, args: Record<string, unknown>) => {
-      if (Object.keys(args).length === 0) {
-        return [
-          {
-            _id: "session_active",
-            userId: "user_1",
-            chatId: "chat_active",
-            templateName: "nanthai-edge-runtime",
-            templateVersion: "1",
-            cwd: "/tmp",
-            timeoutMs: 1000,
-            internetEnabled: true,
-            publicTrafficEnabled: false,
-            failureCount: 0,
-          },
-          {
-            _id: "session_cleanup",
-            userId: "user_1",
-            chatId: "chat_cleanup",
-            providerSandboxId: "sandbox_1",
-            templateName: "nanthai-edge-runtime",
-            templateVersion: "1",
-            cwd: "/tmp",
-            timeoutMs: 1000,
-            internetEnabled: true,
-            publicTrafficEnabled: false,
-            failureCount: 0,
-          },
-        ];
-      }
-      return args.chatId === "chat_active";
-    },
-    runMutation: async (fn: unknown, args: Record<string, unknown>) => {
-      mutations.push({ fn, args });
-    },
-  }, {});
-
-  assert.equal(mutations.length, 2);
-  assert.equal(mutations[0]?.args.sessionId, "session_cleanup");
-  assert.equal(mutations[0]?.args.status, "deleted");
-  assert.equal(mutations[1]?.args.eventType, "sandbox_deleted");
 });

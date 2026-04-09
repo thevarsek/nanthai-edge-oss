@@ -104,7 +104,7 @@ ax_bar2.set_title("Revenue by Region", fontsize=12, fontweight="bold")
 
 plt.tight_layout(rect=[0, 0, 1, 0.95])
 plt.show()
-fig.savefig("outputs/dashboard.png", dpi=150, bbox_inches="tight")
+fig.savefig("/tmp/outputs/dashboard.png", dpi=150, bbox_inches="tight")
 \`\`\`
 
 ### Template 2: Comparison Dashboard
@@ -258,5 +258,4 @@ When delivering a dashboard:
   requiredToolIds: ["workspace_import_file", "data_python_exec", "workspace_export_file"],
   requiredToolProfiles: ["analytics"],
   requiredIntegrationIds: [],
-  requiredCapabilities: ["sandboxRuntime"],
 };

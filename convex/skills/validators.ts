@@ -30,7 +30,7 @@ export interface ValidationResult {
 }
 
 export interface SkillValidationOptions {
-  allowSandboxRuntime?: boolean;
+  // Reserved for future options.
 }
 
 // ---------------------------------------------------------------------------
@@ -45,39 +45,6 @@ interface BannedPattern {
 }
 
 const BANNED_PATTERNS: BannedPattern[] = [
-  {
-    code: "USES_BASH",
-    message: "Skill references shell/bash/terminal commands which are not available in NanthAI.",
-    patterns: [
-      /\bbash\b/i,
-      /\bshell\b/i,
-      /\bterminal\b/i,
-      /\bcommand[- ]?line\b/i,
-      /\bcli\b/i,
-      /\b(?:run|execute)\s+(?:the\s+)?(?:command|script)\b/i,
-      /\bnpx\b/i,
-      /\bnpm\s+(?:run|install|exec)\b/i,
-      /\bpip\s+install\b/i,
-      /\bcargo\s+(?:run|build)\b/i,
-      /\$\(.+\)/,
-      /`[^`]*(?:mkdir|rm|cp|mv|chmod|chown|curl|wget|apt|brew)\b[^`]*`/i,
-    ],
-  },
-  {
-    code: "USES_FILESYSTEM",
-    message: "Skill references local filesystem read/write which is not available in NanthAI.",
-    patterns: [
-      /\blocal\s+file\s*system\b/i,
-      /\bread\s+(?:the\s+)?file\b/i,
-      /\bwrite\s+(?:to\s+)?(?:the\s+)?file\b/i,
-      /\bfs\.\w+/i,
-      /\bopen\(.+['"]\s*[rwa]\s*['"]\)/i,
-      /\bSKILL\.md\b/,
-      /\breferences\/\w+\.md\b/,
-      /\bscripts\/\w+\.py\b/,
-      /\bassets\/\w+/,
-    ],
-  },
   {
     code: "USES_BROWSER",
     message: "Skill references browser automation or desktop control which is not available in NanthAI.",
@@ -102,34 +69,49 @@ const BANNED_PATTERNS: BannedPattern[] = [
       /\bsubprocess\b/i,
     ],
   },
+];
+
+// ---------------------------------------------------------------------------
+// Warning patterns — non-blocking hints for shell/filesystem instructions
+// that won't automatically receive runtime tools unless the skill's metadata
+// explicitly declares requiredToolIds or requiredToolProfiles.
+// ---------------------------------------------------------------------------
+
+interface WarningPattern {
+  code: string;
+  message: string;
+  patterns: RegExp[];
+}
+
+const WARNING_PATTERNS: WarningPattern[] = [
   {
-    code: "USES_RAW_FETCH",
-    message: "Skill references raw HTTP fetches outside named NanthAI tools.",
+    code: "MENTIONS_SHELL",
+    message:
+      "Skill instructions mention shell commands (git, curl, pip, etc.). " +
+      "These only work if the skill declares workspace or analytics tool profiles in its metadata.",
     patterns: [
-      /\bfetch\(\s*['"]https?:\/\//i,
-      /\baxios\b/i,
-      /\brequests\.get\b/i,
+      /\bgit\s+clone\b/i,
+      /\bgit\s+pull\b/i,
+      /\bgit\s+push\b/i,
+      /\bpip\s+install\b/i,
       /\bcurl\s+/i,
       /\bwget\s+/i,
+      /\bnpm\s+install\b/i,
+      /\byarn\s+add\b/i,
     ],
   },
   {
-    code: "USES_BUNDLED_SCRIPTS",
-    message: "Skill references bundled scripts or assets that cannot be loaded in NanthAI's runtime.",
+    code: "MENTIONS_FILESYSTEM",
+    message:
+      "Skill instructions reference filesystem paths or operations. " +
+      "These only work if the skill declares workspace tool profiles in its metadata.",
     patterns: [
-      /\binit_skill\.py\b/,
-      /\bpackage_skill\.py\b/,
-      /\bquick_validate\.py\b/,
-      /\brun\s+(?:the\s+)?script\b/i,
-      /\bexecute\s+(?:the\s+)?(?:python|node|ruby)\b/i,
-    ],
-  },
-  {
-    code: "USES_GIT",
-    message: "Skill references git operations which are not available in NanthAI.",
-    patterns: [
-      /\bgit\s+(?:clone|pull|push|commit|checkout|branch|merge|rebase|stash)\b/i,
-      /\bgit\s+(?:add|status|log|diff)\b/i,
+      /\bmkdir\s+/i,
+      /\btouch\s+/i,
+      /\bcat\s+/i,
+      /\bls\s+-/i,
+      /\/usr\/local\//i,
+      /\/home\//i,
     ],
   },
 ];
@@ -151,7 +133,8 @@ const KNOWN_TOOL_IDS = new Set([
   "spawn_subagents",
   "workspace_exec", "workspace_list_files", "workspace_read_file",
   "workspace_write_file", "workspace_make_dirs", "workspace_import_file",
-  "workspace_export_file", "data_python_exec", "workspace_reset",
+  "workspace_export_file", "data_python_exec", "data_python_sandbox",
+  "workspace_reset",
   // Google
   "gmail_send", "gmail_read", "gmail_search", "gmail_delete",
   "gmail_modify_labels", "gmail_list_labels",
@@ -186,16 +169,7 @@ const KNOWN_INTEGRATION_IDS = new Set([
 
 const KNOWN_CAPABILITY_IDS = new Set([
   "pro",
-  "sandboxRuntime",
   "mcpRuntime",
-]);
-
-const SANDBOX_COMPATIBLE_CODES = new Set([
-  "USES_BASH",
-  "USES_FILESYSTEM",
-  "USES_RAW_FETCH",
-  "USES_BUNDLED_SCRIPTS",
-  "USES_GIT",
 ]);
 
 // ---------------------------------------------------------------------------
@@ -208,7 +182,7 @@ const SANDBOX_COMPATIBLE_CODES = new Set([
  */
 export function validateSkillInstructions(
   rawInstructions: string,
-  options: SkillValidationOptions = {},
+  _options: SkillValidationOptions = {},
 ): ValidationResult {
   const findings: ValidationFinding[] = [];
 
@@ -216,13 +190,22 @@ export function validateSkillInstructions(
   for (const banned of BANNED_PATTERNS) {
     const matched = banned.patterns.some((p) => p.test(rawInstructions));
     if (matched) {
-      const isSandboxCompatible =
-        options.allowSandboxRuntime === true &&
-        SANDBOX_COMPATIBLE_CODES.has(banned.code);
       findings.push({
         code: banned.code,
         message: banned.message,
-        severity: isSandboxCompatible ? "warning" : "error",
+        severity: "error",
+      });
+    }
+  }
+
+  // Check for warning patterns (shell/filesystem references)
+  for (const warn of WARNING_PATTERNS) {
+    const matched = warn.patterns.some((p) => p.test(rawInstructions));
+    if (matched) {
+      findings.push({
+        code: warn.code,
+        message: warn.message,
+        severity: "warning",
       });
     }
   }

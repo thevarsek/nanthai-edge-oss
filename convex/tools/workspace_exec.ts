@@ -6,8 +6,12 @@ import { runWorkspaceCommand } from "../runtime/service";
 export const workspaceExec = createTool({
   name: "workspace_exec",
   description:
-    "Run a shell command inside the current chat's temporary code workspace. " +
-    "Use this for code execution, package installation, compilation, and file processing.",
+    "Run a shell command in this chat's temporary workspace (simulated shell via just-bash). " +
+    "Available: coreutils, text processing (grep/sed/awk/jq), python3 (stdlib only), node/ts-node. " +
+    "No network access, no pip/npm install, no apt-get — packages beyond stdlib are not available. " +
+    "Filesystem persists within this response only; files are lost between messages. " +
+    "Use this for scripting, file transformations, and code execution with standard tools. " +
+    "For data analysis with numpy/pandas/matplotlib, use data_python_exec instead.",
   parameters: {
     type: "object",
     properties: {

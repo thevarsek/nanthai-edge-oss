@@ -34,12 +34,13 @@ interface GeneratedChart {
   xUnit?: string;
   yUnit?: string;
   elements: unknown[];
+  pngBase64?: string;
 }
 
 // ─── Chart type badge ─────────────────────────────────────────────────────────
 
 const TYPE_LABELS: Record<ChartType, string> = {
-  line: "Line", bar: "Bar", scatter: "Scatter", pie: "Pie", box: "Box",
+  line: "Line", bar: "Bar", scatter: "Scatter", pie: "Pie", box: "Box", png_image: "Image",
 };
 
 function ChartTypeBadge({ type }: { type: ChartType }) {
@@ -64,7 +65,7 @@ function chartSubtitle(c: GeneratedChart): string | null {
 function ChartRenderer({ chart }: { chart: GeneratedChart }) {
   const { t } = useTranslation();
   const elements = chart.elements ?? [];
-  if (elements.length === 0) {
+  if (elements.length === 0 && chart.chartType !== "png_image") {
     return <p className="text-xs text-muted italic py-4 text-center">{t("no_data")}</p>;
   }
 
@@ -79,6 +80,10 @@ function ChartRenderer({ chart }: { chart: GeneratedChart }) {
       return <PieChartRenderer slices={parseSlices(elements)} />;
     case "box":
       return <BoxChartRenderer boxes={parseBoxes(elements)} />;
+    case "png_image":
+      return chart.pngBase64
+        ? <img src={`data:image/png;base64,${chart.pngBase64}`} alt={chart.title ?? "Chart"} className="w-full h-auto rounded" />
+        : <p className="text-xs text-muted italic py-4 text-center">{t("no_data")}</p>;
     default:
       return <p className="text-xs text-muted italic py-4 text-center">{t("unsupported_chart_type")}</p>;
   }

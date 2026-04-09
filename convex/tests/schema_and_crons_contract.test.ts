@@ -10,10 +10,9 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   assert.deepEqual(Object.keys(entries).sort(), [
     "cleanOldJobRuns",
     "cleanStaleJobs",
+    "cleanStaleSandboxSessions",
     "cleanStaleSearchPhases",
-    "cleanupRuntimeSandboxes",
     "consolidateMemories",
-    "markRuntimeCleanupCandidates",
     "refreshModelCatalog",
     "syncArtificialAnalysis",
     "syncOpenRouterUseCases",
@@ -26,14 +25,10 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     type: "interval",
     minutes: 15,
   });
-  assert.deepEqual(entries.cleanupRuntimeSandboxes.schedule, {
-    type: "cron",
-    cron: "0 6 * * *",
+  assert.deepEqual(entries.cleanStaleSandboxSessions.schedule, {
+    type: "interval",
+    minutes: 30,
   });
-  assert.equal(
-    entries.cleanupRuntimeSandboxes.name,
-    "runtime/actions:cleanupMarkedSessions",
-  );
 });
 
 test("schema exposes the indexes and fields that shared clients depend on", () => {

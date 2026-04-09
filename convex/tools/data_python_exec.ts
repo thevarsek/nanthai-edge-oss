@@ -6,14 +6,20 @@ import { runDataPythonExec } from "../runtime/service_analytics";
 export const dataPythonExec = createTool({
   name: "data_python_exec",
   description:
-    "Run notebook-style Python in the current chat workspace for data analysis and chart generation.",
+    "Run notebook-style Python (Pyodide/WebAssembly) for data analysis and chart generation. " +
+    "Pre-loaded packages: numpy, pandas, matplotlib. ~400 MB memory limit, 120s timeout, stateless per call. " +
+    "Use for CSV/XLSX analysis, summary statistics, data cleaning, and chart creation with matplotlib. " +
+    "To export output files (CSV, JSON, etc.), save them to /tmp/outputs/ — they are auto-captured and " +
+    "stored as downloadable artifacts. Charts from plt.show() are captured automatically. " +
+    "If this tool fails due to missing packages (scipy, scikit-learn, etc.), memory limits, or timeouts, " +
+    "retry the same task using data_python_sandbox which provides a full Linux environment with pip.",
   parameters: {
     type: "object",
     properties: {
       code: { type: "string", description: "Python code to run." },
       inputFiles: {
         type: "array",
-        description: "Optional files to import into the workspace inputs directory.",
+        description: "Optional files to import into /tmp/inputs/. Each file will be available at /tmp/inputs/<filename>.",
         items: {
           type: "object",
           properties: {
@@ -26,7 +32,7 @@ export const dataPythonExec = createTool({
       },
       exportPaths: {
         type: "array",
-        description: "Optional workspace paths to export after execution.",
+        description: "Optional extra file paths to export after execution. Files in /tmp/outputs/ are auto-captured; use this for files written elsewhere.",
         items: { type: "string" },
       },
       captureCharts: {

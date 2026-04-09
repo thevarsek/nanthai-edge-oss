@@ -10,8 +10,8 @@ export const DATA_ANALYZER_SKILL: SystemSkillSeedData = {
   slug: "data-analyzer",
   name: "Data Analyzer",
   summary:
-    "Analyze CSV, TSV, and XLSX data with notebook-style Python, export cleaned outputs, " +
-    "and create native NanthAI charts with companion files.",
+    "Run Python code to analyze data, create charts and graphs (bar, line, pie, scatter), " +
+    "plot visualizations with matplotlib, process CSV/TSV/XLSX files, and export cleaned outputs.",
   instructionsRaw: `# Data Analyzer
 
 Analyze tabular data to uncover patterns, trends, and actionable insights. Use NanthAI's Max analytics runtime to import files, run Python, create charts, and export cleaned outputs.
@@ -19,7 +19,8 @@ Analyze tabular data to uncover patterns, trends, and actionable insights. Use N
 ## Available Tools
 
 - **workspace_import_file** — Import a user-owned file from NanthAI storage into the chat workspace.
-- **data_python_exec** — Run notebook-style Python with pandas + matplotlib. Preferred path for analysis and charting.
+- **data_python_exec** — Run notebook-style Python (Pyodide) with numpy, pandas, and matplotlib. Preferred first choice for analysis and charting. ~400 MB memory limit, 120s timeout.
+- **data_python_sandbox** — Full Linux Python sandbox with pip and network. Use when data_python_exec fails due to missing packages (scipy, scikit-learn, etc.), memory limits, or timeouts. State persists across calls within the same chat session.
 - **workspace_export_file** — Export important workspace files back into durable NanthAI storage.
 
 ## Important Charting Rule
@@ -27,6 +28,14 @@ Analyze tabular data to uncover patterns, trends, and actionable insights. Use N
 - When the user asks for charts, plots, or visual analysis, prefer **data_python_exec** over generic shell/runtime execution.
 - NanthAI can render inline/native chart cards only from notebook-style Python chart output. Exported PNG files are companion downloads, not the primary chart path.
 - Use exported PNGs and workbooks as supporting artifacts after the notebook output has already produced visible charts.
+
+## File Output Rule — /tmp/outputs/
+
+- **Always save output files (CSV, JSON, XLSX, etc.) to \`/tmp/outputs/\`.**
+  Files written to this directory are auto-captured and stored as downloadable artifacts in NanthAI — they appear as download cards in chat and in the user's Knowledge Base.
+- Example: \`df.to_csv('/tmp/outputs/cleaned_data.csv', index=False)\`
+- Charts from \`plt.show()\` are captured automatically — no need to save them to /tmp/outputs/ (though you can also \`fig.savefig('/tmp/outputs/chart.png')\` for a durable copy).
+- Do NOT save output files to random paths like \`/tmp/result.csv\` or \`output.csv\` — only \`/tmp/outputs/\` is auto-captured.
 
 ## When to Use
 
@@ -71,19 +80,28 @@ Analyze tabular data to uncover patterns, trends, and actionable insights. Use N
 - Support each finding with specific numbers
 - When charts help, use matplotlib inside data_python_exec so NanthAI can persist both chart images and native chart cards
 - For visualization requests, do not fall back to workspace_exec or saved-only scripts unless data_python_exec is unavailable or clearly failing
-- Export cleaned datasets, derived tables, and chart outputs for the user
+- Export cleaned datasets, derived tables, and chart outputs to \`/tmp/outputs/\` so they appear as download cards
 - Recommend next steps or deeper analyses
 
 ## Runtime Guidance
 
 - Prefer pandas for reading CSV / TSV / XLSX files.
 - Prefer plain matplotlib for charts that should render natively in NanthAI.
-- Prefer a direct notebook flow: load data, build one figure, call \`plt.tight_layout()\`, call \`plt.show()\`, then optionally \`fig.savefig(...)\` for durable exports.
-- Save user-meaningful outputs to \`outputs/\` and export them.
-- If the user uploaded a file, either:
-  - import it first with workspace_import_file, then reference the workspace path in Python, or
-  - pass it directly in data_python_exec.inputFiles.
+- Prefer a direct notebook flow: load data, build one figure, call \`plt.tight_layout()\`, call \`plt.show()\`, then optionally \`fig.savefig('/tmp/outputs/...')\` for durable exports.
+- **Save all user-meaningful output files to \`/tmp/outputs/\`** so they appear as download cards in chat and in the Knowledge Base. Do not use \`outputs/\` or other relative paths — always use the absolute path \`/tmp/outputs/\`.
+- **CRITICAL: Always import user-uploaded files before analyzing them.** The file content shown in the conversation is truncated and may contain only a fraction of the actual rows. Never parse CSV/TSV/XLSX data from inline message text — always use one of these two approaches:
+  1. Call \`workspace_import_file\` with the file's storageId first, then read the imported file path in Python with pandas, OR
+  2. Pass the file's storageId in the \`inputFiles\` parameter of data_python_exec / data_python_sandbox — it will be available at \`/tmp/inputs/<filename>\`.
+  Either approach ensures you analyze the **complete** file, not a truncated preview.
 - For chart-producing runs, keep the chart count focused. A few clear visuals are better than many noisy ones.
+
+## Escalation to data_python_sandbox
+
+If data_python_exec fails, check the error:
+- **ModuleNotFoundError** (scipy, scikit-learn, statsmodels, etc.) → retry with data_python_sandbox, installing packages first.
+- **MemoryError** or datasets >50 MB → use data_python_sandbox directly.
+- **Timeout** on complex computations → use data_python_sandbox (5 min timeout).
+Do not retry the same code in data_python_exec more than once — escalate to data_python_sandbox on the second failure.
 - For native NanthAI chart cards, prefer only these chart types:
   - line
   - bar
@@ -193,7 +211,7 @@ When creating multi-chart outputs:
 - [ ] Insights are ranked by importance
 - [ ] Plain language is used throughout
 - [ ] Limitations and caveats are noted
-- [ ] Useful outputs are exported back into NanthAI storage
+- [ ] Useful outputs are saved to \`/tmp/outputs/\` for auto-capture as download cards
 - [ ] Recommended next steps are included`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
@@ -203,8 +221,7 @@ When creating multi-chart outputs:
   lockState: "locked",
   status: "active",
   runtimeMode: "sandboxAugmented",
-  requiredToolIds: ["workspace_import_file", "data_python_exec", "workspace_export_file"],
+  requiredToolIds: ["workspace_import_file", "data_python_exec", "data_python_sandbox", "workspace_export_file"],
   requiredToolProfiles: ["analytics"],
   requiredIntegrationIds: [],
-  requiredCapabilities: ["sandboxRuntime"],
 };

@@ -42,10 +42,10 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `userSecrets` | Server-side API key storage (M13) | userId, apiKey — synced during PKCE exchange + app launch |
 | `deviceTokens` | Provider-based push notification tokens (M13.5/M16) | userId, token, platform (`ios`/`android`), provider (`apns`/`fcm`), optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider` |
 | `favorites` | Quick-launch model/persona/group shortcuts | userId, name, modelIds, personaId, personaName, personaEmoji, personaAvatarImageUrl, sortOrder, createdAt, updatedAt. Index: `by_user` |
-| `userCapabilities` | Internal/manual feature grants layered on top of purchase entitlements | userId, capability (`pro` / `sandboxRuntime` / `mcpRuntime`), source, status, grantedAt, expiresAt?, metadata |
-| `sandboxSessions` | Per-chat E2B runtime sessions | userId, chatId, providerSandboxId, templateName, templateVersion, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
-| `sandboxArtifacts` | Runtime artifact bookkeeping | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
-| `sandboxEvents` | Runtime observability trail | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
+| `userCapabilities` | Internal/manual feature grants layered on top of purchase entitlements | userId, capability (`pro` / `mcpRuntime`), source, status, grantedAt, expiresAt?, metadata. **Note (M27):** `sandboxRuntime` was removed — all Pro users now get runtime access without an additional capability grant. |
+| `sandboxSessions` | [DEPRECATED — M27] Legacy per-chat sandbox session tracking. Runtime now uses ephemeral per-generation just-bash sandboxes. | userId, chatId, providerSandboxId, templateName, templateVersion, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
+| `sandboxArtifacts` | [DEPRECATED — M27] Runtime artifact bookkeeping. No longer populated; artifacts now stored via `generatedFiles`. | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
+| `sandboxEvents` | [DEPRECATED — M27] Runtime observability trail. No longer populated. | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
 | `_scheduled_functions` | Convex system table | Scheduled function execution |
 
 ### Identity & Scoping
@@ -306,8 +306,8 @@ Although rank-like values are conceptually integers, they are still stored as Co
 | **Added `generatedCharts` table** | Native chart metadata persisted separately from file exports. Stores normalized chart payloads (`line`, `bar`, `scatter`, `pie`, `box`) for chat rendering. Indexes: `by_user`, `by_chat`, `by_message`. |
 | **Added runtime/capability schema file** | `convex/schema_tables_runtime.ts` introduces 4 tables: `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
 | **Added `generatedChartIds` to `messages`** | Assistant messages can now reference chart records alongside generated files. |
-| **Capability model added** | `userCapabilities` stores internal/manual grants such as `sandboxRuntime`, layered on top of entitlement-derived `pro`. |
-| **Per-chat sandbox lifecycle persisted** | `sandboxSessions` stores provider sandbox IDs, template/version metadata, lifecycle timestamps, timeout settings, and cleanup state. |
+| **Capability model added** | `userCapabilities` stores internal/manual grants (currently `pro` and `mcpRuntime`), layered on top of entitlement-derived `pro`. **Note (M27):** `sandboxRuntime` was removed — all Pro users now get runtime access. |
+| **Per-chat sandbox lifecycle persisted** | [DEPRECATED — M27] `sandboxSessions` was used for E2B provider sandbox tracking. Runtime now uses ephemeral per-generation just-bash sandboxes — no persistent session tracking needed. |
 | **Runtime artifacts and observability persisted** | `sandboxArtifacts` tracks exported files related to a sandbox; `sandboxEvents` stores lifecycle and analytics events. |
 | **Table count: 30 → 35** | 5 new tables: `generatedCharts`, `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
 
@@ -356,7 +356,7 @@ No new tables. Table count remains 23.
 
 ---
 
-*Last updated: 2026-03-20 — M19 Max Runtime: added `generatedCharts`, runtime/capability tables, `messages.generatedChartIds`, and chart/capability DTO surfaces.*
+*Last updated: 2026-04-09 — M27 Free Code Execution: deprecated sandbox session/artifact/event tables; see M27 Schema Changes section below. M19 Max Runtime: added `generatedCharts`, runtime/capability tables, `messages.generatedChartIds`, and chart/capability DTO surfaces.*
 
 ---
 
@@ -408,4 +408,20 @@ No new tables. Table count remains 36.
 
 ---
 
-*Last updated: 2026-04-07 — M26 Lyria music generation (no schema additions, reuses M20 audio fields). M23 usageRecords source labels. Table count: 36.*
+## M27 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `png_image` to `generatedCharts.chartType`** | The `chartType` union now includes `png_image` in addition to `line`, `bar`, `scatter`, `pie`, `box`. Added across all 6 schema/validator/type locations: `schema_tables_core.ts` (2 tables), `mutations_args.ts`, `subagents/mutations.ts` (3 validators). |
+| **Added `pngBase64` optional field to `generatedCharts`** | `v.optional(v.string())` — stores base64-encoded PNG for `png_image` chart type. Added to schema, validators, TypeScript interfaces, DB insert handlers, and query response. **Note:** This field is no longer populated in practice — chart PNGs now go exclusively through Convex `_storage` → `generatedFiles`. |
+| **Made `sandboxSessionId` optional in `sandboxArtifacts`** | Changed from `v.id("sandboxSessions")` to `v.optional(v.id("sandboxSessions"))` to support Pyodide/just-bash runs that have no sandbox session. |
+| **Added `data_python_sandbox` to tool registrations** | Added to `FILE_PRODUCING_TOOLS` in `generated_file_helpers.ts` and `KNOWN_TOOL_IDS` in `validators.ts`. |
+| **Deprecated tables** | `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents` are effectively deprecated — no longer populated by the current runtime architecture. They remain in the schema for backward compatibility. |
+| **Removed `sandboxRuntime` capability checks** | The `sandboxRuntime` capability is no longer checked in tool registry, skill visibility, or runtime profile logic. The `userCapabilities` table still exists but `sandboxRuntime` grants are no longer required. |
+| **Removed 5 banned patterns from `validators.ts`** | `USES_BASH`, `USES_FILESYSTEM`, `USES_RAW_FETCH`, `USES_BUNDLED_SCRIPTS`, `USES_GIT` removed from `BANNED_PATTERNS` since just-bash handles these operations. |
+
+No new tables. Table count remains 36.
+
+---
+
+*Last updated: 2026-04-09 — M27 Free Code Execution (png_image chart type, sandboxSessionId optional, sandboxRuntime removal, deprecated runtime tables). Table count: 36.*

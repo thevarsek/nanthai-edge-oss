@@ -24,7 +24,6 @@ export const hasCapabilityInternal = internalQuery({
     userId: v.string(),
     capability: v.union(
       v.literal("pro"),
-      v.literal("sandboxRuntime"),
       v.literal("mcpRuntime"),
     ),
   },

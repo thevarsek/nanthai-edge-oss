@@ -1,10 +1,31 @@
 // components/chat/ReasoningBlock.tsx
 // Collapsible "thinking" block for reasoning-capable models.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Brain } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
+
+// ---------------------------------------------------------------------------
+// normalizeReasoning – port of iOS ReasoningTextFormatter.normalize()
+// Fixes bold headings (**Title**) concatenated onto adjacent text, which is
+// common in reasoning model output (o1, DeepSeek-R1, etc.).
+// ---------------------------------------------------------------------------
+export function normalizeReasoning(raw: string): string {
+  let s = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
+  if (!s) return "";
+
+  // Insert \n\n BEFORE a bold heading glued to preceding non-whitespace
+  s = s.replace(/(?<=\S)(\*\*[A-Z][^*\n]{2,80}\*\*)/g, "\n\n$1");
+
+  // Insert \n\n AFTER a bold heading glued to following letter
+  s = s.replace(/(\*\*[A-Z][^*\n]{2,80}\*\*)(?=[A-Za-z])/g, "$1\n\n");
+
+  // Collapse 3+ consecutive newlines to exactly 2
+  s = s.replace(/\n{3,}/g, "\n\n");
+
+  return s.trim();
+}
 
 interface Props {
   reasoning: string;
@@ -15,7 +36,9 @@ export function ReasoningBlock({ reasoning, isStreaming }: Props) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
-  if (!reasoning) return null;
+  const normalized = useMemo(() => normalizeReasoning(reasoning), [reasoning]);
+
+  if (!normalized) return null;
 
   return (
     <div className="mb-2 rounded-xl border border-primary/20 bg-primary/5 overflow-hidden text-sm">
@@ -37,7 +60,7 @@ export function ReasoningBlock({ reasoning, isStreaming }: Props) {
       {expanded && (
         <div className="border-t border-primary/20 px-4 py-3">
           <MarkdownRenderer
-            content={reasoning}
+            content={normalized}
             streaming={isStreaming}
             className="text-xs opacity-80"
           />

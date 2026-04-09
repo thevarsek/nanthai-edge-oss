@@ -182,7 +182,6 @@ export async function runSubagentRunHandler(
     enabledIntegrations: paramsSnapshot.enabledIntegrations,
     isPro: isProUser,
     allowSubagents: false,
-    hasSandboxRuntime: accountCapabilities.hasSandboxRuntime,
     activeProfiles: restoredProfiles,
   });
   // AUDIT-4: Subagents should never pay for web search — the parent's
@@ -208,6 +207,14 @@ export async function runSubagentRunHandler(
     initialReasoning: run.reasoning ?? "",
   });
   let deltaEventsSinceCancelCheck = 0;
+
+  // Shared tool execution context — workspace sandbox is lazily created on
+  // first workspace tool call. Cleanup is handled in the finally block.
+  const subagentToolCtx: import("../tools/registry").ToolExecutionContext = {
+    ctx,
+    userId: participantSnapshot.userId,
+    chatId: participantSnapshot.chatId ?? String(batch.chatId),
+  };
 
   try {
     const callbacks: { onDelta: OnDelta; onReasoningDelta: OnReasoningDelta } = {
@@ -238,11 +245,7 @@ export async function runSubagentRunHandler(
         fallbackModel: undefined,
       },
       toolRegistry,
-      toolCtx: {
-        ctx,
-        userId: participantSnapshot.userId,
-        chatId: participantSnapshot.chatId ?? String(batch.chatId),
-      },
+      toolCtx: subagentToolCtx,
       onToolRoundStart: async (_round, _toolCalls) => {
         for (const toolCall of _toolCalls) {
           liveToolCalls.push({
@@ -283,7 +286,6 @@ export async function runSubagentRunHandler(
           enabledIntegrations: paramsSnapshot.enabledIntegrations,
           isPro: isProUser,
           allowSubagents: false,
-          hasSandboxRuntime: accountCapabilities.hasSandboxRuntime,
           activeProfiles: Array.from(activeProfiles),
         });
         await retrySameRoundProgressiveToolCalls(
@@ -472,5 +474,11 @@ export async function runSubagentRunHandler(
         });
       }
     }
+  } finally {
+    // Stop the workspace (just-bash) sandbox — it is per-generation, not persistent.
+    await subagentToolCtx.workspaceSandboxCleanup?.().catch(() => {});
+    // NOTE: The Vercel sandbox is NOT stopped here. It is a per-chat persistent
+    // session (shared with the parent generation) that must survive across turns.
+    // Idle VMs are reaped by the cleanStaleSandboxSessions cron.
   }
 }

@@ -331,7 +331,7 @@ test("continueParentAfterSubagentsHandler reconciles stale completed resumes wit
       if ("userId" in args) {
         userScopedQueryCount += 1;
         return userScopedQueryCount === 1
-          ? { isPro: true, hasSandboxRuntime: false }
+          ? { isPro: true }
           : "sk-test";
       }
       queryStep += 1;
@@ -340,69 +340,6 @@ test("continueParentAfterSubagentsHandler reconciles stale completed resumes wit
           _id: "batch_1",
           status: "resuming",
           updatedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 1_000,
-          parentMessageId: "msg_1",
-          sourceUserMessageId: "user_msg_1",
-          parentJobId: "job_1",
-          chatId: "chat_1",
-          userId: "user_1",
-        };
-      }
-      if (queryStep === 2) {
-        return { _id: "msg_1", status: "completed" };
-      }
-      if (queryStep === 3) {
-        return { _id: "job_1", status: "completed" };
-      }
-      return [
-        {
-          generatedFiles: [
-            {
-              storageId: "storage_1",
-              filename: "child.txt",
-              mimeType: "text/plain",
-              toolName: "generate_txt",
-            },
-          ],
-        },
-      ];
-    },
-    scheduler: {
-      runAfter: async () => "sched_1",
-    },
-  } as any;
-
-  await continueParentAfterSubagentsHandler(ctx, { batchId: "batch_1" } as any);
-
-  assert.ok(runMutationCalls.some((call) => "generatedFiles" in call));
-  assert.ok(runMutationCalls.some((call) => call.status === "completed"));
-  assert.ok(!runMutationCalls.some((call) => "assistantMessageIds" in call));
-});
-
-test("continueParentAfterSubagentsHandler marks cancelled parent resumes as cancelled", async () => {
-  const runMutationCalls: Array<Record<string, unknown>> = [];
-  let queryStep = 0;
-  let userScopedQueryCount = 0;
-  const ctx = {
-    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
-      runMutationCalls.push(args);
-      if ("batchId" in args && !("status" in args) && !("generatedFiles" in args)) {
-        return true;
-      }
-      return true;
-    },
-    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
-      if ("userId" in args) {
-        userScopedQueryCount += 1;
-        return userScopedQueryCount === 1
-          ? { isPro: true, hasSandboxRuntime: false }
-          : "sk-test";
-      }
-      queryStep += 1;
-      if (queryStep === 1) {
-        return {
-          _id: "batch_1",
-          status: "resuming",
-          updatedAt: Date.now(),
           parentMessageId: "msg_1",
           sourceUserMessageId: "user_msg_1",
           parentJobId: "job_1",
@@ -449,7 +386,7 @@ test("continueParentAfterSubagentsHandler schedules postProcess with the source 
       if ("userId" in args) {
         userScopedQueryCount += 1;
         return userScopedQueryCount === 1
-          ? { isPro: true, hasSandboxRuntime: false }
+          ? { isPro: true }
           : "sk-test";
       }
       queryStep += 1;
@@ -521,7 +458,7 @@ test("runSubagentRunHandler fails stale streaming runs instead of replaying them
       if ("userId" in args) {
         userScopedQueryCount += 1;
         return userScopedQueryCount === 1
-          ? { isPro: true, hasSandboxRuntime: false }
+          ? { isPro: true }
           : "sk-test";
       }
       if ("runId" in args) {
@@ -670,7 +607,7 @@ test("runSubagentRunHandler completes a simple streaming run and schedules paren
       }
       if ("userId" in args) {
         if (Object.keys(args).length === 1) return "sk-test";
-        return { isPro: false, hasSandboxRuntime: false };
+        return { isPro: false };
       }
       return null;
     },

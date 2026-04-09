@@ -27,61 +27,48 @@ test("validateSkillInstructions: clean instructions return compatible", () => {
   assert.equal(result.validationWarnings.length, 0);
 });
 
-test("validateSkillInstructions: detects USES_BASH", () => {
+// M27: USES_BASH, USES_FILESYSTEM, USES_RAW_FETCH, USES_BUNDLED_SCRIPTS, USES_GIT
+// removed — just-bash workspace and data_python_sandbox handle these capabilities.
+
+test("validateSkillInstructions: bash/shell references are no longer blocked", () => {
   const result = validateSkillInstructions(
     "Run this command in the terminal to set up the environment:\n" +
     "npm install express"
   );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BASH"));
+  assert.equal(result.isCompatible, true);
+  assert.equal(result.unsupportedCapabilityCodes.length, 0);
 });
 
-test("validateSkillInstructions: detects shell commands in backticks", () => {
-  const result = validateSkillInstructions(
-    "Use `mkdir -p output` to create the directory, then proceed with the skill instructions that are quite long enough."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BASH"));
-});
-
-test("validateSkillInstructions: detects npx command", () => {
-  const result = validateSkillInstructions(
-    "First run npx create-react-app my-app to bootstrap the project structure for proper setup."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BASH"));
-});
-
-test("validateSkillInstructions: detects pip install", () => {
-  const result = validateSkillInstructions(
-    "Install dependencies first: pip install pandas numpy matplotlib for data analysis tasks."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BASH"));
-});
-
-test("validateSkillInstructions: detects USES_FILESYSTEM", () => {
+test("validateSkillInstructions: filesystem references are no longer blocked", () => {
   const result = validateSkillInstructions(
     "Read the file from local filesystem and parse its contents. Then process each line carefully."
   );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_FILESYSTEM"));
+  assert.equal(result.isCompatible, true);
+  assert.equal(result.unsupportedCapabilityCodes.length, 0);
 });
 
-test("validateSkillInstructions: detects fs.readFile", () => {
+test("validateSkillInstructions: fetch/axios references are no longer blocked", () => {
   const result = validateSkillInstructions(
-    "Use fs.readFileSync to load configuration from config.json before starting the generation pipeline."
+    "Use the axios library to make API calls with proper retry logic and timeout configuration settings."
   );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_FILESYSTEM"));
+  assert.equal(result.isCompatible, true);
+  assert.equal(result.unsupportedCapabilityCodes.length, 0);
 });
 
-test("validateSkillInstructions: detects SKILL.md reference", () => {
+test("validateSkillInstructions: git references are no longer blocked", () => {
   const result = validateSkillInstructions(
-    "Load the instructions from SKILL.md in the skill directory, then follow them step by step carefully."
+    "Run git commit -m 'update docs' to save progress, then git push to share with the team members."
   );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_FILESYSTEM"));
+  assert.equal(result.isCompatible, true);
+  assert.equal(result.unsupportedCapabilityCodes.length, 0);
+});
+
+test("validateSkillInstructions: bundled script references are no longer blocked", () => {
+  const result = validateSkillInstructions(
+    "Execute the python validation script to check formatting before saving the compiled skill instructions."
+  );
+  assert.equal(result.isCompatible, true);
+  assert.equal(result.unsupportedCapabilityCodes.length, 0);
 });
 
 test("validateSkillInstructions: detects USES_BROWSER", () => {
@@ -116,57 +103,15 @@ test("validateSkillInstructions: detects child_process", () => {
   assert.ok(result.unsupportedCapabilityCodes.includes("USES_MCP"));
 });
 
-test("validateSkillInstructions: detects USES_RAW_FETCH", () => {
+test("validateSkillInstructions: multiple violations from remaining banned patterns", () => {
   const result = validateSkillInstructions(
-    "Call fetch('https://api.example.com/data') to retrieve the latest pricing information from the server."
+    "Use playwright to screenshot the result.\n" +
+    "Then spawn a child_process for background work."
   );
   assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_RAW_FETCH"));
-});
-
-test("validateSkillInstructions: detects axios", () => {
-  const result = validateSkillInstructions(
-    "Use the axios library to make API calls with proper retry logic and timeout configuration settings."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_RAW_FETCH"));
-});
-
-test("validateSkillInstructions: detects USES_BUNDLED_SCRIPTS", () => {
-  const result = validateSkillInstructions(
-    "Execute the python validation script to check formatting before saving the compiled skill instructions."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BUNDLED_SCRIPTS"));
-});
-
-test("validateSkillInstructions: detects USES_GIT", () => {
-  const result = validateSkillInstructions(
-    "Run git commit -m 'update docs' to save progress, then git push to share with the team members."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_GIT"));
-});
-
-test("validateSkillInstructions: detects git clone", () => {
-  const result = validateSkillInstructions(
-    "First git clone the repository locally to get the latest source files before making any modifications."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_GIT"));
-});
-
-test("validateSkillInstructions: multiple violations produce multiple findings", () => {
-  const result = validateSkillInstructions(
-    "Run this in the terminal: npm install express\n" +
-    "Then use playwright to screenshot the result.\n" +
-    "Also git push to deploy."
-  );
-  assert.equal(result.isCompatible, false);
-  assert.ok(result.unsupportedCapabilityCodes.length >= 3);
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BASH"));
+  assert.ok(result.unsupportedCapabilityCodes.length >= 2);
   assert.ok(result.unsupportedCapabilityCodes.includes("USES_BROWSER"));
-  assert.ok(result.unsupportedCapabilityCodes.includes("USES_GIT"));
+  assert.ok(result.unsupportedCapabilityCodes.includes("USES_MCP"));
 });
 
 // =============================================================================
@@ -194,20 +139,21 @@ test("validateSkillInstructions: warnings do not appear in unsupportedCapability
   assert.ok(result.findings.some((f) => f.severity === "warning"));
 });
 
-test("validateSkillInstructions: sandbox runtime downgrades shell and filesystem to warnings", () => {
+test("validateSkillInstructions: shell and filesystem patterns are now compatible (workspace tools)", () => {
   const result = validateSkillInstructions(
     "Run npm install and write the file to disk before continuing with the workflow.",
-    { allowSandboxRuntime: true },
+    {},
   );
+  // USES_BASH and USES_FILESYSTEM were removed in M27 — workspace tools handle these natively
   assert.equal(result.isCompatible, true);
-  assert.ok(result.findings.some((f) => f.code === "USES_BASH" && f.severity === "warning"));
-  assert.ok(result.findings.some((f) => f.code === "USES_FILESYSTEM" && f.severity === "warning"));
+  assert.ok(!result.findings.some((f) => f.code === "USES_BASH"));
+  assert.ok(!result.findings.some((f) => f.code === "USES_FILESYSTEM"));
 });
 
-test("validateSkillInstructions: sandbox runtime still blocks MCP", () => {
+test("validateSkillInstructions: MCP usage is still blocked regardless of options", () => {
   const result = validateSkillInstructions(
     "Start an MCP server and spawn a child_process to serve requests.",
-    { allowSandboxRuntime: true },
+    {},
   );
   assert.equal(result.isCompatible, false);
   assert.ok(result.unsupportedCapabilityCodes.includes("USES_MCP"));
@@ -261,11 +207,11 @@ test("validateIntegrationIds: empty array returns empty", () => {
 // =============================================================================
 
 test("validateCapabilityIds: known capabilities return empty", () => {
-  assert.deepEqual(validateCapabilityIds(["pro", "sandboxRuntime"]), []);
+  assert.deepEqual(validateCapabilityIds(["pro", "mcpRuntime"]), []);
 });
 
 test("validateCapabilityIds: unknown capabilities are returned", () => {
-  assert.deepEqual(validateCapabilityIds(["sandboxRuntime", "adminRuntime"]), ["adminRuntime"]);
+  assert.deepEqual(validateCapabilityIds(["adminRuntime"]), ["adminRuntime"]);
 });
 
 // =============================================================================

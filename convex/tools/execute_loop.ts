@@ -295,9 +295,10 @@ export async function runToolCallLoop(
       const matchingCall = currentResult.toolCalls.find(
         (tc) => tc.id === toolCallId,
       );
+      const toolName = matchingCall?.function.name ?? "unknown";
       allToolResults.push({
         toolCallId,
-        toolName: matchingCall?.function.name ?? "unknown",
+        toolName,
         result: truncateForStorage(
           JSON.stringify(result.success ? result.data : { error: result.error }),
         ),

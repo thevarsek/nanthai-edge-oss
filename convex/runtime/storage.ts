@@ -5,13 +5,12 @@ import * as path from "node:path";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
-import { ensureSandboxForChat, markSandboxSessionRunning } from "./service";
+import { getWorkspaceSandbox } from "./service";
 import { runtimeWorkspacePaths } from "./shared";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 const defaultRuntimeStorageDeps = {
-  ensureSandboxForChat,
-  markSandboxSessionRunning,
+  getWorkspaceSandbox,
 };
 
 export type RuntimeStorageDeps = typeof defaultRuntimeStorageDeps;
@@ -85,33 +84,31 @@ export async function importOwnedStorageFileToWorkspace(
   deps: RuntimeStorageDeps = defaultRuntimeStorageDeps,
 ) {
   const chatId = requireChatId(toolCtx);
-  const session = await deps.ensureSandboxForChat(toolCtx);
+  const { sandbox, cwd } = await deps.getWorkspaceSandbox(toolCtx);
   const workspace = runtimeWorkspacePaths(chatId);
   const { record, blob } = await resolveOwnedStorageFile(toolCtx, storageId);
   const finalFilename = filename?.trim() || record.filename;
   const destination = resolveWorkspacePath(
-    session.cwd,
+    cwd,
     workspace.inputs,
     targetPath,
     finalFilename,
   );
-  const parentDir = path.posix.dirname(destination);
 
-  await session.sandbox.files.makeDir(parentDir);
-  await session.sandbox.files.write(destination, blob);
-  await deps.markSandboxSessionRunning(toolCtx, session);
-  await toolCtx.ctx.runMutation(internal.runtime.mutations.recordSandboxEventInternal, {
-    sandboxSessionId: session.sessionId as Id<"sandboxSessions">,
-    userId: toolCtx.userId,
-    chatId: chatId as Id<"chats">,
-    eventType: "storage_file_imported",
-    details: {
-      storageId,
-      source: record.source,
-      destination,
-      filename: finalFilename,
-    },
-  });
+  // Write the file into the shared sandbox — it persists for subsequent tool calls
+  const parentDir = path.posix.dirname(destination);
+  const isText = blob.type.startsWith("text/") || blob.type === "application/json";
+
+  await sandbox.mkDir(parentDir, { recursive: true });
+
+  if (isText) {
+    const content = await blob.text();
+    await sandbox.writeFiles({ [destination]: content });
+  } else {
+    // Binary file — use base64 encoding
+    const b64 = Buffer.from(await blob.arrayBuffer()).toString("base64");
+    await sandbox.writeFiles({ [destination]: { content: b64, encoding: "base64" } });
+  }
 
   return {
     path: destination,
@@ -120,5 +117,8 @@ export async function importOwnedStorageFileToWorkspace(
     sizeBytes: record.sizeBytes ?? blob.size,
     storageId: record.storageId,
     source: record.source,
+    note:
+      "File imported into workspace. It is available at the path above for " +
+      "subsequent workspace_exec and workspace_read_file calls.",
   };
 }

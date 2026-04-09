@@ -19,7 +19,7 @@ NanthAI has three separate concepts that interact:
 
 | Layer | What it is | Example | How it is gated |
 |---|---|---|---|
-| Capability / tier | Account-level access state | `pro`, `sandboxRuntime` | Purchase entitlements and manual capability grants |
+| Capability / tier | Account-level access state | `pro` | Purchase entitlements and manual capability grants |
 | Skill | Instruction pack the model can discover and load | `data-analyzer`, `docx`, `google-workspace` | Skill visibility + capability requirements |
 | Tool | Executable backend function callable by the model | `generate_xlsx`, `gmail_read`, `data_python_exec` | Tool registry built server-side per run |
 
@@ -30,7 +30,7 @@ The latest architecture now uses **progressive tool discovery** for normal chat 
 - **Free** users still get no tool registry
 - **Pro** users start with a small base registry
 - loading a skill expands the active tool profiles for the next turn
-- **Internal runtime** users can unlock analytics/workspace profiles in the same progressive way
+- **All Pro** users can unlock analytics/workspace profiles in the same progressive way (M27 removed the former `sandboxRuntime` internal-only gate)
 
 Regardless of tier or unlocked profiles, the active generation model must still advertise `supportsTools === true` before NanthAI attaches any model-invoked tool registry to the run. A non-tool-capable model degrades to plain chat for that turn, even for Pro / runtime users.
 
@@ -60,9 +60,10 @@ Current backend behavior is intentionally forgiving:
 | Tier / Capability | How granted | What it unlocks | What stays blocked |
 |---|---|---|---|
 | `Free` | Default account state | Basic chat, model switching, normal conversation UX | All model-invoked tools, connected-app actions, runtime |
-| `Pro` (`pro`) | App purchase entitlement or manual grant | Standard NanthAI tool registry: docs/files, chat search, scheduled jobs, personas, skills, connected apps, optional subagents | Workspace/runtime tools and runtime-only skills |
-| `Internal Max runtime` (`sandboxRuntime`) | Manual Convex capability grant only | Everything in Pro plus temporary per-chat workspace execution, Python analytics, chart generation/export, runtime-only skills | MCP runtime |
+| `Pro` (`pro`) | App purchase entitlement or manual grant | Full NanthAI tool registry: docs/files, chat search, scheduled jobs, personas, skills, connected apps, workspace/runtime tools, Python analytics, chart generation, optional subagents | MCP runtime |
 | `mcpRuntime` | Reserved only | No public surface yet | MCP execution remains unavailable |
+
+> **Note (M27):** The `sandboxRuntime` capability was removed in M27. All workspace tools, analytics tools, and runtime-only skills are now available to all Pro users without any additional capability grant.
 
 ## Tool Registry By Gate
 
@@ -73,7 +74,8 @@ Current backend behavior is intentionally forgiving:
 | Document, text, utility, search, persona, scheduled-job, and skill tools | Pro + active model tool-capable |
 | Connected-app tools | Pro + active model tool-capable + active connection + integration requested for the run |
 | Subagents | Pro + active model tool-capable + single-participant chat + subagents enabled |
-| Workspace/runtime tools | Pro + active model tool-capable + `sandboxRuntime` |
+| Workspace/runtime tools | Pro + active model tool-capable (skill-activated via `code_workspace`) |
+| Analytics tools | Pro + active model tool-capable (skill-activated via analytics skills) |
 
 ### Executable tool families
 
@@ -91,7 +93,7 @@ Current backend behavior is intentionally forgiving:
 | Microsoft 365 | `outlook_send`, `outlook_read`, `outlook_search`, `outlook_delete`, `outlook_move`, `outlook_list_folders`, `onedrive_upload`, `onedrive_list`, `onedrive_read`, `onedrive_move`, `ms_calendar_list`, `ms_calendar_create`, `ms_calendar_delete` | Pro + active Microsoft connection + requested integration |
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
-| Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `data_python_exec`, `workspace_reset` | Pro + `sandboxRuntime` |
+| Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `data_python_exec`, `data_python_sandbox`, `workspace_reset` | Pro (skill-activated) |
 
 ## Skills And Their Practical Role
 
@@ -101,17 +103,17 @@ Skills are curated or user-authored instruction packs that help the model choose
 
 | Family | Skills | Typical profile(s) | Gate |
 |---|---|---|---|
-| Runtime / analytics | `code-workspace`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `analytics` | `sandboxRuntime` |
+| Runtime / analytics | `code-workspace`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `analytics` | Pro (skill-activated) |
 | Documents | `documents`, `docx`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
 | Connected apps | `google-workspace`, `microsoft-365`, `notion-workspace`, `apple-calendar` | `google`, `microsoft`, `notion`, `appleCalendar` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
 | Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-release-notes`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
 | GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo`, `gtm-solo-founder` | instruction-led | Pro-useful |
-| Marketing | `campaign-planning`, `email-sequence`, `marketing-performance-report` | instruction-led; `marketing-performance-report` is `sandboxAugmented` | Pro-useful; `marketing-performance-report` requires `sandboxRuntime` |
+| Marketing | `campaign-planning`, `email-sequence`, `marketing-performance-report` | instruction-led; `marketing-performance-report` uses analytics profile | Pro-useful |
 | Design | `design-critique`, `ux-copy` | instruction-led | Pro-useful |
 | Engineering | `incident-response`, `testing-strategy` | instruction-led | Pro-useful |
-| Finance | `financial-statements`, `reconciliation` | instruction-led; `reconciliation` is `sandboxAugmented` | Pro-useful; `reconciliation` requires `sandboxRuntime` |
+| Finance | `financial-statements`, `reconciliation` | instruction-led; `reconciliation` uses analytics profile | Pro-useful |
 | Legal | `contract-review` | instruction-led | Pro-useful |
 | Operations | `process-documentation` | instruction-led | Pro-useful |
 | Internal communications | `internal-comms` | instruction-led | Pro-useful |
@@ -129,14 +131,14 @@ These are the clearest examples of how skills and tools relate today.
 
 | Skill | Required tool profiles | Required tool IDs | Required capabilities |
 |---|---|---|---|
-| `data-analyzer` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `dashboard-builder` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `data-validation` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `sql-data-query` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `statistical-analysis` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `marketing-performance-report` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `reconciliation` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | `sandboxRuntime` |
-| `code-workspace` | `workspace` | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset` | `sandboxRuntime` |
+| `data-analyzer` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `dashboard-builder` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `data-validation` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `sql-data-query` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `statistical-analysis` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `marketing-performance-report` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `reconciliation` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
+| `code-workspace` | `workspace` | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset` | none (M27) |
 | `parallel-subagents` | `subagents` | `spawn_subagents` | none |
 | `documents` | `docs` | profile-driven document/text/email tools | none |
 | `docx` | `docs` | `generate_docx`, `read_docx`, `edit_docx` | none |
@@ -167,8 +169,8 @@ On create/update, NanthAI normalizes skill metadata like this:
 | Signal | Inferred result |
 |---|---|
 | Document tool IDs | add `docs` profile |
-| `workspace_import_file` or `data_python_exec` | add `analytics` profile + require `sandboxRuntime` |
-| Generic workspace tool IDs | add `workspace` profile + require `sandboxRuntime` |
+| `workspace_import_file` or `data_python_exec` | add `analytics` profile |
+| Generic workspace tool IDs | add `workspace` profile |
 | Gmail / Drive / Calendar integration IDs | add `google` profile |
 | Outlook / OneDrive / MS Calendar integration IDs | add `microsoft` profile |
 | Notion integration ID | add `notion` profile |
@@ -180,9 +182,7 @@ On create/update, NanthAI normalizes skill metadata like this:
 
 | Rule | Outcome |
 |---|---|
-| Runtime-capable user skill without `sandboxRuntime` access | rejected by backend normalization |
 | Integration profile without matching integration ID | orphaned profile pruned with warning (returned in `validationWarnings`) |
-| Skill with runtime profile | visibility can be gated by `requiredCapabilities` |
 | User-facing editor | shows simplified toggles instead of raw profile IDs |
 
 ### Mutation return shape
@@ -191,21 +191,20 @@ On create/update, NanthAI normalizes skill metadata like this:
 
 ## What Each Tier Actually Feels Like
 
-| Capability surface | Free | Pro | Pro + `sandboxRuntime` |
-|---|---:|---:|---:|
-| Plain chat | Yes | Yes | Yes |
-| Multi-model chat | Yes | Yes | Yes |
-| Tool-calling at all | No | Yes | Yes |
-| Document generation / reading / editing | No | Yes | Yes |
-| Search chats | No | Yes | Yes |
-| Personas | No | Yes | Yes |
-| Scheduled jobs | No | Yes | Yes |
-| Connected apps | No | Yes, if connected | Yes, if connected |
-| Skill loading / management | No | Yes, when the active model supports tools | Yes, when the active model supports tools |
-| Subagents | No | Yes, when enabled and the active model supports tools | Yes, when enabled and the active model supports tools |
-| Workspace file system / shell | No | No | Yes |
-| Python analytics / chart generation | No | No | Yes |
-| Runtime-only skills visible in the skill catalog | No | No | Yes |
+| Capability surface | Free | Pro |
+|---|---:|---:|
+| Plain chat | Yes | Yes |
+| Multi-model chat | Yes | Yes |
+| Tool-calling at all | No | Yes |
+| Document generation / reading / editing | No | Yes |
+| Search chats | No | Yes |
+| Personas | No | Yes |
+| Scheduled jobs | No | Yes |
+| Connected apps | No | Yes, if connected |
+| Skill loading / management | No | Yes, when the active model supports tools |
+| Subagents | No | Yes, when enabled and the active model supports tools |
+| Workspace file system / shell | No | Yes (skill-activated) |
+| Python analytics / chart generation | No | Yes (skill-activated) |
 
 ## Product Copy Guidance
 
@@ -214,8 +213,7 @@ For external communication, the cleanest framing today is:
 | Audience | Recommended wording |
 |---|---|
 | Free users | "Core multi-model AI chat" |
-| Pro users | "Advanced workflows, documents, connected apps, scheduled jobs, and skills" |
-| Internal / future Max users | "Everything in Pro plus a temporary coding and analytics workspace" |
+| Pro users | "Advanced workflows, documents, connected apps, scheduled jobs, skills, code execution, and data analytics" |
 
 ### Important wording note for runtime
 

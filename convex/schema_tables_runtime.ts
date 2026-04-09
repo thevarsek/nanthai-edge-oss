@@ -27,10 +27,8 @@ export const runtimeSchemaTables = {
   sandboxSessions: defineTable({
     userId: v.string(),
     chatId: v.id("chats"),
-    provider: v.literal("e2b"),
+    provider: v.literal("vercel"),
     providerSandboxId: v.optional(v.string()),
-    templateName: v.string(),
-    templateVersion: v.string(),
     status: sandboxSessionStatus,
     cwd: v.string(),
     lastActiveAt: v.number(),
@@ -54,7 +52,7 @@ export const runtimeSchemaTables = {
   sandboxArtifacts: defineTable({
     userId: v.string(),
     chatId: v.id("chats"),
-    sandboxSessionId: v.id("sandboxSessions"),
+    sandboxSessionId: v.optional(v.id("sandboxSessions")),
     path: v.string(),
     filename: v.string(),
     mimeType: v.string(),

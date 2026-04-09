@@ -552,20 +552,20 @@ Model spawns parallel sub-tasks. Real-time subscription to batch progress.
 | Memory consolidation | Daily 3:00 UTC | `memory/operations:consolidate` |
 | Stale search cleanup | Daily 4:00 UTC | `search/mutations_internal:cleanStaleSearchPhases` |
 | Old job run cleanup | Daily 5:00 UTC | `scheduledJobs/mutations:cleanOldJobRuns` |
-| Runtime sandbox cleanup | Daily 6:00 UTC | `runtime/actions:cleanupMarkedSessions` |
+| Runtime sandbox cleanup | Daily 6:00 UTC | `runtime/cleanup:cleanStaleSandboxSessions` |
 | Skill catalog seeding | On deploy | `skills/actions:seedSystemCatalog` |
 
 ---
 
 ## 16. Runtime / Code Execution
 
-Model executes Python/code in E2B sandboxes (tool calls), producing artifacts (files, charts).
+Model executes Python/code via Pyodide WASM or Vercel Sandbox (tool calls), producing artifacts (files, charts). Workspace shell commands use ephemeral just-bash sandboxes.
 
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `GeneratedFileCardView`, `GeneratedChartCardView`, `ToolCallAccordionView` (display) |
 | Android | `GeneratedFileComponents`, `GeneratedChartComponents` (display) |
-| Convex | `runtime/mutations:createSession`, `runtime/actions:executeCode`, `tools/code_workspace.ts`, `tools/file_generation.ts` |
+| Convex | `tools/workspace_exec.ts` (just-bash), `tools/data_python_exec.ts` (Pyodide), `tools/data_python_sandbox.ts` (Vercel Sandbox), `runtime/justbash_client.ts`, `runtime/pyodide_client.ts`, `runtime/vercel_sandbox_client.ts` |
 
 ---
 

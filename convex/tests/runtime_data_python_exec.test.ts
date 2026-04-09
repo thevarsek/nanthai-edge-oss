@@ -7,6 +7,34 @@ import {
 } from "../runtime/service_analytics";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
+// ---------------------------------------------------------------------------
+// runDataPythonExec — Pyodide-based implementation contract tests
+//
+// These tests verify the function's contract without hitting the real Pyodide
+// runtime. All Pyodide execution is mocked via createRuntimeAnalyticsDepsForTest.
+// ---------------------------------------------------------------------------
+
+// A minimal successful Pyodide exec result
+function makePyodideSuccessResult(overrides: Record<string, unknown> = {}) {
+  return {
+    stdout: ["hello"],
+    stderr: [],
+    charts: [],
+    error: null,
+    canRetryWithSandbox: false,
+    returnValue: null,
+    errorType: null,
+    outputFiles: [],
+    memoryRssMiB: {
+      baseline: 100,
+      afterLoad: 300,
+      afterPackages: 400,
+      afterExecution: 420,
+    },
+    ...overrides,
+  };
+}
+
 test("runDataPythonExec requires chatId in the tool execution context", async () => {
   await assert.rejects(
     () =>
@@ -21,200 +49,135 @@ test("runDataPythonExec requires chatId in the tool execution context", async ()
   );
 });
 
-test("runDataPythonExec imports files, persists chart artifacts, exports requested files, and records completion events", async () => {
-  const imported: string[] = [];
-  const markCalls: string[] = [];
-  const exportCalls: string[] = [];
-  const stored: Blob[] = [];
-  const mutations: Record<string, unknown>[] = [];
-
-  const session = {
-    sessionId: "session_1",
-    cwd: "/tmp/nanthai-edge/chat_1",
-    sandbox: {
-      runCode: async () => ({
-        text: "done",
-        results: [
-          { chart: { raw: "chart" }, png: "png-data", text: "chart text", formats: () => ["png"] },
-        ],
-        logs: { stdout: ["done"], stderr: [] },
-      }),
-    },
-  };
-
+test("runDataPythonExec returns stdout text on success", async () => {
   const deps = createRuntimeAnalyticsDepsForTest({
-    ensureSandboxForChat: async () => session as any,
-    markSandboxSessionRunning: async (_toolCtx: unknown, currentSession: any) => {
-      markCalls.push(currentSession.sessionId);
-    },
-    importOwnedStorageFileToWorkspace: async (_toolCtx: unknown, storageId: string) => {
-      imported.push(storageId);
-      return {
-        path: `/tmp/imports/${storageId}`,
-        filename: `${storageId}.txt`,
-        mimeType: "text/plain",
-        sizeBytes: 1,
-        storageId: "storage_input" as any,
-        source: "upload" as const,
-      };
-    },
-    normalizeE2BChart: () => ({
-      toolName: "data_python_exec",
-      chartType: "line",
-      title: "Trend",
-      elements: [{ x: "Jan", y: 1 }],
-    }) as any,
-    buildChartPreviewArtifact: (_png: string, index: number) => ({
-      filename: `chart-${index}.png`,
-      mimeType: "image/png",
-      blob: new Blob(["png"], { type: "image/png" }),
-    }) as any,
-    buildChartDataArtifact: () => ({
-      filename: "trend.csv",
-      mimeType: "text/csv",
-      blob: new Blob(["x,y\nJan,1"], { type: "text/csv" }),
-    }) as any,
-    exportWorkspaceFile: async (_toolCtx: unknown, path: string) => {
-      exportCalls.push(path);
-      return {
-        path,
-        filename: "report.txt",
-        mimeType: "text/plain",
-        sizeBytes: 7,
-        storageId: "storage_export" as any,
-        downloadUrl: null,
-        markdownLink: "[report.txt](https://example.com/report.txt)",
-        message: "Exported report.txt",
-      };
-    },
+    runPyodideCode: async () => makePyodideSuccessResult({ stdout: ["42"] }),
+    resolveOwnedStorageFile: async () => ({
+      record: {
+        storageId: "storage_1" as any,
+        filename: "file.csv",
+        mimeType: "text/csv",
+        sizeBytes: 10,
+        userId: "user_1" as any,
+      } as any,
+      blob: new Blob(["a,b\n1,2"], { type: "text/csv" }),
+    }),
   });
 
   const toolCtx = {
     userId: "user_1",
     chatId: "chat_1",
-    ctx: createMockCtx({
-      storage: {
-        store: async (blob: Blob) => {
-          stored.push(blob);
-          return `storage_${stored.length}`;
-        },
-      },
-      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
-        mutations.push(args);
-      },
-    }),
+    ctx: createMockCtx({}),
   } as any;
 
-  const result = await runDataPythonExec(toolCtx, {
-    code: "print('hi')",
-    inputFiles: [{ storageId: "input_1" }],
-    exportPaths: ["/tmp/nanthai-edge/chat_1/outputs/report.txt"],
-  }, deps);
+  const result = await runDataPythonExec(toolCtx, { code: "print(42)" }, deps);
+  assert.ok(result.text.includes("42"), "should include stdout in text");
+  assert.deepEqual(result.chartsCreated, []);
+  assert.deepEqual(result.exportedFiles, []);
+});
 
-  assert.deepEqual(imported, ["input_1"]);
-  assert.deepEqual(markCalls, ["session_1"]);
-  assert.deepEqual(exportCalls, ["/tmp/nanthai-edge/chat_1/outputs/report.txt"]);
-  assert.equal(stored.length, 2);
-  assert.equal(result.text, "done");
-  assert.equal(result.chartsCreated.length, 1);
-  assert.equal(result.exportedFiles.length, 3);
-  assert.equal(mutations.some((entry) => entry.eventType === "data_python_exec_completed"), true);
-  assert.equal(
-    mutations.filter((entry) => entry.filename === "chart-1.png" || entry.filename === "trend.csv").length,
-    2,
+test("runDataPythonExec returns error text when Pyodide reports error", async () => {
+  const deps = createRuntimeAnalyticsDepsForTest({
+    runPyodideCode: async () =>
+      makePyodideSuccessResult({
+        stdout: [],
+        stderr: ["Traceback..."],
+        error: "NameError: name 'x' is not defined",
+        canRetryWithSandbox: true,
+      }),
+  });
+
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    ctx: createMockCtx({}),
+  } as any;
+
+  const result = await runDataPythonExec(toolCtx, { code: "print(x)" }, deps);
+  assert.ok(result.text.includes("NameError"), "error message should appear in text");
+  assert.ok(result.resultsSummary.some((s) => /NameError/.test(s)));
+});
+
+test("runDataPythonExec warns when memory exceeds 600 MiB", async () => {
+  const deps = createRuntimeAnalyticsDepsForTest({
+    runPyodideCode: async () =>
+      makePyodideSuccessResult({
+        stdout: ["ok"],
+        memoryRssMiB: {
+          baseline: 100,
+          afterLoad: 300,
+          afterPackages: 400,
+          afterExecution: 650,
+        },
+      }),
+  });
+
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    ctx: createMockCtx({}),
+  } as any;
+
+  const result = await runDataPythonExec(toolCtx, { code: "pass" }, deps);
+  assert.ok(
+    result.warnings.some((w) => /memory|high/i.test(w)),
+    "should warn about high memory usage",
   );
 });
 
-test("runDataPythonExec warns on unnormalized charts and surfaces sandbox execution errors", async () => {
-  const markCalls: string[] = [];
-  const session = {
-    sessionId: "session_2",
-    cwd: "/tmp/nanthai-edge/chat_1",
-    sandbox: {
-      runCode: async () => ({
-        error: { name: "RuntimeError", value: "python exploded" },
-        results: [],
-        logs: { stdout: [], stderr: [] },
-      }),
-    },
-  };
-
+test("runDataPythonExec processes PNG charts and stores them as exported files", async () => {
+  const pngBytes = new Uint8Array([137, 80, 78, 71]); // minimal PNG header
   const deps = createRuntimeAnalyticsDepsForTest({
-    ensureSandboxForChat: async () => session as any,
-    markSandboxSessionRunning: async (_toolCtx: unknown, currentSession: any) => {
-      markCalls.push(currentSession.sessionId);
-    },
+    runPyodideCode: async () =>
+      makePyodideSuccessResult({
+        charts: [{ pngBytes, index: 0 }],
+      }),
+    storeArtifactBytes: async (_toolCtx: unknown, _bytes: Uint8Array, filename: string, mimeType: string) => ({
+      storageId: "storage_chart_0" as any,
+      filename,
+      mimeType,
+      sizeBytes: 4,
+      downloadUrl: `https://example.com/${filename}`,
+      markdownLink: `[${filename}](https://example.com/${filename})`,
+    }),
   });
 
-  await assert.rejects(
-    () =>
-      runDataPythonExec(
-        {
-          userId: "user_1",
-          chatId: "chat_1",
-          ctx: createMockCtx({
-            storage: { store: async () => "storage_1" },
-            runMutation: async () => undefined,
-          }),
-        } as any,
-        { code: "raise SystemExit(1)" },
-        deps,
-      ),
-    /RuntimeError: python exploded/,
-  );
-
-  assert.deepEqual(markCalls, ["session_2"]);
-});
-
-test("runDataPythonExec falls back to preview-only artifacts when chart normalization fails", async () => {
-  const stored: string[] = [];
-  const mutations: Record<string, unknown>[] = [];
-  const session = {
-    sessionId: "session_3",
-    cwd: "/tmp/nanthai-edge/chat_1",
-    sandbox: {
-      runCode: async () => ({
-        text: "",
-        results: [{ chart: { raw: "bad-chart" }, png: "png-data" }],
-        logs: { stdout: ["stdout"], stderr: [] },
-      }),
-    },
-  };
-
-  const deps = createRuntimeAnalyticsDepsForTest({
-    ensureSandboxForChat: async () => session as any,
-    markSandboxSessionRunning: async () => undefined,
-    normalizeE2BChart: () => null,
-    buildChartPreviewArtifact: () => ({
-      filename: "fallback.png",
-      mimeType: "image/png",
-      blob: new Blob(["png"], { type: "image/png" }),
-    }) as any,
-  });
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    ctx: createMockCtx({}),
+  } as any;
 
   const result = await runDataPythonExec(
-    {
-      userId: "user_1",
-      chatId: "chat_1",
-      ctx: createMockCtx({
-        storage: {
-          store: async () => {
-            stored.push("stored");
-            return `storage_${stored.length}`;
-          },
-        },
-        runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
-          mutations.push(args);
-        },
-      }),
-    } as any,
-    { code: "plot()", exportPaths: [] },
+    toolCtx,
+    { code: "import matplotlib.pyplot as plt; plt.plot([1,2]); plt.show()" },
     deps,
   );
 
-  assert.equal(result.text, "");
+  // Charts are no longer pushed to chartsCreated (images render inline via
+  // download URL in the model's markdown), but are still stored as exported files.
+  assert.equal(result.chartsCreated.length, 0);
   assert.equal(result.exportedFiles.length, 1);
-  assert.equal(result.warnings[0]?.includes("could not be normalized"), true);
-  assert.equal(stored.length, 1);
-  assert.equal(mutations.some((entry) => entry.filename === "fallback.png"), true);
+  assert.equal(result.exportedFiles[0].storageId, "storage_chart_0");
+});
+
+test("createRuntimeAnalyticsDepsForTest merges overrides correctly", () => {
+  let calledRunPyodide = false;
+  const deps = createRuntimeAnalyticsDepsForTest({
+    runPyodideCode: async () => {
+      calledRunPyodide = true;
+      return makePyodideSuccessResult();
+    },
+  });
+
+  // Override is applied
+  assert.equal(typeof deps.runPyodideCode, "function");
+  // Other deps are still present
+  assert.equal(typeof deps.storeArtifactBytes, "function");
+  assert.equal(typeof deps.resolveOwnedStorageFile, "function");
+  assert.equal(typeof deps.buildChartPreviewArtifact, "function");
+
+  deps.runPyodideCode("", undefined, true, undefined).then(() => {
+    assert.ok(calledRunPyodide, "override runPyodideCode should have been called");
+  });
 });

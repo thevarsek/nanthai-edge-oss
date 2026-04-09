@@ -15,7 +15,7 @@ Do **not** create separate client-specific business logic when the behavior can 
 ## Canonical Gating
 
 - Pro unlocks come from active rows in `purchaseEntitlements`.
-- Runtime capabilities such as `sandboxRuntime` and `mcpRuntime` come from `userCapabilities` / `accountCapabilities`.
+- Runtime capabilities such as `mcpRuntime` come from `userCapabilities` / `accountCapabilities`. **Note (M27):** `sandboxRuntime` was removed — workspace and analytics tools are now available to all Pro users without an additional capability grant.
 - Clients should use the Pro-specific preference query for Pro gating and `accountCapabilities` for runtime capability gating. Do not treat generic capability grants as a second Pro source.
 
 ## Intentional Gaps

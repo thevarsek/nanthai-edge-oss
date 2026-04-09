@@ -98,7 +98,7 @@ export async function getIsProUnlocked(
 export async function requireCapability(
   ctx: QueryCtx | MutationCtx,
   userId: string,
-  capability: "pro" | "sandboxRuntime" | "mcpRuntime",
+  capability: "pro" | "mcpRuntime",
 ): Promise<void> {
   const allowed = await hasCapability(ctx, userId, capability);
   if (allowed) return;
@@ -107,10 +107,8 @@ export async function requireCapability(
     code: "CAPABILITY_REQUIRED" as const,
     capability,
     message:
-      capability === "sandboxRuntime"
-        ? "This feature requires internal Max runtime access."
-        : capability === "mcpRuntime"
-          ? "This feature requires MCP runtime access."
-          : "This feature requires NanthAI Pro.",
+      capability === "mcpRuntime"
+        ? "This feature requires MCP runtime access."
+        : "This feature requires NanthAI Pro.",
   });
 }

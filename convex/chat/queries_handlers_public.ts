@@ -405,13 +405,14 @@ export async function getGeneratedChartsByMessageHandler(
     chatId: string;
     messageId: string;
     toolName: string;
-    chartType: "line" | "bar" | "scatter" | "pie" | "box";
+    chartType: "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
     title?: string;
     xLabel?: string;
     yLabel?: string;
     xUnit?: string;
     yUnit?: string;
     elements: unknown;
+    pngBase64?: string;
     createdAt: number;
   }>
 > {
@@ -440,6 +441,7 @@ export async function getGeneratedChartsByMessageHandler(
     xUnit: chart.xUnit,
     yUnit: chart.yUnit,
     elements: chart.elements,
+    pngBase64: chart.pngBase64,
     createdAt: chart.createdAt,
   }));
 }
@@ -635,7 +637,13 @@ export async function getChatCostSummaryHandler(
   const breakdown = { responses: 0, memory: 0, search: 0, other: 0 };
 
   for (const r of records) {
-    const cost = r.cost ?? 0;
+    // When the user brings their own API key (BYOK), OpenRouter's `cost`
+    // reflects their markup (often 0), not what the provider charges. Use
+    // `upstreamInferenceCost` in that case so the UI shows the real model cost.
+    const cost =
+      r.isByok === true && r.upstreamInferenceCost != null
+        ? r.upstreamInferenceCost
+        : (r.cost ?? 0);
     totalCost += cost;
 
     const src = r.source as string | undefined;

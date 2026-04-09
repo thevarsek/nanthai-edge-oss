@@ -159,6 +159,7 @@ export const finalizeGenerationArgs = {
       v.literal("scatter"),
       v.literal("pie"),
       v.literal("box"),
+      v.literal("png_image"),
     ),
     title: v.optional(v.string()),
     xLabel: v.optional(v.string()),
@@ -166,6 +167,7 @@ export const finalizeGenerationArgs = {
     xUnit: v.optional(v.string()),
     yUnit: v.optional(v.string()),
     elements: v.any(),
+    pngBase64: v.optional(v.string()),
   }))),
   // Perplexity citation annotations (structured for rich UI rendering)
   citations: v.optional(v.array(v.object({

@@ -19,6 +19,7 @@ const FILE_PRODUCING_TOOLS = new Set([
   "generate_eml",
   "workspace_export_file",
   "data_python_exec",
+  "data_python_sandbox",
 ]);
 
 export function extractGeneratedFiles(
@@ -42,7 +43,7 @@ export function extractGeneratedFiles(
     if (tr.isError || !FILE_PRODUCING_TOOLS.has(tr.toolName)) continue;
     try {
       const data = JSON.parse(tr.result);
-      const candidates = tr.toolName === "data_python_exec"
+      const candidates = (tr.toolName === "data_python_exec" || tr.toolName === "data_python_sandbox")
         ? Array.isArray(data.exportedFiles) ? data.exportedFiles : []
         : [data];
 
@@ -72,27 +73,29 @@ export function extractGeneratedCharts(
   toolResults: RecordedToolResult[],
 ): Array<{
   toolName: string;
-  chartType: "line" | "bar" | "scatter" | "pie" | "box";
+  chartType: "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
   title?: string;
   xLabel?: string;
   yLabel?: string;
   xUnit?: string;
   yUnit?: string;
   elements: unknown;
+  pngBase64?: string;
 }> {
   const charts: Array<{
     toolName: string;
-    chartType: "line" | "bar" | "scatter" | "pie" | "box";
+    chartType: "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
     title?: string;
     xLabel?: string;
     yLabel?: string;
     xUnit?: string;
     yUnit?: string;
     elements: unknown;
+    pngBase64?: string;
   }> = [];
 
   for (const tr of toolResults) {
-    if (tr.isError || tr.toolName !== "data_python_exec") continue;
+    if (tr.isError || (tr.toolName !== "data_python_exec" && tr.toolName !== "data_python_sandbox")) continue;
     try {
       const data = JSON.parse(tr.result);
       const candidates = Array.isArray(data.chartsCreated) ? data.chartsCreated : [];
@@ -104,7 +107,7 @@ export function extractGeneratedCharts(
         ) {
           continue;
         }
-        if (!["line", "bar", "scatter", "pie", "box"].includes(candidate.chartType)) {
+        if (!["line", "bar", "scatter", "pie", "box", "png_image"].includes(candidate.chartType)) {
           continue;
         }
         charts.push({
@@ -116,6 +119,7 @@ export function extractGeneratedCharts(
           xUnit: typeof candidate.xUnit === "string" ? candidate.xUnit : undefined,
           yUnit: typeof candidate.yUnit === "string" ? candidate.yUnit : undefined,
           elements: candidate.elements,
+          pngBase64: typeof candidate.pngBase64 === "string" ? candidate.pngBase64 : undefined,
         });
       }
     } catch {

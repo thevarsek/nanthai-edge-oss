@@ -38,7 +38,7 @@ test("listSkills returns normalized catalog entries and maps failures", async ()
         summary: "Writes briefs",
         runtimeMode: "textOnly",
         requiredToolProfiles: ["docs"],
-        requiredCapabilities: ["sandboxRuntime"],
+        requiredCapabilities: ["mcpRuntime"],
         scope: "user",
         origin: "userCreated",
         compilationStatus: "compiled",
@@ -140,7 +140,7 @@ test("updateSkill resolves by name, detects ambiguity, validates runtime mode, a
     skillId: "skill_1",
     name: "Updated Writer",
     runtimeMode: "sandboxAugmented",
-    requiredCapabilities: ["sandboxRuntime"],
+    requiredCapabilities: ["mcpRuntime"],
   });
   assert.equal(updated.success, true);
   assert.deepEqual(mutations[0], {
@@ -153,7 +153,7 @@ test("updateSkill resolves by name, detects ambiguity, validates runtime mode, a
     requiredToolIds: undefined,
     requiredToolProfiles: undefined,
     requiredIntegrationIds: undefined,
-    requiredCapabilities: ["sandboxRuntime"],
+    requiredCapabilities: ["mcpRuntime"],
   });
 
   const incompatible = await updateSkill.execute(createToolCtx({

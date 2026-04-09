@@ -179,12 +179,22 @@ function attachmentToParts(
     const workflowHint = toolInfo.editTool
       ? ` For formatting-aware edits or regeneration, load the matching document skill before using ${toolInfo.editTool}.`
       : ` For deeper document workflows, load the documents skill before generating a rewritten output.`;
+    // For data files (CSV, TSV, XLSX), add a strong directive to use
+    // workspace_import_file for analysis instead of reading content inline,
+    // which gets truncated for large files.
+    const dataAnalysisHint = toolInfo.isDataFile
+      ? `\nIMPORTANT: For data analysis, do NOT parse this file's contents from inline conversation text — it will be truncated for large files. ` +
+        `Pass the storageId in the inputFiles parameter of data_python_exec or data_python_sandbox ` +
+        `— the file will be available at /tmp/inputs/${filename}. ` +
+        `For workspace shell tools (workspace_exec), use workspace_import_file with storageId "${attachment.storageId}" to import the file first.`
+      : ``;
     return [{
       type: "text",
       text:
         `[Attached file: "${filename}" (${mime}), storageId: ${attachment.storageId}]\n` +
         `To read this file's contents, use the ${toolInfo.readTool} tool with storageId "${attachment.storageId}".` +
-        workflowHint,
+        workflowHint +
+        dataAnalysisHint,
     }];
   }
 
@@ -231,7 +241,7 @@ function participantKeyForImages(message: ContextMessage): string {
 function documentToolsForMime(
   mime: string,
   filename: string,
-): { readTool: string; editTool: string | null } {
+): { readTool: string; editTool: string | null; isDataFile?: boolean } {
   const m = mime.toLowerCase();
   const ext = filename.split(".").pop()?.toLowerCase() ?? "";
 
@@ -240,7 +250,7 @@ function documentToolsForMime(
     m === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
     ext === "xlsx"
   ) {
-    return { readTool: "read_xlsx", editTool: "edit_xlsx" };
+    return { readTool: "read_xlsx", editTool: "edit_xlsx", isDataFile: true };
   }
   if (
     m === "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
@@ -249,9 +259,12 @@ function documentToolsForMime(
     return { readTool: "read_pptx", editTool: "edit_pptx" };
   }
 
-  // Text-based formats — read only (generate new file to "edit")
+  // Data-oriented text formats — read only, flag for analysis workflow hint
   if (m === "text/csv" || m === "application/csv" || ext === "csv") {
-    return { readTool: "read_text_file", editTool: null };
+    return { readTool: "read_text_file", editTool: null, isDataFile: true };
+  }
+  if (m === "text/tab-separated-values" || ext === "tsv") {
+    return { readTool: "read_text_file", editTool: null, isDataFile: true };
   }
   if (m === "text/markdown" || m === "text/x-markdown" || ext === "md") {
     return { readTool: "read_text_file", editTool: null };

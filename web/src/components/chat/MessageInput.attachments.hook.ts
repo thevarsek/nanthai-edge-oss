@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react";
 import type { Id } from "@convex/_generated/dataModel";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
+import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 
 export function useAttachments(onCreateUploadUrl: () => Promise<string>) {
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
@@ -29,7 +30,7 @@ export function useAttachments(onCreateUploadUrl: () => Promise<string>) {
             {
               storageId: storageId as Id<"_storage">,
               name: file.name,
-              type: file.type.startsWith("image") ? "image" : "file",
+              type: attachmentTypeForMime(file.type),
               mimeType: file.type,
               sizeBytes: file.size,
             },

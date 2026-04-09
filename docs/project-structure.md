@@ -1,12 +1,12 @@
 # Project Structure
 
-> Complete project directory tree for NanthAI Edge (post-M26 Lyria music generation — iOS/Android/Convex/Web).
+> Complete project directory tree for NanthAI Edge (post-M27 Free Code Execution — iOS/Android/Convex/Web).
 > SwiftData models removed. Convex backend at repo root. `messageChunks` table removed.
 
 ```
 nanthai-edge/                              # Repository root
 ├── convex/                                 # Convex backend (TypeScript)
-│   ├── schema.ts                           # Database schema (35 app tables, imports 4 table files)
+│   ├── schema.ts                           # Database schema (36 app tables, imports 4 table files)
 │   ├── schema_tables_core.ts               # Core table definitions (13 tables incl. generatedFiles/generatedCharts and search state)
 │   ├── schema_tables_catalog.ts            # Catalog table definitions (6 tables incl. skills)
 │   ├── schema_tables_user.ts               # User table definitions (12 tables incl. purchaseEntitlements, scheduledJobs, jobRuns, userSecrets, deviceTokens, favorites)
@@ -118,7 +118,7 @@ nanthai-edge/                              # Repository root
 │   │   ├── load_skill.ts                 # load_skill tool — progressive disclosure entry point (M18)
 │   │   ├── skill_management.ts           # 8 skill management tools: list, create, update, delete, enable/disable chat, assign/remove persona (M18)
 │   │   ├── workspace_registry.ts         # Registers Max runtime workspace + analytics tools (M19)
-│   │   ├── workspace_exec.ts             # Run shell commands inside the per-chat E2B workspace (M19)
+│   │   ├── workspace_exec.ts             # Run shell commands inside the per-generation just-bash workspace (M19, rewritten M27)
 │   │   ├── workspace_list_files.ts       # List workspace files/folders (M19)
 │   │   ├── workspace_read_file.ts        # Read text-like workspace files (M19)
 │   │   ├── workspace_write_file.ts       # Write text files into the workspace (M19)
@@ -126,7 +126,7 @@ nanthai-edge/                              # Repository root
 │   │   ├── workspace_import_file.ts      # Import owned Convex storage files into the workspace (M19)
 │   │   ├── workspace_export_file.ts      # Export sandbox files back to Convex storage (M19)
 │   │   ├── workspace_reset.ts            # Reset the chat sandbox and workspace state (M19)
-│   │   ├── data_python_exec.ts           # Notebook-style Python analytics via E2B runCode() (M19)
+│   │   ├── data_python_exec.ts           # Notebook-style Python analytics via Pyodide WASM (M19, rewritten M27)
 │   │   └── apple/                         # Apple Calendar tools (CalDAV/iCal via tsdav)
 │   │       ├── auth.ts                    # Apple-specific CalDAV auth helper
 │   │       ├── calendar_read.ts           # Calendar read tools (list events, search)
@@ -623,8 +623,8 @@ nanthai-edge/                              # Repository root
 │   # lyria_audio.test.ts (M26), prompt_caching.test.ts, model_sync_noop_patch.test.ts,
 │   # model_filters.test.ts (isFree tests)
 │
-├── e2b-template/                            # Custom E2B template build scripts + package list (M19)
-├── package.json                             # npm deps (convex, e2b, docx, jszip, zod, etc.)
+├── package.json                             # npm deps (convex, just-bash, docx, jszip, zod, etc.) — note: e2b-template/ was deleted in M27
+├── package.json                             # npm deps (convex, just-bash, docx, jszip, zod, etc.)
 ├── plan.md                                  # Architecture hub index
 ├── AGENTS.md                                # Agent instructions
 ├── milestones/                              # Milestone specs

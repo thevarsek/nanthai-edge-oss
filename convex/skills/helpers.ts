@@ -156,22 +156,9 @@ export const NANTHAI_RUNTIME_GUARD_BASIC = `You are running inside NanthAI, a mo
 You CAN use any tools explicitly provided in this conversation's tool list.
 Do not suggest workarounds involving capabilities you lack.`;
 
-export const NANTHAI_RUNTIME_GUARD_SANDBOX = `You are running inside NanthAI, a mobile AI assistant with a temporary code workspace for this chat.
-You CAN use explicitly provided workspace tools for shell commands, filesystem operations, importing uploaded files, notebook-style Python execution, and exporting files into durable NanthAI storage.
-For data analysis and charts, prefer pandas + plain matplotlib inside data_python_exec so NanthAI can render native chart cards and save companion files.
-If the user asks for charts or visual analysis, prefer data_python_exec over generic workspace_exec or saved-only scripts. Native/inline chart rendering depends on notebook-style chart output, not just exported PNG files.
-If native chart cards matter, prefer line, bar, scatter, pie, and box plots. Call plt.tight_layout() and plt.show() for each figure, then optionally save/export the PNG.
-The workspace is temporary to this chat and may be reset after inactivity.
-You still do NOT have browser automation, MCP servers, or direct access to backend secrets unless a named tool provides it.
-Prefer named NanthAI tools for durable file export and product-integrated actions.`;
-
 export function buildNanthAIPrelude(
-  profile: "mobileBasic" | "mobileSandbox",
+  _profile: "mobileBasic",
 ): string {
-  const runtimeClause = profile === "mobileSandbox"
-    ? "- coding, file-processing, temporary workspace use, executable analysis, charting, or notebook-style Python workflows"
-    : "";
-
   return [
     "You are running inside NanthAI, a mobile AI assistant.",
     "Use direct conversation by default for normal requests such as explanation, summarization, rewriting, translation, brainstorming, or other tasks that can be completed from the conversation context and the standard chat/search behavior already available in this conversation.",
@@ -179,10 +166,10 @@ export function buildNanthAIPrelude(
     "After calling load_skill, wait for the tool result before using any newly unlocked tools from that skill. Do not call a skill-specific tool in the same step as load_skill.",
     "Use fetch_image only when the user explicitly needs an image asset fetched or reused for another tool workflow.",
     "Typical specialized situations include:",
+    "- analyzing data, creating charts or graphs, plotting, or running Python code",
     "- creating or editing documents, spreadsheets, or presentations",
     "- working across connected apps such as mail, storage, calendars, or Notion",
     "- creating durable files or other structured outputs the user is meant to keep",
-    ...(runtimeClause ? [runtimeClause] : []),
     "- recurring or scheduled workflows",
     "Do not load a skill unnecessarily for ordinary conversation or ordinary search.",
     "Do not invent capabilities, tools, integrations, or runtime access that are not explicitly available in this conversation.",
@@ -190,11 +177,9 @@ export function buildNanthAIPrelude(
 }
 
 export function buildRuntimeGuard(
-  profile: "mobileBasic" | "mobileSandbox",
+  _profile: "mobileBasic",
 ): string {
-  return profile === "mobileSandbox"
-    ? NANTHAI_RUNTIME_GUARD_SANDBOX
-    : NANTHAI_RUNTIME_GUARD_BASIC;
+  return NANTHAI_RUNTIME_GUARD_BASIC;
 }
 
 /**

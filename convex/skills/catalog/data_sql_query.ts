@@ -87,11 +87,9 @@ print(result.to_string(index=False))
 ### 4. Export Results
 
 \`\`\`python
-# Save query results to CSV
-result.to_csv("outputs/regional_summary.csv", index=False)
+# Save query results to CSV (auto-captured as download card)
+result.to_csv("/tmp/outputs/regional_summary.csv", index=False)
 \`\`\`
-
-Then use workspace_export_file to persist the output.
 
 ## SQL Best Practices
 
@@ -187,7 +185,7 @@ When writing SQL for the user:
 - **Validate results.** Spot-check aggregations against raw data (e.g., manually verify a SUM for one group).
 - **Handle NULLs explicitly.** Use COALESCE or IFNULL to handle missing values rather than letting them silently propagate.
 - **Explain the SQL.** Users may want to learn — walk through the query logic.
-- **Export useful outputs.** Save query results to CSV files in outputs/ and export them.
+- **Export useful outputs.** Save query results to CSV files in \`/tmp/outputs/\` so they appear as download cards (e.g., \`df.to_csv('/tmp/outputs/results.csv', index=False)\`).
 - **One query at a time.** Run and validate each query before building on it.`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
@@ -200,5 +198,4 @@ When writing SQL for the user:
   requiredToolIds: ["workspace_import_file", "data_python_exec", "workspace_export_file"],
   requiredToolProfiles: ["analytics"],
   requiredIntegrationIds: [],
-  requiredCapabilities: ["sandboxRuntime"],
 };

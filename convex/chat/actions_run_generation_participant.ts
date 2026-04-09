@@ -83,13 +83,12 @@ export interface GenerateForParticipantParams {
   progressiveTools?: {
     enabledIntegrations: string[];
     allowSubagents: boolean;
-    hasSandboxRuntime: boolean;
     directToolNames?: string[];
   };
   /** Whether the user has a Pro subscription. Used to gate Pro-only tools
    *  in progressive tool registry rebuilds. AUDIT-7: replaces hardcoded `true`. */
   isPro: boolean;
-  runtimeProfile: "mobileBasic" | "mobileSandbox";
+  runtimeProfile: "mobileBasic";
   apiKey: string;
   /** Optional prebuilt OpenRouter request messages for resumed flows. */
   requestMessagesOverride?: Array<any>;
@@ -151,6 +150,15 @@ export async function generateForParticipant(
     startedAt: Date.now(),
   });
 
+  // Shared tool execution context — workspace sandbox is lazily created on
+  // first workspace tool call and persists across all tool calls within this
+  // generation run. Cleanup is handled in the finally block.
+  const sharedToolCtx: import("../tools/registry").ToolExecutionContext = {
+    ctx,
+    userId: args.userId,
+    chatId: String(args.chatId),
+  };
+
   try {
     const caps = modelCapabilities.get(participant.modelId);
     const modelSupportsTools = caps?.supportedParameters?.includes("tools") ?? false;
@@ -209,15 +217,13 @@ export async function generateForParticipant(
           chatSkills as any,
           (chatDisabledIds ?? []) as any,
           {
-            availableCapabilities:
-              runtimeProfile === "mobileSandbox" ? ["sandboxRuntime"] : [],
+            availableCapabilities: [],
             availableIntegrationIds: progressiveTools?.enabledIntegrations ?? [],
             availableProfiles: progressiveTools
               ? availableProgressiveProfiles({
                   enabledIntegrations: progressiveTools.enabledIntegrations,
                   isPro,
                   allowSubagents: progressiveTools.allowSubagents,
-                  hasSandboxRuntime: progressiveTools.hasSandboxRuntime,
                 })
               : undefined,
           },
@@ -289,7 +295,6 @@ export async function generateForParticipant(
             enabledIntegrations: progressiveTools.enabledIntegrations,
             isPro,
             allowSubagents: progressiveTools.allowSubagents,
-            hasSandboxRuntime: progressiveTools.hasSandboxRuntime,
             activeProfiles: restoredProfiles,
             directToolNames: progressiveTools.directToolNames ?? [],
           })
@@ -419,7 +424,7 @@ export async function generateForParticipant(
       callbacks: streamCallbacks,
       retryConfig,
       toolRegistry: effectiveToolRegistry,
-      toolCtx: { ctx, userId: args.userId, chatId: String(args.chatId) },
+      toolCtx: sharedToolCtx,
       onToolRoundStart: async (_round, toolCalls) => {
         for (const tc of toolCalls) {
           progressiveToolCalls.push({
@@ -453,7 +458,6 @@ export async function generateForParticipant(
           enabledIntegrations: progressiveTools.enabledIntegrations,
           isPro,
           allowSubagents: progressiveTools.allowSubagents,
-          hasSandboxRuntime: progressiveTools.hasSandboxRuntime,
           activeProfiles: Array.from(activeProfiles),
           directToolNames: progressiveTools.directToolNames ?? [],
         });
@@ -461,7 +465,7 @@ export async function generateForParticipant(
           toolCalls,
           results,
           registry,
-          { ctx, userId: args.userId, chatId: String(args.chatId) },
+          sharedToolCtx,
         );
         patchSameRoundProgressiveToolErrors(toolCalls, results, registry);
 
@@ -601,9 +605,9 @@ export async function generateForParticipant(
       normalizedImageCandidates,
     );
 
-    // M10: Extract generated file metadata from tool results for persistence.
-    const generatedFilesMeta = extractGeneratedFiles(collectedToolResults);
-    const generatedChartsMeta = extractGeneratedCharts(collectedToolResults);
+    // M10: Extract generated file metadata from tool results.
+    const generatedFilesMeta = extractGeneratedFiles(genResult.allToolResults);
+    const generatedChartsMeta = extractGeneratedCharts(genResult.allToolResults);
 
     // M26: Lyria music generation — persist inline audio from the stream result.
     let audioStorageId: undefined | Awaited<ReturnType<typeof ctx.storage.store>>;
@@ -666,5 +670,11 @@ export async function generateForParticipant(
       userId: args.userId,
     });
     return { deferredForSubagents: false, cancelled: wasCancelled, failed: !wasCancelled };
+  } finally {
+    // Stop the workspace (just-bash) sandbox — it is per-generation, not persistent.
+    await sharedToolCtx.workspaceSandboxCleanup?.().catch(() => {});
+    // NOTE: The Vercel sandbox is NOT stopped here. It is a per-chat persistent
+    // session that must survive across assistant turns so packages/files/state
+    // carry over. Idle VMs are reaped by the cleanStaleSandboxSessions cron.
   }
 }

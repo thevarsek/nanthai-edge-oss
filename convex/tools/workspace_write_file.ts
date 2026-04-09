@@ -30,6 +30,11 @@ export const workspaceWriteFile = createTool({
         String(args.content ?? ""),
         args.overwrite === true,
       );
+      // writeWorkspaceFile returns { error } when overwrite=false and file
+      // exists — surface this as a tool-level failure so the model sees it.
+      if (result && typeof result === "object" && "error" in result && result.error) {
+        return { success: false, data: result, error: String(result.error) };
+      }
       return { success: true, data: result };
     } catch (e) {
       return {

@@ -265,8 +265,6 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
     sessionId: "session_1",
     userId: "user_1",
     chatId: "chat_1",
-    templateName: "template",
-    templateVersion: "1",
     status: "running",
     cwd: "/tmp/chat_1",
     lastActiveAt: 10,
@@ -290,7 +288,7 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
     },
   }, {
     userId: "user_1",
-    capability: "sandboxRuntime",
+    capability: "mcpRuntime",
     source: "manual_override",
     active: false,
   });

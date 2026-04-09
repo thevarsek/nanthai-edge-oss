@@ -27,6 +27,7 @@ const RENDERERS: Record<string, FC<{ data: Record<string, unknown> }>> = {
   workspace_list_files: WorkspaceListFilesResult,
   workspace_read_file: WorkspaceReadFileResult,
   data_python_exec: DataPythonExecResult,
+  data_python_sandbox: DataPythonExecResult,
   workspace_write_file: WorkspaceWriteFileResult,
   workspace_make_dirs: WorkspaceMakeDirsResult,
   workspace_export_file: WorkspaceExportFileResult,

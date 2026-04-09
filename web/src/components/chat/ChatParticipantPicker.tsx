@@ -170,8 +170,8 @@ export function ChatParticipantPicker({
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50">
-      <div className="w-full max-w-lg max-h-[85vh] bg-surface-1 rounded-t-2xl sm:rounded-2xl border border-border/50 shadow-2xl flex flex-col overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[85vh] bg-surface-1 rounded-t-2xl sm:rounded-2xl border border-border/50 shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
           <div className="flex items-center gap-2">

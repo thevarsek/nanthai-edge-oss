@@ -11,10 +11,17 @@ Use NanthAI's temporary chat workspace when the task requires code execution, sh
 
 ## When to Use
 
-- Writing and running scripts
-- Inspecting or transforming uploaded files
+- Writing and running scripts (Python stdlib, Node/TS, shell scripts)
+- Inspecting or transforming uploaded files with text processing tools
 - Creating intermediate files before exporting final outputs
 - Debugging code, command output, or file formats
+
+## Limitations
+
+- **No network access** — cannot fetch URLs, call APIs, or download packages.
+- **No pip/npm install** — only Python stdlib and pre-installed CLI tools are available.
+- **Filesystem is temporary** — files persist within this response only; lost between messages.
+- **For data analysis** with numpy, pandas, or matplotlib, use the data-analyzer skill instead (which provides data_python_exec).
 
 ## Preferred Workflow
 
@@ -35,7 +42,7 @@ Use NanthAI's temporary chat workspace when the task requires code execution, sh
   visibility: "visible",
   lockState: "locked",
   status: "active",
-  runtimeMode: "sandboxAugmented",
+  runtimeMode: "toolAugmented",
   requiredToolIds: [
     "workspace_exec",
     "workspace_list_files",
@@ -48,5 +55,5 @@ Use NanthAI's temporary chat workspace when the task requires code execution, sh
   ],
   requiredToolProfiles: ["workspace"],
   requiredIntegrationIds: [],
-  requiredCapabilities: ["sandboxRuntime"],
+  requiredCapabilities: [],
 };

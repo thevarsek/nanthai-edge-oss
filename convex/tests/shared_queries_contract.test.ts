@@ -144,8 +144,7 @@ test("capabilities public query returns computed account capability state", asyn
           collect: async () =>
             table === "userCapabilities"
               ? [
-                  { capability: "sandboxRuntime", status: "active", expiresAt: Date.now() + 1_000 },
-                  { capability: "mcpRuntime", status: "active", expiresAt: Date.now() - 1_000 },
+                  { capability: "mcpRuntime", status: "active", expiresAt: Date.now() + 1_000 },
                 ]
               : [],
         }),
@@ -159,9 +158,8 @@ test("capabilities public query returns computed account capability state", asyn
   }, {});
 
   assert.deepEqual(result, {
-    capabilities: ["pro", "sandboxRuntime"],
-    hasMcpRuntime: false,
-    hasSandboxRuntime: true,
+    capabilities: ["pro", "mcpRuntime"],
+    hasMcpRuntime: true,
     isPro: true,
   });
   assert.equal(anonymous, null);

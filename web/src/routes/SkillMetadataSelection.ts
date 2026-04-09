@@ -23,7 +23,7 @@ export type SkillToolProfileId =
   | "appleCalendar"
   | "scheduledJobs"
   | "skillsManagement";
-export type SkillCapabilityId = "sandboxRuntime";
+export type SkillCapabilityId = never;
 
 interface SkillLike {
   _id?: Id<"skills">;
@@ -92,10 +92,8 @@ export function requiredToolProfilesForSkill(selection: SkillMetadataSelection):
   return Array.from(profiles).sort();
 }
 
-export function requiredCapabilitiesForSkill(selection: SkillMetadataSelection): SkillCapabilityId[] {
-  return selection.usesCodingWorkspace || selection.usesDataAnalysis
-    ? ["sandboxRuntime"]
-    : [];
+export function requiredCapabilitiesForSkill(_selection: SkillMetadataSelection): SkillCapabilityId[] {
+  return [];
 }
 
 export function inferredRuntimeMode(selection: SkillMetadataSelection): "textOnly" | "toolAugmented" | "sandboxAugmented" {

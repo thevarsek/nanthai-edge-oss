@@ -102,13 +102,14 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   }>;
   generatedCharts?: Array<{
     toolName: string;
-    chartType: "line" | "bar" | "scatter" | "pie" | "box";
+    chartType: "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
     title?: string;
     xLabel?: string;
     yLabel?: string;
     xUnit?: string;
     yUnit?: string;
     elements: unknown;
+    pngBase64?: string;
   }>;
   /** Perplexity citation annotations (structured for rich UI rendering). */
   citations?: Array<{ url: string; title: string }>;
@@ -225,6 +226,7 @@ export async function finalizeGenerationHandler(
         xUnit: chart.xUnit,
         yUnit: chart.yUnit,
         elements: chart.elements,
+        pngBase64: chart.pngBase64,
         createdAt: now,
       });
       chartIds.push(id);

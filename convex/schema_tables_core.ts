@@ -295,6 +295,7 @@ export const coreSchemaTables = {
       v.literal("scatter"),
       v.literal("pie"),
       v.literal("box"),
+      v.literal("png_image"),
     ),
     title: v.optional(v.string()),
     xLabel: v.optional(v.string()),
@@ -302,6 +303,7 @@ export const coreSchemaTables = {
     xUnit: v.optional(v.string()),
     yUnit: v.optional(v.string()),
     elements: v.any(),
+    pngBase64: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId", "createdAt"])
@@ -387,6 +389,7 @@ export const coreSchemaTables = {
         v.literal("scatter"),
         v.literal("pie"),
         v.literal("box"),
+        v.literal("png_image"),
       ),
       title: v.optional(v.string()),
       xLabel: v.optional(v.string()),
@@ -394,6 +397,7 @@ export const coreSchemaTables = {
       xUnit: v.optional(v.string()),
       yUnit: v.optional(v.string()),
       elements: v.any(),
+      pngBase64: v.optional(v.string()),
     }))),
     summaryPayload: v.optional(v.any()),
     conversationSnapshot: v.optional(v.any()),

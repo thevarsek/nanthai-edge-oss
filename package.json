@@ -9,19 +9,18 @@
     "convex:test:coverage": "tsx --test --experimental-test-coverage convex/tests/*.test.ts && tsx scripts/convex_surface_audit.ts",
     "convex:typecheck": "tsc --noEmit --project convex/tsconfig.json",
     "deploy": "convex deploy",
-    "deploy:prod": "convex deploy --prod",
-    "e2b:template:build:dev": "tsx e2b-template/build-dev.ts",
-    "e2b:template:build:prod": "tsx e2b-template/build-prod.ts"
+    "deploy:prod": "convex deploy --prod"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.33",
     "@convex-dev/agent": "^0.3.2",
-    "@e2b/code-interpreter": "^2.3.3",
+    "@vercel/sandbox": "^1.9.3",
     "ai": "^5.0.138",
     "convex": "^1.34.0",
     "convex-helpers": "^0.1.113",
     "docx": "^9.6.0",
-    "e2b": "^2.14.1",
+    "just-bash": "^2.14.0",
+    "pyodide": "^0.29.3",
     "pptxgenjs": "^4.0.1",
     "tsdav": "^2.1.8",
     "web-push": "^3.6.7",
@@ -29,7 +28,6 @@
   },
   "devDependencies": {
     "@types/web-push": "^3.6.4",
-    "pyodide": "^0.29.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

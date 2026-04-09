@@ -9,7 +9,6 @@ export interface ProgressiveToolRegistryOptions {
   enabledIntegrations?: string[];
   isPro: boolean;
   allowSubagents?: boolean;
-  hasSandboxRuntime?: boolean;
   activeProfiles?: SkillToolProfileId[];
   directToolNames?: string[];
 }
@@ -185,15 +184,12 @@ export function availableProgressiveProfiles(
 
   const profiles = new Set<SkillToolProfileId>([
     "docs",
+    "analytics",
+    "workspace",
     "scheduledJobs",
     "skillsManagement",
   ]);
   const enabled = new Set(options.enabledIntegrations ?? []);
-
-  if (options.hasSandboxRuntime) {
-    profiles.add("analytics");
-    profiles.add("workspace");
-  }
   if (options.allowSubagents) {
     profiles.add("subagents");
   }

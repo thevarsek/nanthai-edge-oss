@@ -134,14 +134,10 @@ export function registerProfileTools(
       registerToolsIfMissing(registry, DOC_TOOLS);
       break;
     case "analytics":
-      if (options.hasSandboxRuntime) {
-        registerWorkspaceSubset(registry, registerAnalyticsTools);
-      }
+      registerWorkspaceSubset(registry, registerAnalyticsTools);
       break;
     case "workspace":
-      if (options.hasSandboxRuntime) {
-        registerWorkspaceSubset(registry, registerWorkspaceProfileTools);
-      }
+      registerWorkspaceSubset(registry, registerWorkspaceProfileTools);
       break;
     case "subagents":
       if (options.allowSubagents) {

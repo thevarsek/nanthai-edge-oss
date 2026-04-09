@@ -144,7 +144,7 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `chat/audio_trigger` | autoAudioTrigger | Wired into finalizeGenerationHandler for auto-audio responses (M20) |
 | `chat/audio_public_handlers` | requestAudioGeneration, getMessageAudioUrl | Public mutation/query handlers for audio (M20) |
 | `tools/` | registry, execute_loop, progressive_registry, profile registries, index | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. |
-| `runtime/` | E2B client, lifecycle services, analytics/chart helpers | Per-chat Max runtime, workspace lifecycle, notebook-style Python analytics, artifact export (M19). |
+| `runtime/` | just-bash client, Pyodide/Vercel Sandbox analytics, chart helpers | Per-generation workspace, notebook-style Python analytics, artifact export (M19, rewritten M27). |
 | `capabilities/` | queries, mutations, shared helpers | Account capability model layered on top of purchase entitlements (M19). |
 | `skills/tool_profiles.ts` | skill profile normalization helpers | Derives `requiredToolProfiles`, runtime mode, and capability consistency for built-in and user-authored skills (post-M19). |
 | `lib/` | auth, compaction_constants, openrouter_*, tool_capability (post-M14) | Shared backend utilities — Pro gating, compaction config, OpenRouter streaming, tool capability model assertions |
@@ -443,7 +443,7 @@ Current Pro gating implementation:
 
 ---
 
-*Last updated: 2026-04-07 — M26 Lyria music generation, Anthropic prompt caching, model sync bandwidth reduction. M25 Android tablet adaptive navigation. M24 complete.*
+*Last updated: 2026-04-09 — M27 Free Code Execution (three-tier runtime, sandboxRuntime gate removed). M26 Lyria music generation, Anthropic prompt caching, model sync bandwidth reduction. M25 Android tablet adaptive navigation. M24 complete.*
 
 ---
 
@@ -544,42 +544,39 @@ final class AppState {
 - **Execution Lifecycle**: Reads job config, schedules the next occurrence immediately when the job fires, runs the generation pipeline, then triggers the local notification via subscription mutation. Scheduling first reduces the risk of active jobs becoming orphaned if execution fails mid-run.
 - **Context Compaction**: Uses cheap models to compress prompt history automatically if a tool-calling chain or job nears context limits.
 
-## M19 Max Runtime & Analytics Architecture
+## M19/M27 Runtime & Analytics Architecture
 
-M19 extends the server-side tool architecture with an internal-only runtime capability backed by E2B.
+M19 introduced runtime capability scaffolding and analytics tools. M27 replaced the E2B sandbox provider with a three-tier free execution architecture and removed the `sandboxRuntime` capability gate — all Pro users now have code execution and analytics.
 
-### Capability gating
+### Access model
 
-- Tool exposure is no longer controlled only by `isPro`.
-- `capabilities/queries:getAccountCapabilitiesPublic` merges:
-  - entitlement-backed `pro`
-  - manual/internal `sandboxRuntime`
-  - reserved `mcpRuntime`
-- Runtime tools and sandbox-augmented skills are exposed only when `sandboxRuntime` is active.
+- All workspace tools, analytics tools, and runtime-only skills are available to all Pro users
+- No additional capability grant needed (M27 removed `sandboxRuntime` gate)
+- Tool exposure is controlled by progressive tool discovery via skill loading
 
-### Sandbox tenancy
+### Execution model
 
-- One sandbox per chat
-- same sandbox reused across runtime tool calls within that chat
-- timeout-based pause, inactivity cleanup, manual reset
+- **Per-generation sandbox** for workspace tools (just-bash)
+- sandbox created lazily on first workspace tool call, reused for all subsequent calls in the same generation
+- stopped in the generation cleanup path (finally block)
+- no cross-generation persistence — each generation starts fresh
 - durable artifacts exported back to Convex storage
 
 ### Runtime tool families
 
 - generic workspace tools: read/write/list/exec/export/reset
-- analytics tool: `data_python_exec`
+- analytics tools: `data_python_exec` (Pyodide WASM), `data_python_sandbox` (Vercel Sandbox)
 
-The analytics tool uses E2B `runCode()` so Matplotlib outputs can become:
+The analytics tools use Pyodide (in-process WASM) or Vercel Sandbox (cloud) so Matplotlib outputs can become:
 
-- generated file exports (PNG/data files)
-- native `generatedCharts` records for first-class mobile rendering
+- generated file exports (PNG/data files) stored in Convex `_storage`
+- inline chart images rendered via URL detection in all three platform markdown renderers
 
-### Client rendering
+### Client rendering (M27)
 
-- iOS renders `generatedCharts` using Swift Charts
-- Android renders `generatedCharts` using Compose-native chart cards
-- exported image files still render inline as a fallback
-- both clients stay gated by the same backend capability contract, with `sandboxRuntime` still internal/manual only
+- All three platforms (web, iOS, Android) detect Convex download URLs in the model's markdown response and render them as inline images
+- URL pattern: `https://*.convex.site/download?storageId=...&filename=*.png`
+- Structured chart renderers (Swift Charts, Compose chart cards) exist but are dead code — 100% of generated charts are `png_image` type
 
 ### Push Notification Delivery (M13.5/M16)
 - **Token Registration**: Uses `UIApplicationDelegateAdaptor` to get device tokens, syncs them to Convex `deviceTokens` table (with handling for race conditions against Convex authentication).

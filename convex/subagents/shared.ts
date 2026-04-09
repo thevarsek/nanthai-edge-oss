@@ -67,13 +67,14 @@ export function buildParentContinuationPayload(
     }>;
     generatedCharts?: Array<{
       toolName: string;
-      chartType: "line" | "bar" | "scatter" | "pie" | "box";
+      chartType: "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
       title?: string;
       xLabel?: string;
       yLabel?: string;
       xUnit?: string;
       yUnit?: string;
       elements: unknown;
+      pngBase64?: string;
     }>;
   }>,
 ) {

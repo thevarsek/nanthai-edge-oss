@@ -1,4 +1,4 @@
-export type ChartType = "line" | "bar" | "scatter" | "pie" | "box";
+export type ChartType = "line" | "bar" | "scatter" | "pie" | "box" | "png_image";
 
 export interface ChartPoint { x: string | number; y: number; group?: string }
 export interface ChartBar { label: string; value: number; group?: string }

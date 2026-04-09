@@ -111,7 +111,7 @@ Use the \`create_skill\` tool with:
 - \`requiredToolProfiles\`: The smallest profile set that should be unlocked when the skill loads
 - \`requiredToolIds\`: Optional explicit NanthAI tool IDs when the skill depends on exact tools
 - \`requiredIntegrationIds\`: Optional integration IDs if connected apps are required
-- \`requiredCapabilities\`: Optional internal capabilities like \`sandboxRuntime\`
+- \`requiredCapabilities\`: Optional internal capability IDs required by the skill (rarely needed)
 
 The system will automatically:
 1. Validate instructions for compatibility

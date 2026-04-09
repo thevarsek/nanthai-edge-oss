@@ -22,7 +22,6 @@ test("normalizeSkillMetadata: plain text skill yields no heavy profiles", () => 
     requiredToolProfiles: [],
     requiredIntegrationIds: [],
     requiredCapabilities: [],
-    allowSandboxRuntime: true,
   });
 
   assert.equal(result.runtimeMode, "textOnly");
@@ -38,13 +37,12 @@ test("normalizeSkillMetadata: doc tool IDs infer docs profile", () => {
     requiredToolProfiles: [],
     requiredIntegrationIds: [],
     requiredCapabilities: [],
-    allowSandboxRuntime: true,
   });
 
   assert.deepEqual(result.requiredToolProfiles, ["docs"]);
 });
 
-test("normalizeSkillMetadata: sandbox runtime skill infers workspace and capability", () => {
+test("normalizeSkillMetadata: sandboxAugmented with no tools infers workspace profile, no required capabilities", () => {
   const result = normalizeSkillMetadata({
     instructionsRaw: "Work in the chat workspace.",
     runtimeMode: "sandboxAugmented",
@@ -52,14 +50,13 @@ test("normalizeSkillMetadata: sandbox runtime skill infers workspace and capabil
     requiredToolProfiles: [],
     requiredIntegrationIds: [],
     requiredCapabilities: [],
-    allowSandboxRuntime: true,
   });
 
   assert.deepEqual(result.requiredToolProfiles, ["workspace"]);
-  assert.deepEqual(result.requiredCapabilities, ["sandboxRuntime"]);
+  assert.deepEqual(result.requiredCapabilities, []);
 });
 
-test("normalizeSkillMetadata: analytics tools infer analytics and sandbox capability", () => {
+test("normalizeSkillMetadata: analytics tools infer analytics profile, no required capabilities", () => {
   const result = normalizeSkillMetadata({
     instructionsRaw: "Use data_python_exec for charts.",
     runtimeMode: "toolAugmented",
@@ -67,12 +64,11 @@ test("normalizeSkillMetadata: analytics tools infer analytics and sandbox capabi
     requiredToolProfiles: [],
     requiredIntegrationIds: [],
     requiredCapabilities: [],
-    allowSandboxRuntime: true,
   });
 
-  assert.equal(result.runtimeMode, "sandboxAugmented");
+  assert.equal(result.runtimeMode, "toolAugmented");
   assert.deepEqual(result.requiredToolProfiles, ["analytics"]);
-  assert.deepEqual(result.requiredCapabilities, ["sandboxRuntime"]);
+  assert.deepEqual(result.requiredCapabilities, []);
 });
 
 test("normalizeSkillMetadata: google integration infers google profile", () => {
@@ -83,7 +79,6 @@ test("normalizeSkillMetadata: google integration infers google profile", () => {
     requiredToolProfiles: [],
     requiredIntegrationIds: ["gmail"],
     requiredCapabilities: [],
-    allowSandboxRuntime: true,
   });
 
   assert.deepEqual(result.requiredToolProfiles, ["google"]);
@@ -97,21 +92,8 @@ test("normalizeSkillMetadata: subagent tool infers subagents profile", () => {
     requiredToolProfiles: [],
     requiredIntegrationIds: [],
     requiredCapabilities: [],
-    allowSandboxRuntime: true,
   });
 
   assert.equal(result.runtimeMode, "toolAugmented");
   assert.deepEqual(result.requiredToolProfiles, ["subagents"]);
-});
-
-test("normalizeSkillMetadata: sandbox requirements reject users without sandbox access", () => {
-  assert.throws(() => normalizeSkillMetadata({
-    instructionsRaw: "Use data_python_exec for charts.",
-    runtimeMode: "sandboxAugmented",
-    requiredToolIds: ["data_python_exec"],
-    requiredToolProfiles: ["analytics"],
-    requiredIntegrationIds: [],
-    requiredCapabilities: ["sandboxRuntime"],
-    allowSandboxRuntime: false,
-  }));
 });

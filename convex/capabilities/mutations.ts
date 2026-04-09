@@ -6,7 +6,6 @@ export const setUserCapabilityInternal = internalMutation({
     userId: v.string(),
     capability: v.union(
       v.literal("pro"),
-      v.literal("sandboxRuntime"),
       v.literal("mcpRuntime"),
     ),
     source: v.union(

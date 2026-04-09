@@ -10,6 +10,7 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { ToolCall, ToolDefinition } from "../lib/openrouter_types";
+import type { Sandbox } from "just-bash";
 
 // ---------------------------------------------------------------------------
 // Tool definition types
@@ -56,6 +57,27 @@ export interface ToolExecutionContext {
   ctx: ActionCtx;
   userId: string;
   chatId?: string;
+  /**
+   * The Convex ID of the current sandbox session (if a Vercel sandbox is
+   * active for this chat). Set by data_python_sandbox after session upsert
+   * so artifact recording can link rows to the session for proper cascade
+   * deletion on account purge.
+   */
+  sandboxSessionId?: string;
+  /**
+   * Shared just-bash Sandbox for workspace tools within a single generation.
+   * Lazy-created on first workspace tool call and reused for all subsequent
+   * calls. The sandbox's in-memory filesystem persists across tool calls,
+   * eliminating per-call re-seeding.
+   *
+   * Callers MUST call `workspaceSandboxCleanup()` when the generation ends.
+   */
+  workspaceSandbox?: Sandbox;
+  /**
+   * Cleanup function that stops the workspace sandbox. Must be called in a
+   * finally block when the generation run completes (success or error).
+   */
+  workspaceSandboxCleanup?: () => Promise<void>;
 }
 
 /** Definition passed to `createTool()`. */
@@ -239,7 +261,8 @@ export class ToolRegistry {
     const shouldSerialize = (toolName: string): boolean =>
       toolName.startsWith("notion_") ||
       toolName.startsWith("workspace_") ||
-      toolName === "data_python_exec";
+      toolName === "data_python_exec" ||
+      toolName === "data_python_sandbox";
 
     await Promise.all(
       toolCalls.map((tc, index) => {

@@ -10,12 +10,14 @@ import { workspaceExportFile } from "./workspace_export_file";
 import { workspaceReset } from "./workspace_reset";
 import { workspaceImportFile } from "./workspace_import_file";
 import { dataPythonExec } from "./data_python_exec";
+import { dataPythonSandbox } from "./data_python_sandbox";
 
 export function registerAnalyticsTools(registry: ToolRegistry): void {
   registry.register(
     workspaceImportFile,
     workspaceExportFile,
     dataPythonExec,
+    dataPythonSandbox,
   );
 }
 
@@ -42,6 +44,7 @@ export function registerWorkspaceTools(registry: ToolRegistry): void {
     workspaceImportFile,
     workspaceExportFile,
     dataPythonExec,
+    dataPythonSandbox,
     workspaceReset,
   );
 }

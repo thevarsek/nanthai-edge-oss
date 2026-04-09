@@ -220,7 +220,7 @@ test("duplicateSystemSkill increments suffix and public assignment mutations enf
 test("skill visibility queries filter capability-gated public skills but not internal lists", async () => {
   const systemSkills = [
     { _id: "skill_visible", scope: "system", visibility: "visible", status: "active", requiredCapabilities: [] },
-    { _id: "skill_sandbox", scope: "system", visibility: "visible", status: "active", requiredCapabilities: ["sandboxRuntime"] },
+    { _id: "skill_sandbox", scope: "system", visibility: "visible", status: "active", requiredCapabilities: ["mcpRuntime"] },
   ];
   const userSkills = [
     { _id: "skill_user", scope: "user", ownerUserId: "user_1", visibility: "visible", status: "active", requiredCapabilities: [] },

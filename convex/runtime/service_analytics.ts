@@ -1,34 +1,40 @@
 "use node";
 
+// convex/runtime/service_analytics.ts
+// =============================================================================
+// Python data analytics execution via Pyodide.
+//
+// data_python_exec: runs Python code with numpy/pandas/matplotlib in a
+// stateless Pyodide WASM environment. Each call initializes a fresh Pyodide
+// instance — no session tracking, no persistent filesystem.
+//
+// When Pyodide cannot execute the task (missing packages, OOM, timeout), the
+// function returns a structured error with canRetryWithSandbox: true, and the
+// error message in the tool result explicitly tells the model to retry with
+// data_python_sandbox instead.
+// =============================================================================
+
 import { ConvexError } from "convex/values";
-import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
-import { exportWorkspaceFile } from "./service_artifacts";
-import { ensureSandboxForChat, markSandboxSessionRunning } from "./service";
-import { importOwnedStorageFileToWorkspace } from "./storage";
+import { runPyodideCode } from "./pyodide_client";
+import { storeArtifactBytes } from "./service_artifacts";
+import { resolveOwnedStorageFile } from "./storage";
 import {
-  buildChartDataArtifact,
   buildChartPreviewArtifact,
-  normalizeE2BChart,
-  NormalizedGeneratedChart,
-  RuntimeArtifactBlob,
+  type NormalizedGeneratedChart,
 } from "./service_analytics_charts";
-import {
-  RUNTIME_MAX_CHARTS_PER_TOOL_CALL,
-  RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL,
-  runtimeWorkspacePaths,
-} from "./shared";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import { processCharts, processOutputFiles, buildResultSummary, type StoredFileEntry } from "./service_analytics_common";
+
+// ---------------------------------------------------------------------------
+// Dependency injection (for testing)
+// ---------------------------------------------------------------------------
 
 const defaultRuntimeAnalyticsDeps = {
-  exportWorkspaceFile,
-  ensureSandboxForChat,
-  markSandboxSessionRunning,
-  importOwnedStorageFileToWorkspace,
-  buildChartDataArtifact,
+  runPyodideCode,
+  storeArtifactBytes,
+  resolveOwnedStorageFile,
   buildChartPreviewArtifact,
-  normalizeE2BChart,
 };
 
 export type RuntimeAnalyticsDeps = typeof defaultRuntimeAnalyticsDeps;
@@ -39,72 +45,23 @@ export function createRuntimeAnalyticsDepsForTest(
   return mergeTestDeps(defaultRuntimeAnalyticsDeps, overrides);
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function requireChatId(toolCtx: ToolExecutionContext): string {
   if (!toolCtx.chatId) {
-    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Workspace tools require chatId in the tool execution context." });
+    throw new ConvexError({
+      code: "INTERNAL_ERROR" as const,
+      message: "Workspace tools require chatId in the tool execution context.",
+    });
   }
   return toolCtx.chatId;
 }
 
-function buildRuntimeShim(chatId: string): string {
-  const workspace = runtimeWorkspacePaths(chatId);
-  return [
-    "import os",
-    "import matplotlib",
-    "matplotlib.use('Agg')",
-    `workspace_root = ${JSON.stringify(workspace.root)}`,
-    `inputs_dir = ${JSON.stringify(workspace.inputs)}`,
-    `outputs_dir = ${JSON.stringify(workspace.outputs)}`,
-    `charts_dir = ${JSON.stringify(workspace.charts)}`,
-    "for directory in (workspace_root, inputs_dir, outputs_dir, charts_dir):",
-    "    os.makedirs(directory, exist_ok=True)",
-    "os.chdir(workspace_root)",
-    "",
-  ].join("\n");
-}
-
-function summarizeExecutionResults(results: any[]): string[] {
-  return results.map((result, index) => {
-    const formats = typeof result?.formats === "function" ? result.formats() : [];
-    const parts = [`result ${index + 1}`];
-    if (typeof result?.text === "string" && result.text.trim().length > 0) {
-      parts.push(`text=${result.text.trim().slice(0, 120)}`);
-    }
-    if (result?.chart) parts.push(`chart=${result.chart.type}`);
-    if (result?.png) parts.push("png");
-    if (formats.length > 0) parts.push(`formats=${formats.join(",")}`);
-    return parts.join(" | ");
-  });
-}
-
-async function storeDurableArtifact(
-  toolCtx: ToolExecutionContext,
-  sessionId: Id<"sandboxSessions">,
-  path: string,
-  artifact: RuntimeArtifactBlob,
-) {
-  const chatId = requireChatId(toolCtx);
-  const storageId = await toolCtx.ctx.storage.store(artifact.blob);
-  await toolCtx.ctx.runMutation(internal.runtime.mutations.recordSandboxArtifactInternal, {
-    userId: toolCtx.userId,
-    chatId: chatId as Id<"chats">,
-    sandboxSessionId: sessionId,
-    path,
-    filename: artifact.filename,
-    mimeType: artifact.mimeType,
-    sizeBytes: artifact.blob.size,
-    storageId,
-    isDurable: true,
-  });
-  return {
-    path,
-    filename: artifact.filename,
-    mimeType: artifact.mimeType,
-    sizeBytes: artifact.blob.size,
-    storageId,
-    toolName: "data_python_exec",
-  };
-}
+// ---------------------------------------------------------------------------
+// runDataPythonExec
+// ---------------------------------------------------------------------------
 
 export async function runDataPythonExec(
   toolCtx: ToolExecutionContext,
@@ -116,134 +73,110 @@ export async function runDataPythonExec(
     timeoutMs?: number;
   },
   deps: RuntimeAnalyticsDeps = defaultRuntimeAnalyticsDeps,
-) {
-  const chatId = requireChatId(toolCtx);
-  const session = await deps.ensureSandboxForChat(toolCtx);
-  const importedFiles = [];
-  for (const file of args.inputFiles ?? []) {
-    importedFiles.push(await deps.importOwnedStorageFileToWorkspace(
-      toolCtx,
-      file.storageId,
-      file.filename,
-      undefined,
-    ));
-  }
-
-  const execution = await session.sandbox.runCode(
-    `${buildRuntimeShim(chatId)}\n${args.code}`,
-    { timeoutMs: args.timeoutMs ?? 120_000 },
-  );
-  await deps.markSandboxSessionRunning(toolCtx, session);
-
-  if (execution.error) {
-    throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `${execution.error.name}: ${execution.error.value}` });
-  }
+): Promise<{
+  text: string;
+  resultsSummary: string[];
+  importedFiles: unknown[];
+  exportedFiles: StoredFileEntry[];
+  chartsCreated: NormalizedGeneratedChart[];
+  warnings: string[];
+}> {
+  requireChatId(toolCtx);
 
   const warnings: string[] = [];
-  const exportedFiles: Array<{
-    path: string;
-    filename: string;
-    mimeType: string;
-    sizeBytes?: number;
-    storageId: string;
-    toolName: string;
-  }> = [];
+  const importedFiles: unknown[] = [];
+  const exportedFiles: StoredFileEntry[] = [];
+  // chartsCreated is intentionally empty. Chart PNGs are stored in
+  // exportedFiles and rendered inline via download URL in markdown.
+  // The native chart card UI (generatedCharts table) is not populated —
+  // it would duplicate the inline image with no additional value since
+  // Pyodide charts are PNG-only (no structured data).
   const chartsCreated: NormalizedGeneratedChart[] = [];
-  const results = Array.isArray(execution.results) ? execution.results : [];
 
-  if (args.captureCharts !== false) {
-    const limitedResults = results.slice(0, RUNTIME_MAX_CHARTS_PER_TOOL_CALL);
-    if (results.length > limitedResults.length) {
-      warnings.push(`Only the first ${RUNTIME_MAX_CHARTS_PER_TOOL_CALL} charts were persisted.`);
-    }
-
-    for (const [index, result] of limitedResults.entries()) {
-      if (result?.chart) {
-        const normalized = deps.normalizeE2BChart(result.chart);
-        if (normalized) {
-          chartsCreated.push(normalized);
-          if (result.png && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
-            exportedFiles.push(await storeDurableArtifact(
-              toolCtx,
-              session.sessionId as Id<"sandboxSessions">,
-              `${runtimeWorkspacePaths(chatId).charts}/${index + 1}.png`,
-              deps.buildChartPreviewArtifact(
-                result.png,
-                index + 1,
-                normalized.title,
-              ),
-            ));
-          }
-          const companion = deps.buildChartDataArtifact(
-            normalized,
-            index + 1,
-          );
-          if (companion && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
-            exportedFiles.push(await storeDurableArtifact(
-              toolCtx,
-              session.sessionId as Id<"sandboxSessions">,
-              `${runtimeWorkspacePaths(chatId).charts}/${companion.filename}`,
-              companion,
-            ));
-          }
-        } else if (result.png && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
-          warnings.push(`Chart ${index + 1} could not be normalized for native rendering.`);
-          exportedFiles.push(await storeDurableArtifact(
-            toolCtx,
-            session.sessionId as Id<"sandboxSessions">,
-            `${runtimeWorkspacePaths(chatId).charts}/${index + 1}.png`,
-            deps.buildChartPreviewArtifact(result.png, index + 1),
-          ));
-        }
-      } else if (result?.png && exportedFiles.length < RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
-        exportedFiles.push(await storeDurableArtifact(
-          toolCtx,
-          session.sessionId as Id<"sandboxSessions">,
-          `${runtimeWorkspacePaths(chatId).charts}/${index + 1}.png`,
-          deps.buildChartPreviewArtifact(result.png, index + 1),
-        ));
+  // Import input files from Convex storage into Pyodide FS paths.
+  // Use resolveOwnedStorageFile directly — no sandbox needed, just get the blob.
+  const inputFilesForPyodide: Array<{ path: string; bytes: Uint8Array }> = [];
+  if (args.inputFiles && args.inputFiles.length > 0) {
+    for (const inputFile of args.inputFiles) {
+      try {
+        const { record, blob } = await deps.resolveOwnedStorageFile(toolCtx, inputFile.storageId);
+        const finalFilename = inputFile.filename?.trim() || record.filename;
+        const inputPath = `/tmp/inputs/${finalFilename}`;
+        const arrayBuffer = await blob.arrayBuffer();
+        inputFilesForPyodide.push({ path: inputPath, bytes: new Uint8Array(arrayBuffer) });
+        importedFiles.push({ path: inputPath, filename: finalFilename, sizeBytes: record.sizeBytes ?? blob.size });
+      } catch (err) {
+        warnings.push(
+          `Failed to import file ${inputFile.storageId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
     }
   }
 
-  for (const exportPath of args.exportPaths ?? []) {
-    if (exportedFiles.length >= RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL) {
-      warnings.push(`Only the first ${RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL} exported files were persisted.`);
-      break;
-    }
-    const exported = await deps.exportWorkspaceFile(
-      toolCtx,
-      exportPath,
+  // Run Pyodide
+  const result = await deps.runPyodideCode(
+    args.code,
+    inputFilesForPyodide.length > 0 ? inputFilesForPyodide : undefined,
+    args.captureCharts ?? true,
+    args.timeoutMs,
+    args.exportPaths,
+  );
+
+  // Log memory usage
+  const { memoryRssMiB } = result;
+  console.log(
+    `[pyodide] memory: baseline=${memoryRssMiB.baseline}MiB ` +
+    `afterLoad=${memoryRssMiB.afterLoad}MiB ` +
+    `afterPackages=${memoryRssMiB.afterPackages}MiB ` +
+    `afterExecution=${memoryRssMiB.afterExecution}MiB`,
+  );
+  if (memoryRssMiB.afterExecution > 600) {
+    warnings.push(
+      `Memory usage is high (${memoryRssMiB.afterExecution} MiB RSS). ` +
+      `For large datasets, consider using data_python_sandbox instead.`,
     );
-    exportedFiles.push({
-      path: exported.path,
-      filename: exported.filename,
-      mimeType: exported.mimeType,
-      sizeBytes: exported.sizeBytes,
-      storageId: exported.storageId,
-      toolName: "data_python_exec",
-    });
   }
 
-  await toolCtx.ctx.runMutation(internal.runtime.mutations.recordSandboxEventInternal, {
-    sandboxSessionId: session.sessionId as Id<"sandboxSessions">,
-    userId: toolCtx.userId,
-    chatId: chatId as Id<"chats">,
-    eventType: "data_python_exec_completed",
-    details: {
-      importedCount: importedFiles.length,
-      exportedCount: exportedFiles.length,
-      chartCount: chartsCreated.length,
-    },
-  });
+  // If execution failed, build error text for the model
+  if (result.error) {
+    const lines: string[] = [];
+    if (result.stdout.length > 0) {
+      lines.push("stdout:\n" + result.stdout.join("\n"));
+    }
+    if (result.stderr.length > 0) {
+      lines.push("stderr:\n" + result.stderr.join("\n"));
+    }
+    lines.push(result.error);
+
+    return {
+      text: lines.join("\n\n"),
+      resultsSummary: [result.error],
+      importedFiles,
+      exportedFiles,
+      chartsCreated,
+      warnings,
+    };
+  }
+
+  // Process charts — store PNGs in Convex storage (images render inline via
+  // download URL in the model's markdown response).
+  await processCharts(toolCtx, result.charts, exportedFiles, warnings, deps);
+
+  // Collect any output files Pyodide wrote (via exportPaths and/or auto-capture
+  // from /tmp/outputs/). Limit to RUNTIME_MAX_EXPORTED_FILES_PER_TOOL_CALL to
+  // avoid runaway storage consumption from auto-captured directories.
+  await processOutputFiles(toolCtx, result.outputFiles, exportedFiles, warnings, deps);
+
+  // Build text summary
+  const chartCount = result.charts.slice(0, 5).length;
+  const summary = buildResultSummary(result.stdout, result.stderr, chartCount, exportedFiles, warnings);
 
   return {
-    text: execution.text ?? execution.logs.stdout.join("\n"),
-    resultsSummary: summarizeExecutionResults(results),
+    text: summary.join("\n\n") || "Code executed successfully (no output).",
+    resultsSummary: summary,
     importedFiles,
     exportedFiles,
     chartsCreated,
     warnings,
-    logs: execution.logs,
   };
 }

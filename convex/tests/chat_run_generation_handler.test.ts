@@ -69,7 +69,6 @@ test("runGenerationHandler intersects enabled integrations and schedules post-pr
   const ctx = createMockCtx({
     runQuery: async () => ({
       isPro: false,
-      hasSandboxRuntime: true,
     }),
     runMutation: async () => undefined,
     scheduler: {
@@ -85,12 +84,11 @@ test("runGenerationHandler intersects enabled integrations and schedules post-pr
     enabledIntegrations: ["drive", "ms_calendar", "notion"],
     isPro: false,
     allowSubagents: false,
-    hasSandboxRuntime: true,
     directToolNames: ["read_docx"],
   });
   assert.equal(participantCalls.length, 2);
   assert.equal(participantCalls[0]?.toolRegistry, registry);
-  assert.equal(participantCalls[0]?.runtimeProfile, "mobileSandbox");
+  assert.equal(participantCalls[0]?.runtimeProfile, "mobileBasic");
   assert.equal(scheduledCalls[0]?.args.chatId, "chat_1");
   assert.equal(scheduledCalls[0]?.args.userMessageId, "msg_user");
   assert.deepEqual(scheduledCalls[0]?.args.assistantMessageIds, ["msg_assistant_1", "msg_assistant_2"]);
@@ -127,7 +125,6 @@ test("runGenerationHandler marks mixed search outcomes as completed when any par
   const ctx = createMockCtx({
     runQuery: async () => ({
       isPro: true,
-      hasSandboxRuntime: false,
     }),
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       patches.push(args);
@@ -184,7 +181,6 @@ test("runGenerationHandler marks fully failed search runs as failed and skips po
   const ctx = createMockCtx({
     runQuery: async () => ({
       isPro: true,
-      hasSandboxRuntime: false,
     }),
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       patches.push(args);
@@ -242,7 +238,6 @@ test("runGenerationHandler propagates cancellation failures to the search sessio
   const ctx = createMockCtx({
     runQuery: async () => ({
       isPro: true,
-      hasSandboxRuntime: false,
     }),
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       patches.push(args);

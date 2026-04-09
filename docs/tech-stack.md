@@ -53,7 +53,9 @@
 | Presentation Generation | pptxgenjs | ^4.0.1 |
 | Compaction Model | google/gemini-3.1-flash-lite-preview (via OpenRouter) | Used for context compaction in tool-call loops |
 | TTS Model | openai/gpt-audio-mini (via OpenRouter) | Text-to-speech for audio messages (M20) |
-| Sandbox Runtime | @e2b/code-interpreter | Per-chat Python sandbox for analytics/workspace tools (M19) |
+| Workspace Runtime | just-bash | Per-generation ephemeral sandbox for shell commands and file operations (M27) |
+| Lightweight Analytics | Pyodide (WASM) | In-process Python for data analysis, matplotlib charts (M27) |
+| Heavy Analytics | Vercel Sandbox (@anthropic-ai/sdk) | Cloud sandbox for packages exceeding Pyodide capabilities (M27) |
 
 ### iOS Audio Stack (M20)
 
@@ -131,4 +133,4 @@ No Node.js runtime needed — all JWT signing and APNs calls run in Convex's def
 
 ---
 
-*Last updated: 2026-03-23 — Added M19 E2B sandbox runtime, M20 audio stacks (iOS AVFoundation/Speech, Android MediaRecorder/SpeechRecognizer), and `gpt-audio-mini` TTS model.*
+*Last updated: 2026-04-09 — M27 replaced E2B with three-tier free execution (just-bash, Pyodide, Vercel Sandbox). M20 audio stacks (iOS AVFoundation/Speech, Android MediaRecorder/SpeechRecognizer), and `gpt-audio-mini` TTS model.*
