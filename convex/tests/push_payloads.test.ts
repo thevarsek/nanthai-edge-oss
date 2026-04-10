@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  ANDROID_NOTIFICATION_CHANNEL_ID,
   buildApnsPayload,
   buildFcmPayload,
+  buildWebPushPayload,
   splitPushTokensByProvider,
 } from "../push/payloads";
 
@@ -28,37 +30,86 @@ test("splitPushTokensByProvider routes APNs by environment and preserves FCM tok
 });
 
 test("buildApnsPayload includes aps envelope and optional chatId", () => {
-  const withChat = buildApnsPayload({ title: "Done", body: "Task finished", chatId: "chat_123" });
+  const withChat = buildApnsPayload({
+    title: "Done",
+    body: "Task finished",
+    chatId: "chat_123",
+    category: "CHAT_COMPLETION",
+  });
   assert.deepEqual(withChat, {
     aps: {
       alert: { title: "Done", body: "Task finished" },
       sound: "default",
+      category: "CHAT_COMPLETION",
     },
     chatId: "chat_123",
+    category: "CHAT_COMPLETION",
   });
 
   const withoutChat = buildApnsPayload({ title: "Done", body: "Task finished" });
   assert.equal("chatId" in withoutChat, false);
 });
 
-test("buildFcmPayload mirrors title/body and deep-link data", () => {
-  const withChat = buildFcmPayload({ title: "Done", body: "Task finished", chatId: "chat_123" });
+test("buildFcmPayload builds an HTTP v1 message with Android channel and deep-link data", () => {
+  const withChat = buildFcmPayload("fcm_token_123", {
+    title: "Done",
+    body: "Task finished",
+    chatId: "chat_123",
+    category: "CHAT_COMPLETION",
+  });
   assert.deepEqual(withChat, {
-    notification: {
-      title: "Done",
-      body: "Task finished",
-    },
-    data: {
-      chatId: "chat_123",
+    message: {
+      token: "fcm_token_123",
+      notification: {
+        title: "Done",
+        body: "Task finished",
+      },
+      data: {
+        chatId: "chat_123",
+        category: "CHAT_COMPLETION",
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+        },
+      },
     },
   });
 
-  const withoutChat = buildFcmPayload({ title: "Done", body: "Task finished" });
+  const withoutChat = buildFcmPayload("fcm_token_456", {
+    title: "Done",
+    body: "Task finished",
+  });
   assert.deepEqual(withoutChat, {
-    notification: {
-      title: "Done",
-      body: "Task finished",
+    message: {
+      token: "fcm_token_456",
+      notification: {
+        title: "Done",
+        body: "Task finished",
+      },
+      data: {},
+      android: {
+        priority: "high",
+        notification: {
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+        },
+      },
     },
-    data: {},
+  });
+});
+
+test("buildWebPushPayload includes optional chatId and category", () => {
+  const withMetadata = buildWebPushPayload({
+    title: "Done",
+    body: "Task finished",
+    chatId: "chat_123",
+    category: "CHAT_COMPLETION",
+  });
+  assert.deepEqual(withMetadata, {
+    title: "Done",
+    body: "Task finished",
+    chatId: "chat_123",
+    category: "CHAT_COMPLETION",
   });
 });

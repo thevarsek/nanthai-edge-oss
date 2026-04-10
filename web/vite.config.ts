@@ -7,6 +7,7 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      injectRegister: false,
       registerType: "autoUpdate",
       includeAssets: ["icons/*.png", "robots.txt"],
       manifest: {
@@ -42,6 +43,7 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB — covers brand images
         globPatterns: ["**/*.{js,css,html,ico,svg,woff2,png,webmanifest}"],
         globIgnores: ["**/edge-brand/**", "**/screenshots/**"],
+        importScripts: ["push-sw.js"],
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [
           /^\/openrouter\/edge\/callback/,
@@ -76,7 +78,7 @@ export default defineConfig({
         offlineGoogleAnalytics: false,
       },
       devOptions: {
-        enabled: false,
+        enabled: true,
       },
     }),
   ],

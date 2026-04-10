@@ -14,6 +14,7 @@ import {
   deleteKnowledgeBaseFileArgs,
   finalizeGenerationArgs,
   isJobCancelledArgs,
+  markChatCompletionNotifiedArgs,
   patchMessageAudioArgs,
   reinforceMemoryArgs,
   requestAudioGenerationArgs,
@@ -43,6 +44,7 @@ import {
   createMemoryHandler,
   finalizeGenerationHandler,
   isJobCancelledHandler,
+  markChatCompletionNotifiedHandler,
   patchMessageAudioHandler,
   storeGenerationUsageHandler,
   storeAncillaryCostHandler,
@@ -112,6 +114,12 @@ export const updateMessageContent = internalMutation({
 export const updateMessageReasoning = internalMutation({
   args: updateMessageReasoningArgs,
   handler: updateMessageReasoningHandler,
+});
+
+export const markChatCompletionNotified = internalMutation({
+  args: markChatCompletionNotifiedArgs,
+  returns: v.boolean(),
+  handler: markChatCompletionNotifiedHandler,
 });
 
 export const patchMessageAudio = internalMutation({

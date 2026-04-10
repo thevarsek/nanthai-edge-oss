@@ -1,9 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Bell } from "lucide-react";
+import { useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
 import { Toggle } from "@/components/shared/Toggle";
 import { ProBadge } from "@/components/shared/ProBadge";
 import { useProGate } from "@/hooks/useProGate.hook";
+import { useSharedData } from "@/hooks/useSharedData";
 import { useWebPush } from "@/hooks/useWebPush";
 
 // ─── Local notification prefs (device-specific, stored in localStorage) ────
@@ -34,17 +37,29 @@ function saveNotifPrefs(prefs: NotifPrefs) {
 
 export function NotificationsSection() {
   const { t } = useTranslation();
+  const { prefs: sharedPrefs } = useSharedData();
   const [pushStatus, setPushStatus] = useState<
     "idle" | "requesting"
   >("idle");
   const [prefs, setPrefs] = useState<NotifPrefs>(() => loadNotifPrefs());
+  const [pendingChatCompletionEnabled, setPendingChatCompletionEnabled] = useState<boolean | null>(null);
   const { isPro } = useProGate();
+  const upsertPreferences = useMutation(api.preferences.mutations.upsertPreferences);
   const webPush = useWebPush();
 
   const notificationsDenied =
     webPush.status === "denied" ||
     (typeof Notification !== "undefined" && Notification.permission === "denied");
   const isEnabled = webPush.isRegistered;
+  const serverChatCompletionEnabled = sharedPrefs?.chatCompletionNotificationsEnabled ?? false;
+  const chatCompletionNotificationsEnabled =
+    pendingChatCompletionEnabled ?? serverChatCompletionEnabled;
+
+  useEffect(() => {
+    if (pendingChatCompletionEnabled === serverChatCompletionEnabled) {
+      setPendingChatCompletionEnabled(null);
+    }
+  }, [pendingChatCompletionEnabled, serverChatCompletionEnabled]);
 
   const handleEnablePush = async () => {
     setPushStatus("requesting");
@@ -64,6 +79,19 @@ export function NotificationsSection() {
       return next;
     });
   }, []);
+
+  const handleChatCompletionToggle = useCallback((nextValue: boolean) => {
+    setPendingChatCompletionEnabled(nextValue);
+    void (async () => {
+      try {
+        await upsertPreferences({
+          chatCompletionNotificationsEnabled: nextValue,
+        });
+      } catch {
+        setPendingChatCompletionEnabled(null);
+      }
+    })();
+  }, [upsertPreferences]);
 
   return (
     <div className="space-y-4">
@@ -150,6 +178,16 @@ export function NotificationsSection() {
                 </div>
               </div>
               <Toggle checked={isPro && prefs.researchCompletions} onChange={() => { if (isPro) togglePref("researchCompletions"); }} disabled={!isPro} />
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <p className="text-sm">{t("chat_reply_completions")}</p>
+                <p className="text-xs text-foreground/50 mt-0.5">{t("chat_reply_completions_when_out_of_focus")}</p>
+              </div>
+              <Toggle
+                checked={isEnabled && chatCompletionNotificationsEnabled}
+                onChange={() => handleChatCompletionToggle(!chatCompletionNotificationsEnabled)}
+              />
             </div>
             {/* Credit Balance Alerts */}
             <div className="flex items-center justify-between px-4 py-3">

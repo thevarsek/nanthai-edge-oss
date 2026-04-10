@@ -12,7 +12,6 @@ export interface PostProcessArgs extends Record<string, unknown> {
 }
 
 const MIN_MEMORY_USER_CONTENT_LENGTH = 10;
-
 const defaultPostProcessHandlerDeps = {
   isPlaceholderTitle,
 };

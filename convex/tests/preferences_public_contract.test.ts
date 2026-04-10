@@ -76,6 +76,38 @@ test("upsertPreferences clears defaultPersonaId via explicit flag", async () => 
   });
 });
 
+test("upsertPreferences stores chat completion notification preference", async () => {
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+
+  const result = await (upsertPreferences as any)._handler({
+    auth: buildAuth(),
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () =>
+            table === "userPreferences"
+              ? { _id: "prefs_1", userId: "user_1" }
+              : null,
+        }),
+      }),
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        patches.push({ id, patch });
+      },
+    },
+  }, {
+    chatCompletionNotificationsEnabled: true,
+  });
+
+  assert.equal(result, "prefs_1");
+  assert.deepEqual(patches[0], {
+    id: "prefs_1",
+    patch: {
+      updatedAt: patches[0]?.patch.updatedAt,
+      chatCompletionNotificationsEnabled: true,
+    },
+  });
+});
+
 test("upsertPreferences rejects enabling default subagents for non-Pro users", async () => {
   await assert.rejects(
     (upsertPreferences as any)._handler({

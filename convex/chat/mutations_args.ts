@@ -97,6 +97,10 @@ export const updateMessageReasoningArgs = {
   reasoning: v.string(),
 } satisfies PropertyValidators;
 
+export const markChatCompletionNotifiedArgs = {
+  messageId: v.id("messages"),
+} satisfies PropertyValidators;
+
 export const finalizeGenerationArgs = {
   messageId: v.id("messages"),
   jobId: v.id("generationJobs"),

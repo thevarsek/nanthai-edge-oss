@@ -28,6 +28,14 @@ function getErrorMessage(error: unknown): string {
   return "Push notification setup failed.";
 }
 
+async function getActiveServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
+  const registration = await navigator.serviceWorker.getRegistration();
+  if (!registration) {
+    throw new Error("Push notifications are not ready yet. Reload the page and try again.");
+  }
+  return registration;
+}
+
 export function useWebPush() {
   const registerToken = useMutation(api.push.mutations.registerDeviceToken);
   const removeToken = useMutation(api.push.mutations.removeDeviceToken);
@@ -44,7 +52,13 @@ export function useWebPush() {
     let cancelled = false;
     void (async () => {
       try {
-        const registration = await navigator.serviceWorker.ready;
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (!registration) {
+          if (!cancelled) {
+            setIsRegistered(false);
+          }
+          return;
+        }
         const subscription = await registration.pushManager.getSubscription();
         if (!cancelled) {
           setIsRegistered(subscription !== null);
@@ -82,7 +96,7 @@ export function useWebPush() {
         return false;
       }
 
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await getActiveServiceWorkerRegistration();
       const existing = await registration.pushManager.getSubscription();
       const subscription = existing ?? await registration.pushManager.subscribe({
         userVisibleOnly: true,
@@ -110,7 +124,7 @@ export function useWebPush() {
 
   const disable = useCallback(async () => {
     try {
-      const registration = await navigator.serviceWorker.ready;
+      const registration = await getActiveServiceWorkerRegistration();
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
         await removeToken({ token: subscription.endpoint });

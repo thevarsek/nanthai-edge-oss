@@ -4,12 +4,15 @@ import { internal } from "../_generated/api";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
 import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
+import { isPlaceholderTitle } from "./title_helpers";
 import {
   deleteStreamingMessage,
   getStreamingMessageByMessageId,
   isTerminalMessageStatus,
   upsertStreamingMessage,
 } from "./streaming_state";
+
+const CHAT_COMPLETION_PUSH_CATEGORY = "CHAT_COMPLETION";
 
 export interface UpdateMessageContentArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
@@ -49,6 +52,25 @@ export async function updateMessageReasoningHandler(
   await upsertStreamingMessage(ctx, existing, {
     reasoning: args.reasoning,
   });
+}
+
+export interface MarkChatCompletionNotifiedArgs extends Record<string, unknown> {
+  messageId: Id<"messages">;
+}
+
+export async function markChatCompletionNotifiedHandler(
+  ctx: MutationCtx,
+  args: MarkChatCompletionNotifiedArgs,
+): Promise<boolean> {
+  const existing = await ctx.db.get(args.messageId);
+  if (!existing || existing.chatCompletionNotifiedAt != null) {
+    return false;
+  }
+
+  await ctx.db.patch(args.messageId, {
+    chatCompletionNotifiedAt: Date.now(),
+  });
+  return true;
 }
 
 export interface FinalizeGenerationArgs extends Record<string, unknown> {
@@ -319,6 +341,19 @@ export async function finalizeGenerationHandler(
         }
       }
     }
+  }
+
+  if (
+    finalStatus === "completed" &&
+    args.triggerUserMessageId &&
+    !args.audioStorageId
+  ) {
+    await maybeScheduleChatCompletionPush(
+      ctx,
+      args.chatId,
+      args.userId,
+      args.triggerUserMessageId,
+    );
   }
 
   if (!args.usage || finalStatus !== "completed") {
@@ -753,6 +788,86 @@ export async function storeGenerationUsageHandler(
       createdAt: now,
     });
   }
+}
+
+async function maybeScheduleChatCompletionPush(
+  ctx: MutationCtx,
+  chatId: Id<"chats">,
+  userId: string,
+  triggerUserMessageId: Id<"messages">,
+): Promise<void> {
+  const [chat, prefs, pendingMessages, streamingMessages, completedMessages] =
+    await Promise.all([
+      ctx.db.get(chatId),
+      ctx.db
+        .query("userPreferences")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .first(),
+      ctx.db
+        .query("messages")
+        .withIndex("by_chat_status", (q) =>
+          q.eq("chatId", chatId).eq("status", "pending"),
+        )
+        .collect(),
+      ctx.db
+        .query("messages")
+        .withIndex("by_chat_status", (q) =>
+          q.eq("chatId", chatId).eq("status", "streaming"),
+        )
+        .collect(),
+      ctx.db
+        .query("messages")
+        .withIndex("by_chat_status", (q) =>
+          q.eq("chatId", chatId).eq("status", "completed"),
+        )
+        .collect(),
+    ]);
+
+  if (!chat || prefs?.chatCompletionNotificationsEnabled !== true) {
+    return;
+  }
+
+  const isTriggeredAssistant = (message: {
+    role: string;
+    parentMessageIds?: Id<"messages">[];
+  }) =>
+    message.role === "assistant" &&
+    Array.isArray(message.parentMessageIds) &&
+    message.parentMessageIds.includes(triggerUserMessageId);
+
+  const hasInFlightTriggeredAssistant = [...pendingMessages, ...streamingMessages]
+    .some(isTriggeredAssistant);
+  if (hasInFlightTriggeredAssistant) {
+    return;
+  }
+
+  const completedTriggeredAssistants = completedMessages.filter(
+    (message) =>
+      isTriggeredAssistant(message) &&
+      typeof message.content === "string" &&
+      message.content.trim() !== "",
+  );
+  if (completedTriggeredAssistants.length === 0) {
+    return;
+  }
+
+  const shouldSendCompletionPush = await markChatCompletionNotifiedHandler(ctx, {
+    messageId: triggerUserMessageId,
+  });
+  if (!shouldSendCompletionPush) {
+    return;
+  }
+
+  const body = isPlaceholderTitle(chat.title)
+    ? "A new reply is ready."
+    : `A new reply is ready in ${chat.title}.`;
+  await ctx.scheduler.runAfter(0, internal.push.actions.sendPushNotification, {
+    userId,
+    title: "Reply complete",
+    body,
+    chatId,
+    category: CHAT_COMPLETION_PUSH_CATEGORY,
+  });
 }
 
 // ---------------------------------------------------------------------------

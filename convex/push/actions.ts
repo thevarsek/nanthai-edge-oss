@@ -15,8 +15,9 @@ import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import webpush from "web-push";
 import http2 from "node:http2";
-import { buildApnsPayload, buildFcmPayload, buildWebPushPayload, splitPushTokensByProvider } from "./payloads";
+import { buildApnsPayload, buildWebPushPayload, splitPushTokensByProvider } from "./payloads";
 import { signAPNsJWT } from "./apns_jwt";
+import { sendFcmNotifications } from "./fcm_http_v1";
 
 /**
  * Send a push notification to all registered devices for a user.
@@ -28,6 +29,7 @@ export const sendPushNotification = internalAction({
     title: v.string(),
     body: v.string(),
     chatId: v.optional(v.string()),
+    category: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // 1. Load all device tokens for the user
@@ -69,23 +71,19 @@ export const sendPushNotification = internalAction({
           title: args.title,
           body: args.body,
           chatId: args.chatId,
+          category: args.category,
         });
       }
     }
 
     if (fcmTokens.length > 0) {
-      const fcmServerKey = process.env.FCM_SERVER_KEY;
-      if (!fcmServerKey) {
-        console.error("[push] Missing FCM_SERVER_KEY; skipping FCM delivery");
-      } else {
-        await sendFcmNotifications(ctx, {
-          tokens: fcmTokens,
-          serverKey: fcmServerKey,
-          title: args.title,
-          body: args.body,
-          chatId: args.chatId,
-        });
-      }
+      await sendFcmNotifications(ctx, {
+        tokens: fcmTokens,
+        title: args.title,
+        body: args.body,
+        chatId: args.chatId,
+        category: args.category,
+      });
     }
 
     if (webPushTokens.length > 0) {
@@ -105,6 +103,7 @@ export const sendPushNotification = internalAction({
           title: args.title,
           body: args.body,
           chatId: args.chatId,
+          category: args.category,
         });
       }
     }
@@ -124,11 +123,17 @@ async function sendApnsNotifications(
     title: string;
     body: string;
     chatId?: string;
+    category?: string;
   },
 ): Promise<void> {
   const jwt = await signAPNsJWT(args.keyId, args.teamId, args.privateKey);
   const payloadStr = JSON.stringify(
-    buildApnsPayload({ title: args.title, body: args.body, chatId: args.chatId }),
+    buildApnsPayload({
+      title: args.title,
+      body: args.body,
+      chatId: args.chatId,
+      category: args.category,
+    }),
   );
   const host = args.apnsEnv === "production"
     ? "api.push.apple.com"
@@ -220,74 +225,6 @@ function sendApnsRequest(
   });
 }
 
-async function sendFcmNotifications(
-  ctx: ActionCtx,
-  args: {
-    tokens: Array<{ _id: Id<"deviceTokens">; token: string }>;
-    serverKey: string;
-    title: string;
-    body: string;
-    chatId?: string;
-  },
-): Promise<void> {
-  const basePayload = buildFcmPayload({
-    title: args.title,
-    body: args.body,
-    chatId: args.chatId,
-  });
-
-  for (const tokenDoc of args.tokens) {
-    try {
-      const response = await fetch("https://fcm.googleapis.com/fcm/send", {
-        method: "POST",
-        headers: {
-          authorization: `key=${args.serverKey}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          to: tokenDoc.token,
-          ...basePayload,
-        }),
-      });
-
-      const rawText = await response.text();
-
-      if (response.status >= 200 && response.status < 300) {
-        const body = parseFcmResponseBody(rawText);
-        if (body === null) {
-          console.error(`[push] FCM 2xx with invalid JSON body: ${rawText}`);
-          continue;
-        }
-
-        const firstError = extractFirstFcmError(body);
-        if (firstError === null) {
-          console.error(`[push] FCM 2xx with invalid results shape: ${rawText}`);
-          continue;
-        }
-
-        if (firstError === "NotRegistered" || firstError === "InvalidRegistration") {
-          console.log(`[push] FCM token ${tokenDoc.token.slice(0, 8)}... is stale (${firstError}), deleting`);
-          await ctx.runMutation(internal.push.mutations_internal.deleteStaleToken, {
-            tokenId: tokenDoc._id,
-          });
-          continue;
-        }
-
-        if (firstError) {
-          console.error(`[push] FCM delivery failed for ${tokenDoc.token.slice(0, 8)}...: ${firstError}`);
-          continue;
-        }
-
-        console.log(`[push] FCM sent to ${tokenDoc.token.slice(0, 8)}...`);
-      } else {
-        console.error(`[push] FCM ${response.status}: ${rawText}`);
-      }
-    } catch (error) {
-      console.error(`[push] FCM failed for ${tokenDoc.token.slice(0, 8)}...:`, error);
-    }
-  }
-}
-
 async function sendWebPushNotifications(
   ctx: ActionCtx,
   args: {
@@ -298,10 +235,16 @@ async function sendWebPushNotifications(
     title: string;
     body: string;
     chatId?: string;
+    category?: string;
   },
 ): Promise<void> {
   webpush.setVapidDetails(args.vapidSubject, args.vapidPublicKey, args.vapidPrivateKey);
-  const payload = JSON.stringify(buildWebPushPayload({ title: args.title, body: args.body, chatId: args.chatId }));
+  const payload = JSON.stringify(buildWebPushPayload({
+    title: args.title,
+    body: args.body,
+    chatId: args.chatId,
+    category: args.category,
+  }));
 
   for (const tokenDoc of args.tokens) {
     if (!tokenDoc.subscription) continue;
@@ -321,38 +264,4 @@ async function sendWebPushNotifications(
       }
     }
   }
-}
-
-export function parseFcmResponseBody(rawText: string): unknown | null {
-  try {
-    return JSON.parse(rawText);
-  } catch {
-    return null;
-  }
-}
-
-export function extractFirstFcmError(body: unknown): string | null {
-  if (!isPlainObject(body)) {
-    return null;
-  }
-
-  const results = body.results;
-  if (!Array.isArray(results) || results.length === 0) {
-    return null;
-  }
-
-  const firstResult = results[0];
-  if (!isPlainObject(firstResult)) {
-    return null;
-  }
-
-  if ("error" in firstResult && typeof firstResult.error !== "string") {
-    return null;
-  }
-
-  return typeof firstResult.error === "string" ? firstResult.error : "";
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

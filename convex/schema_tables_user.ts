@@ -87,6 +87,7 @@ export const userSchemaTables = {
     pickerSortSecondaryDirection: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
     webSearchEnabledByDefault: v.boolean(),
     subagentsEnabledByDefault: v.optional(v.boolean()),
+    chatCompletionNotificationsEnabled: v.optional(v.boolean()),
     defaultSearchMode: v.optional(v.string()), // "basic" | "web" | "paper"
     defaultSearchComplexity: v.optional(v.number()), // 1 | 2 | 3
     autoAudioResponse: v.optional(v.boolean()),

@@ -9,7 +9,10 @@ export type PushMessage = {
   title: string;
   body: string;
   chatId?: string;
+  category?: string;
 };
+
+export const ANDROID_NOTIFICATION_CHANNEL_ID = "nanthai_edge_general";
 
 export function splitPushTokensByProvider(
   tokens: PushTokenDoc[],
@@ -53,19 +56,34 @@ export function buildApnsPayload(message: PushMessage): Record<string, unknown> 
         body: message.body,
       },
       sound: "default",
+      ...(message.category ? { category: message.category } : {}),
     },
     ...(message.chatId ? { chatId: message.chatId } : {}),
+    ...(message.category ? { category: message.category } : {}),
   };
 }
 
-export function buildFcmPayload(message: PushMessage): Record<string, unknown> {
+export function buildFcmPayload(
+  token: string,
+  message: PushMessage,
+): Record<string, unknown> {
   return {
-    notification: {
-      title: message.title,
-      body: message.body,
-    },
-    data: {
-      ...(message.chatId ? { chatId: message.chatId } : {}),
+    message: {
+      token,
+      notification: {
+        title: message.title,
+        body: message.body,
+      },
+      data: {
+        ...(message.chatId ? { chatId: message.chatId } : {}),
+        ...(message.category ? { category: message.category } : {}),
+      },
+      android: {
+        priority: "high",
+        notification: {
+          channelId: ANDROID_NOTIFICATION_CHANNEL_ID,
+        },
+      },
     },
   };
 }
@@ -75,5 +93,6 @@ export function buildWebPushPayload(message: PushMessage): Record<string, unknow
     title: message.title,
     body: message.body,
     ...(message.chatId ? { chatId: message.chatId } : {}),
+    ...(message.category ? { category: message.category } : {}),
   };
 }

@@ -116,6 +116,7 @@ export const coreSchemaTables = {
     sourceJobId: v.optional(v.id("scheduledJobs")),
     sourceStepIndex: v.optional(v.number()),
     sourceStepTitle: v.optional(v.string()),
+    chatCompletionNotifiedAt: v.optional(v.number()),
     // M9 — Internet Search
     searchContext: v.optional(v.any()), // Cached search queries + results for retry
     searchSessionId: v.optional(v.id("searchSessions")),
