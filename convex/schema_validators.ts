@@ -46,6 +46,12 @@ export const generationJobStatus = v.union(
   v.literal("timedOut"),
 );
 
+/** Durable per-job continuation lifecycle for multi-action tool loops. */
+export const generationContinuationStatus = v.union(
+  v.literal("waiting"),
+  v.literal("running"),
+);
+
 /** Parent subagent batch lifecycle. */
 export const subagentBatchStatus = v.union(
   v.literal("running_children"),

@@ -11,6 +11,7 @@ import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./a
 import { isAudioAttachment } from "./audio_shared";
 import { patchStreamingMessageStatus } from "./streaming_state";
 import { buildSeedTitle, isPlaceholderTitle } from "./title_helpers";
+import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
 import {
   createAssistantMessagesAndJobs,
   mapParticipantsForGeneration,
@@ -390,15 +391,42 @@ export async function cancelGenerationHandler(
     return;
   }
 
+  await cancelGenerationContinuationHandler(ctx, {
+    jobId: args.jobId,
+  });
   await ctx.db.patch(args.jobId, {
     status: "cancelled",
     completedAt: Date.now(),
+    scheduledFunctionId: undefined,
   });
 
   const message = await ctx.db.get(job.messageId);
   if (message && message.status !== "completed") {
     await ctx.db.patch(job.messageId, { status: "cancelled" });
     await patchStreamingMessageStatus(ctx, job.messageId, "cancelled");
+
+    const batch = await ctx.db
+      .query("subagentBatches")
+      .withIndex("by_parent_message", (q) => q.eq("parentMessageId", job.messageId))
+      .first();
+    if (batch && batch.status !== "completed" && batch.status !== "failed") {
+      const now = Date.now();
+      await ctx.db.patch(batch._id, { status: "cancelled", updatedAt: now });
+      const runs = await ctx.db
+        .query("subagentRuns")
+        .withIndex("by_batch", (q) => q.eq("batchId", batch._id))
+        .collect();
+      for (const run of runs) {
+        if (isTerminalSubagentStatus(run.status)) {
+          continue;
+        }
+        await ctx.db.patch(run._id, {
+          status: "cancelled",
+          completedAt: now,
+          updatedAt: now,
+        });
+      }
+    }
 
     // Also cancel the search session linked to this message (if any).
     if (message.searchSessionId) {
@@ -453,7 +481,14 @@ export async function cancelActiveGenerationHandler(
     .collect();
 
   for (const job of queuedJobs) {
-    await ctx.db.patch(job._id, { status: "cancelled", completedAt: now });
+    await cancelGenerationContinuationHandler(ctx, {
+      jobId: job._id,
+    });
+    await ctx.db.patch(job._id, {
+      status: "cancelled",
+      completedAt: now,
+      scheduledFunctionId: undefined,
+    });
     const message = await ctx.db.get(job.messageId);
     if (message && message.status !== "completed") {
       await ctx.db.patch(job.messageId, { status: "cancelled" });
@@ -492,7 +527,14 @@ export async function cancelActiveGenerationHandler(
     .collect();
 
   for (const job of streamingJobs) {
-    await ctx.db.patch(job._id, { status: "cancelled", completedAt: now });
+    await cancelGenerationContinuationHandler(ctx, {
+      jobId: job._id,
+    });
+    await ctx.db.patch(job._id, {
+      status: "cancelled",
+      completedAt: now,
+      scheduledFunctionId: undefined,
+    });
     const message = await ctx.db.get(job.messageId);
     if (message && message.status !== "completed") {
       await ctx.db.patch(job.messageId, { status: "cancelled" });

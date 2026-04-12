@@ -39,7 +39,7 @@ export function createToolCallLoopDepsForTest(
 }
 
 /** Maximum number of tool-call rounds before we force the model to stop. */
-const MAX_TOOL_ROUNDS = 20;
+export const MAX_TOOL_ROUNDS = 20;
 
 /**
  * Maximum length of a tool result's JSON string stored in the message.
@@ -72,6 +72,7 @@ export interface ToolCallLoopResult {
    * as the terminal response.
    */
   exitedEarly: boolean;
+  exitReason?: "round_budget" | "should_exit";
   /** All tool calls across all rounds, in execution order. */
   allToolCalls: RecordedToolCall[];
   /** All tool results across all rounds, in execution order. */
@@ -163,6 +164,8 @@ export interface ToolCallLoopOptions {
     round: number,
     streamResult: StreamResult,
   ) => Promise<boolean>;
+  /** Optional hard cap for how many tool rounds this invocation may execute. */
+  maxRoundsPerInvocation?: number;
 }
 
 /**
@@ -225,6 +228,7 @@ export async function runToolCallLoop(
   let currentParams = options.params;
   let round = 0;
   let exitedEarly = false;
+  let exitReason: ToolCallLoopResult["exitReason"];
   let deferredToolRound: DeferredToolRound | undefined;
 
   const allToolCalls: RecordedToolCall[] = [];
@@ -323,6 +327,15 @@ export async function runToolCallLoop(
       break;
     }
 
+    if (
+      options.maxRoundsPerInvocation != null &&
+      round >= options.maxRoundsPerInvocation
+    ) {
+      exitedEarly = true;
+      exitReason = "round_budget";
+      break;
+    }
+
     // Re-call OpenRouter with the extended conversation.
     // On the final allowed round, force the model NOT to call tools again.
     // Always disable webSearchEnabled on re-calls — web grounding from the
@@ -349,6 +362,7 @@ export async function runToolCallLoop(
       const shouldExit = await options.shouldExitLoop(round, currentResult);
       if (shouldExit) {
         exitedEarly = true;
+        exitReason = "should_exit";
         break;
       }
     }
@@ -357,6 +371,7 @@ export async function runToolCallLoop(
   return {
     streamResult: currentResult,
     exitedEarly,
+    exitReason,
     allToolCalls,
     allToolResults,
     conversationMessages,

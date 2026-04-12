@@ -4,7 +4,9 @@ import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
+import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
 import { generateForParticipant } from "../chat/actions_run_generation_participant";
 import {
   buildParentContinuationPayload,
@@ -26,6 +28,37 @@ function mapParentTerminalState(
   }
   if (messageStatus === "completed" || jobStatus === "completed") return "completed";
   return null;
+}
+
+async function finalizeParentResumeFailure(
+  ctx: ActionCtx,
+  batch: {
+    _id: Id<"subagentBatches">;
+    parentMessageId: Id<"messages">;
+    parentJobId: Id<"generationJobs">;
+    chatId: Id<"chats">;
+    userId: string;
+  },
+  error: unknown,
+): Promise<void> {
+  const errorMessage = error instanceof Error ? error.message : "Unknown error";
+  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+    messageId: batch.parentMessageId,
+    jobId: batch.parentJobId,
+    chatId: batch.chatId,
+    content: `Error: ${errorMessage}`,
+    status: "failed",
+    error: errorMessage,
+    userId: batch.userId,
+  });
+  await ctx.runMutation(internal.chat.mutations.clearGenerationContinuation, {
+    jobId: batch.parentJobId,
+  });
+  await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
+    batchId: batch._id,
+    status: "failed",
+    expectedCurrentStatus: "resuming",
+  });
 }
 
 async function reconcileOrFailStaleResume(
@@ -219,9 +252,9 @@ export async function continueParentAfterSubagentsHandler(
     isPro: isProUser,
     allowSubagents: false,
   });
-  const apiKey = await getRequiredUserOpenRouterApiKey(ctx, participantSnapshot.userId);
 
   try {
+    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, participantSnapshot.userId);
     const generationResult = await generateForParticipant({
       ctx,
       args: {
@@ -235,6 +268,7 @@ export async function continueParentAfterSubagentsHandler(
         webSearchEnabled: false,
         enabledIntegrations: paramsSnapshot.enabledIntegrations,
         subagentsEnabled: false,
+        subagentBatchId: batch._id,
       },
       participant: participantSnapshot.participant,
       allMessages: [],
@@ -249,7 +283,36 @@ export async function continueParentAfterSubagentsHandler(
       runtimeProfile: "mobileBasic",
       apiKey,
       requestMessagesOverride: requestMessages,
+      forceToolChoiceNone: false,
       actionStartTime: Date.now(),
+      continuationHandoff: {
+        maxToolRoundsPerInvocation: 1,
+        continuationCount: 0,
+        onHandoff: async (checkpoint) => {
+          if (checkpoint.continuationCount > MAX_TOOL_ROUNDS) {
+            throw new ConvexError({
+              code: "INTERNAL_ERROR" as const,
+              message: "Parent continuation exceeded the tool round limit.",
+            });
+          }
+          await scheduleGenerationContinuation(ctx, {
+            chatId: participantSnapshot.chatId,
+            userMessageId: batch.sourceUserMessageId,
+            assistantMessageIds: [batch.parentMessageId],
+            generationJobIds: [batch.parentJobId],
+            participant: participantSnapshot.participant,
+            userId: participantSnapshot.userId,
+            expandMultiModelGroups: false,
+            webSearchEnabled: false,
+            effectiveIntegrations: paramsSnapshot.enabledIntegrations ?? [],
+            directToolNames: [],
+            isPro: isProUser,
+            allowSubagents: false,
+            subagentBatchId: batch._id,
+            resumeExpected: true,
+          }, checkpoint);
+        },
+      },
     });
 
     if (generationResult.deferredForSubagents) {
@@ -275,6 +338,10 @@ export async function continueParentAfterSubagentsHandler(
       });
     }
 
+    if (generationResult.continued) {
+      return;
+    }
+
     const parentMessage = await ctx.runQuery(internal.chat.queries.getMessageInternal, {
       messageId: batch.parentMessageId,
     });
@@ -297,11 +364,7 @@ export async function continueParentAfterSubagentsHandler(
         userId: batch.userId,
       });
     }
-  } catch {
-    await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-      batchId: batch._id,
-      status: "failed",
-      expectedCurrentStatus: "resuming",
-    });
+  } catch (error) {
+    await finalizeParentResumeFailure(ctx, batch, error);
   }
 }

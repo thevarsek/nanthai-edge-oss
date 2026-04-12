@@ -7,19 +7,25 @@
 import { mutation, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import {
+  cancelGenerationContinuationArgs,
   cancelActiveGenerationArgs,
   cancelGenerationArgs,
+  claimGenerationContinuationArgs,
+  clearGenerationContinuationArgs,
   createChatArgs,
   createMemoryArgs,
   deleteKnowledgeBaseFileArgs,
   finalizeGenerationArgs,
   isJobCancelledArgs,
   markChatCompletionNotifiedArgs,
+  markPostProcessScheduledArgs,
   patchMessageAudioArgs,
   reinforceMemoryArgs,
   requestAudioGenerationArgs,
   retryMessageArgs,
+  saveGenerationContinuationArgs,
   sendMessageArgs,
+  setGenerationContinuationScheduledArgs,
   storeGenerationUsageArgs,
   storeAncillaryCostArgs,
   supersedeMemoryArgs,
@@ -30,6 +36,14 @@ import {
   updateMessageReasoningArgs,
   updateMessageToolCallsArgs,
 } from "./mutations_args";
+import {
+  cancelGenerationContinuationHandler,
+  claimGenerationContinuationHandler,
+  clearGenerationContinuationHandler,
+  markPostProcessScheduledHandler,
+  saveGenerationContinuationHandler,
+  setGenerationContinuationScheduledHandler,
+} from "./mutations_generation_continuation_handlers";
 import {
   cancelActiveGenerationHandler,
   cancelGenerationHandler,
@@ -122,6 +136,12 @@ export const markChatCompletionNotified = internalMutation({
   handler: markChatCompletionNotifiedHandler,
 });
 
+export const markPostProcessScheduled = internalMutation({
+  args: markPostProcessScheduledArgs,
+  returns: v.boolean(),
+  handler: markPostProcessScheduledHandler,
+});
+
 export const patchMessageAudio = internalMutation({
   args: patchMessageAudioArgs,
   handler: patchMessageAudioHandler,
@@ -149,6 +169,32 @@ export const finalizeGeneration = internalMutation({
 export const updateJobStatus = internalMutation({
   args: updateJobStatusArgs,
   handler: updateJobStatusHandler,
+});
+
+export const saveGenerationContinuation = internalMutation({
+  args: saveGenerationContinuationArgs,
+  handler: saveGenerationContinuationHandler,
+});
+
+export const claimGenerationContinuation = internalMutation({
+  args: claimGenerationContinuationArgs,
+  returns: v.union(v.any(), v.null()),
+  handler: claimGenerationContinuationHandler,
+});
+
+export const setGenerationContinuationScheduled = internalMutation({
+  args: setGenerationContinuationScheduledArgs,
+  handler: setGenerationContinuationScheduledHandler,
+});
+
+export const clearGenerationContinuation = internalMutation({
+  args: clearGenerationContinuationArgs,
+  handler: clearGenerationContinuationHandler,
+});
+
+export const cancelGenerationContinuation = internalMutation({
+  args: cancelGenerationContinuationArgs,
+  handler: cancelGenerationContinuationHandler,
 });
 
 export const isJobCancelled = internalMutation({

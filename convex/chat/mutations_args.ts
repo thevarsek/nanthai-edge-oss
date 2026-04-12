@@ -5,6 +5,7 @@ import {
   memoryScopeType,
   memorySourceType,
 } from "../schema_validators";
+import { participantConfigValidator } from "./actions_args";
 
 export const attachmentValidator = v.object({
   type: v.string(),
@@ -34,6 +35,8 @@ export const participantValidator = v.object({
   includeReasoning: v.optional(v.boolean()),
   reasoningEffort: v.optional(v.union(v.string(), v.null())),
 });
+
+const generationParticipantValidator = participantConfigValidator;
 
 export const createChatArgs = {
   title: v.optional(v.string()),
@@ -98,6 +101,10 @@ export const updateMessageReasoningArgs = {
 } satisfies PropertyValidators;
 
 export const markChatCompletionNotifiedArgs = {
+  messageId: v.id("messages"),
+} satisfies PropertyValidators;
+
+export const markPostProcessScheduledArgs = {
   messageId: v.id("messages"),
 } satisfies PropertyValidators;
 
@@ -216,6 +223,84 @@ export const updateJobStatusArgs = {
   ),
   startedAt: v.optional(v.number()),
   error: v.optional(v.string()),
+} satisfies PropertyValidators;
+
+export const saveGenerationContinuationArgs = {
+  chatId: v.id("chats"),
+  messageId: v.id("messages"),
+  jobId: v.id("generationJobs"),
+  userId: v.string(),
+  checkpoint: v.object({
+    participant: generationParticipantValidator,
+    group: v.object({
+      assistantMessageIds: v.array(v.id("messages")),
+      generationJobIds: v.array(v.id("generationJobs")),
+      userMessageId: v.id("messages"),
+      userId: v.string(),
+      expandMultiModelGroups: v.boolean(),
+      webSearchEnabled: v.boolean(),
+      effectiveIntegrations: v.array(v.string()),
+      directToolNames: v.array(v.string()),
+      isPro: v.boolean(),
+      allowSubagents: v.boolean(),
+      searchSessionId: v.optional(v.id("searchSessions")),
+      subagentBatchId: v.optional(v.id("subagentBatches")),
+    }),
+    messages: v.any(),
+    usage: v.optional(
+      v.object({
+        promptTokens: v.number(),
+        completionTokens: v.number(),
+        totalTokens: v.number(),
+        cost: v.optional(v.number()),
+        isByok: v.optional(v.boolean()),
+        cachedTokens: v.optional(v.number()),
+        cacheWriteTokens: v.optional(v.number()),
+        audioPromptTokens: v.optional(v.number()),
+        videoTokens: v.optional(v.number()),
+        reasoningTokens: v.optional(v.number()),
+        imageCompletionTokens: v.optional(v.number()),
+        audioCompletionTokens: v.optional(v.number()),
+        upstreamInferenceCost: v.optional(v.number()),
+        upstreamInferencePromptCost: v.optional(v.number()),
+        upstreamInferenceCompletionsCost: v.optional(v.number()),
+      }),
+    ),
+    toolCalls: v.array(v.object({
+      id: v.string(),
+      name: v.string(),
+      arguments: v.string(),
+    })),
+    toolResults: v.array(v.object({
+      toolCallId: v.string(),
+      toolName: v.string(),
+      result: v.string(),
+      isError: v.optional(v.boolean()),
+    })),
+    activeProfiles: v.array(v.string()),
+    compactionCount: v.number(),
+    continuationCount: v.number(),
+    partialContent: v.optional(v.string()),
+    partialReasoning: v.optional(v.string()),
+  }),
+} satisfies PropertyValidators;
+
+export const claimGenerationContinuationArgs = {
+  jobId: v.id("generationJobs"),
+} satisfies PropertyValidators;
+
+export const setGenerationContinuationScheduledArgs = {
+  jobId: v.id("generationJobs"),
+  scheduledFunctionId: v.id("_scheduled_functions"),
+  updateContinuation: v.optional(v.boolean()),
+} satisfies PropertyValidators;
+
+export const clearGenerationContinuationArgs = {
+  jobId: v.id("generationJobs"),
+} satisfies PropertyValidators;
+
+export const cancelGenerationContinuationArgs = {
+  jobId: v.id("generationJobs"),
 } satisfies PropertyValidators;
 
 export const isJobCancelledArgs = {

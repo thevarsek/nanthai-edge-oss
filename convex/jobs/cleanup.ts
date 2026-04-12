@@ -7,6 +7,7 @@
 import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { MAX_CONSECUTIVE_FAILURES } from "../scheduledJobs/actions_lifecycle";
+import { cancelGenerationContinuationHandler } from "../chat/mutations_generation_continuation_handlers";
 
 const STALE_QUEUED_JOB_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const STALE_STREAMING_JOB_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes
@@ -118,11 +119,16 @@ export const cleanStale = internalMutation({
         continue;
       }
 
+      await cancelGenerationContinuationHandler(ctx, {
+        jobId: job._id,
+      });
+
       // Mark job as failed
       await ctx.db.patch(job._id, {
         status: "failed",
         error: STALE_ERROR,
         completedAt: now,
+        scheduledFunctionId: undefined,
       });
 
       // Also mark the corresponding message as failed

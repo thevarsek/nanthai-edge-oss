@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
-import { sendMessageHandler, cancelActiveGenerationHandler } from "../chat/mutations_public_handlers";
+import {
+  cancelActiveGenerationHandler,
+  cancelGenerationHandler,
+  sendMessageHandler,
+} from "../chat/mutations_public_handlers";
 import { updateChatHandler } from "../chat/manage_handlers";
 import { continueParentAfterSubagentsHandler } from "../subagents/actions_continue_parent";
 import { runSubagentRunHandler } from "../subagents/actions_run_subagent";
@@ -315,6 +319,78 @@ test("cancelActiveGenerationHandler preserves timedOut subagent runs", async () 
   assert.ok(patches.some((entry) => entry.id === "search_1" && entry.value.status === "cancelled"));
 });
 
+test("cancelGenerationHandler cancels subagent batches for a single job", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "job_1") {
+          return {
+            _id: "job_1",
+            userId: "user_1",
+            messageId: "msg_1",
+            status: "streaming",
+          };
+        }
+        if (id === "msg_1") {
+          return { _id: "msg_1", status: "streaming" };
+        }
+        return null;
+      },
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+      query: (table: string) => {
+        if (table === "generationContinuations") {
+          return {
+            withIndex: () => ({
+              first: async () => null,
+            }),
+          };
+        }
+        if (table === "subagentBatches") {
+          return {
+            withIndex: () => ({
+              first: async () => ({ _id: "batch_1", status: "running_children" }),
+            }),
+          };
+        }
+        if (table === "subagentRuns") {
+          return {
+            withIndex: () => ({
+              collect: async () => [
+                { _id: "run_live", status: "streaming" },
+                { _id: "run_done", status: "completed" },
+              ],
+            }),
+          };
+        }
+        if (table === "streamingMessages") {
+          return {
+            withIndex: () => ({
+              collect: async () => [],
+              first: async () => null,
+            }),
+          };
+        }
+        throw new Error(`Unexpected table query: ${table}`);
+      },
+    },
+    scheduler: {
+      cancel: async () => undefined,
+    },
+  } as any;
+
+  await cancelGenerationHandler(ctx, { jobId: "job_1" } as any);
+
+  assert.ok(patches.some((entry) => entry.id === "batch_1" && entry.value.status === "cancelled"));
+  assert.ok(patches.some((entry) => entry.id === "run_live" && entry.value.status === "cancelled"));
+  assert.ok(!patches.some((entry) => entry.id === "run_done"));
+});
+
 test("continueParentAfterSubagentsHandler reconciles stale completed resumes without replaying generation", async () => {
   const runMutationCalls: Array<Record<string, unknown>> = [];
   let queryStep = 0;
@@ -435,6 +511,74 @@ test("continueParentAfterSubagentsHandler schedules postProcess with the source 
   assert.ok(postProcessArgs);
   assert.equal(postProcessArgs?.userMessageId, "user_msg_1");
   assert.deepEqual(postProcessArgs?.assistantMessageIds, ["assistant_msg_1"]);
+});
+
+test("continueParentAfterSubagentsHandler finalizes parent failure and clears continuation on error", async () => {
+  const mutationCalls: Array<Record<string, unknown>> = [];
+  let queryStep = 0;
+  let userScopedQueryCount = 0;
+
+  const ctx = {
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      mutationCalls.push(args);
+      if ("batchId" in args && !("status" in args) && !("generatedFiles" in args)) {
+        return true;
+      }
+      return true;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("userId" in args) {
+        userScopedQueryCount += 1;
+        return userScopedQueryCount === 1
+          ? { isPro: true }
+          : null;
+      }
+      queryStep += 1;
+      if (queryStep === 1) {
+        return {
+          _id: "batch_1",
+          status: "resuming",
+          updatedAt: Date.now(),
+          parentMessageId: "assistant_msg_1",
+          sourceUserMessageId: "user_msg_1",
+          parentJobId: "job_1",
+          chatId: "chat_1",
+          userId: "user_1",
+          resumeConversationSeed: [],
+          toolCallId: "tool_1",
+          participantSnapshot: {
+            chatId: "chat_1",
+            userId: "user_1",
+            participant: { modelId: "openai/gpt-4o" },
+          },
+          paramsSnapshot: {},
+        };
+      }
+      if (queryStep === 2) {
+        return [];
+      }
+      if (queryStep === 3) {
+        return { _id: "assistant_msg_1", status: "streaming" };
+      }
+      if (queryStep === 4) {
+        return { _id: "job_1", status: "streaming" };
+      }
+      throw new Error(`Unexpected query step ${queryStep}`);
+    },
+    scheduler: {
+      runAfter: async () => "sched_1",
+    },
+  } as any;
+
+  await continueParentAfterSubagentsHandler(ctx, { batchId: "batch_1" } as any);
+
+  assert.ok(mutationCalls.some((args) =>
+    args.messageId === "assistant_msg_1"
+    && args.jobId === "job_1"
+    && args.status === "failed"
+  ));
+  assert.ok(mutationCalls.some((args) => args.jobId === "job_1"));
+  assert.ok(mutationCalls.some((args) => args.batchId === "batch_1" && args.status === "failed"));
 });
 
 test("runSubagentRunHandler fails stale streaming runs instead of replaying them", async () => {

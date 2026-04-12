@@ -4,6 +4,7 @@ import {
   autonomousStatus,
   chatMode,
   chatSource,
+  generationContinuationStatus,
   generationJobStatus,
   messageRole,
   messageStatus,
@@ -117,6 +118,7 @@ export const coreSchemaTables = {
     sourceStepIndex: v.optional(v.number()),
     sourceStepTitle: v.optional(v.string()),
     chatCompletionNotifiedAt: v.optional(v.number()),
+    postProcessScheduledAt: v.optional(v.number()),
     // M9 — Internet Search
     searchContext: v.optional(v.any()), // Cached search queries + results for retry
     searchSessionId: v.optional(v.id("searchSessions")),
@@ -178,7 +180,7 @@ export const coreSchemaTables = {
     modelId: v.string(),
     status: generationJobStatus,
     error: v.optional(v.string()),
-    scheduledFunctionId: v.optional(v.string()),
+    scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     sourceJobId: v.optional(v.id("scheduledJobs")),
     sourceExecutionId: v.optional(v.string()),
     sourceStepIndex: v.optional(v.number()),
@@ -191,6 +193,43 @@ export const coreSchemaTables = {
     .index("by_chat_status", ["chatId", "status"])
     .index("by_user_status", ["userId", "status"])
     .index("by_status", ["status", "createdAt"]),
+
+  generationContinuations: defineTable({
+    chatId: v.id("chats"),
+    messageId: v.id("messages"),
+    jobId: v.id("generationJobs"),
+    userId: v.string(),
+    status: generationContinuationStatus,
+    participantSnapshot: v.any(),
+    groupSnapshot: v.any(),
+    requestMessages: v.any(),
+    usage: v.optional(usageObject),
+    toolCalls: v.optional(v.array(v.object({
+      id: v.string(),
+      name: v.string(),
+      arguments: v.string(),
+    }))),
+    toolResults: v.optional(v.array(v.object({
+      toolCallId: v.string(),
+      toolName: v.string(),
+      result: v.string(),
+      isError: v.optional(v.boolean()),
+    }))),
+    activeProfiles: v.array(v.string()),
+    compactionCount: v.number(),
+    continuationCount: v.number(),
+    partialContent: v.optional(v.string()),
+    partialReasoning: v.optional(v.string()),
+    scheduledAt: v.optional(v.number()),
+    scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    claimedAt: v.optional(v.number()),
+    leaseExpiresAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_chat", ["chatId", "updatedAt"]),
 
   autonomousSessions: defineTable({
     chatId: v.id("chats"),

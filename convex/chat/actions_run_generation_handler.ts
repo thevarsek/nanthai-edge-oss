@@ -2,18 +2,15 @@
 
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 import { failPendingParticipants } from "./actions_run_generation_failures";
-import { prepareGenerationContext } from "./actions_run_generation_context";
-import { generateForParticipant } from "./actions_run_generation_participant";
 import { RunGenerationArgs } from "./actions_run_generation_types";
-import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import {
   checkAppleCalendarConnection,
   checkMicrosoftConnection,
   checkNotionConnection,
   getGrantedGoogleIntegrations,
 } from "../tools/index";
-import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
 import { attachmentTriggeredReadToolNames } from "./helpers_attachment_utils";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
@@ -23,9 +20,6 @@ const defaultRunGenerationHandlerDeps = {
   now: () => Date.now(),
   generation: {
     failPendingParticipants,
-    prepareGenerationContext,
-    generateForParticipant,
-    getRequiredUserOpenRouterApiKey,
   },
   integrations: {
     checkAppleCalendarConnection,
@@ -34,7 +28,6 @@ const defaultRunGenerationHandlerDeps = {
     getGrantedGoogleIntegrations,
   },
   tools: {
-    buildProgressiveToolRegistry,
     attachmentTriggeredReadToolNames,
   },
 };
@@ -53,6 +46,10 @@ export async function runGenerationHandler(
   deps: RunGenerationHandlerDeps = defaultRunGenerationHandlerDeps,
 ): Promise<void> {
   const actionStartTime = deps.now();
+  const scheduledParticipants: Array<{
+    jobId: Id<"generationJobs">;
+    scheduledFunctionId: Id<"_scheduled_functions">;
+  }> = [];
   console.info("[runGeneration] started", {
     chatId: args.chatId,
     userMessageId: args.userMessageId,
@@ -61,14 +58,6 @@ export async function runGenerationHandler(
     searchSessionId: args.searchSessionId ?? null,
   });
   try {
-    const { allMessages, memoryContext, modelCapabilities } =
-      await deps.generation.prepareGenerationContext(ctx, args);
-    const apiKey = await deps.generation.getRequiredUserOpenRouterApiKey(
-      ctx,
-      args.userId,
-    );
-
-    // M10: Build tool registry once, share across all participants.
     // Intersect user-requested integrations with actual OAuth connection status.
     // M14: Check Pro status to gate Pro-only tools.
     const requestedIntegrations = args.enabledIntegrations ?? [];
@@ -80,8 +69,9 @@ export async function runGenerationHandler(
       { userId: args.userId },
     );
     const isProUser = accountCapabilities.isPro;
-    const currentUserMessage = allMessages.find(
-      (message) => message._id === args.userMessageId,
+    const currentUserMessage = await ctx.runQuery(
+      internal.chat.queries.getMessageInternal,
+      { messageId: args.userMessageId },
     );
     const directToolNames = deps.tools.attachmentTriggeredReadToolNames(
       currentUserMessage?.attachments,
@@ -147,112 +137,58 @@ export async function runGenerationHandler(
         );
       }
     }
-    const toolRegistry = deps.tools.buildProgressiveToolRegistry({
-      enabledIntegrations: effectiveIntegrations,
-      isPro: isProUser,
-      allowSubagents: args.subagentsEnabled === true && args.participants.length === 1,
-      directToolNames,
-    });
+    const allowSubagents =
+      args.subagentsEnabled === true && args.participants.length === 1;
 
-    const generationResults = await Promise.all(
-      args.participants.map((participant) =>
-        deps.generation.generateForParticipant({
-          ctx,
-          args,
+    for (const participant of args.participants) {
+      const scheduledId = await ctx.scheduler.runAfter(
+        0,
+        internal.chat.actions.runGenerationParticipant,
+        {
+          chatId: args.chatId,
+          userMessageId: args.userMessageId,
+          assistantMessageIds: args.assistantMessageIds,
+          generationJobIds: args.generationJobIds,
           participant,
-          allMessages,
-          memoryContext,
-          modelCapabilities,
-          toolRegistry,
-          progressiveTools: {
-            enabledIntegrations: effectiveIntegrations,
-            allowSubagents:
-              args.subagentsEnabled === true && args.participants.length === 1,
-            directToolNames,
-          },
+          userId: args.userId,
+          expandMultiModelGroups: args.expandMultiModelGroups,
+          webSearchEnabled: args.webSearchEnabled,
+          effectiveIntegrations,
+          directToolNames,
           isPro: isProUser,
-          runtimeProfile: "mobileBasic",
-          apiKey,
-          actionStartTime,
-        }),
-      ),
-    );
+          allowSubagents,
+          searchSessionId: args.searchSessionId,
+          resumeExpected: false,
+        },
+      );
+      scheduledParticipants.push({
+        jobId: participant.jobId,
+        scheduledFunctionId: scheduledId,
+      });
 
-    // AUDIT-1: Skip postProcess when all participants were cancelled or failed
-    // — no useful content was generated, so title generation and memory
-    // extraction would be wasteful.
-    const anyDeferred = generationResults.some((r) => r.deferredForSubagents);
-    const allCancelled = generationResults.every((r) => r.cancelled);
-    const anyFailed = generationResults.some((r) => r.failed);
-    const allCancelledOrFailed = generationResults.every(
-      (r) => r.cancelled || r.failed,
-    );
-
-    if (!anyDeferred && !allCancelledOrFailed) {
-      await ctx.scheduler.runAfter(0, internal.chat.actions.postProcess, {
-        chatId: args.chatId,
-        userMessageId: args.userMessageId,
-        assistantMessageIds: args.assistantMessageIds,
-        userId: args.userId,
+      await ctx.runMutation(internal.chat.mutations.setGenerationContinuationScheduled, {
+        jobId: participant.jobId,
+        scheduledFunctionId: scheduledId,
+        updateContinuation: false,
       });
     }
 
-    // If this runGeneration was scheduled from a search path (C/D/regen),
-    // determine the final session status from the actual generation outcomes.
-    // generateForParticipant catches cancellation internally and returns
-    // normally with `cancelled: true`, so we check that flag here.
-    // AUDIT-2: Don't finalize the session when deferred for subagents — the
-    // subagent continuation handler will finalize it when all children complete.
-    if (args.searchSessionId && !anyDeferred) {
-      const anyCancelled = generationResults.some((r) => r.cancelled);
-
-      if (allCancelled) {
-        await ctx.runMutation(internal.search.mutations.updateSearchSession, {
-          sessionId: args.searchSessionId,
-          patch: {
-            status: "cancelled",
-            currentPhase: "cancelled",
-            completedAt: deps.now(),
-          },
-        });
-      } else if (allCancelledOrFailed) {
-        // All participants either cancelled or failed — no successful output
-        await ctx.runMutation(internal.search.mutations.updateSearchSession, {
-          sessionId: args.searchSessionId,
-          patch: {
-            status: "failed",
-            currentPhase: "failed",
-            errorMessage: "All generation participants failed",
-            completedAt: deps.now(),
-          },
-        });
-      } else {
-        await ctx.runMutation(internal.search.mutations.updateSearchSession, {
-          sessionId: args.searchSessionId,
-          patch: {
-            status: "completed",
-            progress: 100,
-            currentPhase: "completed",
-            completedAt: deps.now(),
-          },
-        });
-        if (anyCancelled || anyFailed) {
-          console.warn(
-            `[runGeneration] Mixed outcome: cancelled=${anyCancelled}, failed=${anyFailed}, session marked completed`,
-          );
-        }
-      }
-    }
     const durationMs = deps.now() - actionStartTime;
     console.info("[runGeneration] completed", {
       chatId: args.chatId,
       userMessageId: args.userMessageId,
       userId: args.userId,
       durationMs,
-      allCancelledOrFailed,
+      participantCount: args.participants.length,
     });
   } catch (error) {
     const durationMs = deps.now() - actionStartTime;
+    const scheduledByJobId = new Map(
+      scheduledParticipants.map((participant) => [participant.jobId, participant]),
+    );
+    const participantsToFinalize = args.participants.filter(
+      (participant) => !scheduledByJobId.has(participant.jobId),
+    );
     console.error("[runGeneration] failed", {
       chatId: args.chatId,
       userMessageId: args.userMessageId,
@@ -260,6 +196,29 @@ export async function runGenerationHandler(
       durationMs,
       error: error instanceof Error ? error.message : String(error),
     });
+    for (const scheduledParticipant of scheduledParticipants) {
+      try {
+        await ctx.scheduler.cancel(scheduledParticipant.scheduledFunctionId);
+        const cancelledParticipant = args.participants.find(
+          (participant) => participant.jobId === scheduledParticipant.jobId,
+        );
+        if (cancelledParticipant) {
+          participantsToFinalize.push(cancelledParticipant);
+        }
+      } catch {
+        // Already executed or cancelled.
+      }
+      try {
+        await ctx.runMutation(internal.chat.mutations.clearGenerationContinuation, {
+          jobId: scheduledParticipant.jobId,
+        });
+      } catch (cleanupError) {
+        console.error("[runGeneration] failed to clear scheduled participant", {
+          jobId: scheduledParticipant.jobId,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      }
+    }
     // If this runGeneration was scheduled from a search path, propagate the
     // failure (or cancellation) to the search session so the UI shows the
     // correct state.
@@ -286,6 +245,11 @@ export async function runGenerationHandler(
         );
       }
     }
-    await deps.generation.failPendingParticipants(ctx, args, error);
+    if (participantsToFinalize.length > 0) {
+      await deps.generation.failPendingParticipants(ctx, {
+        ...args,
+        participants: participantsToFinalize,
+      }, error);
+    }
   }
 }

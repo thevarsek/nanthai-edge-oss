@@ -236,3 +236,46 @@ test("runToolCallLoop supports early exit and truncates stored tool metadata", a
   assert.match(result.allToolCalls[0]?.arguments ?? "", /\[truncated\]$/);
   assert.match(result.allToolResults[0]?.result ?? "", /\[truncated\]$/);
 });
+
+test("runToolCallLoop exits after the configured round budget before the next model call", async () => {
+  const registry = new ToolRegistry();
+  registry.register(
+    createTool({
+      name: "one_round_tool",
+      description: "single round",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({ success: true, data: { ok: true } }),
+    }),
+  );
+
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () => {
+      streamCalls += 1;
+      return makeStreamResult({ content: "should not happen" });
+    },
+  });
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [makeToolCall("call_1", "one_round_tool", {})],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "hi" }],
+      params: {},
+      callbacks: {},
+      registry,
+      toolCtx: { ctx: {} as any, userId: "user_1" },
+      maxRoundsPerInvocation: 1,
+    },
+    deps,
+  );
+
+  assert.equal(streamCalls, 0);
+  assert.equal(result.exitedEarly, true);
+  assert.equal(result.exitReason, "round_budget");
+  assert.equal(result.conversationMessages.length, 3);
+});

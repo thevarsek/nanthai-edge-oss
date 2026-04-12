@@ -176,6 +176,14 @@ export async function finalizeGenerationHandler(
     }
   }
 
+  const continuation = await ctx.db
+    .query("generationContinuations")
+    .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+    .first();
+  if (continuation) {
+    await ctx.db.delete(continuation._id);
+  }
+
   const streamingMessage = await getStreamingMessageByMessageId(ctx, args.messageId);
   const persistedMessage = await ctx.db.get(args.messageId);
 
@@ -281,6 +289,7 @@ export async function finalizeGenerationHandler(
     status: mapFinalMessageStatusToJobStatus(finalStatus),
     error: args.error,
     completedAt: now,
+    scheduledFunctionId: undefined,
   });
 
   const chat = await ctx.db.get(args.chatId);

@@ -8,6 +8,7 @@ import {
   gateParameters,
   OnDelta,
   OnReasoningDelta,
+  OpenRouterUsage,
   resolvePerplexityCitations,
 } from "../lib/openrouter";
 import { buildRequestMessages } from "./helpers";
@@ -41,9 +42,10 @@ import {
 } from "../skills/helpers";
 import { StreamWriter } from "./stream_writer";
 import { ToolRegistry } from "../tools/registry";
-import { RecordedToolCall } from "../tools/execute_loop";
+import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
 import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_helpers";
+import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
 import {
   availableProgressiveProfiles,
   buildProgressiveToolRegistry,
@@ -92,9 +94,23 @@ export interface GenerateForParticipantParams {
   apiKey: string;
   /** Optional prebuilt OpenRouter request messages for resumed flows. */
   requestMessagesOverride?: Array<any>;
+  initialTotalUsage?: OpenRouterUsage | null;
+  initialToolCalls?: RecordedToolCall[];
+  initialToolResults?: RecordedToolResult[];
+  initialCompactionCount?: number;
   /** Timestamp (ms) captured at the very start of the action, before context
    *  preparation. Used by the compaction layer to detect approaching timeout. */
   actionStartTime: number;
+  /** Optional active profiles restored from a durable continuation checkpoint. */
+  restoredActiveProfiles?: SkillToolProfileId[];
+  /** Optional override to disable new tool calls while preserving tool-aware prompts. */
+  forceToolChoiceNone?: boolean;
+  /** Optional cross-action continuation handoff callback. */
+  continuationHandoff?: {
+    maxToolRoundsPerInvocation: number;
+    onHandoff: (checkpoint: GenerationContinuationCheckpoint) => Promise<void>;
+    continuationCount: number;
+  };
 }
 
 async function resolveSystemPrompt(
@@ -117,7 +133,12 @@ async function resolveSystemPrompt(
 
 export async function generateForParticipant(
   params: GenerateForParticipantParams,
-): Promise<{ deferredForSubagents: boolean; cancelled: boolean; failed: boolean }> {
+): Promise<{
+  deferredForSubagents: boolean;
+  cancelled: boolean;
+  failed: boolean;
+  continued: boolean;
+}> {
   const {
     ctx,
     args,
@@ -131,6 +152,8 @@ export async function generateForParticipant(
     progressiveTools,
     isPro,
     apiKey,
+    forceToolChoiceNone,
+    continuationHandoff,
   } =
     params;
 
@@ -141,7 +164,12 @@ export async function generateForParticipant(
     { jobId: participant.jobId },
   );
   if (alreadyCancelled) {
-    return { deferredForSubagents: false, cancelled: true, failed: false };
+    return {
+      deferredForSubagents: false,
+      cancelled: true,
+      failed: false,
+      continued: false,
+    };
   }
 
   await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
@@ -283,8 +311,11 @@ export async function generateForParticipant(
       caps?.hasAudioInput,
     );
     const restoredProfiles = progressiveTools
-      ? extractProfilesFromConversation(requestMessages)
-      : [];
+      ? Array.from(new Set([
+          ...extractProfilesFromConversation(requestMessages),
+          ...(params.restoredActiveProfiles ?? []),
+        ]))
+      : (params.restoredActiveProfiles ?? []);
     const effectiveToolRegistry =
       progressiveTools &&
       modelSupportsTools &&
@@ -339,7 +370,7 @@ export async function generateForParticipant(
     // M10: Inject tool definitions when a registry is available.
     if (effectiveToolRegistry && !effectiveToolRegistry.isEmpty && modelSupportsTools) {
       rawParams.tools = effectiveToolRegistry.getDefinitions();
-      rawParams.toolChoice = "auto";
+      rawParams.toolChoice = forceToolChoiceNone ? "none" : "auto";
     }
 
     const gatedParams = gateParameters(
@@ -485,6 +516,12 @@ export async function generateForParticipant(
       modelContextLimit: caps?.contextLength ?? 128_000,
       writer,
       actionStartTime: params.actionStartTime,
+      allowContinuationHandoff: continuationHandoff != null,
+      initialTotalUsage: params.initialTotalUsage ?? null,
+      initialToolCalls: params.initialToolCalls ?? [],
+      initialToolResults: params.initialToolResults ?? [],
+      initialCompactionCount: params.initialCompactionCount ?? 0,
+      maxToolRoundsPerInvocation: continuationHandoff?.maxToolRoundsPerInvocation,
     });
 
     const result = genResult.streamResult;
@@ -555,7 +592,47 @@ export async function generateForParticipant(
           runId,
         });
       }
-      return { deferredForSubagents: true, cancelled: false, failed: false };
+      return {
+        deferredForSubagents: true,
+        cancelled: false,
+        failed: false,
+        continued: false,
+      };
+    }
+
+    if (genResult.continuation && continuationHandoff) {
+      await continuationHandoff.onHandoff({
+        participant,
+        group: {
+          assistantMessageIds: args.assistantMessageIds,
+          generationJobIds: args.generationJobIds,
+          userMessageId: args.userMessageId,
+          userId: args.userId,
+          expandMultiModelGroups: args.expandMultiModelGroups,
+          webSearchEnabled: args.webSearchEnabled,
+          effectiveIntegrations: progressiveTools?.enabledIntegrations ?? [],
+          directToolNames: progressiveTools?.directToolNames ?? [],
+          isPro,
+          allowSubagents: progressiveTools?.allowSubagents ?? false,
+          searchSessionId: args.searchSessionId,
+          subagentBatchId: (args as { subagentBatchId?: any }).subagentBatchId,
+        },
+        messages: genResult.continuation.messages,
+        usage: genResult.totalUsage ?? undefined,
+        toolCalls: collectedToolCalls,
+        toolResults: collectedToolResults,
+        activeProfiles: Array.from(activeProfiles),
+        compactionCount: genResult.compactionCount,
+        continuationCount: continuationHandoff.continuationCount + 1,
+        partialContent: writer.totalContent || undefined,
+        partialReasoning: writer.totalReasoning || undefined,
+      });
+      return {
+        deferredForSubagents: false,
+        cancelled: false,
+        failed: false,
+        continued: true,
+      };
     }
 
     const extractedFromResult = extractInlineImagePayloads(result.content);
@@ -654,7 +731,12 @@ export async function generateForParticipant(
       triggerUserMessageId: args.userMessageId,
       openrouterGenerationId: result.generationId ?? undefined,
     });
-    return { deferredForSubagents: false, cancelled: false, failed: false };
+    return {
+      deferredForSubagents: false,
+      cancelled: false,
+      failed: false,
+      continued: false,
+    };
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown generation error";
@@ -669,7 +751,12 @@ export async function generateForParticipant(
       error: errorMessage,
       userId: args.userId,
     });
-    return { deferredForSubagents: false, cancelled: wasCancelled, failed: !wasCancelled };
+    return {
+      deferredForSubagents: false,
+      cancelled: wasCancelled,
+      failed: !wasCancelled,
+      continued: false,
+    };
   } finally {
     // Stop the workspace (just-bash) sandbox — it is per-generation, not persistent.
     await sharedToolCtx.workspaceSandboxCleanup?.().catch(() => {});

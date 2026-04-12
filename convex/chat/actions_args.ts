@@ -32,6 +32,24 @@ export const runGenerationArgs = {
   searchSessionId: v.optional(v.id("searchSessions")),
 } satisfies PropertyValidators;
 
+export const runGenerationParticipantArgs = {
+  chatId: v.id("chats"),
+  userMessageId: v.id("messages"),
+  assistantMessageIds: v.array(v.id("messages")),
+  generationJobIds: v.array(v.id("generationJobs")),
+  participant: participantConfigValidator,
+  userId: v.string(),
+  expandMultiModelGroups: v.boolean(),
+  webSearchEnabled: v.boolean(),
+  effectiveIntegrations: v.array(v.string()),
+  directToolNames: v.optional(v.array(v.string())),
+  isPro: v.boolean(),
+  allowSubagents: v.boolean(),
+  searchSessionId: v.optional(v.id("searchSessions")),
+  subagentBatchId: v.optional(v.id("subagentBatches")),
+  resumeExpected: v.optional(v.boolean()),
+} satisfies PropertyValidators;
+
 export const postProcessArgs = {
   chatId: v.id("chats"),
   userMessageId: v.id("messages"),

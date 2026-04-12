@@ -62,7 +62,7 @@ export interface GenerationLoopResult {
   deferredToolRound?: DeferredToolRound;
   /** Safe continuation checkpoint for callers that support cross-action resume. */
   continuation?: {
-    reason: "timeout";
+    reason: "timeout" | "round_budget";
     messages: OpenRouterMessage[];
   };
   /** M23: Compaction usage records for ancillary cost tracking. */
@@ -98,6 +98,7 @@ export interface GenerationLoopOptions {
   initialToolCalls?: RecordedToolCall[];
   initialToolResults?: RecordedToolResult[];
   initialCompactionCount?: number;
+  maxToolRoundsPerInvocation?: number;
 }
 
 const defaultRunGenerationWithCompactionDeps = {
@@ -293,6 +294,7 @@ export async function runGenerationWithCompaction(
       onToolRoundStart,
       onToolRoundComplete,
       onPrepareNextTurn: options.onPrepareNextTurn,
+      maxRoundsPerInvocation: options.maxToolRoundsPerInvocation,
       shouldExitLoop: async (_round, roundResult) => {
         const roundUsage = roundResult.usage;
         const contextOverflow = roundUsage
@@ -327,6 +329,22 @@ export async function runGenerationWithCompaction(
         compactionCount,
         deferredToolRound: loopResult.deferredToolRound,
         continuation: undefined,
+        compactionUsages,
+      };
+    }
+
+    if (loopResult.exitReason === "round_budget" && options.allowContinuationHandoff) {
+      return {
+        streamResult: loopResult.streamResult,
+        allToolCalls,
+        allToolResults,
+        totalUsage,
+        compactionCount,
+        deferredToolRound: undefined,
+        continuation: {
+          reason: "round_budget",
+          messages: loopResult.conversationMessages,
+        },
         compactionUsages,
       };
     }

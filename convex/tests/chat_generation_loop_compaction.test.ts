@@ -256,6 +256,70 @@ test("runGenerationWithCompaction returns a continuation handoff when timeout co
   });
 });
 
+test("runGenerationWithCompaction returns a round-budget continuation without compaction", async () => {
+  let compactCalls = 0;
+  const deps = createRunGenerationWithCompactionDepsForTest({
+    callOpenRouterStreaming: async () =>
+      makeStreamResult({
+        finishReason: "tool_calls",
+        toolCalls: [makeToolCall("call_1", "search")],
+        usage: makeUsage(10, 1),
+      }),
+    runToolCallLoop: async () =>
+      makeLoopResult({
+        exitedEarly: true,
+        exitReason: "round_budget",
+        streamResult: makeStreamResult({
+          finishReason: "tool_calls",
+          toolCalls: [makeToolCall("call_2", "search")],
+          usage: makeUsage(10, 1),
+        }),
+        conversationMessages: [
+          { role: "user", content: "hi" },
+          { role: "assistant", content: null, tool_calls: [makeToolCall("call_1", "search")] },
+          { role: "tool", tool_call_id: "call_1", content: "{\"ok\":true}" },
+        ],
+      }),
+    compactMessages: async () => {
+      compactCalls += 1;
+      return {
+        summary: "unused",
+        usage: null,
+        generationId: null,
+        modelId: "compact-model",
+      };
+    },
+  });
+
+  const result = await runGenerationWithCompaction({
+    apiKey: "key",
+    model: "model",
+    messages: [{ role: "user", content: "hi" }],
+    params: {},
+    callbacks: {},
+    toolRegistry: { isEmpty: false } as any,
+    toolCtx: { ctx: {} as any, userId: "user_1" },
+    modelContextLimit: 100,
+    writer: {
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+    } as any,
+    actionStartTime: 0,
+    allowContinuationHandoff: true,
+    maxToolRoundsPerInvocation: 1,
+  }, deps);
+
+  assert.equal(compactCalls, 0);
+  assert.deepEqual(result.continuation, {
+    reason: "round_budget",
+    messages: [
+      { role: "user", content: "hi" },
+      { role: "assistant", content: null, tool_calls: [makeToolCall("call_1", "search")] },
+      { role: "tool", tool_call_id: "call_1", content: "{\"ok\":true}" },
+    ],
+  });
+});
+
 test("runGenerationWithCompaction forces a final text response after the continuation cap", async () => {
   const seenParams: Array<Record<string, unknown>> = [];
   const deps = createRunGenerationWithCompactionDepsForTest({

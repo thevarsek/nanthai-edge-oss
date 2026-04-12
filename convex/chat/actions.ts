@@ -16,6 +16,7 @@ import {
   postProcessArgs,
   previewVoiceArgs,
   runGenerationArgs,
+  runGenerationParticipantArgs,
 } from "./actions_args";
 import {
   generateAudioForMessageHandler,
@@ -25,11 +26,17 @@ import { extractMemoriesHandler } from "./actions_extract_memories_handler";
 import { generateTitleHandler } from "./actions_generate_title_handler";
 import { postProcessHandler } from "./actions_post_process_handler";
 import { runGenerationHandler } from "./actions_run_generation_handler";
+import { runGenerationParticipantHandler } from "./actions_run_generation_participant_action";
 import { fetchAndStoreGenerationUsageHandler } from "./actions_fetch_usage";
 
 export const runGeneration = internalAction({
   args: runGenerationArgs,
   handler: runGenerationHandler,
+});
+
+export const runGenerationParticipant = internalAction({
+  args: runGenerationParticipantArgs,
+  handler: runGenerationParticipantHandler,
 });
 
 export const postProcess = internalAction({

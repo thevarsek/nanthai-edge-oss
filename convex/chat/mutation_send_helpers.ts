@@ -1,6 +1,7 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
+import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
 
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -284,7 +285,14 @@ export async function cancelGenerationJobsForMessage(
     .collect();
   for (const job of existingJobs) {
     if (job.status !== "completed" && job.status !== "failed") {
-      await ctx.db.patch(job._id, { status: "cancelled", completedAt: now });
+      await cancelGenerationContinuationHandler(ctx, {
+        jobId: job._id,
+      });
+      await ctx.db.patch(job._id, {
+        status: "cancelled",
+        completedAt: now,
+        scheduledFunctionId: undefined,
+      });
     }
   }
 }
