@@ -4,6 +4,7 @@
 // =============================================================================
 
 import { query, internalQuery } from "../_generated/server";
+import { v } from "convex/values";
 import {
   getActiveJobsArgs,
   getAttachmentUrlArgs,
@@ -56,6 +57,8 @@ import {
   listStreamingMessagesHandler,
   searchMessagesInternalHandler,
 } from "./queries_handlers";
+import { isJobCancelledArgs } from "./mutations_args";
+import { isJobCancelledHandler } from "./mutations_internal_handlers";
 
 export const listChats = query({
   args: listChatsArgs,
@@ -181,4 +184,12 @@ export const searchMessagesInternal = internalQuery({
 export const getChatCostSummary = query({
   args: getChatCostSummaryArgs,
   handler: getChatCostSummaryHandler,
+});
+
+// ── Generation job status (pure read) ──────────────────────────────────
+
+export const isJobCancelled = internalQuery({
+  args: isJobCancelledArgs,
+  returns: v.boolean(),
+  handler: isJobCancelledHandler,
 });

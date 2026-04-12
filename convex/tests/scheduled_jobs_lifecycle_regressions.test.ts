@@ -89,6 +89,14 @@ test("stale cleanup releases scheduled execution locks and auto-pauses after rep
   const ctx = {
     db: {
       query: (table: string) => {
+        if (table === "generationContinuations") {
+          return {
+            withIndex: () => ({
+              take: async () => [],
+              first: async () => null,
+            }),
+          };
+        }
         assert.equal(table, "generationJobs");
         queryCallCount++;
         return {

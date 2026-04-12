@@ -596,7 +596,7 @@ export interface IsJobCancelledArgs extends Record<string, unknown> {
 }
 
 export async function isJobCancelledHandler(
-  ctx: MutationCtx,
+  ctx: Pick<MutationCtx, "db">,
   args: IsJobCancelledArgs,
 ): Promise<boolean> {
   const job = await ctx.db.get(args.jobId);

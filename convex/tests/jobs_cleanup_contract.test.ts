@@ -20,6 +20,15 @@ function buildGenerationJobsQuery(queuedJobs: any[], streamingJobs: any[]) {
   };
 }
 
+function buildEmptyContinuationsQuery() {
+  return {
+    withIndex: () => ({
+      take: async () => [],
+      first: async () => null,
+    }),
+  };
+}
+
 test("cleanStale marks timed-out jobs, messages, search sessions, and scheduled executions failed", async () => {
   const now = Date.now();
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
@@ -41,6 +50,9 @@ test("cleanStale marks timed-out jobs, messages, search sessions, and scheduled 
       query: (table: string) => {
         if (table === "generationJobs") {
           return buildGenerationJobsQuery([queuedJob], []);
+        }
+        if (table === "generationContinuations") {
+          return buildEmptyContinuationsQuery();
         }
         throw new Error(`Unexpected query table: ${table}`);
       },
@@ -126,6 +138,9 @@ test("cleanStale uses the startedAt timestamp for streaming jobs", async () => {
             messageId: "msg_streaming",
           }]);
         }
+        if (table === "generationContinuations") {
+          return buildEmptyContinuationsQuery();
+        }
         throw new Error(`Unexpected query table: ${table}`);
       },
       get: async (id: string) =>
@@ -164,6 +179,9 @@ test("cleanStale self-schedules a continuation when either candidate batch hits 
       query: (table: string) => {
         if (table === "generationJobs") {
           return buildGenerationJobsQuery(freshQueuedJobs, []);
+        }
+        if (table === "generationContinuations") {
+          return buildEmptyContinuationsQuery();
         }
         throw new Error(`Unexpected query table: ${table}`);
       },

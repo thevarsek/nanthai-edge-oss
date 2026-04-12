@@ -260,8 +260,8 @@ export async function runParticipantTurn(
       if (!jobId) return;
       cancellationCheckCounter += 1;
       if (cancellationCheckCounter % 2 !== 0) return;
-      const isCancelled = await ctx.runMutation(
-        internal.chat.mutations.isJobCancelled,
+      const isCancelled = await ctx.runQuery(
+        internal.chat.queries.isJobCancelled,
         { jobId },
       );
       if (!isCancelled) return;

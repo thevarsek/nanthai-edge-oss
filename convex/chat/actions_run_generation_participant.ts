@@ -159,8 +159,8 @@ export async function generateForParticipant(
 
   // Pre-start cancellation check: if the job was cancelled (e.g. by the user
   // while the scheduler.runAfter was pending), bail out immediately.
-  const alreadyCancelled: boolean = await ctx.runMutation(
-    internal.chat.mutations.isJobCancelled,
+  const alreadyCancelled: boolean = await ctx.runQuery(
+    internal.chat.queries.isJobCancelled,
     { jobId: participant.jobId },
   );
   if (alreadyCancelled) {
@@ -416,8 +416,8 @@ export async function generateForParticipant(
 
         deltaEventsSinceCancelCheck += 1;
         if (deltaEventsSinceCancelCheck % 10 === 0) {
-          const cancelled = await ctx.runMutation(
-            internal.chat.mutations.isJobCancelled,
+          const cancelled = await ctx.runQuery(
+            internal.chat.queries.isJobCancelled,
             { jobId: participant.jobId },
           );
           if (cancelled) {

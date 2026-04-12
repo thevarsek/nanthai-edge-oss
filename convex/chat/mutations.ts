@@ -16,7 +16,6 @@ import {
   createMemoryArgs,
   deleteKnowledgeBaseFileArgs,
   finalizeGenerationArgs,
-  isJobCancelledArgs,
   markChatCompletionNotifiedArgs,
   markPostProcessScheduledArgs,
   patchMessageAudioArgs,
@@ -57,7 +56,6 @@ import { retryMessageHandler } from "./mutations_retry_handler";
 import {
   createMemoryHandler,
   finalizeGenerationHandler,
-  isJobCancelledHandler,
   markChatCompletionNotifiedHandler,
   patchMessageAudioHandler,
   storeGenerationUsageHandler,
@@ -197,11 +195,7 @@ export const cancelGenerationContinuation = internalMutation({
   handler: cancelGenerationContinuationHandler,
 });
 
-export const isJobCancelled = internalMutation({
-  args: isJobCancelledArgs,
-  returns: v.boolean(),
-  handler: isJobCancelledHandler,
-});
+// isJobCancelled moved to queries.ts as internalQuery (pure read, no writes).
 
 export const updateChatTitle = internalMutation({
   args: updateChatTitleArgs,

@@ -165,7 +165,7 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async () =>
   });
 
   const ctx = createMockCtx({
-    runQuery: async (ref: unknown) => {
+    runQuery: async (ref: unknown, args?: unknown) => {
       const refKey = getFunctionName(ref as any);
       if (refKey === getModelCapabilitiesRef) {
         return {
@@ -180,14 +180,18 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async () =>
           { _id: "msg_assistant", role: "assistant", content: "" },
         ];
       }
+      // isJobCancelled (now an internalQuery)
+      if (args && typeof args === "object" && "jobId" in (args as Record<string, unknown>)) {
+        cancellationChecks += 1;
+        return true;
+      }
       throw new Error("unexpected query");
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       if ("messageId" in args) {
         throw new Error("unexpected mutation");
       }
-      cancellationChecks += 1;
-      return true;
+      throw new Error("unexpected mutation");
     },
   });
 

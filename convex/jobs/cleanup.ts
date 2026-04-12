@@ -8,6 +8,10 @@ import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { MAX_CONSECUTIVE_FAILURES } from "../scheduledJobs/actions_lifecycle";
 import { cancelGenerationContinuationHandler } from "../chat/mutations_generation_continuation_handlers";
+import {
+  GENERATION_CONTINUATION_LEASE_MS,
+  TERMINAL_GENERATION_JOB_STATUSES,
+} from "../chat/generation_continuation_shared";
 
 const STALE_QUEUED_JOB_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 const STALE_STREAMING_JOB_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes
@@ -165,6 +169,62 @@ export const cleanStale = internalMutation({
     // If either status hit its batch limit, there may be more — self-schedule a continuation
     if (queuedJobs.length === BATCH_PER_STATUS || streamingJobs.length === BATCH_PER_STATUS) {
       await ctx.scheduler.runAfter(0, internal.jobs.cleanup.cleanStale, {});
+    }
+
+    // ── Orphaned continuation reaping ────────────────────────────────────
+    // Clean up generationContinuations rows whose parent job is already
+    // terminal, or whose lease expired long ago with no re-claim.
+    const ORPHAN_BATCH = 100;
+    const orphanCutoff = now - GENERATION_CONTINUATION_LEASE_MS * 2; // 24 min grace
+
+    const [waitingOrphans, runningOrphans] = await Promise.all([
+      ctx.db
+        .query("generationContinuations")
+        .withIndex("by_status", (q) => q.eq("status", "waiting"))
+        .take(ORPHAN_BATCH),
+      ctx.db
+        .query("generationContinuations")
+        .withIndex("by_status", (q) => q.eq("status", "running"))
+        .take(ORPHAN_BATCH),
+    ]);
+
+    let orphansCleaned = 0;
+    for (const cont of [...waitingOrphans, ...runningOrphans]) {
+      const job = await ctx.db.get(cont.jobId);
+
+      // Parent job gone or terminal → orphan.
+      const jobTerminal = !job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status);
+      // Lease expired long ago and nothing re-claimed → stuck.
+      const leaseStale =
+        cont.status === "running"
+        && cont.leaseExpiresAt != null
+        && cont.leaseExpiresAt < orphanCutoff;
+      // Waiting too long without being claimed → stuck.
+      const waitingStale =
+        cont.status === "waiting"
+        && cont.updatedAt < orphanCutoff;
+
+      if (!jobTerminal && !leaseStale && !waitingStale) {
+        continue;
+      }
+
+      // Cancel the scheduled function if one is recorded.
+      if (cont.scheduledFunctionId) {
+        try {
+          await ctx.scheduler.cancel(cont.scheduledFunctionId);
+        } catch {
+          // Already executed or cancelled.
+        }
+      }
+      if (job?.scheduledFunctionId) {
+        await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
+      }
+      await ctx.db.delete(cont._id);
+      orphansCleaned++;
+    }
+
+    if (orphansCleaned > 0) {
+      console.log(`Cleaned ${orphansCleaned} orphaned generation continuations`);
     }
   },
 });

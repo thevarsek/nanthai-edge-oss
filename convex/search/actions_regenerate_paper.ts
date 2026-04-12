@@ -34,8 +34,8 @@ export async function throwIfRegenerationCancelled(
   ctx: ActionCtx,
   jobId: Id<"generationJobs">,
 ): Promise<void> {
-  const cancelled = await ctx.runMutation(
-    internal.chat.mutations.isJobCancelled,
+  const cancelled = await ctx.runQuery(
+    internal.chat.queries.isJobCancelled,
     { jobId },
   );
   if (cancelled) {

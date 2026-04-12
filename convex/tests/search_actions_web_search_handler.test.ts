@@ -42,14 +42,15 @@ function createCtx(
         if ("userId" in args) {
           return "sk-test";
         }
-        return null;
-      },
-      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
-        mutations.push(args);
+        // isJobCancelled (now an internalQuery)
         if (Object.keys(args).length === 1 && "jobId" in args) {
           cancelChecks += 1;
           return cancelChecks === (options.cancelOnCheck ?? -1);
         }
+        return null;
+      },
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
         return null;
       },
       scheduler: {

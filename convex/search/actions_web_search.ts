@@ -75,8 +75,8 @@ async function runWebSearchHandler(
       searchContext,
     });
 
-    const cancelled = await ctx.runMutation(
-      internal.chat.mutations.isJobCancelled,
+    const cancelled = await ctx.runQuery(
+      internal.chat.queries.isJobCancelled,
       { jobId: args.jobId },
     );
     if (cancelled) throw new GenerationCancelledError();
@@ -258,8 +258,8 @@ async function runQueryGenAndSearch(
     preset.breadth,
   );
 
-  const cancelled = await ctx.runMutation(
-    internal.chat.mutations.isJobCancelled,
+  const cancelled = await ctx.runQuery(
+    internal.chat.queries.isJobCancelled,
     { jobId: args.jobId },
   );
   if (cancelled) throw new GenerationCancelledError();

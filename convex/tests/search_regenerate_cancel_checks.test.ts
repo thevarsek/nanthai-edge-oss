@@ -17,7 +17,7 @@ test("shouldCheckRegenerationCancellation polls every tenth delta", () => {
 
 test("throwIfRegenerationCancelled throws cancellation error when job is cancelled", async () => {
   const ctx = {
-    runMutation: async () => true,
+    runQuery: async () => true,
   } as any;
 
   await assert.rejects(
@@ -28,7 +28,7 @@ test("throwIfRegenerationCancelled throws cancellation error when job is cancell
 
 test("throwIfRegenerationCancelled is a no-op when job is still active", async () => {
   const ctx = {
-    runMutation: async () => false,
+    runQuery: async () => false,
   } as any;
 
   await assert.doesNotReject(

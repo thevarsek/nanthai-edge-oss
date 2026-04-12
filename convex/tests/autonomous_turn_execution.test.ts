@@ -50,6 +50,10 @@ function createAutonomousCtx() {
       if (args.chatId) {
         return [{ _id: "msg_existing", role: "user", content: "hello" }];
       }
+      // isJobCancelled (now an internalQuery)
+      if (Object.keys(args).length === 1 && "jobId" in args) {
+        return false;
+      }
       return null;
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -61,9 +65,6 @@ function createAutonomousCtx() {
       if (insertCount === 1) {
         insertCount += 1;
         return "job_new";
-      }
-      if (Object.keys(args).length === 1 && "jobId" in args) {
-        return false;
       }
       return undefined;
     },
@@ -290,16 +291,17 @@ test("runParticipantTurn marks message and job cancelled when a turn is cancelle
   const cancellingCtx = createMockCtx({
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if (args.chatId) return [{ _id: "msg_existing", role: "user", content: "hello" }];
+      // isJobCancelled (now an internalQuery)
+      if (Object.keys(args).length === 1 && args.jobId === "job_new") {
+        cancellationChecks += 1;
+        return cancellationChecks > 1;
+      }
       return null;
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push(args);
       if (args.chatId && args.modelId && args.parentMessageIds) return "msg_new";
       if (args.chatId && args.modelId && args.messageId === "msg_new" && args.userId) return "job_new";
-      if (Object.keys(args).length === 1 && args.jobId === "job_new") {
-        cancellationChecks += 1;
-        return cancellationChecks > 1;
-      }
       return undefined;
     },
   });
