@@ -307,6 +307,13 @@ test("cancelActiveGenerationHandler preserves timedOut subagent runs", async () 
             }),
           };
         }
+        if (table === "generationContinuations") {
+          return {
+            withIndex: () => ({
+              first: async () => null,
+            }),
+          };
+        }
         throw new Error(`Unexpected table query: ${table}`);
       },
     },

@@ -9,30 +9,14 @@ import {
 
 type ContinuationMutationCtx = Pick<MutationCtx, "db" | "scheduler">;
 
-function shouldIgnoreMissingContinuationQuery(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  // Some older unit-test mocks do not implement generationContinuations reads.
-  return error.message.includes("generationContinuations");
-}
-
 async function getContinuationByJobId(
   ctx: ContinuationMutationCtx,
   jobId: Id<"generationJobs">,
 ) {
-  try {
-    return await ctx.db
-      .query("generationContinuations")
-      .withIndex("by_job", (q) => q.eq("jobId", jobId))
-      .first();
-  } catch (error) {
-    if (shouldIgnoreMissingContinuationQuery(error)) {
-      return null;
-    }
-    throw error;
-  }
+  return await ctx.db
+    .query("generationContinuations")
+    .withIndex("by_job", (q) => q.eq("jobId", jobId))
+    .first();
 }
 
 export interface SaveGenerationContinuationArgs extends Record<string, unknown> {
