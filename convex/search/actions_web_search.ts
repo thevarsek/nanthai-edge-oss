@@ -113,7 +113,7 @@ async function runWebSearchHandler(
       ],
       userId: args.userId,
       expandMultiModelGroups: args.expandMultiModelGroups,
-      webSearchEnabled: false, // Perplexity already searched; no need for OpenRouter web plugin
+      webSearchEnabled: false, // Perplexity already searched; no need for OpenRouter web search
       enabledIntegrations: args.enabledIntegrations,
       subagentsEnabled: args.subagentsEnabled,
       searchSessionId: args.sessionId,

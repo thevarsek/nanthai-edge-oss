@@ -67,6 +67,9 @@ nanthai-edge/                              # Repository root
 │   │   ├── mutation_send_helpers.ts        # Send message helpers
 │   │   ├── generated_file_helpers.ts       # Shared generated-file extraction helpers
 │   │   ├── compaction.ts                   # Context compaction engine — Gemini 3.1 Flash Lite (M13)
+│   │   ├── generation_continuation_shared.ts # Durable continuation types — lease constant, terminal statuses, checkpoint interfaces (post-M27)
+│   │   ├── actions_run_generation_continuation.ts # Continuation action — claims lease, restores checkpoint, resumes generation (post-M27)
+│   │   ├── mutations_generation_continuation_handlers.ts # Continuation CRUD — checkpoint persistence, lease-based claiming, cancel (post-M27)
 │   │   ├── helpers_video_url_utils.ts     # Video URL extraction/parsing helpers
 │   │   ├── audio_actions.ts               # TTS generation action — gpt-audio-mini via OpenRouter (M20)
 │   │   ├── audio_public_handlers.ts       # Public mutation/query handlers for audio (M20)
@@ -232,7 +235,7 @@ nanthai-edge/                              # Repository root
 │   │   ├── tool_profiles.ts                # inferToolProfiles, pruneOrphanedIntegrationProfiles
 │   │   └── validators.ts                   # validateSkillInstructions, slugify
 │   ├── jobs/
-│   │   └── cleanup.ts                      # Stale generation job cleanup
+│   │   └── cleanup.ts                      # Stale generation job cleanup + orphaned continuation reaping
 │   ├── lib/
 │   │   ├── openrouter.ts                   # Barrel exports for OpenRouter modules
 │   │   ├── openrouter_types.ts             # Core types — including tool types (M10)

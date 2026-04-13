@@ -50,18 +50,47 @@ export function buildRequestBody(
     };
   }
 
-  // Tools
-  if (params.tools && params.tools.length > 0) {
-    body.tools = params.tools;
+  // Tools — combine user-defined function tools with server tools.
+  // Server tools (e.g. openrouter:web_search) are injected here when enabled;
+  // they are executed by OpenRouter transparently (the model decides when to
+  // search, and OpenRouter handles execution server-side).
+  //
+  // Models that don't support tools are signalled by gateParameters setting
+  // params.tools to `null` (explicit strip). For those models, web search
+  // falls back to the legacy plugin API which works independently of tool
+  // support. When tools is `undefined` (no integrations active) the model
+  // may still support tools, so the server tool is safe to inject.
+  const toolsExplicitlyStripped = params.tools === null;
+  const allTools: unknown[] = [];
+  if (params.tools != null && params.tools.length > 0) {
+    allTools.push(...params.tools);
   }
+  // Skip injecting web search server tool when toolChoice is "none" — the
+  // intent is a forced text-only response (compaction cap or final tool round),
+  // and OpenRouter may still execute server tools if they appear in the array.
+  // Also skip when gateParameters explicitly stripped tools (model can't
+  // accept a `tools` array at all).
+  if (params.webSearchEnabled && !toolsExplicitlyStripped && params.toolChoice !== "none") {
+    const maxResults = 5;
+    const maxTotalResults = params.webSearchMaxTotalResults ?? 15;
+    allTools.push({
+      type: "openrouter:web_search",
+      parameters: { max_results: maxResults, max_total_results: maxTotalResults },
+    });
+  }
+  if (allTools.length > 0) body.tools = allTools;
   if (params.toolChoice != null) {
     body.tool_choice = params.toolChoice;
   }
 
-  // Plugins
+  // Plugins — legacy web search fallback for models that don't support tools.
+  // The old plugin API searches once unconditionally (no budget control), but
+  // it's the only option for models like ERNIE that reject the `tools` param.
   const plugins: { id: string }[] = [];
   if (params.plugins) plugins.push(...params.plugins);
-  if (params.webSearchEnabled) plugins.push({ id: "web" });
+  if (params.webSearchEnabled && toolsExplicitlyStripped) {
+    plugins.push({ id: "web" });
+  }
   if (plugins.length > 0) body.plugins = plugins;
 
   // Prompt caching — Anthropic requires explicit opt-in via top-level

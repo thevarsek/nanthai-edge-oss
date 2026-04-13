@@ -93,6 +93,8 @@ If a child approaches the Convex action timeout:
 
 This gives child runs cross-action continuation without trying to resume an in-flight OpenRouter stream.
 
+> **Note:** The main generation pipeline (not just subagents) now also uses durable continuations via the `generationContinuations` table. When any generation action nears the Convex action timeout, it checkpoints its full state (messages, tool calls, active profiles, compaction count) into a continuation row, schedules a follow-up action, and exits. The continuation action claims a time-limited lease (12 minutes), restores the checkpoint, and resumes. Orphaned continuations (parent job terminal, lease expired, unclaimed) are reaped by the `cleanStale` cron. See `docs/architecture.md` → "Durable Generation Continuations" for full details.
+
 ### Continuation limits
 
 Each child run has a bounded continuation count. If that limit is exceeded, the child is marked `timedOut` and still contributes a terminal result back to the parent.

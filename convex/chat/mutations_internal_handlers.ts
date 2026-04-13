@@ -1,5 +1,5 @@
 import { Id } from "../_generated/dataModel";
-import { MutationCtx } from "../_generated/server";
+import { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
@@ -96,6 +96,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     upstreamInferenceCost?: number;
     upstreamInferencePromptCost?: number;
     upstreamInferenceCompletionsCost?: number;
+    webSearchRequests?: number;
   };
   reasoning?: string;
   imageUrls?: string[];
@@ -428,6 +429,7 @@ export async function finalizeGenerationHandler(
     upstreamInferenceCost: args.usage.upstreamInferenceCost,
     upstreamInferencePromptCost: args.usage.upstreamInferencePromptCost,
     upstreamInferenceCompletionsCost: args.usage.upstreamInferenceCompletionsCost,
+    webSearchRequests: args.usage.webSearchRequests,
   };
 
   await ctx.db.insert("usageRecords", {
@@ -596,7 +598,7 @@ export interface IsJobCancelledArgs extends Record<string, unknown> {
 }
 
 export async function isJobCancelledHandler(
-  ctx: Pick<MutationCtx, "db">,
+  ctx: Pick<QueryCtx, "db">,
   args: IsJobCancelledArgs,
 ): Promise<boolean> {
   const job = await ctx.db.get(args.jobId);
@@ -711,6 +713,7 @@ export interface StoreGenerationUsageArgs extends Record<string, unknown> {
   upstreamInferenceCost?: number;
   upstreamInferencePromptCost?: number;
   upstreamInferenceCompletionsCost?: number;
+  webSearchRequests?: number;
 }
 
 /** Helper: pick only the non-undefined optional usage detail fields from args. */
@@ -727,6 +730,7 @@ function usageDetailFields(args: StoreGenerationUsageArgs): Record<string, numbe
     upstreamInferenceCost: args.upstreamInferenceCost,
     upstreamInferencePromptCost: args.upstreamInferencePromptCost,
     upstreamInferenceCompletionsCost: args.upstreamInferenceCompletionsCost,
+    webSearchRequests: args.webSearchRequests,
   };
 }
 

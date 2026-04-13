@@ -134,6 +134,9 @@ export function usageFromUnknown(value: unknown): OpenRouterUsage | undefined {
       upstream_inference_prompt_cost?: number;
       upstream_inference_completions_cost?: number;
     };
+    server_tool_use?: {
+      web_search_requests?: number;
+    };
   };
   if (
     usage.prompt_tokens === undefined &&
@@ -183,6 +186,13 @@ export function usageFromUnknown(value: unknown): OpenRouterUsage | undefined {
       result.upstreamInferencePromptCost = cd.upstream_inference_prompt_cost;
     if (typeof cd.upstream_inference_completions_cost === "number" && cd.upstream_inference_completions_cost > 0)
       result.upstreamInferenceCompletionsCost = cd.upstream_inference_completions_cost;
+  }
+
+  // server_tool_use — tracks web search requests made by OpenRouter server tools
+  const stu = usage.server_tool_use;
+  if (stu) {
+    if (typeof stu.web_search_requests === "number" && stu.web_search_requests > 0)
+      result.webSearchRequests = stu.web_search_requests;
   }
 
   return result;

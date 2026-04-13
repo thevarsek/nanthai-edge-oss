@@ -235,6 +235,9 @@ function registerWorkspaceSubset(
   registerToolsIfMissing(
     registry,
     temp.getDefinitions().map((definition) => {
+      if (definition.type !== "function") {
+        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `Expected function tool but got "${definition.type}" server tool.` });
+      }
       const tool = scratch.get(definition.function.name);
       if (!tool) {
         throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `Workspace tool "${definition.function.name}" was not found in the full registry.` });

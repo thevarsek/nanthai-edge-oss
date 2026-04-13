@@ -138,7 +138,7 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `chat/mutations` | sendMessage, updateTitle, deleteChat, etc. | Chat CRUD + generation scheduling |
 | `chat/actions` | runGeneration | Server-side OpenRouter streaming via `StreamWriter` |
 | `chat/manage` | updateChat, switchBranchAtFork, deleteChat, bulkDeleteChats, forkChat, duplicateChat, reorderPinnedChats | Chat management — archive, canonical fork switching, duplicate, fork, pin/unpin, reorder pinned |
-| `chat/queries` | listChats, getMessages, getChat, getAttachmentUrl, listModelSummaries, listKnowledgeBaseFiles | Reactive data subscriptions |
+| `chat/queries` | listChats, getMessages, getChat, getAttachmentUrl, listModelSummaries, listKnowledgeBaseFiles, isJobCancelled | Reactive data subscriptions + generation job cancellation polling (pure read, `internalQuery`) |
 | `chat/audio_actions` | generateAudioForMessage, previewVoice | TTS generation via `gpt-audio-mini`, PCM→WAV encoding, Convex storage (M20) |
 | `chat/audio_shared` | constants, pcmToWav, voice helpers, isLyriaModel, parseMp3DurationMs | Audio constants, encoder, 6-voice catalog (M20), Lyria model IDs + MP3 frame parser (M26) |
 | `chat/audio_trigger` | autoAudioTrigger | Wired into finalizeGenerationHandler for auto-audio responses (M20) |
@@ -155,6 +155,9 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `oauth/microsoft.ts` | exchangeMicrosoftCode, refreshMicrosoftToken, disconnectMicrosoft | Microsoft OAuth PKCE token exchange + management |
 | `oauth/notion.ts` | exchangeNotionCode, refreshNotionToken, disconnectNotion | Notion OAuth token exchange (HTTP Basic Auth) + management |
 | `http.ts` | `/download` endpoint | File download with Content-Disposition headers (M10) |
+| `chat/generation_continuation_shared` | types, constants, checkpoint interfaces | Durable continuation shared types — lease duration, terminal statuses, checkpoint/state shapes |
+| `chat/actions_run_generation_continuation` | continueGeneration | Durable continuation action — claims lease, restores checkpoint, resumes generation loop |
+| `chat/mutations_generation_continuation_handlers` | create/cancel/claim continuation | Continuation CRUD — checkpoint persistence, lease-based claiming, scheduled function bookkeeping |
 | `subagents/` | actions, mutations, queries, shared | Depth-1 delegated child runs, async parent resume, continuation checkpoints |
 | `autonomous/` | actions, mutations, queries | Multi-participant autonomous chat |
 | `memory/operations` | extract, search, consolidate | Vector-based memory system |
@@ -404,6 +407,23 @@ Token-aware compaction system for long tool-call loops:
 - If compaction model is unavailable, compaction silently skips (generation continues without compaction)
 - Constants in `convex/lib/compaction_constants.ts`
 
+### Durable Generation Continuations
+
+Cross-action continuation system for long-running generation pipelines. When a generation action approaches the Convex action timeout (or has more work after compaction), it checkpoints its full state into a `generationContinuations` row, schedules a follow-up action, and exits cleanly. The continuation action claims a time-limited lease, restores the checkpoint, and resumes the generation loop from where it left off.
+
+**Key components:**
+
+- `generationContinuations` table — persists checkpoint state (participant config, accumulated messages, tool calls/results, active skill profiles, compaction/continuation counts, partial content/reasoning)
+- `generation_continuation_shared.ts` — shared types, 12-minute lease constant (`GENERATION_CONTINUATION_LEASE_MS`), terminal job status set
+- `actions_run_generation_continuation.ts` — continuation action: claims lease via mutation, restores checkpoint, resumes `generateForParticipant`
+- `mutations_generation_continuation_handlers.ts` — create/cancel/claim handlers: checkpoint persistence, lease-based claiming, scheduled function bookkeeping
+
+**Lease-based claiming:** Each continuation has a 12-minute lease. If the claiming action crashes before completion, the lease expires and the row becomes eligible for cleanup. This prevents orphaned continuations from blocking indefinitely.
+
+**Orphan continuation reaping:** The `cleanStale` cron (every 15 minutes) now includes a second pass that scans non-terminal `generationContinuations` rows. It deletes rows where: (a) the parent `generationJob` is already terminal or deleted, (b) a `running` lease expired more than 24 minutes ago (2× lease duration), or (c) a `waiting` row has not been claimed within 24 minutes. Associated scheduled functions are cancelled before deletion.
+
+**Cancellation polling:** `isJobCancelled` is an `internalQuery` (pure read) in `chat/queries.ts`. All 7 callers (generation participant, autonomous turns, web search, paper search, synthesis) invoke it via `ctx.runQuery` to avoid OCC contention during streaming. Originally implemented as an `internalMutation`; moved to `internalQuery` to eliminate unnecessary write-transaction contention on hot paths.
+
 ### API Key Server-Side Storage
 
 OpenRouter API key stored in `userSecrets` table for headless scheduled job execution:
@@ -443,7 +463,7 @@ Current Pro gating implementation:
 
 ---
 
-*Last updated: 2026-04-09 — M27 Free Code Execution (three-tier runtime, sandboxRuntime gate removed). M26 Lyria music generation, Anthropic prompt caching, model sync bandwidth reduction. M25 Android tablet adaptive navigation. M24 complete.*
+*Last updated: 2026-04-13 — Post-M27: durable generation continuations (generationContinuations table, cross-action checkpoint/resume, lease-based claiming), isJobCancelled moved to internalQuery (OCC reduction), orphan continuation reaping in cleanStale cron. M27 Free Code Execution (three-tier runtime, sandboxRuntime gate removed). M26 Lyria music generation, Anthropic prompt caching, model sync bandwidth reduction. M25 Android tablet adaptive navigation. M24 complete.*
 
 ---
 
@@ -455,7 +475,7 @@ Internet search expanded from 2 tiers (Web / Research Paper) to 3:
 
 | Tier | Search Mode | Backend Path | Notes |
 |------|------------|--------------|-------|
-| Basic | `"normal"` | Path B — OpenRouter `web` plugin | Native search for OpenAI/Anthropic/xAI; Exa for others (~$0.02/req) |
+| Basic | `"normal"` | Path B — OpenRouter `openrouter:web_search` server tool (plugin fallback for non-tool models) | Native search for OpenAI/Anthropic/xAI; Exa for others (~$0.02/req) |
 | Web Search | `"web"` | Path C — Perplexity/Sonar | Complexity 1-3 (Quick/Thorough/Comprehensive) |
 | Research Paper | `"paper"` | Path D — Multi-phase research pipeline | Complexity 1-3, full tool support |
 
@@ -928,4 +948,4 @@ The model catalog sync cron was reduced from hourly to every 4 hours. Combined w
 
 ---
 
-*Last updated: 2026-04-07 — M26 Lyria music generation, Anthropic prompt caching, model sync optimization, isFree fix. M20/M21 audio pipeline and scalability audit.*
+*Last updated: 2026-04-13 — Post-M27: durable generation continuations, isJobCancelled → internalQuery, orphan continuation reaping. M26 Lyria music generation, Anthropic prompt caching, model sync optimization, isFree fix. M20/M21 audio pipeline and scalability audit.*

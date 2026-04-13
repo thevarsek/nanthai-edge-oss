@@ -4,7 +4,7 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 4 files imported into `convex/schema.ts` — 36 app tables total (core: 14, catalog: 6, user: 12, runtime: 4), plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 4 files imported into `convex/schema.ts` — 37 app tables total (core: 15, catalog: 6, user: 12, runtime: 4), plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
 
@@ -15,6 +15,7 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `streamingMessages` | Active streaming overlay rows | messageId, chatId, content, reasoning, status, toolCalls, createdAt, updatedAt. Written by `StreamWriter` during generation so live token patches avoid invalidating heavy `listMessages` subscriptions. |
 | `chatParticipants` | Models/personas in a chat | chatId, modelId, personaId, sortOrder, personaName, personaEmoji, personaAvatarImageUrl, createdAt |
 | `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed) |
+| `generationContinuations` | Durable generation checkpoints | chatId, messageId, jobId, userId, status (`waiting`/`running`/`completed`/`cancelled`), participantSnapshot, groupSnapshot, requestMessages, usage, toolCalls, toolResults, activeProfiles, compactionCount, continuationCount, partialContent, partialReasoning, scheduledAt, scheduledFunctionId, claimedAt, leaseExpiresAt. Indexes: `by_job`, `by_status`, `by_chat`. |
 | `autonomousSessions` | Group chat orchestration | chatId, status, cycleCount, maxCycles |
 | `subagentBatches` | Parent delegation batches | parentMessageId, parentJobId, status, tool-call round metadata, child counters, params snapshot |
 | `subagentRuns` | Child delegated runs | batchId, childIndex, title, taskPrompt, status, streamed content/reasoning, continuation snapshot |
@@ -424,4 +425,16 @@ No new tables. Table count remains 36.
 
 ---
 
-*Last updated: 2026-04-09 — M27 Free Code Execution (png_image chart type, sandboxSessionId optional, sandboxRuntime removal, deprecated runtime tables). Table count: 36.*
+## Post-M27 Schema Changes (Durable Generation Continuations)
+
+| Change | Details |
+|--------|---------|
+| **Added `generationContinuations` table** | Durable cross-action checkpoint/resume for long-running generation pipelines. Fields: `chatId` (v.id("chats")), `messageId` (v.id("messages")), `jobId` (v.id("generationJobs")), `userId` (string), `status` (generationContinuationStatus: `"waiting"` / `"running"` / `"completed"` / `"cancelled"`), `participantSnapshot` (any — serialized participant config), `groupSnapshot` (any — serialized group state), `requestMessages` (any — accumulated OpenRouter messages), `usage` (optional usage object), `toolCalls` (optional array of {id, name, arguments}), `toolResults` (optional array of {toolCallId, toolName, result, isError?}), `activeProfiles` (array of string — active skill tool profiles), `compactionCount` (number), `continuationCount` (number), `partialContent` (optional string), `partialReasoning` (optional string), `scheduledAt` (optional number), `scheduledFunctionId` (optional v.id("_scheduled_functions")), `claimedAt` (optional number), `leaseExpiresAt` (optional number), `createdAt` (number), `updatedAt` (number). Indexes: `by_job` (jobId), `by_status` (status, updatedAt), `by_chat` (chatId, updatedAt). Table count: 36 → 37. |
+| **Moved `isJobCancelled` to `internalQuery`** | Was `internalMutation` in `chat/mutations.ts`; now `internalQuery` in `chat/queries.ts`. Pure read operation — all 7 callers changed from `ctx.runMutation` to `ctx.runQuery`. Reduces OCC contention during streaming. |
+| **Added orphan continuation reaping to `cleanStale`** | `jobs/cleanup.ts` now scans non-terminal `generationContinuations` rows during each 15-minute cron run. Deletes rows with terminal/missing parent jobs, expired leases (2× lease duration grace), or unclaimed waiting rows (24-minute cutoff). Cancels associated scheduled functions before deletion. |
+
+Table count: 37.
+
+---
+
+*Last updated: 2026-04-13 — Post-M27 durable generation continuations (generationContinuations table, isJobCancelled → internalQuery, orphan continuation reaping). M27 Free Code Execution (png_image chart type, sandboxSessionId optional, sandboxRuntime removal, deprecated runtime tables). Table count: 37.*

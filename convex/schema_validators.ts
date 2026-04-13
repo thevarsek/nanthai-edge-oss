@@ -93,6 +93,8 @@ export const usageObject = v.object({
   upstreamInferenceCost: v.optional(v.number()),
   upstreamInferencePromptCost: v.optional(v.number()),
   upstreamInferenceCompletionsCost: v.optional(v.number()),
+  // server_tool_use
+  webSearchRequests: v.optional(v.number()),
 });
 
 /** Search session status (M9 — Internet Search). */

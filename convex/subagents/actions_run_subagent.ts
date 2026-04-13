@@ -184,13 +184,15 @@ export async function runSubagentRunHandler(
     allowSubagents: false,
     activeProfiles: restoredProfiles,
   });
-  // AUDIT-4: Subagents should never pay for web search — the parent's
-  // first-turn grounding is already in the conversation seed. Strip the
-  // flag here to avoid $0.02/round × N subagents × M continuations.
+  // Subagents inherit webSearchEnabled from the parent's params snapshot.
+  // They get a tighter budget cap (max_total_results: 5 = 1 search max) so
+  // they can access fresh data when needed without running up costs across
+  // N subagents x M rounds. gateParameters will strip webSearchEnabled if
+  // the subagent's model doesn't support tools.
   const rawParams = {
     ...paramsSnapshot.requestParams,
     ...buildRegistryParams(toolRegistry),
-    webSearchEnabled: false,
+    webSearchMaxTotalResults: 5,
   };
   const gatedParams = gateParameters(
     rawParams,

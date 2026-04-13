@@ -548,7 +548,7 @@ Model spawns parallel sub-tasks. Real-time subscription to batch progress.
 | Model catalog sync | Every 1h | `models/sync:syncFromOpenRouter` |
 | Benchmark sync | Daily 2:00 UTC | `models/artificial_analysis_sync:syncBenchmarks` |
 | Use-case ranking sync | Every 6h | `models/openrouter_usecase_sync:syncUseCases` |
-| Stale job cleanup | Every 15min | `jobs/cleanup:cleanStale` |
+| Stale job cleanup + orphan continuation reaping | Every 15min | `jobs/cleanup:cleanStale` |
 | Memory consolidation | Daily 3:00 UTC | `memory/operations:consolidate` |
 | Stale search cleanup | Daily 4:00 UTC | `search/mutations_internal:cleanStaleSearchPhases` |
 | Old job run cleanup | Daily 5:00 UTC | `scheduledJobs/mutations:cleanOldJobRuns` |

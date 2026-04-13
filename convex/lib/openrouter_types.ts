@@ -32,8 +32,8 @@ export interface ToolCallDelta {
   };
 }
 
-/** Tool definition sent in the request `tools` array. */
-export interface ToolDefinition {
+/** Tool definition sent in the request `tools` array (user-defined function). */
+export interface FunctionToolDefinition {
   type: "function";
   function: {
     name: string;
@@ -41,6 +41,23 @@ export interface ToolDefinition {
     parameters: Record<string, unknown>;
   };
 }
+
+/**
+ * OpenRouter server tool definition.
+ * Server tools are executed by OpenRouter transparently — the model decides
+ * when/whether to invoke them, and OpenRouter handles execution server-side.
+ */
+export interface ServerToolDefinition {
+  type: `openrouter:${string}`;
+  /** Server-tool-specific parameters (e.g. max_results for web_search). */
+  parameters?: Record<string, unknown>;
+}
+
+/**
+ * Union of user-defined function tools and OpenRouter server tools.
+ * The `tools` array sent to OpenRouter can contain both types.
+ */
+export type ToolDefinition = FunctionToolDefinition | ServerToolDefinition;
 
 /** Controls which tool (if any) the model should call. */
 export type ToolChoice =
@@ -82,6 +99,12 @@ export interface ChatRequestParameters {
   imageConfig?: { aspectRatio?: string; imageSize?: string } | null;
   plugins?: { id: string }[] | null;
   webSearchEnabled?: boolean;
+  /**
+   * Cap on cumulative web search results across all searches in a single
+   * OpenRouter API call. Default: 15 (= max 3 searches at 5 results each).
+   * Subagents use 5 (= 1 search max). Only relevant when webSearchEnabled.
+   */
+  webSearchMaxTotalResults?: number;
   transforms?: string[] | null;
   /** Tool definitions to send to the model. */
   tools?: ToolDefinition[] | null;
@@ -108,6 +131,8 @@ export interface OpenRouterUsage {
   upstreamInferenceCost?: number;
   upstreamInferencePromptCost?: number;
   upstreamInferenceCompletionsCost?: number;
+  // server_tool_use
+  webSearchRequests?: number;
 }
 
 export interface StreamResult {

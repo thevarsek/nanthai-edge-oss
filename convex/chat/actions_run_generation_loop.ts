@@ -153,6 +153,7 @@ function aggregateUsage(
     upstreamInferenceCost: sumOptional(existing.upstreamInferenceCost, incoming.upstreamInferenceCost),
     upstreamInferencePromptCost: sumOptional(existing.upstreamInferencePromptCost, incoming.upstreamInferencePromptCost),
     upstreamInferenceCompletionsCost: sumOptional(existing.upstreamInferenceCompletionsCost, incoming.upstreamInferenceCompletionsCost),
+    webSearchRequests: sumOptional(existing.webSearchRequests, incoming.webSearchRequests),
   };
 }
 
@@ -250,11 +251,11 @@ export async function runGenerationWithCompaction(
 
     totalUsage = aggregateUsage(totalUsage, streamResult.usage);
 
-    // After the initial streaming call, disable web search for all subsequent
-    // re-calls (tool-loop rounds, compaction re-entries, final forced text).
-    // Web grounding from the first call is already in the conversation context;
-    // re-running the plugin on tool-result rounds wastes ~$0.02/round (Exa).
-    currentParams = { ...currentParams, webSearchEnabled: false };
+    // Web search uses the server tool API (openrouter:web_search) which is
+    // model-initiated — the model decides when/whether to search, and
+    // max_total_results caps cumulative results per API call. No need to
+    // strip webSearchEnabled on subsequent rounds; the budget lever is
+    // max_total_results, not round-level toggling.
 
     // --- 2. If no tool calls, we're done ---
     if (
@@ -309,12 +310,8 @@ export async function runGenerationWithCompaction(
 
     // Preserve any progressive registry/params expansions from the inner loop
     // so they survive compaction cycles.
-    // AUDIT-3: The inner loop's onPrepareNextTurn may have re-spread the
-    // original gatedParams (which included webSearchEnabled: true) into
-    // finalParams. Strip it here so subsequent compaction re-entries don't
-    // pay $0.02/round for Exa web search.
     currentToolRegistry = loopResult.finalRegistry;
-    currentParams = { ...loopResult.finalParams, webSearchEnabled: false };
+    currentParams = loopResult.finalParams;
 
     totalUsage = aggregateUsage(totalUsage, loopResult.streamResult.usage);
     allToolCalls.push(...loopResult.allToolCalls);
@@ -379,14 +376,13 @@ export async function runGenerationWithCompaction(
 
     // Hit the continuation cap — force a final text response so the user
     // doesn't see a dangling tool_calls finish reason.
-    // AUDIT-5: Also strip webSearchEnabled to avoid a $0.02 Exa charge.
     if (compactionCount >= COMPACTION.MAX_CONTINUATIONS) {
       const finalMessages = loopResult.conversationMessages;
       const finalResult = await deps.callOpenRouterStreaming(
         apiKey,
         model,
         finalMessages,
-        { ...currentParams, toolChoice: "none", webSearchEnabled: false },
+        { ...currentParams, toolChoice: "none" },
         callbacks,
         retryConfig,
       );

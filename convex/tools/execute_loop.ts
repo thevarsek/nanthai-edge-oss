@@ -338,13 +338,12 @@ export async function runToolCallLoop(
 
     // Re-call OpenRouter with the extended conversation.
     // On the final allowed round, force the model NOT to call tools again.
-    // Always disable webSearchEnabled on re-calls — web grounding from the
-    // initial call is already in the conversation context, and re-running
-    // the web plugin on tool-result rounds wastes ~$0.02/round (Exa pricing).
+    // Web search uses the server tool API (openrouter:web_search) — the model
+    // decides when to search and max_total_results caps cost per API call.
+    // No need to strip webSearchEnabled on re-calls.
     const isLastAllowedRound = round >= MAX_TOOL_ROUNDS;
     const roundParams: ChatRequestParameters = {
       ...currentParams,
-      webSearchEnabled: false,
       ...(isLastAllowedRound ? { toolChoice: "none" as const } : {}),
     };
 

@@ -39,6 +39,14 @@ export function gateParameters(
     if (!supportedParameters.includes("reasoning")) {
       gated.reasoningEffort = null;
     }
+    // Models that don't support tools (e.g. Perplexity, ERNIE) reject the
+    // entire `tools` parameter with 404. Strip user-defined function tools
+    // and toolChoice. Keep webSearchEnabled — buildRequestBody will fall back
+    // to the old plugin API for models without tool support.
+    if (!supportedParameters.includes("tools")) {
+      gated.tools = null;
+      gated.toolChoice = null;
+    }
   } else {
     // Fallback: boolean capability flags
     if (!hasReasoning) {

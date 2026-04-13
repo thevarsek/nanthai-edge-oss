@@ -215,6 +215,7 @@ export async function continueParentAfterSubagentsHandler(
   };
   const paramsSnapshot = batch.paramsSnapshot as {
     enabledIntegrations?: string[];
+    requestParams?: { webSearchEnabled?: boolean };
   };
   const continuationPayload = buildParentContinuationPayload(
     runs.map((run) => ({
@@ -265,7 +266,7 @@ export async function continueParentAfterSubagentsHandler(
         participants: [participantSnapshot.participant],
         userId: participantSnapshot.userId,
         expandMultiModelGroups: false,
-        webSearchEnabled: false,
+        webSearchEnabled: paramsSnapshot.requestParams?.webSearchEnabled ?? false,
         enabledIntegrations: paramsSnapshot.enabledIntegrations,
         subagentsEnabled: false,
         subagentBatchId: batch._id,
@@ -303,7 +304,7 @@ export async function continueParentAfterSubagentsHandler(
             participant: participantSnapshot.participant,
             userId: participantSnapshot.userId,
             expandMultiModelGroups: false,
-            webSearchEnabled: false,
+            webSearchEnabled: paramsSnapshot.requestParams?.webSearchEnabled ?? false,
             effectiveIntegrations: paramsSnapshot.enabledIntegrations ?? [],
             directToolNames: [],
             isPro: isProUser,

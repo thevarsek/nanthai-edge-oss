@@ -136,6 +136,7 @@ export const finalizeGenerationArgs = {
       upstreamInferenceCost: v.optional(v.number()),
       upstreamInferencePromptCost: v.optional(v.number()),
       upstreamInferenceCompletionsCost: v.optional(v.number()),
+      webSearchRequests: v.optional(v.number()),
     }),
   ),
   reasoning: v.optional(v.string()),
@@ -405,6 +406,7 @@ export const storeGenerationUsageArgs = {
   upstreamInferenceCost: v.optional(v.number()),
   upstreamInferencePromptCost: v.optional(v.number()),
   upstreamInferenceCompletionsCost: v.optional(v.number()),
+  webSearchRequests: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 // M23: Ancillary (non-generation) cost tracking args.

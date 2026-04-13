@@ -178,7 +178,7 @@ test("runGenerationWithCompaction compacts overflowing tool loops and aggregates
     actionStartTime: 0,
   }, deps);
 
-  assert.deepEqual(loopInputs, ["false"]);
+  assert.deepEqual(loopInputs, ["true"]);
   assert.equal(patchReasoningCalls, 1);
   assert.equal(flushCalls, 1);
   assert.equal(streamCalls.length, 2);
@@ -374,7 +374,7 @@ test("runGenerationWithCompaction forces a final text response after the continu
   assert.equal(seenParams.length, 2);
   assert.deepEqual(seenParams[1], {
     temperature: 0.5,
-    webSearchEnabled: false,
+    webSearchEnabled: true,
     toolChoice: "none",
   });
 });

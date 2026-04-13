@@ -151,7 +151,13 @@ async function callPerplexity(
   model: string,
   apiKey: string,
 ): Promise<PerplexityResponse> {
-  const body = {
+  // Perplexity models have native web search — they always search, that's their
+  // purpose.  Adding the `openrouter:web_search` server tool causes a 404
+  // ("No endpoints found that support tool use").  Only inject the server tool
+  // for non-Perplexity models that need it.
+  const isPerplexityModel = model.startsWith("perplexity/");
+
+  const body: Record<string, unknown> = {
     model,
     messages: [
       {
@@ -165,6 +171,28 @@ async function callPerplexity(
     stream: false,
     temperature: 0.3,
     max_tokens: 5120,
+    // Non-Perplexity models: add server tool so they can search the web.
+    // Perplexity models: omit tools — they search natively and reject the
+    // tools parameter with a 404.
+    //
+    // NOTE: This branch is currently dead code — all search models are
+    // Perplexity (`model_constants.searchPerplexity`). If a non-Perplexity
+    // model is added, verify that `openrouter:web_search` as the sole server
+    // tool reliably triggers a search. Server tools are executed by OpenRouter
+    // transparently (not via the model's tool-call mechanism), so
+    // `tool_choice` does not apply. If the model skips searching, the system
+    // prompt's instruction to "include ALL source URLs" is the only lever —
+    // consider switching to a model with native search instead.
+    ...(isPerplexityModel
+      ? {}
+      : {
+          tools: [
+            {
+              type: "openrouter:web_search",
+              parameters: { max_results: 5, max_total_results: 25 },
+            },
+          ],
+        }),
   };
 
   const controller = new AbortController();
