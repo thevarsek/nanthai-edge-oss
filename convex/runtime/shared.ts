@@ -9,12 +9,27 @@ export interface RuntimeWorkspacePaths {
   charts: string;
 }
 
+export type PersistentRuntimeEnvironment = "python" | "node";
+
 export function runtimeWorkspaceCwd(chatId: string): string {
   return `${RUNTIME_DEFAULT_CWD_ROOT}/${chatId}`;
 }
 
 export function runtimeWorkspacePaths(chatId: string): RuntimeWorkspacePaths {
   const root = runtimeWorkspaceCwd(chatId);
+  return {
+    root,
+    inputs: `${root}/inputs`,
+    outputs: `${root}/outputs`,
+    charts: `${root}/charts`,
+  };
+}
+
+export function persistentRuntimeWorkspacePaths(
+  chatId: string,
+  environment: PersistentRuntimeEnvironment,
+): RuntimeWorkspacePaths {
+  const root = `${runtimeWorkspaceCwd(chatId)}/vm-${environment}`;
   return {
     root,
     inputs: `${root}/inputs`,

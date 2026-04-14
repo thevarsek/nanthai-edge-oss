@@ -73,6 +73,16 @@ test("buildProgressiveToolRegistry: workspace and analytics profiles expand sepa
   });
   assert.ok(workspaceRegistry.get("workspace_exec"));
   assert.equal(workspaceRegistry.get("data_python_exec"), undefined);
+
+  const persistentRegistry = buildProgressiveToolRegistry({
+    isPro: true,
+    enabledIntegrations: [],
+    allowSubagents: false,
+    activeProfiles: ["persistentRuntime"],
+  });
+  assert.ok(persistentRegistry.get("vm_exec"));
+  assert.ok(persistentRegistry.get("read_pdf"));
+  assert.equal(persistentRegistry.get("workspace_exec"), undefined);
 });
 
 test("buildProgressiveToolRegistry: integration profiles only add enabled integrations", () => {
@@ -116,6 +126,7 @@ test("availableProgressiveProfiles: reflects integrations and runtime capability
   assert.ok(profiles.includes("docs"));
   assert.ok(profiles.includes("analytics"));
   assert.ok(profiles.includes("workspace"));
+  assert.ok(profiles.includes("persistentRuntime"));
   assert.ok(profiles.includes("subagents"));
   assert.ok(profiles.includes("google"));
   assert.ok(profiles.includes("notion"));

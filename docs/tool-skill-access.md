@@ -11,7 +11,7 @@ Use it when you need to answer:
 - what Free vs Pro vs internal Max users can actually do
 - which tools are executable versus which skills are discoverable instructions
 - which connected-app features depend on OAuth connections
-- which runtime features are internal-only and manually granted today
+- how the cheap ephemeral workspace, analytics runtimes, and persistent runtime split work today
 
 ## Core Model
 
@@ -93,7 +93,7 @@ Current backend behavior is intentionally forgiving:
 | Microsoft 365 | `outlook_send`, `outlook_read`, `outlook_search`, `outlook_delete`, `outlook_move`, `outlook_list_folders`, `onedrive_upload`, `onedrive_list`, `onedrive_read`, `onedrive_move`, `ms_calendar_list`, `ms_calendar_create`, `ms_calendar_delete` | Pro + active Microsoft connection + requested integration |
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
-| Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `data_python_exec`, `data_python_sandbox`, `workspace_reset` | Pro (skill-activated) |
+| Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset`, `data_python_exec`, `data_python_sandbox`, `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset`, `read_pdf`, `generate_pdf`, `edit_pdf` | Pro (skill-activated) |
 
 ## Skills And Their Practical Role
 
@@ -103,8 +103,8 @@ Skills are curated or user-authored instruction packs that help the model choose
 
 | Family | Skills | Typical profile(s) | Gate |
 |---|---|---|---|
-| Runtime / analytics | `code-workspace`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `analytics` | Pro (skill-activated) |
-| Documents | `documents`, `docx`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
+| Runtime / analytics | `code-workspace`, `persistent-runtime`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `persistentRuntime`, `analytics` | Pro (skill-activated) |
+| Documents | `documents`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
 | Connected apps | `google-workspace`, `microsoft-365`, `notion-workspace`, `apple-calendar` | `google`, `microsoft`, `notion`, `appleCalendar` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
@@ -139,8 +139,10 @@ These are the clearest examples of how skills and tools relate today.
 | `marketing-performance-report` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
 | `reconciliation` | `analytics` | `workspace_import_file`, `data_python_exec`, `workspace_export_file` | none (M27) |
 | `code-workspace` | `workspace` | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset` | none (M27) |
+| `persistent-runtime` | `persistentRuntime` | `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset` | none |
+| `pdf` | `persistentRuntime` | `read_pdf`, `generate_pdf`, `edit_pdf` | none |
 | `parallel-subagents` | `subagents` | `spawn_subagents` | none |
-| `documents` | `docs` | profile-driven document/text/email tools | none |
+| `documents` | `docs`, `persistentRuntime` | profile-driven document/text/email/PDF tools | none |
 | `docx` | `docs` | `generate_docx`, `read_docx`, `edit_docx` | none |
 | `pptx` | `docs` | `generate_pptx`, `read_pptx`, `edit_pptx` | none |
 | `xlsx` | `docs`, `analytics` | `generate_xlsx`, `read_xlsx`, `edit_xlsx` | none explicitly |
@@ -171,6 +173,7 @@ On create/update, NanthAI normalizes skill metadata like this:
 | Document tool IDs | add `docs` profile |
 | `workspace_import_file` or `data_python_exec` | add `analytics` profile |
 | Generic workspace tool IDs | add `workspace` profile |
+| Persistent VM and PDF tool IDs | add `persistentRuntime` profile |
 | Gmail / Drive / Calendar integration IDs | add `google` profile |
 | Outlook / OneDrive / MS Calendar integration IDs | add `microsoft` profile |
 | Notion integration ID | add `notion` profile |
@@ -223,6 +226,11 @@ The runtime workspace is:
 - paused automatically after inactivity
 - not a permanent personal VM
 - durable only when outputs are exported back into NanthAI storage
+
+In practice there are now two runtime shapes:
+
+- `workspace_*`: cheap ephemeral just-bash workspace for short-lived tasks
+- `vm_*` / PDF tools: persistent Vercel runtime for multi-turn stateful work
 
 ## See Also
 

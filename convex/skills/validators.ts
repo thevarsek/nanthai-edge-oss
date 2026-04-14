@@ -135,6 +135,9 @@ const KNOWN_TOOL_IDS = new Set([
   "workspace_write_file", "workspace_make_dirs", "workspace_import_file",
   "workspace_export_file", "data_python_exec", "data_python_sandbox",
   "workspace_reset",
+  "vm_exec", "vm_list_files", "vm_read_file", "vm_write_file",
+  "vm_delete_file", "vm_make_dirs", "vm_import_file", "vm_export_file",
+  "vm_reset", "read_pdf", "generate_pdf", "edit_pdf",
   // Google
   "gmail_send", "gmail_read", "gmail_search", "gmail_delete",
   "gmail_modify_labels", "gmail_list_labels",

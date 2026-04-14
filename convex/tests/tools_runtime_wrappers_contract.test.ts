@@ -3,7 +3,10 @@ import test from "node:test";
 
 import { dataPythonExec } from "../tools/data_python_exec";
 import { dataPythonSandbox } from "../tools/data_python_sandbox";
+import { generatePdf } from "../tools/generate_pdf";
+import { readPdf } from "../tools/read_pdf";
 import { spawnSubagents } from "../tools/spawn_subagents";
+import { vmExec } from "../tools/vm_exec";
 
 test("data python tools reject missing code", async () => {
   const execResult = await dataPythonExec.execute({} as any, {});
@@ -29,6 +32,22 @@ test("data python tools surface runtime context errors through execute wrappers"
   assert.match(String(execResult.error), /require chatId/i);
   assert.equal(sandboxResult.success, false);
   assert.match(String(sandboxResult.error), /require chatId/i);
+});
+
+test("persistent runtime wrappers validate required args", async () => {
+  const vmResult = await vmExec.execute({} as any, {});
+  const readResult = await readPdf.execute({} as any, {});
+  const generateResult = await generatePdf.execute({} as any, {
+    title: "Quarterly Report",
+    sections: [],
+  });
+
+  assert.equal(vmResult.success, false);
+  assert.equal(vmResult.error, "Missing command.");
+  assert.equal(readResult.success, false);
+  assert.equal(readResult.error, "Missing storageId.");
+  assert.equal(generateResult.success, false);
+  assert.equal(generateResult.error, "Provide at least one section.");
 });
 
 test("spawnSubagents validates tasks and returns deferred payload for valid requests", async () => {

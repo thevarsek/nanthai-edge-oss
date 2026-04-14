@@ -1,6 +1,7 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
+  sandboxSessionEnvironment,
   sandboxSessionStatus,
   userCapability,
   userCapabilitySource,
@@ -28,6 +29,7 @@ export const runtimeSchemaTables = {
     userId: v.string(),
     chatId: v.id("chats"),
     provider: v.literal("vercel"),
+    environment: v.optional(sandboxSessionEnvironment),
     providerSandboxId: v.optional(v.string()),
     status: sandboxSessionStatus,
     cwd: v.string(),
@@ -46,6 +48,7 @@ export const runtimeSchemaTables = {
   })
     .index("by_chat", ["chatId"])
     .index("by_chat_user", ["chatId", "userId"])
+    .index("by_chat_user_environment", ["chatId", "userId", "environment"])
     .index("by_user_status", ["userId", "status"])
     .index("by_status_last_active", ["status", "lastActiveAt"]),
 

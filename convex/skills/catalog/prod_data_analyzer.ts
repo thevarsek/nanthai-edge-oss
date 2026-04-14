@@ -23,6 +23,12 @@ Analyze tabular data to uncover patterns, trends, and actionable insights. Use N
 - **data_python_sandbox** — Full Linux Python sandbox with pip and network. Use when data_python_exec fails due to missing packages (scipy, scikit-learn, etc.), memory limits, or timeouts. State persists across calls within the same chat session.
 - **workspace_export_file** — Export important workspace files back into durable NanthAI storage.
 
+## Runtime Split
+
+- Prefer **data_python_exec** first for ordinary analysis and charting.
+- Use **data_python_sandbox** when the task is still analytics-centric but needs persistence, bigger packages, more memory, or longer execution.
+- Do not default to generic shell runtimes for chart work; keep the notebook path as the primary analytics surface unless the workflow clearly escapes analytics.
+
 ## Important Charting Rule
 
 - When the user asks for charts, plots, or visual analysis, prefer **data_python_exec** over generic shell/runtime execution.

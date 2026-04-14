@@ -7,7 +7,7 @@ import {
 } from "../skills/tool_profiles";
 
 test("validateToolProfileIds: known profiles are accepted", () => {
-  assert.deepEqual(validateToolProfileIds(["docs", "analytics", "workspace", "subagents"]), []);
+  assert.deepEqual(validateToolProfileIds(["docs", "analytics", "workspace", "persistentRuntime", "subagents"]), []);
 });
 
 test("validateToolProfileIds: unknown profiles are returned", () => {
@@ -96,4 +96,18 @@ test("normalizeSkillMetadata: subagent tool infers subagents profile", () => {
 
   assert.equal(result.runtimeMode, "toolAugmented");
   assert.deepEqual(result.requiredToolProfiles, ["subagents"]);
+});
+
+test("normalizeSkillMetadata: persistent runtime tool IDs infer persistentRuntime profile", () => {
+  const result = normalizeSkillMetadata({
+    instructionsRaw: "Use read_pdf and generate_pdf for PDF workflows.",
+    runtimeMode: "toolAugmented",
+    requiredToolIds: ["read_pdf"],
+    requiredToolProfiles: [],
+    requiredIntegrationIds: [],
+    requiredCapabilities: [],
+  });
+
+  assert.equal(result.runtimeMode, "toolAugmented");
+  assert.deepEqual(result.requiredToolProfiles, ["persistentRuntime"]);
 });

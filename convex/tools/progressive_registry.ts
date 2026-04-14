@@ -186,6 +186,7 @@ export function availableProgressiveProfiles(
     "docs",
     "analytics",
     "workspace",
+    "persistentRuntime",
     "scheduledJobs",
     "skillsManagement",
   ]);
@@ -214,6 +215,7 @@ function isSkillToolProfileId(value: string): value is SkillToolProfileId {
     "docs",
     "analytics",
     "workspace",
+    "persistentRuntime",
     "subagents",
     "google",
     "microsoft",

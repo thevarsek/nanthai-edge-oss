@@ -79,6 +79,47 @@ test("extractGeneratedFiles reads analytics exported files", () => {
   assert.equal(files[1].filename, "sales-chart-data.csv");
 });
 
+test("extractGeneratedFiles includes PDF outputs and VM exports", () => {
+  const files = extractGeneratedFiles([
+    {
+      toolCallId: "call_pdf",
+      toolName: "generate_pdf",
+      result: JSON.stringify({
+        storageId: "storage_pdf",
+        filename: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 2048,
+      }),
+    },
+    {
+      toolCallId: "call_vm",
+      toolName: "vm_export_file",
+      result: JSON.stringify({
+        storageId: "storage_vm",
+        filename: "artifact.json",
+        mimeType: "application/json",
+      }),
+    },
+  ]);
+
+  assert.deepEqual(files, [
+    {
+      storageId: "storage_pdf",
+      filename: "report.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: 2048,
+      toolName: "generate_pdf",
+    },
+    {
+      storageId: "storage_vm",
+      filename: "artifact.json",
+      mimeType: "application/json",
+      sizeBytes: undefined,
+      toolName: "vm_export_file",
+    },
+  ]);
+});
+
 test("extractGeneratedCharts reads analytics chart payloads", () => {
   const charts = extractGeneratedCharts([
     {

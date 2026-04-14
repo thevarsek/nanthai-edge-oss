@@ -218,6 +218,12 @@ export const sandboxSessionStatus = v.union(
   v.literal("deleted"),
 );
 
+/** Runtime sandbox environment. */
+export const sandboxSessionEnvironment = v.union(
+  v.literal("python"),
+  v.literal("node"),
+);
+
 // ── M13: Scheduled Jobs ──────────────────────────────────────────────
 
 
@@ -339,6 +345,7 @@ export const skillToolProfile = v.union(
   v.literal("docs"),
   v.literal("analytics"),
   v.literal("workspace"),
+  v.literal("persistentRuntime"),
   v.literal("subagents"),
   v.literal("google"),
   v.literal("microsoft"),

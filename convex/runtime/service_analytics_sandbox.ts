@@ -131,7 +131,7 @@ export async function runDataPythonSandbox(
   // Look up existing sandbox session for this chat
   const existingSession = await toolCtx.ctx.runQuery(
     internal.runtime.queries.getSessionByChatInternal,
-    { userId: toolCtx.userId, chatId: chatId as any },
+    { userId: toolCtx.userId, chatId: chatId as any, environment: "python" },
   );
 
   const existingSandboxId =
@@ -209,6 +209,7 @@ export async function runDataPythonSandbox(
           sessionId: existingSession._id,
           userId: toolCtx.userId,
           chatId: chatId as any,
+          environment: "python",
           providerSandboxId: result.sandboxId,
           status: "running",
           cwd: "/tmp",
@@ -227,6 +228,7 @@ export async function runDataPythonSandbox(
         {
           userId: toolCtx.userId,
           chatId: chatId as any,
+          environment: "python",
           providerSandboxId: result.sandboxId,
           status: "running",
           cwd: "/tmp",

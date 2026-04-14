@@ -18,8 +18,11 @@ const FILE_PRODUCING_TOOLS = new Set([
   "generate_text_file",
   "generate_eml",
   "workspace_export_file",
+  "vm_export_file",
   "data_python_exec",
   "data_python_sandbox",
+  "generate_pdf",
+  "edit_pdf",
 ]);
 
 export function extractGeneratedFiles(

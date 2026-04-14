@@ -8,8 +8,8 @@ import { SystemSkillSeedData } from "../skills/mutations_seed";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 55 skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 55);
+test("SYSTEM_SKILL_CATALOG contains 57 skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 57);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -59,10 +59,10 @@ test("SYSTEM_SKILL_CATALOG: slugs are lowercase-hyphenated", () => {
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 53 visible + 2 hidden skills", () => {
+test("SYSTEM_SKILL_CATALOG: 55 visible + 2 hidden skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
-  assert.equal(visible.length, 53);
+  assert.equal(visible.length, 55);
   assert.equal(hidden.length, 2);
 });
 
@@ -109,12 +109,14 @@ test("SYSTEM_SKILL_CATALOG: docx, pptx, xlsx are toolAugmented with required too
 
 test("SYSTEM_SKILL_CATALOG: docs, runtime, and subagent skills have requiredToolProfiles", () => {
   const expectations: Record<string, string[]> = {
-    "documents": ["docs"],
+    "documents": ["docs", "persistentRuntime"],
     "docx": ["docs"],
+    "pdf": ["persistentRuntime"],
     "pptx": ["docs"],
     "xlsx": ["docs", "analytics"],
     "data-analyzer": ["analytics"],
     "code-workspace": ["workspace"],
+    "persistent-runtime": ["persistentRuntime"],
     "parallel-subagents": ["subagents"],
     "competitive-analysis": [],
     "multi-platform-launch": [],
@@ -131,6 +133,8 @@ test("SYSTEM_SKILL_CATALOG: docs, runtime, and subagent skills have requiredTool
 test("SYSTEM_SKILL_CATALOG: integration discovery skills are present", () => {
   const slugs = new Set(SYSTEM_SKILL_CATALOG.map((skill) => skill.slug));
   assert.ok(slugs.has("documents"));
+  assert.ok(slugs.has("pdf"));
+  assert.ok(slugs.has("persistent-runtime"));
   assert.ok(slugs.has("gmail"));
   assert.ok(slugs.has("google-drive"));
   assert.ok(slugs.has("google-calendar"));
@@ -138,6 +142,34 @@ test("SYSTEM_SKILL_CATALOG: integration discovery skills are present", () => {
   assert.ok(slugs.has("notion-workspace"));
   assert.ok(slugs.has("apple-calendar"));
   assert.ok(slugs.has("parallel-subagents"));
+});
+
+test("SYSTEM_SKILL_CATALOG: pdf requires read_pdf, generate_pdf, edit_pdf", () => {
+  const pdf = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "pdf");
+  assert.ok(pdf);
+  assert.deepEqual(
+    [...pdf.requiredToolIds].sort(),
+    ["edit_pdf", "generate_pdf", "read_pdf"],
+  );
+});
+
+test("SYSTEM_SKILL_CATALOG: persistent-runtime requires the vm tool family", () => {
+  const skill = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "persistent-runtime");
+  assert.ok(skill);
+  assert.deepEqual(
+    [...skill.requiredToolIds].sort(),
+    [
+      "vm_delete_file",
+      "vm_exec",
+      "vm_export_file",
+      "vm_import_file",
+      "vm_list_files",
+      "vm_make_dirs",
+      "vm_read_file",
+      "vm_reset",
+      "vm_write_file",
+    ],
+  );
 });
 
 test("SYSTEM_SKILL_CATALOG: docx requires generate_docx, read_docx, edit_docx", () => {

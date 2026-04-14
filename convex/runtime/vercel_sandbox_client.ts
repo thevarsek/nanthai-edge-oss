@@ -29,6 +29,8 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000; // 5 min
 const CHART_DIR = "/tmp/_nanthai_charts";
 const AUTO_CAPTURE_DIR = "/tmp/outputs";
 
+export type VercelSandboxEnvironment = "python" | "node";
+
 // ---------------------------------------------------------------------------
 // Public result type
 // ---------------------------------------------------------------------------
@@ -106,7 +108,7 @@ _os.makedirs('/tmp/outputs', exist_ok=True)
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function getVercelCredentials(): {
+export function getVercelCredentials(): {
   token: string;
   projectId: string;
   teamId: string;
@@ -182,21 +184,45 @@ async function resetSandboxDir(
   ]);
 }
 
-async function createVercelSandbox(timeoutMs: number): Promise<Sandbox> {
+export function vercelSandboxRuntime(environment: VercelSandboxEnvironment): "python3.13" | "node24" {
+  return environment === "node" ? "node24" : "python3.13";
+}
+
+export async function createVercelSandbox(
+  timeoutMs: number,
+  environment: VercelSandboxEnvironment = "python",
+): Promise<Sandbox> {
   const credentials = getVercelCredentials();
   return await Sandbox.create({
-    runtime: "python3.13",
+    runtime: vercelSandboxRuntime(environment),
     timeout: timeoutMs,
     ...credentials,
   });
 }
 
-async function resumeVercelSandbox(sandboxId: string): Promise<Sandbox> {
+export async function resumeVercelSandbox(sandboxId: string): Promise<Sandbox> {
   const credentials = getVercelCredentials();
   return await Sandbox.get({
     sandboxId,
     ...credentials,
   });
+}
+
+export async function getOrCreateVercelSandbox(
+  existingSandboxId: string | undefined,
+  timeoutMs: number,
+  environment: VercelSandboxEnvironment = "python",
+): Promise<Sandbox> {
+  if (existingSandboxId) {
+    try {
+      const sandbox = await resumeVercelSandbox(existingSandboxId);
+      await sandbox.extendTimeout(timeoutMs).catch(() => {});
+      return sandbox;
+    } catch {
+      return createVercelSandbox(timeoutMs, environment);
+    }
+  }
+  return createVercelSandbox(timeoutMs, environment);
 }
 
 // ---------------------------------------------------------------------------
@@ -213,27 +239,11 @@ export async function runVercelSandboxCode(
   exportPaths?: string[],
 ): Promise<VercelSandboxExecResult> {
   const effectiveTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
-
-  // Get or create the sandbox
-  let sandbox: Sandbox;
-
-  if (existingSandboxId) {
-    try {
-      sandbox = await resumeVercelSandbox(existingSandboxId);
-      // Extend the VM lifetime so it stays alive for multi-turn conversations.
-      // Without this, the sandbox dies 5 min after creation regardless of
-      // activity. extendTimeout adds duration on top of the current timeout.
-      await sandbox.extendTimeout(effectiveTimeout).catch(() => {
-        // Non-fatal — sandbox may still work even if extension fails
-        // (e.g. plan maximum reached).
-      });
-    } catch {
-      // If resume fails (e.g. sandbox stopped), create a new one
-      sandbox = await createVercelSandbox(effectiveTimeout);
-    }
-  } else {
-    sandbox = await createVercelSandbox(effectiveTimeout);
-  }
+  const sandbox = await getOrCreateVercelSandbox(
+    existingSandboxId,
+    effectiveTimeout,
+    "python",
+  );
 
   const sandboxId = sandbox.sandboxId;
   const outputSnapshot = await snapshotSandboxFiles(sandbox, AUTO_CAPTURE_DIR);

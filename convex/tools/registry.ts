@@ -261,8 +261,12 @@ export class ToolRegistry {
     const shouldSerialize = (toolName: string): boolean =>
       toolName.startsWith("notion_") ||
       toolName.startsWith("workspace_") ||
+      toolName.startsWith("vm_") ||
       toolName === "data_python_exec" ||
-      toolName === "data_python_sandbox";
+      toolName === "data_python_sandbox" ||
+      toolName === "read_pdf" ||
+      toolName === "generate_pdf" ||
+      toolName === "edit_pdf";
 
     await Promise.all(
       toolCalls.map((tc, index) => {

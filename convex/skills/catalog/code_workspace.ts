@@ -22,6 +22,7 @@ Use NanthAI's temporary chat workspace when the task requires code execution, sh
 - **No pip/npm install** — only Python stdlib and pre-installed CLI tools are available.
 - **Filesystem is temporary** — files persist within this response only; lost between messages.
 - **For data analysis** with numpy, pandas, or matplotlib, use the data-analyzer skill instead (which provides data_python_exec).
+- **For persistent multi-turn work** with installed packages, network access, or long-lived Node/Python state, load the \`persistent-runtime\` skill instead of staying in the temporary workspace.
 
 ## Preferred Workflow
 
@@ -34,7 +35,8 @@ Use NanthAI's temporary chat workspace when the task requires code execution, sh
 
 - Treat the workspace as temporary to this chat.
 - Prefer named NanthAI export/import tools over inventing local paths in the final answer.
-- Avoid claiming a file is available to the user until it has been exported.`,
+- Avoid claiming a file is available to the user until it has been exported.
+- Escalate out of this workspace when the user needs state to survive across later generations.`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
   scope: "system",

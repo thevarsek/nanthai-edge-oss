@@ -4,6 +4,7 @@ const PROFILE_ORDER = [
   "docs",
   "analytics",
   "workspace",
+  "persistentRuntime",
   "subagents",
   "google",
   "microsoft",
@@ -56,6 +57,21 @@ const WORKSPACE_TOOL_IDS = new Set([
   "workspace_make_dirs",
   "workspace_export_file",
   "workspace_reset",
+]);
+
+const PERSISTENT_RUNTIME_TOOL_IDS = new Set([
+  "vm_exec",
+  "vm_list_files",
+  "vm_read_file",
+  "vm_write_file",
+  "vm_delete_file",
+  "vm_make_dirs",
+  "vm_import_file",
+  "vm_export_file",
+  "vm_reset",
+  "read_pdf",
+  "generate_pdf",
+  "edit_pdf",
 ]);
 
 const SUBAGENT_TOOL_IDS = new Set([
@@ -112,6 +128,7 @@ export function inferProfilesFromToolIds(
     if (DOC_TOOL_IDS.has(toolId)) profiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(toolId)) profiles.add("analytics");
     if (WORKSPACE_TOOL_IDS.has(toolId)) profiles.add("workspace");
+    if (PERSISTENT_RUNTIME_TOOL_IDS.has(toolId)) profiles.add("persistentRuntime");
     if (SUBAGENT_TOOL_IDS.has(toolId)) profiles.add("subagents");
     if (SCHEDULED_JOB_TOOL_IDS.has(toolId)) profiles.add("scheduledJobs");
     if (SKILL_MANAGEMENT_TOOL_IDS.has(toolId)) profiles.add("skillsManagement");
@@ -143,6 +160,7 @@ export function normalizeSkillMetadata(
     if (DOC_TOOL_IDS.has(toolId)) inferredProfiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(toolId)) inferredProfiles.add("analytics");
     if (WORKSPACE_TOOL_IDS.has(toolId)) inferredProfiles.add("workspace");
+    if (PERSISTENT_RUNTIME_TOOL_IDS.has(toolId)) inferredProfiles.add("persistentRuntime");
     if (SUBAGENT_TOOL_IDS.has(toolId)) inferredProfiles.add("subagents");
     if (SCHEDULED_JOB_TOOL_IDS.has(toolId)) inferredProfiles.add("scheduledJobs");
     if (SKILL_MANAGEMENT_TOOL_IDS.has(toolId)) inferredProfiles.add("skillsManagement");
@@ -157,6 +175,7 @@ export function normalizeSkillMetadata(
     if (DOC_TOOL_IDS.has(token)) inferredProfiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(token)) inferredProfiles.add("analytics");
     if (WORKSPACE_TOOL_IDS.has(token)) inferredProfiles.add("workspace");
+    if (PERSISTENT_RUNTIME_TOOL_IDS.has(token)) inferredProfiles.add("persistentRuntime");
     if (SUBAGENT_TOOL_IDS.has(token)) inferredProfiles.add("subagents");
     if (SCHEDULED_JOB_TOOL_IDS.has(token)) inferredProfiles.add("scheduledJobs");
     if (SKILL_MANAGEMENT_TOOL_IDS.has(token)) inferredProfiles.add("skillsManagement");
@@ -186,6 +205,11 @@ export function normalizeSkillMetadata(
   if (inferredProfiles.has("workspace") && !requiredToolIds.some((toolId) => WORKSPACE_TOOL_IDS.has(toolId))) {
     metadataWarnings.push(
       "Workspace profile is enabled without explicit workspace tool IDs; this skill will rely on profile-based tool loading.",
+    );
+  }
+  if (inferredProfiles.has("persistentRuntime") && !requiredToolIds.some((toolId) => PERSISTENT_RUNTIME_TOOL_IDS.has(toolId))) {
+    metadataWarnings.push(
+      "Persistent runtime profile is enabled without explicit VM/PDF tool IDs; this skill will rely on profile-based tool loading.",
     );
   }
   if (inferredProfiles.has("subagents") && !requiredToolIds.some((toolId) => SUBAGENT_TOOL_IDS.has(toolId))) {

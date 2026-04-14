@@ -79,8 +79,9 @@ import {
 } from "./apple/index";
 import {
   registerAnalyticsTools,
+  registerPersistentRuntimeTools,
   registerWorkspaceProfileTools,
-  registerWorkspaceTools,
+  registerAllRuntimeTools,
 } from "./workspace_registry";
 import type { ProgressiveToolRegistryOptions } from "./progressive_registry";
 
@@ -138,6 +139,9 @@ export function registerProfileTools(
       break;
     case "workspace":
       registerWorkspaceSubset(registry, registerWorkspaceProfileTools);
+      break;
+    case "persistentRuntime":
+      registerWorkspaceSubset(registry, registerPersistentRuntimeTools);
       break;
     case "subagents":
       if (options.allowSubagents) {
@@ -230,7 +234,7 @@ function registerWorkspaceSubset(
   const temp = new ToolRegistry();
   const scratch = new ToolRegistry();
   registerSubset(temp);
-  registerWorkspaceTools(scratch);
+  registerAllRuntimeTools(scratch);
 
   registerToolsIfMissing(
     registry,

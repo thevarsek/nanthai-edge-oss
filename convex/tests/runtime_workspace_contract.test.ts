@@ -13,6 +13,7 @@ import { sanitizeFilename } from "../tools/sanitize";
 import { ToolRegistry } from "../tools/registry";
 import {
   registerAnalyticsTools,
+  registerPersistentRuntimeTools,
   registerWorkspaceProfileTools,
   registerWorkspaceTools,
 } from "../tools/workspace_registry";
@@ -72,10 +73,12 @@ test("runtime just-bash helpers wrap command execution, listing, truncation, and
 test("workspace registry helpers register the expected tool sets and sanitize filenames", () => {
   const analytics = new ToolRegistry();
   const profile = new ToolRegistry();
+  const persistent = new ToolRegistry();
   const full = new ToolRegistry();
 
   registerAnalyticsTools(analytics);
   registerWorkspaceProfileTools(profile);
+  registerPersistentRuntimeTools(persistent);
   registerWorkspaceTools(full);
 
   assert.ok(analytics.get("workspace_import_file"));
@@ -84,6 +87,9 @@ test("workspace registry helpers register the expected tool sets and sanitize fi
   assert.ok(profile.get("workspace_exec"));
   assert.ok(profile.get("workspace_reset"));
   assert.equal(profile.get("data_python_exec"), undefined);
+  assert.ok(persistent.get("vm_exec"));
+  assert.ok(persistent.get("read_pdf"));
+  assert.equal(persistent.get("workspace_exec"), undefined);
   assert.ok(full.get("workspace_exec"));
   assert.ok(full.get("data_python_sandbox"));
   assert.equal(sanitizeFilename(" Q1: Plan?.pptx "), "Q1 Planpptx");

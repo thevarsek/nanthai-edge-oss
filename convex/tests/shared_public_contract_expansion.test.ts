@@ -265,6 +265,7 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
     sessionId: "session_1",
     userId: "user_1",
     chatId: "chat_1",
+    environment: "python",
     status: "running",
     cwd: "/tmp/chat_1",
     lastActiveAt: 10,
@@ -295,6 +296,7 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
 
   assert.deepEqual(positions.map((row: any) => row._id), ["pos_1", "pos_2"]);
   assert.deepEqual(tokens, [{ _id: "token_1" }]);
+  assert.equal(runtimePatches[0]?.value.environment, "python");
   assert.equal(runtimePatches[0]?.value.pendingDeletionReason, undefined);
   assert.equal(capabilityPatches[0]?.value.status, "revoked");
 });

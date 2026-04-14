@@ -94,7 +94,7 @@ test("listSessions deduplicates repeated chat title lookups", async () => {
   ]);
 });
 
-test("getSessionByChatInternal uses by_chat_user index", async () => {
+test("getSessionByChatInternal uses by_chat_user_environment index", async () => {
   const indexCalls: string[] = [];
   const ctx = {
     db: {
@@ -105,21 +105,27 @@ test("getSessionByChatInternal uses by_chat_user index", async () => {
             indexCalls.push(index);
             let chatId = "";
             let userId = "";
+            let environment = "";
             apply({
               eq: (_field: string, firstValue: string) => {
                 chatId = firstValue;
                 return {
                   eq: (_userField: string, secondValue: string) => {
                     userId = secondValue;
-                    return {};
+                    return {
+                      eq: (_envField: string, thirdValue: string) => {
+                        environment = thirdValue;
+                        return {};
+                      },
+                    };
                   },
                 };
               },
             });
             return {
               collect: async () => [
-                { _id: "sandbox_1", chatId, userId, updatedAt: 10 },
-                { _id: "sandbox_2", chatId, userId, updatedAt: 20 },
+                { _id: "sandbox_1", chatId, userId, environment, updatedAt: 10 },
+                { _id: "sandbox_2", chatId, userId, environment, updatedAt: 20 },
               ],
             };
           },
@@ -131,8 +137,9 @@ test("getSessionByChatInternal uses by_chat_user index", async () => {
   const result = await (getSessionByChatInternal as any)._handler(ctx, {
     userId: "user_1",
     chatId: "chat_1",
+    environment: "python",
   });
 
-  assert.deepEqual(indexCalls, ["by_chat_user"]);
+  assert.deepEqual(indexCalls, ["by_chat_user_environment"]);
   assert.equal(result?._id, "sandbox_2");
 });

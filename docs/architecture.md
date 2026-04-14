@@ -586,6 +586,8 @@ M19 introduced runtime capability scaffolding and analytics tools. M27 replaced 
 
 - generic workspace tools: read/write/list/exec/export/reset
 - analytics tools: `data_python_exec` (Pyodide WASM), `data_python_sandbox` (Vercel Sandbox)
+- persistent runtime tools: `vm_*` against Vercel Sandbox (`python` / `node`)
+- PDF tools: `read_pdf`, `generate_pdf`, `edit_pdf` on top of the persistent Python runtime
 
 The analytics tools use Pyodide (in-process WASM) or Vercel Sandbox (cloud) so Matplotlib outputs can become:
 

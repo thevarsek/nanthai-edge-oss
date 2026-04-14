@@ -15,6 +15,7 @@ type SkillToolProfile =
   | "docs"
   | "analytics"
   | "workspace"
+  | "persistentRuntime"
   | "subagents"
   | "google"
   | "microsoft"

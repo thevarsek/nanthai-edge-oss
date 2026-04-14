@@ -12,6 +12,8 @@ import { DOC_COAUTHORING_SKILL } from "./doc_coauthoring";
 import { DOCUMENTS_SKILL } from "./documents";
 import { DOCX_SKILL } from "./docx";
 import { INTERNAL_COMMS_SKILL } from "./internal_comms";
+import { PDF_SKILL } from "./pdf";
+import { PERSISTENT_RUNTIME_SKILL } from "./persistent_runtime";
 import { PPTX_SKILL } from "./pptx";
 import { XLSX_SKILL } from "./xlsx";
 import { APPLE_CALENDAR_SKILL } from "./apple_calendar";
@@ -129,8 +131,10 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   MICROSOFT_365_SKILL,
   MULTI_PLATFORM_LAUNCH_SKILL,
   NOTION_WORKSPACE_SKILL,
+  PDF_SKILL,
   PARALLEL_SUBAGENTS_SKILL,
   PERSONA_SKILL,
+  PERSISTENT_RUNTIME_SKILL,
   POSITIONING_ICP_SKILL,
   PPTX_SKILL,
   PRD_SKILL,

@@ -6,6 +6,7 @@ export const upsertSessionInternal = internalMutation({
     sessionId: v.optional(v.id("sandboxSessions")),
     userId: v.string(),
     chatId: v.id("chats"),
+    environment: v.union(v.literal("python"), v.literal("node")),
     providerSandboxId: v.optional(v.string()),
     status: v.union(
       v.literal("pendingCreate"),
@@ -29,6 +30,7 @@ export const upsertSessionInternal = internalMutation({
     const now = Date.now();
     const patch: Record<string, unknown> = {
       provider: "vercel" as const,
+      environment: args.environment,
       status: args.status,
       cwd: args.cwd,
       lastActiveAt: args.lastActiveAt,

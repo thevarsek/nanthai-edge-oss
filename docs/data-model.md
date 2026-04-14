@@ -44,9 +44,9 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `deviceTokens` | Provider-based push notification tokens (M13.5/M16) | userId, token, platform (`ios`/`android`), provider (`apns`/`fcm`), optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider` |
 | `favorites` | Quick-launch model/persona/group shortcuts | userId, name, modelIds, personaId, personaName, personaEmoji, personaAvatarImageUrl, sortOrder, createdAt, updatedAt. Index: `by_user` |
 | `userCapabilities` | Internal/manual feature grants layered on top of purchase entitlements | userId, capability (`pro` / `mcpRuntime`), source, status, grantedAt, expiresAt?, metadata. **Note (M27):** `sandboxRuntime` was removed — all Pro users now get runtime access without an additional capability grant. |
-| `sandboxSessions` | [DEPRECATED — M27] Legacy per-chat sandbox session tracking. Runtime now uses ephemeral per-generation just-bash sandboxes. | userId, chatId, providerSandboxId, templateName, templateVersion, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
-| `sandboxArtifacts` | [DEPRECATED — M27] Runtime artifact bookkeeping. No longer populated; artifacts now stored via `generatedFiles`. | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
-| `sandboxEvents` | [DEPRECATED — M27] Runtime observability trail. No longer populated. | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
+| `sandboxSessions` | Active Vercel runtime session tracking for sandbox-backed tools. Sessions are keyed by `chatId`, `userId`, and runtime `environment` (`python` / `node`). | userId, chatId, environment, providerSandboxId, provider, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
+| `sandboxArtifacts` | Runtime artifact bookkeeping for files exported from sandbox-backed tools into durable storage. | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
+| `sandboxEvents` | Runtime observability trail for sandbox-backed workflows. | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
 | `_scheduled_functions` | Convex system table | Scheduled function execution |
 
 ### Identity & Scoping

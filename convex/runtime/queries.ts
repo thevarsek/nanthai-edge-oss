@@ -19,12 +19,16 @@ const CLEANUP_BATCH_SIZE = 100;
 // ---------------------------------------------------------------------------
 
 export const getSessionByChatInternal = internalQuery({
-  args: { userId: v.string(), chatId: v.id("chats") },
+  args: {
+    userId: v.string(),
+    chatId: v.id("chats"),
+    environment: v.union(v.literal("python"), v.literal("node")),
+  },
   handler: async (ctx, args) => {
     const sessions = await ctx.db
       .query("sandboxSessions")
-      .withIndex("by_chat_user", (q) =>
-        q.eq("chatId", args.chatId).eq("userId", args.userId),
+      .withIndex("by_chat_user_environment", (q) =>
+        q.eq("chatId", args.chatId).eq("userId", args.userId).eq("environment", args.environment),
       )
       .collect();
 
@@ -134,18 +138,21 @@ export const getStaleSessionsInternal = internalQuery({
       sessions: [
         ...staleRunning.map((s) => ({
           id: s._id,
+          environment: s.environment,
           providerSandboxId: s.providerSandboxId,
           status: s.status as string,
           hasVm: true,
         })),
         ...stalePending.map((s) => ({
           id: s._id,
+          environment: s.environment,
           providerSandboxId: s.providerSandboxId,
           status: s.status as string,
           hasVm: !!s.providerSandboxId,
         })),
         ...staleFailed.map((s) => ({
           id: s._id,
+          environment: s.environment,
           providerSandboxId: s.providerSandboxId,
           status: s.status as string,
           hasVm: false,
