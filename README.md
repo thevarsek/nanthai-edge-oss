@@ -1,6 +1,6 @@
 # NanthAI Edge
 
-> **Source-available AI chat platform** — web client (React/Vite) + real-time backend (Convex) + Clerk auth. Users bring their own OpenRouter API key and chat with 300+ AI models.
+> **Source-available AI chat platform** — web client (React/Vite) + real-time backend (Convex) + Clerk auth. Users bring their own OpenRouter API key and chat with 150+ AI models.
 
 [![License: Source-Available](https://img.shields.io/badge/License-Source--Available-blue)](/LICENSE)
 
