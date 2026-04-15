@@ -6,6 +6,7 @@ import { ToolRegistry, type RegisteredTool } from "./registry";
 import { fetchImage } from "./fetch_image";
 import { searchChats } from "./search_chats";
 import { createScheduledJob, listScheduledJobs, deleteScheduledJob } from "./scheduled_jobs";
+import { updateScheduledJob } from "./scheduled_jobs_update";
 import { createPersona, deletePersona } from "./persona";
 import { loadSkill } from "./load_skill";
 import {
@@ -102,6 +103,7 @@ const BASE_TOOLS: RegisteredTool[] = [
   searchChats,
   createScheduledJob,
   listScheduledJobs,
+  updateScheduledJob,
   deleteScheduledJob,
   createPersona,
   deletePersona,

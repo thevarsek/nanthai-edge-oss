@@ -4,7 +4,7 @@
 // =============================================================================
 
 import { v, ConvexError } from "convex/values";
-import { mutation, internalMutation } from "../_generated/server";
+import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
@@ -24,6 +24,10 @@ import {
   resolveScheduledJobSearchMode,
   type ScheduledJobStepConfig,
 } from "./shared";
+import {
+  createScheduledTriggerToken,
+  sha256Hex,
+} from "./trigger_auth";
 
 function recurrenceEquals(left: Recurrence, right: Recurrence): boolean {
   if (left.type !== right.type) return false;
@@ -73,7 +77,7 @@ function buildStepsFromInput(args: {
   return [{
     prompt: args.prompt,
     modelId: args.modelId,
-    personaId: (args.personaId ?? undefined) || undefined,
+    personaId: args.personaId ?? undefined,
     enabledIntegrations: args.enabledIntegrations,
     webSearchEnabled: args.webSearchEnabled,
     searchMode: resolveScheduledJobSearchMode(args),
@@ -161,6 +165,145 @@ async function validateScheduledSteps(
   }
 
   return result;
+}
+
+type ScheduledJobUpdateArgs = {
+  jobId: Id<"scheduledJobs">;
+  userId: string;
+  name?: string;
+  prompt?: string;
+  modelId?: string;
+  personaId?: Id<"personas"> | null;
+  enabledIntegrations?: string[];
+  webSearchEnabled?: boolean;
+  searchMode?: "none" | "basic" | "web" | "research";
+  searchComplexity?: number;
+  knowledgeBaseFileIds?: Id<"_storage">[];
+  includeReasoning?: boolean;
+  reasoningEffort?: string;
+  steps?: ScheduledJobStepConfig[];
+  recurrence?: Recurrence;
+  timezone?: string;
+  targetFolderId?: Id<"folders"> | null;
+  status?: "active" | "paused" | "error";
+};
+
+async function buildScheduledJobUpdatePatch(
+  ctx: MutationCtx,
+  args: ScheduledJobUpdateArgs,
+  job: any,
+): Promise<Record<string, unknown>> {
+  const updates: Record<string, unknown> = { updatedAt: Date.now() };
+
+  if (args.name !== undefined) {
+    const trimmedName = args.name.trim();
+    if (!trimmedName) {
+      throw new ConvexError({ code: "VALIDATION" as const, message: "Job name is required" });
+    }
+    updates.name = trimmedName;
+  }
+
+  if (args.timezone !== undefined) {
+    updates.timezone = args.timezone;
+  }
+
+  if (args.targetFolderId !== undefined) {
+    if (args.targetFolderId) {
+      const folder = await ctx.db.get(args.targetFolderId);
+      if (!folder || folder.userId !== args.userId) {
+        throw new ConvexError({ code: "NOT_FOUND" as const, message: "Target folder not found or unauthorized" });
+      }
+    }
+    updates.targetFolderId = args.targetFolderId ?? undefined;
+  }
+
+  if (args.status !== undefined) {
+    updates.status = args.status;
+  }
+
+  const hasLegacyStepOverrides = args.prompt !== undefined
+    || args.modelId !== undefined
+    || args.personaId !== undefined
+    || args.enabledIntegrations !== undefined
+    || args.webSearchEnabled !== undefined
+    || args.searchMode !== undefined
+    || args.searchComplexity !== undefined
+    || args.knowledgeBaseFileIds !== undefined
+    || args.includeReasoning !== undefined
+    || args.reasoningEffort !== undefined;
+
+  const effectiveSteps = buildStepsFromInput({
+    prompt: args.prompt ?? job.prompt,
+    modelId: args.modelId ?? job.modelId,
+    personaId: args.personaId === undefined
+      ? (job.personaId ?? undefined)
+      : args.personaId,
+    enabledIntegrations: args.enabledIntegrations ?? job.enabledIntegrations,
+    webSearchEnabled: args.webSearchEnabled ?? job.webSearchEnabled,
+    searchMode: args.searchMode ?? job.searchMode,
+    searchComplexity: args.searchComplexity ?? job.searchComplexity,
+    knowledgeBaseFileIds: args.knowledgeBaseFileIds ?? job.knowledgeBaseFileIds,
+    includeReasoning: args.includeReasoning ?? job.includeReasoning,
+    reasoningEffort: args.reasoningEffort ?? job.reasoningEffort,
+    steps: args.steps ?? (hasLegacyStepOverrides ? undefined : (job.steps as ScheduledJobStepConfig[] | undefined)),
+  });
+  const effectiveStepsFiltered = await validateScheduledSteps(ctx, args.userId, effectiveSteps);
+  const firstStep = mirrorFirstStep(effectiveStepsFiltered);
+
+  updates.prompt = firstStep.prompt;
+  updates.modelId = firstStep.modelId;
+  updates.personaId = firstStep.personaId;
+  updates.enabledIntegrations = firstStep.enabledIntegrations;
+  updates.webSearchEnabled = firstStep.webSearchEnabled;
+  updates.searchMode = firstStep.searchMode;
+  updates.searchComplexity = firstStep.searchComplexity;
+  updates.knowledgeBaseFileIds = firstStep.knowledgeBaseFileIds;
+  updates.includeReasoning = firstStep.includeReasoning;
+  updates.reasoningEffort = firstStep.reasoningEffort;
+  updates.steps = effectiveStepsFiltered;
+
+  const recurrence = (args.recurrence ?? job.recurrence) as Recurrence;
+  if (args.recurrence !== undefined) {
+    const validationError = validateRecurrence(recurrence);
+    if (validationError) {
+      throw new ConvexError({ code: "VALIDATION" as const, message: `Invalid recurrence: ${validationError}` });
+    }
+    updates.recurrence = args.recurrence;
+  }
+
+  const recurrenceChanged = args.recurrence !== undefined
+    && !recurrenceEquals(recurrence, job.recurrence as Recurrence);
+  const timezoneChanged = args.timezone !== undefined
+    && args.timezone !== job.timezone;
+  const statusChanged = args.status !== undefined && args.status !== job.status;
+
+  if (recurrenceChanged || timezoneChanged || statusChanged) {
+    if (job.scheduledFunctionId) {
+      try {
+        await ctx.scheduler.cancel(job.scheduledFunctionId);
+      } catch {
+        // May already have executed or been cancelled
+      }
+    }
+
+    const effectiveStatus = args.status ?? job.status;
+    const tz = args.timezone ?? job.timezone;
+    const nextRunAt = computeNextRunTime(recurrence, tz) ?? undefined;
+    updates.nextRunAt = effectiveStatus === "active" ? nextRunAt : undefined;
+
+    if (effectiveStatus === "active" && nextRunAt !== undefined) {
+      const scheduledId = await ctx.scheduler.runAt(
+        nextRunAt,
+        internal.scheduledJobs.actions.executeScheduledJob,
+        { jobId: args.jobId },
+      );
+      updates.scheduledFunctionId = scheduledId;
+    } else {
+      updates.scheduledFunctionId = undefined;
+    }
+  }
+
+  return updates;
 }
 
 // ── Public mutations (authenticated) ───────────────────────────────────
@@ -297,94 +440,10 @@ export const updateJob = mutation({
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
-
-    const updates: Record<string, unknown> = { updatedAt: Date.now() };
-
-    if (args.name !== undefined) {
-      const trimmedName = args.name.trim();
-      if (!trimmedName) throw new ConvexError({ code: "VALIDATION" as const, message: "Job name is required" });
-      updates.name = trimmedName;
-    }
-    if (args.timezone !== undefined) updates.timezone = args.timezone;
-    if (args.targetFolderId !== undefined) {
-      if (args.targetFolderId) {
-        const folder = await ctx.db.get(args.targetFolderId);
-        if (!folder || folder.userId !== userId) {
-          throw new ConvexError({ code: "NOT_FOUND" as const, message: "Target folder not found or unauthorized" });
-        }
-      }
-      updates.targetFolderId = args.targetFolderId ?? undefined;
-    }
-
-    const effectiveSteps = buildStepsFromInput({
-      prompt: args.prompt ?? job.prompt,
-      modelId: args.modelId ?? job.modelId,
-      personaId: args.personaId === undefined
-        ? (job.personaId ?? undefined)
-        : (args.personaId ?? undefined),
-      enabledIntegrations: args.enabledIntegrations ?? job.enabledIntegrations,
-      webSearchEnabled: args.webSearchEnabled ?? job.webSearchEnabled,
-      searchMode: args.searchMode ?? job.searchMode,
-      searchComplexity: args.searchComplexity ?? job.searchComplexity,
-      knowledgeBaseFileIds: args.knowledgeBaseFileIds ?? job.knowledgeBaseFileIds,
-      includeReasoning: args.includeReasoning ?? job.includeReasoning,
-      reasoningEffort: args.reasoningEffort ?? job.reasoningEffort,
-      steps: args.steps ?? (job.steps as ScheduledJobStepConfig[] | undefined),
-    });
-    const effectiveStepsFiltered = await validateScheduledSteps(ctx, userId, effectiveSteps);
-
-    const firstStep = mirrorFirstStep(effectiveStepsFiltered);
-    updates.prompt = firstStep.prompt;
-    updates.modelId = firstStep.modelId;
-    updates.personaId = firstStep.personaId;
-    updates.enabledIntegrations = firstStep.enabledIntegrations;
-    updates.webSearchEnabled = firstStep.webSearchEnabled;
-    updates.searchMode = firstStep.searchMode;
-    updates.searchComplexity = firstStep.searchComplexity;
-    updates.knowledgeBaseFileIds = firstStep.knowledgeBaseFileIds;
-    updates.includeReasoning = firstStep.includeReasoning;
-    updates.reasoningEffort = firstStep.reasoningEffort;
-    updates.steps = effectiveStepsFiltered;
-
-    const recurrence = (args.recurrence ?? job.recurrence) as Recurrence;
-    if (args.recurrence !== undefined) {
-      const validationError = validateRecurrence(recurrence);
-      if (validationError) {
-        throw new ConvexError({ code: "VALIDATION" as const, message: `Invalid recurrence: ${validationError}` });
-      }
-      updates.recurrence = args.recurrence;
-    }
-
-    const recurrenceChanged = args.recurrence !== undefined
-      && !recurrenceEquals(recurrence, job.recurrence as Recurrence);
-    const timezoneChanged = args.timezone !== undefined
-      && args.timezone !== job.timezone;
-
-    if (recurrenceChanged || timezoneChanged) {
-      if (job.scheduledFunctionId) {
-        try {
-          await ctx.scheduler.cancel(job.scheduledFunctionId);
-        } catch {
-          // May already have executed or been cancelled
-        }
-      }
-
-      const tz = args.timezone ?? job.timezone;
-      const nextRunAt = computeNextRunTime(recurrence, tz) ?? undefined;
-      updates.nextRunAt = nextRunAt;
-
-      if (nextRunAt !== undefined && job.status === "active") {
-        const scheduledId = await ctx.scheduler.runAt(
-          nextRunAt,
-          internal.scheduledJobs.actions.executeScheduledJob,
-          { jobId: args.jobId },
-        );
-        updates.scheduledFunctionId = scheduledId;
-      } else {
-        updates.scheduledFunctionId = undefined;
-      }
-    }
-
+    const updates = await buildScheduledJobUpdatePatch(ctx, {
+      ...args,
+      userId,
+    }, job);
     await ctx.db.patch(args.jobId, updates);
   },
 });
@@ -524,6 +583,128 @@ export const runJobNow = mutation({
     );
 
     return { triggered: true, message: "Job execution started" };
+  },
+});
+
+/** Create a new API trigger token for a scheduled job. */
+const scheduledTriggerTokenResponse = v.object({
+  tokenId: v.id("scheduledJobTriggerTokens"),
+  token: v.string(),
+  tokenPrefix: v.string(),
+});
+
+async function insertScheduledJobTriggerToken(
+  ctx: MutationCtx,
+  {
+    userId,
+    jobId,
+    label,
+  }: {
+    userId: string;
+    jobId: Id<"scheduledJobs">;
+    label?: string;
+  },
+) {
+  const { rawToken, tokenPrefix } = createScheduledTriggerToken();
+  const tokenHash = await sha256Hex(rawToken);
+  const now = Date.now();
+  const tokenId = await ctx.db.insert("scheduledJobTriggerTokens", {
+    userId,
+    jobId,
+    label: label?.trim() || undefined,
+    tokenPrefix,
+    tokenHash,
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+  });
+
+  return {
+    tokenId,
+    token: rawToken,
+    tokenPrefix,
+  };
+}
+
+export const createJobTriggerToken = mutation({
+  args: {
+    jobId: v.id("scheduledJobs"),
+    label: v.optional(v.string()),
+  },
+  returns: scheduledTriggerTokenResponse,
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.userId !== userId) {
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
+    }
+
+    return await insertScheduledJobTriggerToken(ctx, {
+      userId,
+      jobId: args.jobId,
+      label: args.label,
+    });
+  },
+});
+
+/** Rotate a scheduled-job API trigger token, revoking existing active tokens. */
+export const rotateJobTriggerToken = mutation({
+  args: {
+    jobId: v.id("scheduledJobs"),
+    label: v.optional(v.string()),
+  },
+  returns: scheduledTriggerTokenResponse,
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.userId !== userId) {
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
+    }
+
+    const activeTokens = await ctx.db
+      .query("scheduledJobTriggerTokens")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId).eq("status", "active"))
+      .collect();
+    const now = Date.now();
+
+    await Promise.all(activeTokens.map((token) => ctx.db.patch(token._id, {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+    })));
+
+    return await insertScheduledJobTriggerToken(ctx, {
+      userId,
+      jobId: args.jobId,
+      label: args.label ?? activeTokens[0]?.label,
+    });
+  },
+});
+
+/** Revoke an existing scheduled-job API trigger token. */
+export const revokeJobTriggerToken = mutation({
+  args: {
+    tokenId: v.id("scheduledJobTriggerTokens"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const token = await ctx.db.get(args.tokenId);
+    if (!token || token.userId !== userId) {
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Trigger token not found or unauthorized" });
+    }
+    if (token.status === "revoked") return;
+
+    const now = Date.now();
+    // Revocation prevents future API-triggered executions with this token.
+    // It intentionally does not cancel runs that were already accepted and scheduled.
+    await ctx.db.patch(args.tokenId, {
+      status: "revoked",
+      revokedAt: now,
+      updatedAt: now,
+    });
   },
 });
 
@@ -669,6 +850,43 @@ export const createJobInternal = internalMutation({
     }
 
     return jobId;
+  },
+});
+
+/** Internal: update a scheduled job on behalf of a user (for AI tools). */
+export const updateJobInternal = internalMutation({
+  args: {
+    jobId: v.id("scheduledJobs"),
+    userId: v.string(),
+    name: v.optional(v.string()),
+    prompt: v.optional(v.string()),
+    modelId: v.optional(v.string()),
+    personaId: v.optional(v.union(v.id("personas"), v.null())),
+    enabledIntegrations: v.optional(v.array(v.string())),
+    webSearchEnabled: v.optional(v.boolean()),
+    searchMode: v.optional(v.union(
+      v.literal("none"),
+      v.literal("basic"),
+      v.literal("web"),
+      v.literal("research"),
+    )),
+    searchComplexity: v.optional(v.number()),
+    knowledgeBaseFileIds: v.optional(v.array(v.id("_storage"))),
+    includeReasoning: v.optional(v.boolean()),
+    reasoningEffort: v.optional(v.string()),
+    steps: v.optional(v.array(scheduledJobStep)),
+    recurrence: v.optional(scheduledJobRecurrence),
+    timezone: v.optional(v.string()),
+    targetFolderId: v.optional(v.union(v.id("folders"), v.null())),
+    status: v.optional(v.union(v.literal("active"), v.literal("paused"), v.literal("error"))),
+  },
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.userId !== args.userId) {
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
+    }
+    const updates = await buildScheduledJobUpdatePatch(ctx, args, job);
+    await ctx.db.patch(args.jobId, updates);
   },
 });
 
@@ -903,6 +1121,7 @@ export const beginExecution = internalMutation({
     executionId: v.string(),
     startedAt: v.number(),
     stepCount: v.number(),
+    templateVariables: v.optional(v.record(v.string(), v.string())),
   },
   returns: v.object({ started: v.boolean() }),
   handler: async (ctx, args) => {
@@ -919,6 +1138,7 @@ export const beginExecution = internalMutation({
       activeExecutionId: args.executionId,
       activeExecutionChatId: undefined,
       activeExecutionStartedAt: args.startedAt,
+      activeExecutionVariables: args.templateVariables ?? undefined,
       activeStepCount: args.stepCount,
       activeStepIndex: undefined,
       activeUserMessageId: undefined,
@@ -1143,6 +1363,7 @@ export const recordRunSuccess = internalMutation({
       activeExecutionId: undefined,
       activeExecutionChatId: undefined,
       activeExecutionStartedAt: undefined,
+      activeExecutionVariables: undefined,
       activeStepIndex: undefined,
       activeStepCount: undefined,
       activeUserMessageId: undefined,
@@ -1193,6 +1414,7 @@ export const recordRunFailure = internalMutation({
       activeExecutionId: undefined,
       activeExecutionChatId: undefined,
       activeExecutionStartedAt: undefined,
+      activeExecutionVariables: undefined,
       activeStepIndex: undefined,
       activeStepCount: undefined,
       activeUserMessageId: undefined,
@@ -1229,6 +1451,121 @@ export const updateNextRun = internalMutation({
       nextRunAt: args.nextRunAt,
       scheduledFunctionId: args.scheduledFunctionId,
       updatedAt: Date.now(),
+    });
+  },
+});
+
+/** Internal: trigger a scheduled job via API with idempotency + audit logging. */
+export const triggerJobViaApi = internalMutation({
+  args: {
+    jobId: v.id("scheduledJobs"),
+    userId: v.string(),
+    tokenId: v.optional(v.id("scheduledJobTriggerTokens")),
+    requestId: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    variables: v.optional(v.record(v.string(), v.string())),
+  },
+  returns: v.object({
+    duplicate: v.boolean(),
+    triggered: v.boolean(),
+    message: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const effectiveIdempotencyKey = args.idempotencyKey?.trim() || undefined;
+
+    if (effectiveIdempotencyKey) {
+      const existing = await ctx.db
+        .query("scheduledJobApiInvocations")
+        .withIndex("by_job_idempotency", (q) =>
+          q.eq("jobId", args.jobId).eq("idempotencyKey", effectiveIdempotencyKey),
+        )
+        .first();
+      if (existing) {
+        await ctx.db.insert("scheduledJobApiInvocations", {
+          userId: args.userId,
+          jobId: args.jobId,
+          tokenId: args.tokenId,
+          requestId: args.requestId,
+          idempotencyKey: effectiveIdempotencyKey,
+          status: "duplicate",
+          variables: args.variables,
+          note: `Duplicate of request ${existing.requestId}`,
+          createdAt: now,
+        });
+        return {
+          duplicate: true,
+          triggered: false,
+          message: "Duplicate idempotency key; skipped triggering a new execution.",
+        };
+      }
+    }
+
+    const scheduledFunctionId = await ctx.scheduler.runAfter(
+      0,
+      internal.scheduledJobs.actions.executeScheduledJob,
+      {
+        jobId: args.jobId,
+        invocationSource: "api",
+        templateVariables: args.variables,
+      },
+    );
+
+    await ctx.db.insert("scheduledJobApiInvocations", {
+      userId: args.userId,
+      jobId: args.jobId,
+      tokenId: args.tokenId,
+      requestId: args.requestId,
+      idempotencyKey: effectiveIdempotencyKey,
+      status: "triggered",
+      variables: args.variables,
+      scheduledFunctionId,
+      createdAt: now,
+    });
+
+    if (args.tokenId) {
+      await ctx.db.patch(args.tokenId, {
+        lastUsedAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return {
+      duplicate: false,
+      triggered: true,
+      message: "Scheduled job execution triggered.",
+    };
+  },
+});
+
+/** Internal: append an audit-only API invocation event (no execution). */
+export const logApiInvocation = internalMutation({
+  args: {
+    userId: v.string(),
+    jobId: v.id("scheduledJobs"),
+    tokenId: v.optional(v.id("scheduledJobTriggerTokens")),
+    requestId: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    status: v.union(
+      v.literal("throttled"),
+      v.literal("unauthorized"),
+      v.literal("not_found"),
+      v.literal("error"),
+    ),
+    variables: v.optional(v.record(v.string(), v.string())),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.insert("scheduledJobApiInvocations", {
+      userId: args.userId,
+      jobId: args.jobId,
+      tokenId: args.tokenId,
+      requestId: args.requestId,
+      idempotencyKey: args.idempotencyKey?.trim() || undefined,
+      status: args.status,
+      variables: args.variables,
+      note: args.note,
+      createdAt: Date.now(),
     });
   },
 });

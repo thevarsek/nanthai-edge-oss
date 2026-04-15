@@ -136,7 +136,7 @@ For reference when setting requiredToolIds:
 **Media:** fetch_image
 **Search:** search_chats
 **Workspace & Analytics:** workspace_exec, workspace_list_files, workspace_read_file, workspace_write_file, workspace_make_dirs, workspace_import_file, workspace_export_file, workspace_reset, data_python_exec
-**Scheduling:** create_scheduled_job, list_scheduled_jobs, delete_scheduled_job
+**Scheduling:** create_scheduled_job, list_scheduled_jobs, update_scheduled_job, delete_scheduled_job
 **Personas:** create_persona, delete_persona
 **Skills:** load_skill, list_skills, create_skill, update_skill, delete_skill
 **Google:** gmail_send, gmail_read, gmail_search, gmail_delete, gmail_modify_labels, gmail_list_labels, drive_upload, drive_list, drive_read, drive_move, calendar_list, calendar_create, calendar_delete

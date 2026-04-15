@@ -8,6 +8,7 @@ import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { stripeWebhook } from "./stripe/webhook";
+import { triggerScheduledJob } from "./scheduledJobs/http";
 
 const http = httpRouter();
 
@@ -87,6 +88,18 @@ http.route({
   path: "/stripe/webhook",
   method: "POST",
   handler: stripeWebhook,
+});
+
+// ---------------------------------------------------------------------------
+// POST /scheduled-jobs/trigger
+//
+// Triggers an existing scheduled job via API token or authenticated user.
+// Optional variables payload supports template substitution in step prompts.
+// ---------------------------------------------------------------------------
+http.route({
+  path: "/scheduled-jobs/trigger",
+  method: "POST",
+  handler: triggerScheduledJob,
 });
 
 export default http;

@@ -12,7 +12,8 @@ import {
 export const executeScheduledJob = internalAction({
   args: {
     jobId: v.id("scheduledJobs"),
-    invocationSource: v.optional(v.union(v.literal("scheduled"), v.literal("manual"))),
+    invocationSource: v.optional(v.union(v.literal("scheduled"), v.literal("manual"), v.literal("api"))),
+    templateVariables: v.optional(v.record(v.string(), v.string())),
   },
   handler: executeScheduledJobHandler,
 });

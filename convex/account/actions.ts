@@ -38,6 +38,8 @@ const PURGE_ORDER = [
   "sandboxSessions",  // has by_user_status index
   // Leaf tables with userId
   "jobRuns",
+  "scheduledJobApiInvocations",
+  "scheduledJobTriggerTokens",
   "generationJobs",
   "chatParticipants",
   "searchContexts",

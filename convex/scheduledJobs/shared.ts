@@ -111,6 +111,32 @@ export function buildStepTriggerPrompt(
   ].join("\n");
 }
 
+export function applyTemplateVariables(
+  input: string,
+  templateVariables?: Record<string, string>,
+): string {
+  if (!templateVariables || Object.keys(templateVariables).length === 0) {
+    return input;
+  }
+
+  const rendered = input.replace(/\{\{([A-Za-z0-9_]+)\}\}/g, (match, key: string) => {
+    const value = templateVariables[key];
+    if (typeof value !== "string") {
+      return match;
+    }
+    return value;
+  });
+
+  const unresolved = rendered.match(/\{\{([A-Za-z0-9_]+)\}\}/g);
+  if (unresolved && unresolved.length > 0) {
+    console.warn("Scheduled job prompt still contains unresolved template placeholders", {
+      placeholders: unresolved,
+    });
+  }
+
+  return rendered;
+}
+
 export function getStepTitle(
   step: ScheduledJobStepConfig,
   stepIndex: number,

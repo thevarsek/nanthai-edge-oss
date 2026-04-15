@@ -237,6 +237,7 @@ export const userSchemaTables = {
     activeExecutionId: v.optional(v.string()),
     activeExecutionChatId: v.optional(v.id("chats")),
     activeExecutionStartedAt: v.optional(v.number()),
+    activeExecutionVariables: v.optional(v.record(v.string(), v.string())),
     activeStepIndex: v.optional(v.number()),
     activeStepCount: v.optional(v.number()),
     activeUserMessageId: v.optional(v.id("messages")),
@@ -267,6 +268,48 @@ export const userSchemaTables = {
     .index("by_user", ["userId", "startedAt"])
     .index("by_completedAt", ["completedAt"])
     .index("by_chat", ["chatId"]),
+
+  /** API trigger tokens for scheduled jobs (hashed at rest). */
+  scheduledJobTriggerTokens: defineTable({
+    userId: v.string(),
+    jobId: v.id("scheduledJobs"),
+    label: v.optional(v.string()),
+    tokenPrefix: v.string(),
+    tokenHash: v.string(),
+    status: v.union(v.literal("active"), v.literal("revoked")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId", "status"])
+    .index("by_job", ["jobId", "status"])
+    .index("by_token_hash", ["tokenHash"]),
+
+  /** Audit log for scheduled-job API trigger attempts and outcomes. */
+  scheduledJobApiInvocations: defineTable({
+    userId: v.string(),
+    jobId: v.id("scheduledJobs"),
+    tokenId: v.optional(v.id("scheduledJobTriggerTokens")),
+    requestId: v.string(),
+    idempotencyKey: v.optional(v.string()),
+    status: v.union(
+      v.literal("triggered"),
+      v.literal("duplicate"),
+      v.literal("throttled"),
+      v.literal("unauthorized"),
+      v.literal("not_found"),
+      v.literal("error"),
+    ),
+    variables: v.optional(v.record(v.string(), v.string())),
+    scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_job_created", ["jobId", "createdAt"])
+    .index("by_job_idempotency", ["jobId", "idempotencyKey"])
+    .index("by_request_id", ["requestId"]),
 
   /** Server-side API key storage for scheduled jobs (populated during PKCE exchange). */
   userSecrets: defineTable({

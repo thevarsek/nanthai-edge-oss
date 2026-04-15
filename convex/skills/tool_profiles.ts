@@ -81,6 +81,7 @@ const SUBAGENT_TOOL_IDS = new Set([
 const SCHEDULED_JOB_TOOL_IDS = new Set([
   "create_scheduled_job",
   "list_scheduled_jobs",
+  "update_scheduled_job",
   "delete_scheduled_job",
 ]);
 

@@ -8,6 +8,7 @@ import {
   scheduleNextRunIfNeeded,
 } from "../scheduledJobs/actions_lifecycle";
 import {
+  applyTemplateVariables,
   buildPromptWithKB,
   buildStepTriggerPrompt,
   getScheduledJobSteps,
@@ -76,6 +77,14 @@ test("buildPromptWithKB truncates context and mirrorFirstStep preserves derived 
   assert.equal(mirrored.searchMode, "web");
   assert.equal(mirrored.searchComplexity, 2);
   assert.equal(mirrored.includeReasoning, true);
+});
+
+test("applyTemplateVariables replaces known placeholders and leaves unknown placeholders literal", () => {
+  const rendered = applyTemplateVariables(
+    "Summarize {{CONTEXT}} and {{UNKNOWN}}",
+    { CONTEXT: "project updates" },
+  );
+  assert.equal(rendered, "Summarize project updates and {{UNKNOWN}}");
 });
 
 test("handleFailure increments failures and auto-pauses at the threshold", async () => {

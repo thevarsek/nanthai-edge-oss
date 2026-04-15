@@ -85,7 +85,7 @@ Current backend behavior is intentionally forgiving:
 | Text/file tools | `generate_text_file`, `read_text_file`, `generate_eml`, `read_eml` | Pro |
 | Utility | `fetch_image` | Pro |
 | Chat search | `search_chats` | Pro |
-| Scheduled jobs | `create_scheduled_job`, `list_scheduled_jobs`, `delete_scheduled_job` | Pro |
+| Scheduled jobs | `create_scheduled_job`, `list_scheduled_jobs`, `update_scheduled_job`, `delete_scheduled_job` | Pro |
 | Persona management | `create_persona`, `delete_persona` | Pro |
 | Skill management and discovery | `load_skill`, `list_skills`, `create_skill`, `update_skill`, `delete_skill`, `enable_skill_for_chat`, `disable_skill_for_chat`, `assign_skill_to_persona`, `remove_skill_from_persona` | Pro |
 | Subagents | `spawn_subagents` | Pro + tool-capable model + subagents enabled + subagent profile loaded |

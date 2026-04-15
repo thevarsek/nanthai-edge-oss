@@ -19,7 +19,8 @@ export async function executeScheduledJobHandler(
   ctx: ActionCtx,
   args: {
     jobId: Id<"scheduledJobs">;
-    invocationSource?: "scheduled" | "manual";
+    invocationSource?: "scheduled" | "manual" | "api";
+    templateVariables?: Record<string, string>;
   },
 ): Promise<void> {
   const job = await ctx.runQuery(
@@ -49,6 +50,7 @@ export async function executeScheduledJobHandler(
         executionId,
         startedAt,
         stepCount: steps.length,
+        templateVariables: args.templateVariables,
       },
     );
     if (!beginResult.started) {
@@ -111,6 +113,7 @@ export async function executeScheduledJobHandler(
       executionId,
       step: steps[0],
       stepIndex: 0,
+      templateVariables: args.templateVariables,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
@@ -182,6 +185,7 @@ export async function continueScheduledJobExecutionHandler(
       step: steps[args.completedStepIndex + 1],
       stepIndex: args.completedStepIndex + 1,
       previousAssistantContent,
+      templateVariables: job.activeExecutionVariables as Record<string, string> | undefined,
     });
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);

@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
 import { useToast } from "@/components/shared/Toast.context";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { convexSiteUrl } from "@/lib/constants";
 import { ScheduledJobEditor } from "./ScheduledJobEditor";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -51,6 +52,22 @@ interface JobRunDoc {
   chatId?: string;
 }
 
+interface TriggerTokenDoc {
+  _id: string;
+  label?: string;
+  tokenPrefix: string;
+  status: string;
+  createdAt: number;
+  updatedAt: number;
+  lastUsedAt?: number;
+}
+
+interface TriggerSecret {
+  tokenId: string;
+  token: string;
+  tokenPrefix: string;
+}
+
 type PageView = "list" | "detail" | "create" | "edit";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -83,6 +100,18 @@ function getEffectiveSteps(job: JobDoc): Array<Record<string, unknown>> {
   return [{ prompt: job.prompt, modelId: job.modelId, personaId: job.personaId, enabledIntegrations: job.enabledIntegrations }];
 }
 
+function templateVariablesForJob(job: JobDoc): string[] {
+  const variables = new Set<string>();
+  const pattern = /\{\{([A-Za-z0-9_]+)\}\}/g;
+  for (const step of getEffectiveSteps(job)) {
+    const prompt = typeof step.prompt === "string" ? step.prompt : "";
+    for (const match of prompt.matchAll(pattern)) {
+      if (match[1]) variables.add(match[1]);
+    }
+  }
+  return Array.from(variables).sort();
+}
+
 // ─── Job Detail Panel ───────────────────────────────────────────────────────
 
 function JobDetailPanel({
@@ -92,10 +121,17 @@ function JobDetailPanel({
   onToggle: () => void; onRunNow: () => void; onDelete: () => void;
 }) {
   const { t } = useTranslation();
+  const { toast } = useToast();
   const runs = useQuery(api.scheduledJobs.queries.listRuns, { jobId: job._id, limit: 20 }) as JobRunDoc[] | undefined;
+  const triggerTokens = useQuery(api.scheduledJobs.queries.listJobTriggerTokens, { jobId: job._id }) as TriggerTokenDoc[] | undefined;
+  const createTriggerToken = useMutation(api.scheduledJobs.mutations.createJobTriggerToken);
+  const rotateTriggerToken = useMutation(api.scheduledJobs.mutations.rotateJobTriggerToken);
+  const revokeTriggerToken = useMutation(api.scheduledJobs.mutations.revokeJobTriggerToken);
   const isActive = job.status === "active";
   const steps = getEffectiveSteps(job);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const [latestTriggerSecret, setLatestTriggerSecret] = useState<TriggerSecret | null>(null);
+  const templateVariables = templateVariablesForJob(job);
 
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 60_000);
@@ -118,6 +154,62 @@ function JobDetailPanel({
     if (diff < 3600_000) return t("minutes_ago", { count: Math.floor(diff / 60_000) });
     if (diff < 86400_000) return t("hours_ago", { count: Math.floor(diff / 3600_000) });
     return t("days_ago", { count: Math.floor(diff / 86400_000) });
+  }
+
+  async function copyText(value: string, successMessage: string) {
+    await navigator.clipboard.writeText(value);
+    toast({ message: successMessage, variant: "success" });
+  }
+
+  function triggerCurl(token: string) {
+    const body = {
+      jobId: job._id,
+      ...(templateVariables.length > 0
+        ? {
+            variables: Object.fromEntries(
+              templateVariables.map((name) => [name, `<${name.toLowerCase()}>`]),
+            ),
+          }
+        : {}),
+    };
+    return [
+      `curl -X POST "${convexSiteUrl}/scheduled-jobs/trigger" \\`,
+      `  -H "Authorization: Bearer ${token}" \\`,
+      `  -H "Content-Type: application/json" \\`,
+      `  -d '${JSON.stringify(body)}'`,
+    ].join("\n");
+  }
+
+  async function handleCreateTriggerToken() {
+    try {
+      const secret = await createTriggerToken({ jobId: job._id });
+      setLatestTriggerSecret(secret as TriggerSecret);
+      toast({ message: t("api_key_generated_copy_now"), variant: "success" });
+    } catch (error) {
+      toast({ message: convexErrorMessage(error, t("failed_to_generate_api_key")), variant: "error" });
+    }
+  }
+
+  async function handleRotateTriggerToken() {
+    try {
+      const secret = await rotateTriggerToken({ jobId: job._id });
+      setLatestTriggerSecret(secret as TriggerSecret);
+      toast({ message: t("api_key_rotated_copy_now"), variant: "success" });
+    } catch (error) {
+      toast({ message: convexErrorMessage(error, t("failed_to_rotate_api_key")), variant: "error" });
+    }
+  }
+
+  async function handleRevokeTriggerToken(tokenId: string) {
+    try {
+      await revokeTriggerToken({ tokenId: tokenId as Id<"scheduledJobTriggerTokens"> });
+      if (latestTriggerSecret?.tokenId === tokenId) {
+        setLatestTriggerSecret(null);
+      }
+      toast({ message: t("api_key_revoked"), variant: "success" });
+    } catch (error) {
+      toast({ message: convexErrorMessage(error, t("failed_to_revoke_api_key")), variant: "error" });
+    }
   }
 
   function scheduleDescription(rec?: Record<string, unknown>): string {
@@ -240,6 +332,69 @@ function JobDetailPanel({
           <button onClick={onDelete} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/5 transition-colors text-left">
             <Trash2 size={16} className="text-red-400 flex-shrink-0" />
             <span className="text-sm text-red-400">{t("delete_job")}</span>
+          </button>
+        </div>
+      </div>
+
+      {/* API Trigger */}
+      <div className="space-y-1">
+        <h3 className="text-xs font-medium text-muted uppercase tracking-wide px-1">{t("api_trigger")}</h3>
+        <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
+          {latestTriggerSecret && (
+            <div className="px-4 py-3 space-y-2">
+              <p className="text-sm font-medium">{t("new_api_key")}</p>
+              <p className="text-xs text-muted">{t("copy_api_key_now")}</p>
+              <code className="block text-xs break-all whitespace-pre-wrap rounded-xl bg-black/20 px-3 py-2">{latestTriggerSecret.token}</code>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void copyText(latestTriggerSecret.token, t("api_key_copied"))} className="px-3 py-1.5 rounded-lg bg-surface-3 text-xs hover:bg-surface-4 transition-colors">
+                  {t("copy_api_key")}
+                </button>
+                <button onClick={() => void copyText(triggerCurl(latestTriggerSecret.token), t("curl_example_copied"))} className="px-3 py-1.5 rounded-lg bg-surface-3 text-xs hover:bg-surface-4 transition-colors">
+                  {t("copy_curl_example")}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {templateVariables.length > 0 && (
+            <div className="px-4 py-3 space-y-1">
+              <p className="text-sm font-medium">{t("api_trigger_variables")}</p>
+              <p className="text-xs text-muted">{t("api_trigger_variables_description")}</p>
+              <p className="text-xs text-muted font-mono">{templateVariables.join(", ")}</p>
+            </div>
+          )}
+
+          {!triggerTokens || triggerTokens.length === 0 ? (
+            <div className="px-4 py-3 space-y-3">
+              <p className="text-xs text-muted">{t("no_active_api_trigger_key")}</p>
+              <button onClick={() => void handleCreateTriggerToken()} className="px-3 py-2 rounded-xl bg-accent text-black text-sm font-medium hover:opacity-90 transition-opacity">
+                {t("generate_api_key")}
+              </button>
+            </div>
+          ) : (
+            <>
+              {triggerTokens.map((token) => (
+                <div key={token._id} className="px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium">{token.label?.trim() || t("active_key")}</p>
+                    <p className="text-xs text-muted font-mono mt-0.5">{token.tokenPrefix}…</p>
+                    <p className="text-[11px] text-foreground/50 mt-1">{t("created_with_date", { var1: formatDate(token.createdAt) })}</p>
+                  </div>
+                  <button onClick={() => void handleRevokeTriggerToken(token._id)} className="text-xs text-red-400 hover:text-red-300 transition-colors">
+                    {t("revoke")}
+                  </button>
+                </div>
+              ))}
+              <button onClick={() => void handleRotateTriggerToken()} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
+                <Pencil size={16} className="text-primary flex-shrink-0" />
+                <span className="text-sm">{t("rotate_api_key")}</span>
+              </button>
+            </>
+          )}
+
+          <button onClick={() => void copyText(`${convexSiteUrl}/scheduled-jobs/trigger`, t("trigger_endpoint_copied"))} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
+            <Calendar size={16} className="text-accent flex-shrink-0" />
+            <span className="text-sm">{t("copy_trigger_endpoint")}</span>
           </button>
         </div>
       </div>

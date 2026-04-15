@@ -43,6 +43,34 @@ export const createScheduledJob = createTool({
           "OpenRouter model ID to use (e.g. 'anthropic/claude-sonnet-4', " +
           "'google/gemini-2.5-flash'). If omitted, uses the user's default model.",
       },
+      steps: {
+        type: "array",
+        description:
+          "Optional multi-step pipeline. When provided, each step runs in order " +
+          "and can use its own prompt/model/persona/settings. Supports 1-5 steps.",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string", description: "Optional human-friendly step title." },
+            prompt: { type: "string", description: "Prompt for this step." },
+            modelId: { type: "string", description: "Model ID for this step." },
+            personaId: { type: "string", description: "Optional persona ID." },
+            enabledIntegrations: {
+              type: "array",
+              items: { type: "string" },
+            },
+            webSearchEnabled: { type: "boolean" },
+            searchMode: {
+              type: "string",
+              enum: ["none", "basic", "web", "research"],
+            },
+            searchComplexity: { type: "number" },
+            includeReasoning: { type: "boolean" },
+            reasoningEffort: { type: "string" },
+          },
+          required: ["prompt", "modelId"],
+        },
+      },
       recurrence: {
         type: "object",
         description:
@@ -77,7 +105,7 @@ export const createScheduledJob = createTool({
         description: "Whether to enable web search during job execution.",
       },
     },
-    required: ["name", "prompt", "recurrence"],
+    required: ["name", "recurrence"],
   },
 
   execute: async (toolCtx, args) => {
@@ -97,13 +125,18 @@ export const createScheduledJob = createTool({
 
     const name = args.name as string | undefined;
     const prompt = args.prompt as string | undefined;
+    const steps = args.steps as Array<Record<string, unknown>> | undefined;
     const recurrence = args.recurrence as Recurrence | undefined;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return { success: false, data: null, error: "Missing or empty 'name'" };
     }
-    if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
-      return { success: false, data: null, error: "Missing or empty 'prompt'" };
+    if ((!prompt || typeof prompt !== "string" || !prompt.trim()) && (!steps || steps.length === 0)) {
+      return {
+        success: false,
+        data: null,
+        error: "Provide either a non-empty 'prompt' or non-empty 'steps' array.",
+      };
     }
     if (!recurrence || typeof recurrence !== "object" || !recurrence.type) {
       return { success: false, data: null, error: "Missing or invalid 'recurrence'. Must include 'type'." };
@@ -111,7 +144,7 @@ export const createScheduledJob = createTool({
 
     // Resolve modelId: explicit arg → user's default → fail
     let modelId = args.modelId as string | undefined;
-    if (!modelId) {
+    if (!modelId && (!steps || steps.length === 0)) {
       const userDefault = await toolCtx.ctx.runQuery(
         internal.preferences.queries.getUserDefaultModel,
         { userId: toolCtx.userId },
@@ -129,6 +162,30 @@ export const createScheduledJob = createTool({
     }
 
     try {
+      const mappedSteps = steps?.map((step) => {
+        const searchMode = (step.searchMode === "none"
+          || step.searchMode === "basic"
+          || step.searchMode === "web"
+          || step.searchMode === "research")
+          ? step.searchMode as "none" | "basic" | "web" | "research"
+          : undefined;
+
+        return {
+          title: typeof step.title === "string" ? step.title : undefined,
+          prompt: step.prompt as string,
+          modelId: step.modelId as string,
+          personaId: typeof step.personaId === "string" ? step.personaId as Id<"personas"> : undefined,
+          enabledIntegrations: Array.isArray(step.enabledIntegrations)
+            ? step.enabledIntegrations as string[]
+            : undefined,
+          webSearchEnabled: typeof step.webSearchEnabled === "boolean" ? step.webSearchEnabled : undefined,
+          searchMode,
+          searchComplexity: typeof step.searchComplexity === "number" ? step.searchComplexity : undefined,
+          includeReasoning: typeof step.includeReasoning === "boolean" ? step.includeReasoning : undefined,
+          reasoningEffort: typeof step.reasoningEffort === "string" ? step.reasoningEffort : undefined,
+        };
+      });
+
       const jobId = await toolCtx.ctx.runMutation(
         internal.scheduledJobs.mutations.createJobInternal,
         {
@@ -136,6 +193,7 @@ export const createScheduledJob = createTool({
           name: name.trim(),
           prompt,
           modelId,
+          steps: mappedSteps,
           recurrence,
           enabledIntegrations: (args.enabledIntegrations as string[]) || undefined,
           webSearchEnabled: args.webSearchEnabled !== undefined ? (args.webSearchEnabled as boolean) : undefined,
@@ -150,6 +208,7 @@ export const createScheduledJob = createTool({
         data: {
           jobId,
           name: name.trim(),
+          stepCount: mappedSteps?.length ?? 1,
           schedule: scheduleDesc,
           message:
             `Created scheduled job "${name.trim()}" (${scheduleDesc}). ` +

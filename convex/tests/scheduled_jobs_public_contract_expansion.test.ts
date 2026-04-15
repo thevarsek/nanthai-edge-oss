@@ -3,15 +3,21 @@ import test from "node:test";
 
 import { ConvexError } from "convex/values";
 import {
+  createJobTriggerToken,
   createJob,
   deleteApiKey,
   deleteJob,
   pauseJob,
+  revokeJobTriggerToken,
+  rotateJobTriggerToken,
   resumeJob,
   runJobNow,
+  triggerJobViaApi,
   updateJob,
+  updateJobInternal,
   upsertApiKey,
 } from "../scheduledJobs/mutations";
+import { listJobTriggerTokens } from "../scheduledJobs/queries";
 import { fetchOpenRouterCredits } from "../scheduledJobs/actions";
 
 function buildAuth(userId: string | null = "user_1") {
@@ -134,6 +140,52 @@ test("updateJob reschedules on timezone-only change and clears explicit null per
   assert.equal(patches[0]?.value.personaId, undefined);
   assert.deepEqual(patches[0]?.value.enabledIntegrations, []);
   assert.equal(patches[0]?.value.scheduledFunctionId, "sched_new");
+});
+
+test("updateJobInternal clears persona when personaId is explicitly null", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+
+  await (updateJobInternal as any)._handler({
+    db: {
+      get: async (id: string) => {
+        if (id === "job_1") {
+          return {
+            _id: "job_1",
+            userId: "user_1",
+            prompt: "Digest",
+            modelId: "openai/gpt-5.2",
+            personaId: "persona_old",
+            enabledIntegrations: [],
+            recurrence: { type: "interval", minutes: 15 },
+            timezone: "UTC",
+            status: "active",
+            steps: [{ prompt: "Digest", modelId: "openai/gpt-5.2", personaId: "persona_old" }],
+          };
+        }
+        return null;
+      },
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => {
+            if (table === "cachedModels") return { _id: "model_1", supportsTools: false };
+            return null;
+          },
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+    },
+    scheduler: {},
+  }, {
+    jobId: "job_1",
+    userId: "user_1",
+    personaId: null,
+  });
+
+  assert.equal(patches[0]?.id, "job_1");
+  assert.equal(patches[0]?.value.personaId, undefined);
+  assert.equal((patches[0]?.value.steps as Array<any>)[0]?.personaId, undefined);
 });
 
 test("pauseJob and resumeJob transition status and scheduled function state", async () => {
@@ -323,6 +375,129 @@ test("upsertApiKey patches existing secret and deleteApiKey removes it when pres
   assert.equal(patches[0]?.id, "secret_1");
   assert.equal(patches[0]?.value.apiKey, "sk-new");
   assert.deepEqual(deleted, ["secret_1"]);
+});
+
+test("scheduled job trigger tokens can be created, listed, rotated, and revoked", async () => {
+  const inserted: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const patched: Array<{ id: string; value: Record<string, unknown> }> = [];
+
+  const created = await (createJobTriggerToken as any)._handler({
+    auth: buildAuth(),
+    db: {
+      get: async (id: string) => (id === "job_1" ? { _id: "job_1", userId: "user_1" } : null),
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => (table === "purchaseEntitlements" ? { _id: "ent_1", status: "active" } : null),
+          collect: async () => [],
+        }),
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserted.push({ table, value });
+        return "token_1";
+      },
+    },
+  }, {
+    jobId: "job_1",
+    label: "Zapier",
+  });
+
+  assert.equal(inserted[0]?.table, "scheduledJobTriggerTokens");
+  assert.equal(inserted[0]?.value.label, "Zapier");
+  assert.match(created.token, /^sk_sched_/);
+  assert.equal(created.tokenId, "token_1");
+
+  const listed = await (listJobTriggerTokens as any)._handler({
+    auth: buildAuth(),
+    db: {
+      get: async () => ({ _id: "job_1", userId: "user_1" }),
+      query: () => ({
+        withIndex: () => ({
+          collect: async () => ([
+            { _id: "tok_old", createdAt: 100, tokenPrefix: "sk_sched_old", status: "active" },
+            { _id: "tok_new", createdAt: 200, tokenPrefix: "sk_sched_new", status: "active" },
+          ]),
+        }),
+      }),
+    },
+  }, { jobId: "job_1" });
+
+  assert.deepEqual(listed.map((token: any) => token._id), ["tok_new", "tok_old"]);
+
+  const rotated = await (rotateJobTriggerToken as any)._handler({
+    auth: buildAuth(),
+    db: {
+      get: async (id: string) => (id === "job_1" ? { _id: "job_1", userId: "user_1" } : null),
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => (table === "purchaseEntitlements" ? { _id: "ent_1", status: "active" } : null),
+          collect: async () => ([
+            { _id: "tok_a", label: "Webhook", status: "active" },
+            { _id: "tok_b", label: "Webhook", status: "active" },
+          ]),
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patched.push({ id, value });
+      },
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserted.push({ table, value });
+        return "token_2";
+      },
+    },
+  }, { jobId: "job_1" });
+
+  assert.equal(rotated.tokenId, "token_2");
+  assert.equal(patched.length, 2);
+  assert.ok(patched.every(({ value }) => value.status === "revoked"));
+
+  const revoked: Array<{ id: string; value: Record<string, unknown> }> = [];
+  await (revokeJobTriggerToken as any)._handler({
+    auth: buildAuth(),
+    db: {
+      get: async () => ({ _id: "tok_1", userId: "user_1", status: "active" }),
+      query: () => ({
+        withIndex: () => ({
+          first: async () => ({ _id: "ent_1", status: "active" }),
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        revoked.push({ id, value });
+      },
+    },
+  }, { tokenId: "tok_1" });
+
+  assert.equal(revoked[0]?.id, "tok_1");
+  assert.equal(revoked[0]?.value.status, "revoked");
+});
+
+test("triggerJobViaApi omits blank idempotency keys from stored audit rows", async () => {
+  const inserts: Array<Record<string, unknown>> = [];
+
+  const result = await (triggerJobViaApi as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => null,
+        }),
+      }),
+      insert: async (_table: string, value: Record<string, unknown>) => {
+        inserts.push(value);
+        return "audit_1";
+      },
+      patch: async () => undefined,
+    },
+    scheduler: {
+      runAfter: async () => "sched_1",
+    },
+  }, {
+    jobId: "job_1",
+    userId: "user_1",
+    requestId: "req_1",
+    idempotencyKey: "   ",
+  });
+
+  assert.equal(result.duplicate, false);
+  assert.equal(inserts[0]?.idempotencyKey, undefined);
 });
 
 test("fetchOpenRouterCredits returns remaining balance and maps upstream failures", async () => {

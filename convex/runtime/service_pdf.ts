@@ -37,16 +37,6 @@ interface GeneratedPdfResult {
 
 type PersistentPdfRuntime = Awaited<ReturnType<typeof getOrCreatePersistentRuntime>>;
 
-function requireChatId(toolCtx: ToolExecutionContext): string {
-  if (!toolCtx.chatId) {
-    throw new ConvexError({
-      code: "INTERNAL_ERROR" as const,
-      message: "PDF tools require chatId in the tool execution context.",
-    });
-  }
-  return toolCtx.chatId;
-}
-
 async function installPythonPackages(sandbox: any, packages: string[]): Promise<void> {
   if (packages.length === 0) return;
   await sandbox.runCommand("pip", ["install", "-q", ...packages]);

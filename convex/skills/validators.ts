@@ -128,7 +128,7 @@ const KNOWN_TOOL_IDS = new Set([
   "generate_eml", "read_eml",
   "fetch_image",
   "search_chats",
-  "create_scheduled_job", "list_scheduled_jobs", "delete_scheduled_job",
+  "create_scheduled_job", "list_scheduled_jobs", "update_scheduled_job", "delete_scheduled_job",
   "create_persona", "delete_persona",
   "spawn_subagents",
   "workspace_exec", "workspace_list_files", "workspace_read_file",

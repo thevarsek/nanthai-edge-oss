@@ -6,6 +6,7 @@ import {
   deleteScheduledJob,
   listScheduledJobs,
 } from "../tools/scheduled_jobs";
+import { updateScheduledJob } from "../tools/scheduled_jobs_update";
 
 test("createScheduledJob blocks free users", async () => {
   const result = await createScheduledJob.execute(
@@ -58,6 +59,41 @@ test("createScheduledJob resolves the user's default model and returns a schedul
   assert.equal(mutations[0]?.modelId, "anthropic/claude-sonnet-4");
   assert.equal((result.data as any).schedule, "daily at 08:00 UTC");
   assert.match((result.data as any).message, /Created scheduled job "Morning Summary"/);
+});
+
+test("createScheduledJob accepts multi-step payloads without requiring legacy model defaults", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  let queryCount = 0;
+
+  const result = await createScheduledJob.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        runQuery: async () => {
+          queryCount += 1;
+          return true;
+        },
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          mutations.push(args);
+          return "job_2";
+        },
+      },
+    } as any,
+    {
+      name: "Two Step Briefing",
+      recurrence: { type: "daily", hourUTC: 8, minuteUTC: 0 },
+      steps: [
+        { prompt: "Step one", modelId: "anthropic/claude-sonnet-4" },
+        { prompt: "Step two", modelId: "google/gemini-2.5-flash" },
+      ],
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(queryCount, 1);
+  assert.equal((mutations[0]?.steps as Array<unknown>)?.length, 2);
+  assert.equal(mutations[0]?.modelId, undefined);
+  assert.equal((result.data as any).stepCount, 2);
 });
 
 test("listScheduledJobs summarizes schedules and totals", async () => {
@@ -128,4 +164,65 @@ test("deleteScheduledJob deletes a uniquely resolved job", async () => {
   assert.equal(result.success, true);
   assert.deepEqual(deleted, [{ jobId: "job_1", userId: "user_1" }]);
   assert.equal((result.data as any).deletedJobName, "Morning Summary");
+});
+
+test("updateScheduledJob resolves by name and forwards update arguments", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  let queryCount = 0;
+  const result = await updateScheduledJob.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        runQuery: async () => {
+          queryCount += 1;
+          if (queryCount === 1) return true;
+          return [{ _id: "job_1", name: "Morning Summary" }];
+        },
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          updates.push(args);
+          return null;
+        },
+      },
+    } as any,
+    {
+      jobName: "summary",
+      name: "Morning Summary v2",
+      status: "paused",
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(updates[0]?.jobId, "job_1");
+  assert.equal(updates[0]?.status, "paused");
+});
+
+test("updateScheduledJob forwards personaId and targetFolderId, including explicit clears", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  let queryCount = 0;
+
+  const result = await updateScheduledJob.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        runQuery: async () => {
+          queryCount += 1;
+          if (queryCount === 1) return true;
+          return [{ _id: "job_1", name: "Morning Summary" }];
+        },
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          updates.push(args);
+          return null;
+        },
+      },
+    } as any,
+    {
+      jobId: "job_1",
+      personaId: "",
+      targetFolderId: "folder_1",
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(updates[0]?.personaId, null);
+  assert.equal(updates[0]?.targetFolderId, "folder_1");
 });

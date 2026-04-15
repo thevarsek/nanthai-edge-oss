@@ -6,6 +6,7 @@ import {
   buildStepTriggerPrompt,
   getStepTitle,
   normalizeSearchComplexity,
+  applyTemplateVariables,
   resolveScheduledJobSearchMode,
   type ScheduledJobStepConfig,
 } from "./shared";
@@ -21,15 +22,20 @@ export async function enqueueStep(
     step: ScheduledJobStepConfig;
     stepIndex: number;
     previousAssistantContent?: string;
+    templateVariables?: Record<string, string>;
   },
 ): Promise<void> {
-  const participant = await resolveParticipant(ctx, {
+  const resolvedStep: ScheduledJobStepConfig = {
     ...args.step,
+    prompt: applyTemplateVariables(args.step.prompt, args.templateVariables),
+  };
+  const participant = await resolveParticipant(ctx, {
+    ...resolvedStep,
     userId: args.userId,
   });
-  const stepTitle = getStepTitle(args.step, args.stepIndex);
-  const basePrompt = buildStepTriggerPrompt(args.step, args.previousAssistantContent);
-  const promptWithKB = await buildPromptWithKnowledgeBase(ctx, args.step, basePrompt);
+  const stepTitle = getStepTitle(resolvedStep, args.stepIndex);
+  const basePrompt = buildStepTriggerPrompt(resolvedStep, args.previousAssistantContent);
+  const promptWithKB = await buildPromptWithKnowledgeBase(ctx, resolvedStep, basePrompt);
 
   const turn = await ctx.runMutation(
     internal.scheduledJobs.mutations.createScheduledExecutionTurn,
@@ -49,7 +55,7 @@ export async function enqueueStep(
       personaName: participant.personaName,
       personaEmoji: participant.personaEmoji,
       personaAvatarImageUrl: participant.personaAvatarImageUrl,
-      enabledIntegrations: args.step.enabledIntegrations,
+      enabledIntegrations: resolvedStep.enabledIntegrations,
     },
   );
 
@@ -65,7 +71,7 @@ export async function enqueueStep(
     genJobId: turn.genJobId,
     participant,
     prompt: promptWithKB,
-    step: args.step,
+    step: resolvedStep,
   });
 }
 

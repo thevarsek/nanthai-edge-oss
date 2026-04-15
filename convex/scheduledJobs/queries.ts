@@ -63,6 +63,25 @@ export const hasApiKey = query({
   },
 });
 
+/** List scheduled-job API trigger tokens for a specific job. */
+export const listJobTriggerTokens = query({
+  args: {
+    jobId: v.id("scheduledJobs"),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.userId !== userId) return [];
+
+    const tokens = await ctx.db
+      .query("scheduledJobTriggerTokens")
+      .withIndex("by_job", (q) => q.eq("jobId", args.jobId).eq("status", "active"))
+      .collect();
+
+    return tokens.sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+  },
+});
+
 // ── Internal queries (for actions — no auth context) ───────────────────
 
 /** Internal: list all scheduled jobs for a user (for AI tools). */
@@ -93,6 +112,31 @@ export const getUserApiKey = internalQuery({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
     return secret?.apiKey ?? null;
+  },
+});
+
+/** Internal: resolve active trigger token by hash for API endpoint auth. */
+export const getActiveTriggerTokenByHash = internalQuery({
+  args: { tokenHash: v.string() },
+  handler: async (ctx, args) => {
+    const token = await ctx.db
+      .query("scheduledJobTriggerTokens")
+      .withIndex("by_token_hash", (q) => q.eq("tokenHash", args.tokenHash))
+      .first();
+    if (!token || token.status !== "active") return null;
+    return token;
+  },
+});
+
+/** Internal: most recent API invocation for a job. */
+export const getLatestApiInvocationForJob = internalQuery({
+  args: { jobId: v.id("scheduledJobs") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("scheduledJobApiInvocations")
+      .withIndex("by_job_created", (q) => q.eq("jobId", args.jobId))
+      .order("desc")
+      .first();
   },
 });
 

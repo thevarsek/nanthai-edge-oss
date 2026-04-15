@@ -17,6 +17,13 @@ function getDownloadHandler() {
   ) => Promise<Response>;
 }
 
+function getScheduledTriggerHandler() {
+  return (http as any).exactRoutes.get("/scheduled-jobs/trigger").get("POST")._handler as (
+    ctx: any,
+    request: Request,
+  ) => Promise<Response>;
+}
+
 test("health check reports stable auth state for signed-in and anonymous callers", async () => {
   const authenticated = await (check as any)._handler({
     auth: buildAuth(),
@@ -94,4 +101,121 @@ test("download route falls back to blob content type when extension is unknown",
   );
 
   assert.equal(response.headers.get("Content-Type"), "application/custom");
+});
+
+test("scheduled trigger route rejects unauthorized callers", async () => {
+  const handler = getScheduledTriggerHandler();
+  const response = await handler(
+    {
+      auth: buildAuth(null),
+      runQuery: async () => ({ _id: "job_1", userId: "user_1" }),
+      runMutation: async () => undefined,
+    },
+    new Request("https://example.com/scheduled-jobs/trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: "job_1" }),
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  const payload = await response.json() as { error: string };
+  assert.equal(payload.error, "Unauthorized");
+});
+
+test("scheduled trigger route supports idempotent API token execution", async () => {
+  const handler = getScheduledTriggerHandler();
+  const response = await handler(
+    {
+      auth: buildAuth(null),
+      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+        if (args.jobId) {
+          return { _id: "job_1", userId: "user_1" };
+        }
+        return { _id: "tok_1", userId: "user_1", jobId: "job_1", status: "active" };
+      },
+      runMutation: async (_fn: unknown, _args: Record<string, unknown>) => ({
+        duplicate: false,
+        triggered: true,
+        message: "Scheduled job execution triggered.",
+      }),
+    },
+    new Request("https://example.com/scheduled-jobs/trigger", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer sk_sched_abc123",
+        "Idempotency-Key": "idem-1",
+      },
+      body: JSON.stringify({
+        jobId: "job_1",
+        variables: { CONTEXT: "alpha" },
+      }),
+    }),
+  );
+
+  assert.equal(response.status, 202);
+  const payload = await response.json() as { triggered: boolean; duplicate: boolean };
+  assert.equal(payload.triggered, true);
+  assert.equal(payload.duplicate, false);
+});
+
+test("scheduled trigger route rejects trigger tokens whose user does not match the job owner", async () => {
+  const handler = getScheduledTriggerHandler();
+  const response = await handler(
+    {
+      auth: buildAuth(null),
+      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+        if (args.jobId) {
+          return { _id: "job_1", userId: "user_job_owner" };
+        }
+        return { _id: "tok_1", userId: "user_token_owner", jobId: "job_1", status: "active" };
+      },
+      runMutation: async () => undefined,
+    },
+    new Request("https://example.com/scheduled-jobs/trigger", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer sk_sched_abc123",
+      },
+      body: JSON.stringify({ jobId: "job_1" }),
+    }),
+  );
+
+  assert.equal(response.status, 401);
+  const payload = await response.json() as { error: string };
+  assert.equal(payload.error, "Unauthorized");
+});
+
+test("scheduled trigger route rate limits bursts for the same job", async () => {
+  const handler = getScheduledTriggerHandler();
+  let queryCount = 0;
+  const response = await handler(
+    {
+      auth: buildAuth("user_1"),
+      runQuery: async () => {
+        queryCount += 1;
+        if (queryCount === 1) {
+          return { _id: "job_1", userId: "user_1" };
+        }
+        return {
+          _id: "inv_1",
+          jobId: "job_1",
+          status: "triggered",
+          createdAt: Date.now(),
+        };
+      },
+      runMutation: async () => undefined,
+    },
+    new Request("https://example.com/scheduled-jobs/trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: "job_1" }),
+    }),
+  );
+
+  assert.equal(response.status, 429);
+  const payload = await response.json() as { error: string };
+  assert.equal(payload.error, "Too Many Requests");
 });

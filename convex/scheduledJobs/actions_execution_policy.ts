@@ -1,6 +1,6 @@
 import type { Recurrence } from "./recurrence";
 
-export type ScheduledJobInvocationSource = "scheduled" | "manual";
+export type ScheduledJobInvocationSource = "scheduled" | "manual" | "api";
 
 export function shouldExecuteScheduledJob(args: {
   status: string;
@@ -11,7 +11,7 @@ export function shouldExecuteScheduledJob(args: {
     return true;
   }
 
-  return args.invocationSource === "manual"
+  return (args.invocationSource === "manual" || args.invocationSource === "api")
     && args.status === "paused"
     && args.recurrence.type !== "manual";
 }
@@ -20,5 +20,6 @@ export function shouldReplaceExistingSchedule(args: {
   status: string;
   invocationSource: ScheduledJobInvocationSource;
 }): boolean {
-  return args.status === "active" && args.invocationSource === "manual";
+  return args.status === "active"
+    && (args.invocationSource === "manual" || args.invocationSource === "api");
 }
