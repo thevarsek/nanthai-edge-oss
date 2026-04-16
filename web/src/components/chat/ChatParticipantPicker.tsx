@@ -7,17 +7,19 @@
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  X, Search, Users, Sparkles, Zap, DollarSign, Code2, Brain, Image,
-  Eye, Wrench, Gift, Maximize2, TrendingUp,
+  X, Search, Users, Sparkles, Zap, DollarSign, Code2, Brain, Image as ImageIcon, Paintbrush,
+  Eye, Wrench, Gift, Maximize2, TrendingUp, Video,
 } from "lucide-react";
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import type { Id } from "@convex/_generated/dataModel";
-import type { ParticipantEntry } from "@/hooks/useParticipants";
+import type { ParticipantEntry, SetParticipantEntry } from "@/hooks/useParticipants";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "@/components/shared/ModelPickerHelpers";
 import { PersonaInfoSheet } from "@/components/shared/PersonaInfoSheet";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import {
   type SortKey, type CapFilter, CAP_FILTERS,
   filterAndSortModels, toggleCapFilter,
+  getModelOutputModality, type OutputModalityCategory,
 } from "@/components/shared/ModelPickerShared";
 import {
   type PersonaItem, SelectedSection, SectionHeader,
@@ -41,6 +43,8 @@ interface Props {
     personaAvatarImageUrl?: string | null;
   }) => Promise<unknown>;
   onRemove: (participantId: Id<"chatParticipants">) => Promise<void>;
+  /** Atomically replace all participants — used for modality switches. */
+  onSetParticipants?: (chatId: Id<"chats">, entries: SetParticipantEntry[]) => Promise<void>;
   onClose: () => void;
 }
 
@@ -49,16 +53,33 @@ interface Props {
 const SORT_ICONS: Record<SortKey, React.ReactNode> = {
   recommended: <Sparkles size={12} />, coding: <Code2 size={12} />,
   research: <Brain size={12} />, fast: <Zap size={12} />,
-  value: <DollarSign size={12} />, image: <Image size={12} />,
+   value: <DollarSign size={12} />, image: <ImageIcon size={12} />,
   price: <span className="text-[11px] font-bold leading-none">$$</span>,
   context: <Maximize2 size={12} />, topThisWeek: <TrendingUp size={12} />,
 };
 
 const CAP_ICONS: Record<CapFilter, React.ReactNode> = {
   free: <Gift size={11} />, excludeFree: <Gift size={11} />,
-  vision: <Eye size={11} />, imageGen: <Image size={11} />,
-  tools: <Wrench size={11} />,
+  vision: <Eye size={11} />, imageGen: <Paintbrush size={11} />,
+  videoGen: <Video size={11} />, tools: <Wrench size={11} />,
 };
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
+/** Human-readable label for a modality category */
+function modalityLabel(m: OutputModalityCategory): string {
+  switch (m) {
+    case "video": return "video generation";
+    case "image": return "image generation";
+    default: return "text";
+  }
+}
+
+// ─── Pending modality switch payload ────────────────────────────────────────
+
+type PendingModalitySwitch =
+  | { kind: "model"; modelId: string; newModality: OutputModalityCategory }
+  | { kind: "persona"; persona: PersonaItem; newModality: OutputModalityCategory };
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
@@ -67,6 +88,7 @@ export function ChatParticipantPicker({
   participants,
   onAdd,
   onRemove,
+  onSetParticipants,
   onClose,
 }: Props) {
   const { personas } = useSharedData();
@@ -78,6 +100,7 @@ export function ChatParticipantPicker({
   const [infoModel, setInfoModel] = useState<ModelSummary | null>(null);
   const [infoPersona, setInfoPersona] = useState<PersonaItem | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const [pendingSwitch, setPendingSwitch] = useState<PendingModalitySwitch | null>(null);
 
   const atLimit = participants.length >= Defaults.maxParticipants;
   const models = useMemo(
@@ -99,6 +122,16 @@ export function ChatParticipantPicker({
     () => new Set(participants.filter((p) => !p.personaId).map((p) => p.modelId)),
     [participants],
   );
+
+  // ── Modality lock: once a participant is added, only same-modality models allowed ─
+  const lockedModality = useMemo<OutputModalityCategory | null>(() => {
+    if (participants.length === 0 || models.length === 0) return null;
+    for (const p of participants) {
+      const m = models.find((x) => x.modelId === p.modelId);
+      if (m) return getModelOutputModality(m);
+    }
+    return null;
+  }, [participants, models]);
 
   // ── Filtered personas ───────────────────────────────────────────────────
   const filteredPersonas = useMemo<PersonaItem[]>(() => {
@@ -126,9 +159,17 @@ export function ChatParticipantPicker({
         const part = participants.find((x) => x.personaId === p._id);
         if (part && participants.length > 1) void onRemove(part.id);
       } else if (!atLimit) {
+        // Check modality mismatch
+        const personaModelId = p.modelId ?? Defaults.model;
+        const pm = models.find((x) => x.modelId === personaModelId);
+        const personaModality = pm ? getModelOutputModality(pm) : "text";
+        if (lockedModality && personaModality !== lockedModality) {
+          setPendingSwitch({ kind: "persona", persona: p, newModality: personaModality });
+          return;
+        }
         void onAdd({
           chatId,
-          modelId: p.modelId ?? Defaults.model,
+          modelId: personaModelId,
           personaId: p._id,
           personaName: p.displayName,
           personaEmoji: p.avatarEmoji ?? null,
@@ -136,7 +177,7 @@ export function ChatParticipantPicker({
         });
       }
     },
-    [chatId, atLimit, onAdd, onRemove, participants, selectedPersonaIds],
+    [chatId, atLimit, onAdd, onRemove, participants, selectedPersonaIds, lockedModality, models],
   );
 
   const handleToggleModel = useCallback(
@@ -145,10 +186,18 @@ export function ChatParticipantPicker({
         const part = participants.find((x) => !x.personaId && x.modelId === modelId);
         if (part && participants.length > 1) void onRemove(part.id);
       } else if (!atLimit) {
+        // Check modality mismatch — show confirmation instead of hard-blocking
+        if (lockedModality) {
+          const m = models.find((x) => x.modelId === modelId);
+          if (m && getModelOutputModality(m) !== lockedModality) {
+            setPendingSwitch({ kind: "model", modelId, newModality: getModelOutputModality(m) });
+            return;
+          }
+        }
         void onAdd({ chatId, modelId });
       }
     },
-    [chatId, atLimit, onAdd, onRemove, participants, selectedModelIds],
+    [chatId, atLimit, onAdd, onRemove, participants, selectedModelIds, lockedModality, models],
   );
 
   const handleWizardSelect = useCallback(
@@ -167,6 +216,54 @@ export function ChatParticipantPicker({
     },
     [participants.length, onRemove],
   );
+
+  // ── Modality switch confirmation handler ──────────────────────────────
+  const handleConfirmModalitySwitch = useCallback(async () => {
+    if (!pendingSwitch) return;
+    // Build the new participant entry
+    let newEntry: SetParticipantEntry;
+    if (pendingSwitch.kind === "model") {
+      newEntry = { modelId: pendingSwitch.modelId };
+    } else {
+      const persona = pendingSwitch.persona;
+      newEntry = {
+        modelId: persona.modelId ?? Defaults.model,
+        personaId: persona._id,
+        personaName: persona.displayName,
+        personaEmoji: persona.avatarEmoji ?? null,
+        personaAvatarImageUrl: persona.avatarImageUrl ?? null,
+      };
+    }
+    // Atomic swap: replace all participants with just the new one.
+    // This avoids the sequential add+remove race that can hit min-1 or max-3 limits.
+    if (onSetParticipants) {
+      await onSetParticipants(chatId, [newEntry]);
+    } else {
+      // Fallback: add first, then remove mismatched (original sequential path)
+      if (pendingSwitch.kind === "model") {
+        await onAdd({ chatId, modelId: pendingSwitch.modelId });
+      } else {
+        const persona = pendingSwitch.persona;
+        await onAdd({
+          chatId,
+          modelId: persona.modelId ?? Defaults.model,
+          personaId: persona._id,
+          personaName: persona.displayName,
+          personaEmoji: persona.avatarEmoji ?? null,
+          personaAvatarImageUrl: persona.avatarImageUrl ?? null,
+        });
+      }
+      const newModality = pendingSwitch.newModality;
+      for (const p of participants) {
+        const m = models.find((x) => x.modelId === p.modelId);
+        const pModality = m ? getModelOutputModality(m) : "text";
+        if (pModality !== newModality) {
+          await onRemove(p.id);
+        }
+      }
+    }
+    setPendingSwitch(null);
+  }, [pendingSwitch, participants, models, onRemove, onAdd, onSetParticipants, chatId]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
@@ -269,17 +366,19 @@ export function ChatParticipantPicker({
                 )}
               </div>
             ) : (
-              filteredModels.map((model) => (
-                <ParticipantModelRow
-                  key={model.modelId}
-                  model={model}
-                  isSelected={selectedModelIds.has(model.modelId)}
-                  disabled={atLimit && !selectedModelIds.has(model.modelId)}
-                  sortKey={sortKey}
-                  onToggle={handleToggleModel}
-                  onInfo={setInfoModel}
-                />
-              ))
+              filteredModels.map((model) => {
+                return (
+                  <ParticipantModelRow
+                    key={model.modelId}
+                    model={model}
+                    isSelected={selectedModelIds.has(model.modelId)}
+                    disabled={atLimit && !selectedModelIds.has(model.modelId)}
+                    sortKey={sortKey}
+                    onToggle={handleToggleModel}
+                    onInfo={setInfoModel}
+                  />
+                );
+              })
             )}
           </div>
         </div>
@@ -314,6 +413,20 @@ export function ChatParticipantPicker({
             </div>
           </div>
         )}
+
+        {/* Modality switch confirmation dialog */}
+        <ConfirmDialog
+          isOpen={pendingSwitch != null}
+          onClose={() => setPendingSwitch(null)}
+          onConfirm={() => void handleConfirmModalitySwitch()}
+          title={t("modality_switch_title", { var1: pendingSwitch ? modalityLabel(pendingSwitch.newModality) : "" })}
+          description={t("modality_switch_description", {
+            var1: lockedModality ? modalityLabel(lockedModality) : "",
+            var2: pendingSwitch ? modalityLabel(pendingSwitch.newModality) : "",
+          })}
+          confirmLabel={t("modality_switch_confirm")}
+          confirmVariant="default"
+        />
       </div>
     </div>
   );

@@ -159,6 +159,7 @@ export async function runGenerationHandler(
           allowSubagents,
           searchSessionId: args.searchSessionId,
           resumeExpected: false,
+          videoConfig: args.videoConfig,
         },
       );
       scheduledParticipants.push({

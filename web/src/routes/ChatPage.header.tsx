@@ -12,7 +12,7 @@ import type { ChatPanel } from "@/hooks/useChatOverrides";
 import type { ChatParameterOverrides } from "@/components/chat/ChatParametersDrawer";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
 import type { AutonomousSettings } from "@/hooks/useAutonomous";
-import type { ParticipantEntry } from "@/hooks/useParticipants";
+import type { ParticipantEntry, SetParticipantEntry } from "@/hooks/useParticipants";
 import { ChatParametersDrawer } from "@/components/chat/ChatParametersDrawer";
 import { ChatIntegrationsPicker } from "@/components/chat/ChatIntegrationsPicker";
 import { ChatSkillsPicker } from "@/components/chat/ChatSkillsPicker";
@@ -248,6 +248,7 @@ export interface ChatModalPanelsProps {
   chatId: Id<"chats"> | undefined; convexParticipants: ParticipantEntry[];
   addParticipant: (args: { chatId: Id<"chats">; modelId: string; personaId?: Id<"personas">; personaName?: string; personaEmoji?: string | null; personaAvatarImageUrl?: string | null }) => Promise<unknown>;
   removeParticipant: (participantId: Id<"chatParticipants">) => Promise<void>;
+  setParticipants: (chatId: Id<"chats">, entries: SetParticipantEntry[]) => Promise<void>;
   subagentOverride: SubagentOverride; effectiveSubagentsEnabled: boolean;
   isPro: boolean; handleSubagentOverrideChange: (o: SubagentOverride) => void;
   autonomousSettings: AutonomousSettings; onAutonomousSettingsChange: (s: AutonomousSettings) => void;
@@ -270,7 +271,7 @@ export function ChatModalPanels(p: ChatModalPanelsProps) {
         <ChatKBPicker selectedFileIds={p.selectedKBFileIds} onToggle={p.toggleKBFile} onClose={p.closePanel} />
       )}
       {p.activePanel === "participants" && p.chatId && (
-        <ChatParticipantPicker chatId={p.chatId} participants={p.convexParticipants} onAdd={p.addParticipant} onRemove={p.removeParticipant} onClose={p.closePanel} />
+        <ChatParticipantPicker chatId={p.chatId} participants={p.convexParticipants} onAdd={p.addParticipant} onRemove={p.removeParticipant} onSetParticipants={p.setParticipants} onClose={p.closePanel} />
       )}
       {p.activePanel === "subagents" && (
         <ChatSubagentsDrawer selectedOverride={p.subagentOverride} isEffectivelyEnabled={p.effectiveSubagentsEnabled} isPro={p.isPro} onSelect={p.handleSubagentOverrideChange} onClose={p.closePanel} />

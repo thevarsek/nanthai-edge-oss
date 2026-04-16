@@ -101,21 +101,8 @@ const DIRECT_TOOL_REGISTRY = new Map<string, RegisteredTool>(
 const BASE_TOOLS: RegisteredTool[] = [
   fetchImage,
   searchChats,
-  createScheduledJob,
-  listScheduledJobs,
-  updateScheduledJob,
-  deleteScheduledJob,
-  createPersona,
-  deletePersona,
   loadSkill,
   listSkills,
-  createSkill,
-  updateSkill,
-  deleteSkill,
-  enableSkillForChat,
-  disableSkillForChat,
-  assignSkillToPersona,
-  removeSkillFromPersona,
 ];
 
 export function registerBaseTools(
@@ -200,7 +187,19 @@ export function registerProfileTools(
       }
       break;
     case "scheduledJobs":
+      registerToolsIfMissing(registry, [
+        createScheduledJob, listScheduledJobs, updateScheduledJob, deleteScheduledJob,
+      ]);
+      break;
     case "skillsManagement":
+      registerToolsIfMissing(registry, [
+        createSkill, updateSkill, deleteSkill,
+        enableSkillForChat, disableSkillForChat,
+        assignSkillToPersona, removeSkillFromPersona,
+      ]);
+      break;
+    case "personas":
+      registerToolsIfMissing(registry, [createPersona, deletePersona]);
       break;
   }
 }

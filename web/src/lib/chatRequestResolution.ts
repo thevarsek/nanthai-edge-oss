@@ -19,6 +19,10 @@ export interface SharedPreferences {
   hasSeenIdeascapeHelp?: boolean;
   showBalanceInChat?: boolean;
   showAdvancedStats?: boolean;
+  defaultVideoAspectRatio?: string;
+  defaultVideoDuration?: number;
+  defaultVideoResolution?: string;
+  defaultVideoGenerateAudio?: boolean;
 }
 
 export interface SharedPersona {

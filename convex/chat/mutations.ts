@@ -14,8 +14,10 @@ import {
   clearGenerationContinuationArgs,
   createChatArgs,
   createMemoryArgs,
+  createVideoJobArgs,
   deleteKnowledgeBaseFileArgs,
   finalizeGenerationArgs,
+  insertGeneratedMediaArgs,
   markChatCompletionNotifiedArgs,
   markPostProcessScheduledArgs,
   patchMessageAudioArgs,
@@ -34,6 +36,8 @@ import {
   updateMessageContentArgs,
   updateMessageReasoningArgs,
   updateMessageToolCallsArgs,
+  updateVideoJobPollArgs,
+  updateVideoJobStatusArgs,
 } from "./mutations_args";
 import {
   cancelGenerationContinuationHandler,
@@ -55,7 +59,9 @@ import {
 import { retryMessageHandler } from "./mutations_retry_handler";
 import {
   createMemoryHandler,
+  createVideoJobHandler,
   finalizeGenerationHandler,
+  insertGeneratedMediaHandler,
   markChatCompletionNotifiedHandler,
   patchMessageAudioHandler,
   storeGenerationUsageHandler,
@@ -65,6 +71,8 @@ import {
   updateMessageContentHandler,
   updateMessageReasoningHandler,
   updateMessageToolCallsHandler,
+  updateVideoJobPollHandler,
+  updateVideoJobStatusHandler,
 } from "./mutations_internal_handlers";
 import {
   reinforceMemoryHandler,
@@ -239,4 +247,28 @@ export const storeGenerationUsage = internalMutation({
 export const storeAncillaryCost = internalMutation({
   args: storeAncillaryCostArgs,
   handler: storeAncillaryCostHandler,
+});
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export const createVideoJob = internalMutation({
+  args: createVideoJobArgs,
+  returns: v.id("videoJobs"),
+  handler: createVideoJobHandler,
+});
+
+export const updateVideoJobStatus = internalMutation({
+  args: updateVideoJobStatusArgs,
+  handler: updateVideoJobStatusHandler,
+});
+
+export const updateVideoJobPoll = internalMutation({
+  args: updateVideoJobPollArgs,
+  handler: updateVideoJobPollHandler,
+});
+
+export const insertGeneratedMedia = internalMutation({
+  args: insertGeneratedMediaArgs,
+  returns: v.id("generatedMedia"),
+  handler: insertGeneratedMediaHandler,
 });

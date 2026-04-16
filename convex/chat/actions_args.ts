@@ -1,5 +1,14 @@
 import { v, type PropertyValidators } from "convex/values";
 
+// M29: Video generation config validator — defined here (not mutations_args.ts)
+// to avoid a circular import. mutations_args.ts already imports from this file.
+export const videoConfigValidator = v.object({
+  resolution: v.optional(v.string()),       // e.g. "720p", "1080p"
+  aspectRatio: v.optional(v.string()),      // e.g. "16:9", "9:16", "1:1"
+  duration: v.optional(v.number()),         // seconds (e.g. 5, 10)
+  generateAudio: v.optional(v.boolean()),   // whether to generate audio track
+});
+
 export const participantConfigValidator = v.object({
   modelId: v.string(),
   personaId: v.optional(v.union(v.id("personas"), v.null())),
@@ -30,6 +39,8 @@ export const runGenerationArgs = {
   // Optional: when runGeneration is called from a search path (C/D/regen),
   // pass the sessionId so runGeneration can mark it completed/failed on finish.
   searchSessionId: v.optional(v.id("searchSessions")),
+  // M29 — Video generation config
+  videoConfig: v.optional(videoConfigValidator),
 } satisfies PropertyValidators;
 
 export const runGenerationParticipantArgs = {
@@ -48,6 +59,8 @@ export const runGenerationParticipantArgs = {
   searchSessionId: v.optional(v.id("searchSessions")),
   subagentBatchId: v.optional(v.id("subagentBatches")),
   resumeExpected: v.optional(v.boolean()),
+  // M29 — Video generation config
+  videoConfig: v.optional(videoConfigValidator),
 } satisfies PropertyValidators;
 
 export const postProcessArgs = {
@@ -86,4 +99,34 @@ export const extractMemoriesArgs = {
   userId: v.string(),
   extractionModel: v.optional(v.string()),
   isPending: v.optional(v.boolean()),
+} satisfies PropertyValidators;
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export const submitVideoGenerationArgs = {
+  chatId: v.id("chats"),
+  userMessageId: v.id("messages"),
+  assistantMessageIds: v.array(v.id("messages")),
+  generationJobIds: v.array(v.id("generationJobs")),
+  participant: v.object({
+    modelId: v.string(),
+    messageId: v.id("messages"),
+    jobId: v.id("generationJobs"),
+  }),
+  userId: v.string(),
+  searchSessionId: v.optional(v.id("searchSessions")),
+  // M29 Phase 0.5 — client-controlled video config
+  videoConfig: v.optional(videoConfigValidator),
+} satisfies PropertyValidators;
+
+export const pollVideoGenerationArgs = {
+  videoJobId: v.id("videoJobs"),
+  chatId: v.id("chats"),
+  userMessageId: v.id("messages"),
+  assistantMessageIds: v.array(v.id("messages")),
+  generationJobIds: v.array(v.id("generationJobs")),
+  messageId: v.id("messages"),
+  jobId: v.id("generationJobs"),
+  userId: v.string(),
+  searchSessionId: v.optional(v.id("searchSessions")),
 } satisfies PropertyValidators;

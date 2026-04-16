@@ -118,6 +118,25 @@ export const catalogSchemaTables = {
       }),
     ),
     canonicalSlug: v.optional(v.string()),
+    // M29 — Video generation
+    supportsVideo: v.optional(v.boolean()),
+    videoCapabilities: v.optional(v.object({
+      supportedResolutions: v.array(v.string()),
+      supportedAspectRatios: v.array(v.string()),
+      supportedDurations: v.array(v.number()),
+      supportedFrameImages: v.array(v.string()),
+      supportedSizes: v.array(v.string()),
+      generateAudio: v.boolean(),
+      seed: v.boolean(),
+      pricingSkus: v.optional(v.object({
+        videoTokens: v.optional(v.string()),
+        videoTokensWithoutAudio: v.optional(v.string()),
+        perVideoSecond: v.optional(v.string()),
+        perVideoSecond1080p: v.optional(v.string()),
+      })),
+      allowedPassthroughParameters: v.optional(v.array(v.string())),
+      syncedAt: v.number(),
+    })),
     lastSyncedAt: v.number(),
 
     // ── Model Guidance: Artificial Analysis benchmarks ──────────────

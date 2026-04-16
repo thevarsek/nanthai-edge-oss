@@ -168,6 +168,10 @@ export const upsertPreferences = mutation({
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),
     showAdvancedStats: v.optional(v.boolean()),
+    defaultVideoAspectRatio: v.optional(v.union(v.string(), v.null())),
+    defaultVideoDuration: v.optional(v.union(v.number(), v.null())),
+    defaultVideoResolution: v.optional(v.union(v.string(), v.null())),
+    defaultVideoGenerateAudio: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -244,6 +248,10 @@ export const upsertPreferences = mutation({
       hasSeenMainWalkthrough: args.hasSeenMainWalkthrough ?? undefined,
       showBalanceInChat: args.showBalanceInChat ?? undefined,
       showAdvancedStats: args.showAdvancedStats ?? undefined,
+      defaultVideoAspectRatio: args.defaultVideoAspectRatio ?? undefined,
+      defaultVideoDuration: args.defaultVideoDuration ?? undefined,
+      defaultVideoResolution: args.defaultVideoResolution ?? undefined,
+      defaultVideoGenerateAudio: args.defaultVideoGenerateAudio ?? undefined,
       updatedAt: now,
     });
   },

@@ -88,6 +88,7 @@ test("runGenerationHandler intersects enabled integrations and schedules per-par
     allowSubagents: false,
     searchSessionId: undefined,
     resumeExpected: false,
+    videoConfig: undefined,
   });
   assert.deepEqual(mutationCalls, [
     { jobId: "job_1", scheduledFunctionId: "scheduled_1", updateContinuation: false },

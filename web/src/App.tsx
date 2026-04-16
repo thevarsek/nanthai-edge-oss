@@ -128,6 +128,15 @@ const BranchingFeaturePage = lazy(() =>
 const PriceTransparencyFeaturePage = lazy(() =>
   import("./pages/features/PriceTransparencyPage").then((m) => ({ default: m.PriceTransparencyPage })),
 );
+const AudioGenerationPage = lazy(() =>
+  import("./pages/features/AudioGenerationPage").then((m) => ({ default: m.AudioGenerationPage })),
+);
+const ImageGenerationPage = lazy(() =>
+  import("./pages/features/ImageGenerationPage").then((m) => ({ default: m.ImageGenerationPage })),
+);
+const VideoGenerationPage = lazy(() =>
+  import("./pages/features/VideoGenerationPage").then((m) => ({ default: m.VideoGenerationPage })),
+);
 
 function AppSuspense({ children }: { children: React.ReactNode }) {
   return (
@@ -292,6 +301,30 @@ export function App() {
         element={
           <AppSuspense>
             <PriceTransparencyFeaturePage />
+          </AppSuspense>
+        }
+      />
+      <Route
+        path="/features/audio-generation"
+        element={
+          <AppSuspense>
+            <AudioGenerationPage />
+          </AppSuspense>
+        }
+      />
+      <Route
+        path="/features/image-generation"
+        element={
+          <AppSuspense>
+            <ImageGenerationPage />
+          </AppSuspense>
+        }
+      />
+      <Route
+        path="/features/video-generation"
+        element={
+          <AppSuspense>
+            <VideoGenerationPage />
           </AppSuspense>
         }
       />

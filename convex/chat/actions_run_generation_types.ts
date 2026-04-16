@@ -1,5 +1,12 @@
 import { Id } from "../_generated/dataModel";
 
+export interface VideoConfig {
+  resolution?: string;
+  aspectRatio?: string;
+  duration?: number;
+  generateAudio?: boolean;
+}
+
 export interface ParticipantConfig {
   modelId: string;
   personaId?: Id<"personas"> | null;
@@ -30,6 +37,18 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   // Optional: when called from a search path (C/D/regen), pass the session ID
   // so generation can mark the session completed/failed on finish.
   searchSessionId?: Id<"searchSessions">;
+  // M29 — Video generation config
+  videoConfig?: VideoConfig;
+}
+
+export interface VideoCapabilities {
+  supportedResolutions: string[];
+  supportedAspectRatios: string[];
+  supportedDurations: number[];
+  supportedFrameImages: string[];
+  supportedSizes: string[];
+  generateAudio: boolean;
+  seed: boolean;
 }
 
 export interface ModelCapabilities {
@@ -39,6 +58,8 @@ export interface ModelCapabilities {
   hasAudioOutput?: boolean;
   hasVideoInput?: boolean;
   hasImageGeneration?: boolean;
+  hasVideoGeneration?: boolean;
   hasReasoning?: boolean;
   contextLength?: number;
+  videoCapabilities?: VideoCapabilities;
 }

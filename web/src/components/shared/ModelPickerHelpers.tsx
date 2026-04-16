@@ -5,12 +5,12 @@
 import { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  X, Sparkles, Zap, DollarSign, Code2, Brain, Image, Eye, Wrench,
+  X, Sparkles, Zap, DollarSign, Code2, Brain, Image as ImageIcon, Paintbrush, Eye, Wrench,
   Mic, FileText, Video, Gift, Check, ChevronRight,
   GraduationCap, MessageSquare, PenTool, Languages, Star, Bolt,
   ArrowLeft,
 } from "lucide-react";
-import { formatPrice } from "@/components/shared/ModelPickerHelpers.utils";
+import { formatPrice, formatVideoPrice } from "@/components/shared/ModelPickerHelpers.utils";
 import { ModelSettingsEditor } from "@/components/shared/ModelSettingsEditor";
 
 // ─── Types (shared with ModelPicker.tsx) ─────────────────────────────────────
@@ -21,6 +21,9 @@ export interface ModelSummary {
   description?: string;
   provider?: string;
   supportsImages?: boolean;
+  supportsVideo?: boolean;
+  /** Frame types this video model supports (e.g. ["first_frame","last_frame"]). Empty = text-to-video only. */
+  supportedFrameImages?: string[];
   supportsTools?: boolean;
   contextLength?: number;
   hasReasoning?: boolean;
@@ -30,6 +33,13 @@ export interface ModelSummary {
   isFree?: boolean;
   architecture?: { modality?: string };
   supportedParameters?: string[];
+  /** Video-specific pricing (video models don't use token pricing). */
+  videoPricing?: {
+    perVideoToken?: number;
+    perVideoTokenNoAudio?: number;
+    perVideoSecond?: number;
+    perVideoSecond1080p?: number;
+  };
   derivedGuidance?: {
     labels?: string[];
     primaryLabel?: string;
@@ -120,7 +130,10 @@ export function ModelInfoSheet({
   const isFree = model.isFree ?? model.modelId.endsWith(":free");
   const hasAudio = model.supportedParameters?.includes("audio") ?? false;
   const hasFileInput = model.architecture?.modality?.includes("file") ?? false;
-  const hasVideo = model.architecture?.modality?.includes("video") ?? false;
+  const inputModality = model.architecture?.modality?.split("->")[0] ?? "";
+  const hasVision = inputModality.includes("image");
+  const hasVideoInput = inputModality.includes("video");
+  const hasFrameSupport = (model.supportedFrameImages?.length ?? 0) > 0;
 
   const SCORE_KEYS: { key: string; label: string; icon: React.ReactNode }[] = [
     { key: "recommended", label: t("guidance_score_recommended"), icon: <Star size={12} /> },
@@ -128,7 +141,7 @@ export function ModelInfoSheet({
     { key: "research", label: t("guidance_score_research"), icon: <GraduationCap size={12} /> },
     { key: "fast", label: t("guidance_score_speed"), icon: <Zap size={12} /> },
     { key: "value", label: t("guidance_score_value"), icon: <DollarSign size={12} /> },
-    { key: "image", label: t("guidance_score_image"), icon: <Image size={12} /> },
+    { key: "image", label: t("guidance_score_image"), icon: <ImageIcon size={12} /> },
   ];
 
   return (
@@ -212,6 +225,35 @@ export function ModelInfoSheet({
               <Gift size={14} />
               <span className="font-medium">{t("guidance_free")}</span>
             </div>
+          ) : model.videoPricing && (model.videoPricing.perVideoToken != null || model.videoPricing.perVideoSecond != null) ? (
+            <div className="rounded-xl bg-surface-2 divide-y divide-border/50">
+              {model.videoPricing.perVideoSecond != null && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">Per second</span>
+                  <span className="text-xs font-mono">{formatVideoPrice(model.videoPricing.perVideoSecond, "sec")}</span>
+                </div>
+              )}
+              {model.videoPricing.perVideoSecond1080p != null && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">Per second (1080p)</span>
+                  <span className="text-xs font-mono">{formatVideoPrice(model.videoPricing.perVideoSecond1080p, "sec")}</span>
+                </div>
+              )}
+              {model.videoPricing.perVideoToken != null && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">Per video token</span>
+                  <span className="text-xs font-mono">{formatVideoPrice(model.videoPricing.perVideoToken, "tok")}</span>
+                </div>
+              )}
+              {model.videoPricing.perVideoTokenNoAudio != null && model.videoPricing.perVideoTokenNoAudio !== model.videoPricing.perVideoToken && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">Per token (no audio)</span>
+                  <span className="text-xs font-mono">{formatVideoPrice(model.videoPricing.perVideoTokenNoAudio, "tok")}</span>
+                </div>
+              )}
+            </div>
+          ) : model.supportsVideo ? (
+            <p className="text-xs text-muted italic">Pricing not yet published by provider</p>
           ) : (
             <div className="rounded-xl bg-surface-2 divide-y divide-border/50">
               <div className="flex items-center justify-between px-3 py-2">
@@ -230,12 +272,17 @@ export function ModelInfoSheet({
         <div className="space-y-1">
           <h3 className="text-xs font-medium text-muted uppercase tracking-wide">{t("guidance_capabilities_title")}</h3>
           <div className="rounded-xl bg-surface-2 px-3">
-            <CapRow icon={<Eye size={14} className="text-muted" />} label={t("guidance_cap_vision")} supported={model.supportsImages ?? false} />
+            <CapRow icon={<Eye size={14} className="text-muted" />} label={t("guidance_cap_vision")} supported={model.supportsVideo ? hasFrameSupport : hasVision} />
+            <CapRow icon={<Paintbrush size={14} className="text-muted" />} label={t("image_gen")} supported={model.supportsImages ?? false} />
             <CapRow icon={<Wrench size={14} className="text-muted" />} label={t("guidance_cap_tools")} supported={model.supportsTools ?? false} />
             <CapRow icon={<Brain size={14} className="text-muted" />} label={t("guidance_cap_reasoning")} supported={model.hasReasoning ?? false} />
             <CapRow icon={<Mic size={14} className="text-muted" />} label="Audio Input" supported={hasAudio} />
             <CapRow icon={<FileText size={14} className="text-muted" />} label="File Input" supported={hasFileInput} />
-            <CapRow icon={<Video size={14} className="text-muted" />} label="Video Input" supported={hasVideo} />
+            <CapRow icon={<Video size={14} className="text-muted" />} label="Video Input" supported={hasVideoInput} />
+            <CapRow icon={<Video size={14} className="text-muted" />} label={t("guidance_cap_video_gen")} supported={model.supportsVideo ?? false} />
+            {(model.supportsVideo ?? false) && (
+              <CapRow icon={<ImageIcon size={14} className="text-muted" />} label={t("guidance_cap_image_to_video")} supported={hasFrameSupport} />
+            )}
           </div>
         </div>
 

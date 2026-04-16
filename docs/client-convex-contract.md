@@ -38,6 +38,7 @@ Examples:
 - pinned chat ordering comes from Convex ordering fields and reorder mutations, not per-client local sorting rules
 - default participant resolution belongs in Convex/preferences-backed data, not separate iOS/web/android implementations
 - branch pill switching belongs in Convex (`chat/manage:switchBranchAtFork`), not per-client leaf-selection heuristics
+- video generation progress, terminal status, and provider-facing failure details come from the shared `videoJobs` contract and message payloads, not per-client heuristics that suppress failed states or rewrite backend errors
 
 ## What Belongs In Clients
 

@@ -15,8 +15,10 @@ import {
   generateTitleArgs,
   postProcessArgs,
   previewVoiceArgs,
+  pollVideoGenerationArgs,
   runGenerationArgs,
   runGenerationParticipantArgs,
+  submitVideoGenerationArgs,
 } from "./actions_args";
 import {
   generateAudioForMessageHandler,
@@ -27,6 +29,7 @@ import { generateTitleHandler } from "./actions_generate_title_handler";
 import { postProcessHandler } from "./actions_post_process_handler";
 import { runGenerationHandler } from "./actions_run_generation_handler";
 import { runGenerationParticipantHandler } from "./actions_run_generation_participant_action";
+import { submitVideoGenerationHandler, pollVideoGenerationHandler } from "./actions_video_generation";
 import { fetchAndStoreGenerationUsageHandler } from "./actions_fetch_usage";
 
 export const runGeneration = internalAction({
@@ -72,4 +75,16 @@ export const fetchAndStoreGenerationUsage = internalAction({
     openrouterGenerationId: v.string(),
   },
   handler: fetchAndStoreGenerationUsageHandler,
+});
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export const submitVideoGeneration = internalAction({
+  args: submitVideoGenerationArgs,
+  handler: submitVideoGenerationHandler,
+});
+
+export const pollVideoGeneration = internalAction({
+  args: pollVideoGenerationArgs,
+  handler: pollVideoGenerationHandler,
 });

@@ -11,7 +11,7 @@ import { useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
 import {
   ChevronRight, Globe, Star, Type, AudioLines,
-  Search as SearchIcon, Layers, Play, Square, Loader2,
+  Search as SearchIcon, Layers, Play, Square, Loader2, Video,
 } from "lucide-react";
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
@@ -27,6 +27,15 @@ import { PaywallModal } from "@/components/shared/PaywallModal";
 import { SectionHeader, SectionFooter } from "./ChatDefaultsSection.helpers";
 import { useOptimistic, shortModelName, VOICE_OPTIONS } from "./ChatDefaultsSection.utils";
 import { ParticipantPicker } from "./ChatDefaultsSection.ParticipantPicker";
+
+const VIDEO_DURATION_OPTIONS = [4, 5, 6, 8, 10, 12, 15, 20].map((value) => ({
+  value,
+  label: `${value}s`,
+}));
+const VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "4K"].map((value) => ({
+  value,
+  label: value,
+}));
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
@@ -70,6 +79,10 @@ export function ChatDefaultsSection() {
   const [localAudioSpeed, setLocalAudioSpeed] = useOptimistic((prefs?.defaultAudioSpeed as number | undefined) ?? 1);
   const [localSearchMode, setLocalSearchMode] = useOptimistic((prefs?.defaultSearchMode as string | undefined) ?? "basic");
   const [localSearchComplexity, setLocalSearchComplexity] = useOptimistic((prefs?.defaultSearchComplexity as number | undefined) ?? 1);
+  const [localVideoAspect, setLocalVideoAspect] = useOptimistic((prefs?.defaultVideoAspectRatio as string | undefined) ?? "16:9");
+  const [localVideoDuration, setLocalVideoDuration] = useOptimistic((prefs?.defaultVideoDuration as number | undefined) ?? 5);
+  const [localVideoResolution, setLocalVideoResolution] = useOptimistic((prefs?.defaultVideoResolution as string | undefined) ?? "720p");
+  const [localVideoAudio, setLocalVideoAudio] = useOptimistic((prefs?.defaultVideoGenerateAudio as boolean | undefined) ?? true);
 
   // ── Voice preview ──
   const previewVoice = useAction(api.chat.actions.previewVoice);
@@ -128,6 +141,10 @@ export function ChatDefaultsSection() {
     return t("basic_search");
   })();
 
+  const settingsLabelClass = "text-sm w-40 shrink-0";
+  const settingsIconLabelClass = "flex items-center gap-2 w-40 shrink-0";
+  const settingsControlClass = "flex-1 min-w-0";
+
   return (
     <div className="space-y-3">
       {/* ── Participant ── */}
@@ -157,8 +174,26 @@ export function ChatDefaultsSection() {
       </div>
       <SectionFooter>{t("new_chats_start_with_this_participant_persona_and_per_model")}</SectionFooter>
 
-      {/* ── Generation ── */}
-      <SectionHeader>{t("generation")}</SectionHeader>
+      {/* ── Manage Favorites ── */}
+      <SectionHeader>{t("quick_launch")}</SectionHeader>
+      <div className="rounded-2xl bg-surface-2 overflow-hidden">
+        <Link to="/app/settings/favorites" className="flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors">
+          <Star size={16} className="flex-shrink-0 text-muted" /><span className="flex-1 text-sm">{t("manage_favorites")}</span><ChevronRight size={14} className="text-muted flex-shrink-0" />
+        </Link>
+      </div>
+      <SectionFooter>{t("quick_launch_footer")}</SectionFooter>
+
+      {/* ── Title Model ── */}
+      <SectionHeader>{t("title_model")}</SectionHeader>
+      <div className="rounded-2xl bg-surface-2 overflow-hidden">
+        <button onClick={() => setShowTitleModelPicker(true)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
+          <Type size={16} className="flex-shrink-0 text-muted" /><span className="flex-1 text-sm">{t("title_model")}</span><span className="text-xs text-muted truncate max-w-32">{titleModelLabel}</span><ChevronRight size={14} className="text-muted flex-shrink-0" />
+        </button>
+      </div>
+      <SectionFooter>{t("generates_automatic_chat_titles_after_your_first_message")}</SectionFooter>
+
+      {/* ── Generation Values ── */}
+      <SectionHeader>Generation Values</SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         {/* Temperature */}
         <div className="px-4 py-3 space-y-3">
@@ -172,8 +207,8 @@ export function ChatDefaultsSection() {
           </div>
         </div>
         {/* Max Tokens */}
-        <div className="flex items-center justify-between gap-3 px-4 py-3">
-          <div className="flex-1">
+        <div className="flex items-center justify-between gap-6 px-4 py-3">
+          <div className="flex-1 w-40 shrink-0">
             <label className="text-sm">{t("max_tokens")}</label>
             <p className="text-[11px] text-muted mt-0.5">{t("max_tokens_empty_hint")}</p>
           </div>
@@ -186,8 +221,8 @@ export function ChatDefaultsSection() {
         </div>
         {/* Reasoning Effort */}
         {includeReasoning && (
-          <div className="flex items-center justify-between px-4 py-3">
-            <label className="text-sm">{t("reasoning_effort")}</label>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <label className={settingsLabelClass}>{t("reasoning_effort")}</label>
             <MenuSelect value={localEffort} options={[{ value: "low", label: t("low") }, { value: "medium", label: t("medium") }, { value: "high", label: t("high") }]} onChange={(v) => { setLocalEffort(v); updatePreferenceImmediate({ reasoningEffort: v }); }} />
           </div>
         )}
@@ -201,15 +236,17 @@ export function ChatDefaultsSection() {
           <Toggle checked={webSearchEnabled} onChange={(v) => updatePreferenceImmediate({ webSearchEnabledByDefault: v })} />
         </div>
         {webSearchEnabled && (
-          <div className="flex items-center justify-between px-4 py-3">
-            <div className="flex items-center gap-2"><SearchIcon size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("default_tier")}</label></div>
+          <div className="flex items-center justify-between gap-6 px-4 py-3">
+            <div className={settingsIconLabelClass}><SearchIcon size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("default_tier")}</label></div>
             <MenuSelect value={localSearchMode} options={[{ value: "basic", label: t("basic") }, { value: "web", label: `${t("web_search")}${!isPro ? ` (${t("pro_2")})` : ""}` }, { value: "paper", label: `${t("research_paper")}${!isPro ? ` (${t("pro_2")})` : ""}` }]} onChange={(mode) => { if (!isPro && (mode === "web" || mode === "paper")) { setPaywallFeature("Advanced Search"); return; } setLocalSearchMode(mode); updatePreferenceImmediate({ defaultSearchMode: mode }); }} />
           </div>
         )}
         {webSearchEnabled && localSearchMode !== "basic" && (
-          <div className="flex items-center justify-between px-4 py-3">
-            <label className="text-sm">{t("complexity")}</label>
-            <SegmentedControl value={localSearchComplexity} options={[{ value: 1, label: t("quick") }, { value: 2, label: t("thorough") }, { value: 3, label: t("comprehensive") }]} onChange={(v) => { setLocalSearchComplexity(v); updatePreferenceImmediate({ defaultSearchComplexity: v }); }} />
+          <div className="flex items-center gap-6 px-4 py-3">
+            <label className={settingsLabelClass}>{t("complexity")}</label>
+            <div className={settingsControlClass}>
+              <SegmentedControl value={localSearchComplexity} options={[{ value: 1, label: t("quick") }, { value: 2, label: t("thorough") }, { value: 3, label: t("comprehensive") }]} onChange={(v) => { setLocalSearchComplexity(v); updatePreferenceImmediate({ defaultSearchComplexity: v }); }} />
+            </div>
           </div>
         )}
       </div>
@@ -219,35 +256,28 @@ export function ChatDefaultsSection() {
       <SectionHeader>{t("delegation")}</SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2"><Layers size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("subagents")}</label>{!isPro && <ProBadge size="sm" />}</div>
+          <div className={settingsIconLabelClass}><Layers size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("subagents")}</label>{!isPro && <ProBadge size="sm" />}</div>
           <Toggle checked={subagentsEnabled === true} onChange={(v) => { if (v && !isPro) { setPaywallFeature("Subagents"); return; } updatePreferenceImmediate({ subagentsEnabledByDefault: v }); }} />
         </div>
       </div>
       <SectionFooter>{t("single_model_chats_can_delegate_up_to_three_focused_helper_t")}</SectionFooter>
 
-      {/* ── Behaviour ── */}
-      <SectionHeader>{t("behaviour")}</SectionHeader>
-      <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div><p className="text-sm">{t("send_on_enter")}</p><p className="text-xs text-muted mt-0.5">{t("shift_enter_newline")}</p></div>
-          <Toggle checked={prefs?.sendOnEnter ?? true} onChange={(v) => updatePreferenceImmediate({ sendOnEnter: v })} />
-        </div>
-      </div>
-
       {/* ── Audio ── */}
       <SectionHeader>{t("audio_section_header")}</SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center gap-2"><AudioLines size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("audio_auto_reply")}</label></div>
+          <div className={settingsIconLabelClass}><AudioLines size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("audio_auto_reply")}</label></div>
           <Toggle checked={autoAudioResponse} onChange={(v) => updatePreferenceImmediate({ autoAudioResponse: v })} />
         </div>
-        <div className="flex items-center justify-between px-4 py-3">
-          <label className="text-sm">{t("voice")}</label>
+        <div className="flex items-center justify-between gap-6 px-4 py-3">
+          <label className={settingsLabelClass}>{t("voice")}</label>
           <MenuSelect value={localVoice} options={VOICE_OPTIONS.map((v) => ({ value: v, label: v.charAt(0).toUpperCase() + v.slice(1) }))} onChange={(v) => { stopPreview(); setLocalVoice(v); updatePreferenceImmediate({ preferredVoice: v }); }} />
         </div>
-        <div className="flex items-center justify-between px-4 py-3">
-          <label className="text-sm">{t("playback_speed")}</label>
-          <SegmentedControl value={localAudioSpeed} options={[{ value: 1, label: "1x" }, { value: 1.5, label: "1.5x" }, { value: 2, label: "2x" }]} onChange={(v) => { setLocalAudioSpeed(v); updatePreferenceImmediate({ defaultAudioSpeed: v }); }} />
+        <div className="flex items-center gap-6 px-4 py-3">
+          <label className={settingsLabelClass}>{t("playback_speed")}</label>
+          <div className={settingsControlClass}>
+            <SegmentedControl value={localAudioSpeed} options={[{ value: 1, label: "1x" }, { value: 1.5, label: "1.5x" }, { value: 2, label: "2x" }]} onChange={(v) => { setLocalAudioSpeed(v); updatePreferenceImmediate({ defaultAudioSpeed: v }); }} />
+          </div>
         </div>
         <div className="flex items-center justify-between px-4 py-3">
           <label className="text-sm">{t("preview")}</label>
@@ -258,23 +288,42 @@ export function ChatDefaultsSection() {
       </div>
       <SectionFooter>{t("audio_section_footer")}</SectionFooter>
 
-      {/* ── Title Model ── */}
-      <SectionHeader>{t("title_model")}</SectionHeader>
-      <div className="rounded-2xl bg-surface-2 overflow-hidden">
-        <button onClick={() => setShowTitleModelPicker(true)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
-          <Type size={16} className="flex-shrink-0 text-muted" /><span className="flex-1 text-sm">{t("title_model")}</span><span className="text-xs text-muted truncate max-w-32">{titleModelLabel}</span><ChevronRight size={14} className="text-muted flex-shrink-0" />
-        </button>
+      {/* ── Video Generation ── */}
+      <SectionHeader><div className="flex items-center gap-1.5"><Video size={14} />{t("video_generation")}</div></SectionHeader>
+      <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
+        <div className="flex items-center gap-6 px-4 py-3">
+          <label className={settingsLabelClass}>{t("video_config_aspect_ratio")}</label>
+          <div className={settingsControlClass}>
+            <SegmentedControl value={localVideoAspect} options={[{ value: "16:9", label: "16:9" }, { value: "9:16", label: "9:16" }, { value: "1:1", label: "1:1" }]} onChange={(v) => { setLocalVideoAspect(v); updatePreferenceImmediate({ defaultVideoAspectRatio: v }); }} />
+          </div>
+        </div>
+        <div className="flex items-center gap-6 px-4 py-3">
+          <label className={settingsLabelClass}>{t("video_config_resolution")}</label>
+          <div className={settingsControlClass}>
+            <SegmentedControl value={localVideoResolution} options={VIDEO_RESOLUTION_OPTIONS} onChange={(v) => { setLocalVideoResolution(v); updatePreferenceImmediate({ defaultVideoResolution: v }); }} />
+          </div>
+        </div>
+        <div className="flex items-center gap-6 px-4 py-3">
+          <label className={settingsLabelClass}>{t("video_config_duration")}</label>
+          <div className={settingsControlClass}>
+            <SegmentedControl value={localVideoDuration} options={VIDEO_DURATION_OPTIONS} onChange={(v) => { setLocalVideoDuration(v); updatePreferenceImmediate({ defaultVideoDuration: v }); }} />
+          </div>
+        </div>
+        <div className="flex items-center justify-between gap-6 px-4 py-3">
+          <label className={settingsLabelClass}>{t("video_config_audio")}</label>
+          <Toggle checked={localVideoAudio} onChange={(v) => { setLocalVideoAudio(v); updatePreferenceImmediate({ defaultVideoGenerateAudio: v }); }} />
+        </div>
       </div>
-      <SectionFooter>{t("generates_automatic_chat_titles_after_your_first_message")}</SectionFooter>
+      <SectionFooter>{t("video_config_snap_hint")}</SectionFooter>
 
-      {/* ── Quick Launch / Favorites ── */}
-      <SectionHeader>{t("quick_launch")}</SectionHeader>
-      <div className="rounded-2xl bg-surface-2 overflow-hidden">
-        <Link to="/app/settings/favorites" className="flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors">
-          <Star size={16} className="flex-shrink-0 text-muted" /><span className="flex-1 text-sm">{t("manage_favorites")}</span><ChevronRight size={14} className="text-muted flex-shrink-0" />
-        </Link>
+      {/* ── Behaviour ── */}
+      <SectionHeader>{t("behaviour")}</SectionHeader>
+      <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
+        <div className="flex items-center justify-between px-4 py-3">
+          <div><p className="text-sm">{t("send_on_enter")}</p><p className="text-xs text-muted mt-0.5">{t("shift_enter_newline")}</p></div>
+          <Toggle checked={prefs?.sendOnEnter ?? true} onChange={(v) => updatePreferenceImmediate({ sendOnEnter: v })} />
+        </div>
       </div>
-      <SectionFooter>{t("quick_launch_footer")}</SectionFooter>
 
       {/* ── Modals ── */}
       {showParticipantPicker && (

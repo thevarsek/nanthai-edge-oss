@@ -100,6 +100,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   };
   reasoning?: string;
   imageUrls?: string[];
+  videoUrls?: string[];
   userId: string;
   // M10 — Tool execution metadata
   toolCalls?: Array<{
@@ -208,6 +209,7 @@ export async function finalizeGenerationHandler(
   const finalReasoning = args.reasoning ?? streamingMessage?.reasoning;
   if (finalReasoning) msgPatch.reasoning = finalReasoning;
   if (args.imageUrls) msgPatch.imageUrls = args.imageUrls;
+  if (args.videoUrls) msgPatch.videoUrls = args.videoUrls;
   const finalToolCalls = args.toolCalls ?? streamingMessage?.toolCalls;
   if (finalToolCalls) msgPatch.toolCalls = finalToolCalls;
   if (args.toolResults) msgPatch.toolResults = args.toolResults;
@@ -300,9 +302,19 @@ export async function finalizeGenerationHandler(
     // updatedAt again here would trigger a redundant listChats re-evaluation
     // across all connected clients.
     const chatPatch: Record<string, unknown> = {};
-    if (finalStatus === "completed" && finalContent.trim()) {
-      chatPatch.lastMessagePreview = finalContent.trim().substring(0, 200);
-      chatPatch.lastMessageDate = now;
+    if (finalStatus === "completed") {
+      if (finalContent.trim()) {
+        chatPatch.lastMessagePreview = finalContent.trim().substring(0, 200);
+        chatPatch.lastMessageDate = now;
+      } else if (args.videoUrls && args.videoUrls.length > 0) {
+        // Video-only messages have no text content — show a descriptive preview
+        chatPatch.lastMessagePreview = "Generated video";
+        chatPatch.lastMessageDate = now;
+      } else if (args.imageUrls && args.imageUrls.length > 0) {
+        // Image-only messages (if content is empty) — show a descriptive preview
+        chatPatch.lastMessagePreview = "Generated image";
+        chatPatch.lastMessageDate = now;
+      }
     }
     if (Object.keys(chatPatch).length > 0) {
       await ctx.db.patch(args.chatId, chatPatch);
@@ -355,14 +367,22 @@ export async function finalizeGenerationHandler(
 
   if (
     finalStatus === "completed" &&
-    args.triggerUserMessageId &&
-    !args.audioStorageId
+    args.triggerUserMessageId
   ) {
     await maybeScheduleChatCompletionPush(
       ctx,
       args.chatId,
       args.userId,
       args.triggerUserMessageId,
+      {
+        _id: args.messageId,
+        role: persistedMessage?.role ?? "assistant",
+        parentMessageIds: persistedMessage?.parentMessageIds,
+        content: finalContent,
+        imageUrls: args.imageUrls ?? persistedMessage?.imageUrls,
+        videoUrls: args.videoUrls ?? persistedMessage?.videoUrls,
+        audioStorageId: args.audioStorageId ?? persistedMessage?.audioStorageId,
+      },
     );
   }
 
@@ -808,6 +828,15 @@ async function maybeScheduleChatCompletionPush(
   chatId: Id<"chats">,
   userId: string,
   triggerUserMessageId: Id<"messages">,
+  currentFinalizedMessage?: {
+    _id: Id<"messages">;
+    role: string;
+    parentMessageIds?: Id<"messages">[];
+    content?: string;
+    imageUrls?: string[];
+    videoUrls?: string[];
+    audioStorageId?: Id<"_storage">;
+  },
 ): Promise<void> {
   const [chat, prefs, pendingMessages, streamingMessages, completedMessages] =
     await Promise.all([
@@ -857,10 +886,19 @@ async function maybeScheduleChatCompletionPush(
   const completedTriggeredAssistants = completedMessages.filter(
     (message) =>
       isTriggeredAssistant(message) &&
-      typeof message.content === "string" &&
-      message.content.trim() !== "",
+      ((typeof message.content === "string" && message.content.trim() !== "") ||
+        (Array.isArray(message.imageUrls) && message.imageUrls.length > 0) ||
+        (Array.isArray(message.videoUrls) && message.videoUrls.length > 0) ||
+        typeof message.audioStorageId === "string"),
   );
-  if (completedTriggeredAssistants.length === 0) {
+  const currentFinalizedTriggeredAssistant = currentFinalizedMessage &&
+    isTriggeredAssistant(currentFinalizedMessage) &&
+    ((typeof currentFinalizedMessage.content === "string" && currentFinalizedMessage.content.trim() !== "") ||
+      (Array.isArray(currentFinalizedMessage.imageUrls) && currentFinalizedMessage.imageUrls.length > 0) ||
+      (Array.isArray(currentFinalizedMessage.videoUrls) && currentFinalizedMessage.videoUrls.length > 0) ||
+      typeof currentFinalizedMessage.audioStorageId === "string");
+
+  if (completedTriggeredAssistants.length === 0 && !currentFinalizedTriggeredAssistant) {
     return;
   }
 
@@ -934,5 +972,118 @@ export async function storeAncillaryCostHandler(
     cost,
     source: args.source,
     createdAt: now,
+  });
+}
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export interface CreateVideoJobArgs extends Record<string, unknown> {
+  messageId: Id<"messages">;
+  chatId: Id<"chats">;
+  userId: string;
+  openRouterJobId: string;
+  pollingUrl: string;
+  model: string;
+  prompt: string;
+  videoConfig?: {
+    resolution?: string;
+    aspectRatio?: string;
+    duration?: number;
+    generateAudio?: boolean;
+  };
+}
+
+export interface UpdateVideoJobStatusArgs extends Record<string, unknown> {
+  videoJobId: Id<"videoJobs">;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  error?: string;
+}
+
+export interface UpdateVideoJobPollArgs extends Record<string, unknown> {
+  videoJobId: Id<"videoJobs">;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  pollCount: number;
+  error?: string;
+}
+
+export interface InsertGeneratedMediaArgs extends Record<string, unknown> {
+  userId: string;
+  chatId: Id<"chats">;
+  messageId: Id<"messages">;
+  storageId: Id<"_storage">;
+  type: "image" | "video";
+  mimeType: string;
+  sizeBytes?: number;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  model?: string;
+  prompt?: string;
+}
+
+export async function createVideoJobHandler(
+  ctx: MutationCtx,
+  args: CreateVideoJobArgs,
+): Promise<Id<"videoJobs">> {
+  return await ctx.db.insert("videoJobs", {
+    messageId: args.messageId,
+    chatId: args.chatId,
+    userId: args.userId,
+    openRouterJobId: args.openRouterJobId,
+    pollingUrl: args.pollingUrl,
+    status: "pending",
+    model: args.model,
+    prompt: args.prompt,
+    videoConfig: args.videoConfig,
+    pollCount: 0,
+    createdAt: Date.now(),
+  });
+}
+
+export async function updateVideoJobStatusHandler(
+  ctx: MutationCtx,
+  args: UpdateVideoJobStatusArgs,
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    status: args.status,
+    lastPolledAt: Date.now(),
+  };
+  if (args.error) patch.error = args.error;
+  await ctx.db.patch(args.videoJobId, patch);
+}
+
+export async function updateVideoJobPollHandler(
+  ctx: MutationCtx,
+  args: UpdateVideoJobPollArgs,
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    status: args.status,
+    pollCount: args.pollCount,
+    lastPolledAt: Date.now(),
+  };
+  if (args.error) patch.error = args.error;
+  await ctx.db.patch(args.videoJobId, patch);
+}
+
+export async function insertGeneratedMediaHandler(
+  ctx: MutationCtx,
+  args: InsertGeneratedMediaArgs,
+): Promise<Id<"generatedMedia">> {
+  return await ctx.db.insert("generatedMedia", {
+    userId: args.userId,
+    chatId: args.chatId,
+    messageId: args.messageId,
+    storageId: args.storageId,
+    type: args.type,
+    mimeType: args.mimeType,
+    sizeBytes: args.sizeBytes,
+    width: args.width,
+    height: args.height,
+    durationSeconds: args.durationSeconds,
+    model: args.model,
+    prompt: args.prompt,
+    createdAt: Date.now(),
   });
 }

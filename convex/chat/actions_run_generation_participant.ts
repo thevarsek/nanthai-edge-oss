@@ -22,7 +22,7 @@ import {
   dedupeImageCandidates,
   detectStandaloneBase64Image,
   extractInlineImagePayloads,
-  persistGeneratedImageUrls,
+  persistGeneratedImageUrlsWithTracking,
 } from "./action_image_helpers";
 import { resolveMemoryContextForGeneration } from "./action_memory_helpers";
 import {
@@ -677,10 +677,24 @@ export async function generateForParticipant(
 
     finalContent = clampMessageContent(finalContent);
 
-    const persistedImageUrls = await persistGeneratedImageUrls(
+    const imageResult = await persistGeneratedImageUrlsWithTracking(
       ctx,
       normalizedImageCandidates,
     );
+    const persistedImageUrls = imageResult.urls;
+
+    // M29: Insert generatedMedia rows for each stored image (KB visibility).
+    for (const img of imageResult.stored) {
+      await ctx.runMutation(internal.chat.mutations.insertGeneratedMedia, {
+        userId: args.userId,
+        chatId: args.chatId,
+        messageId: participant.messageId,
+        storageId: img.storageId,
+        type: "image" as const,
+        mimeType: img.mimeType,
+        sizeBytes: img.sizeBytes,
+      });
+    }
 
     // M10: Extract generated file metadata from tool results.
     const generatedFilesMeta = extractGeneratedFiles(genResult.allToolResults);

@@ -1,11 +1,12 @@
 import { v, type PropertyValidators } from "convex/values";
+import { Id } from "../_generated/dataModel";
 import {
   memoryCategory,
   memoryRetrievalMode,
   memoryScopeType,
   memorySourceType,
 } from "../schema_validators";
-import { participantConfigValidator } from "./actions_args";
+import { participantConfigValidator, videoConfigValidator } from "./actions_args";
 
 export const attachmentValidator = v.object({
   type: v.string(),
@@ -14,6 +15,16 @@ export const attachmentValidator = v.object({
   name: v.optional(v.string()),
   mimeType: v.optional(v.string()),
   sizeBytes: v.optional(v.number()),
+  // M29 — Video generation: role of image when used with a video model.
+  // "first_frame" / "last_frame" → frame_images (image-to-video)
+  // "reference" → input_references (style guidance)
+  videoRole: v.optional(
+    v.union(
+      v.literal("first_frame"),
+      v.literal("last_frame"),
+      v.literal("reference"),
+    ),
+  ),
 });
 
 export const recordedAudioValidator = v.object({
@@ -60,6 +71,8 @@ export const sendMessageArgs = {
   // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
   enabledIntegrations: v.optional(v.array(v.string())),
   subagentsEnabled: v.optional(v.boolean()),
+  // M29 — Video generation config
+  videoConfig: v.optional(videoConfigValidator),
 } satisfies PropertyValidators;
 
 export const cancelGenerationArgs = {
@@ -81,6 +94,8 @@ export const retryMessageArgs = {
   // M10 Phase B — integration toggles
   enabledIntegrations: v.optional(v.array(v.string())),
   subagentsEnabled: v.optional(v.boolean()),
+  // M29 — Video generation config
+  videoConfig: v.optional(videoConfigValidator),
 } satisfies PropertyValidators;
 
 export const updateMessageContentArgs = {
@@ -141,6 +156,7 @@ export const finalizeGenerationArgs = {
   ),
   reasoning: v.optional(v.string()),
   imageUrls: v.optional(v.array(v.string())),
+  videoUrls: v.optional(v.array(v.string())),
   userId: v.string(),
   // M10 — Tool execution metadata
   toolCalls: v.optional(v.array(v.object({
@@ -435,3 +451,103 @@ export const storeAncillaryCostArgs = {
   source: v.string(),
   generationId: v.optional(v.string()),
 } satisfies PropertyValidators;
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export const createVideoJobArgs = {
+  messageId: v.id("messages"),
+  chatId: v.id("chats"),
+  userId: v.string(),
+  openRouterJobId: v.string(),
+  pollingUrl: v.string(),
+  model: v.string(),
+  prompt: v.string(),
+  videoConfig: v.optional(v.object({
+    resolution: v.optional(v.string()),
+    aspectRatio: v.optional(v.string()),
+    duration: v.optional(v.number()),
+    generateAudio: v.optional(v.boolean()),
+  })),
+} satisfies PropertyValidators;
+
+export type CreateVideoJobArgs = {
+  messageId: Id<"messages">;
+  chatId: Id<"chats">;
+  userId: string;
+  openRouterJobId: string;
+  pollingUrl: string;
+  model: string;
+  prompt: string;
+  videoConfig?: {
+    resolution?: string;
+    aspectRatio?: string;
+    duration?: number;
+    generateAudio?: boolean;
+  };
+};
+
+export const updateVideoJobStatusArgs = {
+  videoJobId: v.id("videoJobs"),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("in_progress"),
+    v.literal("completed"),
+    v.literal("failed"),
+  ),
+  error: v.optional(v.string()),
+} satisfies PropertyValidators;
+
+export type UpdateVideoJobStatusArgs = {
+  videoJobId: Id<"videoJobs">;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  error?: string;
+};
+
+export const updateVideoJobPollArgs = {
+  videoJobId: v.id("videoJobs"),
+  status: v.union(
+    v.literal("pending"),
+    v.literal("in_progress"),
+    v.literal("completed"),
+    v.literal("failed"),
+  ),
+  pollCount: v.number(),
+  error: v.optional(v.string()),
+} satisfies PropertyValidators;
+
+export type UpdateVideoJobPollArgs = {
+  videoJobId: Id<"videoJobs">;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  pollCount: number;
+  error?: string;
+};
+
+export const insertGeneratedMediaArgs = {
+  userId: v.string(),
+  chatId: v.id("chats"),
+  messageId: v.id("messages"),
+  storageId: v.id("_storage"),
+  type: v.union(v.literal("image"), v.literal("video")),
+  mimeType: v.string(),
+  sizeBytes: v.optional(v.number()),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+  durationSeconds: v.optional(v.number()),
+  model: v.optional(v.string()),
+  prompt: v.optional(v.string()),
+} satisfies PropertyValidators;
+
+export type InsertGeneratedMediaArgs = {
+  userId: string;
+  chatId: Id<"chats">;
+  messageId: Id<"messages">;
+  storageId: Id<"_storage">;
+  type: "image" | "video";
+  mimeType: string;
+  sizeBytes?: number;
+  width?: number;
+  height?: number;
+  durationSeconds?: number;
+  model?: string;
+  prompt?: string;
+};

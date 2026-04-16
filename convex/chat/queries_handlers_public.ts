@@ -492,7 +492,7 @@ export async function listKnowledgeBaseFilesHandler(
   // Server-side fetch cap across all sources to bound memory. Set higher than
   // the requested limit to allow for dedup and text-search filtering, then
   // divide across active sources so total loaded records stay bounded.
-  const sourceCount = sourceFilter === "all" ? 2 : 1;
+  const sourceCount = sourceFilter === "all" ? 3 : sourceFilter === "generated" ? 2 : 1;
   const totalFetchCap = Math.min(Math.max(limit * 5, 200), 1000);
   const fetchCap = Math.ceil(totalFetchCap / sourceCount);
 
@@ -521,6 +521,32 @@ export async function listKnowledgeBaseFilesHandler(
         messageId: f.messageId,
         createdAt: f.createdAt,
         downloadUrl: null, // resolved below
+      });
+    }
+
+    // 1b. M29: Collect generated media (images & videos) from generatedMedia table.
+    const media = await ctx.db
+      .query("generatedMedia")
+      .withIndex("by_userId", (q) => q.eq("userId", auth.userId))
+      .order("desc")
+      .take(fetchCap);
+
+    for (const m of media) {
+      const filename = m.type === "video" ? "generated-video.mp4" : "generated-image.png";
+      if (searchLower && !filename.toLowerCase().includes(searchLower)) {
+        continue;
+      }
+      results.push({
+        storageId: m.storageId,
+        filename,
+        mimeType: m.mimeType,
+        sizeBytes: m.sizeBytes,
+        source: "generated",
+        toolName: m.type === "video" ? "video_generation" : "image_generation",
+        chatId: m.chatId,
+        messageId: m.messageId,
+        createdAt: m.createdAt,
+        downloadUrl: null,
       });
     }
   }
@@ -670,5 +696,51 @@ export async function getChatCostSummaryHandler(
     totalCost,
     messageCosts,
     breakdown,
+  };
+}
+
+// ── M29: Video Job Status (public, auth-gated) ────────────────────────
+
+export interface GetVideoJobStatusArgs extends Record<string, unknown> {
+  messageId: Id<"messages">;
+}
+
+/**
+ * Public query for clients to subscribe to real-time video generation progress.
+ * Returns the video job status for a given message, or null if none exists.
+ * Auth-gated: only the owning user can see their video job.
+ */
+export async function getVideoJobStatusHandler(
+  ctx: QueryCtx,
+  args: GetVideoJobStatusArgs,
+): Promise<
+  | {
+      status: string;
+      pollCount: number;
+      error?: string;
+      model: string;
+      createdAt: number;
+      lastPolledAt?: number;
+    }
+  | null
+> {
+  const auth = await optionalAuth(ctx);
+  if (!auth) return null;
+
+  const videoJob = await ctx.db
+    .query("videoJobs")
+    .withIndex("by_messageId", (q) => q.eq("messageId", args.messageId))
+    .first();
+
+  if (!videoJob) return null;
+  if (videoJob.userId !== auth.userId) return null;
+
+  return {
+    status: videoJob.status,
+    pollCount: videoJob.pollCount,
+    error: videoJob.error ?? undefined,
+    model: videoJob.model,
+    createdAt: videoJob.createdAt,
+    lastPolledAt: videoJob.lastPolledAt ?? undefined,
   };
 }

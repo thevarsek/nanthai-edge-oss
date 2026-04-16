@@ -10,6 +10,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
+import { validateSameModality } from "../lib/modality_utils";
 
 const MAX_MODELS_PER_FAVORITE = 3;
 const MAX_FAVORITES_PER_USER = 20;
@@ -50,6 +51,18 @@ export const createFavorite = mutation({
         code: "LIMIT_REACHED",
         message: `You can have at most ${MAX_FAVORITES_PER_USER} favorites.`,
       });
+    }
+
+    // M29: Enforce same-modality constraint (text/image/video cannot be mixed).
+    if (args.modelIds.length > 1) {
+      try {
+        await validateSameModality(ctx, args.modelIds);
+      } catch (e: unknown) {
+        throw new ConvexError({
+          code: "INVALID_ARGS",
+          message: e instanceof Error ? e.message : "Models must share the same output modality.",
+        });
+      }
     }
 
     // New favorite goes to the end.
@@ -97,6 +110,18 @@ export const updateFavorite = mutation({
           code: "INVALID_ARGS",
           message: `A favorite can have at most ${MAX_MODELS_PER_FAVORITE} models.`,
         });
+      }
+
+      // M29: Enforce same-modality constraint on update.
+      if (args.modelIds.length > 1) {
+        try {
+          await validateSameModality(ctx, args.modelIds);
+        } catch (e: unknown) {
+          throw new ConvexError({
+            code: "INVALID_ARGS",
+            message: e instanceof Error ? e.message : "Models must share the same output modality.",
+          });
+        }
       }
     }
 

@@ -160,6 +160,42 @@ export async function runGenerationParticipantHandler(
     });
   }
 
+  // ── M29: Video generation branch ────────────────────────────────────
+  // Video models use a completely separate API (POST /api/v1/videos) with
+  // async polling, so we divert here before entering the streaming/tool loop.
+  // Continuations never apply to video — video jobs are self-scheduling.
+  if (!continuationState) {
+    const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+      modelId: effectiveArgs.participant.modelId,
+    });
+    if (caps?.hasVideoGeneration) {
+      try {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.chat.actions.submitVideoGeneration,
+          {
+            chatId: effectiveArgs.chatId,
+            userMessageId: effectiveArgs.userMessageId,
+            assistantMessageIds: effectiveArgs.assistantMessageIds,
+            generationJobIds: effectiveArgs.generationJobIds,
+            participant: {
+              modelId: effectiveArgs.participant.modelId,
+              messageId: effectiveArgs.participant.messageId,
+              jobId: effectiveArgs.participant.jobId,
+            },
+            userId: effectiveArgs.userId,
+            searchSessionId: effectiveArgs.searchSessionId,
+            videoConfig: effectiveArgs.videoConfig,
+          },
+        );
+        return; // Video flow takes over — no streaming/tool loop needed
+      } catch (error) {
+        await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
+        throw error;
+      }
+    }
+  }
+
   try {
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, effectiveArgs.userId);
     const continuationCount = continuationState?.continuationCount ?? 0;

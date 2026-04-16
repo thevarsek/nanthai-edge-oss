@@ -4,6 +4,7 @@
 import type { PointerEvent as ReactPointerEvent } from "react";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Message } from "@/hooks/useChat";
+import { Video } from "lucide-react";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { TREE_NODE_W, TREE_NODE_H } from "./treeLayout";
@@ -14,6 +15,24 @@ function getModelLabel(modelId?: string): string {
   if (!modelId) return "Assistant";
   const parts = modelId.split("/");
   return parts[parts.length - 1] ?? modelId;
+}
+
+function InlineImageThumb({ url }: { url: string }) {
+  return <img src={url} alt="Generated" className="h-16 w-16 rounded-md object-cover border border-border/40" />;
+}
+
+function InlineVideoThumb({ url }: { url: string }) {
+  return (
+    <div className="relative h-20 w-full overflow-hidden rounded-lg border border-border/40 bg-surface-2">
+      <video src={url} controls className="h-full w-full object-cover" preload="metadata" playsInline />
+      <div className="pointer-events-none absolute left-2 top-2 rounded-md bg-black/50 px-1.5 py-0.5 text-[9px] font-semibold text-white">
+        <span className="inline-flex items-center gap-1">
+          <Video size={9} />
+          Video
+        </span>
+      </div>
+    </div>
+  );
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -146,22 +165,43 @@ export function MessageNode({
       </div>
 
       {/* Content */}
-      <div
-        data-node-scroll
-        className="px-3 pb-7 overflow-y-auto overflow-x-hidden"
-        style={{ height: Math.max(56, height - 42) }}
+        <div
+          data-node-scroll
+          className="px-3 pb-7 overflow-y-auto overflow-x-hidden"
+          style={{ height: Math.max(56, height - 42) }}
         onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-        onWheel={(e) => e.stopPropagation()}
-      >
-        <p className="text-primary leading-relaxed whitespace-pre-wrap break-words" style={{ fontSize: `${Math.max(7, 12 * scale)}px` }}>
-          {message.content || (
-            (message.status === "pending" || message.status === "streaming")
-              ? <span className="text-muted animate-pulse">...</span>
-              : <span className="italic text-muted">empty</span>
-          )}
-        </p>
-      </div>
+          onClick={(e) => e.stopPropagation()}
+          onWheel={(e) => e.stopPropagation()}
+        >
+          <div className="space-y-2">
+            {!!message.imageUrls?.length && (
+              <div className="flex flex-wrap gap-1.5">
+                {message.imageUrls.slice(0, 3).map((url, index) => (
+                  <InlineImageThumb key={`${message._id}-img-${index}`} url={url} />
+                ))}
+                {message.imageUrls.length > 3 && (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-md border border-border/40 bg-surface-2 text-[10px] font-semibold text-muted">
+                    +{message.imageUrls.length - 3}
+                  </div>
+                )}
+              </div>
+            )}
+            {!!message.videoUrls?.length && (
+              <div className="space-y-2">
+                {message.videoUrls.slice(0, 1).map((url, index) => (
+                  <InlineVideoThumb key={`${message._id}-vid-${index}`} url={url} />
+                ))}
+              </div>
+            )}
+            <p className="text-primary leading-relaxed whitespace-pre-wrap break-words" style={{ fontSize: `${Math.max(7, 12 * scale)}px` }}>
+              {message.content || (
+                (message.status === "pending" || message.status === "streaming")
+                  ? <span className="text-muted animate-pulse">...</span>
+                  : <span className="italic text-muted">empty</span>
+              )}
+            </p>
+          </div>
+        </div>
 
       {/* Badge */}
       {badge && (

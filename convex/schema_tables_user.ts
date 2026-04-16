@@ -103,6 +103,10 @@ export const userSchemaTables = {
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),
     showAdvancedStats: v.optional(v.boolean()), // M23: per-message cost display
+    defaultVideoAspectRatio: v.optional(v.string()), // "16:9" | "9:16" | "1:1"
+    defaultVideoDuration: v.optional(v.number()),     // seconds
+    defaultVideoResolution: v.optional(v.string()),   // "480p" | "720p" | "1080p" | "4K"
+    defaultVideoGenerateAudio: v.optional(v.boolean()),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 

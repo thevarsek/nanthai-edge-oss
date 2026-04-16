@@ -6,7 +6,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { X, Search, FileText, BookOpen } from "lucide-react";
+import { X, Search, FileText, BookOpen, Image, Video } from "lucide-react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -17,6 +17,9 @@ interface KBFile {
   source: "upload" | "generated";
   sizeBytes?: number;
   createdAt?: number;
+  downloadUrl?: string | null;
+  mimeType?: string;
+  toolName?: string;
 }
 
 interface Props {
@@ -128,6 +131,12 @@ export function ChatKBPicker({ selectedFileIds, onToggle, onClose }: Props) {
   );
 }
 
+function kbFileIcon(mime?: string) {
+  if (mime?.startsWith("video/")) return <Video size={14} className="text-foreground/50" />;
+  if (mime?.startsWith("image/")) return <Image size={14} className="text-foreground/50" />;
+  return <FileText size={14} className="text-foreground/50" />;
+}
+
 function FileRow({
   file,
   selected,
@@ -138,6 +147,9 @@ function FileRow({
   onToggle: () => void;
 }) {
   const { t } = useTranslation();
+  const isImage = file.mimeType?.startsWith("image/");
+  const isVideo = file.mimeType?.startsWith("video/");
+
   return (
     <button
       onClick={onToggle}
@@ -164,10 +176,25 @@ function FileRow({
         )}
       </div>
 
-      {/* File icon */}
-      <div className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center flex-shrink-0">
-        <FileText size={14} className="text-foreground/50" />
-      </div>
+      {/* File icon / thumbnail */}
+      {isImage && file.downloadUrl ? (
+        <img
+          src={file.downloadUrl}
+          alt={file.filename}
+          className="w-8 h-8 rounded-lg object-cover flex-shrink-0 bg-surface-3"
+        />
+      ) : isVideo && file.downloadUrl ? (
+        <video
+          src={file.downloadUrl}
+          className="w-8 h-8 rounded-lg object-cover flex-shrink-0 bg-surface-3"
+          muted
+          preload="metadata"
+        />
+      ) : (
+        <div className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center flex-shrink-0">
+          {kbFileIcon(file.mimeType)}
+        </div>
+      )}
 
       {/* File info */}
       <div className="flex-1 min-w-0">

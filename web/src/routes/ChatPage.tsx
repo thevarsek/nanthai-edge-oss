@@ -74,8 +74,7 @@ export function ChatPage() {
   const effectiveDefaultModelId = defaultPersona?.modelId ?? defaultModelId;
   const [selectedModelId, setSelectedModelId] = useState(effectiveDefaultModelId);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { participants: convexParticipants, addParticipant, removeParticipant: removeParticipantMut, setParticipants: _setParticipantsMut } = useParticipants(typedChatId);
-  void _setParticipantsMut;
+  const { participants: convexParticipants, addParticipant, removeParticipant: removeParticipantMut, setParticipants: setParticipantsMut } = useParticipants(typedChatId);
   // Sync selectedModelId when convex participants load (existing chat)
   useEffect(() => {
     if (convexParticipants.length === 0) return;
@@ -209,6 +208,23 @@ export function ChatPage() {
     });
   }, [participants, modelSummaries]);
 
+  const isVideoMode = useMemo(() => {
+    if (!modelSummaries) return false;
+    return participants.some((p) => {
+      const summary = modelSummaries.find((m) => m.modelId === p.modelId);
+      return summary?.supportsVideo === true;
+    });
+  }, [participants, modelSummaries]);
+
+  /** Whether any video participant supports frame images (image-to-video). */
+  const supportsFrameImages = useMemo(() => {
+    if (!modelSummaries || !isVideoMode) return false;
+    return participants.some((p) => {
+      const summary = modelSummaries.find((m) => m.modelId === p.modelId);
+      return summary?.supportsVideo === true && (summary.supportedFrameImages?.length ?? 0) > 0;
+    });
+  }, [participants, modelSummaries, isVideoMode]);
+
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
     chat, participantCount: participants.length, isPro,
     subagentsEnabledByDefault: typedPrefs?.subagentsEnabledByDefault ?? false,
@@ -324,6 +340,7 @@ export function ChatPage() {
     type: string;
     mimeType: string;
     sizeBytes?: number;
+    videoRole?: "first_frame" | "last_frame" | "reference";
   };
   const kbAttachments = useMemo(
     (): ChatAttachment[] => (selectedKBFiles ?? []).map((file) => ({
@@ -370,15 +387,21 @@ export function ChatPage() {
       } else {
         await sendMessage({
           chatId: cid, text, participants,
-          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
+          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, videoRole: a.videoRole })),
           ...integrationArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
           ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
+          ...(isVideoMode ? { videoConfig: {
+            aspectRatio: typedPrefs?.defaultVideoAspectRatio ?? "16:9",
+            duration: typedPrefs?.defaultVideoDuration ?? 5,
+            resolution: typedPrefs?.defaultVideoResolution ?? "720p",
+            generateAudio: typedPrefs?.defaultVideoGenerateAudio ?? true,
+          } } : {}),
         });
       }
       overrides.clearKBFiles();
     },
-    [ensureChatId, kbAttachments, sendMessage, startResearchPaper, participants, integrationArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, overrides, validateSendState],
+    [ensureChatId, kbAttachments, sendMessage, startResearchPaper, participants, integrationArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );
 
   const handleSendRecording = useCallback(
@@ -403,16 +426,22 @@ export function ChatPage() {
       } else {
         await sendMessage({
           chatId: cid, text: result.transcript || "(voice message)", participants,
-          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
+          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, videoRole: a.videoRole })),
           recordedAudio: { storageId: storageId as Id<"_storage">, transcript: result.transcript, durationMs: result.durationMs, mimeType: result.mimeType },
           ...integrationArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
           ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
+          ...(isVideoMode ? { videoConfig: {
+            aspectRatio: typedPrefs?.defaultVideoAspectRatio ?? "16:9",
+            duration: typedPrefs?.defaultVideoDuration ?? 5,
+            resolution: typedPrefs?.defaultVideoResolution ?? "720p",
+            generateAudio: typedPrefs?.defaultVideoGenerateAudio ?? true,
+          } } : {}),
         });
       }
       overrides.clearKBFiles();
     },
-    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, integrationArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, overrides, kbAttachments, validateSendState],
+    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, integrationArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachments, validateSendState],
   );
 
   const handleCancel = useCallback(() => { if (typedChatId) void cancelGeneration({ chatId: typedChatId }); }, [typedChatId, cancelGeneration]);
@@ -521,6 +550,8 @@ export function ChatPage() {
         mentionSuggestions={mentionSuggestions} disabled={false} isAutonomousActive={isAutonomousActive}
         onIntervene={autonomous.intervene} onSendRecording={handleSendRecording}
         allParticipantsSupportTools={allParticipantsSupportTools}
+        isVideoMode={isVideoMode}
+        supportsFrameImages={supportsFrameImages}
       />
       <ChatModalPanels
         activePanel={overrides.activePanel} closePanel={overrides.closePanel}
@@ -529,7 +560,7 @@ export function ChatPage() {
         enabledSkillIds={overrides.enabledSkillIds} toggleSkill={overrides.toggleSkill}
         selectedKBFileIds={overrides.selectedKBFileIds} toggleKBFile={overrides.toggleKBFile}
         chatId={typedChatId} convexParticipants={convexParticipants}
-        addParticipant={addParticipant} removeParticipant={removeParticipantMut}
+        addParticipant={addParticipant} removeParticipant={removeParticipantMut} setParticipants={setParticipantsMut}
         subagentOverride={subagentOverride} effectiveSubagentsEnabled={effectiveSubagentsEnabled}
         isPro={isPro} handleSubagentOverrideChange={handleSubagentOverrideChange}
         autonomousSettings={autonomous.settings} onAutonomousSettingsChange={autonomous.setSettings}

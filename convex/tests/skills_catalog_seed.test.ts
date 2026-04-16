@@ -8,8 +8,8 @@ import { SystemSkillSeedData } from "../skills/mutations_seed";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 57 skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 57);
+test("SYSTEM_SKILL_CATALOG contains 59 skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 59);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -59,11 +59,11 @@ test("SYSTEM_SKILL_CATALOG: slugs are lowercase-hyphenated", () => {
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 55 visible + 2 hidden skills", () => {
+test("SYSTEM_SKILL_CATALOG: 58 visible + 1 hidden skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
-  assert.equal(visible.length, 55);
-  assert.equal(hidden.length, 2);
+  assert.equal(visible.length, 58);
+  assert.equal(hidden.length, 1);
 });
 
 test("SYSTEM_SKILL_CATALOG: visible skills include the 5 original curated skills", () => {
@@ -76,11 +76,11 @@ test("SYSTEM_SKILL_CATALOG: visible skills include the 5 original curated skills
   assert.ok(slugs.has("xlsx"));
 });
 
-test("SYSTEM_SKILL_CATALOG: hidden skills are runtime-guard and create-skill", () => {
+test("SYSTEM_SKILL_CATALOG: hidden skills are runtime-guard only", () => {
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
   const slugs = new Set(hidden.map((s) => s.slug));
   assert.ok(slugs.has("nanthai-mobile-runtime"));
-  assert.ok(slugs.has("create-skill"));
+  assert.equal(hidden.length, 1);
 });
 
 // =============================================================================

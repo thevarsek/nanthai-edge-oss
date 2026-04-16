@@ -7,9 +7,9 @@ import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } fr
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Search, X, Sparkles, Zap, DollarSign, Code2, Brain, Image,
+  Search, X, Sparkles, Zap, DollarSign, Code2, Brain, Image as ImageIcon, Paintbrush,
   Eye, Wrench, Gift, ArrowUpDown, Info, ChevronDown, Check,
-  Flame, TrendingUp, Maximize2,
+  Flame, TrendingUp, Maximize2, Video,
 } from "lucide-react";
 import { useModelSummaries } from "@/hooks/useSharedData";
 import { ProviderLogo } from "./ProviderLogo";
@@ -25,15 +25,15 @@ import {
 const SORT_ICONS: Record<SortKey, React.ReactNode> = {
   recommended: <Sparkles size={12} />, coding: <Code2 size={12} />,
   research: <Brain size={12} />, fast: <Zap size={12} />,
-  value: <DollarSign size={12} />, image: <Image size={12} />,
+  value: <DollarSign size={12} />, image: <ImageIcon size={12} />,
   price: <span className="text-[11px] font-bold leading-none">$$</span>,
   context: <Maximize2 size={12} />, topThisWeek: <TrendingUp size={12} />,
 };
 
 const CAP_ICONS: Record<CapFilter, React.ReactNode> = {
   free: <Gift size={11} />, excludeFree: <Gift size={11} />,
-  vision: <Eye size={11} />, imageGen: <Image size={11} />,
-  tools: <Wrench size={11} />,
+  vision: <Eye size={11} />, imageGen: <Paintbrush size={11} />,
+  videoGen: <Video size={11} />, tools: <Wrench size={11} />,
 };
 
 // ─── Trend badge ─────────────────────────────────────────────────────────────
@@ -93,9 +93,17 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo }: {
         </p>
         <div className="flex items-center gap-1 text-[10px] text-muted mt-0.5 truncate">
           <span className="capitalize">{model.provider ?? t("guidance_unknown")}</span>
-          {model.supportsImages && <Eye size={9} className="shrink-0" />}
+          {(model.supportsVideo
+            ? (model.supportedFrameImages?.length ?? 0) > 0
+            : (model.architecture?.modality?.split("->")[0] ?? "").includes("image")
+          ) && <Eye size={9} className="shrink-0" />}
+          {model.supportsImages && <Paintbrush size={9} className="shrink-0" />}
+          {model.supportsVideo && <Video size={9} className="shrink-0" />}
+          {model.supportsVideo && (model.supportedFrameImages?.length ?? 0) > 0 && (
+            <ImageIcon size={9} className="shrink-0" />
+          )}
           {model.supportsTools && <Wrench size={9} className="shrink-0" />}
-          {(model.inputPricePer1M ?? 0) === 0 && (model.outputPricePer1M ?? 0) === 0 && <Gift size={9} className="shrink-0" />}
+          {(model.isFree ?? model.modelId.endsWith(":free")) && <Gift size={9} className="shrink-0" />}
         </div>
         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
           {primaryLabel && <GuidanceTag label={primaryLabel} />}

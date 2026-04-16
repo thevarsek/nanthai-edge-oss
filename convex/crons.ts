@@ -71,4 +71,12 @@ crons.interval(
   internal.runtime.cleanup.cleanStaleSandboxSessions,
 );
 
+// M29: Sync video model capabilities from OpenRouter every 4 hours
+// Offset from main model catalog sync so they don't overlap.
+crons.cron(
+  "syncVideoModels",
+  "30 1,5,9,13,17,21 * * *",
+  internal.models.video_sync.syncVideoModels,
+);
+
 export default crons;

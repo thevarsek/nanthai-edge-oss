@@ -4,6 +4,7 @@ import {
   autonomousStatus,
   chatMode,
   chatSource,
+  generatedMediaType,
   generationContinuationStatus,
   generationJobStatus,
   messageRole,
@@ -16,6 +17,7 @@ import {
   subagentOverride,
   subagentRunStatus,
   usageObject,
+  videoJobStatus,
 } from "./schema_validators";
 
 export const coreSchemaTables = {
@@ -93,6 +95,8 @@ export const coreSchemaTables = {
     reasoning: v.optional(v.string()),
     usage: v.optional(usageObject),
     imageUrls: v.optional(v.array(v.string())),
+    // M29 — Video generation: parallel to imageUrls
+    videoUrls: v.optional(v.array(v.string())),
     audioStorageId: v.optional(v.id("_storage")),
     audioTranscript: v.optional(v.string()),
     audioDurationMs: v.optional(v.number()),
@@ -109,6 +113,14 @@ export const coreSchemaTables = {
           name: v.optional(v.string()),
           mimeType: v.optional(v.string()),
           sizeBytes: v.optional(v.number()),
+          // M29 — Video generation role for this image attachment
+          videoRole: v.optional(
+            v.union(
+              v.literal("first_frame"),
+              v.literal("last_frame"),
+              v.literal("reference"),
+            ),
+          ),
         }),
       ),
     ),
@@ -450,4 +462,50 @@ export const coreSchemaTables = {
   })
     .index("by_batch", ["batchId", "childIndex"])
     .index("by_status", ["status", "updatedAt"]),
+
+  // ── M29: Video Generation ─────────────────────────────────────────
+
+  /** Tracks async video generation polling state. */
+  videoJobs: defineTable({
+    messageId: v.id("messages"),
+    chatId: v.id("chats"),
+    userId: v.string(),
+    openRouterJobId: v.string(),
+    pollingUrl: v.string(),
+    status: videoJobStatus,
+    model: v.string(),
+    prompt: v.string(),
+    videoConfig: v.optional(v.object({
+      resolution: v.optional(v.string()),
+      aspectRatio: v.optional(v.string()),
+      duration: v.optional(v.number()),
+      generateAudio: v.optional(v.boolean()),
+    })),
+    error: v.optional(v.string()),
+    lastPolledAt: v.optional(v.number()),
+    pollCount: v.number(),
+    createdAt: v.number(),
+  })
+    .index("by_messageId", ["messageId"])
+    .index("by_status_createdAt", ["status", "createdAt"]),
+
+  /** Surfaces generated images and videos in Knowledge Base. */
+  generatedMedia: defineTable({
+    userId: v.string(),
+    chatId: v.id("chats"),
+    messageId: v.id("messages"),
+    storageId: v.id("_storage"),
+    type: generatedMediaType,
+    mimeType: v.string(),
+    sizeBytes: v.optional(v.number()),
+    width: v.optional(v.number()),
+    height: v.optional(v.number()),
+    durationSeconds: v.optional(v.number()),
+    model: v.optional(v.string()),
+    prompt: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_chatId", ["chatId"])
+    .index("by_messageId", ["messageId"]),
 };

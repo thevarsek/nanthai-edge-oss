@@ -1,8 +1,8 @@
 // convex/skills/catalog/create_skill.ts
 // =============================================================================
-// Hidden system skill: create-skill
-// Adapted from .agents/skills/skill-creator/SKILL.md for NanthAI runtime.
-// Loaded via load_skill only when user asks to create/edit a skill.
+// System skill: create-skill
+// Skill management — create, edit, delete skills and manage skill assignments
+// to chats and personas.
 // =============================================================================
 
 import { SystemSkillSeedData } from "../mutations_seed";
@@ -11,8 +11,8 @@ export const CREATE_SKILL_SKILL: SystemSkillSeedData = {
   slug: "create-skill",
   name: "Skill Creator",
   summary:
-    "Guide for creating and editing user skills in NanthAI. Use when the user wants to create " +
-    "a new skill or update an existing one. Helps structure skill instructions for optimal runtime performance.",
+    "Create, edit, delete, and manage NanthAI skills. Use when the user wants to create " +
+    "a new skill, update an existing one, assign skills to personas, or enable/disable skills for a chat.",
   instructionsRaw: `# Skill Creator for NanthAI
 
 Guide users through creating effective skills that extend NanthAI's capabilities.
@@ -90,7 +90,7 @@ Structure the skill with:
 - \`workspace\` — generic code execution and file manipulation in the workspace
 - \`subagents\` — parallel helper agents for genuinely decomposable work
 - \`google\`, \`microsoft\`, \`notion\`, \`appleCalendar\` — connected app domains
-- \`scheduledJobs\`, \`skillsManagement\` — advanced NanthAI control surfaces
+- \`scheduledJobs\`, \`skillsManagement\`, \`personas\` — advanced NanthAI control surfaces
 
 ### Step 4: Validate
 
@@ -128,6 +128,15 @@ After testing the skill in real conversations:
 3. Add examples for common failure cases
 4. Remove instructions that aren't helping
 
+## Skill Assignment & Chat Management
+
+- **enable_skill_for_chat** — Make a skill auto-load in a specific chat
+- **disable_skill_for_chat** — Remove a skill from a chat
+- **assign_skill_to_persona** — Bind a skill to a persona so it loads whenever that persona is active
+- **remove_skill_from_persona** — Unbind a skill from a persona
+
+Use these when the user says things like "always use this skill in this chat" or "add this skill to my coding persona".
+
 ## Available NanthAI Tools
 
 For reference when setting requiredToolIds:
@@ -147,11 +156,15 @@ For reference when setting requiredToolIds:
   compilationStatus: "compiled",
   scope: "system",
   origin: "nanthaiBuiltin",
-  visibility: "hidden",
+  visibility: "visible",
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["create_skill", "update_skill", "delete_skill", "list_skills"],
+  requiredToolIds: [
+    "create_skill", "update_skill", "delete_skill", "list_skills",
+    "enable_skill_for_chat", "disable_skill_for_chat",
+    "assign_skill_to_persona", "remove_skill_from_persona",
+  ],
   requiredToolProfiles: ["skillsManagement"],
   requiredIntegrationIds: [],
 };

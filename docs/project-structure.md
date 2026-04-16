@@ -6,8 +6,8 @@
 ```
 nanthai-edge/                              # Repository root
 ├── convex/                                 # Convex backend (TypeScript)
-│   ├── schema.ts                           # Database schema (36 app tables, imports 4 table files)
-│   ├── schema_tables_core.ts               # Core table definitions (13 tables incl. generatedFiles/generatedCharts and search state)
+│   ├── schema.ts                           # Database schema (39 app tables, imports 4 table files)
+│   ├── schema_tables_core.ts               # Core table definitions (15 tables incl. generatedFiles/generatedCharts and search state)
 │   ├── schema_tables_catalog.ts            # Catalog table definitions (6 tables incl. skills)
 │   ├── schema_tables_user.ts               # User table definitions (12 tables incl. purchaseEntitlements, scheduledJobs, jobRuns, userSecrets, deviceTokens, favorites)
 │   ├── schema_tables_runtime.ts            # Runtime/capability tables (4 tables: userCapabilities, sandboxSessions, sandboxArtifacts, sandboxEvents)

@@ -21,7 +21,7 @@ test("buildProgressiveToolRegistry: base Pro registry omits docs and runtime too
 
   assert.ok(registry.get("load_skill"));
   assert.ok(registry.get("search_chats"));
-  assert.ok(registry.get("create_persona"));
+  assert.equal(registry.get("create_persona"), undefined);
   assert.equal(registry.get("spawn_subagents"), undefined);
   assert.equal(registry.get("generate_docx"), undefined);
   assert.equal(registry.get("workspace_exec"), undefined);

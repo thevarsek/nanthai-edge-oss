@@ -29,7 +29,7 @@ export const SORT_KEYS: SortKeyEntry[] = [
 
 // ─── Capability filters (matches iOS CapabilityFilter — 5 filters) ───────────
 
-export type CapFilter = "free" | "excludeFree" | "vision" | "imageGen" | "tools";
+export type CapFilter = "free" | "excludeFree" | "vision" | "imageGen" | "videoGen" | "tools";
 
 export interface CapFilterEntry {
   key: CapFilter;
@@ -41,6 +41,7 @@ export const CAP_FILTERS: CapFilterEntry[] = [
   { key: "excludeFree", labelKey: "no_free" },
   { key: "vision", labelKey: "guidance_cap_vision" },
   { key: "imageGen", labelKey: "image_gen" },
+  { key: "videoGen", labelKey: "video_gen" },
   { key: "tools", labelKey: "guidance_cap_tools" },
 ];
 
@@ -49,8 +50,14 @@ export function matchesFilter(m: ModelSummary, f: CapFilter): boolean {
   switch (f) {
     case "free": return isFree;
     case "excludeFree": return !isFree;
-    case "vision": return m.supportsImages ?? false;
-    case "imageGen": return m.architecture?.modality?.includes("image") ?? false;
+    case "vision": {
+      // Vision = input modality contains "image" (model accepts images)
+      const modality = m.architecture?.modality ?? "";
+      const inputSide = modality.split("->")[0] ?? "";
+      return inputSide.includes("image");
+    }
+    case "imageGen": return m.supportsImages ?? false;
+    case "videoGen": return m.supportsVideo ?? false;
     case "tools": return m.supportsTools ?? false;
   }
 }
@@ -113,4 +120,28 @@ export function toggleCapFilter(prev: Set<CapFilter>, f: CapFilter): Set<CapFilt
     next.add(f);
   }
   return next;
+}
+
+// ─── Output modality category (mirrors convex/lib/modality_utils.ts) ─────────
+
+export type OutputModalityCategory = "text" | "image" | "video";
+
+/**
+ * Derive the output modality category for a model summary.
+ * Mirrors backend getModelModalityCategory / getOutputModalityCategory.
+ *
+ *   "video" — supportsVideo or output contains "video"
+ *   "image" — supportsImages and output does NOT contain "text" (pure image gen)
+ *   "text"  — everything else (default)
+ */
+export function getModelOutputModality(m: ModelSummary): OutputModalityCategory {
+  if (m.supportsVideo) return "video";
+
+  const modality = m.architecture?.modality ?? "";
+  const outputSide = modality.split("->")[1] ?? "";
+
+  if (outputSide.includes("video")) return "video";
+  if (m.supportsImages && !outputSide.includes("text")) return "image";
+  if (outputSide.includes("image") && !outputSide.includes("text")) return "image";
+  return "text";
 }

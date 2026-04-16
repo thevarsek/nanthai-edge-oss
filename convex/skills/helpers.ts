@@ -35,7 +35,7 @@ export interface SkillCatalogAvailability {
  *   UNION chat discoverable skills
  *   MINUS chat disabled skills
  *
- * Hidden system skills (nanthai-mobile-runtime, create-skill) are NOT
+ * Hidden system skills (nanthai-mobile-runtime) are NOT
  * included in the catalog XML — they have separate injection paths.
  */
 export function buildSkillCatalogFromDocs(
@@ -170,7 +170,9 @@ export function buildNanthAIPrelude(
     "- creating or editing documents, spreadsheets, or presentations",
     "- working across connected apps such as mail, storage, calendars, or Notion",
     "- creating durable files or other structured outputs the user is meant to keep",
-    "- recurring or scheduled workflows",
+    "- setting up recurring or scheduled AI jobs (daily summaries, reminders, automations)",
+    "- creating or managing personas (custom AI personalities)",
+    "- creating, editing, or managing skills (custom instruction sets)",
     "Do not load a skill unnecessarily for ordinary conversation or ordinary search.",
     "Do not invent capabilities, tools, integrations, or runtime access that are not explicitly available in this conversation.",
   ].join("\n");

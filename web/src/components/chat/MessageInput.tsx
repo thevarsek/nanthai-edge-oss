@@ -2,8 +2,8 @@
 // Matches iOS MessageInput.swift: "Message" placeholder, arrow.up.circle.fill send,
 // mic.circle.fill record, circular plus button, 14px border radius.
 
-import { useState, useRef, useCallback, type KeyboardEvent } from "react";
-import { ArrowUp, Square, Plus, Mic } from "lucide-react";
+import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from "react";
+import { ArrowUp, Square, Plus, Mic, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant } from "@/hooks/useChat";
@@ -42,6 +42,9 @@ interface Props {
   onIntervene?: (text: string) => void;
   onSendRecording?: (result: RecordingResult) => void;
   allParticipantsSupportTools?: boolean;
+  isVideoMode?: boolean;
+  /** Whether the active video model supports frame images (image-to-video). */
+  supportsFrameImages?: boolean;
 }
 
 export function MessageInput({
@@ -51,6 +54,7 @@ export function MessageInput({
   hasConnectedIntegrations = false, participantCount = 1, hasMessages = false,
   mentionSuggestions = [], isAutonomousActive = false,
   onIntervene, onSendRecording, allParticipantsSupportTools = true,
+  isVideoMode = false, supportsFrameImages = true,
 }: Props) {
   const [text, setText] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -59,8 +63,13 @@ export function MessageInput({
 
   const {
     attachments, isUploading, fileInputRef, imageInputRef, cameraInputRef,
-    handleFileSelect, removeAttachment, clear: clearAttachments,
-  } = useAttachments(onCreateUploadUrl);
+    handleFileSelect, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
+  } = useAttachments(onCreateUploadUrl, isVideoMode, supportsFrameImages);
+
+  // Auto-assign default video roles when entering video mode with existing image attachments
+  useEffect(() => {
+    if (isVideoMode) applyVideoRoles();
+  }, [isVideoMode, applyVideoRoles]);
 
   const mention = useMentionAutocomplete(mentionSuggestions);
   const [recorderState, recorder] = useAudioRecorder();
@@ -187,7 +196,17 @@ export function MessageInput({
         />
       )}
 
-      <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} />
+      {/* Video mode hint banner */}
+      {isVideoMode && (
+        <div className="flex items-start gap-2 px-3 py-2 mb-2 rounded-xl bg-purple-500/10 border border-purple-500/20">
+          <Video size={14} className="text-purple-400 shrink-0 mt-0.5" />
+          <p className="text-xs text-purple-300 leading-relaxed">
+            {supportsFrameImages ? t("video_hint") : t("video_hint_no_frames")}
+          </p>
+        </div>
+      )}
+
+      <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} isVideoMode={isVideoMode && supportsFrameImages} onChangeRole={changeAttachmentRole} />
 
       <div className="flex items-center gap-2">
         {/* Plus button — iOS: circular glass effect */}

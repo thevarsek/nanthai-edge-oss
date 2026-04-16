@@ -35,8 +35,10 @@ test("getModelCapabilitiesHandler derives modality flags from cached model rows"
     hasAudioOutput: true,
     hasVideoInput: true,
     hasImageGeneration: true,
+    hasVideoGeneration: false,
     hasReasoning: true,
     contextLength: 128000,
+    videoCapabilities: undefined,
   });
 });
 

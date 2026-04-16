@@ -287,3 +287,123 @@ test("finalizeGenerationHandler canonically cancels late completed jobs and clea
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.error, "Generation was cancelled by user.");
 });
+
+// -- M29: Video / image preview tests -----------------------------------------
+
+/**
+ * Build a minimal mock ctx for finalizeGenerationHandler tests.
+ * Returns { ctx, patches } so callers can inspect db.patch() calls.
+ */
+function buildFinalizeCtx(overrides: {
+  messageId?: string;
+  jobId?: string;
+  chatId?: string;
+  messageContent?: string;
+  messageStatus?: string;
+  jobStatus?: string;
+} = {}) {
+  const mid = overrides.messageId ?? "msg_v";
+  const jid = overrides.jobId ?? "job_v";
+  const cid = overrides.chatId ?? "chat_v";
+
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+
+  const ctx = {
+    db: {
+      get: async (id: string) => {
+        if (id === jid) return { _id: id, status: overrides.jobStatus ?? "streaming" };
+        if (id === mid) return { _id: id, modelId: "m", content: overrides.messageContent ?? "", status: overrides.messageStatus ?? "pending" };
+        if (id === cid) return { _id: id };
+        return null;
+      },
+      query: (_table: string) => ({
+        withIndex: () => ({
+          collect: async () => [],
+          first: async () => null,
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+      delete: async () => undefined,
+      insert: async () => "usage_1",
+    },
+    scheduler: {
+      runAfter: async () => undefined,
+    },
+  } as any;
+
+  return { ctx, patches, mid, jid, cid };
+}
+
+test("finalizeGenerationHandler sets 'Generated video' preview for video-only messages", async () => {
+  const { ctx, patches, mid, jid, cid } = buildFinalizeCtx();
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: mid as any,
+    jobId: jid as any,
+    chatId: cid as any,
+    content: "",
+    status: "completed",
+    videoUrls: ["https://storage.convex.cloud/video.mp4"],
+    userId: "user_1",
+  });
+
+  const chatPatch = patches.find((entry) => entry.id === cid);
+  assert.equal(chatPatch?.value.lastMessagePreview, "Generated video");
+  assert.equal(typeof chatPatch?.value.lastMessageDate, "number");
+});
+
+test("finalizeGenerationHandler sets 'Generated image' preview for image-only messages", async () => {
+  const { ctx, patches, mid, jid, cid } = buildFinalizeCtx();
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: mid as any,
+    jobId: jid as any,
+    chatId: cid as any,
+    content: "",
+    status: "completed",
+    imageUrls: ["https://storage.convex.cloud/image.png"],
+    userId: "user_1",
+  });
+
+  const chatPatch = patches.find((entry) => entry.id === cid);
+  assert.equal(chatPatch?.value.lastMessagePreview, "Generated image");
+  assert.equal(typeof chatPatch?.value.lastMessageDate, "number");
+});
+
+test("finalizeGenerationHandler prefers text preview over video/image fallback", async () => {
+  const { ctx, patches, mid, jid, cid } = buildFinalizeCtx();
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: mid as any,
+    jobId: jid as any,
+    chatId: cid as any,
+    content: "Here is your video",
+    status: "completed",
+    videoUrls: ["https://storage.convex.cloud/video.mp4"],
+    userId: "user_1",
+  });
+
+  const chatPatch = patches.find((entry) => entry.id === cid);
+  assert.equal(chatPatch?.value.lastMessagePreview, "Here is your video");
+});
+
+test("finalizeGenerationHandler does not set preview for failed video messages", async () => {
+  const { ctx, patches, mid, jid, cid } = buildFinalizeCtx();
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: mid as any,
+    jobId: jid as any,
+    chatId: cid as any,
+    content: "Error: Video generation failed",
+    status: "failed",
+    error: "Video generation failed",
+    videoUrls: ["https://storage.convex.cloud/video.mp4"],
+    userId: "user_1",
+  });
+
+  // Failed messages don't update lastMessagePreview at all (status !== "completed")
+  const chatPatch = patches.find((entry) => entry.id === cid);
+  assert.equal(chatPatch, undefined);
+});

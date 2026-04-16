@@ -134,6 +134,67 @@ describe("isEligibleModel", () => {
       true,
     );
   });
+
+  // -- Video model exemptions -------------------------------------------------
+
+  it("accepts video models with zero context length", () => {
+    assert.equal(
+      isEligibleModel({
+        provider: "bytedance",
+        contextLength: 0,
+        outputPricePer1M: undefined,
+        supportsVideo: true,
+      }),
+      true,
+    );
+  });
+
+  it("accepts video models with undefined context length", () => {
+    assert.equal(
+      isEligibleModel({
+        provider: "openai",
+        contextLength: undefined,
+        outputPricePer1M: undefined,
+        supportsVideo: true,
+      }),
+      true,
+    );
+  });
+
+  it("accepts video models regardless of price", () => {
+    assert.equal(
+      isEligibleModel({
+        provider: "google",
+        contextLength: undefined,
+        outputPricePer1M: 200,
+        supportsVideo: true,
+      }),
+      true,
+    );
+  });
+
+  it("does NOT exempt non-video models from context check", () => {
+    assert.equal(
+      isEligibleModel({
+        provider: "openai",
+        contextLength: 0,
+        outputPricePer1M: 10,
+        supportsVideo: false,
+      }),
+      false,
+    );
+  });
+
+  it("does NOT exempt models without supportsVideo from context check", () => {
+    assert.equal(
+      isEligibleModel({
+        provider: "openai",
+        contextLength: 0,
+        outputPricePer1M: 10,
+      }),
+      false,
+    );
+  });
 });
 
 // -- isFree (:free suffix convention) -----------------------------------------

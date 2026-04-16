@@ -4,6 +4,7 @@ import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro, getIsProUnlocked } from "../lib/auth";
 import { assertRateLimit } from "../lib/rate_limit";
+import { validateSameModality } from "../lib/modality_utils";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
 import { MODEL_IDS } from "../lib/model_constants";
 import { isTerminalSubagentStatus } from "../subagents/shared";
@@ -106,6 +107,13 @@ export interface SendMessageArgs extends Record<string, unknown> {
   // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
+  // M29 — Video generation config
+  videoConfig?: {
+    resolution?: string;
+    aspectRatio?: string;
+    duration?: number;
+    generateAudio?: boolean;
+  };
 }
 
 export interface SendMessageResult {
@@ -155,6 +163,20 @@ export async function sendMessageHandler(
     args.participants,
     DEFAULT_CHAT_MODEL,
   );
+
+  // M29: Enforce same-modality constraint when multiple participants are present.
+  if (participants.length > 1) {
+    const modelIds = participants.map((p) => p.modelId);
+    try {
+      await validateSameModality(ctx, modelIds);
+    } catch (e: unknown) {
+      throw new ConvexError({
+        code: "VALIDATION" as const,
+        message: e instanceof Error ? e.message : "Models must share the same output modality.",
+      });
+    }
+  }
+
   const hasPersona = participants.some((p) => p.personaId);
   const requestedSubagents = args.subagentsEnabled === true && participants.length === 1;
   const requiresPro = args.searchMode === "web" || hasPersona || requestedSubagents;
@@ -304,6 +326,7 @@ export async function sendMessageHandler(
       webSearchEnabled: forceWebSearch,
       enabledIntegrations: effectiveIntegrations,
       subagentsEnabled: effectiveSubagents,
+      videoConfig: args.videoConfig,
     });
   } else if (effectiveSearchMode === "web") {
     // Path C: Web Search — create searchSession + schedule runWebSearch per participant

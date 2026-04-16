@@ -53,10 +53,17 @@ export function isEligibleModel(model: {
   provider?: string | null;
   contextLength?: number;
   outputPricePer1M?: number;
+  supportsVideo?: boolean;
 }): boolean {
   // Provider exclusion is handled separately (filterExcludedOpenRouterProviders)
   // because it operates on the array level. This function covers the remaining
   // per-model predicates.
+
+  // Video generation models (Sora, Seedance, Veo, etc.) don't have a context
+  // window or token pricing — they charge per video second/token. Exempt them
+  // from both context-length and price filters.
+  if (model.supportsVideo) return true;
+
   return (
     meetsMinContext(model.contextLength, model.provider ?? undefined) &&
     meetsMaxPrice(model.outputPricePer1M)

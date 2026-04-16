@@ -20,12 +20,17 @@ test("createFavorite trims name and appends to end of existing sort order", asyn
   const result = await (createFavorite as any)._handler({
     auth: buildAuth(),
     db: {
-      query: () => ({
+      query: (table: string) => ({
         withIndex: () => ({
-          collect: async () => [
-            { _id: "fav_1", sortOrder: 0 },
-            { _id: "fav_2", sortOrder: 3 },
-          ],
+          collect: async () =>
+            table === "favorites"
+              ? [
+                  { _id: "fav_1", sortOrder: 0 },
+                  { _id: "fav_2", sortOrder: 3 },
+                ]
+              : [],
+          // M29: validateSameModality queries cachedModels via .first()
+          first: async () => null,
         }),
       }),
       insert: async (table: string, value: Record<string, unknown>) => {

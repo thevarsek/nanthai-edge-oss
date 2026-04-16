@@ -53,6 +53,8 @@ import { CALENDAR_SCHEDULER_SKILL } from "./prod_calendar_scheduler";
 import { DATA_ANALYZER_SKILL } from "./prod_data_analyzer";
 import { EMAIL_DRAFTER_SKILL } from "./prod_email_drafter";
 import { MEETING_NOTES_SKILL } from "./prod_meeting_notes";
+import { SCHEDULED_JOBS_SKILL } from "./scheduled_jobs";
+import { PERSONA_MANAGER_SKILL } from "./persona_manager";
 
 // --- Design skills ---
 import { DESIGN_CRITIQUE_SKILL } from "./design_critique";
@@ -108,6 +110,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   COMPETITIVE_ANALYSIS_SKILL,
   CONTENT_TO_PIPELINE_SKILL,
   CONTRACT_REVIEW_SKILL,
+  CREATE_SKILL_SKILL,
   DASHBOARD_BUILDER_SKILL,
   DATA_ANALYZER_SKILL,
   DATA_VALIDATION_SKILL,
@@ -133,6 +136,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   NOTION_WORKSPACE_SKILL,
   PDF_SKILL,
   PARALLEL_SUBAGENTS_SKILL,
+  PERSONA_MANAGER_SKILL,
   PERSONA_SKILL,
   PERSISTENT_RUNTIME_SKILL,
   POSITIONING_ICP_SKILL,
@@ -143,6 +147,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   RECONCILIATION_SKILL,
   RELEASE_NOTES_SKILL,
   RETROSPECTIVE_SKILL,
+  SCHEDULED_JOBS_SKILL,
   SEO_SKILL,
   SOLO_FOUNDER_GTM_SKILL,
   SPRINT_PLANNING_SKILL,
@@ -154,5 +159,4 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   XLSX_SKILL,
   // Hidden skills (not in catalog XML, loaded separately)
   NANTHAI_MOBILE_RUNTIME_SKILL,
-  CREATE_SKILL_SKILL,
 ];

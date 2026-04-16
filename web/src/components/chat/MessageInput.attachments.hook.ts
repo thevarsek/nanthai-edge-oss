@@ -1,9 +1,24 @@
 import { useCallback, useRef, useState } from "react";
 import type { Id } from "@convex/_generated/dataModel";
-import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
+import type { AttachmentPreview, VideoRole } from "@/components/chat/MessageInput.attachments.types";
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 
-export function useAttachments(onCreateUploadUrl: () => Promise<string>) {
+/** Assigns smart default videoRoles to image attachments: 1st=first_frame, 2nd=last_frame, 3rd+=reference */
+function assignDefaultVideoRoles(attachments: AttachmentPreview[]): AttachmentPreview[] {
+  let imageIndex = 0;
+  return attachments.map((att) => {
+    if (att.type !== "image") return att;
+    const role: VideoRole = imageIndex === 0 ? "first_frame" : imageIndex === 1 ? "last_frame" : "reference";
+    imageIndex++;
+    return { ...att, videoRole: att.videoRole ?? role };
+  });
+}
+
+export function useAttachments(
+  onCreateUploadUrl: () => Promise<string>,
+  isVideoMode = false,
+  supportsFrameImages = false,
+) {
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -36,16 +51,30 @@ export function useAttachments(onCreateUploadUrl: () => Promise<string>) {
             },
           ]);
         }
+        // Assign default video roles to all images if we're already in video mode
+        // and the model supports frame images (image-to-video models only).
+        if (isVideoMode && supportsFrameImages) {
+          setAttachments((prev) => assignDefaultVideoRoles(prev));
+        }
       } finally {
         setIsUploading(false);
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
     },
-    [onCreateUploadUrl],
+    [onCreateUploadUrl, isVideoMode, supportsFrameImages],
   );
 
   const removeAttachment = useCallback((index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const changeAttachmentRole = useCallback((index: number, role: VideoRole) => {
+    setAttachments((prev) => prev.map((att, i) => i === index ? { ...att, videoRole: role } : att));
+  }, []);
+
+  /** Re-assign default video roles to all image attachments (call when entering video mode). */
+  const applyVideoRoles = useCallback(() => {
+    setAttachments((prev) => assignDefaultVideoRoles(prev));
   }, []);
 
   const clear = useCallback(() => setAttachments([]), []);
@@ -59,6 +88,8 @@ export function useAttachments(onCreateUploadUrl: () => Promise<string>) {
     cameraInputRef,
     handleFileSelect,
     removeAttachment,
+    changeAttachmentRole,
+    applyVideoRoles,
     clear,
   };
 }

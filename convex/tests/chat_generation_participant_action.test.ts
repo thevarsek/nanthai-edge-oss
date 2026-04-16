@@ -14,6 +14,11 @@ test("runGenerationParticipantHandler finalizes and clears state before rethrowi
       if ("jobId" in args) {
         return { status: jobStatus };
       }
+      if ("modelId" in args) {
+        // getModelCapabilities — return a non-video model so we stay on the
+        // normal streaming path and hit the MISSING_API_KEY error.
+        return { hasVideoGeneration: false };
+      }
       if ("userId" in args) {
         return null;
       }

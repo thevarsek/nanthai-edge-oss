@@ -11,6 +11,9 @@ import {
   Plug,
   BookOpen,
   Sparkles,
+  Music,
+  Image,
+  Film,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getFeature } from "./featureData";
@@ -46,6 +49,9 @@ function getCapabilities(t: (k: string) => string): Capability[] {
     { icon: <BookOpen size={18} />, title: t("pf_cap_kb_title"), description: t("pf_cap_kb_desc") },
     { icon: <Search size={18} />, title: t("pf_cap_research_title"), description: t("pf_cap_research_desc") },
     { icon: <Sparkles size={18} />, title: t("pf_cap_ideascapes_title"), description: t("pf_cap_ideascapes_desc") },
+    { icon: <Music size={18} />, title: t("pf_cap_audio_title"), description: t("pf_cap_audio_desc") },
+    { icon: <Image size={18} />, title: t("pf_cap_image_title"), description: t("pf_cap_image_desc") },
+    { icon: <Film size={18} />, title: t("pf_cap_video_title"), description: t("pf_cap_video_desc") },
   ];
 }
 

@@ -263,8 +263,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { messages, chat, isLoading, sendMessage, cancelGeneration, updateChat, isGenerating } = useChat(chatId);
-  const { participants: convexParticipants, addParticipant, removeParticipant } = useParticipants(chatId);
-  const { prefs, modelSettings, proStatus, personas } = useSharedData();
+  const { participants: convexParticipants, addParticipant, removeParticipant, setParticipants: setParticipantsMut } = useParticipants(chatId);
+  const { prefs, modelSettings, proStatus, personas, modelSummaries } = useSharedData();
   const { googleConnection, microsoftConnection, notionConnection, appleCalendarConnection } = useConnectedAccounts();
   const rawPositions = useQuery(api.nodePositions.queries.listByChat, { chatId });
   const upsertPosition = useMutation(api.nodePositions.mutations.upsert);
@@ -359,6 +359,20 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       overrides: overrides.paramOverrides,
     });
   }, [baseParticipants, modelSettings, overrides.paramOverrides, personas, typedPrefs]);
+  const isVideoMode = useMemo(() => {
+    if (!modelSummaries) return false;
+    return participants.some((participant) => {
+      const summary = modelSummaries.find((model) => model.modelId === participant.modelId);
+      return summary?.supportsVideo === true;
+    });
+  }, [participants, modelSummaries]);
+  const supportsFrameImages = useMemo(() => {
+    if (!modelSummaries || !isVideoMode) return false;
+    return participants.some((participant) => {
+      const summary = modelSummaries.find((model) => model.modelId === participant.modelId);
+      return summary?.supportsVideo === true && (summary.supportedFrameImages?.length ?? 0) > 0;
+    });
+  }, [participants, modelSummaries, isVideoMode]);
 
   const mentionSuggestions = useMentionSuggestions(participants);
   const connectedProviders = useMemo(() => ({
@@ -523,6 +537,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         name?: string;
         mimeType?: string;
         sizeBytes?: number;
+        videoRole?: "first_frame" | "last_frame" | "reference";
       }>;
       recordedAudio?: {
         storageId: Id<"_storage">;
@@ -572,13 +587,19 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           enabledIntegrations: Array.from(overrides.enabledIntegrations),
           subagentsEnabled: effectiveSubagentsEnabled,
           webSearchEnabled,
+          ...(isVideoMode ? { videoConfig: {
+            aspectRatio: typedPrefs?.defaultVideoAspectRatio ?? "16:9",
+            duration: typedPrefs?.defaultVideoDuration ?? 5,
+            resolution: typedPrefs?.defaultVideoResolution ?? "720p",
+            generateAudio: typedPrefs?.defaultVideoGenerateAudio ?? true,
+          } } : {}),
           ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
         });
       }
       overrides.clearKBFiles();
     },
-    [chatId, selectedIds, focusedId, participants, kbAttachments, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, toast],
+    [chatId, selectedIds, focusedId, participants, kbAttachments, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast],
   );
 
   const dismissHelp = useCallback(() => {
@@ -679,6 +700,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           mentionSuggestions={mentionSuggestions}
           isAutonomousActive={isAutonomousActive}
           onIntervene={autonomous.intervene}
+          isVideoMode={isVideoMode}
+          supportsFrameImages={supportsFrameImages}
         />
       </div>
       <ChatModalPanels
@@ -698,6 +721,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         convexParticipants={convexParticipants}
         addParticipant={addParticipant}
         removeParticipant={removeParticipant}
+        setParticipants={setParticipantsMut}
         subagentOverride={subagentOverride}
         effectiveSubagentsEnabled={effectiveSubagentsEnabled}
         isPro={isPro}

@@ -7,8 +7,8 @@
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  X, Search, Sparkles, Zap, DollarSign, Code2, Brain, Image,
-  Eye, Wrench, Gift, Maximize2, TrendingUp,
+  X, Search, Sparkles, Zap, DollarSign, Code2, Brain, Image, Paintbrush,
+  Eye, Wrench, Gift, Maximize2, TrendingUp, Video,
 } from "lucide-react";
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "@/components/shared/ModelPickerHelpers";
@@ -46,8 +46,8 @@ const SORT_ICONS: Record<SortKey, React.ReactNode> = {
 
 const CAP_ICONS: Record<CapFilter, React.ReactNode> = {
   free: <Gift size={11} />, excludeFree: <Gift size={11} />,
-  vision: <Eye size={11} />, imageGen: <Image size={11} />,
-  tools: <Wrench size={11} />,
+  vision: <Eye size={11} />, imageGen: <Paintbrush size={11} />,
+  videoGen: <Video size={11} />, tools: <Wrench size={11} />,
 };
 
 // ─── Component ──────────────────────────────────────────────────────────────

@@ -135,6 +135,11 @@ export const syncFromOpenRouter = internalAction({
             const parts = modality.split("->");
             return parts.length >= 2 && parts[1].includes("image");
           })(),
+          supportsVideo: (() => {
+            const modality = m.architecture?.modality ?? "";
+            const parts = modality.split("->");
+            return parts.length >= 2 && parts[1].includes("video");
+          })(),
           supportsTools:
             (m.supported_parameters ?? []).includes("tools") ?? false,
           supportedParameters: m.supported_parameters ?? [],
@@ -174,6 +179,7 @@ export const upsertBatch = internalMutation({
         inputPricePer1M: v.optional(v.number()),
         outputPricePer1M: v.optional(v.number()),
         supportsImages: v.optional(v.boolean()),
+        supportsVideo: v.optional(v.boolean()),
         supportsTools: v.optional(v.boolean()),
         supportedParameters: v.optional(v.array(v.string())),
         architecture: v.optional(
@@ -212,6 +218,7 @@ export const upsertBatch = internalMutation({
             "inputPricePer1M",
             "outputPricePer1M",
             "supportsImages",
+            "supportsVideo",
             "supportsTools",
           ]) ||
           !primitiveArraysEqual(existing.supportedParameters, model.supportedParameters) ||
@@ -228,6 +235,7 @@ export const upsertBatch = internalMutation({
             inputPricePer1M: model.inputPricePer1M,
             outputPricePer1M: model.outputPricePer1M,
             supportsImages: model.supportsImages,
+            supportsVideo: model.supportsVideo,
             supportsTools: model.supportsTools,
             supportedParameters: model.supportedParameters,
             architecture: model.architecture,
@@ -247,6 +255,7 @@ export const upsertBatch = internalMutation({
           inputPricePer1M: model.inputPricePer1M,
           outputPricePer1M: model.outputPricePer1M,
           supportsImages: model.supportsImages,
+          supportsVideo: model.supportsVideo,
           supportsTools: model.supportsTools,
           supportedParameters: model.supportedParameters,
           architecture: model.architecture,

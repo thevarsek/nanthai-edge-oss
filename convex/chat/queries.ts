@@ -24,6 +24,8 @@ import {
   getUserMemoriesArgs,
   getUserPreferencesArgs,
   getKnowledgeBaseFilesByStorageIdsArgs,
+  getVideoJobInternalArgs,
+  getVideoJobStatusArgs,
   listAllMessagesArgs,
   listChatsArgs,
   listKnowledgeBaseFilesArgs,
@@ -50,6 +52,8 @@ import {
   getUserMemoriesHandler,
   getUserPreferencesHandler,
   getKnowledgeBaseFilesByStorageIdsHandler,
+  getVideoJobInternalHandler,
+  getVideoJobStatusHandler,
   listAllMessagesHandler,
   listChatsHandler,
   listKnowledgeBaseFilesHandler,
@@ -192,4 +196,16 @@ export const isJobCancelled = internalQuery({
   args: isJobCancelledArgs,
   returns: v.boolean(),
   handler: isJobCancelledHandler,
+});
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export const getVideoJobInternal = internalQuery({
+  args: getVideoJobInternalArgs,
+  handler: getVideoJobInternalHandler,
+});
+
+export const getVideoJobStatus = query({
+  args: getVideoJobStatusArgs,
+  handler: getVideoJobStatusHandler,
 });

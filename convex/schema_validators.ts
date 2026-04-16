@@ -210,6 +210,20 @@ export const userCapabilityStatus = v.union(
   v.literal("revoked"),
 );
 
+/** Video generation job lifecycle status. */
+export const videoJobStatus = v.union(
+  v.literal("pending"),
+  v.literal("in_progress"),
+  v.literal("completed"),
+  v.literal("failed"),
+);
+
+/** Generated media type. */
+export const generatedMediaType = v.union(
+  v.literal("image"),
+  v.literal("video"),
+);
+
 /** Runtime sandbox lifecycle status. */
 export const sandboxSessionStatus = v.union(
   v.literal("pendingCreate"),
@@ -353,6 +367,7 @@ export const skillToolProfile = v.union(
   v.literal("appleCalendar"),
   v.literal("scheduledJobs"),
   v.literal("skillsManagement"),
+  v.literal("personas"),
 );
 
 /** Scheduled job step definition. */

@@ -179,9 +179,29 @@ export async function persistGeneratedImageUrls(
   ctx: StorageContext,
   urls: string[],
 ): Promise<string[]> {
-  if (urls.length === 0) return [];
+  const result = await persistGeneratedImageUrlsWithTracking(ctx, urls);
+  return result.urls;
+}
+
+/** Metadata for a generated image that was stored in Convex storage. */
+export interface PersistedImageInfo {
+  storageId: Id<"_storage">;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/**
+ * Like `persistGeneratedImageUrls`, but also returns storage metadata for each
+ * image that was stored (for inserting `generatedMedia` rows in the KB).
+ */
+export async function persistGeneratedImageUrlsWithTracking(
+  ctx: StorageContext,
+  urls: string[],
+): Promise<{ urls: string[]; stored: PersistedImageInfo[] }> {
+  if (urls.length === 0) return { urls: [], stored: [] };
 
   const persisted: string[] = [];
+  const stored: PersistedImageInfo[] = [];
 
   for (const url of urls) {
     const trimmed = url.trim();
@@ -222,6 +242,7 @@ export async function persistGeneratedImageUrls(
       const storageUrl = await ctx.storage.getUrl(storageId);
       if (storageUrl) {
         persisted.push(storageUrl);
+        stored.push({ storageId, mimeType, sizeBytes: inlineBytes.length });
       }
     } catch {
       if (!isInlineBinaryPayload) {
@@ -230,7 +251,7 @@ export async function persistGeneratedImageUrls(
     }
   }
 
-  return Array.from(new Set(persisted));
+  return { urls: Array.from(new Set(persisted)), stored };
 }
 
 export async function hydrateAttachmentsForRequest(

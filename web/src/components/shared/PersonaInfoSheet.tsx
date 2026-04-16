@@ -1,4 +1,4 @@
-import { X, Brain, Wrench, Gift, Eye } from "lucide-react";
+import { X, Brain, Wrench, Gift, Eye, Paintbrush, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useModelSummaries } from "@/hooks/useSharedData";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
@@ -69,8 +69,14 @@ export function PersonaInfoSheet({
             </div>
             {model && (
               <div className="flex flex-wrap gap-2 text-[11px] text-muted">
-                {model.supportsImages && (
+                {(model.architecture?.modality?.split("->")[0] ?? "").includes("image") && (
                   <span className="inline-flex items-center gap-1"><Eye size={12} /> Vision</span>
+                )}
+                {model.supportsImages && (
+                  <span className="inline-flex items-center gap-1"><Paintbrush size={12} /> Image Gen</span>
+                )}
+                {model.supportsVideo && (
+                  <span className="inline-flex items-center gap-1"><Video size={12} /> Video Gen</span>
                 )}
                 {model.supportsTools && (
                   <span className="inline-flex items-center gap-1"><Wrench size={12} /> Tools</span>

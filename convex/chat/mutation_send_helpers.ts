@@ -12,6 +12,7 @@ type RawAttachment = {
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
+  videoRole?: "first_frame" | "last_frame" | "reference";
 };
 
 export type NormalizedAttachment = {
@@ -21,6 +22,7 @@ export type NormalizedAttachment = {
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
+  videoRole?: "first_frame" | "last_frame" | "reference";
 };
 
 export type SendParticipantConfig = {
@@ -71,6 +73,7 @@ export async function normalizeMessageAttachments(
             (looksLikeBase64(resolvedUrl)
               ? Math.floor((resolvedUrl.length * 3) / 4)
               : 0),
+          videoRole: attachment.videoRole,
         };
       }),
     )

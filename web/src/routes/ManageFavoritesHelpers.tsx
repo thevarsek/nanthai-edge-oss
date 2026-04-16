@@ -10,7 +10,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   Plus, MinusCircle, X, Search, Users, Sparkles, Zap, DollarSign,
-  Code2, Brain, Image, Eye, Wrench, Gift, Maximize2, TrendingUp,
+  Code2, Brain, Image as ImageIcon, Paintbrush, Eye, Wrench, Gift, Maximize2, TrendingUp, Video,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
@@ -18,9 +18,11 @@ import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "@/components/shared/ModelPickerHelpers";
 import { PersonaInfoSheet } from "@/components/shared/PersonaInfoSheet";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import {
   type SortKey, type CapFilter, CAP_FILTERS,
   filterAndSortModels, toggleCapFilter,
+  getModelOutputModality, type OutputModalityCategory,
 } from "@/components/shared/ModelPickerShared";
 import {
   type PersonaItem, SectionHeader, PersonaRow, ParticipantModelRow,
@@ -46,6 +48,19 @@ type Selection =
   | { type: "persona"; personaId: string; modelId: string; name: string; emoji?: string; avatarImageUrl?: string };
 
 const MAX_SELECTIONS = 3;
+
+/** Human-readable label for a modality category */
+function modalityLabel(m: OutputModalityCategory): string {
+  switch (m) {
+    case "video": return "video generation";
+    case "image": return "image generation";
+    default: return "text";
+  }
+}
+
+type PendingModalitySwitch =
+  | { kind: "model"; modelId: string; newModality: OutputModalityCategory }
+  | { kind: "persona"; persona: PersonaItem; newModality: OutputModalityCategory };
 
 // ─── Selection row (used in the editor form) ────────────────────────────────
 
@@ -86,15 +101,15 @@ function SelectionRow({ sel, modelName, onRemove }: { sel: Selection; modelName:
 const SORT_ICONS: Record<SortKey, React.ReactNode> = {
   recommended: <Sparkles size={12} />, coding: <Code2 size={12} />,
   research: <Brain size={12} />, fast: <Zap size={12} />,
-  value: <DollarSign size={12} />, image: <Image size={12} />,
+  value: <DollarSign size={12} />, image: <ImageIcon size={12} />,
   price: <span className="text-[11px] font-bold leading-none">$$</span>,
   context: <Maximize2 size={12} />, topThisWeek: <TrendingUp size={12} />,
 };
 
 const CAP_ICONS: Record<CapFilter, React.ReactNode> = {
   free: <Gift size={11} />, excludeFree: <Gift size={11} />,
-  vision: <Eye size={11} />, imageGen: <Image size={11} />,
-  tools: <Wrench size={11} />,
+  vision: <Eye size={11} />, imageGen: <Paintbrush size={11} />,
+  videoGen: <Video size={11} />, tools: <Wrench size={11} />,
 };
 
 // ─── Editor Modal ───────────────────────────────────────────────────────────
@@ -146,6 +161,7 @@ export function FavoriteEditorModal({
   const [showPicker, setShowPicker] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingSwitch, setPendingSwitch] = useState<PendingModalitySwitch | null>(null);
 
   const canAddMore = selections.length < MAX_SELECTIONS;
   const isGroup = selections.length > 1;
@@ -160,32 +176,6 @@ export function FavoriteEditorModal({
 
   const resolvedName = isGroup ? groupName.trim() : (groupName.trim() || autoName);
   const canSave = selections.length >= 1 && !!resolvedName;
-
-  const toggleModel = useCallback((modelId: string) => {
-    setSelections((prev) => {
-      const exists = prev.some((s) => s.type === "model" && s.modelId === modelId);
-      if (exists) return prev.filter((s) => !(s.type === "model" && s.modelId === modelId));
-      if (prev.length >= MAX_SELECTIONS) return prev;
-      return [...prev, { type: "model", modelId }];
-    });
-  }, []);
-
-  const togglePersona = useCallback((persona: PersonaItem) => {
-    setSelections((prev) => {
-      const pid = persona._id as string;
-      const exists = prev.some((s) => s.type === "persona" && s.personaId === pid);
-      if (exists) return prev.filter((s) => !(s.type === "persona" && s.personaId === pid));
-      if (prev.length >= MAX_SELECTIONS) return prev;
-      return [...prev, {
-        type: "persona",
-        personaId: pid,
-        modelId: persona.modelId ?? "",
-        name: persona.displayName,
-        emoji: persona.avatarEmoji,
-        avatarImageUrl: persona.avatarImageUrl,
-      }];
-    });
-  }, []);
 
   const removeSelection = (idx: number) => {
     setSelections((prev) => prev.filter((_, i) => i !== idx));
@@ -247,6 +237,95 @@ export function FavoriteEditorModal({
     () => new Set(selections.filter((s) => s.type === "persona").map((s) => (s as Selection & { type: "persona" }).personaId)),
     [selections],
   );
+
+  // ── Modality lock: once a participant is added, only same-modality allowed ─
+  const models = useMemo(
+    () => (modelSummaries as ModelSummary[] | undefined) ?? [],
+    [modelSummaries],
+  );
+  const lockedModality = useMemo<OutputModalityCategory | null>(() => {
+    if (selections.length === 0 || models.length === 0) return null;
+    for (const sel of selections) {
+      const mid = sel.modelId;
+      const m = models.find((x) => x.modelId === mid);
+      if (m) return getModelOutputModality(m);
+    }
+    return null;
+  }, [selections, models]);
+
+  // ── Toggle handlers (after models/lockedModality are defined) ───────────
+  const toggleModel = useCallback((modelId: string) => {
+    const exists = selections.some((s) => s.type === "model" && s.modelId === modelId);
+    if (exists) {
+      setSelections((prev) => prev.filter((s) => !(s.type === "model" && s.modelId === modelId)));
+      return;
+    }
+    if (selections.length >= MAX_SELECTIONS) return;
+    if (lockedModality) {
+      const m = models.find((x) => x.modelId === modelId);
+      if (m && getModelOutputModality(m) !== lockedModality) {
+        setPendingSwitch({ kind: "model", modelId, newModality: getModelOutputModality(m) });
+        return;
+      }
+    }
+    setSelections((prev) => [...prev, { type: "model", modelId }]);
+  }, [selections, lockedModality, models]);
+
+  const togglePersona = useCallback((persona: PersonaItem) => {
+    const pid = persona._id as string;
+    const exists = selections.some((s) => s.type === "persona" && (s as Selection & { type: "persona" }).personaId === pid);
+    if (exists) {
+      setSelections((prev) => prev.filter((s) => !(s.type === "persona" && (s as Selection & { type: "persona" }).personaId === pid)));
+      return;
+    }
+    if (selections.length >= MAX_SELECTIONS) return;
+    // Check modality mismatch
+    const personaModelId = persona.modelId ?? "";
+    if (lockedModality && personaModelId) {
+      const m = models.find((x) => x.modelId === personaModelId);
+      if (m && getModelOutputModality(m) !== lockedModality) {
+        setPendingSwitch({ kind: "persona", persona, newModality: getModelOutputModality(m) });
+        return;
+      }
+    }
+    setSelections((prev) => [...prev, {
+      type: "persona",
+      personaId: pid,
+      modelId: personaModelId,
+      name: persona.displayName,
+      emoji: persona.avatarEmoji,
+      avatarImageUrl: persona.avatarImageUrl,
+    }]);
+  }, [selections, lockedModality, models]);
+
+  // ── Modality switch confirmation handler ──────────────────────────────
+  const handleConfirmModalitySwitch = useCallback(() => {
+    if (!pendingSwitch) return;
+    const newModality = pendingSwitch.newModality;
+    // Remove all selections that don't match the new modality
+    setSelections((prev) => {
+      const filtered = prev.filter((sel) => {
+        const m = models.find((x) => x.modelId === sel.modelId);
+        const selModality = m ? getModelOutputModality(m) : "text";
+        return selModality === newModality;
+      });
+      // Add the new selection
+      if (pendingSwitch.kind === "model") {
+        return [...filtered, { type: "model" as const, modelId: pendingSwitch.modelId }];
+      } else {
+        const persona = pendingSwitch.persona;
+        return [...filtered, {
+          type: "persona" as const,
+          personaId: persona._id as string,
+          modelId: persona.modelId ?? "",
+          name: persona.displayName,
+          emoji: persona.avatarEmoji,
+          avatarImageUrl: persona.avatarImageUrl,
+        }];
+      }
+    });
+    setPendingSwitch(null);
+  }, [pendingSwitch, models]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4">
@@ -352,6 +431,20 @@ export function FavoriteEditorModal({
           onClose={() => setShowPicker(false)}
         />
       )}
+
+      {/* Modality switch confirmation dialog */}
+      <ConfirmDialog
+        isOpen={pendingSwitch != null}
+        onClose={() => setPendingSwitch(null)}
+        onConfirm={handleConfirmModalitySwitch}
+        title={t("modality_switch_title", { var1: pendingSwitch ? modalityLabel(pendingSwitch.newModality) : "" })}
+        description={t("modality_switch_description", {
+          var1: lockedModality ? modalityLabel(lockedModality) : "",
+          var2: pendingSwitch ? modalityLabel(pendingSwitch.newModality) : "",
+        })}
+        confirmLabel={t("modality_switch_confirm")}
+        confirmVariant="default"
+      />
     </div>
   );
 }
@@ -522,17 +615,19 @@ function FavoriteParticipantPicker({
                 )}
               </div>
             ) : (
-              filteredModels.map((model) => (
-                <ParticipantModelRow
-                  key={model.modelId}
-                  model={model}
-                  isSelected={selectedModelIds.has(model.modelId)}
-                  disabled={atLimit && !selectedModelIds.has(model.modelId)}
-                  sortKey={sortKey}
-                  onToggle={onToggleModel}
-                  onInfo={setInfoModel}
-                />
-              ))
+              filteredModels.map((model) => {
+                return (
+                  <ParticipantModelRow
+                    key={model.modelId}
+                    model={model}
+                    isSelected={selectedModelIds.has(model.modelId)}
+                    disabled={atLimit && !selectedModelIds.has(model.modelId)}
+                    sortKey={sortKey}
+                    onToggle={onToggleModel}
+                    onInfo={setInfoModel}
+                  />
+                );
+              })
             )}
           </div>
         </div>

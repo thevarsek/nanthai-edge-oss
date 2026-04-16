@@ -117,3 +117,13 @@ export const searchMessagesInternalArgs = {
 export const getChatCostSummaryArgs = {
   chatId: v.id("chats"),
 } satisfies PropertyValidators;
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export const getVideoJobInternalArgs = {
+  videoJobId: v.id("videoJobs"),
+} satisfies PropertyValidators;
+
+export const getVideoJobStatusArgs = {
+  messageId: v.id("messages"),
+} satisfies PropertyValidators;

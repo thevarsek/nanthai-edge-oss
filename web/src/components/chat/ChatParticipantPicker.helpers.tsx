@@ -3,7 +3,7 @@
 // ParticipantModelRow, SectionHeader. Keeps main file under 300 lines.
 
 import {
-  MinusCircle, Info, Check, Eye, Wrench, Gift,
+  MinusCircle, Info, Check, Eye, Image as ImageIcon, Paintbrush, Video, Wrench, Gift,
   Flame, TrendingUp,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -264,9 +264,17 @@ export function ParticipantModelRow({
         </p>
         <div className="flex items-center gap-1 text-[10px] text-muted mt-0.5 truncate">
           <span className="capitalize">{model.provider ?? t("guidance_unknown")}</span>
-          {model.supportsImages && <Eye size={9} className="shrink-0" />}
+          {(model.supportsVideo
+            ? (model.supportedFrameImages?.length ?? 0) > 0
+            : (model.architecture?.modality?.split("->")[0] ?? "").includes("image")
+          ) && <Eye size={9} className="shrink-0" />}
+          {model.supportsImages && <Paintbrush size={9} className="shrink-0" />}
+          {model.supportsVideo && <Video size={9} className="shrink-0" />}
+          {model.supportsVideo && (model.supportedFrameImages?.length ?? 0) > 0 && (
+            <ImageIcon size={9} className="shrink-0" />
+          )}
           {model.supportsTools && <Wrench size={9} className="shrink-0" />}
-          {(model.inputPricePer1M ?? 0) === 0 && (model.outputPricePer1M ?? 0) === 0 && <Gift size={9} className="shrink-0" />}
+          {(model.isFree ?? model.modelId.endsWith(":free")) && <Gift size={9} className="shrink-0" />}
         </div>
         <div className="flex items-center gap-1 mt-0.5 flex-wrap">
           {primaryLabel && <GuidanceTag label={primaryLabel} />}

@@ -23,6 +23,12 @@ export interface RetryMessageArgs extends Record<string, unknown> {
   complexity?: number;
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
+  videoConfig?: {
+    resolution?: string;
+    aspectRatio?: string;
+    duration?: number;
+    generateAudio?: boolean;
+  };
 }
 
 export interface RetryMessageResult {
@@ -164,6 +170,7 @@ export async function retryMessageHandler(
       webSearchEnabled: forceWebSearch,
       enabledIntegrations: filteredIntegrations,
       subagentsEnabled: filteredSubagents,
+      videoConfig: args.videoConfig,
     });
   } else if (effectiveSearchMode === "web") {
     const cachedSearchContextDoc = await ctx.db

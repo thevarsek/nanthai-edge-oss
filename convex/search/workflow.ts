@@ -1,7 +1,13 @@
 // convex/search/workflow.ts
 // =============================================================================
 // Stable research paper workflow registration.
-// Keep exported function IDs here; implementation is extracted to helpers.
+//
+// The entry-point action (`researchPaperPipeline`) validates prerequisites and
+// then schedules the first durable phase action. Each phase runs as its own
+// Convex action, persists results to `searchPhases`, and schedules the next
+// phase — so no single action risks the 10-minute timeout.
+//
+// See `workflow_durable.ts` for the per-phase actions.
 // =============================================================================
 
 import { v, type PropertyValidators } from "convex/values";
@@ -11,21 +17,12 @@ import { ActionCtx } from "../_generated/server";
 import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
-import { resolveComplexityPreset, SearchResult } from "./helpers";
 import {
   checkCancellation,
   PipelineArgs,
   updateSession,
 } from "./workflow_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
-import {
-  runPlanningPhase,
-  runInitialSearchPhase,
-  runAnalysisPhase,
-  runDepthSearchPhase,
-  runSynthesisPhase,
-} from "./workflow_nonstream_phases";
-import { runPaperGenerationPhase } from "./workflow_paper_phase";
 
 const researchPaperPipelineArgs = {
   sessionId: v.id("searchSessions"),
@@ -53,6 +50,14 @@ export const researchPaperPipeline = internalAction({
   handler: researchPaperPipelineHandler,
 });
 
+/**
+ * Entry point: validate prerequisites, then schedule the first durable phase.
+ *
+ * Previously this function ran all research phases (planning → search →
+ * analysis → depth → synthesis → paper) sequentially in a single action.
+ * Now each phase is its own action in `workflow_durable.ts`, with state
+ * flowing through the `searchPhases` table.
+ */
 async function researchPaperPipelineHandler(
   ctx: ActionCtx,
   args: PipelineArgs,
@@ -64,95 +69,20 @@ async function researchPaperPipelineHandler(
   });
 
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const argsWithApiKey = { ...args, apiKey };
-    const preset = resolveComplexityPreset("paper", args.complexity);
-    let phaseOrder = 0;
+    // Validate API key early so we fail fast before scheduling anything
+    await getRequiredUserOpenRouterApiKey(ctx, args.userId);
 
     await checkCancellation(ctx, args.sessionId);
-    const planning = await runPlanningPhase(ctx, argsWithApiKey, preset.breadth, phaseOrder);
-    phaseOrder++;
 
-    await checkCancellation(ctx, args.sessionId);
-    const initialResults = await runInitialSearchPhase(
-      ctx,
-      argsWithApiKey,
-      planning.queries,
-      preset.searchModel,
-      phaseOrder,
+    // Schedule the first durable phase: planning
+    await ctx.scheduler.runAfter(
+      0,
+      internal.search.workflow_durable.runPlanningAction,
+      {
+        ...args,
+        phaseOrder: 0,
+      },
     );
-    phaseOrder++;
-
-    let allSearchResults: SearchResult[] = [...initialResults];
-    const depthIterations = preset.depth - 1;
-
-    for (let i = 0; i < depthIterations; i++) {
-      await checkCancellation(ctx, args.sessionId);
-
-      const analysis = await runAnalysisPhase(
-        ctx,
-        argsWithApiKey,
-        allSearchResults,
-        preset.breadth,
-        phaseOrder,
-        i,
-      );
-      phaseOrder++;
-
-      await checkCancellation(ctx, args.sessionId);
-
-      const depthResults = await runDepthSearchPhase(
-        ctx,
-        argsWithApiKey,
-        analysis.queries,
-        preset.searchModel,
-        phaseOrder,
-        i,
-      );
-      phaseOrder++;
-
-      allSearchResults = [...allSearchResults, ...depthResults];
-    }
-
-    await checkCancellation(ctx, args.sessionId);
-    const synthesis = await runSynthesisPhase(
-      ctx,
-      argsWithApiKey,
-      allSearchResults,
-      phaseOrder,
-    );
-    phaseOrder++;
-
-    const searchContext = {
-      complexity: args.complexity,
-      queries: allSearchResults.map((r) => r.query),
-      searchResults: allSearchResults,
-    };
-    await ctx.runMutation(internal.search.mutations.patchMessageSearchContext, {
-      messageId: args.assistantMessageId,
-      chatId: args.chatId,
-      userId: args.userId,
-      mode: "paper",
-      searchContext,
-    });
-
-    await checkCancellation(ctx, args.sessionId);
-    await runPaperGenerationPhase(ctx, args, synthesis, phaseOrder);
-
-    // Write search stats but keep status as "writing" — runGeneration
-    // (scheduled inside runPaperGenerationPhase) will mark the session
-    // "completed" or "failed" when generation actually finishes.
-    await updateSession(ctx, args.sessionId, {
-      searchCallCount: allSearchResults.length,
-      perplexityModelTier: preset.searchModel,
-      participantCount: 1,
-    });
-
-    // Note: postProcess is now handled by runGeneration (scheduled inside
-    // runPaperGenerationPhase), so we don't schedule it here.
-
-    // Note: Push notification fires in finalizeGenerationHandler for
-    // scheduled-job chats when generation actually completes.
   } catch (error) {
     const errorMessage =
       error instanceof Error ? error.message : "Unknown research paper error";
@@ -183,8 +113,5 @@ async function researchPaperPipelineHandler(
         sessionError instanceof Error ? sessionError.message : String(sessionError),
       );
     }
-
-    // Note: Push notification for failures fires in finalizeGenerationHandler
-    // for scheduled-job chats (called above).
   }
 }

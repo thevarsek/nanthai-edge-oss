@@ -2,7 +2,7 @@
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
 import { memo, useState, useCallback, useMemo } from "react";
-import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw } from "lucide-react";
+import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -13,6 +13,7 @@ import { GeneratedChartsCard } from "./GeneratedChartsCard";
 import { ResearchProgressPanel } from "./ResearchProgressPanel";
 import { SearchSessionBadge } from "./SearchSessionBadge";
 import { AudioMessageBubble } from "./AudioMessageBubble";
+import { VideoGenerationProgress } from "./VideoGenerationProgress";
 import { MessageAttachments } from "./MessageAttachments";
 import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import { useChatSearchContext } from "./ChatSearchContext";
@@ -103,6 +104,58 @@ function InlineImagePreview({ url }: { url: string }) {
   );
 }
 
+/** Inline video preview with native controls + expand-on-click lightbox. */
+function InlineVideoPreview({ url }: { url: string }) {
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <>
+      <div className="rounded-lg overflow-hidden border border-border/20 hover:border-border/40 transition-colors max-w-sm">
+        <video
+          src={url}
+          controls
+          preload="metadata"
+          className="w-full max-h-64 bg-black cursor-pointer"
+          onClick={(e) => {
+            // Only expand on click outside the native controls area
+            const rect = e.currentTarget.getBoundingClientRect();
+            const controlsHeight = 40;
+            if (e.clientY < rect.bottom - controlsHeight) {
+              e.preventDefault();
+              setExpanded(true);
+            }
+          }}
+        />
+      </div>
+      {expanded && (
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm cursor-zoom-out"
+          onClick={() => setExpanded(false)}
+        >
+          <video
+            src={url}
+            controls
+            autoPlay
+            className="max-w-[90vw] max-h-[80vh] rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <div className="mt-4 flex items-center gap-3">
+            <a
+              href={url}
+              download
+              onClick={(e) => e.stopPropagation()}
+              className="flex items-center gap-1.5 text-xs text-primary hover:underline"
+            >
+              <Download size={13} />
+              {t("download")}
+            </a>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 export interface AssistantMessageProps {
@@ -129,8 +182,10 @@ export const AssistantMessage = memo(function AssistantMessage({
     [modelSummaries],
   );
   const hasImageUrls = !!message.imageUrls?.length;
+  const hasVideoUrls = !!message.videoUrls?.length;
   const isImagePlaceholder = hasImageUrls && message.content === "[Generated image]";
-  const contentToStream = isImagePlaceholder ? "" : message.content;
+  const isVideoPlaceholder = hasVideoUrls && message.content === "[Generated video]";
+  const contentToStream = (isImagePlaceholder || isVideoPlaceholder) ? "" : message.content;
   const { displayed } = useStreaming(contentToStream, isStreaming && message.status === "streaming");
   const isPending = message.status === "pending";
   const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder;
@@ -165,7 +220,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
 
   const isCompleted = message.status === "completed";
-  const showActions = isCompleted && (!!message.content || hasImageUrls);
+  const showActions = isCompleted && (!!message.content || hasImageUrls || hasVideoUrls);
 
   const outerClass = hasFocusedMatch
     ? "flex gap-3 group rounded-lg ring-2 ring-primary bg-primary/5 -mx-2 px-2 py-1 transition-all duration-200"
@@ -238,6 +293,20 @@ export const AssistantMessage = memo(function AssistantMessage({
           <div className="mt-2 flex flex-wrap gap-2">
             {message.imageUrls!.map((url, i) => (
               <InlineImagePreview key={`${message._id}-img-${i}`} url={url} />
+            ))}
+          </div>
+        )}
+
+        {/* Video generation status/error (hide only once the video has arrived or the message fully completed) */}
+        {!hasVideoUrls && !isCompleted && (
+          <VideoGenerationProgress messageId={message._id} />
+        )}
+
+        {/* Inline generated videos (from videoUrls — video generation models) */}
+        {hasVideoUrls && (
+          <div className="mt-2 flex flex-wrap gap-3">
+            {message.videoUrls!.map((url, i) => (
+              <InlineVideoPreview key={`${message._id}-vid-${i}`} url={url} />
             ))}
           </div>
         )}

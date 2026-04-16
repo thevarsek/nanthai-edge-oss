@@ -625,7 +625,7 @@ function MemoryPageContent() {
       {showModelPicker && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowModelPicker(false)} />
-          <div className="relative w-full max-w-lg max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl bg-background border border-border/50">
+          <div className="relative w-full max-w-lg h-[80vh] flex flex-col rounded-2xl overflow-hidden shadow-2xl bg-background border border-border/50">
             <ModelPicker
               selectedModelId={memoryExtractionModelId}
               onSelect={(modelId) => {

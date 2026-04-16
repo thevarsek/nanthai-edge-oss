@@ -22,7 +22,8 @@ type SkillToolProfile =
   | "notion"
   | "appleCalendar"
   | "scheduledJobs"
-  | "skillsManagement";
+  | "skillsManagement"
+  | "personas";
 
 /**
  * TypeScript type matching the args below — exported so catalog constants

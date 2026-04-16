@@ -46,8 +46,18 @@ export async function getModelCapabilitiesHandler(
       hasAudioOutput?: boolean;
       hasVideoInput?: boolean;
       hasImageGeneration?: boolean;
+      hasVideoGeneration?: boolean;
       hasReasoning?: boolean;
       contextLength?: number;
+      videoCapabilities?: {
+        supportedResolutions: string[];
+        supportedAspectRatios: string[];
+        supportedDurations: number[];
+        supportedFrameImages: string[];
+        supportedSizes: string[];
+        generateAudio: boolean;
+        seed: boolean;
+      };
     }
   | null
 > {
@@ -68,9 +78,21 @@ export async function getModelCapabilitiesHandler(
     hasVideoInput:
       model.architecture?.modality?.split("->")[0]?.includes("video") ?? false,
     hasImageGeneration: model.supportsImages ?? false,
+    hasVideoGeneration: model.supportsVideo ?? false,
     hasReasoning:
       model.supportedParameters?.includes("include_reasoning") ?? false,
     contextLength: model.contextLength,
+    videoCapabilities: model.videoCapabilities
+      ? {
+          supportedResolutions: model.videoCapabilities.supportedResolutions,
+          supportedAspectRatios: model.videoCapabilities.supportedAspectRatios,
+          supportedDurations: model.videoCapabilities.supportedDurations,
+          supportedFrameImages: model.videoCapabilities.supportedFrameImages,
+          supportedSizes: model.videoCapabilities.supportedSizes,
+          generateAudio: model.videoCapabilities.generateAudio,
+          seed: model.videoCapabilities.seed,
+        }
+      : undefined,
   };
 }
 
@@ -239,4 +261,17 @@ export async function searchMessagesInternalHandler(
   }
 
   return results;
+}
+
+// ── M29: Video Generation ─────────────────────────────────────────────
+
+export interface GetVideoJobInternalArgs extends Record<string, unknown> {
+  videoJobId: Id<"videoJobs">;
+}
+
+export async function getVideoJobInternalHandler(
+  ctx: QueryCtx,
+  args: GetVideoJobInternalArgs,
+): Promise<any> {
+  return await ctx.db.get(args.videoJobId);
 }

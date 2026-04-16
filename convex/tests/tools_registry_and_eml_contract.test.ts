@@ -4,7 +4,6 @@ import test from "node:test";
 import { generateEml } from "../tools/generate_eml";
 import { readEml } from "../tools/read_eml";
 import {
-  buildToolRegistry,
   checkAppleCalendarConnection,
   checkMicrosoftConnection,
   checkNotionConnection,
@@ -67,22 +66,6 @@ test("generateEml and readEml round-trip multipart email content", async () => {
   assert.equal((parsed.data as any).subject, "Quarterly Update");
   assert.equal((parsed.data as any).body, "Plain text body");
   assert.equal((parsed.data as any).hasHtmlBody, true);
-});
-
-test("buildToolRegistry gates free users and conditionally adds integrations", () => {
-  const freeRegistry = buildToolRegistry({ isPro: false });
-  const scopedRegistry = buildToolRegistry({
-    isPro: true,
-    allowSubagents: true,
-    enabledIntegrations: ["gmail", "notion"],
-  });
-
-  assert.equal(freeRegistry.size, 0);
-  assert.ok(scopedRegistry.get("read_text_file"));
-  assert.ok(scopedRegistry.get("gmail_search"));
-  assert.ok(scopedRegistry.get("notion_search"));
-  assert.ok(scopedRegistry.get("spawn_subagents"));
-  assert.equal(scopedRegistry.get("drive_list"), undefined);
 });
 
 test("tool connection helpers return granted integrations and tolerate query failures", async () => {

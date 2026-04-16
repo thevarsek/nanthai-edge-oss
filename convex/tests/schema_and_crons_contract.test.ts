@@ -16,6 +16,7 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "refreshModelCatalog",
     "syncArtificialAnalysis",
     "syncOpenRouterUseCases",
+    "syncVideoModels",
   ]);
   assert.deepEqual(entries.refreshModelCatalog.schedule, {
     type: "interval",

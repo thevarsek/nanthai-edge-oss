@@ -65,6 +65,7 @@ export interface Message {
   moderatorDirective?: string;
   searchSessionId?: Id<"searchSessions">;
   imageUrls?: string[];
+  videoUrls?: string[];
   attachments?: Array<{
     type: string;
     url?: string;
@@ -175,6 +176,7 @@ export interface SendMessageArgs extends Record<string, unknown> {
     name?: string;
     mimeType?: string;
     sizeBytes?: number;
+    videoRole?: "first_frame" | "last_frame" | "reference";
   }>;
   recordedAudio?: {
     storageId: Id<"_storage">;
@@ -187,6 +189,12 @@ export interface SendMessageArgs extends Record<string, unknown> {
   complexity?: number;
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
+  videoConfig?: {
+    duration?: number;
+    aspectRatio?: string;
+    resolution?: string;
+    generateAudio?: boolean;
+  };
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

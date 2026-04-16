@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, Search, FileText, Trash2, Download, Files } from "lucide-react";
+import { ChevronLeft, Search, FileText, Trash2, Download, Files, Image, Video } from "lucide-react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
@@ -22,6 +22,8 @@ interface KBFile {
   sizeBytes?: number;
   createdAt?: number;
   downloadUrl?: string | null;
+  mimeType?: string;
+  toolName?: string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -57,6 +59,12 @@ function groupFilesByDate(files: KBFile[], t: (key: string) => string): { header
 
 // ─── File row ──────────────────────────────────────────────────────────────
 
+function fileIcon(mime?: string) {
+  if (mime?.startsWith("video/")) return <Video size={14} className="text-foreground/50" />;
+  if (mime?.startsWith("image/")) return <Image size={14} className="text-foreground/50" />;
+  return <FileText size={14} className="text-foreground/50" />;
+}
+
 function FileRow({
   file,
   onDelete,
@@ -77,11 +85,30 @@ function FileRow({
     document.body.removeChild(a);
   };
 
+  const isImage = file.mimeType?.startsWith("image/");
+  const isVideo = file.mimeType?.startsWith("video/");
+
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <div className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center flex-shrink-0">
-        <FileText size={14} className="text-foreground/50" />
-      </div>
+      {/* Thumbnail for images, poster frame for videos, icon for everything else */}
+      {isImage && file.downloadUrl ? (
+        <img
+          src={file.downloadUrl}
+          alt={file.filename}
+          className="w-8 h-8 rounded-lg object-cover flex-shrink-0 bg-surface-3"
+        />
+      ) : isVideo && file.downloadUrl ? (
+        <video
+          src={file.downloadUrl}
+          className="w-8 h-8 rounded-lg object-cover flex-shrink-0 bg-surface-3"
+          muted
+          preload="metadata"
+        />
+      ) : (
+        <div className="w-8 h-8 rounded-lg bg-surface-3 flex items-center justify-center flex-shrink-0">
+          {fileIcon(file.mimeType)}
+        </div>
+      )}
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate text-foreground">
           {file.filename}

@@ -17,6 +17,9 @@ import {
   Users,
   GitBranch,
   Receipt,
+  Music,
+  Image,
+  Film,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -245,6 +248,45 @@ export const features: FeatureMeta[] = [
     related: ["pro-vs-free", "participant-options", "chat-defaults"],
     i18nPrefix: "bk",
     titleKey: "feature_title_byok",
+  },
+  {
+    slug: "audio-generation",
+    title: "Audio Generation",
+    tagline: "Generate music and audio clips from text prompts — inline in any chat.",
+    indexDescription:
+      "Select a music model like Google Lyria, type a prompt, and get an MP3 back. Play, seek, adjust speed, and download — all without leaving the conversation.",
+    tier: "free",
+    icon: Music,
+    accentClass: "text-[var(--edge-cyan)]",
+    related: ["video-generation", "image-generation", "personas"],
+    i18nPrefix: "ag",
+    titleKey: "feature_title_audio_generation",
+  },
+  {
+    slug: "image-generation",
+    title: "Image Generation",
+    tagline: "Turn text prompts into images using dedicated image models.",
+    indexDescription:
+      "Pick an image-generation model, describe what you want, and receive an inline image. Download it, attach it to another chat, or find it later in the Knowledge Base.",
+    tier: "free",
+    icon: Image,
+    accentClass: "text-[var(--edge-amber)]",
+    related: ["video-generation", "audio-generation", "knowledge-base"],
+    i18nPrefix: "img",
+    titleKey: "feature_title_image_generation",
+  },
+  {
+    slug: "video-generation",
+    title: "Video Generation",
+    tagline: "Generate videos from text and image prompts with models like Veo, Seedance, and Wan.",
+    indexDescription:
+      "Choose a video model, set resolution, duration, and aspect ratio, optionally attach first/last frames, and get an inline video player. Download, share, or go fullscreen.",
+    tier: "free",
+    icon: Film,
+    accentClass: "text-[var(--edge-coral)]",
+    related: ["audio-generation", "image-generation", "participant-options"],
+    i18nPrefix: "vg",
+    titleKey: "feature_title_video_generation",
   },
   {
     slug: "pro-vs-free",

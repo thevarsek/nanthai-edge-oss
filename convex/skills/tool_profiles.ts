@@ -12,6 +12,7 @@ const PROFILE_ORDER = [
   "appleCalendar",
   "scheduledJobs",
   "skillsManagement",
+  "personas",
 ] as const;
 
 export type SkillToolProfileId = typeof PROFILE_ORDER[number];
@@ -96,6 +97,11 @@ const SKILL_MANAGEMENT_TOOL_IDS = new Set([
   "remove_skill_from_persona",
 ]);
 
+const PERSONA_TOOL_IDS = new Set([
+  "create_persona",
+  "delete_persona",
+]);
+
 const INTEGRATION_PROFILE_BY_ID: Record<string, SkillToolProfileId> = {
   gmail: "google",
   drive: "google",
@@ -133,6 +139,7 @@ export function inferProfilesFromToolIds(
     if (SUBAGENT_TOOL_IDS.has(toolId)) profiles.add("subagents");
     if (SCHEDULED_JOB_TOOL_IDS.has(toolId)) profiles.add("scheduledJobs");
     if (SKILL_MANAGEMENT_TOOL_IDS.has(toolId)) profiles.add("skillsManagement");
+    if (PERSONA_TOOL_IDS.has(toolId)) profiles.add("personas");
   }
 
   for (const integrationId of requiredIntegrationIds) {
@@ -165,6 +172,7 @@ export function normalizeSkillMetadata(
     if (SUBAGENT_TOOL_IDS.has(toolId)) inferredProfiles.add("subagents");
     if (SCHEDULED_JOB_TOOL_IDS.has(toolId)) inferredProfiles.add("scheduledJobs");
     if (SKILL_MANAGEMENT_TOOL_IDS.has(toolId)) inferredProfiles.add("skillsManagement");
+    if (PERSONA_TOOL_IDS.has(toolId)) inferredProfiles.add("personas");
   }
 
   for (const integrationId of requiredIntegrationIds) {

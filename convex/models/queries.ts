@@ -69,8 +69,10 @@ export const listModelSummaries = query({
         _id: m._id,
         modelId: m.modelId,
         name: m.name,
+        description: m.description,
         provider: m.provider,
         supportsImages: m.supportsImages,
+        supportsVideo: m.supportsVideo,
         supportsTools: m.supportsTools,
         contextLength: m.contextLength,
         hasReasoning: (m.supportedParameters ?? []).includes("reasoning"),
@@ -85,6 +87,31 @@ export const listModelSummaries = query({
         // full listModels subscription.
         architecture: m.architecture,
         supportedParameters: m.supportedParameters,
+        // Video frame image support — which frame types this video model
+        // accepts (e.g. ["first_frame", "last_frame"]). Empty array means
+        // the model is text-to-video only and ignores attached images.
+        // Only present for video models (supportsVideo: true).
+        supportedFrameImages: m.supportsVideo
+          ? (m.videoCapabilities?.supportedFrameImages ?? [])
+          : undefined,
+        // Video pricing — video models don't use token-based pricing;
+        // they charge per video token or per video second.
+        videoPricing: m.videoCapabilities?.pricingSkus
+          ? {
+              perVideoToken: m.videoCapabilities.pricingSkus.videoTokens
+                ? parseFloat(m.videoCapabilities.pricingSkus.videoTokens)
+                : undefined,
+              perVideoTokenNoAudio: m.videoCapabilities.pricingSkus.videoTokensWithoutAudio
+                ? parseFloat(m.videoCapabilities.pricingSkus.videoTokensWithoutAudio)
+                : undefined,
+              perVideoSecond: m.videoCapabilities.pricingSkus.perVideoSecond
+                ? parseFloat(m.videoCapabilities.pricingSkus.perVideoSecond)
+                : undefined,
+              perVideoSecond1080p: m.videoCapabilities.pricingSkus.perVideoSecond1080p
+                ? parseFloat(m.videoCapabilities.pricingSkus.perVideoSecond1080p)
+                : undefined,
+            }
+          : undefined,
         // Guidance data (optional)
         derivedGuidance: m.derivedGuidance
           ? {
