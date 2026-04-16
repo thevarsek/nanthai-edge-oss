@@ -2,7 +2,7 @@
 // Matches iOS MessageInput.swift: "Message" placeholder, arrow.up.circle.fill send,
 // mic.circle.fill record, circular plus button, 14px border radius.
 
-import { useState, useRef, useCallback, useEffect, type KeyboardEvent } from "react";
+import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ClipboardEvent } from "react";
 import { ArrowUp, Square, Plus, Mic, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
@@ -58,12 +58,13 @@ export function MessageInput({
 }: Props) {
   const [text, setText] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { t } = useTranslation();
 
   const {
     attachments, isUploading, fileInputRef, imageInputRef, cameraInputRef,
-    handleFileSelect, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
+    handleFileSelect, handlePasteFiles, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
   } = useAttachments(onCreateUploadUrl, isVideoMode, supportsFrameImages);
 
   // Auto-assign default video roles when entering video mode with existing image attachments
@@ -148,6 +149,33 @@ export function MessageInput({
     },
   });
 
+  const handlePaste = useCallback(
+    (e: ClipboardEvent<HTMLTextAreaElement>) => {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageFiles = items
+        .filter((item) => item.kind === "file" && item.type.startsWith("image/"))
+        .map((item) => item.getAsFile())
+        .filter((f): f is File => f !== null);
+      if (imageFiles.length > 0) {
+        // Only suppress the native paste when the clipboard is image-only.
+        // Mixed-content pastes (e.g. copying a figure + caption from a
+        // document) expose a real text/plain payload — attach the image AND
+        // let the browser insert the accompanying text into the textarea.
+        //
+        // We intentionally check only text/plain here. Browsers synthesize a
+        // text/html payload (e.g. an `<img src="…">` tag) for most image
+        // copies even when the user only copied an image — falling through
+        // to the default paste in that case would leak the image URL as a
+        // text string into the textarea, which is the bug the Android and
+        // iOS composers just fixed.
+        const hasText = (e.clipboardData?.getData("text/plain") ?? "").length > 0;
+        if (!hasText) e.preventDefault();
+        void handlePasteFiles(imageFiles);
+      }
+    },
+    [handlePasteFiles],
+  );
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mention.isActive) {
@@ -164,9 +192,26 @@ export function MessageInput({
       if (item === "file") fileInputRef.current?.click();
       else if (item === "image") imageInputRef.current?.click();
       else if (item === "camera") cameraInputRef.current?.click();
+      else if (item === "pasteImage") {
+        if (typeof navigator.clipboard?.read === "function") {
+          void navigator.clipboard.read()
+            .then(async (items) => {
+              const imageFiles: File[] = [];
+              for (const clipItem of items) {
+                const imageType = clipItem.types.find((t) => t.startsWith("image/"));
+                if (imageType) {
+                  const blob = await clipItem.getType(imageType);
+                  imageFiles.push(new File([blob], `pasted-image.${imageType.split("/")[1] || "png"}`, { type: imageType }));
+                }
+              }
+              if (imageFiles.length > 0) void handlePasteFiles(imageFiles);
+            })
+            .catch(() => { /* clipboard read denied */ });
+        }
+      }
       else onPlusMenuSelect?.(item);
     },
-    [onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef],
+    [onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef, handlePasteFiles],
   );
 
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !isGenerating && !isUploading;
@@ -212,7 +257,24 @@ export function MessageInput({
         {/* Plus button — iOS: circular glass effect */}
         <div className="relative shrink-0">
           <button
-            onClick={() => setShowPlusMenu((v) => !v)}
+            onClick={() => {
+              setShowPlusMenu((v) => {
+                if (!v) {
+                  // Check clipboard for images when opening the menu
+                  if (typeof navigator.clipboard?.read === "function") {
+                    void navigator.clipboard.read()
+                      .then((items) => {
+                        const has = items.some((item) => item.types.some((t) => t.startsWith("image/")));
+                        setClipboardHasImage(has);
+                      })
+                      .catch(() => setClipboardHasImage(false));
+                  } else {
+                    setClipboardHasImage(false);
+                  }
+                }
+                return !v;
+              });
+            }}
             disabled={disabled || isUploading}
             className="w-10 h-10 rounded-full bg-surface-2/50 backdrop-blur-sm border border-border/20 flex items-center justify-center text-muted hover:text-foreground hover:bg-surface-3 transition-colors disabled:opacity-40"
             title={t("more_options")}
@@ -227,6 +289,7 @@ export function MessageInput({
               hasConnectedIntegrations={hasConnectedIntegrations}
               participantCount={participantCount} hasMessages={hasMessages}
               allParticipantsSupportTools={allParticipantsSupportTools}
+              clipboardHasImage={clipboardHasImage}
             />
           )}
         </div>
@@ -244,7 +307,7 @@ export function MessageInput({
           )}
           <textarea
             ref={textareaRef} value={text}
-            onChange={handleTextChange} onKeyDown={handleKeyDown}
+            onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
             placeholder={isAutonomousActive ? t("send_message_intervene") : isGenerating ? t("generating") : t("message")}
             disabled={disabled} rows={1}
             className="w-full resize-none rounded-[14px] bg-surface-2/50 backdrop-blur-sm border border-border/20 px-4 py-2.5 text-sm text-foreground placeholder-foreground/40 focus:outline-none focus:border-primary/50 focus:bg-surface-2/80 transition-colors max-h-48 min-h-[44px] leading-relaxed disabled:opacity-50"

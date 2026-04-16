@@ -15,6 +15,7 @@ import {
   Users,
   Bot,
   Zap,
+  ClipboardPaste,
 } from "lucide-react";
 
 // ─── Menu items ─────────────────────────────────────────────────────────────
@@ -27,6 +28,7 @@ export type PlusMenuItem =
   | "file"
   | "image"
   | "camera"
+  | "pasteImage"
   | "participants"
   | "subagents"
   | "autonomous";
@@ -50,6 +52,7 @@ interface Props {
   participantCount?: number;
   hasMessages?: boolean;
   allParticipantsSupportTools?: boolean;
+  clipboardHasImage?: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -63,6 +66,7 @@ export function ChatPlusMenu({
   participantCount = 1,
   hasMessages = false,
   allParticipantsSupportTools = true,
+  clipboardHasImage = false,
 }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -117,6 +121,13 @@ export function ChatPlusMenu({
       label: t("camera"),
       icon: <Camera size={16} />,
     },
+    ...(clipboardHasImage
+      ? [{
+          id: "pasteImage" as const,
+          label: t("paste_image", "Paste Image"),
+          icon: <ClipboardPaste size={16} />,
+        }]
+      : []),
     {
       id: "file" as const,
       label: t("file"),

@@ -77,6 +77,42 @@ export function useAttachments(
     setAttachments((prev) => assignDefaultVideoRoles(prev));
   }, []);
 
+  /** Handle pasted files (e.g. images from clipboard via Ctrl+V / Cmd+V). */
+  const handlePasteFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      setIsUploading(true);
+      try {
+        for (const file of files) {
+          const uploadUrl = await onCreateUploadUrl();
+          const res = await fetch(uploadUrl, {
+            method: "POST",
+            headers: { "Content-Type": file.type },
+            body: file,
+          });
+          if (!res.ok) continue;
+          const { storageId } = (await res.json()) as { storageId: string };
+          setAttachments((prev) => [
+            ...prev,
+            {
+              storageId: storageId as Id<"_storage">,
+              name: file.name || `pasted-image.${file.type.split("/")[1] || "png"}`,
+              type: attachmentTypeForMime(file.type),
+              mimeType: file.type,
+              sizeBytes: file.size,
+            },
+          ]);
+        }
+        if (isVideoMode && supportsFrameImages) {
+          setAttachments((prev) => assignDefaultVideoRoles(prev));
+        }
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [onCreateUploadUrl, isVideoMode, supportsFrameImages],
+  );
+
   const clear = useCallback(() => setAttachments([]), []);
 
   return {
@@ -87,6 +123,7 @@ export function useAttachments(
     imageInputRef,
     cameraInputRef,
     handleFileSelect,
+    handlePasteFiles,
     removeAttachment,
     changeAttachmentRole,
     applyVideoRoles,
