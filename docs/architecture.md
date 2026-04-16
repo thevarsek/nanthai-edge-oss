@@ -785,7 +785,8 @@ Ideascape canvas gained context resolution, geometry utilities, and user onboard
 - **Inline message action bar** (`MessageActionBar.swift`, `3f610b2`) — contextual actions on chat bubbles (copy, retry, branch, etc.)
 - **Chat bubble timestamps + day separators** (`ChatTimestampFormatter.swift`, `ChatView+Timestamps.swift`, `c64fcc7`) — relative timestamps on bubbles with day separator headers
 - **UITextView-backed text selection** (`SelectableText.swift`, `58064fa`/`597d67a`/`884af6e`) — native text selection via UITextView instead of SwiftUI's limited Text selection
-- **Paste image from clipboard** (`11dedcb`) — paste images directly into the message composer
+- **Paste image from clipboard** (`11dedcb`, cross-platform parity `4b79c59`) — paste images directly into the message composer on iOS (`PasteAwareTextField.swift`, UITextView-backed with hardware-keyboard Return-to-send), Android (DropdownMenu "Paste Image" + `ImagePasteAwareTextToolbar`), and web (`onPaste` → `useAttachments.handlePasteFiles`). All three platforms stage the clipboard image as an attachment while preserving default text paste only when user-intended text is present (suppresses synthesized `<img>` HTML on web and content-URI leaks on Android).
+- **Android share sheet** (`4b79c59`) — `ACTION_SEND` / `ACTION_SEND_MULTIPLE` intents (text + images) create a new chat pre-filled with the shared content. Queue-based pipeline through `NanthAiRootViewModel` → `NanthAiAndroidRoot` → `AppNavHost` → `AdaptiveChatPane` → `ChatRoute` with nonce-based consume matching and retry-on-failure gated by `hasError`.
 - **Duplicate chat feature** (`3f610b2`) — duplicate an existing chat conversation
 - **Hardened Notion tool runs + compaction loop fix** (`9085e27`) — reliability improvements for Notion integration and context compaction edge case
 - Test: `ChatTimestampFormatterTests.swift`
@@ -796,7 +797,7 @@ Ideascape canvas gained context resolution, geometry utilities, and user onboard
 
 ---
 
-*Last updated: 2026-03-15 — Added favorites/ module and reorderPinnedChats to chat/manage. Updated Convex function modules table.*
+*Last updated: 2026-04-16 — Android share sheet (ACTION_SEND) + cross-platform clipboard image paste parity (iOS/Android/web) landed in `4b79c59` (Android 1.0.81).*
 
 
 ## M20 Audio Messages Architecture
