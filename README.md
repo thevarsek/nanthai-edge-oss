@@ -8,7 +8,7 @@
 
 ## What is NanthAI Edge?
 
-NanthAI:Edge (https://nanthai.tech) is a full-featured AI chat application with multi-model conversations, personas, memory, scheduled jobs, internet search, integrations, and more — all powered by a [Convex](https://convex.dev) real-time backend.
+[NanthAI:Edge](https://nanthai.tech) is a full-featured AI chat application with multi-model conversations, personas, memory, scheduled jobs, internet search, integrations, and more — all powered by a [Convex](https://convex.dev) real-time backend.
 
 This repository contains the **web client** and **Convex backend**. It's everything you need to self-host your own instance.
 
