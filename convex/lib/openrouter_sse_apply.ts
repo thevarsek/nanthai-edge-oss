@@ -85,7 +85,25 @@ export async function applySSEEventResult(
 
   // Merge incremental tool-call fragments.
   if (result.toolCallDeltas) {
+    // Track which indices already had a name before this batch.
+    const previouslyNamed = callbacks.onToolCallStart
+      ? new Set(
+          Array.from(state.toolCallsInProgress.entries())
+            .filter(([, e]) => e.name.length > 0)
+            .map(([idx]) => idx),
+        )
+      : undefined;
+
     mergeToolCallDeltas(result.toolCallDeltas, state);
+
+    // Fire onToolCallStart for any tool call that just gained a name.
+    if (callbacks.onToolCallStart && previouslyNamed) {
+      for (const [idx, entry] of state.toolCallsInProgress) {
+        if (entry.name.length > 0 && !previouslyNamed.has(idx)) {
+          await callbacks.onToolCallStart({ index: idx, id: entry.id, name: entry.name });
+        }
+      }
+    }
   }
 
   // Accumulate Perplexity annotations (url_citation).

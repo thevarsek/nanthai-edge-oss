@@ -28,6 +28,7 @@ type ConnectionsData = {
   googleConnection: ReturnType<typeof useQuery<typeof api.oauth.google.getGoogleConnection>>;
   microsoftConnection: ReturnType<typeof useQuery<typeof api.oauth.microsoft.getMicrosoftConnection>>;
   notionConnection: ReturnType<typeof useQuery<typeof api.oauth.notion.getNotionConnection>>;
+  slackConnection: ReturnType<typeof useQuery<typeof api.oauth.slack.getSlackConnection>>;
   appleCalendarConnection: ReturnType<typeof useQuery<typeof api.oauth.apple_calendar.getAppleCalendarConnection>>;
 };
 
@@ -88,7 +89,9 @@ export function useConnectedAccounts() {
     googleConnection: useQuery(api.oauth.google.getGoogleConnection, skip),
     microsoftConnection: useQuery(api.oauth.microsoft.getMicrosoftConnection, skip),
     notionConnection: useQuery(api.oauth.notion.getNotionConnection, skip),
+    slackConnection: useQuery(api.oauth.slack.getSlackConnection, skip),
     appleCalendarConnection: useQuery(api.oauth.apple_calendar.getAppleCalendarConnection, skip),
+    clozeConnection: useQuery(api.oauth.cloze.getClozeConnection, skip),
   };
 }
 

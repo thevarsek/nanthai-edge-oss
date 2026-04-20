@@ -8,6 +8,10 @@ export interface ScheduledJobStepConfig {
   modelId: string;
   personaId?: Id<"personas">;
   enabledIntegrations?: string[];
+  /** M30 — Turn-level skill overrides (tri-state: always/available/never) */
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  /** M30 — Turn-level integration overrides (binary: enabled/disabled) */
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   webSearchEnabled?: boolean;
   searchMode?: ScheduledJobSearchMode;
   searchComplexity?: number;
@@ -21,6 +25,8 @@ interface LegacyScheduledJobShape {
   modelId: string;
   personaId?: Id<"personas">;
   enabledIntegrations?: string[];
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   webSearchEnabled?: boolean;
   searchMode?: string;
   searchComplexity?: number;
@@ -48,6 +54,8 @@ export function getScheduledJobSteps(
     modelId: job.modelId,
     personaId: job.personaId,
     enabledIntegrations: job.enabledIntegrations,
+    turnSkillOverrides: job.turnSkillOverrides,
+    turnIntegrationOverrides: job.turnIntegrationOverrides,
     webSearchEnabled: job.webSearchEnabled,
     searchMode: resolveScheduledJobSearchMode(job),
     searchComplexity: normalizeSearchComplexity(job.searchComplexity),
@@ -154,6 +162,8 @@ export function mirrorFirstStep(
   | "modelId"
   | "personaId"
   | "enabledIntegrations"
+  | "turnSkillOverrides"
+  | "turnIntegrationOverrides"
   | "webSearchEnabled"
   | "searchMode"
   | "searchComplexity"
@@ -167,6 +177,8 @@ export function mirrorFirstStep(
     modelId: firstStep.modelId,
     personaId: firstStep.personaId,
     enabledIntegrations: firstStep.enabledIntegrations,
+    turnSkillOverrides: firstStep.turnSkillOverrides,
+    turnIntegrationOverrides: firstStep.turnIntegrationOverrides,
     webSearchEnabled:
       firstStep.webSearchEnabled
       ?? (resolveScheduledJobSearchMode(firstStep) !== "none"),

@@ -308,3 +308,49 @@ test("REGRESSION: plugin fallback produces {id:'web'} for non-tool models and ne
   assert.equal(bodyE2E.tools, undefined, "end-to-end: no tools on wire");
   assert.deepEqual(bodyE2E.plugins, [{ id: "web" }], "end-to-end: plugin fallback present");
 });
+
+// Phase 2.9: provider-sort defaults
+test("buildRequestBody attaches default provider-sort when caller supplies no provider", () => {
+  const messages = [{ role: "user" as const, content: "hi" }];
+  const body = buildRequestBody("openai/gpt-5", messages, {}, false);
+  assert.deepEqual(
+    body.provider,
+    { sort: "latency" },
+    "provider-sort default must attach when caller omits provider block",
+  );
+});
+
+test("buildRequestBody merges caller-supplied ZDR with provider-sort defaults", () => {
+  const messages = [{ role: "user" as const, content: "hi" }];
+  const body = buildRequestBody(
+    "google/gemini-2.5-pro",
+    messages,
+    { provider: { zdr: true } },
+    false,
+  );
+  assert.deepEqual(
+    body.provider,
+    { sort: "latency", zdr: true },
+    "ZDR must be preserved and provider-sort defaults must merge in",
+  );
+});
+
+test("buildRequestBody lets caller-supplied provider.sort override the default", () => {
+  const messages = [{ role: "user" as const, content: "hi" }];
+  const body = buildRequestBody(
+    "openai/gpt-5",
+    messages,
+    {
+      provider: {
+        sort: "throughput",
+        preferred_max_latency: { p90: 10 },
+      },
+    },
+    false,
+  );
+  assert.deepEqual(
+    body.provider,
+    { sort: "throughput", preferred_max_latency: { p90: 10 } },
+    "caller-supplied sort/preferred_max_latency must win over defaults",
+  );
+});

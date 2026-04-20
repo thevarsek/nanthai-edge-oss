@@ -8,6 +8,8 @@ import {
   Search,
   Shield,
   UserCircle,
+  MessageSquare,
+  Contact,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getFeature } from "./featureData";
@@ -35,6 +37,8 @@ function getCapabilities(t: (k: string) => string): Capability[] {
     { icon: <FileText size={18} />, title: t("ig_cap_files_title"), description: t("ig_cap_files_desc") },
     { icon: <Calendar size={18} />, title: t("ig_cap_calendar_title"), description: t("ig_cap_calendar_desc") },
     { icon: <BookOpen size={18} />, title: t("ig_cap_notion_title"), description: t("ig_cap_notion_desc") },
+    { icon: <MessageSquare size={18} />, title: t("ig_cap_slack_title"), description: t("ig_cap_slack_desc") },
+    { icon: <Contact size={18} />, title: t("ig_cap_crm_title"), description: t("ig_cap_crm_desc") },
     { icon: <Search size={18} />, title: t("ig_cap_search_title"), description: t("ig_cap_search_desc") },
     { icon: <RefreshCw size={18} />, title: t("ig_cap_tasks_title"), description: t("ig_cap_tasks_desc") },
     { icon: <Shield size={18} />, title: t("ig_cap_oauth_title"), description: t("ig_cap_oauth_desc") },

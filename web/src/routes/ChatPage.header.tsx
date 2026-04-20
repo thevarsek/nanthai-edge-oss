@@ -8,7 +8,7 @@ import { ArrowLeft, Globe, MessageSquare, MessageCircle } from "lucide-react";
 import type { Participant } from "@/hooks/useChat";
 import type { SubagentOverride } from "@/components/chat/ChatSubagentsDrawer";
 import type { Id } from "@convex/_generated/dataModel";
-import type { ChatPanel } from "@/hooks/useChatOverrides";
+import type { ChatPanel, SkillOverrideState } from "@/hooks/useChatOverrides";
 import type { ChatParameterOverrides } from "@/components/chat/ChatParametersDrawer";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
 import type { AutonomousSettings } from "@/hooks/useAutonomous";
@@ -242,8 +242,10 @@ export interface ChatModalPanelsProps {
     autoAudioResponse: boolean;
   };
   enabledIntegrations: Set<IntegrationKey>; toggleIntegration: (k: IntegrationKey) => void;
-  connectedProviders: { google: boolean; microsoft: boolean; apple: boolean; notion: boolean };
+  connectedProviders: { google: boolean; microsoft: boolean; apple: boolean; notion: boolean; cloze: boolean; slack: boolean };
+  googleIntegrationsBlocked?: boolean;
   enabledSkillIds: Set<string>; toggleSkill: (id: Id<"skills">) => void;
+  skillOverrides: Map<string, SkillOverrideState>; cycleSkill: (id: Id<"skills">) => void;
   selectedKBFileIds: Set<string>; toggleKBFile: (id: string) => void;
   chatId: Id<"chats"> | undefined; convexParticipants: ParticipantEntry[];
   addParticipant: (args: { chatId: Id<"chats">; modelId: string; personaId?: Id<"personas">; personaName?: string; personaEmoji?: string | null; personaAvatarImageUrl?: string | null }) => Promise<unknown>;
@@ -262,16 +264,16 @@ export function ChatModalPanels(p: ChatModalPanelsProps) {
         <ChatParametersDrawer overrides={p.paramOverrides} onChange={p.setParamOverrides} onClose={p.closePanel} defaults={p.paramDefaults} />
       )}
       {p.activePanel === "integrations" && (
-        <ChatIntegrationsPicker enabledIntegrations={p.enabledIntegrations} onToggle={p.toggleIntegration} onClose={p.closePanel} connectedProviders={p.connectedProviders} />
+        <ChatIntegrationsPicker enabledIntegrations={p.enabledIntegrations} onToggle={p.toggleIntegration} onClose={p.closePanel} connectedProviders={p.connectedProviders} googleIntegrationsBlocked={p.googleIntegrationsBlocked} />
       )}
       {p.activePanel === "skills" && (
-        <ChatSkillsPicker enabledSkillIds={p.enabledSkillIds} enabledIntegrations={p.enabledIntegrations} onToggle={p.toggleSkill} onClose={p.closePanel} />
+        <ChatSkillsPicker skillOverrides={p.skillOverrides} onCycleSkill={p.cycleSkill} onClose={p.closePanel} />
       )}
       {p.activePanel === "knowledgeBase" && (
         <ChatKBPicker selectedFileIds={p.selectedKBFileIds} onToggle={p.toggleKBFile} onClose={p.closePanel} />
       )}
       {p.activePanel === "participants" && p.chatId && (
-        <ChatParticipantPicker chatId={p.chatId} participants={p.convexParticipants} onAdd={p.addParticipant} onRemove={p.removeParticipant} onSetParticipants={p.setParticipants} onClose={p.closePanel} />
+        <ChatParticipantPicker chatId={p.chatId} participants={p.convexParticipants} onAdd={p.addParticipant} onRemove={p.removeParticipant} onSetParticipants={p.setParticipants} onClose={p.closePanel} enabledIntegrations={p.enabledIntegrations} />
       )}
       {p.activePanel === "subagents" && (
         <ChatSubagentsDrawer selectedOverride={p.subagentOverride} isEffectivelyEnabled={p.effectiveSubagentsEnabled} isPro={p.isPro} onSelect={p.handleSubagentOverrideChange} onClose={p.closePanel} />

@@ -265,7 +265,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const { messages, chat, isLoading, sendMessage, cancelGeneration, updateChat, isGenerating } = useChat(chatId);
   const { participants: convexParticipants, addParticipant, removeParticipant, setParticipants: setParticipantsMut } = useParticipants(chatId);
   const { prefs, modelSettings, proStatus, personas, modelSummaries } = useSharedData();
-  const { googleConnection, microsoftConnection, notionConnection, appleCalendarConnection } = useConnectedAccounts();
+  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const rawPositions = useQuery(api.nodePositions.queries.listByChat, { chatId });
   const upsertPosition = useMutation(api.nodePositions.mutations.upsert);
   const upsertPreferences = useMutation(api.preferences.mutations.upsertPreferences);
@@ -380,7 +380,9 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
     microsoft: !!microsoftConnection,
     apple: !!appleCalendarConnection,
     notion: !!notionConnection,
-  }), [googleConnection, microsoftConnection, appleCalendarConnection, notionConnection]);
+    cloze: clozeConnection?.status === "active",
+    slack: !!slackConnection,
+  }), [googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection]);
   const hasConnectedIntegrations = Object.values(connectedProviders).some(Boolean);
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
     chat,
@@ -715,6 +717,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         connectedProviders={connectedProviders}
         enabledSkillIds={overrides.enabledSkillIds}
         toggleSkill={overrides.toggleSkill}
+        skillOverrides={overrides.skillOverrides}
+        cycleSkill={overrides.cycleSkill}
         selectedKBFileIds={overrides.selectedKBFileIds}
         toggleKBFile={overrides.toggleKBFile}
         chatId={chatId}

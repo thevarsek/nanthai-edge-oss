@@ -156,6 +156,11 @@ const KNOWN_TOOL_IDS = new Set([
   "notion_search", "notion_read_page", "notion_create_page",
   "notion_update_page", "notion_delete_page",
   "notion_update_database_entry", "notion_query_database",
+  // Slack
+  "slack_search_messages", "slack_search_users", "slack_search_channels",
+  "slack_send_message", "slack_read_channel", "slack_read_thread",
+  "slack_create_canvas", "slack_update_canvas", "slack_read_canvas",
+  "slack_read_user_profile",
   // Skills (self-referential)
   "load_skill", "list_skills", "create_skill", "update_skill",
   "delete_skill", "enable_skill_for_chat", "disable_skill_for_chat",
@@ -168,6 +173,8 @@ const KNOWN_INTEGRATION_IDS = new Set([
   "outlook", "onedrive", "ms_calendar",
   "apple_calendar",
   "notion",
+  "cloze",
+  "slack",
 ]);
 
 const KNOWN_CAPABILITY_IDS = new Set([

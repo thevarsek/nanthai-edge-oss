@@ -29,7 +29,7 @@ Use this skill for tasks that require Google Calendar.
   compilationStatus: "compiled",
   scope: "system",
   origin: "nanthaiBuiltin",
-  visibility: "visible",
+  visibility: "integration_managed",
   lockState: "locked",
   status: "archived",
   runtimeMode: "toolAugmented",

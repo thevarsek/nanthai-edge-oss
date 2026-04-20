@@ -14,15 +14,16 @@ import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import {
   EmojiPicker,
-  SkillRow,
+  SkillOverrideRow,
   IntegrationRow,
 } from "./PersonaEditorHelpers";
 import {
+  cycleSkillOverride,
   defaultForm,
-  integrationSetFromArray,
   integrationSetToArray,
   type FormState,
   type IntegrationKey,
+  type SkillOverrideState,
 } from "./PersonaEditorForm";
 
 export function PersonaEditorPage() {
@@ -32,7 +33,7 @@ export function PersonaEditorPage() {
   const isNew = !personaId || personaId === "new";
 
   const skills = useVisibleSkills();
-  const { googleConnection, microsoftConnection, notionConnection, appleCalendarConnection } = useConnectedAccounts();
+  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const existingPersona = useQuery(
     api.personas.queries.get,
     isNew ? "skip" : { personaId: personaId as Id<"personas"> },
@@ -40,7 +41,8 @@ export function PersonaEditorPage() {
 
   const createPersona = useMutation(api.personas.mutations.create);
   const updatePersona = useMutation(api.personas.mutations.update);
-  const setPersonaSkills = useMutation(api.skills.mutations.setPersonaSkillsPublic);
+  const setPersonaSkillOverrides = useMutation(api.skills.mutations.setPersonaSkillOverrides);
+  const setPersonaIntegrationOverrides = useMutation(api.skills.mutations.setPersonaIntegrationOverrides);
   const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
 
   const [form, setForm] = useState<FormState>(defaultForm);
@@ -71,8 +73,25 @@ export function PersonaEditorPage() {
     if (didLoad || isNew) return;
     if (existingPersona === undefined) return;
     if (existingPersona === null) { navigate("/app/personas"); return; }
-    const integrations = integrationSetFromArray(
-      (existingPersona as { enabledIntegrations?: string[] }).enabledIntegrations,
+    const skillOverrides = new Map<string, SkillOverrideState>(
+      ((existingPersona as { skillOverrides?: Array<{ skillId: Id<"skills">; state: SkillOverrideState }> }).skillOverrides
+        ?? [])
+        .map((entry) => [entry.skillId, entry.state]),
+    );
+    const integrationOverrides = new Map<string, boolean>(
+      ((existingPersona as { integrationOverrides?: Array<{ integrationId: string; enabled: boolean }> }).integrationOverrides
+        ?? [])
+        .map((entry) => [entry.integrationId, entry.enabled]),
+    );
+    const selectedSkillIds = new Set(
+      Array.from(skillOverrides.entries())
+        .filter(([, state]) => state === "available" || state === "always")
+        .map(([skillId]) => skillId as Id<"skills">),
+    );
+    const enabledIntegrations = new Set(
+      Array.from(integrationOverrides.entries())
+        .filter(([, enabled]) => enabled)
+        .map(([integrationId]) => integrationId as IntegrationKey),
     );
     setForm({
       displayName: existingPersona.displayName,
@@ -90,10 +109,10 @@ export function PersonaEditorPage() {
       avatarEmoji: existingPersona.avatarEmoji ?? "🤖",
       avatarColor: existingPersona.avatarColor ?? "#6366f1",
       isDefault: existingPersona.isDefault ?? false,
-      enabledIntegrations: integrations,
-      selectedSkillIds: new Set(
-        ((existingPersona as { discoverableSkillIds?: Id<"skills">[] }).discoverableSkillIds ?? []),
-      ),
+      enabledIntegrations,
+      selectedSkillIds,
+      skillOverrides,
+      integrationOverrides,
     });
     if (existingPersona.avatarImageUrl) setAvatarPreview(existingPersona.avatarImageUrl);
     setDidLoad(true);
@@ -111,8 +130,10 @@ export function PersonaEditorPage() {
     if (alreadyEnabled) {
       setForm((prev) => {
         const next = new Set(prev.enabledIntegrations);
+        const nextOverrides = new Map(prev.integrationOverrides);
         next.delete(key);
-        return { ...prev, enabledIntegrations: next };
+        nextOverrides.set(key, false);
+        return { ...prev, enabledIntegrations: next, integrationOverrides: nextOverrides };
       });
       return;
     }
@@ -135,16 +156,31 @@ export function PersonaEditorPage() {
 
     setForm((prev) => {
       const next = new Set(prev.enabledIntegrations);
+      const nextOverrides = new Map(prev.integrationOverrides);
       next.add(key);
-      return { ...prev, enabledIntegrations: next };
+      nextOverrides.set(key, true);
+      return { ...prev, enabledIntegrations: next, integrationOverrides: nextOverrides };
     });
   }, [form.enabledIntegrations, googleConnection, t]);
 
-  const toggleSkill = useCallback((skillId: Id<"skills">) => {
+  const cycleSkill = useCallback((skillId: Id<"skills">) => {
     setForm((prev) => {
       const next = new Set(prev.selectedSkillIds);
-      if (next.has(skillId)) next.delete(skillId); else next.add(skillId);
-      return { ...prev, selectedSkillIds: next };
+      const nextOverrides = new Map(prev.skillOverrides);
+      const nextState = cycleSkillOverride(nextOverrides.get(skillId));
+      if (nextState === undefined) {
+        nextOverrides.delete(skillId);
+      } else {
+        nextOverrides.set(skillId, nextState);
+      }
+
+      if (nextState === "available" || nextState === "always") {
+        next.add(skillId);
+      } else {
+        next.delete(skillId);
+      }
+
+      return { ...prev, selectedSkillIds: next, skillOverrides: nextOverrides };
     });
   }, []);
 
@@ -189,7 +225,6 @@ export function PersonaEditorPage() {
         avatarEmoji: form.avatarEmoji || undefined,
         avatarColor: form.avatarColor || undefined,
         isDefault: form.isDefault,
-        enabledIntegrations: integrationSetToArray(form.enabledIntegrations),
         ...(avatarImageStorageId !== undefined ? { avatarImageStorageId } : {}),
       };
 
@@ -201,9 +236,19 @@ export function PersonaEditorPage() {
         await updatePersona({ personaId: savedPersonaId, ...payload });
       }
 
-      await setPersonaSkills({
+      await setPersonaSkillOverrides({
         personaId: savedPersonaId,
-        discoverableSkillIds: Array.from(form.selectedSkillIds),
+        skillOverrides: Array.from(form.skillOverrides.entries()).map(([skillId, state]) => ({
+          skillId: skillId as Id<"skills">,
+          state,
+        })),
+      });
+      await setPersonaIntegrationOverrides({
+        personaId: savedPersonaId,
+        integrationOverrides: Array.from(form.integrationOverrides.entries()).map(([integrationId, enabled]) => ({
+          integrationId,
+          enabled,
+        })),
       });
       navigate("/app/personas");
     } catch (err) {
@@ -211,7 +256,7 @@ export function PersonaEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [form, avatarFile, isNew, personaId, createPersona, updatePersona, setPersonaSkills, createUploadUrl, navigate, t, toolCapabilityError]);
+  }, [form, avatarFile, isNew, personaId, createPersona, updatePersona, setPersonaSkillOverrides, setPersonaIntegrationOverrides, createUploadUrl, navigate, t, toolCapabilityError]);
 
   // ── Loading state ──────────────────────────────────────────────────────
   if (!isNew && existingPersona === undefined) {
@@ -513,7 +558,7 @@ export function PersonaEditorPage() {
         >
           <IntegrationRow slug="outlook" label={t("integration_outlook")} checked={form.enabledIntegrations.has("outlook")} onChange={() => toggleIntegration("outlook")} />
           <IntegrationRow slug="onedrive" label={t("integration_onedrive")} checked={form.enabledIntegrations.has("onedrive")} onChange={() => toggleIntegration("onedrive")} />
-          <IntegrationRow slug="ms-calendar" label={t("integration_ms_calendar")} checked={form.enabledIntegrations.has("msCalendar")} onChange={() => toggleIntegration("msCalendar")} />
+          <IntegrationRow slug="ms-calendar" label={t("integration_ms_calendar")} checked={form.enabledIntegrations.has("ms_calendar")} onChange={() => toggleIntegration("ms_calendar")} />
         </SettingsSection>
         )}
 
@@ -523,7 +568,7 @@ export function PersonaEditorPage() {
           header={t("apple_integration_section")}
           footer={t("apple_integration_footer")}
         >
-          <IntegrationRow slug="apple-calendar" label={t("integration_apple_calendar")} checked={form.enabledIntegrations.has("appleCalendar")} onChange={() => toggleIntegration("appleCalendar")} />
+          <IntegrationRow slug="apple-calendar" label={t("integration_apple_calendar")} checked={form.enabledIntegrations.has("apple_calendar")} onChange={() => toggleIntegration("apple_calendar")} />
         </SettingsSection>
         )}
 
@@ -537,20 +582,39 @@ export function PersonaEditorPage() {
         </SettingsSection>
         )}
 
+        {/* 6e. Cloze Integration */}
+        {clozeConnection?.status === "active" && (
+          <SettingsSection
+            header={t("cloze_integration_section")}
+            footer={t("cloze_integration_footer")}
+          >
+            <IntegrationRow slug="cloze" label={t("integration_cloze")} checked={form.enabledIntegrations.has("cloze")} onChange={() => toggleIntegration("cloze")} />
+          </SettingsSection>
+        )}
+
+        {slackConnection && (
+          <SettingsSection
+            header={t("slack_integration_section")}
+            footer={t("slack_integration_footer")}
+          >
+            <IntegrationRow slug="slack" label={t("integration_slack")} checked={form.enabledIntegrations.has("slack")} onChange={() => toggleIntegration("slack")} />
+          </SettingsSection>
+        )}
+
         {/* 7a. Built-in Skills */}
         {systemSkills.length > 0 && (
           <SettingsSection
             header={t("built_in_skills_section")}
-            footer={t("built_in_skills_footer")}
+            footer={`${t("persona_skills_inherit_help")} ${t("skill_override_cycle_hint")}`}
           >
             {systemSkills.map((skill) => (
-              <SkillRow
+              <SkillOverrideRow
                 key={skill._id}
                 skill={skill}
-                selected={form.selectedSkillIds.has(skill._id)}
-                onToggle={() => toggleSkill(skill._id)}
+                state={form.skillOverrides.get(skill._id)}
+                onCycle={() => cycleSkill(skill._id)}
                 disabled={
-                  !form.selectedSkillIds.has(skill._id)
+                  !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
                   && (skill.requiredIntegrationIds ?? []).length > 0
                   && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
                 }
@@ -561,15 +625,18 @@ export function PersonaEditorPage() {
 
         {/* 7b. User Skills */}
         {userSkills.length > 0 && (
-          <SettingsSection header={t("your_skills_section_label")}>
+          <SettingsSection
+            header={t("your_skills_section_label")}
+            footer={`${t("persona_skills_inherit_help")} ${t("skill_override_cycle_hint")}`}
+          >
             {userSkills.map((skill) => (
-              <SkillRow
+              <SkillOverrideRow
                 key={skill._id}
                 skill={skill}
-                selected={form.selectedSkillIds.has(skill._id)}
-                onToggle={() => toggleSkill(skill._id)}
+                state={form.skillOverrides.get(skill._id)}
+                onCycle={() => cycleSkill(skill._id)}
                 disabled={
-                  !form.selectedSkillIds.has(skill._id)
+                  !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
                   && (skill.requiredIntegrationIds ?? []).length > 0
                   && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
                 }

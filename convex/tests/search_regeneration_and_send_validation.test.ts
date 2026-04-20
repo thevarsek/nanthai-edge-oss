@@ -258,8 +258,9 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.equal(chatPatch.patch.activeBranchLeafId, newAssistantMessageId);
   assert.equal(chatPatch.patch.messageCount, 6);
 
-  assert.equal(scheduled.length, 1);
-  assert.ok(scheduled[0].fnPath);
-  assert.equal(scheduled[0].payload.sessionId, newSessionId);
-  assert.equal(scheduled[0].payload.sourceSessionId, sourceSessionId);
+  const searchRun = scheduled.find((entry) => entry.payload?.sessionId === newSessionId);
+  assert.ok(searchRun);
+  assert.ok(searchRun.fnPath);
+  assert.equal(searchRun.payload.sessionId, newSessionId);
+  assert.equal(searchRun.payload.sourceSessionId, sourceSessionId);
 });

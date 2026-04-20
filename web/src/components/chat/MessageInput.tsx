@@ -45,6 +45,8 @@ interface Props {
   isVideoMode?: boolean;
   /** Whether the active video model supports frame images (image-to-video). */
   supportsFrameImages?: boolean;
+  /** Called when text changes — used for slash command detection. */
+  onTextChange?: (text: string) => void;
 }
 
 export function MessageInput({
@@ -55,6 +57,7 @@ export function MessageInput({
   mentionSuggestions = [], isAutonomousActive = false,
   onIntervene, onSendRecording, allParticipantsSupportTools = true,
   isVideoMode = false, supportsFrameImages = true,
+  onTextChange: onTextChangeProp,
 }: Props) {
   const [text, setText] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -91,9 +94,10 @@ export function MessageInput({
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       setText(e.target.value);
       mention.onTextChange(e.target.value, e.target.selectionStart ?? e.target.value.length);
+      onTextChangeProp?.(e.target.value);
       resizeTextarea();
     },
-    [resizeTextarea, mention],
+    [resizeTextarea, mention, onTextChangeProp],
   );
 
   const handleSend = useCallback(async () => {

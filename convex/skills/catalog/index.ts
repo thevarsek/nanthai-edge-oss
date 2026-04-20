@@ -17,12 +17,14 @@ import { PERSISTENT_RUNTIME_SKILL } from "./persistent_runtime";
 import { PPTX_SKILL } from "./pptx";
 import { XLSX_SKILL } from "./xlsx";
 import { APPLE_CALENDAR_SKILL } from "./apple_calendar";
+import { CLOZE_SKILL } from "./cloze";
 import { CODE_WORKSPACE_SKILL } from "./code_workspace";
 import { GMAIL_SKILL } from "./gmail";
 import { GOOGLE_CALENDAR_SKILL } from "./google_calendar";
 import { GOOGLE_DRIVE_SKILL } from "./google_drive";
 import { MICROSOFT_365_SKILL } from "./microsoft_365";
 import { NOTION_WORKSPACE_SKILL } from "./notion_workspace";
+import { SLACK_SKILL } from "./slack";
 
 // --- GTM skills ---
 import { AI_PRICING_SKILL } from "./gtm_ai_pricing";
@@ -105,6 +107,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   BRAINSTORMING_SKILL,
   CALENDAR_SCHEDULER_SKILL,
   CAMPAIGN_PLANNING_SKILL,
+  CLOZE_SKILL,
   CODE_WORKSPACE_SKILL,
   COLD_OUTREACH_SKILL,
   COMPETITIVE_ANALYSIS_SKILL,
@@ -149,6 +152,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   RETROSPECTIVE_SKILL,
   SCHEDULED_JOBS_SKILL,
   SEO_SKILL,
+  SLACK_SKILL,
   SOLO_FOUNDER_GTM_SKILL,
   SPRINT_PLANNING_SKILL,
   SQL_DATA_QUERY_SKILL,

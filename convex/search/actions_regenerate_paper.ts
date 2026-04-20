@@ -117,7 +117,7 @@ export const regeneratePaperAction = internalAction({
 
       // Hand off to the full generation pipeline so the model gets skills,
       // progressive tool loading, memory, compaction, subagents, etc.
-      await ctx.scheduler.runAfter(0, internal.chat.actions.runGeneration, {
+      await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
         chatId: args.chatId,
         userMessageId,
         assistantMessageIds: [args.assistantMessageId],

@@ -3,6 +3,7 @@ import {
   FileText,
   Calendar,
   BookOpen,
+  MessageSquare,
   Check,
 } from "lucide-react";
 import {
@@ -87,13 +88,20 @@ export function IntegrationsIllustration() {
           connected={false}
           color="var(--edge-coral)"
         />
+        <MockProviderCard
+          icon={MessageSquare}
+          name="Slack"
+          description="Channels, messages, threads"
+          connected={false}
+          color="var(--edge-amber)"
+        />
       </div>
 
       {/* Capability summary */}
       <div className="mt-4 rounded-xl border border-[rgba(var(--edge-fg),0.06)] bg-[rgba(var(--edge-fg),0.02)] p-3">
         <span className="text-[9px] font-semibold efg-30 uppercase tracking-wider">Available Actions</span>
         <div className="mt-2 space-y-1.5">
-          {["Read & send emails", "Browse cloud files", "Manage calendar events", "Search Notion pages"].map((action, i) => (
+          {["Read & send emails", "Browse cloud files", "Manage calendar events", "Search Notion pages", "Send Slack messages"].map((action, i) => (
             <div key={i} className="flex items-center gap-2">
               <IconSlot icon={Check} size={10} className="text-[var(--edge-cyan)]" />
               <span className="text-[10px] efg-40">{action}</span>

@@ -7,6 +7,7 @@
 // =============================================================================
 
 import { Id, Doc } from "../_generated/dataModel";
+import type { SkillResolutionResult } from "./resolver";
 
 /** Lightweight skill metadata for the catalog. */
 export interface SkillCatalogEntry {
@@ -112,6 +113,68 @@ export function buildSkillCatalogFromDocs(
 }
 
 /**
+ * Build the skill catalog from resolver output with capability filtering.
+ *
+ * M30: Takes the output of `resolveEffectiveSkills()` and filters `available`
+ * skills by runtime capability (profiles, integrations, capabilities).
+ * Also returns `always` skills that pass capability filtering.
+ */
+export function buildSkillCatalogFromResolved(
+  resolved: SkillResolutionResult,
+  availability: SkillCatalogAvailability = {},
+): { catalog: SkillCatalogEntry[]; alwaysSkills: Doc<"skills">[] } {
+  const capabilitySet = new Set(availability.availableCapabilities ?? []);
+  const integrationSet = new Set(availability.availableIntegrationIds ?? []);
+  const profileSet = new Set(availability.availableProfiles ?? []);
+
+  const passesCapabilityFilter = (skill: Doc<"skills">): boolean => {
+    const requiredCapabilities = skill.requiredCapabilities ?? [];
+    if (requiredCapabilities.some((c) => !capabilitySet.has(c))) return false;
+    const requiredProfiles = skill.requiredToolProfiles ?? [];
+    if (
+      requiredProfiles.length > 0 &&
+      availability.availableProfiles !== undefined &&
+      !requiredProfiles.some((p) => profileSet.has(p))
+    ) return false;
+    const requiredIntegrations = skill.requiredIntegrationIds ?? [];
+    if (
+      requiredIntegrations.length > 0 &&
+      availability.availableIntegrationIds !== undefined &&
+      !requiredIntegrations.some((i) => integrationSet.has(i))
+    ) return false;
+    return true;
+  };
+
+  const toEntry = (skill: Doc<"skills">): SkillCatalogEntry => ({
+    _id: skill._id,
+    slug: skill.slug,
+    name: skill.name,
+    summary: skill.summary,
+    runtimeMode: skill.runtimeMode,
+    requiredToolIds: skill.requiredToolIds,
+    requiredToolProfiles: skill.requiredToolProfiles ?? [],
+    requiredIntegrationIds: skill.requiredIntegrationIds,
+    requiredCapabilities: skill.requiredCapabilities ?? [],
+  });
+
+  const catalog: SkillCatalogEntry[] = [];
+  for (const skill of resolved.availableSkills) {
+    if (passesCapabilityFilter(skill)) {
+      catalog.push(toEntry(skill));
+    }
+  }
+
+  const alwaysSkills: Doc<"skills">[] = [];
+  for (const skill of resolved.alwaysSkills) {
+    if (passesCapabilityFilter(skill)) {
+      alwaysSkills.push(skill);
+    }
+  }
+
+  return { catalog, alwaysSkills };
+}
+
+/**
  * Format the skill catalog as XML for system prompt injection.
  *
  * Produces the `<available_skills>` block that the model sees in every
@@ -189,6 +252,21 @@ export function buildRuntimeGuard(
  */
 export const SKILL_DISCOVERY_INSTRUCTION =
   "When a task matches a skill's description, call the load_skill tool to load its full instructions before proceeding.";
+
+/**
+ * Format "always-on" skill instructions for system prompt injection.
+ *
+ * M30: Skills with state `always` have their full compiled instructions
+ * injected every turn, wrapped in XML tags for clarity.
+ */
+export function formatAlwaysSkillInstructions(skills: Doc<"skills">[]): string {
+  if (skills.length === 0) return "";
+  const blocks = skills.map((skill) => {
+    const instructions = skill.instructionsCompiled ?? skill.instructionsRaw;
+    return `<always_skill name="${escapeXml(skill.slug)}">\n${instructions}\n</always_skill>`;
+  });
+  return blocks.join("\n\n");
+}
 
 // ---------------------------------------------------------------------------
 // Internal helpers

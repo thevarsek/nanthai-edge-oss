@@ -11,6 +11,7 @@ import {
   patchSameRoundProgressiveToolErrors,
   retrySameRoundProgressiveToolCalls,
 } from "../tools/progressive_registry";
+import { patchDeferredProgressiveToolErrors } from "../tools/progressive_registry_shared";
 
 test("buildProgressiveToolRegistry: base Pro registry omits docs and runtime tools", () => {
   const registry = buildProgressiveToolRegistry({
@@ -336,4 +337,61 @@ test("retrySameRoundProgressiveToolCalls: executes newly unlocked tools after lo
     (results[1]?.result.data as { filename?: string }).filename,
     "Iran report.docx",
   );
+});
+
+test("patchDeferredProgressiveToolErrors rewrites unknown-tool errors when load_skill results exist", () => {
+  const toolCalls = [
+    { function: { name: "load_skill" } },
+    { function: { name: "generate_docx" } },
+    { function: { name: "search_chats" } },
+  ];
+
+  const results = [
+    {
+      toolCallId: "call_0",
+      result: {
+        success: true,
+        data: { requiredToolProfiles: ["docs"] },
+      },
+    },
+    {
+      toolCallId: "call_1",
+      result: {
+        success: false,
+        data: null,
+        error: "Unknown tool: generate_docx",
+      },
+    },
+    {
+      toolCallId: "call_2",
+      result: {
+        success: true,
+        data: { results: [] },
+      },
+    },
+  ] as any[];
+
+  patchDeferredProgressiveToolErrors(toolCalls, results);
+
+  // The unknown tool error should be rewritten with retry guidance.
+  assert.equal(results[1].result.success, false);
+  assert.equal(results[1].result.data.retryNextTurn, true);
+  assert.equal(results[1].result.data.tool, "generate_docx");
+  assert.match(results[1].result.error, /newly loaded skill/);
+
+  // The successful result should be untouched.
+  assert.equal(results[2].result.success, true);
+});
+
+test("patchDeferredProgressiveToolErrors does nothing when no load_skill results", () => {
+  const toolCalls = [{ function: { name: "generate_docx" } }];
+  const results = [
+    { toolCallId: "call_0", result: { success: false, data: null, error: "Unknown tool: generate_docx" } },
+  ] as any[];
+
+  patchDeferredProgressiveToolErrors(toolCalls, results);
+
+  // Should remain unchanged — no load_skill profiles to trigger patch.
+  assert.equal(results[0].result.error, "Unknown tool: generate_docx");
+  assert.equal(results[0].result.data, null);
 });

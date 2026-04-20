@@ -214,16 +214,21 @@ export async function createAssistantMessagesAndJobs(
     jobCreatedAt: number;
     enabledIntegrations?: string[];
     subagentsEnabled?: boolean;
+    // M30 — Turn-level overrides for auditing
+    turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+    turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   },
 ): Promise<{
   assistantMessageIds: Id<"messages">[];
   generationJobIds: Id<"generationJobs">[];
+  streamingMessageIds: Id<"streamingMessages">[];
 }> {
   const isMultiParticipant = args.participants.length > 1;
   const multiModelGroupId = isMultiParticipant ? crypto.randomUUID() : undefined;
 
   const assistantMessageIds: Id<"messages">[] = [];
   const generationJobIds: Id<"generationJobs">[] = [];
+  const streamingMessageIds: Id<"streamingMessages">[] = [];
 
   for (const participant of args.participants) {
     const assistantMessageId = await ctx.db.insert("messages", {
@@ -242,13 +247,28 @@ export async function createAssistantMessagesAndJobs(
       status: "pending",
       enabledIntegrations: args.enabledIntegrations,
       subagentsEnabled: args.subagentsEnabled,
+      turnSkillOverrides: args.turnSkillOverrides,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
       createdAt: args.assistantCreatedAt,
     });
     assistantMessageIds.push(assistantMessageId);
 
+    const streamingMessageId = await ctx.db.insert("streamingMessages", {
+      messageId: assistantMessageId,
+      chatId: args.chatId,
+      content: "",
+      reasoning: undefined,
+      status: "pending",
+      toolCalls: undefined,
+      createdAt: args.jobCreatedAt,
+      updatedAt: args.jobCreatedAt,
+    });
+    streamingMessageIds.push(streamingMessageId);
+
     const jobId = await ctx.db.insert("generationJobs", {
       chatId: args.chatId,
       messageId: assistantMessageId,
+      streamingMessageId,
       userId: args.userId,
       modelId: participant.modelId,
       status: "queued",
@@ -257,13 +277,14 @@ export async function createAssistantMessagesAndJobs(
     generationJobIds.push(jobId);
   }
 
-  return { assistantMessageIds, generationJobIds };
+  return { assistantMessageIds, generationJobIds, streamingMessageIds };
 }
 
 export function mapParticipantsForGeneration(
   participants: SendParticipantConfig[],
   assistantMessageIds: Id<"messages">[],
   generationJobIds: Id<"generationJobs">[],
+  streamingMessageIds?: Id<"streamingMessages">[],
 ) {
   return participants.map((participant, index) => ({
     ...participant,
@@ -274,6 +295,7 @@ export function mapParticipantsForGeneration(
     reasoningEffort: participant.reasoningEffort ?? undefined,
     messageId: assistantMessageIds[index],
     jobId: generationJobIds[index],
+    streamingMessageId: streamingMessageIds?.[index],
   }));
 }
 

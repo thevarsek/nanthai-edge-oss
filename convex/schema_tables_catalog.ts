@@ -13,6 +13,8 @@ import {
   skillStatus,
   skillToolProfile,
   skillVisibility,
+  skillOverrideEntry,
+  integrationOverrideEntry,
 } from "./schema_validators";
 
 export const catalogSchemaTables = {
@@ -38,10 +40,10 @@ export const catalogSchemaTables = {
     avatarSFSymbol: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
     isDefault: v.optional(v.boolean()),
-    // M10 Phase B — Persona-level integration toggles (e.g. ["gmail", "drive", "calendar"])
-    enabledIntegrations: v.optional(v.array(v.string())),
-    // M18: Skills discoverable when using this persona
-    discoverableSkillIds: v.optional(v.array(v.id("skills"))),
+    // M30: Layered skill overrides (replaces discoverableSkillIds)
+    skillOverrides: v.optional(v.array(skillOverrideEntry)),
+    // M30: Layered integration overrides (replaces enabledIntegrations)
+    integrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -98,6 +100,68 @@ export const catalogSchemaTables = {
       filterFields: ["memoryId", "userId"],
     }),
 
+  messageQueryEmbeddings: defineTable({
+    messageId: v.id("messages"),
+    userId: v.string(),
+    chatId: v.optional(v.id("chats")),
+    provider: v.union(v.literal("openrouter")),
+    modelId: v.string(),
+    status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    embedding: v.optional(v.array(v.float64())),
+    textHash: v.string(),
+    usage: v.optional(v.object({
+      promptTokens: v.number(),
+      totalTokens: v.number(),
+    })),
+    generationId: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    usageRecordedAt: v.optional(v.number()),
+    usageRecordedMessageId: v.optional(v.id("messages")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_message", ["messageId"]),
+
+  // Phase 3 TTFT cache: full memory-context chain (embedding + vector search +
+  // hydrate) prewarmed when the user message is inserted. Keyed by messageId.
+  // `hydratedHits` stores the raw output of `hydrateRelevantMemoryHits`
+  // (memory rows + score) so the generation action can skip embedding, vector
+  // search, AND hydrate entirely on the critical path. `usage`/`generationId`
+  // mirror the embedding row so billing is attributed to the assistant
+  // message via `usageRecordedAt` / `usageRecordedMessageId` exactly once.
+  // Staleness model: cache is message-scoped, so edits that change the
+  // message text invalidate via `textHash` (lease re-claim). Mid-turn memory
+  // mutations are NOT tracked — accepted tradeoff for smaller rows and no
+  // cross-table invalidation. Next turn is fresh regardless.
+  messageMemoryContexts: defineTable({
+    messageId: v.id("messages"),
+    userId: v.string(),
+    chatId: v.optional(v.id("chats")),
+    status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
+    textHash: v.string(),
+    memoryQueryText: v.optional(v.string()),
+    // Raw hydrated memory rows + score (mirrors hydrateRelevantMemoryHits
+    // return shape). `v.any()` on elements because the memories table schema
+    // is wide and evolves independently; the consumer re-validates via
+    // `normalizeMemoryRecord`.
+    hydratedHits: v.optional(v.array(v.any())),
+    // Embedding usage passed through from the underlying embedding cache so
+    // billing can be attributed when the assistant message consumes the row.
+    usage: v.optional(v.object({
+      promptTokens: v.number(),
+      totalTokens: v.number(),
+    })),
+    generationId: v.optional(v.string()),
+    errorCode: v.optional(v.string()),
+    leaseOwner: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    usageRecordedAt: v.optional(v.number()),
+    usageRecordedMessageId: v.optional(v.id("messages")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_message", ["messageId"]),
+
   cachedModels: defineTable({
     modelId: v.string(),
     name: v.string(),
@@ -137,6 +201,8 @@ export const catalogSchemaTables = {
       allowedPassthroughParameters: v.optional(v.array(v.string())),
       syncedAt: v.number(),
     })),
+    // ZDR (Zero Data Retention) — true if model has a ZDR endpoint on OpenRouter
+    hasZdrEndpoint: v.optional(v.boolean()),
     lastSyncedAt: v.number(),
 
     // ── Model Guidance: Artificial Analysis benchmarks ──────────────

@@ -16,7 +16,7 @@ interface IntegrationMeta {
   label: string;
   subtitle: string;
   logoSlug: string;
-  provider: "google" | "microsoft" | "apple" | "notion";
+  provider: "google" | "microsoft" | "apple" | "notion" | "cloze" | "slack";
 }
 
 function buildIntegrations(t: ReturnType<typeof useTranslation>["t"]): IntegrationMeta[] {
@@ -26,9 +26,11 @@ function buildIntegrations(t: ReturnType<typeof useTranslation>["t"]): Integrati
     { key: "calendar", label: "Google Calendar", subtitle: t("integration_google_calendar_subtitle"), logoSlug: "google-calendar", provider: "google" },
     { key: "outlook", label: "Outlook Mail", subtitle: t("integration_outlook_subtitle"), logoSlug: "outlook", provider: "microsoft" },
     { key: "onedrive", label: "OneDrive", subtitle: t("integration_onedrive_subtitle"), logoSlug: "onedrive", provider: "microsoft" },
-    { key: "msCalendar", label: "MS Calendar", subtitle: t("integration_ms_calendar_subtitle"), logoSlug: "ms-calendar", provider: "microsoft" },
-    { key: "appleCalendar", label: "Apple Calendar", subtitle: t("integration_apple_calendar_subtitle"), logoSlug: "apple-calendar", provider: "apple" },
+    { key: "ms_calendar", label: "MS Calendar", subtitle: t("integration_ms_calendar_subtitle"), logoSlug: "ms-calendar", provider: "microsoft" },
+    { key: "apple_calendar", label: "Apple Calendar", subtitle: t("integration_apple_calendar_subtitle"), logoSlug: "apple-calendar", provider: "apple" },
     { key: "notion", label: "Notion", subtitle: t("integration_notion_subtitle"), logoSlug: "notion", provider: "notion" },
+    { key: "cloze", label: "Cloze CRM", subtitle: t("integration_cloze_subtitle"), logoSlug: "cloze", provider: "cloze" },
+    { key: "slack", label: t("integration_slack"), subtitle: t("integration_slack_subtitle"), logoSlug: "slack", provider: "slack" },
   ];
 }
 
@@ -37,6 +39,8 @@ const PROVIDER_LABELS: Record<string, string> = {
   microsoft: "Microsoft 365",
   apple: "Apple",
   notion: "Notion",
+  cloze: "Cloze",
+  slack: "Slack",
 };
 
 // ─── Props ──────────────────────────────────────────────────────────────────
@@ -51,7 +55,11 @@ interface Props {
     microsoft: boolean;
     apple: boolean;
     notion: boolean;
+    cloze: boolean;
+    slack: boolean;
   };
+  /** When true, Google integration toggles are disabled because chat models are incompatible. */
+  googleIntegrationsBlocked?: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -61,6 +69,7 @@ export function ChatIntegrationsPicker({
   onToggle,
   onClose,
   connectedProviders,
+  googleIntegrationsBlocked,
 }: Props) {
   const { t } = useTranslation();
   const ALL_INTEGRATIONS = buildIntegrations(t);
@@ -79,7 +88,7 @@ export function ChatIntegrationsPicker({
     {} as Record<string, IntegrationMeta[]>,
   );
 
-  const providerOrder = ["google", "microsoft", "apple", "notion"];
+  const providerOrder = ["google", "microsoft", "apple", "notion", "cloze", "slack"];
 
   return (
     <div
@@ -129,26 +138,34 @@ export function ChatIntegrationsPicker({
                     </h3>
                   </div>
                   <div className="divide-y divide-border/30">
-                    {grouped[provider].map((integration) => (
-                      <div
-                        key={integration.key}
-                        className="flex items-center gap-3 px-5 py-3 hover:bg-surface-2 transition-colors cursor-pointer"
-                        onClick={() => onToggle(integration.key)}
-                      >
-                        <IntegrationLogo slug={integration.logoSlug} size={28} className="flex-shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm">{integration.label}</p>
-                          <p className="text-xs text-muted">{integration.subtitle}</p>
+                    {grouped[provider].map((integration) => {
+                      const isGoogleBlocked = googleIntegrationsBlocked === true && integration.provider === "google" && !enabledIntegrations.has(integration.key);
+                      return (
+                        <div key={integration.key}>
+                          <div
+                            className={`flex items-center gap-3 px-5 py-3 transition-colors ${isGoogleBlocked ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-2 cursor-pointer"}`}
+                            onClick={() => !isGoogleBlocked && onToggle(integration.key)}
+                          >
+                            <IntegrationLogo slug={integration.logoSlug} size={28} className="flex-shrink-0" />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm">{integration.label}</p>
+                              <p className="text-xs text-muted">{integration.subtitle}</p>
+                            </div>
+                            <div onClick={(event) => event.stopPropagation()}>
+                              <Toggle
+                                checked={enabledIntegrations.has(integration.key)}
+                                onChange={() => !isGoogleBlocked && onToggle(integration.key)}
+                                size="small"
+                                disabled={isGoogleBlocked}
+                              />
+                            </div>
+                          </div>
+                          {isGoogleBlocked && (
+                            <p className="px-5 pb-2 -mt-1 text-[10px] text-muted">{t("google_integration_blocked_by_model")}</p>
+                          )}
                         </div>
-                        <div onClick={(event) => event.stopPropagation()}>
-                          <Toggle
-                            checked={enabledIntegrations.has(integration.key)}
-                            onChange={() => onToggle(integration.key)}
-                            size="small"
-                          />
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))

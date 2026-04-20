@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "convex dev",
     "convex:test": "tsx --test convex/tests/*.test.ts",
-    "convex:test:coverage": "tsx --test --experimental-test-coverage convex/tests/*.test.ts && tsx scripts/convex_surface_audit.ts",
+    "convex:test:coverage": "c8 --include='convex/**/*.ts' --exclude='convex/_generated/**' --exclude='convex/tests/**' --reporter=text --reporter=lcov npx tsx --test convex/tests/*.test.ts",
     "convex:typecheck": "tsc --noEmit --project convex/tsconfig.json",
     "deploy": "convex deploy",
     "deploy:prod": "convex deploy --prod"
@@ -20,14 +20,15 @@
     "convex-helpers": "^0.1.113",
     "docx": "^9.6.0",
     "just-bash": "^2.14.0",
-    "pyodide": "^0.29.3",
     "pptxgenjs": "^4.0.1",
+    "pyodide": "^0.29.3",
     "tsdav": "^2.1.8",
     "web-push": "^3.6.7",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/web-push": "^3.6.4",
+    "c8": "^11.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }

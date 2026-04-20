@@ -135,6 +135,24 @@ export async function getStreamingMessageByMessageId(
   return mergeStreamingMessageRecords(records);
 }
 
+export async function getStreamingMessageById(
+  ctx: StreamingReader,
+  streamingMessageId: Id<"streamingMessages">,
+) {
+  return await ctx.db.get(streamingMessageId);
+}
+
+export async function patchStreamingMessageById(
+  ctx: MutationCtx,
+  streamingMessageId: Id<"streamingMessages">,
+  patch: Partial<Pick<StreamingMessageRecord, "content" | "reasoning" | "status" | "toolCalls">>,
+): Promise<void> {
+  await ctx.db.patch(streamingMessageId, {
+    ...patch,
+    updatedAt: Date.now(),
+  });
+}
+
 export async function upsertStreamingMessage(
   ctx: MutationCtx,
   message: MinimalMessage,
@@ -206,4 +224,14 @@ export async function deleteStreamingMessage(
   }
 
   await Promise.all(records.map((record) => ctx.db.delete(record._id)));
+}
+
+export async function deleteStreamingMessageById(
+  ctx: MutationCtx,
+  streamingMessageId: Id<"streamingMessages">,
+): Promise<void> {
+  const existing = await ctx.db.get(streamingMessageId);
+  if (existing) {
+    await ctx.db.delete(streamingMessageId);
+  }
 }

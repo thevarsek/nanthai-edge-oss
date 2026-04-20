@@ -30,7 +30,7 @@ Use this skill for Apple Calendar tasks.
   compilationStatus: "compiled",
   scope: "system",
   origin: "nanthaiBuiltin",
-  visibility: "visible",
+  visibility: "integration_managed",
   lockState: "locked",
   status: "archived",
   runtimeMode: "toolAugmented",

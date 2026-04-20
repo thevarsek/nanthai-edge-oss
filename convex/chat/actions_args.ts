@@ -1,4 +1,5 @@
 import { v, type PropertyValidators } from "convex/values";
+import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
 
 // M29: Video generation config validator — defined here (not mutations_args.ts)
 // to avoid a circular import. mutations_args.ts already imports from this file.
@@ -22,6 +23,7 @@ export const participantConfigValidator = v.object({
   reasoningEffort: v.optional(v.union(v.string(), v.null())),
   messageId: v.id("messages"),
   jobId: v.id("generationJobs"),
+  streamingMessageId: v.optional(v.id("streamingMessages")),
 });
 
 export const runGenerationArgs = {
@@ -41,6 +43,11 @@ export const runGenerationArgs = {
   searchSessionId: v.optional(v.id("searchSessions")),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
+  // M30 — Turn-level skill & integration overrides (slash chips)
+  turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+  // Phase 1 TTFT: scheduler hop #1 latency measurement (enqueue → handler entry)
+  enqueuedAt: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const runGenerationParticipantArgs = {
@@ -61,6 +68,14 @@ export const runGenerationParticipantArgs = {
   resumeExpected: v.optional(v.boolean()),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
+  // Pre-resolved overrides from coordinator (eliminates duplicate queries in participant)
+  chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  chatIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+  personaSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  skillDefaults: v.optional(v.array(skillOverrideEntry)),
+  integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
+  // Phase 1 TTFT: scheduler hop #2 latency measurement (coordinator dispatch → participant entry)
+  enqueuedAt: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const postProcessArgs = {

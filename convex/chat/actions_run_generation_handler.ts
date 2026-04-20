@@ -1,18 +1,12 @@
-"use node";
-
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { failPendingParticipants } from "./actions_run_generation_failures";
 import { RunGenerationArgs } from "./actions_run_generation_types";
-import {
-  checkAppleCalendarConnection,
-  checkMicrosoftConnection,
-  checkNotionConnection,
-  getGrantedGoogleIntegrations,
-} from "../tools/index";
 import { attachmentTriggeredReadToolNames } from "./helpers_attachment_utils";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import { resolveEffectiveIntegrations } from "../skills/resolver";
+import type { GenerationContext } from "./queries_generation_context";
 
 export type { RunGenerationArgs } from "./actions_run_generation_types";
 
@@ -20,12 +14,6 @@ const defaultRunGenerationHandlerDeps = {
   now: () => Date.now(),
   generation: {
     failPendingParticipants,
-  },
-  integrations: {
-    checkAppleCalendarConnection,
-    checkMicrosoftConnection,
-    checkNotionConnection,
-    getGrantedGoogleIntegrations,
   },
   tools: {
     attachmentTriggeredReadToolNames,
@@ -50,100 +38,86 @@ export async function runGenerationHandler(
     jobId: Id<"generationJobs">;
     scheduledFunctionId: Id<"_scheduled_functions">;
   }> = [];
+  // Phase 1 instrumentation: scheduler hop #1 latency (sendMessage/retry enqueue → handler entry)
+  const schedulerHop1Ms =
+    typeof args.enqueuedAt === "number" ? actionStartTime - args.enqueuedAt : null;
   console.info("[runGeneration] started", {
     chatId: args.chatId,
     userMessageId: args.userMessageId,
     userId: args.userId,
     participants: args.participants.map((p) => p.modelId),
+    jobIds: args.participants.map((p) => p.jobId),
     searchSessionId: args.searchSessionId ?? null,
+    schedulerHop1Ms,
   });
   try {
-    // Intersect user-requested integrations with actual OAuth connection status.
-    // M14: Check Pro status to gate Pro-only tools.
-    const requestedIntegrations = args.enabledIntegrations ?? [];
-    let effectiveIntegrations: string[] = [];
+    // Consolidated preflight: single query replaces ~13 individual round-trips.
+    const uniquePersonaIds = [...new Set(
+      args.participants
+        .map((participant) => participant.personaId)
+        .filter((personaId): personaId is NonNullable<typeof personaId> => personaId != null),
+    )].map(String);
 
-    // Check Pro status in parallel with OAuth connections
-    const accountCapabilities = await ctx.runQuery(
-      internal.capabilities.queries.getAccountCapabilitiesInternal,
-      { userId: args.userId },
+    const genCtx: GenerationContext = await ctx.runQuery(
+      internal.chat.queries_generation_context.getGenerationContext,
+      {
+        userId: args.userId,
+        chatId: args.chatId,
+        messageId: args.userMessageId,
+        personaIds: uniquePersonaIds,
+      },
     );
-    const isProUser = accountCapabilities.isPro;
-    const currentUserMessage = await ctx.runQuery(
-      internal.chat.queries.getMessageInternal,
-      { messageId: args.userMessageId },
-    );
+
+    const isProUser = genCtx.isPro;
     const directToolNames = deps.tools.attachmentTriggeredReadToolNames(
-      currentUserMessage?.attachments,
+      genCtx.currentUserMessage?.attachments as any,
     );
+    const connectedIntegrationIds = genCtx.connectedIntegrationIds;
+    const chatDoc = genCtx.chatDoc;
+    const userDefaults = genCtx.skillIntegrationDefaults;
 
-    if (requestedIntegrations.length > 0) {
-      const googleKeys = ["gmail", "drive", "calendar"];
-      const microsoftKeys = ["outlook", "onedrive", "ms_calendar"];
-      const appleKeys = ["apple_calendar"];
-      const notionKeys = ["notion"];
-
-      const wantsGoogle = requestedIntegrations.some((i) => googleKeys.includes(i));
-      const wantsMicrosoft = requestedIntegrations.some((i) => microsoftKeys.includes(i));
-      const wantsApple = requestedIntegrations.some((i) => appleKeys.includes(i));
-      const wantsNotion = requestedIntegrations.some((i) => notionKeys.includes(i));
-
-      // Check connections in parallel for speed
-      const [grantedGoogleIntegrations, hasMicrosoft, hasApple, hasNotion] = await Promise.all([
-        wantsGoogle
-          ? deps.integrations.getGrantedGoogleIntegrations(
-              ctx,
-              args.userId,
-            )
-          : Promise.resolve([]),
-        wantsMicrosoft
-          ? deps.integrations.checkMicrosoftConnection(
-              ctx,
-              args.userId,
-            )
-          : Promise.resolve(false),
-        wantsApple
-          ? deps.integrations.checkAppleCalendarConnection(
-              ctx,
-              args.userId,
-            )
-          : Promise.resolve(false),
-        wantsNotion
-          ? deps.integrations.checkNotionConnection(
-              ctx,
-              args.userId,
-            )
-          : Promise.resolve(false),
-      ]);
-
-      if (grantedGoogleIntegrations.length > 0) {
-        effectiveIntegrations.push(
-          ...requestedIntegrations.filter((i) => grantedGoogleIntegrations.includes(i)),
-        );
-      }
-      if (hasMicrosoft) {
-        effectiveIntegrations.push(
-          ...requestedIntegrations.filter((i) => microsoftKeys.includes(i)),
-        );
-      }
-      if (hasApple) {
-        effectiveIntegrations.push(
-          ...requestedIntegrations.filter((i) => appleKeys.includes(i)),
-        );
-      }
-      if (hasNotion) {
-        effectiveIntegrations.push(
-          ...requestedIntegrations.filter((i) => notionKeys.includes(i)),
-        );
-      }
-    }
+    // Turn-level integration overrides. New clients send the structured
+    // `turnIntegrationOverrides: [{integrationId, enabled}]` shape. Legacy
+    // clients (and existing tests) still send `enabledIntegrations: string[]`,
+    // meaning "enable exactly these for this turn". When only the legacy field
+    // is present, synthesize turn overrides from it (each ID → enabled:true).
+    // Legacy clients cannot express "disable" at the turn layer via this shape;
+    // any integration not listed falls through to chat > persona > settings >
+    // default (disabled) in resolveEffectiveIntegrations — which matches the
+    // original allowlist semantics those clients assumed.
+    // Structured overrides always win if both are supplied.
+    const explicitTurnIntegrationOverrides =
+      args.turnIntegrationOverrides ??
+      (args.enabledIntegrations
+        ? args.enabledIntegrations.map((integrationId: string) => ({
+            integrationId,
+            enabled: true,
+          }))
+        : undefined);
     const allowSubagents =
       args.subagentsEnabled === true && args.participants.length === 1;
 
     for (const participant of args.participants) {
+      const participantDispatchStartedAt = deps.now();
+      console.info("[runGeneration] participant dispatch started", {
+        chatId: args.chatId,
+        messageId: participant.messageId,
+        jobId: participant.jobId,
+        modelId: participant.modelId,
+      });
+      const personaDoc = participant.personaId
+        ? genCtx.personasById[String(participant.personaId)] ?? null
+        : null;
+      const resolvedIntegrations = resolveEffectiveIntegrations({
+        settingsDefaults: userDefaults?.integrationDefaults as any,
+        personaOverrides: personaDoc?.integrationOverrides as any,
+        chatOverrides: chatDoc?.integrationOverrides as any,
+        turnOverrides: explicitTurnIntegrationOverrides as any,
+        connectedIntegrationIds,
+      });
       const scheduledId = await ctx.scheduler.runAfter(
         0,
-        internal.chat.actions.runGenerationParticipant,
+        internal.chat.actions_runtime.runGenerationParticipant,
         {
           chatId: args.chatId,
           userMessageId: args.userMessageId,
@@ -153,13 +127,21 @@ export async function runGenerationHandler(
           userId: args.userId,
           expandMultiModelGroups: args.expandMultiModelGroups,
           webSearchEnabled: args.webSearchEnabled,
-          effectiveIntegrations,
+          effectiveIntegrations: resolvedIntegrations.effectiveIntegrations,
           directToolNames,
           isPro: isProUser,
           allowSubagents,
           searchSessionId: args.searchSessionId,
           resumeExpected: false,
           videoConfig: args.videoConfig,
+          // Pre-resolved overrides to eliminate duplicate queries in participant
+          chatSkillOverrides: chatDoc?.skillOverrides as any,
+          chatIntegrationOverrides: chatDoc?.integrationOverrides as any,
+          personaSkillOverrides: personaDoc?.skillOverrides as any,
+          skillDefaults: userDefaults?.skillDefaults as any,
+          integrationDefaults: userDefaults?.integrationDefaults as any,
+          // Phase 1 instrumentation: scheduler hop #2 latency measurement
+          enqueuedAt: deps.now(),
         },
       );
       scheduledParticipants.push({
@@ -171,6 +153,13 @@ export async function runGenerationHandler(
         jobId: participant.jobId,
         scheduledFunctionId: scheduledId,
         updateContinuation: false,
+      });
+      console.info("[runGeneration] participant dispatch scheduled", {
+        chatId: args.chatId,
+        messageId: participant.messageId,
+        jobId: participant.jobId,
+        modelId: participant.modelId,
+        durationMs: deps.now() - participantDispatchStartedAt,
       });
     }
 

@@ -1,15 +1,15 @@
 # Project Structure
 
-> Complete project directory tree for NanthAI Edge (post-M27 Free Code Execution — iOS/Android/Convex/Web).
+> Complete project directory tree for NanthAI Edge (post-M30 plus 2026-04 TTFT/memory-cache work — iOS/Android/Convex/Web).
 > SwiftData models removed. Convex backend at repo root. `messageChunks` table removed.
 
 ```
 nanthai-edge/                              # Repository root
 ├── convex/                                 # Convex backend (TypeScript)
-│   ├── schema.ts                           # Database schema (39 app tables, imports 4 table files)
+│   ├── schema.ts                           # Database schema (44 app tables, imports 4 table files)
 │   ├── schema_tables_core.ts               # Core table definitions (15 tables incl. generatedFiles/generatedCharts and search state)
-│   ├── schema_tables_catalog.ts            # Catalog table definitions (6 tables incl. skills)
-│   ├── schema_tables_user.ts               # User table definitions (12 tables incl. purchaseEntitlements, scheduledJobs, jobRuns, userSecrets, deviceTokens, favorites)
+│   ├── schema_tables_catalog.ts            # Catalog table definitions (9 tables incl. skills, messageQueryEmbeddings, messageMemoryContexts)
+│   ├── schema_tables_user.ts               # User table definitions (14 tables incl. purchaseEntitlements, scheduledJobs, jobRuns, userSecrets, deviceTokens, favorites)
 │   ├── schema_tables_runtime.ts            # Runtime/capability tables (4 tables: userCapabilities, sandboxSessions, sandboxArtifacts, sandboxEvents)
 │   ├── schema_validators.ts                # Shared validators (scheduledJobStatus, scheduledJobRecurrence, jobRunStatus, chatSource, scheduledJobStep, memoryRetrievalMode, memoryScopeType, memorySourceType, subagent statuses, skillScope, skillOrigin, skillVisibility, skillLockState, skillStatus, skillRuntimeMode, skillCompilationStatus)
 │   ├── convex.config.ts                    # Convex project config
@@ -30,9 +30,10 @@ nanthai-edge/                              # Repository root
 │   │   ├── mutations_memory_lifecycle_handlers.ts # Memory lifecycle handlers
 │   │   ├── actions.ts                      # runGeneration (server-side OpenRouter streaming)
 │   │   ├── actions_args.ts                 # Action argument validators
-│   │   ├── actions_run_generation_handler.ts   # Top-level generation handler — wires tool registry (M10)
-│   │   ├── actions_run_generation_participant.ts # Per-participant stream producer — tool-call loop (M10)
+│   │   ├── actions_run_generation_handler.ts   # Top-level generation handler — tool registry, preflight batching, TTFT instrumentation
+│   │   ├── actions_run_generation_participant.ts # Per-participant stream producer — tool-call loop + parallelized preflight
 │   │   ├── actions_run_generation_context.ts   # Generation context builder
+│   │   ├── queries_generation_context.ts       # Consolidated internal preflight query for generation startup
 │   │   ├── actions_run_generation_loop.ts     # Tool-call generation loop with compaction (M13)
 │   │   ├── actions_run_generation_types.ts     # Generation type definitions
 │   │   ├── actions_run_generation_failures.ts  # Failure handling
@@ -115,6 +116,18 @@ nanthai-edge/                              # Repository root
 │   │   │   ├── auth.ts                    # Notion OAuth token refresh + HTTP Basic Auth
 │   │   │   ├── pages.ts                   # 7 Notion tools: search, read, create, update, delete, update_database_entry, query_database
 │   │   │   └── index.ts                   # Barrel export: registerNotionTools()
+│   │   ├── slack/                          # Slack tools
+│   │   │   ├── auth.ts                    # Slack OAuth token refresh + auth helper
+│   │   │   ├── client.ts                  # Slack Web API client
+│   │   │   ├── tools.ts                   # Slack tools: send message, list channels, etc.
+│   │   │   └── index.ts                   # Barrel export: registerSlackTools()
+│   │   ├── cloze/                          # Cloze CRM tools
+│   │   │   ├── auth.ts                    # Cloze API key auth helper
+│   │   │   ├── client.ts                  # Cloze REST API client
+│   │   │   ├── people.ts                  # Cloze people/contact tools
+│   │   │   ├── projects.ts               # Cloze project tools
+│   │   │   ├── timeline.ts               # Cloze timeline tools
+│   │   │   └── index.ts                   # Barrel export: registerClozeTools()
 │   │   ├── scheduled_jobs.ts              # 3 scheduled job tools: create, list, delete (M13)
 │   │   ├── persona.ts                     # 2 persona tools: create, delete (M13)
 │   │   ├── search_chats.ts               # 1 search_chats tool — full-text search (M13)
@@ -155,7 +168,9 @@ nanthai-edge/                              # Repository root
 │   ├── oauth/                              # External integration OAuth (M10 Phases B/C/D)
 │   │   ├── google.ts                       # Google OAuth: exchangeCode, refresh, disconnect, getConnection
 │   │   ├── microsoft.ts                    # Microsoft OAuth: exchangeCode, refresh, disconnect, getConnection
-│   │   └── notion.ts                       # Notion OAuth: exchangeCode, disconnect, getConnection (HTTP Basic Auth)
+│   │   ├── notion.ts                       # Notion OAuth: exchangeCode, disconnect, getConnection (HTTP Basic Auth)
+│   │   ├── slack.ts                        # Slack OAuth: exchangeCode, refresh, disconnect, getConnection
+│   │   └── cloze.ts                        # Cloze: storeApiKey, disconnect, getConnection
 │   ├── scheduledJobs/                      # Scheduled jobs backend (M13, multi-step pipelines post-M14)
 │   │   ├── actions.ts                      # executeScheduledJob — fan-out execution entry point
 │   │   ├── actions_execution.ts            # Core execution logic — per-step generation runner (post-M14)
@@ -172,13 +187,15 @@ nanthai-edge/                              # Repository root
 │   │   ├── mutations.ts                    # registerDeviceToken, removeDeviceToken (public)
 │   │   ├── mutations_internal.ts           # deleteStaleToken (internal, for 410 Gone cleanup)
 │   │   └── queries.ts                      # getDeviceTokens (internal query)
-│   ├── memory/                             # Memory system (M11, overhauled post-M14)
+│   ├── memory/                             # Memory system (M11, overhauled post-M14, prewarmed caches post-2026-04-21)
 │   │   ├── operations.ts                   # extract, search, consolidate, vector embeddings
 │   │   ├── operations_args.ts              # Memory operation argument validators (post-M14)
 │   │   ├── operations_import_handlers.ts   # Document import → memory extraction pipeline (post-M14)
 │   │   ├── operations_internal_handlers.ts # Internal memory operation handlers (post-M14)
 │   │   ├── operations_public_handlers.ts   # Public memory operation handlers (post-M14)
 │   │   ├── embedding_helpers.ts            # Vector embedding utilities (post-M14)
+│   │   ├── query_embedding_handlers.ts     # Lease-based per-message query embedding cache handlers
+│   │   ├── memory_context_handlers.ts      # Lease-based hydrated memory-context cache handlers
 │   │   └── shared.ts                       # Rich memory type definitions — 10 categories, retrieval modes, scope types, source types (post-M14)
 │   ├── personas/
 │   │   ├── mutations.ts                    # create, update, delete
@@ -376,6 +393,8 @@ nanthai-edge/                              # Repository root
 │   │   │   ├── GoogleConnectionViewModel.swift # Google OAuth connect/disconnect (M10 Phase B)
 │   │   │   ├── MicrosoftConnectionViewModel.swift # Microsoft OAuth connect/disconnect (M10 Phase C)
 │   │   │   ├── NotionConnectionViewModel.swift # Notion OAuth connect/disconnect (M10 Phase D)
+│   │   │   ├── SlackConnectionViewModel.swift # Slack OAuth connect/disconnect
+│   │   │   ├── ClozeConnectionViewModel.swift # Cloze API key connect/disconnect
 │   │   │   ├── KnowledgeBaseViewModel.swift # Knowledge Base file browser VM (M10 Phase KB)
 │   │   │   ├── ScheduledJobsViewModel.swift # Scheduled jobs CRUD + run history (M13)
 │   │   │   └── SkillsViewModel.swift       # Skills list + CRUD + filtering (M18)
@@ -478,7 +497,10 @@ nanthai-edge/                              # Repository root
 │   │   │   │   ├── SettingsChatDefaultsSection.swift # Consolidated chat defaults (M13.5)
 │   │   │   │   ├── ChatDefaultsView.swift         # Chat defaults detail page (M13.5)
 │   │   │   │   ├── SettingsIntegrationsView.swift    # External integrations settings (M10 Phase B/C)
-│   │   │   │   ├── SettingsConnectedAccountsSection.swift # Google/Microsoft connection UI (M10)
+│   │   │   │   ├── SettingsConnectedAccountsSection.swift # Google/Microsoft/Notion/Slack/Cloze connection UI (M10)
+│   │   │   ├── SettingsConnectedAccountsSection+Slack.swift # Slack connection section
+│   │   │   ├── SettingsConnectedAccountsSection+Cloze.swift # Cloze connection section
+│   │   │   ├── ClozeConnectSheet.swift     # Cloze API key entry sheet
 │   │   │   │   ├── ScheduledJobsListView.swift # Scheduled jobs list (M13)
 │   │   │   │   ├── ScheduledJobEditorView.swift # Job create/edit form (M13, refactored post-M14)
 │   │   │   │   ├── ScheduledJobEditorView+Logic.swift # Editor validation + save logic (M13)

@@ -10,7 +10,7 @@ import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { ConvexError, v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
-import { skillToolProfile } from "../schema_validators";
+import { skillToolProfile, skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
 import {
   validateSkillInstructions,
   validateToolIds,
@@ -37,6 +37,19 @@ async function removeSkillReferences(
   skillId: Id<"skills">,
   userId: string,
 ): Promise<void> {
+  const skillIdStr = String(skillId);
+
+  // Clean up userPreferences skillDefaults
+  const prefs = await ctx.db
+    .query("userPreferences")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+  if (prefs?.skillDefaults?.some((d) => String(d.skillId) === skillIdStr)) {
+    await ctx.db.patch(prefs._id, {
+      skillDefaults: prefs.skillDefaults.filter((d) => String(d.skillId) !== skillIdStr),
+    });
+  }
+
   // Clean up personas owned by this user
   const personas = await ctx.db
     .query("personas")
@@ -44,12 +57,15 @@ async function removeSkillReferences(
     .collect();
 
   for (const persona of personas) {
-    const ids = persona.discoverableSkillIds;
-    if (!ids || !ids.some((id) => id === skillId)) continue;
-    await ctx.db.patch(persona._id, {
-      discoverableSkillIds: ids.filter((id) => id !== skillId),
-      updatedAt: Date.now(),
-    });
+    const overrides = persona.skillOverrides;
+    const hasOverride = overrides && overrides.some((o) => String(o.skillId) === skillIdStr);
+    if (!hasOverride) continue;
+
+    const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    if (hasOverride) {
+      updates.skillOverrides = overrides!.filter((o) => String(o.skillId) !== skillIdStr);
+    }
+    await ctx.db.patch(persona._id, updates);
   }
 
   // Clean up chats owned by this user that reference this skill
@@ -61,18 +77,13 @@ async function removeSkillReferences(
     .collect();
 
   for (const chat of chats) {
-    const disco = chat.discoverableSkillIds;
-    const disabled = chat.disabledSkillIds;
-    const hasDisco = disco && disco.some((id) => id === skillId);
-    const hasDisabled = disabled && disabled.some((id) => id === skillId);
-    if (!hasDisco && !hasDisabled) continue;
+    const overrides = chat.skillOverrides;
+    const hasOverride = overrides && overrides.some((o) => String(o.skillId) === skillIdStr);
+    if (!hasOverride) continue;
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
-    if (hasDisco) {
-      updates.discoverableSkillIds = disco.filter((id) => id !== skillId);
-    }
-    if (hasDisabled) {
-      updates.disabledSkillIds = disabled.filter((id) => id !== skillId);
+    if (hasOverride) {
+      updates.skillOverrides = overrides!.filter((o) => String(o.skillId) !== skillIdStr);
     }
     await ctx.db.patch(chat._id, updates);
   }
@@ -516,7 +527,10 @@ export const setPersonaSkills = internalMutation({
     if (persona.userId !== userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized." });
 
     await ctx.db.patch(personaId, {
-      discoverableSkillIds,
+      skillOverrides: discoverableSkillIds.map((skillId) => ({
+        skillId,
+        state: "available" as const,
+      })),
       updatedAt: Date.now(),
     });
   },
@@ -538,12 +552,24 @@ export const setChatSkills = internalMutation({
     if (chat.userId !== userId) throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Not authorized." });
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
+    const nextOverrides = new Map<string, "always" | "available" | "never">();
+    for (const existing of chat.skillOverrides ?? []) {
+      nextOverrides.set(String(existing.skillId), existing.state);
+    }
     if (discoverableSkillIds !== undefined) {
-      updates.discoverableSkillIds = discoverableSkillIds;
+      for (const skillId of discoverableSkillIds) {
+        nextOverrides.set(String(skillId), "available");
+      }
     }
     if (disabledSkillIds !== undefined) {
-      updates.disabledSkillIds = disabledSkillIds;
+      for (const skillId of disabledSkillIds) {
+        nextOverrides.set(String(skillId), "never");
+      }
     }
+    updates.skillOverrides = Array.from(nextOverrides, ([skillId, state]) => ({
+      skillId: skillId as Id<"skills">,
+      state,
+    }));
 
     await ctx.db.patch(chatId, updates);
   },
@@ -822,7 +848,10 @@ export const setPersonaSkillsPublic = mutation({
     if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
 
     await ctx.db.patch(personaId, {
-      discoverableSkillIds,
+      skillOverrides: discoverableSkillIds.map((skillId) => ({
+        skillId,
+        state: "available" as const,
+      })),
       updatedAt: Date.now(),
     });
   },
@@ -842,10 +871,173 @@ export const setChatSkillsPublic = mutation({
     if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
 
     const updates: Record<string, unknown> = { updatedAt: Date.now() };
-    if (discoverableSkillIds !== undefined) updates.discoverableSkillIds = discoverableSkillIds;
-    if (disabledSkillIds !== undefined) updates.disabledSkillIds = disabledSkillIds;
+    const nextOverrides = new Map<string, "always" | "available" | "never">();
+    for (const existing of chat.skillOverrides ?? []) {
+      nextOverrides.set(String(existing.skillId), existing.state);
+    }
+    if (discoverableSkillIds !== undefined) {
+      for (const skillId of discoverableSkillIds) {
+        nextOverrides.set(String(skillId), "available");
+      }
+    }
+    if (disabledSkillIds !== undefined) {
+      for (const skillId of disabledSkillIds) {
+        nextOverrides.set(String(skillId), "never");
+      }
+    }
+    updates.skillOverrides = Array.from(nextOverrides, ([skillId, state]) => ({
+      skillId: skillId as Id<"skills">,
+      state,
+    }));
 
     await ctx.db.patch(chatId, updates);
+  },
+});
+
+// ── M30: Layered override mutations ──────────────────────────────────────
+
+/**
+ * Set skill overrides on a persona (M30 format).
+ * Replaces the entire `skillOverrides` array.
+ */
+export const setPersonaSkillOverrides = mutation({
+  args: {
+    personaId: v.id("personas"),
+    skillOverrides: v.array(skillOverrideEntry),
+  },
+  handler: async (ctx, { personaId, skillOverrides }) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const persona = await ctx.db.get(personaId);
+    if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
+    if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+
+    await ctx.db.patch(personaId, {
+      skillOverrides,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Set integration overrides on a persona (M30 format).
+ */
+export const setPersonaIntegrationOverrides = mutation({
+  args: {
+    personaId: v.id("personas"),
+    integrationOverrides: v.array(integrationOverrideEntry),
+  },
+  handler: async (ctx, { personaId, integrationOverrides }) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const persona = await ctx.db.get(personaId);
+    if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
+    if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+
+    await ctx.db.patch(personaId, {
+      integrationOverrides,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Set skill overrides on a chat (M30 format).
+ */
+export const setChatSkillOverrides = mutation({
+  args: {
+    chatId: v.id("chats"),
+    skillOverrides: v.array(skillOverrideEntry),
+  },
+  handler: async (ctx, { chatId, skillOverrides }) => {
+    const { userId } = await requireAuth(ctx);
+    const chat = await ctx.db.get(chatId);
+    if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
+    if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+
+    await ctx.db.patch(chatId, {
+      skillOverrides,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Set integration overrides on a chat (M30 format).
+ */
+export const setChatIntegrationOverrides = mutation({
+  args: {
+    chatId: v.id("chats"),
+    integrationOverrides: v.array(integrationOverrideEntry),
+  },
+  handler: async (ctx, { chatId, integrationOverrides }) => {
+    const { userId } = await requireAuth(ctx);
+    const chat = await ctx.db.get(chatId);
+    if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
+    if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+
+    await ctx.db.patch(chatId, {
+      integrationOverrides,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// ── Internal variants for AI tool calls (skip auth, trust userId from tool context) ──
+
+export const setChatSkillOverridesInternal = internalMutation({
+  args: {
+    chatId: v.id("chats"),
+    userId: v.string(),
+    skillOverrides: v.array(skillOverrideEntry),
+  },
+  handler: async (ctx, { chatId, userId, skillOverrides }) => {
+    const chat = await ctx.db.get(chatId);
+    if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
+    if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await ctx.db.patch(chatId, { skillOverrides, updatedAt: Date.now() });
+  },
+});
+
+export const setPersonaSkillOverridesInternal = internalMutation({
+  args: {
+    personaId: v.id("personas"),
+    userId: v.string(),
+    skillOverrides: v.array(skillOverrideEntry),
+  },
+  handler: async (ctx, { personaId, userId, skillOverrides }) => {
+    const persona = await ctx.db.get(personaId);
+    if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
+    if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await ctx.db.patch(personaId, { skillOverrides, updatedAt: Date.now() });
+  },
+});
+
+export const setChatIntegrationOverridesInternal = internalMutation({
+  args: {
+    chatId: v.id("chats"),
+    userId: v.string(),
+    integrationOverrides: v.array(integrationOverrideEntry),
+  },
+  handler: async (ctx, { chatId, userId, integrationOverrides }) => {
+    const chat = await ctx.db.get(chatId);
+    if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
+    if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await ctx.db.patch(chatId, { integrationOverrides, updatedAt: Date.now() });
+  },
+});
+
+export const setPersonaIntegrationOverridesInternal = internalMutation({
+  args: {
+    personaId: v.id("personas"),
+    userId: v.string(),
+    integrationOverrides: v.array(integrationOverrideEntry),
+  },
+  handler: async (ctx, { personaId, userId, integrationOverrides }) => {
+    const persona = await ctx.db.get(personaId);
+    if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
+    if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await ctx.db.patch(personaId, { integrationOverrides, updatedAt: Date.now() });
   },
 });
 

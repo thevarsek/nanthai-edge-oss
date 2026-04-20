@@ -1,29 +1,45 @@
 // components/chat/ChatSkillsPicker.tsx
-// Modal picker for per-chat skill toggles.
-// Mirrors iOS ChatSkillsPickerSheet — lists all visible skills with toggles,
-// grouped into discoverable (enabled for this chat) and available.
+// Modal picker for per-chat skill overrides (M30 tri-state).
+// Shows all visible skills with tri-state cycling: available → always → never → (inherit).
 
 import { useMemo, useState } from "react";
 import { X, Search, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
-import { SkillRow } from "@/routes/PersonaEditorHelpers";
-import type { IntegrationKey } from "@/routes/PersonaEditorForm";
+import type { SkillOverrideState } from "@/hooks/useChatOverrides";
 import { useVisibleSkills } from "@/hooks/useSharedData";
+
+// ─── Skill state chip ───────────────────────────────────────────────────────
+
+const STATE_CONFIG: Record<SkillOverrideState, { labelKey: string; bg: string; text: string }> = {
+  always: { labelKey: "skill_state_always", bg: "bg-green-500/15", text: "text-green-600 dark:text-green-400" },
+  available: { labelKey: "skill_state_available", bg: "bg-primary/15", text: "text-primary" },
+  never: { labelKey: "skill_state_blocked", bg: "bg-red-500/15", text: "text-red-600 dark:text-red-400" },
+};
+
+function SkillStateChip({ state }: { state: SkillOverrideState }) {
+  const { t } = useTranslation();
+  const config = STATE_CONFIG[state];
+  return (
+    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${config.bg} ${config.text}`}>
+      {t(config.labelKey)}
+    </span>
+  );
+}
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
 interface Props {
-  /** IDs of skills currently enabled (discoverable) for this chat */
-  enabledSkillIds: Set<string>;
-  enabledIntegrations: Set<IntegrationKey>;
-  onToggle: (skillId: Id<"skills">) => void;
+  /** M30: current skill overrides map (skillId → state) */
+  skillOverrides: Map<string, SkillOverrideState>;
+  /** Cycle a skill through states: available → always → never → (remove) */
+  onCycleSkill: (skillId: Id<"skills">) => void;
   onClose: () => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function ChatSkillsPicker({ enabledSkillIds, enabledIntegrations, onToggle, onClose }: Props) {
+export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Props) {
   const { t } = useTranslation();
   const skills = useVisibleSkills();
   const [search, setSearch] = useState("");
@@ -50,9 +66,13 @@ export function ChatSkillsPicker({ enabledSkillIds, enabledIntegrations, onToggl
     );
   }, [allSkills, search]);
 
-  // Split into enabled and available
-  const enabled = filtered.filter((s) => enabledSkillIds.has(s._id));
-  const available = filtered.filter((s) => !enabledSkillIds.has(s._id));
+  // Group by override state
+  const overridden = filtered.filter((s) => skillOverrides.has(s._id));
+  const inherited = filtered.filter((s) => !skillOverrides.has(s._id));
+
+  const activeCount = Array.from(skillOverrides.values()).filter(
+    (s) => s === "always" || s === "available",
+  ).length;
 
   return (
     <div
@@ -68,9 +88,9 @@ export function ChatSkillsPicker({ enabledSkillIds, enabledIntegrations, onToggl
           <div className="flex items-center gap-2">
             <Sparkles size={18} className="text-primary" />
             <h2 className="text-base font-semibold">{t("skills")}</h2>
-            {enabledSkillIds.size > 0 && (
+            {activeCount > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
-                {enabledSkillIds.size}
+                {activeCount}
               </span>
             )}
           </div>
@@ -105,33 +125,78 @@ export function ChatSkillsPicker({ enabledSkillIds, enabledIntegrations, onToggl
             </div>
           ) : (
             <>
-              {enabled.length > 0 && (
-                <Section title={t("enabled_for_this_chat")}>
-                  {enabled.map((s) => (
-                    <SkillRow
+              {overridden.length > 0 && (
+                <Section title={t("overridden_for_this_chat")}>
+                  {overridden.map((s) => (
+                    <SkillOverrideRow
                       key={s._id}
                       skill={s}
-                      selected={true}
-                      onToggle={() => onToggle(s._id)}
+                      state={skillOverrides.get(s._id)!}
+                      onCycle={() => onCycleSkill(s._id)}
                     />
                   ))}
                 </Section>
               )}
-              <Section title={enabled.length > 0 ? t("available") : t("all_skills")}>
-                {available.map((s) => (
-                  <SkillRow
+              <Section title={overridden.length > 0 ? t("inherited") : t("all_skills")}>
+                {inherited.map((s) => (
+                  <SkillOverrideRow
                     key={s._id}
                     skill={s}
-                    selected={false}
-                    onToggle={() => onToggle(s._id)}
-                    disabled={(s.requiredIntegrationIds ?? []).length > 0 && (s.requiredIntegrationIds ?? []).every((id) => !enabledIntegrations.has(id as IntegrationKey))}
+                    state={undefined}
+                    onCycle={() => onCycleSkill(s._id)}
                   />
                 ))}
               </Section>
             </>
           )}
         </div>
+
+        {/* Footer hint */}
+        <div className="px-5 py-3 border-t border-border/30">
+          <div className="space-y-1 text-center">
+            <p className="text-[10px] text-muted">
+              {t("chat_skills_inherit_help")}
+            </p>
+            <p className="text-[10px] text-muted">
+              {t("skill_override_cycle_hint")}
+            </p>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Skill row with tri-state ───────────────────────────────────────────────
+
+function SkillOverrideRow({
+  skill,
+  state,
+  onCycle,
+}: {
+  skill: { _id: Id<"skills">; name: string; summary?: string; runtimeMode?: string };
+  state: SkillOverrideState | undefined;
+  onCycle: () => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      className="flex items-center gap-3 px-5 py-3 hover:bg-surface-2 cursor-pointer transition-colors"
+      onClick={onCycle}
+    >
+      <div className="flex-1 min-w-0">
+        <p className="text-sm">{skill.name}</p>
+        {skill.summary && (
+          <p className="text-xs text-muted truncate mt-0.5">{skill.summary}</p>
+        )}
+      </div>
+      {state ? (
+        <SkillStateChip state={state} />
+      ) : (
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-3 text-muted font-medium">
+          {t("skill_state_inherit")}
+        </span>
+      )}
     </div>
   );
 }

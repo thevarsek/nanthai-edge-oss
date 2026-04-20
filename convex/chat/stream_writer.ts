@@ -20,6 +20,7 @@ import {
 export interface StreamWriterOptions {
   ctx: ActionCtx;
   messageId: Id<"messages">;
+  streamingMessageId?: Id<"streamingMessages">;
   /**
    * Optional hook called before each content patch to allow the caller to
    * run cancellation checks or other side-effects. Throw to abort the stream.
@@ -44,6 +45,7 @@ export interface StreamWriterOptions {
 export class StreamWriter {
   private ctx: ActionCtx;
   private messageId: Id<"messages">;
+  private streamingMessageId: Id<"streamingMessages"> | undefined;
   private beforePatch: (() => Promise<void>) | undefined;
   private transformContent: (content: string) => string;
   private shouldPersistReasoning: (totalReasoning: string) => boolean;
@@ -58,6 +60,7 @@ export class StreamWriter {
   private _totalReasoning = "";
   private lastPatchedReasoningLength = 0;
   private lastPatchedReasoningAtMs = 0;
+  private reasoningStartedAtMs: number | undefined;
 
   // Boundary tracking
   private _hasSeenContentDelta = false;
@@ -65,6 +68,7 @@ export class StreamWriter {
   constructor(opts: StreamWriterOptions) {
     this.ctx = opts.ctx;
     this.messageId = opts.messageId;
+    this.streamingMessageId = opts.streamingMessageId;
     this.beforePatch = opts.beforePatch;
     this.transformContent = opts.transformContent ?? ((c) => c);
     this.shouldPersistReasoning =
@@ -116,6 +120,7 @@ export class StreamWriter {
 
     await this.ctx.runMutation(internal.chat.mutations.updateMessageContent, {
       messageId: this.messageId,
+      streamingMessageId: this.streamingMessageId,
       content: this.transformContent(this._totalContent),
       status: "streaming",
     });
@@ -128,6 +133,9 @@ export class StreamWriter {
 
   async appendReasoning(delta: string): Promise<void> {
     if (delta.length === 0) return;
+    if (this.reasoningStartedAtMs === undefined) {
+      this.reasoningStartedAtMs = Date.now();
+    }
     this._totalReasoning += delta;
   }
 
@@ -144,6 +152,7 @@ export class StreamWriter {
         totalReasoningLength: this._totalReasoning.length,
         lastPatchedReasoningLength: this.lastPatchedReasoningLength,
         lastPatchedReasoningAtMs: this.lastPatchedReasoningAtMs,
+        reasoningStartedAtMs: this.reasoningStartedAtMs,
       })
     ) {
       return;
@@ -157,11 +166,13 @@ export class StreamWriter {
       internal.chat.mutations.updateMessageReasoning,
       {
         messageId: this.messageId,
+        streamingMessageId: this.streamingMessageId,
         reasoning: this._totalReasoning,
       },
     );
     this.lastPatchedReasoningLength = this._totalReasoning.length;
     this.lastPatchedReasoningAtMs = nowMs;
+    this.reasoningStartedAtMs = nowMs;
   }
 
   // -- Boundary helpers -----------------------------------------------------

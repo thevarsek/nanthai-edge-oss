@@ -1,4 +1,5 @@
 import { ChatRequestParameters, OpenRouterMessage } from "./openrouter_types";
+import { OPENROUTER_DEFAULT_PROVIDER_SORT } from "./model_constants";
 
 function formatMessage(msg: OpenRouterMessage): Record<string, unknown> {
   const result: Record<string, unknown> = {
@@ -22,6 +23,13 @@ export function buildRequestBody(
   messages: OpenRouterMessage[],
   params: ChatRequestParameters,
   stream: boolean,
+  /**
+   * When `true`, skip the default provider-sort merge AND drop any
+   * caller-supplied `provider` block. Used by the 404 "No endpoints found"
+   * retry in `openrouter_stream.streamOnce` to strip all provider routing
+   * hints on the retry attempt.
+   */
+  skipProviderRouting: boolean = false,
 ): Record<string, unknown> {
   const body: Record<string, unknown> = {
     model,
@@ -97,8 +105,37 @@ export function buildRequestBody(
   // cache_control. Other providers (OpenAI, DeepSeek, Gemini 2.5, Grok, Groq)
   // cache automatically. The "automatic" mode lets Anthropic place the cache
   // breakpoint at the last cacheable block and advance it as conversation grows.
-  if (model.startsWith("anthropic/")) {
+  const isAnthropic = model.startsWith("anthropic/");
+  if (isAnthropic) {
     body.cache_control = { type: "ephemeral" };
+  }
+
+  // Provider preferences — merge caller-supplied fields (e.g. ZDR) with the
+  // global default provider-sort strategy. Caller-supplied `sort` always wins
+  // over the default. If the default is `null`, provider sorting is fully
+  // disabled (one-line revert).
+  //
+  // Anthropic exception: top-level `cache_control` restricts routing to the
+  // Anthropic-native endpoint (Bedrock/Vertex don't support top-level
+  // cache_control and are excluded by OpenRouter). For cached Anthropic
+  // requests OpenRouter already does sticky routing — it pins the conversation
+  // to the provider that holds the warm cache and falls back on outage. Our
+  // `sort: "latency"` default adds no value on top of that single-endpoint +
+  // sticky-routing setup and historically contributed to 404 "No endpoints
+  // found" regressions when combined with hard latency caps, so we skip the
+  // default here. Caller-supplied `provider` fields (e.g. ZDR) still pass
+  // through untouched.
+  const defaultProviderSort = isAnthropic
+    ? {}
+    : (OPENROUTER_DEFAULT_PROVIDER_SORT ?? {});
+  const mergedProvider: Record<string, unknown> = skipProviderRouting
+    ? {}
+    : {
+      ...defaultProviderSort,
+      ...(params.provider ?? {}),
+    };
+  if (Object.keys(mergedProvider).length > 0) {
+    body.provider = mergedProvider;
   }
 
   // Transforms — default to ["middle-out"] unless explicitly disabled.

@@ -202,8 +202,10 @@ test("enableSkillForChat and disableSkillForChat update discoverable and disable
   const chatState = {
     _id: "chat_1",
     userId: "user_1",
-    discoverableSkillIds: ["skill_1"],
-    disabledSkillIds: ["skill_2"],
+    skillOverrides: [
+      { skillId: "skill_1", state: "available" },
+      { skillId: "skill_2", state: "never" },
+    ],
   };
   const mutations: Array<Record<string, unknown>> = [];
   const ctx = createToolCtx({
@@ -225,12 +227,16 @@ test("enableSkillForChat and disableSkillForChat update discoverable and disable
   assert.deepEqual(mutations[0], {
     chatId: "chat_1",
     userId: "user_1",
-    discoverableSkillIds: ["skill_1", "skill_2"],
-    disabledSkillIds: [],
+    skillOverrides: [
+      { skillId: "skill_1", state: "available" },
+      { skillId: "skill_2", state: "available" },
+    ],
   });
 
-  chatState.discoverableSkillIds = ["skill_1", "skill_2"];
-  chatState.disabledSkillIds = [];
+  chatState.skillOverrides = [
+    { skillId: "skill_1", state: "available" },
+    { skillId: "skill_2", state: "available" },
+  ];
   const disabled = await disableSkillForChat.execute(ctx, {
     chatId: "chat_1",
     skillSlug: "sheets",
@@ -239,15 +245,17 @@ test("enableSkillForChat and disableSkillForChat update discoverable and disable
   assert.deepEqual(mutations[1], {
     chatId: "chat_1",
     userId: "user_1",
-    disabledSkillIds: ["skill_2"],
-    discoverableSkillIds: ["skill_1"],
+    skillOverrides: [
+      { skillId: "skill_1", state: "available" },
+      { skillId: "skill_2", state: "never" },
+    ],
   });
 });
 
 test("assignSkillToPersona and removeSkillFromPersona resolve personas and manage discoverable skills", async () => {
   const personas = [
-    { _id: "persona_1", displayName: "Researcher", discoverableSkillIds: [] },
-    { _id: "persona_2", displayName: "Research Assistant", discoverableSkillIds: [] },
+    { _id: "persona_1", displayName: "Researcher", skillOverrides: [] },
+    { _id: "persona_2", displayName: "Research Assistant", skillOverrides: [] },
   ];
 
   const ambiguous = await assignSkillToPersona.execute(createToolCtx({
@@ -266,7 +274,7 @@ test("assignSkillToPersona and removeSkillFromPersona resolve personas and manag
   const successCtx = createToolCtx({
     runQuery: async (args) => {
       if (args.slug) return { _id: "skill_1", name: "Research Skill" };
-      if (args.userId) return [{ _id: "persona_1", displayName: "Researcher", discoverableSkillIds: [] }];
+      if (args.userId) return [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [] }];
       return null;
     },
     runMutation: async (args) => {
@@ -282,14 +290,21 @@ test("assignSkillToPersona and removeSkillFromPersona resolve personas and manag
   assert.deepEqual(mutations[0], {
     personaId: "persona_1",
     userId: "user_1",
-    discoverableSkillIds: ["skill_1"],
+    skillOverrides: [{ skillId: "skill_1", state: "available" }],
   });
 
   const removeCtx = createToolCtx({
     runQuery: async (args) => {
       if (args.slug) return { _id: "skill_1", name: "Research Skill" };
       if (args.userId) {
-        return [{ _id: "persona_1", displayName: "Researcher", discoverableSkillIds: ["skill_1", "skill_2"] }];
+        return [{
+          _id: "persona_1",
+          displayName: "Researcher",
+          skillOverrides: [
+            { skillId: "skill_1", state: "available" },
+            { skillId: "skill_2", state: "available" },
+          ],
+        }];
       }
       return null;
     },
@@ -305,6 +320,6 @@ test("assignSkillToPersona and removeSkillFromPersona resolve personas and manag
   assert.deepEqual(mutations[1], {
     personaId: "persona_1",
     userId: "user_1",
-    discoverableSkillIds: ["skill_2"],
+    skillOverrides: [{ skillId: "skill_2", state: "available" }],
   });
 });

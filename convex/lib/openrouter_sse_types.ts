@@ -62,4 +62,6 @@ export interface SSEAccumulator {
 export interface SSECallbacks {
   onDelta?: OnDelta;
   onReasoningDelta?: OnReasoningDelta;
+  /** Called when a new tool call name first appears in the stream (before args are complete). */
+  onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
 }

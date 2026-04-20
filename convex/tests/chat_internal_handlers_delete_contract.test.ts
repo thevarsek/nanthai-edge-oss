@@ -37,6 +37,7 @@ test("getModelCapabilitiesHandler derives modality flags from cached model rows"
     hasImageGeneration: true,
     hasVideoGeneration: false,
     hasReasoning: true,
+    hasZdrEndpoint: false,
     contextLength: 128000,
     videoCapabilities: undefined,
   });

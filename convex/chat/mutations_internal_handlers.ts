@@ -6,9 +6,12 @@ import { normalizeMemoryRecord } from "../memory/shared";
 import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
 import {
+  deleteStreamingMessageById,
   deleteStreamingMessage,
+  getStreamingMessageById,
   getStreamingMessageByMessageId,
   isTerminalMessageStatus,
+  patchStreamingMessageById,
   upsertStreamingMessage,
 } from "./streaming_state";
 
@@ -16,6 +19,7 @@ const CHAT_COMPLETION_PUSH_CATEGORY = "CHAT_COMPLETION";
 
 export interface UpdateMessageContentArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
+  streamingMessageId?: Id<"streamingMessages">;
   content: string;
   status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
 }
@@ -30,6 +34,17 @@ export async function updateMessageContentHandler(
     return;
   }
 
+  if (args.streamingMessageId) {
+    const streamingMessage = await getStreamingMessageById(ctx, args.streamingMessageId);
+    if (streamingMessage) {
+      await patchStreamingMessageById(ctx, args.streamingMessageId, {
+        content: args.content,
+        status: args.status,
+      });
+      return;
+    }
+  }
+
   await upsertStreamingMessage(ctx, existing, {
     content: args.content,
     status: args.status,
@@ -38,6 +53,7 @@ export async function updateMessageContentHandler(
 
 export interface UpdateMessageReasoningArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
+  streamingMessageId?: Id<"streamingMessages">;
   reasoning: string;
 }
 
@@ -48,6 +64,16 @@ export async function updateMessageReasoningHandler(
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
   if (isTerminalMessageStatus(existing.status)) return;
+
+  if (args.streamingMessageId) {
+    const streamingMessage = await getStreamingMessageById(ctx, args.streamingMessageId);
+    if (streamingMessage) {
+      await patchStreamingMessageById(ctx, args.streamingMessageId, {
+        reasoning: args.reasoning,
+      });
+      return;
+    }
+  }
 
   await upsertStreamingMessage(ctx, existing, {
     reasoning: args.reasoning,
@@ -286,6 +312,9 @@ export async function finalizeGenerationHandler(
   }
 
   await ctx.db.patch(args.messageId, msgPatch);
+  if (generationJob?.streamingMessageId) {
+    await deleteStreamingMessageById(ctx, generationJob.streamingMessageId);
+  }
   await deleteStreamingMessage(ctx, args.messageId);
 
   await ctx.db.patch(args.jobId, {
@@ -515,6 +544,7 @@ async function maybeScheduleAutoAudio(
 // so the iOS accordion appears during generation (not just after finalization).
 export interface UpdateMessageToolCallsArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
+  streamingMessageId?: Id<"streamingMessages">;
   toolCalls: Array<{
     id: string;
     name: string;
@@ -565,6 +595,16 @@ export async function updateMessageToolCallsHandler(
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
   if (isTerminalMessageStatus(existing.status)) return;
+
+  if (args.streamingMessageId) {
+    const streamingMessage = await getStreamingMessageById(ctx, args.streamingMessageId);
+    if (streamingMessage) {
+      await patchStreamingMessageById(ctx, args.streamingMessageId, {
+        toolCalls: args.toolCalls,
+      });
+      return;
+    }
+  }
 
   await upsertStreamingMessage(ctx, existing, {
     toolCalls: args.toolCalls,

@@ -137,6 +137,16 @@ function getIntegrations(t: (k: string) => string) {
       services: [t("home_int_apple_s1")],
       body: t("home_int_apple_body"),
     },
+    {
+      name: t("home_int_slack_name"),
+      services: [t("home_int_slack_s1"), t("home_int_slack_s2")],
+      body: t("home_int_slack_body"),
+    },
+    {
+      name: t("home_int_cloze_name"),
+      services: [t("home_int_cloze_s1"), t("home_int_cloze_s2")],
+      body: t("home_int_cloze_body"),
+    },
   ];
 }
 
@@ -598,7 +608,7 @@ function HomePricingSection() {
 
         <div className="mt-16 grid gap-4 lg:grid-cols-2">
           {/* Free tier */}
-          <div className="edge-card rounded-2xl p-8 md:p-10">
+          <div className="edge-card edge-card-lift edge-hover-glow rounded-2xl p-8 md:p-10">
             <div className="flex items-center justify-between">
               <div>
                 <span className="edge-label efg-25">{t("free")}</span>
@@ -627,7 +637,7 @@ function HomePricingSection() {
 
           {/* Pro tier */}
           <div
-            className="relative rounded-2xl eborder-06 border p-8 md:p-10"
+            className="edge-card edge-card-lift edge-hover-glow relative rounded-2xl p-8 md:p-10"
             style={{
               background:
                 "linear-gradient(180deg, rgba(0,224,208,0.03) 0%, rgba(255,107,61,0.02) 100%)",

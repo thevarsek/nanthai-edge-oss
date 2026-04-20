@@ -146,6 +146,35 @@ export async function getMemoryDocHandler(
   return await ctx.db.get(args.memoryId);
 }
 
+export interface HydrateRelevantMemoryHitsArgs extends Record<string, unknown> {
+  hits: Array<{
+    embeddingId: Id<"memoryEmbeddings">;
+    score: number;
+  }>;
+}
+
+export async function hydrateRelevantMemoryHitsHandler(
+  ctx: QueryCtx,
+  args: HydrateRelevantMemoryHitsArgs,
+): Promise<Array<any>> {
+  const hydrated: Array<any> = [];
+
+  for (const hit of args.hits) {
+    const embeddingDoc = await ctx.db.get(hit.embeddingId);
+    if (!embeddingDoc) continue;
+
+    const memory = await ctx.db.get(embeddingDoc.memoryId);
+    if (!memory) continue;
+
+    hydrated.push({
+      ...memory,
+      score: hit.score,
+    });
+  }
+
+  return hydrated;
+}
+
 export interface StoreEmbeddingArgs extends Record<string, unknown> {
   memoryId: Id<"memories">;
   userId: string;

@@ -96,3 +96,18 @@ export const getUserDefaultModel = internalQuery({
     return prefs?.defaultModelId ?? null;
   },
 });
+
+/** Internal: get skill and integration defaults for the resolver. */
+export const getSkillIntegrationDefaults = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    return {
+      skillDefaults: prefs?.skillDefaults ?? undefined,
+      integrationDefaults: prefs?.integrationDefaults ?? undefined,
+    };
+  },
+});

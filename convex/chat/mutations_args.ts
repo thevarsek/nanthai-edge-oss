@@ -5,6 +5,8 @@ import {
   memoryRetrievalMode,
   memoryScopeType,
   memorySourceType,
+  skillOverrideEntry,
+  integrationOverrideEntry,
 } from "../schema_validators";
 import { participantConfigValidator, videoConfigValidator } from "./actions_args";
 
@@ -73,6 +75,9 @@ export const sendMessageArgs = {
   subagentsEnabled: v.optional(v.boolean()),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
+  // M30 — Turn-level skill & integration overrides (slash chips)
+  turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
 } satisfies PropertyValidators;
 
 export const cancelGenerationArgs = {
@@ -96,10 +101,14 @@ export const retryMessageArgs = {
   subagentsEnabled: v.optional(v.boolean()),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
+  // M30 — Turn-level skill & integration overrides (slash chips)
+  turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
 } satisfies PropertyValidators;
 
 export const updateMessageContentArgs = {
   messageId: v.id("messages"),
+  streamingMessageId: v.optional(v.id("streamingMessages")),
   content: v.string(),
   status: v.union(
     v.literal("pending"),
@@ -112,6 +121,7 @@ export const updateMessageContentArgs = {
 
 export const updateMessageReasoningArgs = {
   messageId: v.id("messages"),
+  streamingMessageId: v.optional(v.id("streamingMessages")),
   reasoning: v.string(),
 } satisfies PropertyValidators;
 
@@ -384,6 +394,7 @@ export const supersedeMemoryArgs = {
 // M10 — Live tool-call streaming: progressively patch toolCalls onto a message.
 export const updateMessageToolCallsArgs = {
   messageId: v.id("messages"),
+  streamingMessageId: v.optional(v.id("streamingMessages")),
   toolCalls: v.array(v.object({
     id: v.string(),
     name: v.string(),

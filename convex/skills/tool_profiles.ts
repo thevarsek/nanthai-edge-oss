@@ -10,6 +10,8 @@ const PROFILE_ORDER = [
   "microsoft",
   "notion",
   "appleCalendar",
+  "cloze",
+  "slack",
   "scheduledJobs",
   "skillsManagement",
   "personas",
@@ -111,6 +113,8 @@ const INTEGRATION_PROFILE_BY_ID: Record<string, SkillToolProfileId> = {
   ms_calendar: "microsoft",
   notion: "notion",
   apple_calendar: "appleCalendar",
+  cloze: "cloze",
+  slack: "slack",
 };
 
 export function validateToolProfileIds(ids: string[]): string[] {
@@ -267,6 +271,8 @@ function pruneOrphanedIntegrationProfiles(
     { profile: "microsoft", label: "Microsoft" },
     { profile: "notion", label: "Notion" },
     { profile: "appleCalendar", label: "Apple Calendar" },
+    { profile: "cloze", label: "Cloze" },
+    { profile: "slack", label: "Slack" },
   ];
 
   for (const { profile, label } of integrationProfilePairs) {

@@ -64,6 +64,8 @@ export interface Message {
   subagentBatchId?: Id<"subagentBatches">;
   moderatorDirective?: string;
   searchSessionId?: Id<"searchSessions">;
+  loadedSkillIds?: Id<"skills">[];
+  usedIntegrationIds?: string[];
   imageUrls?: string[];
   videoUrls?: string[];
   attachments?: Array<{
@@ -128,11 +130,18 @@ function shouldReleasePendingStreamingFallback(
   const currentAdvancedPastFallbackStatus = current.status !== fallback.status;
   const currentIncludesAtLeastFallbackContent = current.content.length >= fallback.content.length;
   const currentMatchesBase = current === base;
+  // Server-authoritative terminal status always releases the fallback,
+  // even if content shrank (e.g. trailing whitespace trim on finalize).
+  const currentReachedTerminal =
+    current.status === "completed" ||
+    current.status === "failed" ||
+    current.status === "cancelled";
   return (
     !overlayStillTerminal ||
     currentAdvancedPastFallbackStatus ||
     currentIncludesAtLeastFallbackContent ||
-    currentMatchesBase
+    currentMatchesBase ||
+    currentReachedTerminal
   );
 }
 
@@ -149,8 +158,10 @@ export interface Chat {
   includeReasoningOverride?: boolean | null;
   reasoningEffortOverride?: string | null;
   autoAudioResponseOverride?: "enabled" | "disabled" | null;
-  discoverableSkillIds?: string[];
-  disabledSkillIds?: string[];
+  /** M30: layered skill overrides */
+  skillOverrides?: Array<{ skillId: string; state: "always" | "available" | "never" }>;
+  /** M30: layered integration overrides */
+  integrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentOverride?: "enabled" | "disabled";
   webSearchOverride?: boolean;
   searchModeOverride?: string;
@@ -188,6 +199,10 @@ export interface SendMessageArgs extends Record<string, unknown> {
   searchMode?: "normal" | "web";
   complexity?: number;
   enabledIntegrations?: string[];
+  /** M30: turn-level skill overrides (from slash chips) */
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  /** M30: turn-level integration overrides (from slash chips) */
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
   videoConfig?: {
     duration?: number;
@@ -275,11 +290,25 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
         const baseMessage = base.find((candidate) => candidate._id === message._id) ?? message;
         const pendingFallback = mergeCache.pendingFallbackMessages.get(message._id);
 
+        // When the server transitions a message to a terminal status
+        // (completed/failed/cancelled), it is authoritative — shorter
+        // finalized content is an expected server transform (e.g. trimming
+        // trailing whitespace deltas from models like kimi-k2), not a lost
+        // overlay. Synthesizing a "streaming" fallback in that case would
+        // strand isGenerating=true with no way to release, since the
+        // fallback's length guard can never be satisfied.
+        const finalizedToTerminal =
+          message.status === "completed" ||
+          message.status === "failed" ||
+          message.status === "cancelled";
+
         const lostStreamingOverlay =
+          !finalizedToTerminal &&
           previous.status === "streaming" &&
           message.status !== "streaming" &&
           message.content.length < previous.content.length;
         const lostCancelledOverlay =
+          !finalizedToTerminal &&
           previous.status === "cancelled" &&
           message.status !== "cancelled" &&
           message.content.length < previous.content.length;

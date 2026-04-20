@@ -1,5 +1,3 @@
-"use node";
-
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import {
@@ -22,10 +20,12 @@ export async function scheduleGenerationContinuation(
 
   const scheduledId = await ctx.scheduler.runAfter(
     0,
-    internal.chat.actions.runGenerationParticipant,
+    internal.chat.actions_runtime.runGenerationParticipant,
     {
       ...args,
       resumeExpected: true,
+      // Phase 1 TTFT: fresh hop #2 measurement for each continuation
+      enqueuedAt: Date.now(),
     },
   );
 

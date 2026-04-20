@@ -48,6 +48,7 @@ export async function getModelCapabilitiesHandler(
       hasImageGeneration?: boolean;
       hasVideoGeneration?: boolean;
       hasReasoning?: boolean;
+      hasZdrEndpoint?: boolean;
       contextLength?: number;
       videoCapabilities?: {
         supportedResolutions: string[];
@@ -81,6 +82,7 @@ export async function getModelCapabilitiesHandler(
     hasVideoGeneration: model.supportsVideo ?? false,
     hasReasoning:
       model.supportedParameters?.includes("include_reasoning") ?? false,
+    hasZdrEndpoint: model.hasZdrEndpoint ?? false,
     contextLength: model.contextLength,
     videoCapabilities: model.videoCapabilities
       ? {
@@ -165,6 +167,16 @@ export async function getGenerationJobInternalHandler(
   args: GetGenerationJobInternalArgs,
 ): Promise<any | null> {
   return await ctx.db.get(args.jobId);
+}
+
+export async function getGenerationContinuationInternalHandler(
+  ctx: QueryCtx,
+  args: GetGenerationJobInternalArgs,
+): Promise<any | null> {
+  return await ctx.db
+    .query("generationContinuations")
+    .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+    .first();
 }
 
 export interface GetUserPreferencesArgs extends Record<string, unknown> {

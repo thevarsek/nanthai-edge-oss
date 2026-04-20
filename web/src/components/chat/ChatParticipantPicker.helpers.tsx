@@ -18,6 +18,7 @@ import { getModelDisplayName } from "@/lib/modelDisplay";
 
 // ─── Persona type (matches shape from useSharedData) ─────────────────────────
 
+const GOOGLE_ALLOWED_PROVIDERS = new Set(["openai", "anthropic", "google"]);
 export interface PersonaItem {
   _id: Id<"personas">;
   displayName: string;
@@ -139,6 +140,10 @@ export function PersonaRow({
   onToggle,
   onInfo,
   modelNameMap,
+  zdrEnforced,
+  modelZdrMap,
+  googleIntegrationsActive,
+  modelProviderMap,
 }: {
   persona: PersonaItem;
   isSelected: boolean;
@@ -146,15 +151,24 @@ export function PersonaRow({
   onToggle: (p: PersonaItem) => void;
   onInfo: (p: PersonaItem) => void;
   modelNameMap: Map<string, string>;
+  zdrEnforced?: boolean;
+  modelZdrMap?: Map<string, boolean>;
+  googleIntegrationsActive?: boolean;
+  modelProviderMap?: Map<string, string>;
 }) {
   const { t } = useTranslation();
   const modelShort = persona.modelId ? getModelDisplayName(persona.modelId, modelNameMap) : "";
+  const isZdrBlocked = zdrEnforced === true && persona.modelId != null && modelZdrMap != null && !modelZdrMap.get(persona.modelId);
+  const personaProvider = persona.modelId && modelProviderMap ? modelProviderMap.get(persona.modelId) : undefined;
+  const isGoogleBlocked = googleIntegrationsActive === true && persona.modelId != null && (!modelZdrMap?.get(persona.modelId) || !GOOGLE_ALLOWED_PROVIDERS.has((personaProvider ?? "").toLowerCase()));
+  const isDisabled = disabled || isZdrBlocked || isGoogleBlocked;
+  const disabledReason = isZdrBlocked ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
   return (
     <div
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
-        disabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
+        isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
-      onClick={() => !disabled && onToggle(persona)}
+      onClick={() => !isDisabled && onToggle(persona)}
     >
       {/* Avatar */}
       <PersonaAvatar
@@ -175,6 +189,9 @@ export function PersonaRow({
         </p>
         {modelShort && (
           <p className="text-[11px] text-muted truncate">{modelShort}</p>
+        )}
+        {disabledReason && (
+          <p className="text-[10px] text-muted">{disabledReason}</p>
         )}
       </div>
 
@@ -236,6 +253,8 @@ export function ParticipantModelRow({
   sortKey,
   onToggle,
   onInfo,
+  zdrEnforced,
+  googleIntegrationsActive,
 }: {
   model: ModelSummary;
   isSelected: boolean;
@@ -243,18 +262,24 @@ export function ParticipantModelRow({
   sortKey: SortKey;
   onToggle: (modelId: string) => void;
   onInfo: (model: ModelSummary) => void;
+  zdrEnforced?: boolean;
+  googleIntegrationsActive?: boolean;
 }) {
   const { t } = useTranslation();
   const score = sortMetric(model, sortKey);
   const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
   const primaryLabel = model.derivedGuidance?.primaryLabel;
+  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
+  const isGoogleBlocked = googleIntegrationsActive === true && (!model.hasZdrEndpoint || !GOOGLE_ALLOWED_PROVIDERS.has((model.provider ?? "").toLowerCase()));
+  const isDisabled = disabled || isZdrDisabled || isGoogleBlocked;
+  const disabledReason = isZdrDisabled ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
 
   return (
     <div
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
-        disabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
+        isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
-      onClick={() => !disabled && onToggle(model.modelId)}
+      onClick={() => !isDisabled && onToggle(model.modelId)}
     >
       <ProviderLogo modelId={model.modelId} size={36} />
 
@@ -280,6 +305,7 @@ export function ParticipantModelRow({
           {primaryLabel && <GuidanceTag label={primaryLabel} />}
           <TrendBadge model={model} />
         </div>
+        {disabledReason && <p className="text-[10px] text-muted mt-0.5">{disabledReason}</p>}
       </div>
 
       {/* Sort score */}

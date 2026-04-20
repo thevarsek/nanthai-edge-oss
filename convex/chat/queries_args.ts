@@ -44,6 +44,7 @@ export const getUserMemoriesArgs = {
   userId: v.string(),
 } satisfies PropertyValidators;
 
+
 export const getModelCapabilitiesArgs = {
   modelId: v.string(),
 } satisfies PropertyValidators;
@@ -62,6 +63,10 @@ export const getMessageInternalArgs = {
 } satisfies PropertyValidators;
 
 export const getGenerationJobInternalArgs = {
+  jobId: v.id("generationJobs"),
+} satisfies PropertyValidators;
+
+export const getGenerationContinuationInternalArgs = {
   jobId: v.id("generationJobs"),
 } satisfies PropertyValidators;
 

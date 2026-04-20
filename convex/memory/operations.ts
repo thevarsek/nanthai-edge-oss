@@ -14,13 +14,24 @@ import {
 } from "../_generated/server";
 import {
   approveArgs,
+  claimMessageMemoryContextLeaseArgs,
+  claimMessageQueryEmbeddingLeaseArgs,
+  completeMessageMemoryContextArgs,
+  completeMessageQueryEmbeddingArgs,
   commitImportedMemoriesArgs,
   computeAndStoreEmbeddingArgs,
   createManualArgs,
   extractImportCandidatesArgs,
   getEmbeddingDocArgs,
+  getMessageMemoryContextArgs,
+  getMessageQueryEmbeddingArgs,
+  hydrateRelevantMemoryHitsArgs,
   getMemoryDocArgs,
   listArgs,
+  markMessageMemoryContextUsageRecordedArgs,
+  markMessageQueryEmbeddingUsageRecordedArgs,
+  primeMessageMemoryContextArgs,
+  primeMessageQueryEmbeddingArgs,
   purgeUserMemoriesArgs,
   rejectArgs,
   removeArgs,
@@ -36,11 +47,26 @@ import {
   getDistinctMemoryUserIdsHandler,
   getEmbeddingDocHandler,
   getMemoryDocHandler,
+  hydrateRelevantMemoryHitsHandler,
   purgeUserMemoriesBatchHandler,
   purgeUserMemoriesHandler,
   retrieveRelevantHandler,
   storeEmbeddingHandler,
 } from "./operations_internal_handlers";
+import {
+  claimMessageQueryEmbeddingLeaseHandler,
+  completeMessageQueryEmbeddingHandler,
+  getMessageQueryEmbeddingHandler,
+  markMessageQueryEmbeddingUsageRecordedHandler,
+  primeMessageQueryEmbeddingHandler,
+} from "./query_embedding_handlers";
+import {
+  claimMessageMemoryContextLeaseHandler,
+  completeMessageMemoryContextHandler,
+  getMessageMemoryContextHandler,
+  markMessageMemoryContextUsageRecordedHandler,
+  primeMessageMemoryContextHandler,
+} from "./memory_context_handlers";
 import { extractImportCandidatesHandler } from "./operations_import_handlers";
 import {
   approveAllHandler,
@@ -136,6 +162,11 @@ export const getMemoryDoc = internalQuery({
   handler: getMemoryDocHandler,
 });
 
+export const hydrateRelevantMemoryHits = internalQuery({
+  args: hydrateRelevantMemoryHitsArgs,
+  handler: hydrateRelevantMemoryHitsHandler,
+});
+
 export const storeEmbedding = internalMutation({
   args: storeEmbeddingArgs,
   handler: storeEmbeddingHandler,
@@ -164,4 +195,56 @@ export const purgeUserMemoriesBatch = internalMutation({
 export const purgeUserMemories = internalAction({
   args: purgeUserMemoriesArgs,
   handler: purgeUserMemoriesHandler,
+});
+
+export const getMessageQueryEmbedding = internalQuery({
+  args: getMessageQueryEmbeddingArgs,
+  handler: getMessageQueryEmbeddingHandler,
+});
+
+export const claimMessageQueryEmbeddingLease = internalMutation({
+  args: claimMessageQueryEmbeddingLeaseArgs,
+  handler: claimMessageQueryEmbeddingLeaseHandler,
+});
+
+export const completeMessageQueryEmbedding = internalMutation({
+  args: completeMessageQueryEmbeddingArgs,
+  handler: completeMessageQueryEmbeddingHandler,
+});
+
+export const markMessageQueryEmbeddingUsageRecorded = internalMutation({
+  args: markMessageQueryEmbeddingUsageRecordedArgs,
+  handler: markMessageQueryEmbeddingUsageRecordedHandler,
+});
+
+export const primeMessageQueryEmbedding = internalAction({
+  args: primeMessageQueryEmbeddingArgs,
+  handler: primeMessageQueryEmbeddingHandler,
+});
+
+// --- Phase 3: messageMemoryContexts ---------------------------------------
+
+export const getMessageMemoryContext = internalQuery({
+  args: getMessageMemoryContextArgs,
+  handler: getMessageMemoryContextHandler,
+});
+
+export const claimMessageMemoryContextLease = internalMutation({
+  args: claimMessageMemoryContextLeaseArgs,
+  handler: claimMessageMemoryContextLeaseHandler,
+});
+
+export const completeMessageMemoryContext = internalMutation({
+  args: completeMessageMemoryContextArgs,
+  handler: completeMessageMemoryContextHandler,
+});
+
+export const markMessageMemoryContextUsageRecorded = internalMutation({
+  args: markMessageMemoryContextUsageRecordedArgs,
+  handler: markMessageMemoryContextUsageRecordedHandler,
+});
+
+export const primeMessageMemoryContext = internalAction({
+  args: primeMessageMemoryContextArgs,
+  handler: primeMessageMemoryContextHandler,
 });

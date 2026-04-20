@@ -1,5 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
+import { v } from "convex/values";
+import { Id } from "../_generated/dataModel";
 
 type MigrationCounts = {
   userPreferences: number;
@@ -177,3 +179,142 @@ async function patchModelIdTable(
   }
   return count;
 }
+
+// ── M30: Migrate legacy skill/integration fields to new override format ──
+
+type SkillIntegrationMigrationCounts = {
+  personasSkillOverrides: number;
+  personasIntegrationOverrides: number;
+  chatsSkillOverrides: number;
+  chatsIntegrationOverrides: number;
+  personasLegacyCleared: number;
+  chatsLegacyCleared: number;
+};
+
+/**
+ * One-time migration: convert legacy skill/integration fields to the new
+ * layered override format introduced in M30.
+ *
+ * - `persona.discoverableSkillIds: [A, B]` → `persona.skillOverrides: [{ skillId: A, state: "available" }, ...]`
+ * - `persona.enabledIntegrations: ["gmail"]` → `persona.integrationOverrides: [{ integrationId: "gmail", enabled: true }]`
+ * - `chat.discoverableSkillIds: [C]` → `chat.skillOverrides: [{ skillId: C, state: "available" }]`
+ * - `chat.disabledSkillIds: [D]` → append `{ skillId: D, state: "never" }` to `chat.skillOverrides`
+ *
+ * Does NOT populate `userPreferences.skillDefaults` or `integrationDefaults` —
+ * absence means system defaults apply, preserving current behavior.
+ *
+ * Safe to run multiple times (skips records that already have new fields populated).
+ */
+export const migrateSkillIntegrationOverrides = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { dryRun }): Promise<SkillIntegrationMigrationCounts> => {
+    const isDry = dryRun ?? false;
+    const counts: SkillIntegrationMigrationCounts = {
+      personasSkillOverrides: 0,
+      personasIntegrationOverrides: 0,
+      chatsSkillOverrides: 0,
+      chatsIntegrationOverrides: 0,
+      personasLegacyCleared: 0,
+      chatsLegacyCleared: 0,
+    };
+
+    // ── Personas ──
+    const personas = await ctx.db.query("personas").collect();
+    for (const persona of personas) {
+      const legacyPersona = persona as typeof persona & {
+        discoverableSkillIds?: Id<"skills">[];
+        enabledIntegrations?: string[];
+      };
+      const hasLegacyDiscoverable = Object.prototype.hasOwnProperty.call(legacyPersona, "discoverableSkillIds");
+      const hasLegacyEnabledIntegrations = Object.prototype.hasOwnProperty.call(legacyPersona, "enabledIntegrations");
+      // Skill overrides
+      const discoIds = legacyPersona.discoverableSkillIds;
+      if (discoIds && discoIds.length > 0 && (!persona.skillOverrides || persona.skillOverrides.length === 0)) {
+        const overrides = discoIds.map((id) => ({
+          skillId: id as Id<"skills">,
+          state: "available" as const,
+        }));
+        if (!isDry) {
+          await ctx.db.patch(persona._id, { skillOverrides: overrides });
+        }
+        counts.personasSkillOverrides += 1;
+      }
+
+      // Integration overrides
+      const enabledInts = legacyPersona.enabledIntegrations;
+      if (enabledInts && enabledInts.length > 0 && (!persona.integrationOverrides || persona.integrationOverrides.length === 0)) {
+        const overrides = enabledInts.map((id) => ({
+          integrationId: id,
+          enabled: true,
+        }));
+        if (!isDry) {
+          await ctx.db.patch(persona._id, { integrationOverrides: overrides });
+        }
+        counts.personasIntegrationOverrides += 1;
+      }
+
+      if (hasLegacyDiscoverable || hasLegacyEnabledIntegrations) {
+        if (!isDry) {
+          await ctx.db.patch(persona._id, {
+            discoverableSkillIds: undefined,
+            enabledIntegrations: undefined,
+          } as never);
+        }
+        counts.personasLegacyCleared += 1;
+      }
+    }
+
+    // ── Chats ──
+    const chats = await ctx.db.query("chats").collect();
+    for (const chat of chats) {
+      const legacyChat = chat as typeof chat & {
+        discoverableSkillIds?: Id<"skills">[];
+        disabledSkillIds?: Id<"skills">[];
+      };
+      const hasLegacyDiscoverable = Object.prototype.hasOwnProperty.call(legacyChat, "discoverableSkillIds");
+      const hasLegacyDisabled = Object.prototype.hasOwnProperty.call(legacyChat, "disabledSkillIds");
+      const disco = legacyChat.discoverableSkillIds;
+      const disabled = legacyChat.disabledSkillIds;
+      const hasLegacy = (disco && disco.length > 0) || (disabled && disabled.length > 0);
+      if (hasLegacy && (!chat.skillOverrides || chat.skillOverrides.length === 0)) {
+        const overrides: Array<{ skillId: Id<"skills">; state: "available" | "never" }> = [];
+        if (disco) {
+          for (const id of disco) {
+            overrides.push({ skillId: id as Id<"skills">, state: "available" });
+          }
+        }
+        if (disabled) {
+          for (const id of disabled) {
+            // Only add if not already present from disco (shouldn't happen, but defensive)
+            if (!overrides.some((o) => String(o.skillId) === String(id))) {
+              overrides.push({ skillId: id as Id<"skills">, state: "never" });
+            }
+          }
+        }
+        if (overrides.length > 0) {
+          if (!isDry) {
+            await ctx.db.patch(chat._id, { skillOverrides: overrides });
+          }
+          counts.chatsSkillOverrides += 1;
+        }
+      }
+
+      if (hasLegacyDiscoverable || hasLegacyDisabled) {
+        if (!isDry) {
+          await ctx.db.patch(chat._id, {
+            discoverableSkillIds: undefined,
+            disabledSkillIds: undefined,
+          } as never);
+        }
+        counts.chatsLegacyCleared += 1;
+      }
+
+      // Chat integration overrides: chats didn't have persisted integration overrides
+      // in the legacy model (they were ephemeral per-message), so nothing to migrate.
+    }
+
+    return counts;
+  },
+});

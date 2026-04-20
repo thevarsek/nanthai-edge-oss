@@ -31,6 +31,8 @@ export interface ModelSummary {
   outputPricePer1M?: number;
   /** Server-provided: true when modelId ends with `:free`. */
   isFree?: boolean;
+  /** Whether this model has a Zero Data Retention endpoint. */
+  hasZdrEndpoint?: boolean;
   architecture?: { modality?: string };
   supportedParameters?: string[];
   /** Video-specific pricing (video models don't use token pricing). */
@@ -342,11 +344,13 @@ function wizardScore(model: ModelSummary, task: WizardTask, priority: WizardPrio
 }
 
 export function ModelWizard({
-  models, onSelect, onClose,
+  models, onSelect, onClose, zdrEnforced, googleIntegrationsActive,
 }: {
   models: ModelSummary[];
   onSelect: (modelId: string) => void;
   onClose: () => void;
+  zdrEnforced?: boolean;
+  googleIntegrationsActive?: boolean;
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(1);
@@ -463,11 +467,15 @@ export function ModelWizard({
                 {results.map((m, i) => {
                   const taskObj = TASKS.find((taskOption) => taskOption.value === task);
                   const orMatch = m.openRouterUseCases?.find((uc) => uc.category === taskObj?.orCategory);
+                  const isZdrDisabled = zdrEnforced === true && !m.hasZdrEndpoint;
+                  const googleAllowed = new Set(["openai", "anthropic", "google"]);
+                  const isGoogleBlocked = googleIntegrationsActive === true && (!m.hasZdrEndpoint || !googleAllowed.has((m.provider ?? "").toLowerCase()));
+                  const isDisabled = isZdrDisabled || isGoogleBlocked;
                   return (
                     <button
                       key={m.modelId}
-                      onClick={() => { onSelect(m.modelId); onClose(); }}
-                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-border/50 hover:border-primary hover:bg-primary/5 transition-colors text-left"
+                      onClick={() => { if (!isDisabled) { onSelect(m.modelId); onClose(); } }}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-left ${isDisabled ? "border-border/30 opacity-40 cursor-not-allowed" : "border-border/50 hover:border-primary hover:bg-primary/5"}`}
                     >
                       <span className="w-6 h-6 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-bold shrink-0">
                         {i + 1}
@@ -483,6 +491,12 @@ export function ModelWizard({
                             <span className="text-[10px] text-primary">
                               #{Math.round(orMatch.returnedRank)} {taskObj ? t(taskObj.labelKey) : ""}
                             </span>
+                          )}
+                          {isZdrDisabled && (
+                            <span className="text-[10px] text-muted">{t("zdr_model_not_supported")}</span>
+                          )}
+                          {!isZdrDisabled && isGoogleBlocked && (
+                            <span className="text-[10px] text-muted">{t("zdr_model_not_available_google")}</span>
                           )}
                         </div>
                       </div>

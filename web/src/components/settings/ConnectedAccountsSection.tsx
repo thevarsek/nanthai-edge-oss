@@ -144,13 +144,101 @@ function AppleCalendarModal({
   );
 }
 
+// ─── Cloze API Key Modal ───────────────────────────────────────────────────
+
+function ClozeModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [apiKey, setApiKey] = useState("");
+  const [label, setLabel] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const connectCloze = useAction(api.oauth.cloze.connectCloze);
+
+  const handleConnect = async () => {
+    if (!apiKey) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await connectCloze({ apiKey, label: label || undefined });
+      onClose();
+    } catch (connectionError) {
+      setError(convexErrorMessage(connectionError, t("connection_failed")));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-sm bg-surface-1 rounded-2xl p-6 space-y-4 shadow-xl">
+        <h2 className="text-lg font-semibold">{t("connect_cloze")}</h2>
+        <div className="text-sm text-muted space-y-2">
+          <p>{t("cloze_api_key_instructions")}</p>
+          <ol className="list-decimal list-inside space-y-1 text-xs">
+            <li>{t("cloze_step_1")}</li>
+            <li>{t("cloze_step_2")}</li>
+            <li>{t("cloze_step_3")}</li>
+          </ol>
+          <a
+            href="https://help.cloze.com/article/2176-api-key"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-accent text-xs hover:underline"
+          >
+            {t("cloze_help_link")}
+          </a>
+        </div>
+        <div className="space-y-3">
+          <input
+            type="password"
+            placeholder={t("cloze_api_key_placeholder")}
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-surface-2 text-sm border border-border/50 focus:outline-none focus:border-accent"
+          />
+          <input
+            type="text"
+            placeholder={t("cloze_label_placeholder")}
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-surface-2 text-sm border border-border/50 focus:outline-none focus:border-accent"
+          />
+        </div>
+        {error && (
+          <p className="text-sm text-red-400">{error}</p>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 rounded-lg bg-surface-2 text-sm hover:bg-surface-3 transition-colors"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            onClick={handleConnect}
+            disabled={loading || !apiKey}
+            className="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? t("connecting") : t("connect")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function ConnectedAccountsSection() {
   const { t } = useTranslation();
-  const { googleConnection, microsoftConnection, notionConnection, appleCalendarConnection } =
+  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } =
     useConnectedAccounts();
   const [showAppleModal, setShowAppleModal] = useState(false);
+  const [showClozeModal, setShowClozeModal] = useState(false);
   const [showGoogleDisconnectConfirm, setShowGoogleDisconnectConfirm] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
@@ -160,7 +248,9 @@ export function ConnectedAccountsSection() {
   const disconnectGoogle = useAction(api.oauth.google.disconnectGoogle);
   const disconnectMicrosoft = useAction(api.oauth.microsoft.disconnectMicrosoft);
   const disconnectNotion = useAction(api.oauth.notion.disconnectNotion);
+  const disconnectSlack = useAction(api.oauth.slack.disconnectSlack);
   const disconnectAppleCalendar = useAction(api.oauth.apple_calendar.disconnectAppleCalendar);
+  const disconnectCloze = useAction(api.oauth.cloze.disconnectCloze);
 
   useEffect(() => {
     function handleMessage(event: MessageEvent<OAuthPopupMessage>) {
@@ -273,6 +363,15 @@ export function ConnectedAccountsSection() {
           disabled={isBusy("notion") || isActionBusy("disconnect-notion")}
         />
         <ConnectionRow
+          label={t("integration_slack")}
+          description={t("slack_description")}
+          icon={<IntegrationLogo slug="slack" size={32} />}
+          isConnected={!!slackConnection}
+          onConnect={() => void openOAuthPopup("slack")}
+          onDisconnect={() => { void runAccountAction("disconnect-slack", () => disconnectSlack({})); }}
+          disabled={isBusy("slack") || isActionBusy("disconnect-slack")}
+        />
+        <ConnectionRow
           label="Apple Calendar"
           description={t("apple_calendar_description")}
           icon={<IntegrationLogo slug="apple-calendar" size={32} />}
@@ -280,6 +379,15 @@ export function ConnectedAccountsSection() {
           onConnect={() => setShowAppleModal(true)}
           onDisconnect={() => { void runAccountAction("disconnect-apple-calendar", () => disconnectAppleCalendar({})); }}
           disabled={pendingProvider !== null || isActionBusy("disconnect-apple-calendar")}
+        />
+        <ConnectionRow
+          label="Cloze CRM"
+          description={t("cloze_description")}
+          icon={<IntegrationLogo slug="cloze" size={32} />}
+          isConnected={clozeConnection?.status === "active"}
+          onConnect={() => setShowClozeModal(true)}
+          onDisconnect={() => { void runAccountAction("disconnect-cloze", () => disconnectCloze({})); }}
+          disabled={pendingProvider !== null || isActionBusy("disconnect-cloze")}
         />
       </div>
 
@@ -306,14 +414,20 @@ export function ConnectedAccountsSection() {
       {showAppleModal && (
         <AppleCalendarModal onClose={() => setShowAppleModal(false)} />
       )}
+
+      {showClozeModal && (
+        <ClozeModal onClose={() => setShowClozeModal(false)} />
+      )}
     </div>
   );
 }
 
 function labelForProvider(provider: OAuthProvider): string {
-  return provider === "google"
-    ? "Google"
-    : provider === "microsoft"
-      ? "Microsoft"
-      : "Notion";
+  const labels: Record<OAuthProvider, string> = {
+    google: "Google",
+    microsoft: "Microsoft",
+    notion: "Notion",
+    slack: "Slack",
+  };
+  return labels[provider];
 }

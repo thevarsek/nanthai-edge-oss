@@ -19,6 +19,12 @@ import {
   getNotionConnection,
   markConnectionExpired as markNotionConnectionExpired,
 } from "../oauth/notion";
+import {
+  disconnectSlack,
+  exchangeSlackCode,
+  getSlackConnection,
+  markConnectionExpired as markSlackConnectionExpired,
+} from "../oauth/slack";
 
 function buildAuth(userId: string | null = "user_1") {
   return {
@@ -334,10 +340,111 @@ test("connection expiry helpers patch default error messages for each provider",
   await (markGoogleConnectionExpired as any)._handler({ db }, { userId: "user_1" });
   await (markMicrosoftConnectionExpired as any)._handler({ db }, { userId: "user_1" });
   await (markNotionConnectionExpired as any)._handler({ db }, { userId: "user_1" });
+  await (markSlackConnectionExpired as any)._handler({ db }, { userId: "user_1" });
 
   assert.deepEqual(
     patches.map((patch) => patch.errorMessage),
-    ["Token refresh failed", "Token refresh failed", "Token refresh failed"],
+    ["Token refresh failed", "Token refresh failed", "Token refresh failed", "Token refresh failed"],
   );
   assert.ok(patches.every((patch) => patch.status === "expired"));
+});
+
+test("exchangeSlackCode stores rotating user tokens and public query returns metadata", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const mutations: Record<string, unknown>[] = [];
+
+  try {
+    process.env.SLACK_CLIENT_ID = "slack_client";
+    process.env.SLACK_CLIENT_SECRET = "slack_secret";
+    globalThis.fetch = (async (url: string | URL) => {
+      if (String(url).includes("oauth.v2.user.access")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            authed_user: {
+              id: "U123",
+              access_token: "xoxe.xoxp-access",
+              refresh_token: "xoxe-refresh",
+              expires_in: 43200,
+              scope: "chat:write,search:read.public",
+              token_type: "user",
+            },
+            team: {
+              id: "T123",
+              name: "NanthAI",
+            },
+          }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({
+          ok: true,
+          user_id: "U123",
+          user: "Slack User",
+          team_id: "T123",
+          team: "NanthAI",
+        }),
+      } as Response;
+    }) as typeof fetch;
+
+    const exchange = await (exchangeSlackCode as any)._handler({
+      auth: buildAuth(),
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {
+      code: "code_1",
+      redirectUri: "https://nanthai.tech/oauth/slack/callback",
+    });
+
+    const query = await (getSlackConnection as any)._handler({
+      auth: buildAuth(),
+      db: {
+        query: () => ({
+          withIndex: () => ({
+            unique: async () => ({
+              _id: "oauth_slack",
+              userId: "user_1",
+              provider: "slack",
+              displayName: "Slack User",
+              workspaceId: "T123",
+              workspaceName: "NanthAI",
+              scopes: ["chat:write", "search:read.public"],
+              status: "active",
+              connectedAt: 1,
+              expiresAt: Date.now() + 43_200_000,
+              refreshToken: "xoxe-refresh",
+            }),
+          }),
+        }),
+      },
+    }, {});
+
+    const disconnect = await (disconnectSlack as any)._handler({
+      auth: buildAuth(),
+      runQuery: async () => ({ _id: "oauth_slack", accessToken: "xoxe.xoxp-access" }),
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {});
+
+    assert.deepEqual(exchange, {
+      success: true,
+      displayName: "Slack User",
+      workspaceName: "NanthAI",
+    });
+    assert.equal(mutations[0]?.accessToken, "xoxe.xoxp-access");
+    assert.equal(mutations[0]?.refreshToken, "xoxe-refresh");
+    assert.deepEqual(mutations[0]?.scopes, ["chat:write", "search:read.public"]);
+    assert.equal(query?.workspaceName, "NanthAI");
+    assert.equal(query?.displayName, "Slack User");
+    assert.deepEqual(disconnect, { success: true });
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
 });

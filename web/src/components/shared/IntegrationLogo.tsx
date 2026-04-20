@@ -14,6 +14,8 @@ const knownIntegrations: Record<string, { file: string; ext?: string }> = {
   "google-workspace": { file: "integration_google_workspace", ext: "webp" },
   "apple-calendar": { file: "integration_apple_calendar" },
   notion: { file: "integration_notion" },
+  slack: { file: "integration_slack" },
+  cloze: { file: "integration_cloze" },
   "ms-calendar": { file: "integration_outlook" }, // MS Calendar shares Outlook branding
   "microsoft-365": { file: "integration_microsoft_365" },
   outlook: { file: "integration_outlook" },

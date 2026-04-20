@@ -80,7 +80,7 @@ test("removeParticipant re-normalizes remaining sort orders", async () => {
   assert.equal(participantPatch.patch.sortOrder, 1);
 });
 
-test("create persona unsets prior default persona and strips integrations for non-tool models", async () => {
+test("create persona unsets prior default persona (M30 integration state handled elsewhere)", async () => {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
 
@@ -117,7 +117,9 @@ test("create persona unsets prior default persona and strips integrations for no
 
   assert.equal(patches[0]?.id, "persona_old");
   assert.equal(inserts[0]?.value.isDefault, true);
-  assert.deepEqual(inserts[0]?.value.enabledIntegrations, []);
+  // M30: create accepts legacy args but doesn't write enabledIntegrations
+  // (integrationOverrides should be handled via setPersonaIntegrationOverrides)
+  assert.deepEqual(inserts[0]?.value.enabledIntegrations, undefined);
 });
 
 test("update persona deletes replaced avatar storage ids", async () => {

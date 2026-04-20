@@ -1,11 +1,12 @@
 export const STREAM_PATCH_THRESHOLDS = {
-  firstContentPatchChars: 24,
-  firstContentPatchMaxDelayMs: 150,
-  contentPatchMinIntervalMs: 120,
-  contentPatchMinChars: 48,
-  firstReasoningPatchChars: 24,
-  reasoningPatchMinIntervalMs: 200,
-  reasoningPatchMinChars: 80,
+  firstContentPatchChars: 40,
+  firstContentPatchMaxDelayMs: 175,
+  contentPatchMinIntervalMs: 300,
+  contentPatchMinChars: 120,
+  firstReasoningPatchChars: 40,
+  firstReasoningPatchMaxDelayMs: 175,
+  reasoningPatchMinIntervalMs: 300,
+  reasoningPatchMinChars: 120,
 } as const;
 
 interface CadenceInput {
@@ -82,6 +83,7 @@ export interface ShouldPatchReasoningInput {
   totalReasoningLength: number;
   lastPatchedReasoningLength: number;
   lastPatchedReasoningAtMs: number;
+  reasoningStartedAtMs?: number;
 }
 
 export function shouldPatchStreamingReasoning(
@@ -93,7 +95,9 @@ export function shouldPatchStreamingReasoning(
     totalLength: input.totalReasoningLength,
     lastPatchedLength: input.lastPatchedReasoningLength,
     lastPatchedAtMs: input.lastPatchedReasoningAtMs,
+    firstPatchStartedAtMs: input.reasoningStartedAtMs,
     firstPatchChars: STREAM_PATCH_THRESHOLDS.firstReasoningPatchChars,
+    firstPatchMaxDelayMs: STREAM_PATCH_THRESHOLDS.firstReasoningPatchMaxDelayMs,
     minIntervalMs: STREAM_PATCH_THRESHOLDS.reasoningPatchMinIntervalMs,
     minChars: STREAM_PATCH_THRESHOLDS.reasoningPatchMinChars,
   });

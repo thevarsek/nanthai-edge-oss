@@ -399,14 +399,14 @@ Upload, view, delete knowledge base files for RAG.
 
 ## 10. Integrations
 
-### 10.1 OAuth Connections (Google, Microsoft, Notion, Apple Calendar)
+### 10.1 OAuth Connections (Google, Microsoft, Notion, Apple Calendar, Slack, Cloze)
 User connects external services via OAuth PKCE. Code exchanged through Convex backend.
 
 | Platform | Key Files |
 |----------|-----------|
-| iOS | `GoogleConnectionViewModel`, `MicrosoftConnectionViewModel`, `NotionConnectionViewModel`, `AppleCalendarConnectionViewModel`, `SettingsConnectedAccountsSection` |
+| iOS | `GoogleConnectionViewModel`, `MicrosoftConnectionViewModel`, `NotionConnectionViewModel`, `AppleCalendarConnectionViewModel`, `SlackConnectionViewModel`, `ClozeConnectionViewModel`, `SettingsConnectedAccountsSection` |
 | Android | `SettingsIntegrationsViewModel`, `SettingsIntegrationsRoute`, `IntegrationAuthRepository` |
-| Convex | `oauth/google:exchangeGoogleCode`, `oauth/microsoft:exchangeMicrosoftCode`, `oauth/notion:exchangeNotionCode`, `oauth/apple_calendar:connectAppleCalendar` |
+| Convex | `oauth/google:exchangeGoogleCode`, `oauth/microsoft:exchangeMicrosoftCode`, `oauth/notion:exchangeNotionCode`, `oauth/apple_calendar:connectAppleCalendar`, `oauth/slack:exchangeSlackCode`, `oauth/cloze:storeClozeApiKey` |
 
 ### 10.2 Chat Integration Toggles
 Enable/disable specific integrations per chat (which tools model can use).
@@ -418,13 +418,13 @@ Enable/disable specific integrations per chat (which tools model can use).
 | Convex | `chat/manage:updateChat`, `integrations/request_gates.ts` |
 
 ### 10.3 Tool Execution
-During generation, model invokes integration tools (Gmail, Drive, Calendar, Notion, OneDrive, Outlook).
+During generation, model invokes integration tools (Gmail, Drive, Calendar, Notion, OneDrive, Outlook, Slack, Cloze).
 
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ToolCallAccordionView`, `MessageBubble+ToolCalls` (display only) |
 | Android | `ChatDetailAdvancedMessageComponents` (display only) |
-| Convex | `tools/google/*`, `tools/microsoft/*`, `tools/notion/*`, `tools/apple/*`, `tools/registry.ts` |
+| Convex | `tools/google/*`, `tools/microsoft/*`, `tools/notion/*`, `tools/apple/*`, `tools/slack/*`, `tools/cloze/*`, `tools/registry.ts` |
 
 ---
 
@@ -446,7 +446,7 @@ Enable/disable specific skills per chat.
 |----------|-----------|
 | iOS | `ChatSkillsPickerSheet`, `ChatViewModel+ChatOverrides` |
 | Android | `ChatDetailViewModel` (toggleChatSkill, rebuildChatSkillToggles) |
-| Convex | `skills/mutations:setChatSkillsPublic` |
+| Convex | `skills/mutations:setChatSkillOverrides` |
 
 ---
 

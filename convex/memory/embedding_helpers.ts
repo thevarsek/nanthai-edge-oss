@@ -11,6 +11,10 @@ export interface EmbeddingResult {
   generationId?: string;
 }
 
+/**
+ * Compute embedding via OpenRouter using the caller's BYOK API key.
+ * All embedding cost and quota is attributed to the user's OpenRouter account.
+ */
 export async function computeEmbedding(
   text: string,
   apiKey: string,
@@ -42,7 +46,6 @@ export async function computeEmbedding(
     const embedding = data.data?.[0]?.embedding ?? null;
     if (!embedding) return null;
 
-    // M23: Parse usage from OpenRouter embeddings response.
     const rawUsage = data.usage;
     const usage = rawUsage
       ? {

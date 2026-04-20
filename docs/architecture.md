@@ -13,7 +13,7 @@
 | LLM Orchestration | **Convex Actions** (server-side) | All OpenRouter calls, streaming, title gen, memory extraction run on Convex backend |
 | Realtime Sync | **Convex reactive queries** over WebSocket | iOS subscribes to queries; UI updates automatically as server writes data |
 | Model registry | Dynamic fetch + Convex cache | Cron-synced model catalog stored in Convex `cachedModels` table |
-| Streaming | **Server-side** via Convex Actions + `StreamWriter` | Convex patches `messages.content`/`reasoning` in-place; iOS sees updates via subscription. `messageChunks` table removed (M9.5). |
+| Streaming | **Server-side** via Convex Actions + `StreamWriter` | Convex writes hot patches into `streamingMessages`, persists tool-call deltas, and finalizes into `messages`. Direct message-row patching and `messageChunks` are both gone. |
 | State | `@Observable` (Observation framework) | Modern SwiftUI, fine-grained updates |
 | Concurrency | Swift structured concurrency (async/await, actors) | Thread-safe, no Combine needed |
 | Secrets | Keychain via Security framework | OS-level encryption for API keys |
@@ -125,6 +125,7 @@ The Convex backend handles all server-side logic:
 - **Streaming**: Server writes active content/reasoning/tool-call patches into `streamingMessages` via `StreamWriter`, while `messages` remains the stable persisted history. Clients merge `chat/queries:listMessages` with `chat/queries:listStreamingMessages`; `finalizeGeneration` copies final output back into `messages` and removes the overlay row.
 - **Autonomous group chat**: Multi-participant turns, moderator directives, consensus checks
 - **Memory**: Vector search (cosine similarity), extraction, consolidation, gating
+- **TTFT prewarm path**: generation preflight is batched, query embeddings are lease-cached, and full message memory-context retrieval can be precomputed before generation starts
 - **Model catalog**: Cron-synced from OpenRouter API
 - **Personas, Folders, Preferences**: Full CRUD with per-user scoping
 - **Node positions**: Ideascape spatial data
@@ -137,6 +138,7 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 |--------|-----------|---------|
 | `chat/mutations` | sendMessage, updateTitle, deleteChat, etc. | Chat CRUD + generation scheduling |
 | `chat/actions` | runGeneration | Server-side OpenRouter streaming via `StreamWriter` |
+| `chat/queries_generation_context` | getGenerationContext | Consolidated internal preflight query for message/chat/preferences/persona/connection state |
 | `chat/manage` | updateChat, switchBranchAtFork, deleteChat, bulkDeleteChats, forkChat, duplicateChat, reorderPinnedChats | Chat management — archive, canonical fork switching, duplicate, fork, pin/unpin, reorder pinned |
 | `chat/queries` | listChats, getMessages, getChat, getAttachmentUrl, listModelSummaries, listKnowledgeBaseFiles, isJobCancelled | Reactive data subscriptions + generation job cancellation polling (pure read, `internalQuery`) |
 | `chat/audio_actions` | generateAudioForMessage, previewVoice | TTS generation via `gpt-audio-mini`, PCM→WAV encoding, Convex storage (M20) |
@@ -151,22 +153,28 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `tools/google/` | auth, gmail (6), drive (4), calendar (3), index | Google Workspace integration — 14 OAuth-gated tools (M10 Phase B) |
 | `tools/microsoft/` | auth, outlook (6), onedrive (4), calendar (3), index | Microsoft 365 integration — 14 OAuth-gated tools (M10 Phase C) |
 | `tools/notion/` | auth, pages (7), index | Notion integration — 7 OAuth-gated tools (M10 Phase D) |
+| `tools/slack/` | auth, channels, messages, index | Slack integration — OAuth-gated messaging tools |
+| `tools/cloze/` | auth, contacts, companies, projects, index | Cloze CRM integration — API-key-gated tools |
 | `oauth/google.ts` | exchangeGoogleCode, refreshGoogleToken, disconnectGoogle | Google OAuth PKCE token exchange + management |
 | `oauth/microsoft.ts` | exchangeMicrosoftCode, refreshMicrosoftToken, disconnectMicrosoft | Microsoft OAuth PKCE token exchange + management |
 | `oauth/notion.ts` | exchangeNotionCode, refreshNotionToken, disconnectNotion | Notion OAuth token exchange (HTTP Basic Auth) + management |
+| `oauth/slack.ts` | exchangeSlackCode, refreshSlackToken, disconnectSlack | Slack OAuth 2.0 token exchange + management |
+| `oauth/cloze.ts` | connectCloze, disconnectCloze | Cloze API key connection + management |
 | `http.ts` | `/download` endpoint | File download with Content-Disposition headers (M10) |
 | `chat/generation_continuation_shared` | types, constants, checkpoint interfaces | Durable continuation shared types — lease duration, terminal statuses, checkpoint/state shapes |
 | `chat/actions_run_generation_continuation` | continueGeneration | Durable continuation action — claims lease, restores checkpoint, resumes generation loop |
 | `chat/mutations_generation_continuation_handlers` | create/cancel/claim continuation | Continuation CRUD — checkpoint persistence, lease-based claiming, scheduled function bookkeeping |
 | `subagents/` | actions, mutations, queries, shared | Depth-1 delegated child runs, async parent resume, continuation checkpoints |
 | `autonomous/` | actions, mutations, queries | Multi-participant autonomous chat |
-| `memory/operations` | extract, search, consolidate | Vector-based memory system |
+| `memory/operations` | extract, search, consolidate, cache lifecycle | Vector-based memory system plus lease-based prewarm caches |
 | `memory/shared` | categories, retrieval modes, scope types, source types | Single source of truth for memory type definitions (post-M14) |
 | `memory/operations_args` | argument validators | Zod-like validators for memory operations (post-M14) |
 | `memory/operations_import_handlers` | document import pipeline | Extract memories from imported documents (post-M14) |
 | `memory/operations_public_handlers` | public CRUD handlers | User-facing memory mutation handlers (post-M14) |
 | `memory/operations_internal_handlers` | internal handlers | System-level memory operations (post-M14) |
 | `memory/embedding_helpers` | embedding utilities | Embedding generation helpers (post-M14) |
+| `memory/query_embedding_handlers` | lease/prime/ensureReady | Per-message query embedding cache used by memory retrieval and retries |
+| `memory/memory_context_handlers` | lease/prime/ensureReady | Prewarms embedding + vector search + hydration into `messageMemoryContexts` |
 | `personas/` | mutations, queries | Persona CRUD |
 | `favorites/` | mutations, queries | Quick-launch favorites — CRUD + reorder (max 20 per user, max 3 models each) |
 | `folders/` | mutations, queries | Folder organization |
@@ -203,6 +211,13 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 
 ### Auth Startup
 - Single `.task(id: isFullyActive)` in `RootView` replaces dual `.task` + `.onChange` that could double-trigger Convex auth
+
+### Post-M30 / TTFT Architecture (2026-04-20 → 2026-04-21)
+- **Consolidated generation preflight**: `chat/queries_generation_context.ts` replaces a long series of internal round-trips with one batched internal query for message, chat, prefs, persona, and connection state.
+- **Query embedding cache**: `messageQueryEmbeddings` stores lease-based per-message embeddings so retries, regeneration, and memory retrieval do not repeatedly pay the embedding cost.
+- **Full memory-context cache**: `messageMemoryContexts` stores the hydrated memory-hit payload keyed by `messageId` and `textHash`, allowing the generation action to skip embedding, vector search, and memory hydration on cache hit.
+- **OpenRouter instrumentation**: request/stream helpers now record provider TTFB timing and preserve hardened fallback behavior for Anthropic endpoint selection issues.
+- **Participant preflight parallelization**: cancellation checks, job-state patch, prefs, persona, chat defaults, and skill catalog inputs are resolved together to remove ~150-230ms of sequential startup latency.
 
 ---
 
@@ -304,7 +319,7 @@ For a product-facing summary of which tiers expose which skills and tool familie
 
 - **Base tools**: Minimal shared registry for normal tool-capable chats (`fetch_image`, `search_chats`, scheduled jobs, persona tools, skill tools including `load_skill`).
 - **Profile-expanded tools**: Documents, connected apps, runtime/analytics, and subagents are added on later turns after a loaded skill unlocks the corresponding `requiredToolProfiles`.
-- **Connection-gated tools**: Google Workspace, Microsoft 365, Notion, and Apple Calendar profiles only register tools when the relevant integrations are both requested and actually connected.
+- **Connection-gated tools**: Google Workspace, Microsoft 365, Notion, Apple Calendar, Slack, and Cloze profiles only register tools when the relevant integrations are both requested and actually connected.
 - **Subagent tool**: `spawn_subagents` now lives behind the `subagents` profile, so it is only exposed after a loaded skill calls for delegated parallel work. Child runs never receive this tool.
 
 ### Subagent Execution Flow
@@ -328,28 +343,32 @@ Terminal child states:
 ### Integration Toggle Flow (M10 Phase B)
 
 ```
-Persona defaults (enabledIntegrations: ["gmail", "drive", "calendar", "outlook"])
+Settings defaults (`integrationDefaults`)
     ↓
-Chat-level overrides (user toggles via MessageInput + menu)
+Persona overrides (`integrationOverrides`)
+    ↓
+Chat overrides (`integrationOverrides`)
+    ↓
+Turn-level overrides (slash chips / per-message request)
     ↓
 Effective integrations sent as `enabledIntegrations` in sendMessage args
     ↓
-Backend: parallel check Google + Microsoft + Notion + Apple Calendar connection status
+Backend: parallel check Google + Microsoft + Notion + Apple Calendar + Slack + Cloze connection status
     ↓
 Intersection: only integrations with active connections are passed to buildToolRegistry()
     ↓
 Tool registry includes only relevant tool groups
 ```
 
-Per-chat overrides are persisted to the `chats` table for: temperature, max tokens, reasoning (include + effort), subagent toggle, and search settings (web search on/off, search mode, search complexity). All follow the same pattern — `nil`/absent = inherit global default from `userPreferences`.
+Per-chat overrides are persisted to the `chats` table for: temperature, max tokens, reasoning (include + effort), subagent toggle, search settings (web search on/off, search mode, search complexity), and M30 skill/integration overrides. All follow the same pattern — `nil`/absent = inherit from the broader layer above.
 
 ### External Integration Connection Flows (M10 Phases B/C/D + Apple Calendar follow-on)
 
-Google, Microsoft, and Notion follow the same general iOS → Convex token exchange pattern (with provider-specific differences):
+Google, Microsoft, Notion, and Slack follow the same general iOS → Convex token exchange pattern (with provider-specific differences). Cloze uses API key auth instead of OAuth:
 
 1. iOS opens `ASWebAuthenticationSession` with provider's consent screen
 2. User authorizes → callback with authorization code
-3. iOS calls Convex action (`exchangeGoogleCode` / `exchangeMicrosoftCode` / `exchangeNotionCode`) with code + verifier/state
+3. iOS calls Convex action (`exchangeGoogleCode` / `exchangeMicrosoftCode` / `exchangeNotionCode` / `exchangeSlackCode`) with code + verifier/state
 4. Convex exchanges code for tokens via provider's token endpoint
 5. Tokens stored in `oauthConnections` table (access + refresh + expiry + scopes + email)
 6. Auto-refresh: tool auth helpers check expiry before each API call, refresh transparently
@@ -359,8 +378,10 @@ Google, Microsoft, and Notion follow the same general iOS → Convex token excha
 - **Microsoft** uses PKCE but does NOT send `client_secret` (public/native client — AADSTS90023 error if included)
 - **Notion** uses HTTP Basic Auth (`base64(client_id:client_secret)`) for token exchange — no PKCE. JSON request body (not form-encoded). OAuth redirect goes through HTTPS relay page at `nanthai.tech` since Notion requires `https://` redirect URIs. No scopes — access is page-level (user chooses during OAuth consent).
 - **Apple Calendar** is not OAuth-based in the current design. iOS collects the Apple Account email that owns the iCloud calendar plus an Apple app-specific password. Convex stores those credentials, discovers the user's CalDAV calendars, and executes server-side event CRUD through a thin `tsdav` wrapper.
+- **Slack** uses OAuth 2.0 with `client_secret` in token exchange. Workspace-level authorization — user selects channels during OAuth consent. Bot token (`xoxb-`) stored for API calls.
+- **Cloze** uses API key authentication (no OAuth). User provides their Cloze API key directly; Convex stores it in `oauthConnections` (reusing the same table with `provider: "cloze"`).
 
-**API call pattern:** Google, Microsoft, and Notion API calls use raw `fetch()` — no Node.js SDKs (`googleapis`, `@microsoft/microsoft-graph-client`). Apple Calendar is the intentional exception: a thin `tsdav` wrapper handles CalDAV discovery and event CRUD while the rest of the tool stack stays in native Convex TypeScript.
+**API call pattern:** Google, Microsoft, Notion, Slack, and Cloze API calls use raw `fetch()` — no Node.js SDKs (`googleapis`, `@microsoft/microsoft-graph-client`). Apple Calendar is the intentional exception: a thin `tsdav` wrapper handles CalDAV discovery and event CRUD while the rest of the tool stack stays in native Convex TypeScript.
 
 ### File Storage & Download
 
@@ -557,7 +578,7 @@ final class AppState {
 - **Execution Loop**: Uses an iterative loop (`runToolCallLoop()`) up to 20 rounds, re-calling OpenRouter with tool results before final stream.
 - **Registry Structure**: `ToolRegistry` manages strongly typed tool definitions and dispatches execution dynamically.
 - **Document & Spreadsheet Tooling**: Custom JSZip-based readers/writers (`docx`, `xlsx`, `pptx`) function entirely in Convex V8 environments, generating files without relying on external SaaS.
-- **Integration**: Supports Google Workspace and MS 365 OAuth with tool injection into request params.
+- **Integration**: Supports Google Workspace, MS 365, Notion, Apple Calendar, Slack, and Cloze with tool injection into request params.
 
 ### Scheduled Jobs (M13)
 - **Self-Rescheduling Pattern**: Instead of static crons, dynamically reschedules itself using `ctx.scheduler.runAt(nextRunTime, self, {jobId})`.

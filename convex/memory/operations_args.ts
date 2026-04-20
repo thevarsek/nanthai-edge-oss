@@ -102,6 +102,13 @@ export const getMemoryDocArgs = {
   memoryId: v.id("memories"),
 } satisfies PropertyValidators;
 
+export const hydrateRelevantMemoryHitsArgs = {
+  hits: v.array(v.object({
+    embeddingId: v.id("memoryEmbeddings"),
+    score: v.number(),
+  })),
+} satisfies PropertyValidators;
+
 export const storeEmbeddingArgs = {
   memoryId: v.id("memories"),
   userId: v.string(),
@@ -110,4 +117,87 @@ export const storeEmbeddingArgs = {
 
 export const purgeUserMemoriesArgs = {
   userId: v.string(),
+} satisfies PropertyValidators;
+
+export const getMessageQueryEmbeddingArgs = {
+  messageId: v.id("messages"),
+} satisfies PropertyValidators;
+
+export const claimMessageQueryEmbeddingLeaseArgs = {
+  messageId: v.id("messages"),
+  userId: v.string(),
+  chatId: v.optional(v.id("chats")),
+  textHash: v.string(),
+  leaseOwner: v.string(),
+  leaseExpiresAt: v.number(),
+  now: v.number(),
+} satisfies PropertyValidators;
+
+export const completeMessageQueryEmbeddingArgs = {
+  messageId: v.id("messages"),
+  status: v.union(v.literal("ready"), v.literal("failed")),
+  embedding: v.optional(v.array(v.float64())),
+  usage: v.optional(v.object({
+    promptTokens: v.number(),
+    totalTokens: v.number(),
+  })),
+  generationId: v.optional(v.string()),
+  errorCode: v.optional(v.string()),
+  now: v.number(),
+} satisfies PropertyValidators;
+
+export const markMessageQueryEmbeddingUsageRecordedArgs = {
+  messageId: v.id("messages"),
+  usageRecordedAt: v.number(),
+  usageRecordedMessageId: v.id("messages"),
+} satisfies PropertyValidators;
+
+export const primeMessageQueryEmbeddingArgs = {
+  messageId: v.id("messages"),
+  userId: v.string(),
+  chatId: v.optional(v.id("chats")),
+  queryText: v.optional(v.string()),
+} satisfies PropertyValidators;
+
+// --- Phase 3: messageMemoryContexts ---------------------------------------
+
+export const getMessageMemoryContextArgs = {
+  messageId: v.id("messages"),
+} satisfies PropertyValidators;
+
+export const claimMessageMemoryContextLeaseArgs = {
+  messageId: v.id("messages"),
+  userId: v.string(),
+  chatId: v.optional(v.id("chats")),
+  textHash: v.string(),
+  leaseOwner: v.string(),
+  leaseExpiresAt: v.number(),
+  now: v.number(),
+} satisfies PropertyValidators;
+
+export const completeMessageMemoryContextArgs = {
+  messageId: v.id("messages"),
+  status: v.union(v.literal("ready"), v.literal("failed")),
+  hydratedHits: v.optional(v.array(v.any())),
+  memoryQueryText: v.optional(v.string()),
+  usage: v.optional(v.object({
+    promptTokens: v.number(),
+    totalTokens: v.number(),
+  })),
+  generationId: v.optional(v.string()),
+  errorCode: v.optional(v.string()),
+  now: v.number(),
+} satisfies PropertyValidators;
+
+export const markMessageMemoryContextUsageRecordedArgs = {
+  messageId: v.id("messages"),
+  usageRecordedAt: v.number(),
+  usageRecordedMessageId: v.id("messages"),
+} satisfies PropertyValidators;
+
+export const primeMessageMemoryContextArgs = {
+  messageId: v.id("messages"),
+  userId: v.string(),
+  chatId: v.optional(v.id("chats")),
+  queryText: v.optional(v.string()),
 } satisfies PropertyValidators;

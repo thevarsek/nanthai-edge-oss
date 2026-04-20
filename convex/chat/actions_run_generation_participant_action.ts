@@ -1,15 +1,23 @@
 "use node";
 
 import { ConvexError } from "convex/values";
+import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
-import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
+import { ttftLog } from "../lib/generation_log";
+import {
+  buildProgressiveToolRegistry,
+  buildRegistryParams,
+  patchSameRoundProgressiveToolErrors,
+  retrySameRoundProgressiveToolCalls,
+} from "../tools/progressive_registry";
 import { prepareGenerationContext } from "./actions_run_generation_context";
 import { generateForParticipant } from "./actions_run_generation_participant";
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import { scheduleGenerationContinuation } from "./actions_run_generation_continuation";
+import { LYRIA_MP3_MIME_TYPE, parseMp3DurationMs } from "./audio_shared";
 import {
   RunGenerationParticipantArgs,
   TERMINAL_GENERATION_JOB_STATUSES,
@@ -140,6 +148,11 @@ export async function runGenerationParticipantHandler(
         allowSubagents: continuationState.group.allowSubagents,
         searchSessionId: continuationState.group.searchSessionId,
         subagentBatchId: continuationState.group.subagentBatchId,
+        chatSkillOverrides: continuationState.group.chatSkillOverrides,
+        chatIntegrationOverrides: continuationState.group.chatIntegrationOverrides,
+        personaSkillOverrides: continuationState.group.personaSkillOverrides,
+        skillDefaults: continuationState.group.skillDefaults,
+        integrationDefaults: continuationState.group.integrationDefaults,
         resumeExpected: true,
       }
     : args;
@@ -197,6 +210,13 @@ export async function runGenerationParticipantHandler(
   }
 
   try {
+    const preflightStartedAt = Date.now();
+    ttftLog("[generation] participant preflight started", {
+      chatId: effectiveArgs.chatId,
+      messageId: effectiveArgs.participant.messageId,
+      jobId: effectiveArgs.participant.jobId,
+      modelId: effectiveArgs.participant.modelId,
+    });
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, effectiveArgs.userId);
     const continuationCount = continuationState?.continuationCount ?? 0;
     const forceToolChoiceNone = continuationCount >= MAX_TOOL_ROUNDS;
@@ -218,6 +238,17 @@ export async function runGenerationParticipantHandler(
       memoryContext = prepared.memoryContext;
       modelCapabilities = prepared.modelCapabilities;
     }
+    const streamingMessageId =
+      effectiveArgs.participant.streamingMessageId
+      ?? job?.streamingMessageId
+      ?? undefined;
+    ttftLog("[generation] participant preflight finished", {
+      chatId: effectiveArgs.chatId,
+      messageId: effectiveArgs.participant.messageId,
+      jobId: effectiveArgs.participant.jobId,
+      modelId: effectiveArgs.participant.modelId,
+      durationMs: Date.now() - preflightStartedAt,
+    });
 
     const toolRegistry = buildProgressiveToolRegistry({
       enabledIntegrations: effectiveArgs.effectiveIntegrations,
@@ -251,6 +282,56 @@ export async function runGenerationParticipantHandler(
       restoredActiveProfiles: continuationState?.activeProfiles as any,
       forceToolChoiceNone,
       actionStartTime: Date.now(),
+      streamingMessageId,
+      preResolvedOverrides: {
+        resolved: true as const,
+        chatSkillOverrides: effectiveArgs.chatSkillOverrides,
+        personaSkillOverrides: effectiveArgs.personaSkillOverrides,
+        skillDefaults: effectiveArgs.skillDefaults,
+      },
+      onProfilesExpanded: async (toolCalls, results, activeProfiles, _currentRegistry, currentParams, _nextCaps) => {
+        const registry = buildProgressiveToolRegistry({
+          enabledIntegrations: effectiveArgs.effectiveIntegrations,
+          isPro: effectiveArgs.isPro,
+          allowSubagents: effectiveArgs.allowSubagents,
+          activeProfiles,
+          directToolNames: effectiveArgs.directToolNames ?? [],
+        });
+        await retrySameRoundProgressiveToolCalls(
+          toolCalls as any,
+          results,
+          registry,
+          {
+            ctx,
+            userId: effectiveArgs.userId,
+            chatId: String(effectiveArgs.chatId),
+          },
+        );
+        patchSameRoundProgressiveToolErrors(toolCalls, results, registry);
+
+        return {
+          registry,
+          params: {
+            ...currentParams,
+            ...buildRegistryParams(registry),
+          },
+        };
+      },
+      persistInlineAudio: async (audioBase64) => {
+        const audioBuffer = Buffer.from(audioBase64, "base64");
+        let audioDurationMs = parseMp3DurationMs(audioBuffer);
+        if (audioDurationMs === 0) {
+          audioDurationMs = Math.round((audioBuffer.length * 8) / 128000 * 1000);
+        }
+        const audioStorageId = await ctx.storage.store(
+          new Blob([new Uint8Array(audioBuffer)], { type: LYRIA_MP3_MIME_TYPE }),
+        );
+        return {
+          audioStorageId: audioStorageId as Id<"_storage">,
+          audioDurationMs,
+          audioGeneratedAt: Date.now(),
+        };
+      },
       continuationHandoff: forceToolChoiceNone
         ? undefined
         : {

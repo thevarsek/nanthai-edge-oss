@@ -75,13 +75,15 @@
 
 ### External Integration API Pattern (M10)
 
-All Google Workspace, Microsoft 365, and Notion API calls use raw `fetch()` — **no Node.js SDKs** (`googleapis`, `@microsoft/microsoft-graph-client`, `@notionhq/client`). This avoids large dependency trees and keeps tools runnable in Convex's default V8 runtime without `"use node"` directives.
+All Google Workspace, Microsoft 365, Notion, Slack, and Cloze API calls use raw `fetch()` — **no Node.js SDKs** (`googleapis`, `@microsoft/microsoft-graph-client`, `@notionhq/client`, `@slack/web-api`). This avoids large dependency trees and keeps tools runnable in Convex's default V8 runtime without `"use node"` directives.
 
 | Integration | Auth Pattern | Token Storage |
 |-------------|-------------|---------------|
 | Google Workspace | OAuth 2.0 PKCE (public client) | Convex `oauthConnections` table |
 | Microsoft 365 | OAuth 2.0 PKCE (public/native client, no client_secret) | Convex `oauthConnections` table |
 | Notion | OAuth 2.0 with HTTP Basic Auth (`base64(client_id:client_secret)`) | Convex `oauthConnections` table |
+| Slack | OAuth 2.0 (workspace tokens) | Convex `oauthConnections` table |
+| Cloze | API key auth | Convex `userSecrets` table |
 
 ### Push Notifications (M13.5 + M16)
 

@@ -27,7 +27,7 @@ Use this skill for tasks that require Outlook, OneDrive, or Microsoft Calendar.
   compilationStatus: "compiled",
   scope: "system",
   origin: "nanthaiBuiltin",
-  visibility: "visible",
+  visibility: "integration_managed",
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",

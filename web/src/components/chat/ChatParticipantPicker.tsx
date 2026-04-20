@@ -46,6 +46,8 @@ interface Props {
   /** Atomically replace all participants — used for modality switches. */
   onSetParticipants?: (chatId: Id<"chats">, entries: SetParticipantEntry[]) => Promise<void>;
   onClose: () => void;
+  /** When Google integrations are active in this chat, grey out non-allowlist models. */
+  enabledIntegrations?: Set<string>;
 }
 
 // ─── Icon maps ──────────────────────────────────────────────────────────────
@@ -90,9 +92,11 @@ export function ChatParticipantPicker({
   onRemove,
   onSetParticipants,
   onClose,
+  enabledIntegrations,
 }: Props) {
-  const { personas } = useSharedData();
+  const { personas, prefs } = useSharedData();
   const modelSummaries = useModelSummaries();
+  const zdrEnforced = prefs?.zdrEnabled === true;
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
@@ -111,6 +115,19 @@ export function ChatParticipantPicker({
   const modelNameMap = useMemo(
     () => buildModelNameMap(modelSummaries as Parameters<typeof buildModelNameMap>[0]),
     [modelSummaries],
+  );
+  const modelZdrMap = useMemo(
+    () => new Map(models.map((m) => [m.modelId, m.hasZdrEndpoint === true])),
+    [models],
+  );
+  const modelProviderMap = useMemo(
+    () => new Map(models.map((m) => [m.modelId, m.provider ?? ""])),
+    [models],
+  );
+  const GOOGLE_IDS = useMemo(() => new Set(["gmail", "drive", "calendar"]), []);
+  const googleIntegrationsActive = useMemo(
+    () => enabledIntegrations != null && [...enabledIntegrations].some((id) => GOOGLE_IDS.has(id)),
+    [enabledIntegrations, GOOGLE_IDS],
   );
 
   // ── Already-selected IDs ────────────────────────────────────────────────
@@ -350,6 +367,10 @@ export function ChatParticipantPicker({
                   onToggle={handleTogglePersona}
                   onInfo={setInfoPersona}
                   modelNameMap={modelNameMap}
+                  zdrEnforced={zdrEnforced}
+                  modelZdrMap={modelZdrMap}
+                  googleIntegrationsActive={googleIntegrationsActive}
+                  modelProviderMap={modelProviderMap}
                 />
               ))}
             </div>
@@ -376,6 +397,8 @@ export function ChatParticipantPicker({
                     sortKey={sortKey}
                     onToggle={handleToggleModel}
                     onInfo={setInfoModel}
+                    zdrEnforced={zdrEnforced}
+                    googleIntegrationsActive={googleIntegrationsActive}
                   />
                 );
               })
@@ -409,7 +432,7 @@ export function ChatParticipantPicker({
         {showWizard && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowWizard(false)}>
             <div className="w-full max-w-md max-h-[85vh] rounded-2xl border border-border/50 shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-              <ModelWizard models={models} onSelect={handleWizardSelect} onClose={() => setShowWizard(false)} />
+              <ModelWizard models={models} onSelect={handleWizardSelect} onClose={() => setShowWizard(false)} zdrEnforced={zdrEnforced} googleIntegrationsActive={googleIntegrationsActive} />
             </div>
           </div>
         )}

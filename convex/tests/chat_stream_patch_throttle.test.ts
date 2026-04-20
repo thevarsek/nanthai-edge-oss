@@ -8,6 +8,17 @@ import {
   STREAM_PATCH_THRESHOLDS,
 } from "../chat/stream_patch_throttle";
 
+test("STREAM_PATCH_THRESHOLDS has expected values (guard against accidental changes)", () => {
+  assert.equal(STREAM_PATCH_THRESHOLDS.firstContentPatchChars, 40);
+  assert.equal(STREAM_PATCH_THRESHOLDS.firstContentPatchMaxDelayMs, 175);
+  assert.equal(STREAM_PATCH_THRESHOLDS.contentPatchMinIntervalMs, 300);
+  assert.equal(STREAM_PATCH_THRESHOLDS.contentPatchMinChars, 120);
+  assert.equal(STREAM_PATCH_THRESHOLDS.firstReasoningPatchChars, 40);
+  assert.equal(STREAM_PATCH_THRESHOLDS.firstReasoningPatchMaxDelayMs, 175);
+  assert.equal(STREAM_PATCH_THRESHOLDS.reasoningPatchMinIntervalMs, 300);
+  assert.equal(STREAM_PATCH_THRESHOLDS.reasoningPatchMinChars, 120);
+});
+
 test("shouldPatchStreamingContent returns false when no new content, true when forced", () => {
   const noNewContent = shouldPatchStreamingContent({
     nowMs: 1_000,
@@ -103,6 +114,33 @@ test("shouldPatchStreamingReasoning follows cadence and supports force flush", (
     lastPatchedReasoningAtMs: 10_000,
   });
   assert.equal(forced, true);
+});
+
+test("shouldPatchStreamingReasoning allows the first patch after a short max delay even below char threshold", () => {
+  const belowCharThreshold = STREAM_PATCH_THRESHOLDS.firstReasoningPatchChars - 1;
+  const timeoutExceeded =
+    STREAM_PATCH_THRESHOLDS.firstReasoningPatchMaxDelayMs + 10;
+
+  // Before timeout elapses: no patch yet (below char threshold).
+  const notYet = shouldPatchStreamingReasoning({
+    nowMs: 800,
+    totalReasoningLength: belowCharThreshold,
+    lastPatchedReasoningLength: 0,
+    lastPatchedReasoningAtMs: 0,
+    reasoningStartedAtMs: 750,
+  });
+  assert.equal(notYet, false);
+
+  // After timeout: patch forced even with very little content, so users
+  // see the reasoning UI appear promptly on slow reasoning streams.
+  const delayedFirstPatch = shouldPatchStreamingReasoning({
+    nowMs: 1_000 + timeoutExceeded,
+    totalReasoningLength: belowCharThreshold,
+    lastPatchedReasoningLength: 0,
+    lastPatchedReasoningAtMs: 0,
+    reasoningStartedAtMs: 1_000,
+  });
+  assert.equal(delayedFirstPatch, true);
 });
 
 test("shouldForceReasoningPatchOnContentStart only at first content boundary with pending reasoning", () => {

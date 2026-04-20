@@ -21,6 +21,8 @@ type SkillToolProfile =
   | "microsoft"
   | "notion"
   | "appleCalendar"
+  | "cloze"
+  | "slack"
   | "scheduledJobs"
   | "skillsManagement"
   | "personas";
@@ -38,7 +40,7 @@ export interface SystemSkillSeedData {
   compilationStatus: "pending" | "compiled" | "failed";
   scope: "system";
   origin: "anthropicCurated" | "nanthaiBuiltin";
-  visibility: "visible" | "hidden";
+  visibility: "visible" | "hidden" | "integration_managed";
   lockState: "locked" | "editable";
   status: "active" | "archived";
   runtimeMode: "textOnly" | "toolAugmented" | "sandboxAugmented";
@@ -71,7 +73,7 @@ export const upsertSystemSkill = internalMutation({
       v.literal("anthropicCurated"),
       v.literal("nanthaiBuiltin"),
     ),
-    visibility: v.union(v.literal("visible"), v.literal("hidden")),
+    visibility: v.union(v.literal("visible"), v.literal("hidden"), v.literal("integration_managed")),
     lockState: v.union(v.literal("locked"), v.literal("editable")),
     status: v.union(v.literal("active"), v.literal("archived")),
     runtimeMode: v.union(

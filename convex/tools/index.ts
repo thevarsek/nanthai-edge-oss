@@ -87,3 +87,39 @@ export async function checkAppleCalendarConnection(
     return false;
   }
 }
+
+/**
+ * Check whether a user has an active Cloze connection.
+ */
+export async function checkClozeConnection(
+  ctx: ActionCtx,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const connection = await ctx.runQuery(
+      internal.oauth.cloze.getConnectionInternal,
+      { userId },
+    );
+    return connection !== null && connection.status === "active";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Check whether a user has an active Slack OAuth connection.
+ */
+export async function checkSlackConnection(
+  ctx: ActionCtx,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const connection = await ctx.runQuery(
+      internal.oauth.slack.getConnectionInternal,
+      { userId },
+    );
+    return connection !== null && connection.status === "active";
+  } catch {
+    return false;
+  }
+}

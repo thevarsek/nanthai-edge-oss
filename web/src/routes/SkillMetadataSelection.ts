@@ -9,6 +9,8 @@ export const SKILL_INTEGRATION_OPTIONS = [
   { id: "ms_calendar", label: "Microsoft Calendar" },
   { id: "apple_calendar", label: "Apple Calendar" },
   { id: "notion", label: "Notion" },
+  { id: "cloze", label: "Cloze CRM" },
+  { id: "slack", label: "Slack" },
 ] as const;
 
 export type SkillIntegrationId = (typeof SKILL_INTEGRATION_OPTIONS)[number]["id"];
@@ -20,6 +22,8 @@ export type SkillToolProfileId =
   | "google"
   | "microsoft"
   | "notion"
+  | "cloze"
+  | "slack"
   | "appleCalendar"
   | "scheduledJobs"
   | "skillsManagement";
@@ -88,6 +92,8 @@ export function requiredToolProfilesForSkill(selection: SkillMetadataSelection):
     profiles.add("microsoft");
   }
   if (selection.selectedIntegrationIds.has("notion")) profiles.add("notion");
+  if (selection.selectedIntegrationIds.has("cloze")) profiles.add("cloze");
+  if (selection.selectedIntegrationIds.has("slack")) profiles.add("slack");
   if (selection.selectedIntegrationIds.has("apple_calendar")) profiles.add("appleCalendar");
   return Array.from(profiles).sort();
 }

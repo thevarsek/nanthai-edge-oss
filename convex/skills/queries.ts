@@ -111,7 +111,11 @@ export const listVisibleSkillsInternal = internalQuery({
       .withIndex("by_owner", (q) => q.eq("ownerUserId", userId).eq("status", "active"))
       .collect();
 
-    const visible = systemSkills.filter((s) => s.visibility === "visible");
+    // Internal queries include integration_managed skills (backend needs them
+    // for resolver-driven catalog building). Hidden skills are excluded.
+    const visible = systemSkills.filter(
+      (s) => s.visibility === "visible" || s.visibility === "integration_managed",
+    );
     return [...visible, ...userSkills];
   },
 });

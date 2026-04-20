@@ -106,6 +106,24 @@ export interface ChatRequestParameters {
    */
   webSearchMaxTotalResults?: number;
   transforms?: string[] | null;
+  /**
+   * OpenRouter provider preferences.
+   * - `zdr`: enforce Zero Data Retention providers only.
+   * - `sort`: provider selection strategy (`"latency"` prioritises low-TTFT
+   *   providers for the given model; `"throughput"` prefers fastest completion;
+   *   `"price"` picks cheapest).
+   * - `preferred_max_latency`: hints for the `latency` sort strategy —
+   *   providers exceeding these thresholds (in seconds) are de-prioritised.
+   */
+  provider?: {
+    zdr?: boolean;
+    sort?: "latency" | "throughput" | "price";
+    preferred_max_latency?: {
+      p50?: number;
+      p90?: number;
+      p99?: number;
+    };
+  } | null;
   /** Tool definitions to send to the model. */
   tools?: ToolDefinition[] | null;
   /** Controls which tool the model should call. */

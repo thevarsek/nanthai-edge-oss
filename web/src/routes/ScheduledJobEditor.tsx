@@ -81,6 +81,8 @@ function jobToSteps(job: JobDoc): DraftStep[] {
         msCalendarEnabled: integrations.includes("ms_calendar"),
         appleCalendarEnabled: integrations.includes("apple_calendar"),
         notionEnabled: integrations.includes("notion"),
+        clozeEnabled: integrations.includes("cloze"),
+        slackEnabled: integrations.includes("slack"),
         knowledgeBaseFileIds: (raw.knowledgeBaseFileIds as string[] | undefined) ?? [],
       };
     });
@@ -104,6 +106,8 @@ function jobToSteps(job: JobDoc): DraftStep[] {
     msCalendarEnabled: integrations.includes("ms_calendar"),
     appleCalendarEnabled: integrations.includes("apple_calendar"),
     notionEnabled: integrations.includes("notion"),
+    clozeEnabled: integrations.includes("cloze"),
+    slackEnabled: integrations.includes("slack"),
     knowledgeBaseFileIds: job.knowledgeBaseFileIds ?? [],
   }];
 }

@@ -60,8 +60,9 @@ export function ParticipantPicker({
   onClose,
 }: ParticipantPickerProps) {
   const { t } = useTranslation();
-  const { personas } = useSharedData();
+  const { personas, prefs } = useSharedData();
   const modelSummaries = useModelSummaries();
+  const zdrEnforced = prefs?.zdrEnabled === true;
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
   const [activeFilters, setActiveFilters] = useState<Set<CapFilter>>(new Set());
@@ -72,6 +73,10 @@ export function ParticipantPicker({
   const models = useMemo(
     () => (modelSummaries as ModelSummary[] | undefined) ?? [],
     [modelSummaries],
+  );
+  const modelZdrMap = useMemo(
+    () => new Map(models.map((m) => [m.modelId, m.hasZdrEndpoint === true])),
+    [models],
   );
   const query = search.toLowerCase().trim();
   const modelNameMap = useMemo(
@@ -208,6 +213,8 @@ export function ParticipantPicker({
                 onToggle={handleTogglePersona}
                 onInfo={setInfoPersona}
                 modelNameMap={modelNameMap}
+                zdrEnforced={zdrEnforced}
+                modelZdrMap={modelZdrMap}
               />
             ))}
           </div>
@@ -233,6 +240,7 @@ export function ParticipantPicker({
                 sortKey={sortKey}
                 onToggle={handleToggleModel}
                 onInfo={setInfoModel}
+                zdrEnforced={zdrEnforced}
               />
             ))
           )}
@@ -273,7 +281,7 @@ export function ParticipantPicker({
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowWizard(false)}>
           <div className="w-full max-w-md max-h-[85vh] rounded-2xl border border-border/50 shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <ModelWizard models={models} onSelect={handleWizardSelect} onClose={() => setShowWizard(false)} />
+            <ModelWizard models={models} onSelect={handleWizardSelect} onClose={() => setShowWizard(false)} zdrEnforced={zdrEnforced} />
           </div>
         </div>
       )}

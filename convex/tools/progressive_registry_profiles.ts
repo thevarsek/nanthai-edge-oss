@@ -79,6 +79,31 @@ import {
   appleCalendarDelete,
 } from "./apple/index";
 import {
+  clozePersonFind,
+  clozePersonCount,
+  clozePersonAdd,
+  clozePersonChange,
+  clozeAddNote,
+  clozeAddTodo,
+  clozeTimeline,
+  clozeSaveDraft,
+  clozeAboutMe,
+  clozeProjectFind,
+  clozeProjectChange,
+} from "./cloze/index";
+import {
+  slackSearchMessages,
+  slackSearchUsers,
+  slackSearchChannels,
+  slackSendMessage,
+  slackReadChannel,
+  slackReadThread,
+  slackCreateCanvas,
+  slackUpdateCanvas,
+  slackReadCanvas,
+  slackReadUserProfile,
+} from "./slack/index";
+import {
   registerAnalyticsTools,
   registerPersistentRuntimeTools,
   registerWorkspaceProfileTools,
@@ -183,6 +208,39 @@ export function registerProfileTools(
           appleCalendarCreate,
           appleCalendarUpdate,
           appleCalendarDelete,
+        ]);
+      }
+      break;
+    case "cloze":
+      if ((options.enabledIntegrations ?? []).includes("cloze")) {
+        registerToolsIfMissing(registry, [
+          clozePersonFind,
+          clozePersonCount,
+          clozePersonAdd,
+          clozePersonChange,
+          clozeAddNote,
+          clozeAddTodo,
+          clozeTimeline,
+          clozeSaveDraft,
+          clozeAboutMe,
+          clozeProjectFind,
+          clozeProjectChange,
+        ]);
+      }
+      break;
+    case "slack":
+      if ((options.enabledIntegrations ?? []).includes("slack")) {
+        registerToolsIfMissing(registry, [
+          slackSearchMessages,
+          slackSearchUsers,
+          slackSearchChannels,
+          slackSendMessage,
+          slackReadChannel,
+          slackReadThread,
+          slackCreateCanvas,
+          slackUpdateCanvas,
+          slackReadCanvas,
+          slackReadUserProfile,
         ]);
       }
       break;

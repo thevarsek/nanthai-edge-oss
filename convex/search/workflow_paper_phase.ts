@@ -47,7 +47,7 @@ export async function runPaperGenerationPhase(
   // progressive tool loading, memory, compaction, subagents, etc.
   // The job status is already "streaming" — runGeneration will re-set it
   // (idempotent) and handle finalization, post-processing, and tool loops.
-  await ctx.scheduler.runAfter(0, internal.chat.actions.runGeneration, {
+  await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
     chatId: args.chatId,
     userMessageId: args.userMessageId,
     assistantMessageIds: [args.assistantMessageId],

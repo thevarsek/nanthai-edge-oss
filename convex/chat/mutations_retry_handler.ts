@@ -29,6 +29,8 @@ export interface RetryMessageArgs extends Record<string, unknown> {
     duration?: number;
     generateAudio?: boolean;
   };
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
 }
 
 export interface RetryMessageResult {
@@ -132,7 +134,7 @@ export async function retryMessageHandler(
   await ctx.db.patch(args.messageId, { status: "cancelled" });
   await cancelGenerationJobsForMessage(ctx, args.messageId, now);
 
-  const { assistantMessageIds, generationJobIds } =
+  const { assistantMessageIds, generationJobIds, streamingMessageIds } =
     await createAssistantMessagesAndJobs(ctx, {
       chatId: originalMsg.chatId,
       userId,
@@ -142,6 +144,8 @@ export async function retryMessageHandler(
       jobCreatedAt: now,
       enabledIntegrations: filteredIntegrations,
       subagentsEnabled: filteredSubagents,
+      turnSkillOverrides: args.turnSkillOverrides,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
     });
 
   await ctx.db.patch(chat._id, {
@@ -150,20 +154,48 @@ export async function retryMessageHandler(
   });
 
   const effectiveSearchMode = args.searchMode ?? undefined;
+  const retryUserMessageId = originalMsg.parentMessageIds[0];
+  if (!retryUserMessageId) {
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Cannot retry an assistant message without its source user message",
+    });
+  }
+  const retryUserMessage = retryUserMessageId
+    ? await ctx.db.get(retryUserMessageId)
+    : null;
+  const retryQueryText =
+    typeof retryUserMessage?.content === "string" ? retryUserMessage.content.trim() : "";
+
+  if (retryUserMessageId && retryQueryText.length > 0) {
+    await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageQueryEmbedding, {
+      messageId: retryUserMessageId,
+      userId,
+      chatId: originalMsg.chatId,
+      queryText: retryQueryText,
+    });
+    await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageMemoryContext, {
+      messageId: retryUserMessageId,
+      userId,
+      chatId: originalMsg.chatId,
+      queryText: retryQueryText,
+    });
+  }
 
   if (!effectiveSearchMode || effectiveSearchMode === "normal") {
     const forceWebSearch =
       effectiveSearchMode === "normal" ? true : (args.webSearchEnabled ?? false);
 
-    await ctx.scheduler.runAfter(0, internal.chat.actions.runGeneration, {
+    await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
       chatId: originalMsg.chatId,
-      userMessageId: originalMsg.parentMessageIds[0],
+      userMessageId: retryUserMessageId,
       assistantMessageIds,
       generationJobIds,
       participants: mapParticipantsForGeneration(
         participants,
         assistantMessageIds,
         generationJobIds,
+        streamingMessageIds,
       ),
       userId,
       expandMultiModelGroups: args.expandMultiModelGroups ?? true,
@@ -171,6 +203,10 @@ export async function retryMessageHandler(
       enabledIntegrations: filteredIntegrations,
       subagentsEnabled: filteredSubagents,
       videoConfig: args.videoConfig,
+      turnSkillOverrides: args.turnSkillOverrides,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
+      // Phase 1 TTFT: scheduler hop #1 measurement
+      enqueuedAt: Date.now(),
     });
   } else if (effectiveSearchMode === "web") {
     const cachedSearchContextDoc = await ctx.db
@@ -184,10 +220,7 @@ export async function retryMessageHandler(
       generationJobIds,
     );
     const complexity = Math.max(1, Math.min(3, Math.round(args.complexity ?? 1)));
-    const userMsg = originalMsg.parentMessageIds[0]
-      ? await ctx.db.get(originalMsg.parentMessageIds[0])
-      : null;
-    const queryText = userMsg?.content?.trim() ?? "";
+    const queryText = retryQueryText;
 
     for (const participant of mappedParticipants) {
       const sessionId = await ctx.db.insert("searchSessions", {
@@ -215,7 +248,7 @@ export async function retryMessageHandler(
           assistantMessageId: participant.messageId,
           jobId: participant.jobId,
           chatId: originalMsg.chatId,
-          userMessageId: originalMsg.parentMessageIds[0],
+          userMessageId: retryUserMessageId,
           userId,
           query: queryText,
           complexity,

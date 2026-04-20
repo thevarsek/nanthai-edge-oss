@@ -9,6 +9,10 @@ export interface SubagentTask {
 
 export interface ParentBatchParamsSnapshot {
   enabledIntegrations?: string[];
+  /** M30 — Turn-level skill overrides (propagated from parent generation) */
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  /** M30 — Turn-level integration overrides (propagated from parent generation) */
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   requestParams: ChatRequestParameters;
 }
 

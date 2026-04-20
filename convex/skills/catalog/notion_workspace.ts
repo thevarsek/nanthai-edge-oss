@@ -28,7 +28,7 @@ Use this skill when the task depends on connected Notion pages or databases.
   compilationStatus: "compiled",
   scope: "system",
   origin: "nanthaiBuiltin",
-  visibility: "visible",
+  visibility: "integration_managed",
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",

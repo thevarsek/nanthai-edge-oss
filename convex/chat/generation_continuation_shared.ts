@@ -31,6 +31,14 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   resumeExpected?: boolean;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
+  // Pre-resolved overrides from coordinator (eliminates duplicate queries)
+  chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  personaSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  skillDefaults?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
+  // Phase 1 TTFT instrumentation: scheduler hop #2 measurement (refreshed on each continuation)
+  enqueuedAt?: number;
 }
 
 export interface GenerationContinuationGroupSnapshot {
@@ -46,6 +54,12 @@ export interface GenerationContinuationGroupSnapshot {
   allowSubagents: boolean;
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
+  // Pre-resolved overrides preserved across continuations
+  chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  personaSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  skillDefaults?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
 }
 
 export interface GenerationContinuationCheckpoint {

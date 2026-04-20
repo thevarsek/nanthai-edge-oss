@@ -10,6 +10,8 @@ import {
   purchaseEntitlementStatus,
   pushPlatform,
   pushProvider,
+  skillOverrideEntry,
+  integrationOverrideEntry,
 } from "./schema_validators";
 
 export const userSchemaTables = {
@@ -107,6 +109,12 @@ export const userSchemaTables = {
     defaultVideoDuration: v.optional(v.number()),     // seconds
     defaultVideoResolution: v.optional(v.string()),   // "480p" | "720p" | "1080p" | "4K"
     defaultVideoGenerateAudio: v.optional(v.boolean()),
+    // ZDR (Zero Data Retention) — when true, all requests enforce provider.zdr
+    zdrEnabled: v.optional(v.boolean()),
+    // M30: Global skill defaults (sparse — absence means system default applies)
+    skillDefaults: v.optional(v.array(skillOverrideEntry)),
+    // M30: Global integration defaults (sparse — absence means disabled for new connections)
+    integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 
@@ -137,7 +145,7 @@ export const userSchemaTables = {
   // Connection credentials for third-party integrations (Google, Microsoft, etc.)
   oauthConnections: defineTable({
     userId: v.string(),
-    provider: v.string(), // "google" | "microsoft" | "notion" | "apple_calendar"
+    provider: v.string(), // "google" | "microsoft" | "notion" | "apple_calendar" | "cloze" | "slack"
     accessToken: v.string(),
     refreshToken: v.string(),
     expiresAt: v.number(), // Unix timestamp (ms) when accessToken expires

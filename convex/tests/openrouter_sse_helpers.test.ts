@@ -139,6 +139,75 @@ test("applySSEEventResult accumulates deltas, freezes tool calls on done, and ke
   assert.equal(state.annotations.length, 1);
 });
 
+test("applySSEEventResult fires onToolCallStart when a tool call name first appears", async () => {
+  const state = createAccumulator();
+  const startedToolCalls: Array<{ index: number; id: string; name: string }> = [];
+
+  // First event: tool call at index 0 arrives with name.
+  await applySSEEventResult(
+    {
+      toolCallDeltas: [
+        { index: 0, id: "call_0", function: { name: "search", arguments: "{\"q\":" } },
+      ],
+    },
+    state as any,
+    {
+      onToolCallStart: async (tc) => { startedToolCalls.push(tc); },
+    },
+  );
+
+  assert.equal(startedToolCalls.length, 1);
+  assert.deepEqual(startedToolCalls[0], { index: 0, id: "call_0", name: "search" });
+
+  // Second event: more arguments for index 0 — should NOT fire again.
+  await applySSEEventResult(
+    {
+      toolCallDeltas: [
+        { index: 0, function: { arguments: "\"hello\"}" } },
+      ],
+    },
+    state as any,
+    {
+      onToolCallStart: async (tc) => { startedToolCalls.push(tc); },
+    },
+  );
+
+  assert.equal(startedToolCalls.length, 1, "should not fire again for same index");
+
+  // Third event: new tool call at index 1 arrives.
+  await applySSEEventResult(
+    {
+      toolCallDeltas: [
+        { index: 1, id: "call_1", function: { name: "fetch", arguments: "" } },
+      ],
+    },
+    state as any,
+    {
+      onToolCallStart: async (tc) => { startedToolCalls.push(tc); },
+    },
+  );
+
+  assert.equal(startedToolCalls.length, 2);
+  assert.deepEqual(startedToolCalls[1], { index: 1, id: "call_1", name: "fetch" });
+});
+
+test("applySSEEventResult does not fire onToolCallStart when callback is absent", async () => {
+  const state = createAccumulator();
+
+  // Should not throw even without the callback.
+  await applySSEEventResult(
+    {
+      toolCallDeltas: [
+        { index: 0, id: "call_0", function: { name: "search", arguments: "" } },
+      ],
+    },
+    state as any,
+    {},
+  );
+
+  assert.equal(state.toolCallsInProgress.get(0)?.name, "search");
+});
+
 test("applySSEEventResult throws stream errors", async () => {
   await assert.rejects(
     () =>

@@ -74,6 +74,7 @@ export const listModelSummaries = query({
         supportsImages: m.supportsImages,
         supportsVideo: m.supportsVideo,
         supportsTools: m.supportsTools,
+        hasZdrEndpoint: m.hasZdrEndpoint ?? false,
         contextLength: m.contextLength,
         hasReasoning: (m.supportedParameters ?? []).includes("reasoning"),
         inputPricePer1M: m.inputPricePer1M,

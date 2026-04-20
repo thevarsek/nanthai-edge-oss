@@ -12,20 +12,28 @@ export interface GenerationContext {
 export async function prepareGenerationContext(
   ctx: ActionCtx,
   args: RunGenerationArgs,
+  preloadedCapabilities?: Map<string, ModelCapabilities>,
 ): Promise<GenerationContext> {
   const rawMessages = await ctx.runQuery(internal.chat.queries.listAllMessages, {
     chatId: args.chatId,
   });
   const allMessages = await hydrateAttachmentsForRequest(ctx, rawMessages);
 
-  const modelCapabilities = new Map<string, ModelCapabilities>();
-  for (const participant of args.participants) {
-    if (!modelCapabilities.has(participant.modelId)) {
-      const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
-        modelId: participant.modelId,
-      });
+  let modelCapabilities: Map<string, ModelCapabilities>;
+  if (preloadedCapabilities && preloadedCapabilities.size > 0) {
+    modelCapabilities = preloadedCapabilities;
+  } else {
+    const uniqueModelIds = [...new Set(args.participants.map((participant) => participant.modelId))];
+    const capabilityEntries = await Promise.all(
+      uniqueModelIds.map(async (modelId) => ({
+        modelId,
+        caps: await ctx.runQuery(internal.chat.queries.getModelCapabilities, { modelId }),
+      })),
+    );
+    modelCapabilities = new Map<string, ModelCapabilities>();
+    for (const { modelId, caps } of capabilityEntries) {
       if (caps) {
-        modelCapabilities.set(participant.modelId, caps);
+        modelCapabilities.set(modelId, caps);
       }
     }
   }

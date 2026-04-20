@@ -27,3 +27,29 @@ export const MODEL_IDS = {
   embedding: "openai/text-embedding-3-small",
   memoryAlwaysOnLimit: 10,
 } as const;
+
+/**
+ * Default OpenRouter provider selection strategy applied to every chat
+ * request. `sort: "latency"` asks OpenRouter to route to the provider with the
+ * lowest observed TTFT for the requested model. Callers may override by
+ * supplying their own `provider` block — merging happens in
+ * `lib/openrouter_request.buildRequestBody`, so ZDR and other caller-provided
+ * fields are preserved.
+ *
+ * We intentionally do NOT set `preferred_max_latency` here: a hard p90 cap
+ * filters out endpoints whose recent p90 exceeds the threshold, which can
+ * collapse the endpoint set to zero (especially when combined with top-level
+ * `cache_control` that already restricts routing to a single provider, e.g.
+ * Anthropic-native), producing a 404 "No endpoints found". Sorting alone is
+ * sufficient — OpenRouter picks the lowest-latency provider without hard
+ * exclusions.
+ *
+ * Set this constant to `null` to fully disable provider sorting (one-line
+ * revert if we observe regressions).
+ */
+export const OPENROUTER_DEFAULT_PROVIDER_SORT: {
+  sort: "latency" | "throughput" | "price";
+  preferred_max_latency?: { p50?: number; p90?: number; p99?: number };
+} | null = {
+  sort: "latency",
+};

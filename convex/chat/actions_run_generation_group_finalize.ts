@@ -1,5 +1,3 @@
-"use node";
-
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";

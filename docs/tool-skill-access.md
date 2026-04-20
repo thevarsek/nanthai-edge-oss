@@ -52,7 +52,7 @@ The heaviest tool families — docs, connected apps, and runtime — now sit beh
 Current backend behavior is intentionally forgiving:
 
 - send / retry requests that include integrations or subagents on a non-tool-capable model are silently downgraded instead of rejected
-- persona and scheduled-job writes also silently strip `enabledIntegrations` when the selected model cannot use tools
+- persona, chat, and scheduled-job writes also silently strip tool-dependent integration state when the selected model cannot use tools
 - clients should still disable incompatible integrations / skills / subagent controls ahead of time so users do not save or send configurations that will be downgraded server-side
 
 ## Tier And Capability Matrix
@@ -93,6 +93,8 @@ Current backend behavior is intentionally forgiving:
 | Microsoft 365 | `outlook_send`, `outlook_read`, `outlook_search`, `outlook_delete`, `outlook_move`, `outlook_list_folders`, `onedrive_upload`, `onedrive_list`, `onedrive_read`, `onedrive_move`, `ms_calendar_list`, `ms_calendar_create`, `ms_calendar_delete` | Pro + active Microsoft connection + requested integration |
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
+| Slack | `slack_send_message`, `slack_read_messages`, `slack_search_messages`, `slack_list_channels` | Pro + active Slack connection + requested integration |
+| Cloze | `cloze_search_contacts`, `cloze_read_contact`, `cloze_create_contact`, `cloze_search_companies`, `cloze_read_company`, `cloze_list_projects` | Pro + active Cloze connection + requested integration |
 | Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset`, `data_python_exec`, `data_python_sandbox`, `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset`, `read_pdf`, `generate_pdf`, `edit_pdf` | Pro (skill-activated) |
 
 ## Skills And Their Practical Role
@@ -106,7 +108,7 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Runtime / analytics | `code-workspace`, `persistent-runtime`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `persistentRuntime`, `analytics` | Pro (skill-activated) |
 | Documents | `documents`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
-| Connected apps | `google-workspace`, `microsoft-365`, `notion-workspace`, `apple-calendar` | `google`, `microsoft`, `notion`, `appleCalendar` | Pro, plus matching connection for real use |
+| Connected apps | `google-workspace`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
 | Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-release-notes`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
 | GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo`, `gtm-solo-founder` | instruction-led | Pro-useful |
@@ -151,6 +153,8 @@ These are the clearest examples of how skills and tools relate today.
 | `microsoft-365` | `microsoft` | Outlook, OneDrive, MS Calendar tool IDs | `requiredIntegrationIds = ["outlook", "onedrive", "ms_calendar"]` |
 | `notion-workspace` | `notion` | Notion page/database tool IDs | `requiredIntegrationIds = ["notion"]` |
 | `apple-calendar` | `appleCalendar` | Apple Calendar tool IDs | `requiredIntegrationIds = ["apple_calendar"]` |
+| `slack` | `slack` | Slack messaging tool IDs | `requiredIntegrationIds = ["slack"]` |
+| `cloze` | `cloze` | Cloze CRM tool IDs | `requiredIntegrationIds = ["cloze"]` |
 
 ## User-Created Skills
 
@@ -178,6 +182,8 @@ On create/update, NanthAI normalizes skill metadata like this:
 | Outlook / OneDrive / MS Calendar integration IDs | add `microsoft` profile |
 | Notion integration ID | add `notion` profile |
 | Apple Calendar integration ID | add `appleCalendar` profile |
+| Slack integration ID | add `slack` profile |
+| Cloze integration ID | add `cloze` profile |
 | Scheduled job tool IDs | add `scheduledJobs` profile |
 | Skill CRUD tool IDs | add `skillsManagement` profile |
 

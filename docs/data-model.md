@@ -4,14 +4,14 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 4 files imported into `convex/schema.ts` — 39 app tables total (core: 17, catalog: 6, user: 12, runtime: 4), plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 4 files imported into `convex/schema.ts` — 44 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
-| `chats` | Conversations | title, userId, folderId, activeBranchLeafId, mode (`chatMode` validator: `"chat"` / `"ideascape"`), isPinned, pinnedAt, source (M13), sourceJobId (M13), sourceJobName (M13), subagentOverride, temperatureOverride, maxTokensOverride, includeReasoningOverride, reasoningEffortOverride, webSearchOverride, searchModeOverride, searchComplexityOverride, discoverableSkillIds (M18), disabledSkillIds (M18), autoAudioResponseOverride (M20). `activeBranchLeafId` remains the only persisted branch-selection field; per-fork pill switching is resolved canonically by `chat/manage:switchBranchAtFork`. |
-| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (post-M14), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20), videoUrls (M29), hasVideo (M29). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
+| `chats` | Conversations | title, userId, folderId, activeBranchLeafId, mode (`chatMode` validator: `"chat"` / `"ideascape"`), isPinned, pinnedAt, source (M13), sourceJobId (M13), sourceJobName (M13), subagentOverride, temperatureOverride, maxTokensOverride, includeReasoningOverride, reasoningEffortOverride, webSearchOverride, searchModeOverride, searchComplexityOverride, skillOverrides (M30), integrationOverrides (M30), autoAudioResponseOverride (M20). `activeBranchLeafId` remains the only persisted branch-selection field; per-fork pill switching is resolved canonically by `chat/manage:switchBranchAtFork`. |
+| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (per-message snapshot), turnSkillOverrides (M30), turnIntegrationOverrides (M30), loadedSkillIds (M30), usedIntegrationIds (M30), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20), videoUrls (M29), hasVideo (M29). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
 | `streamingMessages` | Active streaming overlay rows | messageId, chatId, content, reasoning, status, toolCalls, createdAt, updatedAt. Written by `StreamWriter` during generation so live token patches avoid invalidating heavy `listMessages` subscriptions. |
 | `chatParticipants` | Models/personas in a chat | chatId, modelId, personaId, sortOrder, personaName, personaEmoji, personaAvatarImageUrl, createdAt |
 | `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed) |
@@ -26,16 +26,18 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `generatedFiles` | AI-generated file metadata (M10) | userId, chatId, messageId, storageId, filename, mimeType, sizeBytes, toolName |
 | `generatedCharts` | AI-generated native chart metadata (M19) | userId, chatId, messageId, toolName, chartType, title?, xLabel?, yLabel?, xUnit?, yUnit?, elements |
 | `fileAttachments` | Uploaded file attachment metadata | userId, chatId, messageId, storageId, filename, mimeType, sizeBytes |
-| `personas` | Custom AI personas | displayName, personaDescription, modelId, avatarEmoji, avatarImageStorageId, avatarSFSymbol, avatarColor, temperature, enabledIntegrations (M10), discoverableSkillIds (M18) |
+| `personas` | Custom AI personas | displayName, personaDescription, modelId, avatarEmoji, avatarImageStorageId, avatarSFSymbol, avatarColor, temperature, skillOverrides (M30), integrationOverrides (M30) |
 | `memories` | Extracted memories | content, category, isPending (boolean), memoryType, importanceScore, retrievalMode (post-M14), scopeType (post-M14), personaIds (post-M14), sourceType (post-M14), sourceFileName (post-M14), tags (post-M14), citationChatId, citationMessageId |
 | `memoryEmbeddings` | Memory vector index rows | memoryId, embedding, model metadata |
+| `messageQueryEmbeddings` | Lease-based per-message query embedding cache | messageId, userId, chatId, provider, modelId, status, embedding, textHash, usage, generationId, errorCode, leaseOwner, leaseExpiresAt, usageRecordedAt, usageRecordedMessageId |
+| `messageMemoryContexts` | Lease-based per-message hydrated memory-context cache | messageId, userId, chatId, status, textHash, memoryQueryText, hydratedHits, usage, generationId, errorCode, leaseOwner, leaseExpiresAt, usageRecordedAt, usageRecordedMessageId |
 | `cachedModels` | OpenRouter model catalog + benchmark guidance cache | modelId, name, provider, canonicalSlug, pricing, contextLength, supportsImages, supportsTools, supportsVideo (M29), videoCapabilities (M29: durations, resolutions, aspectRatios, audio), benchmarkLlm, benchmarkMedia, openRouterUseCases, guidanceMatch, derivedGuidance |
 | `usageRecords` | Per-message API cost tracking (M23) | userId, chatId, messageId, modelId, promptTokens, completionTokens, totalTokens, cost, source (M23: `"generation"` / `"title"` / `"compaction"` / `"memory_extraction"` / `"memory_embedding"` / `"search_query_gen"` / `"search_perplexity"` / `"search_planning"` / `"search_analysis"` / `"search_synthesis"` / `"subagent"`), token breakdowns (cached, reasoning, audio, image, video), upstreamInferenceCost. Indexes: `by_user`, `by_user_model`, `by_chat`, `by_message` (M23) |
 | `folders` | Chat organization | name, userId, sortOrder |
-| `userPreferences` | Global user settings | defaultModelId, temperature, maxTokens, hapticFeedback, onboardingCompleted (M14), defaultSearchMode (M13.5), defaultSearchComplexity (M13.5), subagentsEnabledByDefault, autoAudioResponse (M20), preferredVoice (M20), showBalanceInChat (post-M21), showAdvancedStats (M23), hasSeenIdeascapeHelp (M17), hasSeenMainHelp (post-M21), defaultVideoDuration (M29), defaultVideoResolution (M29), defaultVideoAspectRatio (M29), defaultVideoAudio (M29), etc. |
+| `userPreferences` | Global user settings | defaultModelId, temperature, maxTokens, hapticFeedback, onboardingCompleted (M14), defaultSearchMode (M13.5), defaultSearchComplexity (M13.5), subagentsEnabledByDefault, autoAudioResponse (M20), preferredVoice (M20), showBalanceInChat (post-M21), showAdvancedStats (M23), hasSeenIdeascapeHelp (M17), hasSeenMainHelp (post-M21), defaultVideoDuration (M29), defaultVideoResolution (M29), defaultVideoAspectRatio (M29), defaultVideoAudio (M29), skillDefaults (M30), integrationDefaults (M30), etc. |
 | `modelSettings` | Per-model overrides | openRouterId, temperature, maxTokens, systemPrompt |
 | `nodePositions` | Ideascape spatial layout | chatId, messageId, x, y, width, height |
-| `oauthConnections` | External integration OAuth tokens (M10) | userId, provider (google/microsoft/notion), accessToken, refreshToken, expiresAt, scopes, email, status |
+| `oauthConnections` | External integration OAuth tokens (M10) | userId, provider (google/microsoft/notion/slack/cloze), accessToken, refreshToken, expiresAt, scopes, email, status |
 | `integrationRequestGates` | Per-user integration approval state | userId, provider, gating metadata, timestamps |
 | `purchaseEntitlements` | Cross-platform Pro entitlement source of truth | userId, platform, source, productId, externalPurchaseId, status, activatedAt, revokedAt, lastVerifiedAt |
 | `scheduledJobs` | User-created recurring AI tasks (M13) | userId, name, prompt, personaId, modelId, cronExpression, recurrence, status, searchMode (M13.5), searchComplexity (M13.5), includeReasoning, reasoningEffort, steps (post-M14), activeExecutionId (post-M14), activeExecutionChatId (post-M14), activeExecutionStartedAt (post-M14), activeStepIndex (post-M14), activeStepCount (post-M14), activeUserMessageId (post-M14), activeAssistantMessageId (post-M14), activeGenerationJobId (post-M14) |
@@ -177,10 +179,9 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 | Change | Details |
 |--------|---------|
 | **Added `generatedFiles` table** | AI-generated file metadata: storageId, filename, mimeType, sizeBytes, toolName. Indexes: `by_user`, `by_chat`, `by_message`. |
-| **Added `oauthConnections` table** | External integration OAuth tokens. Stores provider (google/microsoft/notion), access/refresh tokens, expiry, scopes, user email, status. Indexes: `by_user`, `by_user_provider`, `by_status`. Notion uses HTTP Basic Auth for token exchange (no PKCE). |
+| **Added `oauthConnections` table** | External integration OAuth tokens. Stores provider (google/microsoft/notion/slack/cloze), access/refresh tokens, expiry, scopes, user email, status. Indexes: `by_user`, `by_user_provider`, `by_status`. Notion uses HTTP Basic Auth for token exchange (no PKCE). Slack uses OAuth 2.0 (workspace-level). Cloze uses API key auth (no OAuth). |
 | **Added tool fields to `messages`** | `toolCalls` (v.optional array), `toolResults` (v.optional array), `generatedFileIds` (v.optional array of Id<"generatedFiles">). |
-| **Added `enabledIntegrations` to `personas`** | `v.optional(v.array(v.string()))` — per-persona default integration toggles (e.g., `["gmail", "drive", "outlook"]`). |
-| **Added `enabledIntegrations` to `sendMessageArgs`** | Passed from iOS to backend; backend intersects with actual provider connection status. |
+| **Added `enabledIntegrations` to `sendMessageArgs`** | Passed to backend as the per-message effective integration snapshot. M30 keeps this on message/send paths while persona/chat defaults now live in layered override fields. |
 | **Schema split** | `convex/schema.ts` now imports from 4 table definition files: `schema_tables_core.ts` (14 tables), `schema_tables_catalog.ts` (6 tables), `schema_tables_user.ts` (12 tables), `schema_tables_runtime.ts` (4 tables). |
 
 ---
@@ -297,8 +298,7 @@ Although rank-like values are conceptually integers, they are still stored as Co
 | Change | Details |
 |--------|---------|
 | **Added `skills` table** | AI skill definitions (system catalog + user-authored): slug, name, summary, instructionsRaw, instructionsCompiled?, compilationStatus, scope, ownerUserId, origin, visibility, lockState, status, runtimeMode, requiredToolIds, requiredIntegrationIds, unsupportedCapabilityCodes, validationWarnings, version, createdAt, updatedAt. 20+ fields, 4 indexes (`by_scope`, `by_owner`, `by_slug`, `by_status`). Table count: 29 → 30. |
-| **Added `discoverableSkillIds` to `personas`** | `v.optional(v.array(v.id("skills")))` — skills visible in the catalog for chats using this persona. |
-| **Added `discoverableSkillIds`, `disabledSkillIds` to `chats`** | `v.optional(v.array(v.id("skills")))` — per-chat skill overrides (add/remove from catalog). |
+| **M30 replaced legacy skill attachment fields** | `personas` now use `skillOverrides` / `integrationOverrides`; `chats` now use `skillOverrides` / `integrationOverrides`; legacy `discoverableSkillIds`, `disabledSkillIds`, and persona-level `enabledIntegrations` were removed after rollout stabilization. |
 
 ---
 
@@ -315,6 +315,16 @@ Although rank-like values are conceptually integers, they are still stored as Co
 | **Table count: 30 → 35** | 5 new tables: `generatedCharts`, `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
 
 ---
+
+## 2026-04-20 / 2026-04-21 Schema Changes
+
+| Change | Details |
+|--------|---------|
+| **Added `messageQueryEmbeddings` table** | Per-message lease-based embedding cache keyed by `messageId`. Stores embedding vectors, usage, generation IDs, error state, and one-time billing attribution markers so memory/query embedding work can be prewarmed and deduplicated. |
+| **Added `messageMemoryContexts` table** | Per-message hydrated memory-context cache keyed by `messageId` + `textHash`. Stores the full post-vector-search memory hit payload so generation can skip the full retrieval chain on cache hit. |
+| **Model privacy metadata expanded** | `cachedModels` now includes `hasZdrEndpoint` so clients can enforce ZDR-compatible model choices when the user enables Zero Data Retention. |
+| **User preferences expanded** | `userPreferences.zdrEnabled` persists the global Zero Data Retention toggle used by model pickers, chat defaults, and runtime request gating across iOS, Android, and web. |
+| **Table count: 42 → 44** | The two new memory/embedding cache tables are now part of the catalog schema domain. |
 
 ## Post-M14 Weekend Sprint Schema Changes (2026-03-07 → 2026-03-09)
 
@@ -353,7 +363,11 @@ New shared validator: `scheduledJobStep` (in `schema_validators.ts`).
 
 | Field | Type | Details |
 |-------|------|---------|
-| `enabledIntegrations` | `v.optional(v.array(v.string()))` | Per-message record of which integrations were active when the message was sent (e.g., `["gmail", "drive", "notion"]`) |
+| `enabledIntegrations` | `v.optional(v.array(v.string()))` | Per-message record of which integrations were active when the message was sent (e.g., `["gmail", "drive", "notion", "slack", "cloze"]`) |
+| `turnSkillOverrides` | `v.optional(v.array(v.object({ skillId, state })))` | Turn-only skill overrides stamped on the user/assistant message path for auditability (M30). |
+| `turnIntegrationOverrides` | `v.optional(v.array(v.object({ integrationId, enabled })))` | Turn-only integration overrides stamped on the message path (M30). |
+| `loadedSkillIds` | `v.optional(v.array(v.id("skills")))` | Assistant orchestration trace of skills loaded into the run (M30). |
+| `usedIntegrationIds` | `v.optional(v.array(v.string()))` | Assistant orchestration trace of integrations actually used during the run (M30). |
 
 No new tables. Table count remains 23.
 

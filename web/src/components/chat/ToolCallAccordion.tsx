@@ -12,6 +12,8 @@ interface Props {
   toolResults?: ToolResult[];
   /** When true, generation is still running — spinner on open tool calls. */
   isStreaming?: boolean;
+  loadedSkillIds?: string[];
+  usedIntegrationIds?: string[];
 }
 
 // Friendly display name map for known tool names
@@ -114,12 +116,19 @@ function skillSummary(tc: ToolCall, result?: ToolResult): { title: string; subti
   }
 }
 
-export function ToolCallAccordion({ toolCalls, toolResults, isStreaming }: Props) {
+export function ToolCallAccordion({
+  toolCalls,
+  toolResults,
+  isStreaming,
+  loadedSkillIds,
+  usedIntegrationIds,
+}: Props) {
   const { t } = useTranslation();
   const [isExpanded, setIsExpanded] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const hasTraceMetadata = (loadedSkillIds?.length ?? 0) > 0 || (usedIntegrationIds?.length ?? 0) > 0;
 
-  if (!toolCalls || toolCalls.length === 0) return null;
+  if ((!toolCalls || toolCalls.length === 0) && !hasTraceMetadata) return null;
 
   const resultMap = new Map<string, ToolResult>();
   for (const r of toolResults ?? []) {
@@ -127,9 +136,11 @@ export function ToolCallAccordion({ toolCalls, toolResults, isStreaming }: Props
   }
 
   const completeCount = toolCalls.filter((tc) => resultMap.has(tc.id)).length;
-  const headerText = isStreaming
-    ? (toolCalls.length === 1 ? t("using_n_tools", { count: toolCalls.length }) : t("using_n_tools_plural", { count: toolCalls.length }))
-    : (toolCalls.length === 1 ? t("used_n_tools", { count: toolCalls.length }) : t("used_n_tools_plural", { count: toolCalls.length }));
+  const headerText = toolCalls.length > 0
+    ? (isStreaming
+      ? (toolCalls.length === 1 ? t("using_n_tools", { count: toolCalls.length }) : t("using_n_tools_plural", { count: toolCalls.length }))
+      : (toolCalls.length === 1 ? t("used_n_tools", { count: toolCalls.length }) : t("used_n_tools_plural", { count: toolCalls.length })))
+    : t("orchestration");
 
   return (
     <div className="mt-2 rounded-xl bg-surface-2/50 border border-border/30 px-2.5 py-2">
@@ -147,6 +158,22 @@ export function ToolCallAccordion({ toolCalls, toolResults, isStreaming }: Props
         )}
       </button>
       {isExpanded && <div className="space-y-1 pt-1.5">
+      {hasTraceMetadata && (
+        <div className="rounded-lg border border-border/20 bg-surface-2/30 px-3 py-2 text-[11px] space-y-2">
+          {(loadedSkillIds?.length ?? 0) > 0 && (
+            <div>
+              <p className="font-semibold text-foreground">{t("loaded_skills")}</p>
+              <p className="text-muted mt-0.5 break-all">{loadedSkillIds!.join(", ")}</p>
+            </div>
+          )}
+          {(usedIntegrationIds?.length ?? 0) > 0 && (
+            <div>
+              <p className="font-semibold text-foreground">{t("used_integrations")}</p>
+              <p className="text-muted mt-0.5 break-all">{usedIntegrationIds!.join(", ")}</p>
+            </div>
+          )}
+        </div>
+      )}
       {toolCalls.map((tc) => {
         const result = resultMap.get(tc.id);
         const isOpen = expanded.has(tc.id);

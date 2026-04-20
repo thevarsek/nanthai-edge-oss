@@ -528,26 +528,26 @@ export const enableSkillForChat = createTool({
         return { success: false, data: null, error: "Not authorized to modify this chat." };
       }
 
-      const currentIds: string[] = ((chat as Record<string, unknown>).discoverableSkillIds as string[]) ?? [];
-      const disabledIds: string[] = ((chat as Record<string, unknown>).disabledSkillIds as string[]) ?? [];
       const skillIdStr = String(skill._id);
+      const existingOverrides =
+        ((chat as Record<string, unknown>).skillOverrides as Array<{ skillId: string; state: string }>) ?? [];
 
-      if (currentIds.includes(skillIdStr)) {
+      if (existingOverrides.some((override) =>
+        String(override.skillId) === skillIdStr && override.state !== "never")) {
         return {
           success: true,
           data: { message: `Skill "${skill.name}" is already enabled for this chat.` },
         };
       }
 
-      // Add to discoverable and also remove from disabled (if present)
-      const newDisabledIds = disabledIds.filter((id) => id !== skillIdStr);
+      const filteredOverrides = existingOverrides.filter((o) => String(o.skillId) !== skillIdStr);
+      filteredOverrides.push({ skillId: skillIdStr, state: "available" });
       await toolCtx.ctx.runMutation(
-        internal.skills.mutations.setChatSkills,
+        internal.skills.mutations.setChatSkillOverridesInternal,
         {
           chatId: chatId as Id<"chats">,
           userId: toolCtx.userId,
-          discoverableSkillIds: [...currentIds, skill._id] as Id<"skills">[],
-          disabledSkillIds: newDisabledIds as Id<"skills">[],
+          skillOverrides: filteredOverrides as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>,
         },
       );
 
@@ -619,26 +619,26 @@ export const disableSkillForChat = createTool({
         return { success: false, data: null, error: "Not authorized to modify this chat." };
       }
 
-      const disabledIds: string[] = ((chat as Record<string, unknown>).disabledSkillIds as string[]) ?? [];
-      const discoverableIds: string[] = ((chat as Record<string, unknown>).discoverableSkillIds as string[]) ?? [];
       const skillIdStr = String(skill._id);
+      const existingOverrides =
+        ((chat as Record<string, unknown>).skillOverrides as Array<{ skillId: string; state: string }>) ?? [];
 
-      if (disabledIds.includes(skillIdStr)) {
+      if (existingOverrides.some((override) =>
+        String(override.skillId) === skillIdStr && override.state === "never")) {
         return {
           success: true,
           data: { message: `Skill "${skill.name}" is already disabled for this chat.` },
         };
       }
 
-      // Add to disabled and also remove from discoverable (if present)
-      const newDiscoverableIds = discoverableIds.filter((id) => id !== skillIdStr);
+      const filteredOverrides = existingOverrides.filter((o) => String(o.skillId) !== skillIdStr);
+      filteredOverrides.push({ skillId: skillIdStr, state: "never" });
       await toolCtx.ctx.runMutation(
-        internal.skills.mutations.setChatSkills,
+        internal.skills.mutations.setChatSkillOverridesInternal,
         {
           chatId: chatId as Id<"chats">,
           userId: toolCtx.userId,
-          disabledSkillIds: [...disabledIds, skill._id] as Id<"skills">[],
-          discoverableSkillIds: newDiscoverableIds as Id<"skills">[],
+          skillOverrides: filteredOverrides as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>,
         },
       );
 
@@ -736,22 +736,25 @@ export const assignSkillToPersona = createTool({
       if (!target) return { success: false, data: null, error: "Could not resolve persona." };
 
       const targetId = target._id as Id<"personas">;
-      const currentIds: string[] = (target.discoverableSkillIds as string[]) ?? [];
       const skillIdStr = String(skill._id);
+      const existingOverrides = (target.skillOverrides as Array<{ skillId: string; state: string }>) ?? [];
 
-      if (currentIds.includes(skillIdStr)) {
+      if (existingOverrides.some((override) =>
+        String(override.skillId) === skillIdStr && override.state !== "never")) {
         return {
           success: true,
           data: { message: `Skill "${skill.name}" is already assigned to persona "${target.displayName}".` },
         };
       }
 
+      const filteredOverrides = existingOverrides.filter((o) => String(o.skillId) !== skillIdStr);
+      filteredOverrides.push({ skillId: skillIdStr, state: "available" });
       await toolCtx.ctx.runMutation(
-        internal.skills.mutations.setPersonaSkills,
+        internal.skills.mutations.setPersonaSkillOverridesInternal,
         {
           personaId: targetId,
           userId: toolCtx.userId,
-          discoverableSkillIds: [...currentIds, skill._id] as Id<"skills">[],
+          skillOverrides: filteredOverrides as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>,
         },
       );
 
@@ -849,11 +852,10 @@ export const removeSkillFromPersona = createTool({
       if (!target) return { success: false, data: null, error: "Could not resolve persona." };
 
       const targetId = target._id as Id<"personas">;
-      const currentIds: string[] = (target.discoverableSkillIds as string[]) ?? [];
       const skillIdStr = String(skill._id);
-
-      const newIds = currentIds.filter((id) => id !== skillIdStr);
-      if (newIds.length === currentIds.length) {
+      const existingOverrides = (target.skillOverrides as Array<{ skillId: string; state: string }>) ?? [];
+      const newOverrides = existingOverrides.filter((o) => String(o.skillId) !== skillIdStr);
+      if (newOverrides.length === existingOverrides.length) {
         return {
           success: true,
           data: { message: `Skill "${skill.name}" was not assigned to persona "${target.displayName}".` },
@@ -861,11 +863,11 @@ export const removeSkillFromPersona = createTool({
       }
 
       await toolCtx.ctx.runMutation(
-        internal.skills.mutations.setPersonaSkills,
+        internal.skills.mutations.setPersonaSkillOverridesInternal,
         {
           personaId: targetId,
           userId: toolCtx.userId,
-          discoverableSkillIds: newIds as Id<"skills">[],
+          skillOverrides: newOverrides as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>,
         },
       );
 

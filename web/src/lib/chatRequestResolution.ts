@@ -35,7 +35,8 @@ export interface SharedPersona {
   maxTokens?: number | null;
   includeReasoning?: boolean | null;
   reasoningEffort?: string | null;
-  discoverableSkillIds?: string[] | null;
+  skillOverrides?: Array<{ skillId: string; state: "always" | "available" | "never" }> | null;
+  integrationOverrides?: Array<{ integrationId: string; enabled: boolean }> | null;
 }
 
 export interface SharedModelSettings {

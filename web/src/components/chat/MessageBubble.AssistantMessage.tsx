@@ -271,8 +271,14 @@ export const AssistantMessage = memo(function AssistantMessage({
         )}
 
         {/* Tool calls */}
-        {message.toolCalls && message.toolCalls.length > 0 && (
-          <ToolCallAccordion toolCalls={message.toolCalls} toolResults={message.toolResults} isStreaming={isStreaming} />
+        {((message.toolCalls?.length ?? 0) > 0 || (message.loadedSkillIds?.length ?? 0) > 0 || (message.usedIntegrationIds?.length ?? 0) > 0) && (
+          <ToolCallAccordion
+            toolCalls={message.toolCalls ?? []}
+            toolResults={message.toolResults}
+            isStreaming={isStreaming}
+            loadedSkillIds={message.loadedSkillIds}
+            usedIntegrationIds={message.usedIntegrationIds}
+          />
         )}
 
         {/* Subagent work */}

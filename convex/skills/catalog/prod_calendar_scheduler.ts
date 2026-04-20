@@ -127,7 +127,7 @@ Manage calendar events across Microsoft Calendar and Apple Calendar. Schedule me
   compilationStatus: "compiled",
   scope: "system",
   origin: "nanthaiBuiltin",
-  visibility: "visible",
+  visibility: "integration_managed",
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",

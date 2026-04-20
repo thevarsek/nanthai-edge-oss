@@ -98,8 +98,43 @@ export const syncFromOpenRouter = internalAction({
       internal.models.sync.getCatalogHash,
       {},
     );
+
+    // Fetch ZDR endpoint list and build a set of model IDs that support ZDR.
+    // This runs regardless of catalog hash so ZDR changes are always picked up.
+    const zdrModelIds = new Set<string>();
+    try {
+      const zdrResponse = await fetch("https://openrouter.ai/api/v1/endpoints/zdr", {
+        headers: {
+          "HTTP-Referer": HTTP_REFERER,
+          "X-Title": X_TITLE,
+        },
+      });
+      if (zdrResponse.ok) {
+        const zdrData = await zdrResponse.json();
+        const zdrEndpoints = Array.isArray(zdrData.data) ? zdrData.data : [];
+        for (const ep of zdrEndpoints) {
+          if (typeof ep.model_id === "string") {
+            zdrModelIds.add(ep.model_id);
+          }
+        }
+        console.log(`ZDR endpoint sync: ${zdrModelIds.size} models with ZDR`);
+      } else {
+        console.warn(`ZDR endpoint fetch failed: ${zdrResponse.status} — proceeding without ZDR data`);
+      }
+    } catch (e) {
+      console.warn("ZDR endpoint fetch error — proceeding without ZDR data:", e);
+    }
+
     if (previousHash === contentHash) {
-      console.log("Model catalog unchanged (hash match) — skipping upsert");
+      // Catalog unchanged — only refresh ZDR flags if we got data
+      if (zdrModelIds.size > 0) {
+        await ctx.runMutation(internal.models.sync.refreshZdrFlags, {
+          zdrModelIds: [...zdrModelIds],
+        });
+        console.log("Model catalog unchanged (hash match) — ZDR flags refreshed");
+      } else {
+        console.log("Model catalog unchanged (hash match) — skipping upsert");
+      }
       return;
     }
 
@@ -140,6 +175,7 @@ export const syncFromOpenRouter = internalAction({
             const parts = modality.split("->");
             return parts.length >= 2 && parts[1].includes("video");
           })(),
+          hasZdrEndpoint: zdrModelIds.size > 0 ? zdrModelIds.has(m.id ?? "") : undefined,
           supportsTools:
             (m.supported_parameters ?? []).includes("tools") ?? false,
           supportedParameters: m.supported_parameters ?? [],
@@ -157,6 +193,14 @@ export const syncFromOpenRouter = internalAction({
     // Store the new hash only after successful upsert
     await ctx.runMutation(internal.models.sync.setCatalogHash, {
       contentHash,
+    });
+
+    // Prune models that are no longer in the OpenRouter catalog.
+    // Collect all incoming model IDs into a set, then delete DB rows
+    // whose modelId is absent. Done in batches to respect mutation limits.
+    const incomingModelIds = new Set(models.map((m: any) => m.id as string));
+    await ctx.runMutation(internal.models.sync.pruneStaleModels, {
+      activeModelIds: [...incomingModelIds],
     });
 
     console.log(`Model catalog synced: ${models.length} models (hash updated)`);
@@ -180,6 +224,7 @@ export const upsertBatch = internalMutation({
         outputPricePer1M: v.optional(v.number()),
         supportsImages: v.optional(v.boolean()),
         supportsVideo: v.optional(v.boolean()),
+        hasZdrEndpoint: v.optional(v.boolean()),
         supportsTools: v.optional(v.boolean()),
         supportedParameters: v.optional(v.array(v.string())),
         architecture: v.optional(
@@ -219,6 +264,7 @@ export const upsertBatch = internalMutation({
             "outputPricePer1M",
             "supportsImages",
             "supportsVideo",
+            "hasZdrEndpoint",
             "supportsTools",
           ]) ||
           !primitiveArraysEqual(existing.supportedParameters, model.supportedParameters) ||
@@ -236,6 +282,7 @@ export const upsertBatch = internalMutation({
             outputPricePer1M: model.outputPricePer1M,
             supportsImages: model.supportsImages,
             supportsVideo: model.supportsVideo,
+            hasZdrEndpoint: model.hasZdrEndpoint,
             supportsTools: model.supportsTools,
             supportedParameters: model.supportedParameters,
             architecture: model.architecture,
@@ -256,6 +303,7 @@ export const upsertBatch = internalMutation({
           outputPricePer1M: model.outputPricePer1M,
           supportsImages: model.supportsImages,
           supportsVideo: model.supportsVideo,
+          hasZdrEndpoint: model.hasZdrEndpoint,
           supportsTools: model.supportsTools,
           supportedParameters: model.supportedParameters,
           architecture: model.architecture,
@@ -271,6 +319,55 @@ export const upsertBatch = internalMutation({
 // so existing iOS/Android constants don't need updating.
 
 export { listModels, getModel, listModelSummaries } from "./queries";
+
+// -- Prune stale models -------------------------------------------------------
+
+export const pruneStaleModels = internalMutation({
+  args: {
+    activeModelIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const activeSet = new Set(args.activeModelIds);
+    // Scan the full table and delete any model not in the active set.
+    // Skip video-only models (managed by video_sync.ts) — they don't appear
+    // in the general /api/v1/models endpoint and have videoCapabilities set.
+    // cachedModels is typically ~300-400 rows, well within a single mutation.
+    const allModels = await ctx.db.query("cachedModels").collect();
+    let deleted = 0;
+    for (const model of allModels) {
+      if (!activeSet.has(model.modelId) && !model.videoCapabilities) {
+        await ctx.db.delete(model._id);
+        deleted++;
+      }
+    }
+    if (deleted > 0) {
+      console.log(`Pruned ${deleted} stale models from cachedModels`);
+    }
+  },
+});
+
+// -- Refresh ZDR flags only (when catalog hash is unchanged) ------------------
+
+export const refreshZdrFlags = internalMutation({
+  args: {
+    zdrModelIds: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const zdrSet = new Set(args.zdrModelIds);
+    const allModels = await ctx.db.query("cachedModels").collect();
+    let updated = 0;
+    for (const model of allModels) {
+      const shouldHaveZdr = zdrSet.has(model.modelId);
+      if (model.hasZdrEndpoint !== shouldHaveZdr) {
+        await ctx.db.patch(model._id, { hasZdrEndpoint: shouldHaveZdr });
+        updated++;
+      }
+    }
+    if (updated > 0) {
+      console.log(`ZDR flags refreshed: ${updated} models updated`);
+    }
+  },
+});
 
 // -- Helpers ------------------------------------------------------------------
 

@@ -92,7 +92,7 @@ async function routeScheduledStep(
   const effectiveComplexity = normalizeSearchComplexity(args.step.searchComplexity) ?? 1;
 
   if (effectiveSearchMode === "none" || effectiveSearchMode === "basic") {
-    await ctx.scheduler.runAfter(0, internal.chat.actions.runGeneration, {
+    await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
       chatId: args.chatId,
       userMessageId: args.userMessageId,
       assistantMessageIds: [args.assistantMessageId],
@@ -119,8 +119,10 @@ async function routeScheduledStep(
       expandMultiModelGroups: false,
       webSearchEnabled: effectiveSearchMode === "basic",
       enabledIntegrations: args.step.enabledIntegrations,
+      turnSkillOverrides: args.step.turnSkillOverrides,
+      turnIntegrationOverrides: args.step.turnIntegrationOverrides,
     });
-    return;
+     return;
   }
 
   if (effectiveSearchMode === "web") {

@@ -1,9 +1,12 @@
 import type { Id } from "@convex/_generated/dataModel";
+import type { SkillOverrideState } from "@/hooks/useChatOverrides";
+
+export type { SkillOverrideState };
 
 export const INTEGRATION_KEYS = [
   "gmail", "drive", "calendar",
-  "outlook", "onedrive", "msCalendar",
-  "appleCalendar", "notion",
+  "outlook", "onedrive", "ms_calendar",
+  "apple_calendar", "notion", "cloze", "slack",
 ] as const;
 
 export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
@@ -26,6 +29,10 @@ export interface FormState {
   isDefault: boolean;
   enabledIntegrations: Set<IntegrationKey>;
   selectedSkillIds: Set<Id<"skills">>;
+  /** M30: tri-state skill overrides (inherit = not in map) */
+  skillOverrides: Map<string, SkillOverrideState>;
+  /** M30: integration overrides (inherit = not in map) */
+  integrationOverrides: Map<string, boolean>;
 }
 
 export function defaultForm(): FormState {
@@ -47,6 +54,8 @@ export function defaultForm(): FormState {
     isDefault: false,
     enabledIntegrations: new Set(),
     selectedSkillIds: new Set(),
+    skillOverrides: new Map(),
+    integrationOverrides: new Map(),
   };
 }
 
@@ -58,4 +67,14 @@ export function integrationSetFromArray(arr: string[] | undefined): Set<Integrat
 
 export function integrationSetToArray(s: Set<IntegrationKey>): string[] {
   return Array.from(s);
+}
+
+/** Cycle tri-state: inherit → available → always → never → inherit */
+export function cycleSkillOverride(
+  current: SkillOverrideState | undefined,
+): SkillOverrideState | undefined {
+  if (current === undefined) return "available";
+  if (current === "available") return "always";
+  if (current === "always") return "never";
+  return undefined; // never → inherit
 }

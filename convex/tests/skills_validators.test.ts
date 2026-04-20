@@ -186,6 +186,24 @@ test("validateToolIds: skill tool IDs are known", () => {
   );
 });
 
+test("validateToolIds: slack tool IDs are known", () => {
+  assert.deepEqual(
+    validateToolIds([
+      "slack_search_messages",
+      "slack_search_users",
+      "slack_search_channels",
+      "slack_send_message",
+      "slack_read_channel",
+      "slack_read_thread",
+      "slack_create_canvas",
+      "slack_update_canvas",
+      "slack_read_canvas",
+      "slack_read_user_profile",
+    ]),
+    [],
+  );
+});
+
 // =============================================================================
 // MARK: validateIntegrationIds
 // =============================================================================
@@ -195,7 +213,8 @@ test("validateIntegrationIds: known integrations return empty", () => {
 });
 
 test("validateIntegrationIds: unknown integrations are returned", () => {
-  assert.deepEqual(validateIntegrationIds(["gmail", "slack"]), ["slack"]);
+  assert.deepEqual(validateIntegrationIds(["gmail", "slack"]), []);
+  assert.deepEqual(validateIntegrationIds(["gmail", "unknown_provider"]), ["unknown_provider"]);
 });
 
 test("validateIntegrationIds: empty array returns empty", () => {

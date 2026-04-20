@@ -79,7 +79,7 @@ export interface GenerationLoopOptions {
   model: string;
   messages: OpenRouterMessage[];
   params: ChatRequestParameters;
-  callbacks: { onDelta?: OnDelta; onReasoningDelta?: OnReasoningDelta };
+  callbacks: { onDelta?: OnDelta; onReasoningDelta?: OnReasoningDelta; onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void> };
   retryConfig?: RetryConfig;
   toolRegistry?: ToolRegistry;
   toolCtx: ToolExecutionContext;

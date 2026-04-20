@@ -333,7 +333,29 @@ export const skillOrigin = v.union(
 export const skillVisibility = v.union(
   v.literal("visible"),
   v.literal("hidden"),
+  v.literal("integration_managed"),
 );
+
+// ── M30: Skill & Integration Override Validators ──────────────────────
+
+/** Tri-state skill resolution: always inject, available in catalog, or never. */
+export const skillOverrideState = v.union(
+  v.literal("always"),
+  v.literal("available"),
+  v.literal("never"),
+);
+
+/** A single skill override entry (used in userPreferences, personas, chats). */
+export const skillOverrideEntry = v.object({
+  skillId: v.id("skills"),
+  state: skillOverrideState,
+});
+
+/** A single integration override entry (used in userPreferences, personas, chats). */
+export const integrationOverrideEntry = v.object({
+  integrationId: v.string(),
+  enabled: v.boolean(),
+});
 
 /** Skill lock state — locked (system) vs editable (user). */
 export const skillLockState = v.union(
@@ -365,6 +387,8 @@ export const skillToolProfile = v.union(
   v.literal("microsoft"),
   v.literal("notion"),
   v.literal("appleCalendar"),
+  v.literal("cloze"),
+  v.literal("slack"),
   v.literal("scheduledJobs"),
   v.literal("skillsManagement"),
   v.literal("personas"),

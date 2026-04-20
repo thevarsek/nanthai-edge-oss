@@ -1,5 +1,5 @@
 import { ContentPart, OpenRouterMessage } from "../lib/openrouter";
-import { fetchBinaryAsBase64, guessAudioInputFormat, isAudioAttachment } from "./audio_shared";
+import { fetchBinaryAsBase64, guessAudioInputFormat, isAudioAttachment } from "./audio_runtime";
 
 type ContextMessage = {
   _id: string;

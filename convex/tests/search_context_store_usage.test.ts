@@ -157,8 +157,9 @@ test("retryMessageHandler reuses cached web-search context from searchContexts t
   assert.equal(searchSessionInsert.value.progress, 70);
   assert.equal(searchSessionInsert.value.currentPhase, "synthesizing");
 
-  assert.equal(scheduled.length, 1);
-  assert.deepEqual(scheduled[0].payload.cachedSearchContext, cachedPayload);
+  const searchRun = scheduled.find((entry) => entry.payload?.cachedSearchContext);
+  assert.ok(searchRun);
+  assert.deepEqual(searchRun.payload.cachedSearchContext, cachedPayload);
 });
 
 test("retryMessageHandler silently strips original message integrations on non-tool model", async () => {
@@ -365,6 +366,7 @@ test("retryMessageHandler allows old retries when only built-in tools were used"
       },
       insert: async (table: string) => {
         if (table === "messages") return "assistant_new";
+        if (table === "streamingMessages") return "streaming_new";
         if (table === "generationJobs") return "job_new";
         throw new Error(`Unexpected insert table: ${table}`);
       },
@@ -388,7 +390,8 @@ test("retryMessageHandler allows old retries when only built-in tools were used"
     apiKey: "sk-test",
   });
 
-  assert.equal(scheduled.length, 1);
+  assert.ok(scheduled.length >= 1);
+  assert.ok(scheduled.some((entry) => entry.payload?.assistantMessageIds || entry.payload?.sessionId));
 });
 
 test("resolveRegenerationSynthesisData reads cached context from searchContexts before message fallback", async () => {

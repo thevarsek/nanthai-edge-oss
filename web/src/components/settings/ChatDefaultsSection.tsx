@@ -316,6 +316,16 @@ export function ChatDefaultsSection() {
       </div>
       <SectionFooter>{t("video_config_snap_hint")}</SectionFooter>
 
+      {/* ── Data Privacy ── */}
+      <SectionHeader>{t("zdr_section_header")}</SectionHeader>
+      <div className="rounded-2xl bg-surface-2 overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3">
+          <label className="text-sm">{t("zdr_toggle_label")}</label>
+          <Toggle checked={prefs?.zdrEnabled ?? false} onChange={(v) => updatePreferenceImmediate({ zdrEnabled: v })} />
+        </div>
+      </div>
+      <SectionFooter>{t("zdr_section_footer")}</SectionFooter>
+
       {/* ── Behaviour ── */}
       <SectionHeader>{t("behaviour")}</SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">

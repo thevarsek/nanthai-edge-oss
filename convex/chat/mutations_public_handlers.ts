@@ -3,6 +3,7 @@ import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro, getIsProUnlocked } from "../lib/auth";
+import { ttftLog } from "../lib/generation_log";
 import { assertRateLimit } from "../lib/rate_limit";
 import { validateSameModality } from "../lib/modality_utils";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
@@ -114,6 +115,9 @@ export interface SendMessageArgs extends Record<string, unknown> {
     duration?: number;
     generateAudio?: boolean;
   };
+  // M30 — Turn-level skill & integration overrides (slash chips)
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
 }
 
 export interface SendMessageResult {
@@ -127,6 +131,13 @@ export async function sendMessageHandler(
 ): Promise<SendMessageResult> {
   const { userId } = await requireAuth(ctx);
   const now = Date.now();
+  ttftLog("[generation] sendMessage accepted", {
+    chatId: args.chatId,
+    userId,
+    hasAttachments: (args.attachments?.length ?? 0) > 0,
+    participantCount: args.participants.length,
+    searchMode: args.searchMode ?? null,
+  });
 
   // Parallel batch 1: rate-limit check, chat fetch, and attachment normalization
   // are independent after auth — run concurrently to reduce sequential reads.
@@ -235,6 +246,21 @@ export async function sendMessageHandler(
     createdAt: now,
   });
 
+  if (trimmedText.length > 0) {
+    await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageQueryEmbedding, {
+      messageId: userMessageId,
+      userId,
+      chatId: args.chatId,
+      queryText: trimmedText,
+    });
+    await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageMemoryContext, {
+      messageId: userMessageId,
+      userId,
+      chatId: args.chatId,
+      queryText: trimmedText,
+    });
+  }
+
   // Populate fileAttachments lookup table for KB queries (avoids O(chats×messages) scans)
   if (normalizedAttachments && normalizedAttachments.length > 0) {
     for (const att of normalizedAttachments) {
@@ -253,7 +279,8 @@ export async function sendMessageHandler(
     }
   }
 
-  const { assistantMessageIds, generationJobIds } =
+  const assistantSetupStartedAt = Date.now();
+  const { assistantMessageIds, generationJobIds, streamingMessageIds } =
     await createAssistantMessagesAndJobs(ctx, {
       chatId: args.chatId,
       userId,
@@ -263,7 +290,15 @@ export async function sendMessageHandler(
       jobCreatedAt: now,
       enabledIntegrations: effectiveIntegrations,
       subagentsEnabled: effectiveSubagents,
+      turnSkillOverrides: args.turnSkillOverrides,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
     });
+  ttftLog("[generation] assistant/jobs created", {
+    chatId: args.chatId,
+    userId,
+    assistantCount: assistantMessageIds.length,
+    durationMs: Date.now() - assistantSetupStartedAt,
+  });
 
   const shouldSeedTitle =
     (chat.messageCount ?? 0) === 0 &&
@@ -311,7 +346,7 @@ export async function sendMessageHandler(
     const forceWebSearch =
       effectiveSearchMode === "normal" ? true : (args.webSearchEnabled ?? false);
 
-    await ctx.scheduler.runAfter(0, internal.chat.actions.runGeneration, {
+    const runGenerationScheduledAt = await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
       chatId: args.chatId,
       userMessageId,
       assistantMessageIds,
@@ -320,6 +355,7 @@ export async function sendMessageHandler(
         participants,
         assistantMessageIds,
         generationJobIds,
+        streamingMessageIds,
       ),
       userId,
       expandMultiModelGroups,
@@ -327,6 +363,17 @@ export async function sendMessageHandler(
       enabledIntegrations: effectiveIntegrations,
       subagentsEnabled: effectiveSubagents,
       videoConfig: args.videoConfig,
+      turnSkillOverrides: args.turnSkillOverrides,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
+      // Phase 1 TTFT: scheduler hop #1 measurement
+      enqueuedAt: Date.now(),
+    });
+    ttftLog("[generation] runGeneration enqueued", {
+      chatId: args.chatId,
+      userId,
+      scheduledFunctionId: runGenerationScheduledAt,
+      jobIds: generationJobIds,
+      participantCount: participants.length,
     });
   } else if (effectiveSearchMode === "web") {
     // Path C: Web Search — create searchSession + schedule runWebSearch per participant
@@ -334,6 +381,7 @@ export async function sendMessageHandler(
       participants,
       assistantMessageIds,
       generationJobIds,
+      streamingMessageIds,
     );
     const trimmedQuery = args.text.trim();
 

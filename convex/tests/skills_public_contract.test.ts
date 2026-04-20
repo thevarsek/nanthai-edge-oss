@@ -100,13 +100,18 @@ test("deleteSkill removes persona and chat references before deleting", async ()
           first: async () => (table === "purchaseEntitlements" ? { _id: "ent_1", status: "active" } : null),
           collect: async () => {
             if (table === "personas") {
-              return [{ _id: "persona_1", discoverableSkillIds: ["skill_1", "skill_2"] }];
+              return [{
+                _id: "persona_1",
+                skillOverrides: [
+                  { skillId: "skill_1", state: "available" },
+                  { skillId: "skill_2", state: "available" },
+                ],
+              }];
             }
             if (table === "chats") {
               return [{
                 _id: "chat_1",
-                discoverableSkillIds: ["skill_1"],
-                disabledSkillIds: ["skill_1", "skill_3"],
+                skillOverrides: [{ skillId: "skill_1", state: "available" }],
               }];
             }
             return [];
@@ -123,9 +128,11 @@ test("deleteSkill removes persona and chat references before deleting", async ()
   }, { skillId: "skill_1" });
 
   assert.equal(patches.length, 2);
-  assert.deepEqual(patches[0]?.value.discoverableSkillIds, ["skill_2"]);
-  assert.deepEqual(patches[1]?.value.discoverableSkillIds, []);
-  assert.deepEqual(patches[1]?.value.disabledSkillIds, ["skill_3"]);
+  assert.deepEqual(
+    patches[0]?.value.skillOverrides,
+    [{ skillId: "skill_2", state: "available" }]
+  );
+  assert.deepEqual(patches[1]?.value.skillOverrides, []);
   assert.deepEqual(deleted, ["skill_1"]);
 });
 
@@ -209,12 +216,16 @@ test("duplicateSystemSkill increments suffix and public assignment mutations enf
         patches.push({ id, value });
       },
     },
-  }, { chatId: "chat_1", disabledSkillIds: ["skill_system"] });
+  }, { chatId: "chat_1", discoverableSkillIds: ["skill_system"] });
 
   assert.equal(patches[0]?.id, "persona_1");
-  assert.deepEqual(patches[0]?.value.discoverableSkillIds, ["skill_custom_2"]);
+  assert.deepEqual(patches[0]?.value.skillOverrides, [
+    { skillId: "skill_custom_2", state: "available" },
+  ]);
   assert.equal(patches[1]?.id, "chat_1");
-  assert.deepEqual(patches[1]?.value.disabledSkillIds, ["skill_system"]);
+  assert.deepEqual(patches[1]?.value.skillOverrides, [
+    { skillId: "skill_system", state: "available" },
+  ]);
 });
 
 test("skill visibility queries filter capability-gated public skills but not internal lists", async () => {

@@ -4,12 +4,15 @@ import test from "node:test";
 import {
   buildNanthAIPrelude,
   buildSkillCatalogFromDocs,
+  buildSkillCatalogFromResolved,
+  formatAlwaysSkillInstructions,
   formatSkillCatalogXml,
   buildRuntimeGuard,
   NANTHAI_RUNTIME_GUARD_BASIC,
   SKILL_DISCOVERY_INSTRUCTION,
   SkillCatalogEntry,
 } from "../skills/helpers";
+import type { SkillResolutionResult } from "../skills/resolver";
 
 // =============================================================================
 // Helper to create mock skill documents (cast as any for Doc<"skills">)
@@ -325,4 +328,119 @@ test("SKILL_DISCOVERY_INSTRUCTION is a non-empty string mentioning load_skill", 
   assert.ok(typeof SKILL_DISCOVERY_INSTRUCTION === "string");
   assert.ok(SKILL_DISCOVERY_INSTRUCTION.length > 20);
   assert.ok(SKILL_DISCOVERY_INSTRUCTION.includes("load_skill"));
+});
+
+// =============================================================================
+// MARK: buildSkillCatalogFromResolved — M30
+// =============================================================================
+
+function makeResolvedResult(overrides: Partial<SkillResolutionResult> = {}): SkillResolutionResult {
+  return {
+    alwaysSkills: [],
+    availableSkills: [],
+    neverSkillIds: new Set(),
+    resolvedStates: new Map(),
+    ...overrides,
+  };
+}
+
+test("buildSkillCatalogFromResolved: empty resolved returns empty catalog and alwaysSkills", () => {
+  const { catalog, alwaysSkills } = buildSkillCatalogFromResolved(makeResolvedResult());
+  assert.equal(catalog.length, 0);
+  assert.equal(alwaysSkills.length, 0);
+});
+
+test("buildSkillCatalogFromResolved: available skills become catalog entries", () => {
+  const s1 = makeSkillDoc({ _id: "s1", slug: "data-viz" });
+  const resolved = makeResolvedResult({ availableSkills: [s1] });
+  const { catalog, alwaysSkills } = buildSkillCatalogFromResolved(resolved);
+  assert.equal(catalog.length, 1);
+  assert.equal(catalog[0].slug, "data-viz");
+  assert.equal(alwaysSkills.length, 0);
+});
+
+test("buildSkillCatalogFromResolved: always skills are returned separately", () => {
+  const s1 = makeSkillDoc({ _id: "s1", slug: "always-skill" });
+  const resolved = makeResolvedResult({ alwaysSkills: [s1] });
+  const { catalog, alwaysSkills } = buildSkillCatalogFromResolved(resolved);
+  assert.equal(catalog.length, 0);
+  assert.equal(alwaysSkills.length, 1);
+  assert.equal(alwaysSkills[0].slug, "always-skill");
+});
+
+test("buildSkillCatalogFromResolved: filters available skills by profile", () => {
+  const needsProfile = makeSkillDoc({ _id: "s1", requiredToolProfiles: ["docs"] });
+  const noProfile = makeSkillDoc({ _id: "s2", requiredToolProfiles: [] });
+  const resolved = makeResolvedResult({ availableSkills: [needsProfile, noProfile] });
+  const { catalog } = buildSkillCatalogFromResolved(resolved, {
+    availableProfiles: ["runtime"],
+  });
+  assert.equal(catalog.length, 1);
+  assert.equal(catalog[0]._id, "s2");
+});
+
+test("buildSkillCatalogFromResolved: filters always skills by integration", () => {
+  const needsGmail = makeSkillDoc({ _id: "s1", requiredIntegrationIds: ["gmail"] });
+  const resolved = makeResolvedResult({ alwaysSkills: [needsGmail] });
+  const { alwaysSkills } = buildSkillCatalogFromResolved(resolved, {
+    availableIntegrationIds: ["drive"],
+  });
+  assert.equal(alwaysSkills.length, 0);
+});
+
+test("buildSkillCatalogFromResolved: filters always skills by capability", () => {
+  const needsCap = makeSkillDoc({ _id: "s1", requiredCapabilities: ["python_sandbox"] });
+  const resolved = makeResolvedResult({ alwaysSkills: [needsCap] });
+  const { alwaysSkills } = buildSkillCatalogFromResolved(resolved, {
+    availableCapabilities: [],
+  });
+  assert.equal(alwaysSkills.length, 0);
+});
+
+// =============================================================================
+// MARK: formatAlwaysSkillInstructions — M30
+// =============================================================================
+
+test("formatAlwaysSkillInstructions: empty array returns empty string", () => {
+  assert.equal(formatAlwaysSkillInstructions([]), "");
+});
+
+test("formatAlwaysSkillInstructions: wraps instructions in XML tags", () => {
+  const skill = makeSkillDoc({
+    slug: "data-viz",
+    instructionsRaw: "Use charts for data.",
+    instructionsCompiled: "Use charts for data. (compiled)",
+  });
+  const result = formatAlwaysSkillInstructions([skill]);
+  assert.ok(result.includes('<always_skill name="data-viz">'));
+  assert.ok(result.includes("(compiled)"));
+  assert.ok(result.includes("</always_skill>"));
+});
+
+test("formatAlwaysSkillInstructions: prefers compiled over raw", () => {
+  const skill = makeSkillDoc({
+    slug: "s1",
+    instructionsRaw: "raw text",
+    instructionsCompiled: "compiled text",
+  });
+  const result = formatAlwaysSkillInstructions([skill]);
+  assert.ok(result.includes("compiled text"));
+  assert.ok(!result.includes("raw text"));
+});
+
+test("formatAlwaysSkillInstructions: falls back to raw when compiled absent", () => {
+  const skill = makeSkillDoc({
+    slug: "s1",
+    instructionsRaw: "raw only",
+    instructionsCompiled: undefined,
+  });
+  const result = formatAlwaysSkillInstructions([skill]);
+  assert.ok(result.includes("raw only"));
+});
+
+test("formatAlwaysSkillInstructions: multiple skills separated by double newline", () => {
+  const s1 = makeSkillDoc({ slug: "a", instructionsRaw: "A" });
+  const s2 = makeSkillDoc({ slug: "b", instructionsRaw: "B" });
+  const result = formatAlwaysSkillInstructions([s1, s2]);
+  assert.ok(result.includes("</always_skill>\n\n<always_skill"));
 });

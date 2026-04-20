@@ -330,7 +330,22 @@ Same general pattern as Google/Microsoft, with key differences:
 - **Conservative token expiry** — Notion doesn't return `expires_in`; we set a 1-hour expiry to trigger proactive refresh.
 - **User info from token response** — `owner.user.name` and `owner.user.person.email` embedded in the token exchange response, no separate userinfo endpoint needed.
 
-### Tool Auth Helpers (`convex/tools/google/auth.ts`, `convex/tools/microsoft/auth.ts`, `convex/tools/notion/auth.ts`)
+### Slack Connection (`SlackConnectionViewModel`)
+
+Slack follows the same user-initiated native auth pattern as the other OAuth providers, with provider-specific details handled server-side:
+- Uses Slack OAuth 2.0 consent and Convex token exchange via `oauth/slack.ts`
+- Persists workspace metadata (`workspaceId`, `workspaceName`) alongside the token row for connected-account UI
+- Connection status tracked via `SharedAppDataStore.hasSlackConnection`
+
+### Cloze Connection (`ClozeConnectionViewModel`)
+
+Cloze is not an OAuth flow:
+- User enters a Cloze API key in `ClozeConnectSheet`
+- `ClozeConnectionViewModel` sends that key to Convex, which validates/stores it through `oauth/cloze.ts`
+- Connection status tracked via `SharedAppDataStore.hasClozeConnection`
+- The same `oauthConnections` table is reused so connected-account UI and runtime gating stay consistent with OAuth-backed providers
+
+### Tool Auth Helpers (`convex/tools/google/auth.ts`, `convex/tools/microsoft/auth.ts`, `convex/tools/notion/auth.ts`, `convex/tools/slack/auth.ts`, `convex/tools/cloze/auth.ts`)
 
 Server-side auth helpers that:
 1. Look up the user's `oauthConnections` row for the given provider
@@ -339,6 +354,10 @@ Server-side auth helpers that:
 4. All external API calls use raw `fetch()` — no Node.js SDKs
 
 **Notion auth difference:** Uses HTTP Basic Auth (`Authorization: Basic base64(client_id:client_secret)`) for token refresh instead of form-encoded client credentials. Token endpoint accepts JSON body (`Content-Type: application/json`). All Notion API calls require `Notion-Version: 2022-06-28` header.
+
+**Slack auth difference:** Slack helpers coordinate workspace-token refresh and preserve workspace metadata for settings UI and tool result labeling.
+
+**Cloze auth difference:** Cloze helpers validate and use a stored API key rather than refreshing OAuth credentials.
 
 ## StoreService (M14)
 

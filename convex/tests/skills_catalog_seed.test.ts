@@ -8,8 +8,8 @@ import { SystemSkillSeedData } from "../skills/mutations_seed";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 59 skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 59);
+test("SYSTEM_SKILL_CATALOG contains 61 skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 61);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -59,11 +59,13 @@ test("SYSTEM_SKILL_CATALOG: slugs are lowercase-hyphenated", () => {
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 58 visible + 1 hidden skills", () => {
+test("SYSTEM_SKILL_CATALOG: 51 visible + 1 hidden + 9 integration_managed skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
-  assert.equal(visible.length, 58);
+  const integrationManaged = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "integration_managed");
+  assert.equal(visible.length, 51);
   assert.equal(hidden.length, 1);
+  assert.equal(integrationManaged.length, 9);
 });
 
 test("SYSTEM_SKILL_CATALOG: visible skills include the 5 original curated skills", () => {

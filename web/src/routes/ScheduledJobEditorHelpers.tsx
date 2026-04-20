@@ -155,10 +155,16 @@ export function StepParticipantSection({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const { personas } = useSharedData();
+  const { personas, prefs } = useSharedData();
   const modelSummaries = useModelSummaries();
+  const zdrEnforced = prefs?.zdrEnabled === true;
   const [search, setSearch] = useState("");
   const q = search.toLowerCase();
+
+  const modelZdrMap = useMemo(
+    () => new Map(((modelSummaries ?? []) as Array<{ modelId: string; hasZdrEndpoint?: boolean }>).map((m) => [m.modelId, m.hasZdrEndpoint === true])),
+    [modelSummaries],
+  );
 
   const currentPersona = step.selectedPersonaId
     ? (personas ?? []).find((p) => p._id === step.selectedPersonaId)
@@ -175,7 +181,7 @@ export function StepParticipantSection({
   }, [personas, q]);
 
   const filteredModels = useMemo(() => {
-    const all = (modelSummaries ?? []) as Array<{ modelId: string; name: string; provider?: string }>;
+    const all = (modelSummaries ?? []) as Array<{ modelId: string; name: string; provider?: string; hasZdrEndpoint?: boolean }>;
     if (!q) return all;
     return all.filter((m) => m.name.toLowerCase().includes(q) || m.modelId.toLowerCase().includes(q));
   }, [modelSummaries, q]);
@@ -218,11 +224,13 @@ export function StepParticipantSection({
                   <div className="px-4 py-1.5"><span className="text-xs font-medium text-foreground/50 uppercase tracking-wide">{t("personas_section_label")}</span></div>
                   {filteredPersonas.map((p) => {
                     const selected = step.selectedPersonaId === p._id;
+                    const isZdrBlocked = zdrEnforced && p.modelId != null && !modelZdrMap.get(p.modelId);
                     return (
-                      <button key={p._id} onClick={() => { onChange({ selectedPersonaId: p._id, modelId: p.modelId || step.modelId }); setOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-3 transition-colors text-left">
+                      <button key={p._id} onClick={() => { if (!isZdrBlocked) { onChange({ selectedPersonaId: p._id, modelId: p.modelId || step.modelId }); setOpen(false); } }} className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left ${isZdrBlocked ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"}`}>
                         <div className="w-7 h-7 rounded-full bg-accent/15 flex items-center justify-center flex-shrink-0 text-sm">{p.avatarEmoji || "🤖"}</div>
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm font-medium truncate ${selected ? "text-primary" : ""}`}>{p.displayName ?? t("unnamed")}</p>
+                          {isZdrBlocked && <p className="text-[10px] text-muted">{t("zdr_model_not_supported")}</p>}
                         </div>
                         {selected && <Check size={14} className="text-primary flex-shrink-0" />}
                       </button>
@@ -235,12 +243,14 @@ export function StepParticipantSection({
                   <div className="px-4 py-1.5 mt-1"><span className="text-xs font-medium text-foreground/50 uppercase tracking-wide">{t("models_section_label")}</span></div>
                   {filteredModels.map((m) => {
                     const selected = !step.selectedPersonaId && step.modelId === m.modelId;
+                    const isZdrDisabled = zdrEnforced && !m.hasZdrEndpoint;
                     return (
-                      <button key={m.modelId} onClick={() => { onChange({ modelId: m.modelId, selectedPersonaId: null }); setOpen(false); }} className="w-full flex items-center gap-3 px-4 py-2.5 hover:bg-surface-3 transition-colors text-left">
+                      <button key={m.modelId} onClick={() => { if (!isZdrDisabled) { onChange({ modelId: m.modelId, selectedPersonaId: null }); setOpen(false); } }} className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left ${isZdrDisabled ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"}`}>
                         <div className="w-7 h-7 rounded-full bg-surface-3 flex items-center justify-center flex-shrink-0"><Cpu size={12} className="text-muted" /></div>
                         <div className="flex-1 min-w-0">
                           <p className={`text-sm font-medium truncate ${selected ? "text-primary" : ""}`}>{m.name}</p>
                           {m.provider && <p className="text-[11px] text-muted truncate capitalize">{m.provider}</p>}
+                          {isZdrDisabled && <p className="text-[10px] text-muted">{t("zdr_model_not_supported")}</p>}
                         </div>
                         {selected && <Check size={14} className="text-primary flex-shrink-0" />}
                       </button>
@@ -266,12 +276,14 @@ export function StepIntegrationsSection({
 }) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const { googleConnection, microsoftConnection, appleCalendarConnection, notionConnection } = useConnectedAccounts();
+  const { googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection } = useConnectedAccounts();
   const hasGoogle = !!googleConnection;
   const hasMicrosoft = !!microsoftConnection;
   const hasApple = !!appleCalendarConnection;
   const hasNotion = !!notionConnection;
-  const hasAny = hasGoogle || hasMicrosoft || hasApple || hasNotion;
+  const hasCloze = clozeConnection?.status === "active";
+  const hasSlack = !!slackConnection;
+  const hasAny = hasGoogle || hasMicrosoft || hasApple || hasNotion || hasCloze || hasSlack;
   const handleGoogleToggle = async (
     checked: boolean,
     integrationId: "gmail" | "drive" | "calendar",
@@ -322,6 +334,8 @@ export function StepIntegrationsSection({
         )}
         {hasApple && <ToggleRow label={t("integration_apple_calendar")} checked={step.appleCalendarEnabled} onChange={(v) => onChange({ appleCalendarEnabled: v })} />}
         {hasNotion && <ToggleRow label={t("integration_notion")} checked={step.notionEnabled} onChange={(v) => onChange({ notionEnabled: v })} />}
+        {hasCloze && <ToggleRow label={t("integration_cloze")} checked={step.clozeEnabled} onChange={(v) => onChange({ clozeEnabled: v })} />}
+        {hasSlack && <ToggleRow label={t("integration_slack")} checked={step.slackEnabled} onChange={(v) => onChange({ slackEnabled: v })} />}
         {!hasAny && (
           <div className="px-4 py-3">
             <p className="text-xs text-muted">{t("connect_accounts_message")}</p>

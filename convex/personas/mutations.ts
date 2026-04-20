@@ -11,7 +11,6 @@ import { v, ConvexError } from "convex/values";
 import { mutation, internalMutation } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
-import { filterToolIncompatibleOptions } from "../lib/tool_capability";
 
 /** Create a new persona. */
 export const create = mutation({
@@ -29,7 +28,8 @@ export const create = mutation({
     avatarSFSymbol: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
     isDefault: v.optional(v.boolean()),
-    // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
+    // Legacy compatibility only. Persona integration state now lives in
+    // `integrationOverrides` via `skills/mutations:setPersonaIntegrationOverrides`.
     enabledIntegrations: v.optional(v.array(v.string())),
   },
   returns: v.id("personas"),
@@ -37,13 +37,6 @@ export const create = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     const now = Date.now();
-
-    // Silently strip integrations when the model doesn't support tools.
-    const toolFilter = await filterToolIncompatibleOptions(ctx, {
-      enabledIntegrations: args.enabledIntegrations,
-      modelIds: [args.modelId],
-    });
-    const effectiveIntegrations = toolFilter.enabledIntegrations;
 
     // If marking as default, unset other defaults
     if (args.isDefault) {
@@ -73,7 +66,6 @@ export const create = mutation({
       avatarSFSymbol: args.avatarSFSymbol,
       avatarColor: args.avatarColor,
       isDefault: args.isDefault ?? false,
-      enabledIntegrations: effectiveIntegrations,
       createdAt: now,
       updatedAt: now,
     });
@@ -97,7 +89,8 @@ export const update = mutation({
     avatarSFSymbol: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
     isDefault: v.optional(v.boolean()),
-    // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
+    // Legacy compatibility only. Persona integration state now lives in
+    // `integrationOverrides` via `skills/mutations:setPersonaIntegrationOverrides`.
     enabledIntegrations: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
@@ -109,17 +102,6 @@ export const update = mutation({
     }
 
     const now = Date.now();
-    const effectiveModelId = args.modelId ?? persona.modelId;
-    const requestedIntegrations =
-      args.enabledIntegrations ?? persona.enabledIntegrations;
-
-    // Silently strip integrations when the model doesn't support tools.
-    const toolFilter = await filterToolIncompatibleOptions(ctx, {
-      enabledIntegrations: requestedIntegrations,
-      modelIds: [effectiveModelId],
-    });
-    const filteredIntegrations = toolFilter.enabledIntegrations;
-
     // If marking as default, unset other defaults
     if (args.isDefault) {
       const existing = await ctx.db
@@ -142,7 +124,6 @@ export const update = mutation({
 
     await ctx.db.patch(personaId, {
       ...updates,
-      enabledIntegrations: filteredIntegrations,
       avatarImageStorageId: nextAvatarStorageId,
       updatedAt: now,
     });
@@ -191,12 +172,6 @@ export const createPersonaInternal = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
 
-    // Silently strip integrations when the model doesn't support tools.
-    const toolFilter = await filterToolIncompatibleOptions(ctx, {
-      enabledIntegrations: args.enabledIntegrations,
-      modelIds: [args.modelId],
-    });
-
     return await ctx.db.insert("personas", {
       userId: args.userId,
       displayName: args.displayName,
@@ -209,7 +184,6 @@ export const createPersonaInternal = internalMutation({
       avatarImageStorageId: args.avatarImageStorageId ?? undefined,
       avatarColor: args.avatarColor,
       isDefault: false,
-      enabledIntegrations: toolFilter.enabledIntegrations,
       createdAt: now,
       updatedAt: now,
     });

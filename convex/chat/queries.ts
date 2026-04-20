@@ -14,6 +14,7 @@ import {
   getChatInternalArgs,
   getGeneratedFilesByMessageArgs,
   getGenerationJobInternalArgs,
+  getGenerationContinuationInternalArgs,
   getGenerationStatusArgs,
   getMessageArgs,
   getMessageAudioUrlArgs,
@@ -42,6 +43,7 @@ import {
   getChatInternalHandler,
   getGeneratedFilesByMessageHandler,
   getGenerationJobInternalHandler,
+  getGenerationContinuationInternalHandler,
   getGenerationStatusHandler,
   getMessageHandler,
   getMessageAudioUrlHandler,
@@ -147,6 +149,11 @@ export const getMessageInternal = internalQuery({
 export const getGenerationJobInternal = internalQuery({
   args: getGenerationJobInternalArgs,
   handler: getGenerationJobInternalHandler,
+});
+
+export const getGenerationContinuationInternal = internalQuery({
+  args: getGenerationContinuationInternalArgs,
+  handler: getGenerationContinuationInternalHandler,
 });
 
 export const getUserPreferences = internalQuery({

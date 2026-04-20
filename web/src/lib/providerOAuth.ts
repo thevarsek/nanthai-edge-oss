@@ -1,4 +1,4 @@
-export type OAuthProvider = "google" | "microsoft" | "notion";
+export type OAuthProvider = "google" | "microsoft" | "notion" | "slack";
 export type GoogleRequestedIntegration = "base" | "gmail" | "drive" | "calendar";
 
 type OAuthContext = {
@@ -54,7 +54,9 @@ function getClientId(provider: OAuthProvider): string | null {
       ? import.meta.env.VITE_GOOGLE_CLIENT_ID
       : provider === "microsoft"
         ? import.meta.env.VITE_MICROSOFT_CLIENT_ID
-        : import.meta.env.VITE_NOTION_CLIENT_ID;
+        : provider === "notion"
+          ? import.meta.env.VITE_NOTION_CLIENT_ID
+          : import.meta.env.VITE_SLACK_CLIENT_ID;
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
 
@@ -147,6 +149,19 @@ export async function buildProviderAuthorizationUrl(
 
   const state = randomString(64);
   persistOAuthContext(provider, { state, redirectUri, createdAt: Date.now() });
+  if (provider === "slack") {
+    // https://docs.slack.dev/authentication/installing-with-oauth#the-user-centric-flow-the-oauthv2useraccess-method
+    // https://docs.slack.dev/ai/slack-mcp-server#oauth-url-and-endpoints
+    // MCP user-token-only apps use /oauth/v2_user/authorize with scope (not user_scope).
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "search:read.public,search:read.users,channels:history,users:read,users:read.email,search:read.private,search:read.mpim,search:read.im,search:read.files,chat:write,groups:history,mpim:history,im:history,canvases:read,canvases:write",
+      state,
+    });
+    return `https://slack.com/oauth/v2_user/authorize?${params.toString()}`;
+  }
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -222,7 +237,9 @@ export function providerLabel(provider: OAuthProvider): string {
     ? "Google"
     : provider === "microsoft"
       ? "Microsoft"
-      : "Notion";
+      : provider === "notion"
+        ? "Notion"
+        : "Slack";
 }
 
 function persistOAuthContext(provider: OAuthProvider, context: OAuthContext) {

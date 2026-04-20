@@ -18,6 +18,8 @@ import {
   subagentRunStatus,
   usageObject,
   videoJobStatus,
+  skillOverrideEntry,
+  integrationOverrideEntry,
 } from "./schema_validators";
 
 export const coreSchemaTables = {
@@ -51,9 +53,10 @@ export const coreSchemaTables = {
       v.literal("enabled"),
       v.literal("disabled"),
     )),
-    // M18: Per-chat skill overrides
-    discoverableSkillIds: v.optional(v.array(v.id("skills"))),
-    disabledSkillIds: v.optional(v.array(v.id("skills"))),
+    // M30: Layered skill overrides (replaces discoverableSkillIds/disabledSkillIds)
+    skillOverrides: v.optional(v.array(skillOverrideEntry)),
+    // M30: Layered integration overrides (persisted, replaces ephemeral composer state)
+    integrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -157,6 +160,12 @@ export const coreSchemaTables = {
     subagentBatchId: v.optional(v.id("subagentBatches")),
     // Autonomous moderator — directive injected before this turn
     moderatorDirective: v.optional(v.string()),
+    // M30: Orchestration traces — which skills/integrations were used
+    loadedSkillIds: v.optional(v.array(v.id("skills"))),
+    usedIntegrationIds: v.optional(v.array(v.string())),
+    // M30: Turn-level overrides from slash chips (snapshot)
+    turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+    turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     createdAt: v.number(),
   })
     .index("by_chat", ["chatId", "createdAt"])
@@ -188,6 +197,7 @@ export const coreSchemaTables = {
   generationJobs: defineTable({
     chatId: v.id("chats"),
     messageId: v.id("messages"),
+    streamingMessageId: v.optional(v.id("streamingMessages")),
     userId: v.string(),
     modelId: v.string(),
     status: generationJobStatus,

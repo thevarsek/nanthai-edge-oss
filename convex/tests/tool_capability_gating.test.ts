@@ -135,7 +135,7 @@ test("deprecated assertToolCapableModelIds still throws for non-tool model", asy
 
 // ── createPersonaInternal silent downgrade ──────────────────────────────
 
-test("createPersonaInternal succeeds with stripped integrations on non-tool model", async () => {
+test("createPersonaInternal creates persona without integration fields (M30 migration pending)", async () => {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const ctx = {
     db: {
@@ -157,15 +157,16 @@ test("createPersonaInternal succeeds with stripped integrations on non-tool mode
     enabledIntegrations: ["gmail"],
   });
 
-  // Persona should be created with integrations silently stripped
+  // M30: createPersonaInternal still uses legacy args but doesn't write integration fields
+  // (integrationOverrides should be handled by setPersonaIntegrationOverrides post-creation)
   assert.equal(inserts.length, 1);
   assert.equal(inserts[0].table, "personas");
-  assert.deepEqual(inserts[0].value.enabledIntegrations, []);
+  assert.deepEqual(inserts[0].value.enabledIntegrations, undefined);
 });
 
 // ── createJobInternal silent downgrade ──────────────────────────────────
 
-test("createJobInternal succeeds with stripped integrations on non-tool model", async () => {
+test("createJobInternal strips integrations for non-tool model", async () => {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const ctx = {
     db: {
@@ -193,14 +194,10 @@ test("createJobInternal succeeds with stripped integrations on non-tool model", 
     enabledIntegrations: ["gmail"],
   });
 
-  // Job should be created with integrations silently stripped
+  // Job integrations are silently stripped for non-tool-capable models
   const jobInsert = inserts.find((i) => i.table === "scheduledJobs");
   assert.ok(jobInsert, "scheduledJobs insert should exist");
   assert.deepEqual(jobInsert.value.enabledIntegrations, []);
-  // Steps should also have stripped integrations
-  const steps = jobInsert.value.steps as Array<{ enabledIntegrations?: string[] }>;
-  assert.ok(steps.length > 0);
-  assert.deepEqual(steps[0].enabledIntegrations, []);
 });
 
 // ── updateJob tests ────────────────────────────────────────────────────

@@ -16,6 +16,9 @@ import {
 type Status = "loading" | "success" | "error";
 const AUTH_TIMEOUT_MS = 12000;
 
+/** Custom-scheme base URL for mobile apps (iOS / Android). */
+const MOBILE_SCHEME = "tech.nanthai.NanthAi-Edge";
+
 type GoogleExchangeAction = (args: {
   code: string;
   codeVerifier: string;
@@ -28,6 +31,7 @@ type MicrosoftExchangeAction = (args: {
   redirectUri: string;
 }) => Promise<unknown>;
 type NotionExchangeAction = (args: { code: string; redirectUri: string }) => Promise<unknown>;
+type SlackExchangeAction = (args: { code: string; redirectUri: string }) => Promise<unknown>;
 
 export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvider }) {
   const [status, setStatus] = useState<Status>("loading");
@@ -39,8 +43,33 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
   const exchangeGoogleCode = useAction(api.oauth.google.exchangeGoogleCode) as GoogleExchangeAction;
   const exchangeMicrosoftCode = useAction(api.oauth.microsoft.exchangeMicrosoftCode) as MicrosoftExchangeAction;
   const exchangeNotionCode = useAction(api.oauth.notion.exchangeNotionCode) as NotionExchangeAction;
+  const exchangeSlackCode = useAction(api.oauth.slack.exchangeSlackCode) as SlackExchangeAction;
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const label = useMemo(() => providerLabel(provider), [provider]);
+
+  // ── Mobile redirect ──────────────────────────────────────────────────
+  // When opened via ASWebAuthenticationSession (iOS) or Custom Tabs
+  // (Android), there is no localStorage OAuth context and no window.opener
+  // (since it's not a popup). Redirect to the custom-scheme URL so the
+  // native session can intercept the callback.
+  //
+  // We check both conditions to avoid misfiring on web users who lost
+  // localStorage (e.g. privacy mode) — those users will have window.opener
+  // from the popup flow and should see the normal error message instead.
+  const didRedirectToMobile = useRef(false);
+  useEffect(() => {
+    if (didRedirectToMobile.current) return;
+    const context = readOAuthContext(provider);
+    if (context) return; // Web flow — has localStorage context, proceed normally.
+    if (window.opener && !window.opener.closed) return; // Web popup — show error, don't redirect.
+
+    // No context + no opener → mobile app flow. Forward all query params to the
+    // custom-scheme URL so ASWebAuthenticationSession / Custom Tabs picks it up.
+    const params = searchParams.toString();
+    const nativeURL = `${MOBILE_SCHEME}://oauth/${provider}/callback${params ? `?${params}` : ""}`;
+    didRedirectToMobile.current = true;
+    window.location.href = nativeURL;
+  }, [provider, searchParams]);
 
   useEffect(() => {
     if (status !== "loading" || isAuthLoading) {
@@ -62,7 +91,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
     // Wait until Convex is authenticated before exchanging the code.
     // ConvexProviderWithClerk may still be syncing the Clerk session token.
     if (isAuthLoading || !isAuthenticated || status !== "loading") return;
-    if (didRun.current) return;
+    if (didRun.current || didRedirectToMobile.current) return;
     didRun.current = true;
 
     async function complete() {
@@ -111,6 +140,8 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
       try {
         if (provider === "notion") {
           await exchangeNotionCode({ code, redirectUri: context.redirectUri });
+        } else if (provider === "slack") {
+          await exchangeSlackCode({ code, redirectUri: context.redirectUri });
         } else {
           if (!context.verifier) {
             throw new Error(`${label} sign-in has expired. Start the connection again.`);
@@ -145,7 +176,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
     }
 
     void complete();
-  }, [exchangeGoogleCode, exchangeMicrosoftCode, exchangeNotionCode, isAuthLoading, isAuthenticated, label, provider, searchParams, status]);
+  }, [exchangeGoogleCode, exchangeMicrosoftCode, exchangeNotionCode, exchangeSlackCode, isAuthLoading, isAuthenticated, label, provider, searchParams, status]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-6">

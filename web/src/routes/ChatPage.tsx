@@ -36,6 +36,7 @@ import {
   useSearchMode,
 } from "@/routes/ChatPage.helpers";
 import { ChatHeader, EmptyChatState, ChatModalPanels } from "@/routes/ChatPage.header";
+import { SlashCommandPalette, TurnOverrideChips } from "@/components/chat/SlashCommandPalette";
 import { ChatSearchContext } from "@/components/chat/ChatSearchContext";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
@@ -56,7 +57,7 @@ export function ChatPage() {
   const { t } = useTranslation();
   const { prefs, modelSettings, proStatus, personas } = useSharedData();
   const { toast } = useToast();
-  const { googleConnection, microsoftConnection, notionConnection, appleCalendarConnection } = useConnectedAccounts();
+  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const { balance: creditBalance, refresh: refreshCreditBalance } = useCreditBalance();
   const typedChatId = chatId as Id<"chats"> | undefined;
   const typedPrefs = prefs as SharedPreferences | undefined;
@@ -92,21 +93,35 @@ export function ChatPage() {
       return () => window.clearTimeout(timer);
     }
   }, [effectiveDefaultModelId, convexParticipants.length]);
-  const connectedProviders = useMemo(() => ({ google: !!googleConnection, microsoft: !!microsoftConnection, apple: !!appleCalendarConnection, notion: !!notionConnection }), [googleConnection, microsoftConnection, appleCalendarConnection, notionConnection]);
+  const connectedProviders = useMemo(() => ({ google: !!googleConnection, microsoft: !!microsoftConnection, apple: !!appleCalendarConnection, notion: !!notionConnection, cloze: clozeConnection?.status === "active", slack: !!slackConnection }), [googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection]);
   const { chat, messages, isLoading, isGenerating, sendMessage, cancelGeneration, retryMessage, updateChat, switchBranchAtFork } = useChat(typedChatId ?? null);
   const activePersona = useMemo(() => {
     const participantPersonaId = convexParticipants.find((participant) => participant.personaId)?.personaId;
     if (participantPersonaId) {
       return (personas ?? []).find((persona) => persona._id === participantPersonaId) ?? null;
     }
-    return defaultPersona ?? null;
-  }, [convexParticipants, defaultPersona, personas]);
+    return null;
+  }, [convexParticipants, personas]);
   const overrides = useChatOverrides({
     chat,
     chatId: typedChatId,
     activePersona,
     updateChat,
   });
+  const [showSlashPalette, setShowSlashPalette] = useState(false);
+  const handleComposerTextChange = useCallback((text: string) => {
+    setShowSlashPalette(text === "/");
+  }, []);
+  const [slashSkillNames, setSlashSkillNames] = useState<Map<string, string>>(new Map());
+  const handleSlashSelectSkill = useCallback((skillId: Id<"skills">, skillName: string) => {
+    overrides.addTurnSkillOverride(skillId, "always");
+    setSlashSkillNames((prev) => new Map(prev).set(skillId, skillName));
+    setShowSlashPalette(false);
+  }, [overrides]);
+  const handleSlashSelectIntegration = useCallback((key: IntegrationKey, _label: string) => {
+    overrides.addTurnIntegrationOverride(key, true);
+    setShowSlashPalette(false);
+  }, [overrides]);
   const handleIntegrationToggle = useCallback(async (key: IntegrationKey) => {
     const alreadyEnabled = overrides.enabledIntegrations.has(key);
     if (alreadyEnabled) {
@@ -225,6 +240,17 @@ export function ChatPage() {
     });
   }, [participants, modelSummaries, isVideoMode]);
 
+  const GOOGLE_ALLOWED_PROVIDERS = useMemo(() => new Set(["openai", "anthropic", "google"]), []);
+  /** True when any chat participant uses a model incompatible with Google integrations. */
+  const googleIntegrationsBlocked = useMemo(() => {
+    if (!modelSummaries) return false;
+    return participants.some((p) => {
+      const summary = modelSummaries.find((m) => m.modelId === p.modelId);
+      if (!summary) return false; // unknown model — don't block
+      return !summary.hasZdrEndpoint || !GOOGLE_ALLOWED_PROVIDERS.has((summary.provider ?? "").toLowerCase());
+    });
+  }, [participants, modelSummaries, GOOGLE_ALLOWED_PROVIDERS]);
+
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
     chat, participantCount: participants.length, isPro,
     subagentsEnabledByDefault: typedPrefs?.subagentsEnabledByDefault ?? false,
@@ -300,10 +326,10 @@ export function ChatPage() {
     return () => window.clearTimeout(timer);
   }, [typedChatId]);
 
-  const integrationArgs = useMemo(() =>
-    overrides.enabledIntegrations.size > 0 ? { enabledIntegrations: Array.from(overrides.enabledIntegrations) } : {},
-    [overrides.enabledIntegrations],
-  );
+  const turnOverrideArgs = useMemo(() => ({
+    ...(overrides.turnSkillOverrideEntries.length > 0 ? { turnSkillOverrides: overrides.turnSkillOverrideEntries } : {}),
+    ...(overrides.turnIntegrationOverrideEntries.length > 0 ? { turnIntegrationOverrides: overrides.turnIntegrationOverrideEntries } : {}),
+  }), [overrides.turnSkillOverrideEntries, overrides.turnIntegrationOverrideEntries]);
   const handleCancelSession = useCallback(
     (sessionId: string) => { void cancelSession({ sessionId: sessionId as Id<"searchSessions"> }); },
     [cancelSession],
@@ -323,11 +349,10 @@ export function ChatPage() {
         ...(participant.maxTokens != null ? { maxTokens: participant.maxTokens } : {}),
         ...(participant.includeReasoning != null ? { includeReasoning: participant.includeReasoning } : {}),
         ...(participant.reasoningEffort ? { reasoningEffort: participant.reasoningEffort } : {}),
-        ...integrationArgs,
         subagentsEnabled: effectiveSubagentsEnabled,
       });
     },
-    [effectiveSubagentsEnabled, integrationArgs, participants, regeneratePaper],
+    [effectiveSubagentsEnabled, participants, regeneratePaper],
   );
   const searchSessionCtx = useMemo(
     () => ({ sessionMap, onCancel: handleCancelSession, onRegenerate: handleRegeneratePaper }),
@@ -382,13 +407,13 @@ export function ChatPage() {
           participant: participants[0],
           complexity: convexComplexity ?? 1,
           attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
-          ...integrationArgs, subagentsEnabled: effectiveSubagentsEnabled,
+          subagentsEnabled: effectiveSubagentsEnabled,
         });
       } else {
         await sendMessage({
           chatId: cid, text, participants,
           attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, videoRole: a.videoRole })),
-          ...integrationArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
+          ...turnOverrideArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
           ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
           ...(isVideoMode ? { videoConfig: {
@@ -400,8 +425,9 @@ export function ChatPage() {
         });
       }
       overrides.clearKBFiles();
+      overrides.clearTurnOverrides();
     },
-    [ensureChatId, kbAttachments, sendMessage, startResearchPaper, participants, integrationArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
+    [ensureChatId, kbAttachments, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );
 
   const handleSendRecording = useCallback(
@@ -421,14 +447,14 @@ export function ChatPage() {
           complexity: convexComplexity ?? 1,
           attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
           recordedAudio: { storageId: storageId as Id<"_storage">, transcript: result.transcript, durationMs: result.durationMs, mimeType: result.mimeType },
-          ...integrationArgs, subagentsEnabled: effectiveSubagentsEnabled,
+          subagentsEnabled: effectiveSubagentsEnabled,
         });
       } else {
         await sendMessage({
           chatId: cid, text: result.transcript || "(voice message)", participants,
           attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, videoRole: a.videoRole })),
           recordedAudio: { storageId: storageId as Id<"_storage">, transcript: result.transcript, durationMs: result.durationMs, mimeType: result.mimeType },
-          ...integrationArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
+          ...turnOverrideArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
           ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
           ...(isVideoMode ? { videoConfig: {
@@ -441,7 +467,7 @@ export function ChatPage() {
       }
       overrides.clearKBFiles();
     },
-    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, integrationArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachments, validateSendState],
+    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachments, validateSendState],
   );
 
   const handleCancel = useCallback(() => { if (typedChatId) void cancelGeneration({ chatId: typedChatId }); }, [typedChatId, cancelGeneration]);
@@ -542,7 +568,25 @@ export function ChatPage() {
       </div>
       <AutonomousToolbar state={autonomous.state} onPause={autonomous.pause} onResume={autonomous.resume} onStop={autonomous.stop} onDismiss={autonomous.dismissEnded} />
       {typedPrefs?.showBalanceInChat === true && <BalanceIndicator balance={creditBalance} />}
-      <MessageInput
+      <TurnOverrideChips
+        turnSkillOverrides={overrides.turnSkillOverrides}
+        turnIntegrationOverrides={overrides.turnIntegrationOverrides}
+        onRemoveSkill={overrides.removeTurnSkillOverride}
+        onRemoveIntegration={overrides.removeTurnIntegrationOverride}
+        skillNames={slashSkillNames}
+      />
+      <div className="relative">
+        {showSlashPalette && (
+          <SlashCommandPalette
+            onSelectSkill={handleSlashSelectSkill}
+            onSelectIntegration={handleSlashSelectIntegration}
+            onDismiss={() => setShowSlashPalette(false)}
+            turnSkillOverrides={overrides.turnSkillOverrides}
+            turnIntegrationOverrides={overrides.turnIntegrationOverrides}
+            connectedProviders={connectedProviders}
+          />
+        )}
+        <MessageInput
         chatId={typedChatId ?? ("" as Id<"chats">)} participants={participants} isGenerating={isGenerating}
         onSend={handleSend} onCancel={handleCancel} onCreateUploadUrl={() => createUploadUrl({})}
         onPlusMenuSelect={overrides.handlePlusMenuSelect} plusMenuBadges={overrides.badges} isPro={isPro}
@@ -552,12 +596,15 @@ export function ChatPage() {
         allParticipantsSupportTools={allParticipantsSupportTools}
         isVideoMode={isVideoMode}
         supportsFrameImages={supportsFrameImages}
+        onTextChange={handleComposerTextChange}
       />
+      </div>
       <ChatModalPanels
         activePanel={overrides.activePanel} closePanel={overrides.closePanel}
         paramOverrides={overrides.paramOverrides} setParamOverrides={overrides.setParamOverrides} paramDefaults={paramDefaults}
-        enabledIntegrations={overrides.enabledIntegrations} toggleIntegration={(key) => { void handleIntegrationToggle(key); }} connectedProviders={connectedProviders}
+        enabledIntegrations={overrides.enabledIntegrations} toggleIntegration={(key) => { void handleIntegrationToggle(key); }} connectedProviders={connectedProviders} googleIntegrationsBlocked={googleIntegrationsBlocked}
         enabledSkillIds={overrides.enabledSkillIds} toggleSkill={overrides.toggleSkill}
+        skillOverrides={overrides.skillOverrides} cycleSkill={overrides.cycleSkill}
         selectedKBFileIds={overrides.selectedKBFileIds} toggleKBFile={overrides.toggleKBFile}
         chatId={typedChatId} convexParticipants={convexParticipants}
         addParticipant={addParticipant} removeParticipant={removeParticipantMut} setParticipants={setParticipantsMut}

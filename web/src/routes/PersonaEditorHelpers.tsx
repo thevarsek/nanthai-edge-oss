@@ -1,8 +1,10 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
 import { Toggle } from "@/components/shared/Toggle";
 import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
 import { AlignLeft, Wrench, Terminal } from "lucide-react";
+import type { SkillOverrideState } from "./PersonaEditorForm";
 
 // ── Emoji picker (simple grid) ─────────────────────────────────────────────
 
@@ -80,6 +82,50 @@ export function SkillRow({ skill, selected, onToggle, disabled = false }: SkillR
       </div>
       <Toggle checked={selected} onChange={onToggle} disabled={disabled} />
     </div>
+  );
+}
+
+const SKILL_STATE_CONFIG: Record<SkillOverrideState, { labelKey: string; className: string }> = {
+  always: { labelKey: "skill_state_always", className: "bg-green-500/15 text-green-600 dark:text-green-400" },
+  available: { labelKey: "skill_state_available", className: "bg-primary/15 text-primary" },
+  never: { labelKey: "skill_state_blocked", className: "bg-red-500/15 text-red-600 dark:text-red-400" },
+};
+
+interface SkillOverrideRowProps {
+  skill: { _id: Id<"skills">; name: string; summary?: string; scope?: string; runtimeMode?: string };
+  state: SkillOverrideState | undefined;
+  onCycle: () => void;
+  disabled?: boolean;
+}
+
+export function SkillOverrideRow({ skill, state, onCycle, disabled = false }: SkillOverrideRowProps) {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      disabled={disabled}
+      className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${disabled ? "opacity-50 cursor-not-allowed" : "hover:bg-surface-3"}`}
+    >
+      <div className="w-5 flex items-center justify-center flex-shrink-0">
+        <RuntimeModeIcon mode={skill.runtimeMode} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm">{skill.name}</p>
+        {skill.summary && (
+          <p className="text-xs text-muted truncate mt-0.5">{skill.summary}</p>
+        )}
+      </div>
+      {state ? (
+        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${SKILL_STATE_CONFIG[state].className}`}>
+          {t(SKILL_STATE_CONFIG[state].labelKey)}
+        </span>
+      ) : (
+        <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-3 text-muted font-medium">
+          {t("skill_state_inherit")}
+        </span>
+      )}
+    </button>
   );
 }
 

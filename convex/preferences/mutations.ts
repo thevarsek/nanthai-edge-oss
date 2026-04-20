@@ -11,6 +11,7 @@ import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
 
+
 // Batch size for paginating chat subagent-override resets. Kept small enough
 // to stay well inside Convex's 16,384-document read limit per transaction.
 const DISABLE_PRO_CHAT_BATCH_SIZE = 200;
@@ -172,6 +173,7 @@ export const upsertPreferences = mutation({
     defaultVideoDuration: v.optional(v.union(v.number(), v.null())),
     defaultVideoResolution: v.optional(v.union(v.string(), v.null())),
     defaultVideoGenerateAudio: v.optional(v.boolean()),
+    zdrEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -258,6 +260,132 @@ export const upsertPreferences = mutation({
 });
 
 // -- Model Settings -----------------------------------------------------------
+
+// -- M30: Global Skill & Integration Defaults ---------------------------------
+
+/**
+ * Set or update a single global skill default.
+ *
+ * The `skillDefaults` array on `userPreferences` is sparse: absence of an entry
+ * means the system default applies (built-in system skills = "available",
+ * custom/user skills = "never"). Calling this upserts one entry.
+ */
+export const setSkillDefault = mutation({
+  args: {
+    skillId: v.id("skills"),
+    state: v.union(v.literal("always"), v.literal("available"), v.literal("never")),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const now = Date.now();
+
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!prefs) {
+      return await ctx.db.insert("userPreferences", {
+        ...buildDefaultUserPreferencesInsert(userId, now) as any,
+        skillDefaults: [{ skillId: args.skillId, state: args.state }],
+      });
+    }
+
+    const existing = prefs.skillDefaults ?? [];
+    const updated = existing.filter((e: any) => e.skillId !== args.skillId);
+    updated.push({ skillId: args.skillId, state: args.state });
+    await ctx.db.patch(prefs._id, { skillDefaults: updated, updatedAt: now });
+    return prefs._id;
+  },
+});
+
+/**
+ * Remove a global skill default (revert to system default).
+ */
+export const removeSkillDefault = mutation({
+  args: { skillId: v.id("skills") },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    const now = Date.now();
+
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!prefs || !prefs.skillDefaults) return;
+
+    const updated = (prefs.skillDefaults as any[]).filter((e: any) => e.skillId !== args.skillId);
+    await ctx.db.patch(prefs._id, {
+      skillDefaults: updated.length > 0 ? updated : undefined,
+      updatedAt: now,
+    });
+  },
+});
+
+/**
+ * Set or update a single global integration default.
+ *
+ * The `integrationDefaults` array on `userPreferences` is sparse: absence of an
+ * entry means the integration is disabled by default (new connections after M30
+ * default to disabled). Calling this upserts one entry.
+ */
+export const setIntegrationDefault = mutation({
+  args: {
+    integrationId: v.string(),
+    enabled: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    await requirePro(ctx, userId);
+    const now = Date.now();
+
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (!prefs) {
+      return await ctx.db.insert("userPreferences", {
+        ...buildDefaultUserPreferencesInsert(userId, now) as any,
+        integrationDefaults: [{ integrationId: args.integrationId, enabled: args.enabled }],
+      });
+    }
+
+    const existing = prefs.integrationDefaults ?? [];
+    const updated = existing.filter((e: any) => e.integrationId !== args.integrationId);
+    updated.push({ integrationId: args.integrationId, enabled: args.enabled });
+    await ctx.db.patch(prefs._id, { integrationDefaults: updated, updatedAt: now });
+    return prefs._id;
+  },
+});
+
+/**
+ * Remove a global integration default (revert to system default = disabled).
+ */
+export const removeIntegrationDefault = mutation({
+  args: { integrationId: v.string() },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    const now = Date.now();
+
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    if (!prefs || !prefs.integrationDefaults) return;
+
+    const updated = (prefs.integrationDefaults as any[]).filter(
+      (e: any) => e.integrationId !== args.integrationId,
+    );
+    await ctx.db.patch(prefs._id, {
+      integrationDefaults: updated.length > 0 ? updated : undefined,
+      updatedAt: now,
+    });
+  },
+});
+
+// -- Model Settings (continued) -----------------------------------------------
 
 /** Upsert per-model parameter overrides. */
 export const upsertModelSettings = mutation({

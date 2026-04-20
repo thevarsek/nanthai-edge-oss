@@ -21,6 +21,8 @@ export interface DraftStep {
   msCalendarEnabled: boolean;
   appleCalendarEnabled: boolean;
   notionEnabled: boolean;
+  clozeEnabled: boolean;
+  slackEnabled: boolean;
   knowledgeBaseFileIds: string[];
 }
 
@@ -45,6 +47,8 @@ export function createDraftStep(): DraftStep {
     msCalendarEnabled: false,
     appleCalendarEnabled: false,
     notionEnabled: false,
+    clozeEnabled: false,
+    slackEnabled: false,
     knowledgeBaseFileIds: [],
   };
 }
@@ -59,6 +63,8 @@ export function buildIntegrations(step: DraftStep): string[] {
   if (step.msCalendarEnabled) integrations.push("ms_calendar");
   if (step.appleCalendarEnabled) integrations.push("apple_calendar");
   if (step.notionEnabled) integrations.push("notion");
+  if (step.clozeEnabled) integrations.push("cloze");
+  if (step.slackEnabled) integrations.push("slack");
   return integrations;
 }
 

@@ -10,7 +10,7 @@
 | [`design-philosophy.md`](design-philosophy.md) | Product vision, core features, iMessage design language, non-goals |
 | [`architecture.md`](architecture.md) | Confirmed architectural decisions, layer diagram, DI container, navigation coordinator, server seam |
 | [`tech-stack.md`](tech-stack.md) | Technology table, deployment target policy, zero-dependency rationale |
-| [`data-model.md`](data-model.md) | Convex schema — 35 tables (4 schema files), runtime/capability tables, DTO types, indexes, identity scoping |
+| [`data-model.md`](data-model.md) | Convex schema — 44 app tables (4 schema files), runtime/capability tables, DTO types, indexes, identity scoping |
 | [`service-layer.md`](service-layer.md) | Service protocols, ConvexService, SharedAppDataStore, capability subscriptions, generated-chart UI seams, OAuth VMs, tool auth helpers, error types |
 | [`project-structure.md`](project-structure.md) | Complete directory tree for Xcode project, tests, and utilities |
 | [`max-runtime-analytics.md`](max-runtime-analytics.md) | Max runtime architecture — capabilities, three-tier execution (just-bash, Pyodide, Vercel Sandbox), workspace/analytics tools, generated charts, iOS/Android status |

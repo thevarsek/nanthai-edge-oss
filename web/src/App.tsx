@@ -354,6 +354,10 @@ export function App() {
         path="/oauth/notion/callback"
         element={<ProviderOAuthCallbackPage provider="notion" />}
       />
+      <Route
+        path="/oauth/slack/callback"
+        element={<ProviderOAuthCallbackPage provider="slack" />}
+      />
 
       {/* Auth-protected app routes */}
       <Route

@@ -60,6 +60,7 @@ export async function callOpenRouterStreaming(
   callbacks: {
     onDelta?: OnDelta;
     onReasoningDelta?: OnReasoningDelta;
+    onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
   },
   retryConfig: RetryConfig = {},
   deps: OpenRouterStreamingDeps = defaultOpenRouterStreamingDeps,
@@ -208,6 +209,7 @@ async function streamOnce(
   callbacks: {
     onDelta?: OnDelta;
     onReasoningDelta?: OnReasoningDelta;
+    onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
   },
   retryOnUnsupportedParam: boolean,
   deps: OpenRouterStreamingDeps,
@@ -216,6 +218,9 @@ async function streamOnce(
   const strippedParams = new Set<string>();
   const maxUnsupportedParamRetries = 6;
   let rateLimitRetries = 0;
+  // 404 "No endpoints found" fallback: retry once with all provider routing
+  // stripped. See the 404 handler below for rationale.
+  let strippedProviderOnce = false;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
@@ -224,6 +229,7 @@ async function streamOnce(
       messages,
       currentParams,
       true,
+      strippedProviderOnce,
     );
 
     const controller = new AbortController();
@@ -240,6 +246,9 @@ async function streamOnce(
     resetTimeout();
 
     try {
+      // Phase 1 instrumentation: OpenRouter TTFB sub-timings to split the
+      // ~10s black box into (a) time-to-headers and (b) time-to-first-SSE-delta.
+      const fetchStartedAt = Date.now();
       const response = await deps.fetch(OPENROUTER_API_URL, {
         method: "POST",
         headers: {
@@ -252,11 +261,21 @@ async function streamOnce(
         body: JSON.stringify(body),
         signal: controller.signal,
       });
+      const headersReceivedAt = Date.now();
+      const openrouterHeadersMs = headersReceivedAt - fetchStartedAt;
 
       // Handle non-2xx responses
       if (!response.ok) {
         const errorText = await response.text();
         const errorMessage = deps.extractErrorMessage(errorText);
+
+        // Phase 1 instrumentation: surface header timing on the error path too
+        // so slow provider errors are visible alongside successful requests.
+        console.warn("[openrouter:stream] non-2xx response", {
+          model,
+          status: response.status,
+          openrouterHeadersMs,
+        });
 
         if (
           response.status === 429 &&
@@ -298,6 +317,26 @@ async function streamOnce(
           }
         }
 
+        // 404 "No endpoints found" retry — strip all provider routing hints
+        // and try once more. OpenRouter returns this when the combination of
+        // top-level `cache_control`, provider-sort defaults, caller-supplied
+        // `provider` fields (ZDR, order, etc.), and current provider health
+        // leaves zero viable endpoints. Stripping the `provider` block and
+        // letting OpenRouter auto-route is the safest recovery that still
+        // preserves `cache_control` (which lives outside the provider block).
+        if (
+          response.status === 404 &&
+          !strippedProviderOnce &&
+          /no endpoints found/i.test(errorMessage + " " + errorText)
+        ) {
+          console.warn("[openrouter:stream] 404 no endpoints — retrying without provider routing", {
+            model,
+            hadCallerProvider: currentParams.provider != null,
+          });
+          strippedProviderOnce = true;
+          continue;
+        }
+
         throw new ConvexError({
           code: "INTERNAL_ERROR" as const,
           message: `OpenRouter API error (${response.status}): ${errorMessage}`,
@@ -307,24 +346,49 @@ async function streamOnce(
       // Process SSE stream and stop as soon as [DONE] arrives instead of
       // waiting for the transport socket to close.
       if (response.body) {
+        // Phase 1 instrumentation: log the first SSE activity so we can split
+        // OpenRouter TTFB into (headers) vs (first delta after headers).
+        let firstActivityAt: number | null = null;
+        const logFirstActivityOnce = () => {
+          if (firstActivityAt !== null) return;
+          firstActivityAt = Date.now();
+          console.info("[openrouter:stream] first SSE chunk", {
+            model,
+            openrouterHeadersMs,
+            openrouterFirstSseMs: firstActivityAt - headersReceivedAt,
+            openrouterTotalToFirstChunkMs: firstActivityAt - fetchStartedAt,
+          });
+        };
         const refreshOnStreamActivity = {
           onDelta: callbacks.onDelta
             ? async (delta: string) => {
+              logFirstActivityOnce();
               resetTimeout();
               await callbacks.onDelta?.(delta);
             }
             : undefined,
           onReasoningDelta: callbacks.onReasoningDelta
             ? async (delta: string) => {
+              logFirstActivityOnce();
               resetTimeout();
               await callbacks.onReasoningDelta?.(delta);
+            }
+            : undefined,
+          onToolCallStart: callbacks.onToolCallStart
+            ? async (toolCall: { index: number; id: string; name: string }) => {
+              logFirstActivityOnce();
+              resetTimeout();
+              await callbacks.onToolCallStart?.(toolCall);
             }
             : undefined,
         };
         return await deps.processSSEBodyStream(
           response.body,
           refreshOnStreamActivity,
-          resetTimeout,
+          () => {
+            logFirstActivityOnce();
+            resetTimeout();
+          },
         );
       }
 

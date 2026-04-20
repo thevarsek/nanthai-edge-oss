@@ -20,6 +20,7 @@ export interface ParticipantConfig {
   reasoningEffort?: string | null;
   messageId: Id<"messages">;
   jobId: Id<"generationJobs">;
+  streamingMessageId?: Id<"streamingMessages">;
 }
 
 export interface RunGenerationArgs extends Record<string, unknown> {
@@ -39,6 +40,11 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   searchSessionId?: Id<"searchSessions">;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
+  // M30 — Turn-level overrides (slash chips)
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  // Phase 1 TTFT instrumentation: scheduler hop #1 measurement
+  enqueuedAt?: number;
 }
 
 export interface VideoCapabilities {
@@ -60,6 +66,7 @@ export interface ModelCapabilities {
   hasImageGeneration?: boolean;
   hasVideoGeneration?: boolean;
   hasReasoning?: boolean;
+  hasZdrEndpoint?: boolean;
   contextLength?: number;
   videoCapabilities?: VideoCapabilities;
 }

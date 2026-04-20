@@ -11,7 +11,7 @@ import {
   Eye, Wrench, Gift, ArrowUpDown, Info, ChevronDown, Check,
   Flame, TrendingUp, Maximize2, Video,
 } from "lucide-react";
-import { useModelSummaries } from "@/hooks/useSharedData";
+import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { ProviderLogo } from "./ProviderLogo";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "./ModelPickerHelpers";
 import { formatPrice } from "./ModelPickerHelpers.utils";
@@ -74,17 +74,18 @@ function GuidanceTag({ label }: { label: string }) {
 
 // ─── Model row ───────────────────────────────────────────────────────────────
 
-function ModelRow({ model, selected, sortKey, onSelect, onInfo }: {
+function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   model: ModelSummary; selected: boolean; sortKey: SortKey;
-  onSelect: () => void; onInfo: () => void;
+  onSelect: () => void; onInfo: () => void; zdrEnforced?: boolean;
 }) {
   const { t } = useTranslation();
+  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
   const score = sortMetric(model, sortKey);
   const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
   const primaryLabel = model.derivedGuidance?.primaryLabel;
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 hover:bg-surface-3 transition-colors cursor-pointer ${selected ? "bg-primary/8" : ""}`} onClick={onSelect}>
+    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isZdrDisabled ? "opacity-45 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"} ${selected ? "bg-primary/8" : ""}`} onClick={isZdrDisabled ? undefined : onSelect}>
       <ProviderLogo modelId={model.modelId} size={32} />
 
       <div className="flex-1 min-w-0">
@@ -109,6 +110,7 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo }: {
           {primaryLabel && <GuidanceTag label={primaryLabel} />}
           <TrendBadge model={model} />
         </div>
+        {isZdrDisabled && <p className="text-[10px] text-muted mt-0.5">{t("zdr_model_not_supported")}</p>}
       </div>
 
       {/* Sort score indicator */}
@@ -207,6 +209,8 @@ export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props
   const [activeFilters, setActiveFilters] = useState<Set<CapFilter>>(new Set());
   const [infoModel, setInfoModel] = useState<ModelSummary | null>(null);
   const [showWizard, setShowWizard] = useState(false);
+  const { prefs } = useSharedData();
+  const zdrEnforced = prefs?.zdrEnabled === true;
 
   const models = useMemo(
     () => (modelSummaries as ModelSummary[] | undefined) ?? [],
@@ -301,7 +305,7 @@ export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props
         {pinnedModel && (
           <>
             <div className="px-4 py-1.5 bg-surface-2/50 text-[10px] font-medium text-muted uppercase tracking-wide">{t("selected")}</div>
-            <ModelRow model={pinnedModel} selected sortKey={sortKey} onSelect={() => handleSelect(pinnedModel.modelId)} onInfo={() => setInfoModel(pinnedModel)} />
+            <ModelRow model={pinnedModel} selected sortKey={sortKey} onSelect={() => handleSelect(pinnedModel.modelId)} onInfo={() => setInfoModel(pinnedModel)} zdrEnforced={zdrEnforced} />
             <div className="px-4 py-1.5 bg-surface-2/50 text-[10px] font-medium text-muted uppercase tracking-wide">{t("models")}</div>
           </>
         )}
@@ -315,7 +319,7 @@ export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props
         ) : (
           filtered.map((model) => (
             <ModelRow key={model.modelId} model={model} selected={model.modelId === selectedModelId}
-              sortKey={sortKey} onSelect={() => handleSelect(model.modelId)} onInfo={() => setInfoModel(model)} />
+              sortKey={sortKey} onSelect={() => handleSelect(model.modelId)} onInfo={() => setInfoModel(model)} zdrEnforced={zdrEnforced} />
           ))
         )}
       </div>
@@ -339,7 +343,7 @@ export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowWizard(false)}>
           <div className="w-full max-w-md max-h-[85vh] rounded-2xl border border-border/50 shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <ModelWizard models={models} onSelect={handleSelect} onClose={() => setShowWizard(false)} />
+            <ModelWizard models={models} onSelect={handleSelect} onClose={() => setShowWizard(false)} zdrEnforced={zdrEnforced} />
           </div>
         </div>
       )}

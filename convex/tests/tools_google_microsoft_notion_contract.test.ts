@@ -9,6 +9,7 @@ import {
 } from "../tools/google/auth";
 import { getMicrosoftAccessToken } from "../tools/microsoft/auth";
 import { getNotionAccessToken } from "../tools/notion/auth";
+import { getSlackAccessToken } from "../tools/slack/auth";
 import { notionFetch, notionHeaders } from "../tools/notion/client";
 
 function jsonResponse(status: number, payload: unknown, headers?: Record<string, string>) {
@@ -342,6 +343,83 @@ test("getNotionAccessToken returns the stored token and rejects inactive connect
       } as any, "user_1"),
     /Notion connection is expired/,
   );
+});
+
+test("getSlackAccessToken refreshes rotated user tokens and stores the new refresh token", async () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  process.env.SLACK_CLIENT_ID = "slack_client";
+  process.env.SLACK_CLIENT_SECRET = "slack_secret";
+
+  const queryResults = [
+    {
+      _id: "slack_1",
+      userId: "user_1",
+      provider: "slack",
+      accessToken: "stale_token",
+      refreshToken: "refresh_1",
+      expiresAt: Date.now() - 1,
+      scopes: ["chat:write"],
+      displayName: "Slack User",
+      workspaceId: "T123",
+      workspaceName: "NanthAI",
+      status: "active",
+      connectedAt: 1,
+      lastRefreshedAt: 0,
+    },
+    {
+      _id: "slack_1",
+      userId: "user_1",
+      provider: "slack",
+      accessToken: "fresh_from_db",
+      refreshToken: "refresh_2",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      scopes: ["chat:write", "search:read.public"],
+      displayName: "Slack User",
+      workspaceId: "T123",
+      workspaceName: "NanthAI",
+      status: "active",
+      connectedAt: 1,
+      lastRefreshedAt: Date.now(),
+    },
+  ];
+  const mutations: Array<Record<string, unknown>> = [];
+
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    assert.equal(url, "https://slack.com/api/oauth.v2.access");
+    const params = new URLSearchParams(String(init?.body));
+    assert.equal(params.get("client_id"), "slack_client");
+    assert.equal(params.get("refresh_token"), "refresh_1");
+    assert.equal(params.get("grant_type"), "refresh_token");
+    return jsonResponse(200, {
+      ok: true,
+      authed_user: {
+        access_token: "fresh_from_provider",
+        refresh_token: "refresh_2",
+        expires_in: 43200,
+        scope: "chat:write,search:read.public",
+      },
+    });
+  }) as any;
+
+  try {
+    const result = await getSlackAccessToken({
+      runQuery: async () => queryResults.shift() ?? null,
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    } as any, "user_1");
+
+    assert.equal(result.accessToken, "fresh_from_db");
+    assert.equal(mutations.length, 1);
+    assert.equal(mutations[0]?.refreshToken, "refresh_2");
+    assert.equal(mutations[0]?.accessToken, "fresh_from_provider");
+    assert.deepEqual(mutations[0]?.scopes, ["chat:write", "search:read.public"]);
+    assert.equal(mutations[0]?.expectedLastRefreshedAt, 0, "OCC guard must forward lastRefreshedAt from the stale connection");
+  } finally {
+    process.env = originalEnv;
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("notionFetch applies Notion headers and retries rate-limited responses", async () => {

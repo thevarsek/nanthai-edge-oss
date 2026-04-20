@@ -18,6 +18,7 @@ export class SubagentStreamWriter {
   private contentStartedAtMs: number | undefined;
   private lastPatchedReasoningLength = 0;
   private lastPatchedReasoningAtMs = 0;
+  private reasoningStartedAtMs: number | undefined;
   private _hasSeenContentDelta = false;
 
   constructor(opts: {
@@ -52,6 +53,9 @@ export class SubagentStreamWriter {
 
   async appendReasoning(delta: string): Promise<void> {
     if (delta.length === 0) return;
+    if (this.reasoningStartedAtMs === undefined) {
+      this.reasoningStartedAtMs = Date.now();
+    }
     this._totalReasoning += delta;
   }
 
@@ -88,6 +92,7 @@ export class SubagentStreamWriter {
       totalReasoningLength: this._totalReasoning.length,
       lastPatchedReasoningLength: this.lastPatchedReasoningLength,
       lastPatchedReasoningAtMs: this.lastPatchedReasoningAtMs,
+      reasoningStartedAtMs: this.reasoningStartedAtMs,
     })) {
       return;
     }
@@ -99,6 +104,7 @@ export class SubagentStreamWriter {
     });
     this.lastPatchedReasoningLength = this._totalReasoning.length;
     this.lastPatchedReasoningAtMs = nowMs;
+    this.reasoningStartedAtMs = nowMs;
   }
 
   async handleContentDeltaBoundary(deltaLength: number): Promise<void> {

@@ -119,7 +119,8 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
   const assistantInsert = inserts.find((entry) => entry.table === "messages" && entry.value.role === "assistant");
   assert.ok(assistantInsert);
   assert.equal(assistantInsert.value.subagentsEnabled, false);
-  assert.equal(scheduled[0]?.subagentsEnabled, false);
+  const generationSchedule = scheduled.find((entry) => Array.isArray(entry.assistantMessageIds));
+  assert.equal(generationSchedule?.subagentsEnabled, false);
 });
 
 test("updateChatHandler rejects enabling subagents on a multi-model chat", async () => {
