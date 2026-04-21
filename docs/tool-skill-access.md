@@ -93,7 +93,7 @@ Current backend behavior is intentionally forgiving:
 | Microsoft 365 | `outlook_send`, `outlook_read`, `outlook_search`, `outlook_delete`, `outlook_move`, `outlook_list_folders`, `onedrive_upload`, `onedrive_list`, `onedrive_read`, `onedrive_move`, `ms_calendar_list`, `ms_calendar_create`, `ms_calendar_delete` | Pro + active Microsoft connection + requested integration |
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
-| Slack | `slack_send_message`, `slack_read_messages`, `slack_search_messages`, `slack_list_channels` | Pro + active Slack connection + requested integration |
+| Slack | `slack_send_message`, `slack_read_messages`, `slack_search_messages`, `slack_list_channels`, `slack_search_users`, `slack_create_canvas`, `slack_update_canvas`, `slack_read_canvas`, `slack_read_user_profile` | Pro + active Slack connection + requested integration |
 | Cloze | `cloze_search_contacts`, `cloze_read_contact`, `cloze_create_contact`, `cloze_search_companies`, `cloze_read_company`, `cloze_list_projects` | Pro + active Cloze connection + requested integration |
 | Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset`, `data_python_exec`, `data_python_sandbox`, `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset`, `read_pdf`, `generate_pdf`, `edit_pdf` | Pro (skill-activated) |
 
@@ -244,3 +244,16 @@ In practice there are now two runtime shapes:
 - [`max-runtime-analytics.md`](max-runtime-analytics.md) — internal runtime architecture
 - [`architecture.md`](architecture.md) — backend tool registry and Convex execution flow
 - [`mobile-api-contract.md`](mobile-api-contract.md) — shared client-facing Convex contract
+
+## Slack MCP Tools — Hosted MCP And Drift Detection
+
+Unlike the Google / Microsoft / Notion / Cloze tools which call raw provider REST APIs, Slack tools call Slack's hosted Model Context Protocol endpoint at `https://mcp.slack.com/mcp`. The public NanthAI tool IDs (`slack_send_message`, `slack_search_messages`, etc.) are stable Convex wrappers around the live Slack MCP tools. Wrapper names never change; the MCP tool names and argument schemas they call through to are allowed to evolve on Slack's side.
+
+Key properties of this layer:
+
+- **User-facing tool IDs are stable.** iOS/Android label maps, the skill catalog (`convex/skills/catalog/slack.ts`), and tool-ID validators all key off the wrapper IDs. Renames on Slack's side must not leak into clients.
+- **`slack_search_messages` is a routing wrapper.** It forwards to Slack's `slack_search_public` (default) or `slack_search_public_and_private` based on an `include_private` flag.
+- **Per-user state is only the OAuth token.** Tool argument schemas are global. Updating a wrapper deploys to every user simultaneously — no per-user reconnect needed.
+- **`convex/tools/slack/mcp_tools_snapshot.ts`** holds a committed baseline of the live MCP `tools/list` response (tool names + sorted required/properties arrays).
+- **`checkSlackMcpDrift`** (weekly internal cron, `0 6 * * 1`) picks any active Slack connection, probes `tools/list`, diffs against the snapshot, and `console.warn`s on drift (`missing_in_live`, `new_in_live`, `required_changed`, `properties_changed`). It never auto-updates the baseline — drift must be reviewed manually and the snapshot + wrappers updated together.
+- If no active Slack connection exists across all users, the drift check skips silently.

@@ -79,4 +79,15 @@ crons.cron(
   internal.models.video_sync.syncVideoModels,
 );
 
+// Slack MCP schema drift check — weekly on Monday at 6:00 UTC.
+// Compares Slack's live tools/list response to our committed baseline in
+// convex/tools/slack/mcp_tools_snapshot.ts and logs warnings on drift.
+// Uses any active Slack OAuth connection (drift affects everyone equally).
+// Skips silently if no active connections exist.
+crons.cron(
+  "checkSlackMcpDrift",
+  "0 6 * * 1",
+  internal.tools.slack.drift_check.checkSlackMcpDrift,
+);
+
 export default crons;

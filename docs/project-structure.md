@@ -116,10 +116,18 @@ nanthai-edge/                              # Repository root
 │   │   │   ├── auth.ts                    # Notion OAuth token refresh + HTTP Basic Auth
 │   │   │   ├── pages.ts                   # 7 Notion tools: search, read, create, update, delete, update_database_entry, query_database
 │   │   │   └── index.ts                   # Barrel export: registerNotionTools()
-│   │   ├── slack/                          # Slack tools
+│   │   ├── slack/                          # Slack tools (hosted MCP at mcp.slack.com)
 │   │   │   ├── auth.ts                    # Slack OAuth token refresh + auth helper
-│   │   │   ├── client.ts                  # Slack Web API client
-│   │   │   ├── tools.ts                   # Slack tools: send message, list channels, etc.
+│   │   │   ├── client.ts                  # Slack MCP JSON-RPC client + session handshake
+│   │   │   ├── tools.ts                   # Thin barrel re-exporting the four tool modules below
+│   │   │   ├── tools_shared.ts            # runSlackTool + extractText + assignOptional helpers
+│   │   │   ├── tools_messages.ts          # send/send_draft/schedule/read_channel/read_thread
+│   │   │   ├── tools_search.ts            # search_messages (public or public+private), search_channels, search_users
+│   │   │   ├── tools_canvas.ts            # create/update/read canvas + read_user_profile
+│   │   │   ├── mcp_probe.ts               # fetchLiveMcpTools() — shared tools/list probe
+│   │   │   ├── mcp_tools_snapshot.ts      # Committed baseline of Slack MCP tool shapes
+│   │   │   ├── drift_check.ts             # Weekly cron: diffs live tools/list vs snapshot, logs drift
+│   │   │   ├── diagnose.ts                # Manual tools/list probe for debugging
 │   │   │   └── index.ts                   # Barrel export: registerSlackTools()
 │   │   ├── cloze/                          # Cloze CRM tools
 │   │   │   ├── auth.ts                    # Cloze API key auth helper

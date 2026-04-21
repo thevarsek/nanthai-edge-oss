@@ -346,6 +346,24 @@ export const getConnectionInternal = internalQuery({
 });
 
 // ---------------------------------------------------------------------------
+// pickAnyActiveConnection — Internal query used by the MCP drift-check cron
+// to find any healthy Slack connection without needing a specific userId.
+// Returns the first "active" connection found, or null if none exist.
+// ---------------------------------------------------------------------------
+
+export const pickAnyActiveConnection = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const connection = await ctx.db
+      .query("oauthConnections")
+      .withIndex("by_status", (q) => q.eq("status", "active"))
+      .filter((q) => q.eq(q.field("provider"), "slack"))
+      .first();
+    return connection;
+  },
+});
+
+// ---------------------------------------------------------------------------
 // markConnectionExpired — Internal mutation to flag a connection as expired
 // ---------------------------------------------------------------------------
 

@@ -8,6 +8,7 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   const entries = (crons as any).crons;
 
   assert.deepEqual(Object.keys(entries).sort(), [
+    "checkSlackMcpDrift",
     "cleanOldJobRuns",
     "cleanStaleJobs",
     "cleanStaleSandboxSessions",
@@ -29,6 +30,10 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   assert.deepEqual(entries.cleanStaleSandboxSessions.schedule, {
     type: "interval",
     minutes: 30,
+  });
+  assert.deepEqual(entries.checkSlackMcpDrift.schedule, {
+    type: "cron",
+    cron: "0 6 * * 1",
   });
 });
 
