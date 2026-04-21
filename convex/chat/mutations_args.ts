@@ -272,6 +272,12 @@ export const saveGenerationContinuationArgs = {
       allowSubagents: v.boolean(),
       searchSessionId: v.optional(v.id("searchSessions")),
       subagentBatchId: v.optional(v.id("subagentBatches")),
+      // Pre-resolved overrides preserved across continuations (M30 skill tri-state + preflight consolidation)
+      chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+      chatIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+      personaSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+      skillDefaults: v.optional(v.array(skillOverrideEntry)),
+      integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
     }),
     messages: v.any(),
     usage: v.optional(
