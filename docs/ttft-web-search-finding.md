@@ -59,6 +59,24 @@ Curl control (identical prompt, no tools, raw kimi via `provider.order: ["Moonsh
 
 No change to backend code is being shipped with this finding. Opt-in behavior is already correct.
 
+## Post-fix measurements (web search off, live dev logs Apr 22 04:43)
+
+With the globe toggled off on the same warm kimi-k2.6 conversation:
+
+| Stage                                    | Duration   |
+| ---------------------------------------- | ---------- |
+| OpenRouter headers (fetch → response)    | **1,736 ms** (was 10,055 ms) ✅ |
+| First SSE delta (content)                | 3,875 ms   |
+| Total stream `durationMs`                | 4,585 ms   |
+
+The ~2.1 s gap between OR headers and first content delta is reasoning-token emission (`reasoning.effort: "medium"`). Memory base query + cache hit run in parallel pre-dispatch (~991 ms + ~936 ms).
+
+Remaining TTFT wins identified but not shipped:
+
+- Memory base query / cache hit (~1 s) runs before body construction on every turn.
+- `reasoning.effort` auto-tune for short messages (~2 s win when reasoning isn't needed).
+- `plugins: [{ id: "web" }]` form for web-search requests (~4 s win when search IS on).
+
 ## Reproduction
 
 See bisect script `/tmp/bisect.sh` (ephemeral) for the parameter matrix used above. Key body variants are derivable from a captured production body:
