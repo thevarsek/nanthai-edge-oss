@@ -146,4 +146,8 @@ This reflects multi-parent context directly on canvas (not only first parent).
 - `Views/Ideascape/IdeascapeContextSummaryView.swift` — compact context summary bar
 - `Views/Ideascape/IdeascapeHelpDeckView.swift` — in-canvas help deck with gesture/feature guide
 
+## Known Issues / Follow-ups
+
+- ~~**Markdown not rendered inside node bubbles** (all platforms).~~ **Resolved in M31.** Node body text now renders via each platform's markdown renderer in compact mode: iOS `MarkdownText(..., compact: true)` in `Views/Ideascape/IdeascapeNodeView.swift`, Android `SimpleMarkdownText(..., compact = true)` in `android/app/.../ChatDetailIdeascapeComponents.kt`, and web `<MarkdownRenderer content={...} compact />` in `web/src/components/ideascape/IdeascapeNodes.tsx`. Compact mode drops code-block chrome (language label, copy button), shrinks headings/tables, and on web skips KaTeX/remark-math/rehype-highlight plugins to keep the node surface light. See `milestones/M31-node-markdown-and-math-fix.md`.
+
 *Last updated: 2026-03-17 — Rewrote data model section for Convex (post-M8), replaced UUID/ChatService references, added post-M14 hardening files, fixed test paths.*

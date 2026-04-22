@@ -7,6 +7,7 @@ import type { Message } from "@/hooks/useChat";
 import { Video } from "lucide-react";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
+import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
 import { TREE_NODE_W, TREE_NODE_H } from "./treeLayout";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
@@ -193,13 +194,17 @@ export function MessageNode({
                 ))}
               </div>
             )}
-            <p className="text-primary leading-relaxed whitespace-pre-wrap break-words" style={{ fontSize: `${Math.max(7, 12 * scale)}px` }}>
-              {message.content || (
-                (message.status === "pending" || message.status === "streaming")
-                  ? <span className="text-muted animate-pulse">...</span>
-                  : <span className="italic text-muted">empty</span>
+            <div className="text-foreground/80 break-words" style={{ fontSize: `${Math.max(7, 12 * scale)}px` }}>
+              {message.content ? (
+                <MarkdownRenderer content={message.content} compact />
+              ) : (
+                <p className="leading-snug">
+                  {(message.status === "pending" || message.status === "streaming")
+                    ? <span className="text-muted animate-pulse">...</span>
+                    : <span className="italic text-muted">empty</span>}
+                </p>
               )}
-            </p>
+            </div>
           </div>
         </div>
 

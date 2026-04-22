@@ -44,8 +44,21 @@ function getFilenameFromUrl(url: string): string | null {
 }
 
 // ─── Static plugin arrays (stable references — never recreated) ──────────────
-const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath];
+//
+// `singleDollarTextMath: false` disables `$...$` as inline math so plain
+// currency references like "$49 upfront ... $29 annual renewal" don't get
+// paired up and rendered as a single giant KaTeX expression that strips
+// whitespace and overflows horizontally. Display math `$$...$$` still works.
+const REMARK_PLUGINS: PluggableList = [
+  remarkGfm,
+  [remarkMath, { singleDollarTextMath: false }],
+];
 const REHYPE_PLUGINS: PluggableList = [rehypeHighlight, rehypeKatex, rehypeRaw];
+
+// Compact mode drops math + highlight entirely — unreadable at node scale
+// and adds bundle cost for little value inside ~200px ideascape nodes.
+const REMARK_PLUGINS_COMPACT: PluggableList = [remarkGfm];
+const REHYPE_PLUGINS_COMPACT: PluggableList = [rehypeRaw];
 
 // ─── Copy helper ──────────────────────────────────────────────────────────────
 
@@ -304,6 +317,114 @@ function buildComponents(content: string): Components {
   };
 }
 
+// ─── Compact components map — used inside Ideascape nodes ────────────────────
+// Keeps the same parser surface as the full renderer but strips heavy chrome:
+// no code-block header / copy button, no table copy button, heading sizes
+// collapse to bold inline text, paragraphs inherit the node's scaled font size.
+function buildCompactComponents(): Components {
+  return {
+    code({ className, children }) {
+      const text = String(children ?? "").replace(/\n$/, "");
+      const isInline = !className && !text.includes("\n");
+      if (isInline) {
+        return <code className="text-[0.9em] font-mono text-primary">{children}</code>;
+      }
+      return (
+        <pre className="my-1 p-2 rounded bg-nanth-code/50 overflow-x-auto text-[0.9em] font-mono leading-snug">
+          <code className={className}>{text}</code>
+        </pre>
+      );
+    },
+    pre({ children }) {
+      return <>{children}</>;
+    },
+    table({ children }) {
+      return (
+        <div className="my-1 overflow-x-auto">
+          <table className="text-[0.9em] border-collapse">{children}</table>
+        </div>
+      );
+    },
+    thead({ children }) {
+      return <thead className="text-muted">{children}</thead>;
+    },
+    tbody({ children }) {
+      return <tbody>{children}</tbody>;
+    },
+    tr({ children }) {
+      return <tr>{children}</tr>;
+    },
+    th({ children }) {
+      return <th className="px-1.5 py-0.5 text-left font-semibold border-b border-border/20">{children}</th>;
+    },
+    td({ children }) {
+      return <td className="px-1.5 py-0.5 border-b border-border/10 align-top">{children}</td>;
+    },
+    h1({ children }) {
+      return <strong className="block text-[1.1em] mt-1 text-foreground">{children}</strong>;
+    },
+    h2({ children }) {
+      return <strong className="block text-[1.05em] mt-1 text-foreground">{children}</strong>;
+    },
+    h3({ children }) {
+      return <strong className="block mt-1 text-foreground">{children}</strong>;
+    },
+    h4({ children }) {
+      return <strong className="block mt-1 text-foreground">{children}</strong>;
+    },
+    p({ children }) {
+      return <p className="my-0.5 leading-snug">{children}</p>;
+    },
+    ul({ children }) {
+      return <ul className="my-1 pl-4 list-disc space-y-0">{children}</ul>;
+    },
+    ol({ children }) {
+      return <ol className="my-1 pl-4 list-decimal space-y-0">{children}</ol>;
+    },
+    li({ children }) {
+      return <li className="leading-snug">{children}</li>;
+    },
+    blockquote({ children }) {
+      return (
+        <blockquote className="border-l-2 border-primary/60 pl-2 my-1 italic text-muted">
+          {children}
+        </blockquote>
+      );
+    },
+    hr() {
+      return <hr className="my-1 border-border/20" />;
+    },
+    a({ href, children }) {
+      // Compact renderer lives inside ideascape node cards. The node surface
+      // owns click/drag/focus — a live <a href> with target="_blank" would
+      // steal clicks and open tabs, breaking the canvas interaction model.
+      // Mirror iOS compact behavior: render links as non-interactive styled text.
+      if (href && isConvexImageUrl(href)) {
+        return (
+          <img
+            src={href}
+            alt={typeof children === "string" ? children : getFilenameFromUrl(href) ?? "Image"}
+            className="max-w-full rounded-md my-1"
+            loading="lazy"
+            draggable={false}
+          />
+        );
+      }
+      return (
+        <span className="text-primary underline underline-offset-2 opacity-90">
+          {children}
+        </span>
+      );
+    },
+    strong({ children }) {
+      return <strong className="font-semibold text-foreground">{children}</strong>;
+    },
+    em({ children }) {
+      return <em className="italic">{children}</em>;
+    },
+  };
+}
+
 // ─── Public component ─────────────────────────────────────────────────────────
 
 interface MarkdownRendererProps {
@@ -311,19 +432,30 @@ interface MarkdownRendererProps {
   /** When true, uses `will-change: contents` hint for streaming render. */
   streaming?: boolean;
   className?: string;
+  /**
+   * Compact mode for tight surfaces like Ideascape node bubbles. Drops heavy
+   * chrome (code-block headers, copy buttons, table card), collapses heading
+   * sizes to inline bold, and disables math/highlight plugins.
+   */
+  compact?: boolean;
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
   content,
   streaming = false,
   className = "",
+  compact = false,
 }: MarkdownRendererProps) {
-  const components = useMemo(() => buildComponents(content), [content]);
+  const components = useMemo(
+    () => (compact ? buildCompactComponents() : buildComponents(content)),
+    [content, compact],
+  );
 
   return (
     <div
       className={[
-        "markdown-body text-sm text-foreground leading-relaxed",
+        "markdown-body text-foreground",
+        compact ? "leading-snug" : "text-sm leading-relaxed",
         streaming && "will-change-contents",
         className,
       ]
@@ -331,8 +463,8 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         .join(" ")}
     >
       <ReactMarkdown
-        remarkPlugins={REMARK_PLUGINS}
-        rehypePlugins={REHYPE_PLUGINS}
+        remarkPlugins={compact ? REMARK_PLUGINS_COMPACT : REMARK_PLUGINS}
+        rehypePlugins={compact ? REHYPE_PLUGINS_COMPACT : REHYPE_PLUGINS}
         components={components}
       >
         {content}
