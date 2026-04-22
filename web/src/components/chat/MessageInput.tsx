@@ -20,6 +20,7 @@ import { PendingFollowUpCard } from "@/components/chat/PendingFollowUpCard";
 import { useQueuedFollowUp } from "@/components/chat/MessageInput.queue.hook";
 import { useAttachments } from "@/components/chat/MessageInput.attachments.hook";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
+import { getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
 
 export type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 
@@ -47,6 +48,16 @@ interface Props {
   supportsFrameImages?: boolean;
   /** Called when text changes — used for slash command detection. */
   onTextChange?: (text: string) => void;
+  /**
+   * Extra read-only attachments to display in the preview strip (e.g. KB files
+   * that were selected via the plus menu). These are shown inline with the
+   * normal attachments so the user sees everything the next turn will send.
+   */
+  extraAttachments?: AttachmentPreview[];
+  /** Remove a KB extra attachment by its index within `extraAttachments`. */
+  onRemoveExtra?: (index: number) => void;
+  /** Change video role for an extra attachment. */
+  onChangeExtraRole?: (index: number, role: NonNullable<AttachmentPreview["videoRole"]>) => void;
 }
 
 export function MessageInput({
@@ -58,17 +69,33 @@ export function MessageInput({
   onIntervene, onSendRecording, allParticipantsSupportTools = true,
   isVideoMode = false, supportsFrameImages = true,
   onTextChange: onTextChangeProp,
+  extraAttachments = [],
+  onRemoveExtra,
+  onChangeExtraRole,
 }: Props) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { t } = useTranslation();
 
   const {
-    attachments, isUploading, fileInputRef, imageInputRef, cameraInputRef,
+    attachments, setAttachments, isUploading, fileInputRef, imageInputRef, cameraInputRef,
     handleFileSelect, handlePasteFiles, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
   } = useAttachments(onCreateUploadUrl, isVideoMode, supportsFrameImages);
+
+  // Hydrate composer from the per-chat draft store when chatId changes.
+  // Survives in-session navigation (see web/src/stores/chatDraftStore.ts).
+  useEffect(() => {
+    const draft = getChatDraft(chatId);
+    setText(draft.text);
+    setAttachments(draft.attachments);
+  }, [chatId, setAttachments]);
+
+  // Write-through: every change to text or attachments is persisted.
+  useEffect(() => {
+    setChatDraft(chatId, { text, attachments });
+  }, [chatId, text, attachments]);
 
   // Auto-assign default video roles when entering video mode with existing image attachments
   useEffect(() => {
@@ -256,7 +283,14 @@ export function MessageInput({
       )}
 
       <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} isVideoMode={isVideoMode && supportsFrameImages} onChangeRole={changeAttachmentRole} />
-
+      {extraAttachments.length > 0 && (
+        <AttachmentPreviews
+          attachments={extraAttachments}
+          onRemove={(i) => onRemoveExtra?.(i)}
+          isVideoMode={isVideoMode && supportsFrameImages}
+          onChangeRole={onChangeExtraRole ? (i, role) => onChangeExtraRole(i, role) : undefined}
+        />
+      )}
       <div className="flex items-center gap-2">
         {/* Plus button — iOS: circular glass effect */}
         <div className="relative shrink-0">

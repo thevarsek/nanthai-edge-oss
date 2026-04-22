@@ -378,6 +378,38 @@ export function ChatPage() {
     [selectedKBFiles],
   );
 
+  // Per-KB-file video role overrides, keyed by storageId. Local state because
+  // KB query results don't track per-turn video roles.
+  const [kbVideoRoles, setKbVideoRoles] = useState<Record<string, "first_frame" | "last_frame" | "reference">>({});
+
+  // Clear role state for files that are no longer selected.
+  useEffect(() => {
+    setKbVideoRoles((prev) => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([sid]) => kbAttachments.some((a) => a.storageId === sid)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length ? prev : kept;
+    });
+  }, [kbAttachments]);
+
+  /** KB attachments enriched with default video roles when in video mode. */
+  const kbAttachmentsForDisplay = useMemo((): ChatAttachment[] => {
+    if (!isVideoMode || !supportsFrameImages) {
+      return kbAttachments.map((a) => ({ ...a, videoRole: kbVideoRoles[a.storageId ?? ""] ?? a.videoRole }));
+    }
+    // Assign defaults: 1st image -> first_frame, 2nd -> last_frame, 3rd+ -> reference
+    let imageIdx = 0;
+    return kbAttachments.map((a) => {
+      if (a.type !== "image") return a;
+      const sid = a.storageId ?? "";
+      const override = kbVideoRoles[sid];
+      const fallback: "first_frame" | "last_frame" | "reference" =
+        imageIdx === 0 ? "first_frame" : imageIdx === 1 ? "last_frame" : "reference";
+      imageIdx++;
+      return { ...a, videoRole: override ?? fallback };
+    });
+  }, [kbAttachments, isVideoMode, supportsFrameImages, kbVideoRoles]);
+
   const startResearchPaper = useMutation(api.search.mutations.startResearchPaper);
 
   const validateSendState = useCallback((attachmentCount: number) => {
@@ -398,7 +430,7 @@ export function ChatPage() {
     async ({ text, attachments }: { text: string; attachments?: ChatAttachment[] }) => {
       const cid = await ensureChatId();
       await overrides.flushPendingState(cid);
-      const mergedAttachments: ChatAttachment[] = [...(attachments ?? []), ...kbAttachments];
+      const mergedAttachments: ChatAttachment[] = [...(attachments ?? []), ...kbAttachmentsForDisplay];
       if (!validateSendState(mergedAttachments.length)) return;
       if (isResearchPaper) {
         // Research Paper uses a separate mutation with single participant
@@ -427,7 +459,7 @@ export function ChatPage() {
       overrides.clearKBFiles();
       overrides.clearTurnOverrides();
     },
-    [ensureChatId, kbAttachments, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
+    [ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );
 
   const handleSendRecording = useCallback(
@@ -438,7 +470,7 @@ export function ChatPage() {
       const res = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": result.mimeType }, body: result.blob });
       if (!res.ok) return;
       const { storageId } = (await res.json()) as { storageId: string };
-      const mergedAttachments: ChatAttachment[] = [...kbAttachments];
+      const mergedAttachments: ChatAttachment[] = [...kbAttachmentsForDisplay];
       if (!validateSendState(mergedAttachments.length)) return;
       if (isResearchPaper) {
         await startResearchPaper({
@@ -467,7 +499,7 @@ export function ChatPage() {
       }
       overrides.clearKBFiles();
     },
-    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachments, validateSendState],
+    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState],
   );
 
   const handleCancel = useCallback(() => { if (typedChatId) void cancelGeneration({ chatId: typedChatId }); }, [typedChatId, cancelGeneration]);
@@ -597,6 +629,15 @@ export function ChatPage() {
         isVideoMode={isVideoMode}
         supportsFrameImages={supportsFrameImages}
         onTextChange={handleComposerTextChange}
+        extraAttachments={kbAttachmentsForDisplay}
+        onRemoveExtra={(i) => {
+          const sid = kbAttachmentsForDisplay[i]?.storageId;
+          if (sid) overrides.toggleKBFile(sid);
+        }}
+        onChangeExtraRole={(i, role) => {
+          const sid = kbAttachmentsForDisplay[i]?.storageId;
+          if (sid) setKbVideoRoles((prev) => ({ ...prev, [sid]: role }));
+        }}
       />
       </div>
       <ChatModalPanels

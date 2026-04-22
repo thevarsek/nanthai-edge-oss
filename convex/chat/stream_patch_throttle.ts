@@ -1,12 +1,19 @@
+// Reasoning patches are tighter than content patches so that slow-reasoning
+// models (e.g. moonshotai/kimi-k2.6, which trickles 10+ seconds of reasoning
+// before any content) visibly stream reasoning chunks as they arrive instead
+// of dumping a large pending buffer at the content-start boundary (via
+// shouldForceReasoningPatchOnContentStart). Fast-reasoning models (gpt-5.x)
+// finish reasoning before these thresholds trigger anyway, so this is a pure
+// win for perceived latency.
 export const STREAM_PATCH_THRESHOLDS = {
   firstContentPatchChars: 40,
   firstContentPatchMaxDelayMs: 175,
   contentPatchMinIntervalMs: 300,
   contentPatchMinChars: 120,
-  firstReasoningPatchChars: 40,
-  firstReasoningPatchMaxDelayMs: 175,
-  reasoningPatchMinIntervalMs: 300,
-  reasoningPatchMinChars: 120,
+  firstReasoningPatchChars: 20,
+  firstReasoningPatchMaxDelayMs: 120,
+  reasoningPatchMinIntervalMs: 150,
+  reasoningPatchMinChars: 60,
 } as const;
 
 interface CadenceInput {

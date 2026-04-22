@@ -327,6 +327,18 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
     [selectedKBFiles],
   );
 
+  // Per-KB-file video role overrides, keyed by storageId.
+  const [kbVideoRoles, setKbVideoRoles] = useState<Record<string, "first_frame" | "last_frame" | "reference">>({});
+
+  useEffect(() => {
+    setKbVideoRoles((prev) => {
+      const kept = Object.fromEntries(
+        Object.entries(prev).filter(([sid]) => kbAttachments.some((a) => a.storageId === sid)),
+      );
+      return Object.keys(kept).length === Object.keys(prev).length ? prev : kept;
+    });
+  }, [kbAttachments]);
+
   useEffect(() => { saveViewport(chatId as string, viewport); }, [chatId, viewport]);
 
   useEffect(() => {
@@ -373,6 +385,24 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       return summary?.supportsVideo === true && (summary.supportedFrameImages?.length ?? 0) > 0;
     });
   }, [participants, modelSummaries, isVideoMode]);
+
+  type KBAttachment = typeof kbAttachments[number] & { videoRole?: "first_frame" | "last_frame" | "reference" };
+
+  const kbAttachmentsForDisplay = useMemo((): KBAttachment[] => {
+    if (!isVideoMode || !supportsFrameImages) {
+      return kbAttachments.map((a) => ({ ...a, videoRole: kbVideoRoles[a.storageId ?? ""] }));
+    }
+    let imageIdx = 0;
+    return kbAttachments.map((a) => {
+      if (a.type !== "image") return a;
+      const sid = a.storageId ?? "";
+      const override = kbVideoRoles[sid];
+      const fallback: "first_frame" | "last_frame" | "reference" =
+        imageIdx === 0 ? "first_frame" : imageIdx === 1 ? "last_frame" : "reference";
+      imageIdx++;
+      return { ...a, videoRole: override ?? fallback };
+    });
+  }, [kbAttachments, isVideoMode, supportsFrameImages, kbVideoRoles]);
 
   const mentionSuggestions = useMentionSuggestions(participants);
   const connectedProviders = useMemo(() => ({
@@ -553,7 +583,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         : focusedId
           ? [focusedId]
           : [];
-      const mergedAttachments = [...(attachments ?? []), ...kbAttachments];
+      const mergedAttachments = [...(attachments ?? []), ...kbAttachmentsForDisplay];
       if (explicitParentIds.length === 0 || participants.length === 0) return;
       await overrides.flushPendingState(chatId);
       const validationError = validateChatSendState({
@@ -601,7 +631,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       }
       overrides.clearKBFiles();
     },
-    [chatId, selectedIds, focusedId, participants, kbAttachments, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast],
+    [chatId, selectedIds, focusedId, participants, kbAttachmentsForDisplay, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast],
   );
 
   const dismissHelp = useCallback(() => {
@@ -704,6 +734,15 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           onIntervene={autonomous.intervene}
           isVideoMode={isVideoMode}
           supportsFrameImages={supportsFrameImages}
+          extraAttachments={kbAttachmentsForDisplay}
+          onRemoveExtra={(i) => {
+            const sid = kbAttachmentsForDisplay[i]?.storageId;
+            if (sid) overrides.toggleKBFile(sid);
+          }}
+          onChangeExtraRole={(i, role) => {
+            const sid = kbAttachmentsForDisplay[i]?.storageId;
+            if (sid) setKbVideoRoles((prev) => ({ ...prev, [sid]: role }));
+          }}
         />
       </div>
       <ChatModalPanels

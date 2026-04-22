@@ -43,7 +43,9 @@ const slugToAsset: Record<string, string> = {
   writer: "provider_writer",
   stepfun: "provider_stepfun",
   xiaomi: "provider_xiaomi",
-  kwaippilot: "provider_kwaippilot",
+  kwaipilot: "provider_kwaipilot",
+  inclusionai: "provider_inclusionai",
+  sao10k: "provider_sao10k",
   relace: "provider_relace",
   "nex-agi": "provider_nex_agi",
   "prime-intellect": "provider_prime_intellect",
@@ -56,11 +58,16 @@ const slugToAsset: Record<string, string> = {
 // ─── Helpers ────────────────────────────────────────────────────────────
 
 function assetName(slug: string): string {
-  return slugToAsset[slug] ?? `provider_${slug.replace(/-/g, "_")}`;
+  // Strip leading "~" — OpenRouter uses tilde-prefixed provider slugs
+  // (e.g. "~anthropic/claude-opus-latest") as "latest alias" pointers.
+  // They share logos with the non-tilde canonical provider.
+  const canonical = slug.startsWith("~") ? slug.slice(1) : slug;
+  return slugToAsset[canonical] ?? `provider_${canonical.replace(/-/g, "_")}`;
 }
 
 function extractProvider(modelId: string): string {
-  return modelId.split("/")[0] ?? modelId;
+  const raw = modelId.split("/")[0] ?? modelId;
+  return raw.startsWith("~") ? raw.slice(1) : raw;
 }
 
 /** Deterministic hue from slug string (matches iOS palette approach). */

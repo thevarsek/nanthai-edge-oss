@@ -64,6 +64,7 @@ export const userSchemaTables = {
     pickerFilterExcludeFree: v.optional(v.boolean()),
     pickerFilterVision: v.boolean(),
     pickerFilterImageGen: v.boolean(),
+    pickerFilterVideoGen: v.optional(v.boolean()),
     pickerFilterTools: v.boolean(),
     pickerSortPrimaryKey: v.optional(v.union(
       v.literal("recommended"),

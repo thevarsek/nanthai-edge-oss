@@ -13,10 +13,10 @@ test("STREAM_PATCH_THRESHOLDS has expected values (guard against accidental chan
   assert.equal(STREAM_PATCH_THRESHOLDS.firstContentPatchMaxDelayMs, 175);
   assert.equal(STREAM_PATCH_THRESHOLDS.contentPatchMinIntervalMs, 300);
   assert.equal(STREAM_PATCH_THRESHOLDS.contentPatchMinChars, 120);
-  assert.equal(STREAM_PATCH_THRESHOLDS.firstReasoningPatchChars, 40);
-  assert.equal(STREAM_PATCH_THRESHOLDS.firstReasoningPatchMaxDelayMs, 175);
-  assert.equal(STREAM_PATCH_THRESHOLDS.reasoningPatchMinIntervalMs, 300);
-  assert.equal(STREAM_PATCH_THRESHOLDS.reasoningPatchMinChars, 120);
+  assert.equal(STREAM_PATCH_THRESHOLDS.firstReasoningPatchChars, 20);
+  assert.equal(STREAM_PATCH_THRESHOLDS.firstReasoningPatchMaxDelayMs, 120);
+  assert.equal(STREAM_PATCH_THRESHOLDS.reasoningPatchMinIntervalMs, 150);
+  assert.equal(STREAM_PATCH_THRESHOLDS.reasoningPatchMinChars, 60);
 });
 
 test("shouldPatchStreamingContent returns false when no new content, true when forced", () => {
