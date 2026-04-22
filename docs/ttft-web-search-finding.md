@@ -1,114 +1,126 @@
 # Web Search TTFT Finding (Apr 2026)
 
-> When `openrouter:web_search` is attached to a chat completions request, OpenRouter executes the search synchronously **before streaming any model output**. First-byte latency is pinned at 6–10 seconds regardless of model, provider, or prompt cache state. This is load-bearing cost (the search produces real citations), not overhead — but it means "fast TTFT" is only achievable when web search is disabled on the request.
+> OpenRouter executes `openrouter:web_search` synchronously before streaming any model output. TTFB is dominated by **which search backend OR chooses**, and that choice depends on (a) the model provider's native-search support and (b) whether `provider.zdr: true` is set. The fast path is gpt-5.4 / Anthropic / xAI with native search and no ZDR (≤1.3 s). The slow path is anything routed to Exa, which includes every search request under ZDR, regardless of model (~10 s).
 
 ## Symptom
 
-iOS / web chat feels slow on the first token whenever the globe icon is toggled on. Measured time-to-first-SSE-delta from Convex fetch dispatch to first content chunk: **~10,000 ms**, consistent across repeated messages.
-
-The same user toggling the globe off produces first content in **1–2 seconds**.
+iOS / web chat with the globe toggled on: first token takes ~10 s for some model/config combinations, ~1 s for others. The original report was kimi-k2.6 always hitting 10 s; follow-up was gpt-5.4 hitting 10 s only when Google Workspace integrations were attached to the chat.
 
 ## Investigation timeline
 
-1. **Suspected: Convex isolate cold-start / outbound network.**
-   Added instrumentation to `convex/lib/openrouter_stream.ts` (reverted after) that measured (a) `JSON.stringify` time, (b) actual `fetch()` time-to-headers, (c) a parallel trivial GET to `openrouter.ai/api/v1/auth/key` from the same isolate.
-   Result: stringify 0 ms, body 24–25 KB, baseline GET **14–36 ms**. Convex outbound is healthy. Disproven.
+1. **Disproven:** Convex outbound network (baseline `GET /api/v1/auth/key` from the same isolate = 14–36 ms).
+2. **Disproven:** prompt-cache miss. Two consecutive production bodies were byte-identical on `messages[0]`; OR's generation record confirmed `native_tokens_cached` hits and upstream provider latency of ~2.6 s.
+3. **Disproven:** `provider.sort`, `provider.order`, `transforms`, `reasoning` — stripping any of these individually did not move TTFB.
+4. **Found:** the `openrouter:web_search` server tool is the cause. Even `tool_choice: "none"` doesn't bypass it — OR reacts to the tool's presence in the array.
+5. **Found (follow-up):** adding `provider.zdr: true` makes the slow path universal — gpt-5.4 with web search drops from 1.3 s to 10.1 s, identical to kimi-k2.6. ZDR alone (no search) is fast. The interaction is the problem.
 
-2. **Suspected: prompt-cache miss due to volatile system prompt.**
-   Dumped two consecutive production request bodies via chunked logging, reassembled them, and diff'd. `messages[0]` (static app preamble + skill catalog, 17 KB / ~4.3K tokens) was byte-identical between turns. `messages[1]` (memory context) varied slightly but not enough to explain 10 s — OR's own `generation` record confirmed `native_tokens_cached: 2816` and upstream `latency: 2623 ms` on turn 2. The 7 s gap was **not** inside the provider. Disproven.
+## Full grid (fresh Apr 22, single run)
 
-3. **Suspected: `provider.sort: "latency"` introducing probe overhead.**
-   Bisected the Convex body by stripping one field at a time and replaying via curl from a different origin. Result: removing `provider.sort`, pinning `provider.order` to Moonshot / Parasail / Novita, removing `transforms`, removing `reasoning` — all still ~10 s. Disproven.
+All measurements: curl `%{time_starttransfer}` against `POST /api/v1/chat/completions` with `stream: true`, identical prompt (system 17 KB, 5 messages), identical function tools. Only the indicated fields vary.
 
-4. **Found: `tools[]` is the cause — specifically the web-search server tool.**
-   Removing `tools` + `tool_choice` dropped TTFB from 10.1 s → 2.5 s. Removing the web-search entry alone dropped TTFB to 1.1–1.8 s. Removing the four function tools (keeping only web-search) left TTFB at 10.1 s.
+### Model × ZDR × web search
 
-## Measurements
+| Model | ZDR | Web search | TTFB |
+| ----- | --- | ---------- | ---- |
+| `moonshotai/kimi-k2.6` | no  | no  | 5.28 s |
+| `moonshotai/kimi-k2.6` | no  | yes | **10.13 s** |
+| `moonshotai/kimi-k2.6` | yes | no  | 5.69 s |
+| `moonshotai/kimi-k2.6` | yes | yes | **10.17 s** |
+| `openai/gpt-5.4`       | no  | no  | **0.64 s** ⚡ |
+| `openai/gpt-5.4`       | no  | yes | **1.29 s** ⚡ |
+| `openai/gpt-5.4`       | yes | no  | 1.64 s |
+| `openai/gpt-5.4`       | yes | yes | **10.12 s** |
 
-All curl replays of the exact Convex-constructed body against `https://openrouter.ai/api/v1/chat/completions` with `stream: true`, `model: moonshotai/kimi-k2.6`, prompt ~5.1K tokens. TTFB = `curl %{time_starttransfer}`.
+### Server-tool form vs plugin form
 
-| Variant                                              | TTFB        |
-| ---------------------------------------------------- | ----------- |
-| Full body (4 function tools + web-search)            | **10.12 s** |
-| Full body minus web-search, keep 4 function tools    | **1.13 s** ✅ |
-| Empty `tools: []`, no `tool_choice`                  | 2.02 s      |
-| Only `openrouter:web_search`, no function tools      | 10.12 s     |
-| `plugins: [{ id: "web" }]` + 4 function tools        | 6.40 s      |
-| `tool_choice: "none"` with full tools                | 10.28 s     |
+Same prompt, web search enabled via either `tools: [{type:"openrouter:web_search",...}]` or `plugins: [{id:"web"}]`.
 
-Curl control (identical prompt, no tools, raw kimi via `provider.order: ["Moonshot AI"]`, warm cache): **2.2 s**.
+| Model | Form | ZDR | TTFB |
+| ----- | ---- | --- | ---- |
+| `moonshotai/kimi-k2.6` | server-tool | no  | 10.21 s |
+| `moonshotai/kimi-k2.6` | plugin      | no  | **3.93 s** |
+| `moonshotai/kimi-k2.6` | server-tool | yes | 10.25 s |
+| `moonshotai/kimi-k2.6` | plugin      | yes | **7.87 s** |
+| `openai/gpt-5.4`       | server-tool | no  | 0.50 s |
+| `openai/gpt-5.4`       | plugin      | no  | 0.82 s |
+| `openai/gpt-5.4`       | server-tool | yes | 10.17 s |
+| `openai/gpt-5.4`       | plugin      | yes | **2.60 s** |
 
-## Conclusion
+### Original parameter bisect (kimi-k2.6, server-tool form, no ZDR)
 
-- `type: "openrouter:web_search"` is synchronous. OR emits `: OPENROUTER PROCESSING` SSE keepalive comments while the search runs and only begins streaming model tokens after the search completes.
-- The older `plugins: [{ id: "web" }]` form is ~4 s faster (6.4 s vs 10.1 s) but still blocks streaming.
-- Even `tool_choice: "none"` does not bypass the cost — OR reacts to the mere presence of the server tool in the array.
-- The cost is upstream search execution, not Convex or network. Honest latency for a grounded response.
+| Variant | TTFB |
+| ------- | ---- |
+| full body (4 fn tools + `openrouter:web_search`) | 10.19 s |
+| remove web-search entry, keep 4 fn tools | 4.39 s |
+| strip all tools + `tool_choice` | 4.33 s |
+| only `openrouter:web_search`, no fn tools | 10.14 s |
+| `plugins: [{id:"web"}]` + 4 fn tools | **3.94 s** |
+| full tools + `tool_choice: "none"` | 10.14 s |
+
+## What this means
+
+OpenRouter's [web-search docs](https://openrouter.ai/docs/guides/features/server-tools/web-search) state native search is used for OpenAI / Anthropic / xAI models and Exa is the fallback. The data matches that claim:
+
+- **gpt-5.4 + server-tool + no ZDR = 1.29 s** → OpenAI native search.
+- **kimi-k2.6 + server-tool + no ZDR = 10.13 s** → Exa fallback.
+- **Any model + server-tool + ZDR = ~10 s** → ZDR downgrades all models to the Exa-equivalent ZDR-compliant search pool. Native OpenAI search is not ZDR-compliant and is excluded.
+- **Plugin form bypasses the ZDR penalty partially**: gpt-5.4 under ZDR drops from 10.17 s → 2.60 s with `plugins: [{id:"web"}]`. For kimi-k2.6 under ZDR, plugin form is 7.87 s — still slow but ~2.3 s faster than server-tool.
+- `tool_choice: "none"` does **not** skip execution — OR runs the search just for the tool being in the array.
+
+## Live measurements (app, not curl)
+
+Session-by-session numbers recorded via temporary `[ttft:shape]` and `openrouterHeadersMs` instrumentation (reverted after capture).
+
+**Web search off, warm conversation, kimi-k2.6** — confirms the non-search baseline is healthy:
+
+| Stage | Duration |
+| ----- | -------- |
+| OR headers | **1,736 ms** (was 10,055 ms with web search on) |
+| First SSE delta (content) | 3,875 ms |
+| Total stream | 4,585 ms |
+
+The ~2.1 s gap from OR headers → first delta is reasoning-token emission (`reasoning.effort: "medium"`).
+
+**gpt-5.4 + web search, with vs without ZDR** — persona chat had Google Workspace integrations enabled (auto-triggers ZDR), bare chat did not:
+
+| Variant | OR headers | First content delta |
+| ------- | ---------- | ------------------- |
+| Persona + Google integrations on (ZDR + search) | **10,029 ms** | ~10,040 ms |
+| Persona + Google integrations off (no ZDR + search) | 676 ms | 4,811 ms |
+| Bare model (no ZDR + search) | 1,080 ms | 3,647 ms |
 
 ## Product implications
 
-- **Opt-in is correct and already implemented.** Web search attaches only when the user toggles the globe on for that message (`params.webSearchEnabled`). See `convex/lib/openrouter_request.ts:81–88`. Default chats are fast (~2 s TTFB); grounded chats are slow (~10 s) by necessity.
-- Any UX that implies "fast" should not auto-attach web search.
-- A future optimization would be to stream a "searching the web…" status chunk to the client while OR is running the search, so the 10 s feels intentional rather than broken. The server-side code can't do that (OR owns the connection during the stall), but the client can show a spinner keyed on `webSearchEnabled` until the first content chunk arrives.
+- **Web search is opt-in per message** via the globe toggle (`params.webSearchEnabled`). See `convex/lib/openrouter_request.ts:81–88`. That part is correct.
+- **ZDR is auto-enabled** per-request when either `userPrefs.zdrEnabled === true` or the chat has Google integrations attached. See `convex/chat/actions_run_generation_participant.ts:522–537`. Removing the integration (or unsetting the pref) drops ZDR on the next turn — no persistence.
+- **Users with Google integrations + web search will always hit ~10 s TTFT**, regardless of model. Currently unavoidable without a backend mitigation.
+- **Users without ZDR on gpt-5.4 / Claude / Grok get fast grounded answers (~1 s).** The web-search cost is only painful on Exa-routed models.
 
 ## What we could do next (not done)
 
-1. **Switch to `plugins: [{ id: "web" }]` for all web-search requests** — ~4 s faster for free, zero product change. Still slow.
-2. **Run our own search (Perplexity/Brave/Tavily) in parallel with the model request and stitch results into the system prompt** — recovers ~2 s TTFT with citations, but multi-day work and duplicates what OR already does.
-3. **Lightweight query classifier** that skips web-search attachment when the model is unlikely to need it (code questions, local context, rewriting) — smaller lift, requires taste in deciding when to skip.
+1. **Switch to `plugins: [{ id: "web" }]` form when ZDR is active.** ~7.6 s saved for OpenAI models under ZDR, ~2.4 s saved for kimi under ZDR. Zero savings (slight regression) when ZDR is off. Low-risk: the plugin path is the older, stable API.
+2. **Warn in UI when web search is toggled on a ZDR-required chat.** Set expectation (~10 s), or offer to disable search for speed.
+3. **Auto-strip web search for ZDR chats.** Aggressive, but honest — grounded answers are broken under ZDR today, and a non-grounded fast answer may be preferable.
+4. **Query classifier to skip search when the model won't need it.** Code / local-context / rewrite questions don't need grounding. Harder to get right.
+5. **Report upstream.** OR's ZDR search pool is the bottleneck; they may have a faster ZDR-compliant backend or be open to fixing native-search + ZDR compatibility for OpenAI models.
 
-No change to backend code is being shipped with this finding. Opt-in behavior is already correct.
-
-## Post-fix measurements (web search off, live dev logs Apr 22 04:43)
-
-With the globe toggled off on the same warm kimi-k2.6 conversation:
-
-| Stage                                    | Duration   |
-| ---------------------------------------- | ---------- |
-| OpenRouter headers (fetch → response)    | **1,736 ms** (was 10,055 ms) ✅ |
-| First SSE delta (content)                | 3,875 ms   |
-| Total stream `durationMs`                | 4,585 ms   |
-
-The ~2.1 s gap between OR headers and first content delta is reasoning-token emission (`reasoning.effort: "medium"`). Memory base query + cache hit run in parallel pre-dispatch (~991 ms + ~936 ms).
-
-Remaining TTFT wins identified but not shipped:
-
-- Memory base query / cache hit (~1 s) runs before body construction on every turn.
-- `reasoning.effort` auto-tune for short messages (~2 s win when reasoning isn't needed).
-- `plugins: [{ id: "web" }]` form for web-search requests (~4 s win when search IS on).
-
-## Follow-up: ZDR + web search = additional ~9 s penalty (Apr 22, gpt-5.4)
-
-A second report came in: same model (`openai/gpt-5.4`), same user, web search on — persona chat feels ~10 s, bare-model chat feels ~3 s. Captured body-shape for both via a temporary `[ttft:shape]` log (reverted after). The two requests were identical in tools, reasoning, transforms, messageCount — the only meaningful diff was `provider.zdr: true` on the persona path.
-
-| Variant                                                          | OR headers | First content delta |
-| ---------------------------------------------------------------- | ---------- | ------------------- |
-| Persona + Google integrations on (ZDR enforced) + web search     | **10,029 ms** | ~10,040 ms       |
-| Persona + Google integrations off (no ZDR) + web search          | **676 ms**    | 4,811 ms         |
-| Bare model, no integrations (no ZDR) + web search                | 1,080 ms      | 3,647 ms         |
-
-### Why
-
-`convex/chat/actions_run_generation_participant.ts` sets `effectiveParams.provider = { zdr: true }` when either (a) `userPrefs.zdrEnabled === true` or (b) the chat has any Google integration enabled (`hasGoogleIntegrations(enabledIntegrations)`). That flag flows through `buildRequestBody` → OpenRouter.
-
-When OpenRouter sees `provider.zdr: true` **and** an `openrouter:web_search` server tool, it routes the search itself through a ZDR-compliant backend that adds ~9 s before any model token is emitted. Without ZDR, the search path returns in ~700 ms. The provider-level cost we documented above (~8 s fixed for `openrouter:web_search`) is dwarfed by the ZDR-only penalty when both are active.
-
-### Product implications
-
-- Users who enable Google integrations (Drive/Gmail/Calendar) on a chat — or who globally enable ZDR — will see web-search chats go from ~3 s to ~10 s TTFT on OpenAI models. This is an OpenRouter routing cost, not something we introduce.
-- Options if we want to mitigate:
-  1. **Warn in UI** when web search is toggled on a ZDR-required chat ("grounded answers will take ~10 s with data-protection mode").
-  2. **Bypass web search automatically** when ZDR is active and fall back to a non-grounded response.
-  3. **Switch to the `plugins: [{ id: "web" }]` form** for ZDR requests — untested with ZDR but likely similarly slow given the root cause is OR's search routing.
-  4. **Report upstream to OpenRouter** — their ZDR search backend is the bottleneck; they may have a faster one.
-
-No mitigation is shipped with this finding. The ~700 ms OR headers on the non-ZDR persona path confirms the backend is healthy; ZDR is the sole remaining ~9 s factor when web search is on.
+No mitigation is shipped with this finding.
 
 ## Reproduction
 
-See bisect script `/tmp/bisect.sh` (ephemeral) for the parameter matrix used above. Key body variants are derivable from a captured production body:
+Full fresh grid script: `/tmp/ttft_full_grid.sh`, output in `/tmp/ttft_full_grid.txt`. Key body variants are derivable from a captured production body:
 
 ```bash
-# Strip web-search server tool (keep 4 function tools)
+# Strip web-search server tool (keep fn tools)
 jq '.tools = [.tools[] | select(.type != "openrouter:web_search")]' body.json
+
+# Convert to plugin form
+jq '.tools = [.tools[] | select(.type != "openrouter:web_search")]
+    | .plugins = ((.plugins // []) + [{id: "web"}])' body.json
+
+# Add ZDR
+jq '.provider = (.provider // {}) + {zdr: true}' body.json
+
+# Swap model
+jq '.model = "openai/gpt-5.4"' body.json
 ```
