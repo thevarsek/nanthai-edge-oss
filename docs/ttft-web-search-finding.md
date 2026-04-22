@@ -77,6 +77,33 @@ Remaining TTFT wins identified but not shipped:
 - `reasoning.effort` auto-tune for short messages (~2 s win when reasoning isn't needed).
 - `plugins: [{ id: "web" }]` form for web-search requests (~4 s win when search IS on).
 
+## Follow-up: ZDR + web search = additional ~9 s penalty (Apr 22, gpt-5.4)
+
+A second report came in: same model (`openai/gpt-5.4`), same user, web search on — persona chat feels ~10 s, bare-model chat feels ~3 s. Captured body-shape for both via a temporary `[ttft:shape]` log (reverted after). The two requests were identical in tools, reasoning, transforms, messageCount — the only meaningful diff was `provider.zdr: true` on the persona path.
+
+| Variant                                                          | OR headers | First content delta |
+| ---------------------------------------------------------------- | ---------- | ------------------- |
+| Persona + Google integrations on (ZDR enforced) + web search     | **10,029 ms** | ~10,040 ms       |
+| Persona + Google integrations off (no ZDR) + web search          | **676 ms**    | 4,811 ms         |
+| Bare model, no integrations (no ZDR) + web search                | 1,080 ms      | 3,647 ms         |
+
+### Why
+
+`convex/chat/actions_run_generation_participant.ts` sets `effectiveParams.provider = { zdr: true }` when either (a) `userPrefs.zdrEnabled === true` or (b) the chat has any Google integration enabled (`hasGoogleIntegrations(enabledIntegrations)`). That flag flows through `buildRequestBody` → OpenRouter.
+
+When OpenRouter sees `provider.zdr: true` **and** an `openrouter:web_search` server tool, it routes the search itself through a ZDR-compliant backend that adds ~9 s before any model token is emitted. Without ZDR, the search path returns in ~700 ms. The provider-level cost we documented above (~8 s fixed for `openrouter:web_search`) is dwarfed by the ZDR-only penalty when both are active.
+
+### Product implications
+
+- Users who enable Google integrations (Drive/Gmail/Calendar) on a chat — or who globally enable ZDR — will see web-search chats go from ~3 s to ~10 s TTFT on OpenAI models. This is an OpenRouter routing cost, not something we introduce.
+- Options if we want to mitigate:
+  1. **Warn in UI** when web search is toggled on a ZDR-required chat ("grounded answers will take ~10 s with data-protection mode").
+  2. **Bypass web search automatically** when ZDR is active and fall back to a non-grounded response.
+  3. **Switch to the `plugins: [{ id: "web" }]` form** for ZDR requests — untested with ZDR but likely similarly slow given the root cause is OR's search routing.
+  4. **Report upstream to OpenRouter** — their ZDR search backend is the bottleneck; they may have a faster one.
+
+No mitigation is shipped with this finding. The ~700 ms OR headers on the non-ZDR persona path confirms the backend is healthy; ZDR is the sole remaining ~9 s factor when web search is on.
+
 ## Reproduction
 
 See bisect script `/tmp/bisect.sh` (ephemeral) for the parameter matrix used above. Key body variants are derivable from a captured production body:
