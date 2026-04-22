@@ -58,46 +58,62 @@ export function buildRequestBody(
     };
   }
 
-  // Tools — combine user-defined function tools with server tools.
-  // Server tools (e.g. openrouter:web_search) are injected here when enabled;
-  // they are executed by OpenRouter transparently (the model decides when to
-  // search, and OpenRouter handles execution server-side).
+  // Tools — user-defined function tools only. We do NOT inject the
+  // `openrouter:web_search` server tool here; web search is handled via the
+  // `plugins` block below (see rationale).
   //
   // Models that don't support tools are signalled by gateParameters setting
-  // params.tools to `null` (explicit strip). For those models, web search
-  // falls back to the legacy plugin API which works independently of tool
-  // support. When tools is `undefined` (no integrations active) the model
-  // may still support tools, so the server tool is safe to inject.
-  const toolsExplicitlyStripped = params.tools === null;
+  // params.tools to `null` (explicit strip).
   const allTools: unknown[] = [];
   if (params.tools != null && params.tools.length > 0) {
     allTools.push(...params.tools);
-  }
-  // Skip injecting web search server tool when toolChoice is "none" — the
-  // intent is a forced text-only response (compaction cap or final tool round),
-  // and OpenRouter may still execute server tools if they appear in the array.
-  // Also skip when gateParameters explicitly stripped tools (model can't
-  // accept a `tools` array at all).
-  if (params.webSearchEnabled && !toolsExplicitlyStripped && params.toolChoice !== "none") {
-    const maxResults = 5;
-    const maxTotalResults = params.webSearchMaxTotalResults ?? 15;
-    allTools.push({
-      type: "openrouter:web_search",
-      parameters: { max_results: maxResults, max_total_results: maxTotalResults },
-    });
   }
   if (allTools.length > 0) body.tools = allTools;
   if (params.toolChoice != null) {
     body.tool_choice = params.toolChoice;
   }
 
-  // Plugins — legacy web search fallback for models that don't support tools.
-  // The old plugin API searches once unconditionally (no budget control), but
-  // it's the only option for models like ERNIE that reject the `tools` param.
-  const plugins: { id: string }[] = [];
+  // Web search — plugin form (`plugins: [{id:"web"}]`), not the server tool.
+  //
+  // OpenRouter offers two ways to add web search:
+  //  (1) `plugins: [{id:"web"}]` — the legacy plugin, documented as deprecated
+  //      but fully supported.
+  //  (2) `tools: [{type:"openrouter:web_search"}]` — the newer server-tool
+  //      form, currently in beta.
+  //
+  // We use (1). Measured TTFB on an identical captured production body:
+  //    model                    form         zdr   TTFB
+  //    moonshotai/kimi-k2.6     server-tool  no    10.21s
+  //    moonshotai/kimi-k2.6     plugin       no     3.93s   ← 6.3s faster
+  //    moonshotai/kimi-k2.6     plugin       yes    7.87s
+  //    openai/gpt-5.4           server-tool  no     0.50s
+  //    openai/gpt-5.4           plugin       no     0.82s   (~0.3s slower, noise)
+  //    openai/gpt-5.4           plugin       yes    2.60s   ← 7.6s faster vs server-tool+zdr
+  //
+  // The server tool adds a model round-trip (model emits a tool call → OR
+  // executes search → results go back → model responds), which dominates TTFB
+  // on non-native-search models and under ZDR (where native search is
+  // disqualified for every model). The plugin searches once up-front and
+  // injects results into the prompt, so the model streams the response in
+  // one pass. See docs/ttft-web-search-finding.md.
+  //
+  // `max_results: 5` matches OpenRouter's plugin default and the server-tool
+  // default. A head-to-head at identical max_results=5 (see
+  // /tmp/ttft_fair.txt):
+  //    kimi-k2.6   server-tool=10.22s   plugin=4.19s   (plugin 6s faster)
+  //    gpt-5.4     server-tool= 0.78s   plugin=0.51s   (both fast, native search)
+  // `max_results: 3` is ~1s faster than 5 on kimi but we keep the default to
+  // avoid a tuned-magic-number surface area; the 10s → 4s win is what matters.
+  //
+  // `engine` is intentionally left unset so OR auto-selects: native for
+  // OpenAI / Anthropic / xAI / Perplexity, Exa fallback for everything else.
+  //
+  // Migration risk: when OR sunsets the plugin we reintroduce the server-tool
+  // code (see git blame of this file for the previous implementation).
+  const plugins: Record<string, unknown>[] = [];
   if (params.plugins) plugins.push(...params.plugins);
-  if (params.webSearchEnabled && toolsExplicitlyStripped) {
-    plugins.push({ id: "web" });
+  if (params.webSearchEnabled) {
+    plugins.push({ id: "web", max_results: 5 });
   }
   if (plugins.length > 0) body.plugins = plugins;
 

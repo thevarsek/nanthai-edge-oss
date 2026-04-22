@@ -251,11 +251,9 @@ export async function runGenerationWithCompaction(
 
     totalUsage = aggregateUsage(totalUsage, streamResult.usage);
 
-    // Web search uses the server tool API (openrouter:web_search) which is
-    // model-initiated — the model decides when/whether to search, and
-    // max_total_results caps cumulative results per API call. No need to
-    // strip webSearchEnabled on subsequent rounds; the budget lever is
-    // max_total_results, not round-level toggling.
+    // Web search uses the `plugins: [{id:"web"}]` form (see
+    // `openrouter_request.ts`) — it runs once per OpenRouter API call, not
+    // per tool round, so we don't strip `webSearchEnabled` between rounds.
 
     // --- 2. If no tool calls, we're done ---
     if (

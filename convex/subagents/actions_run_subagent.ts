@@ -185,14 +185,14 @@ export async function runSubagentRunHandler(
     activeProfiles: restoredProfiles,
   });
   // Subagents inherit webSearchEnabled from the parent's params snapshot.
-  // They get a tighter budget cap (max_total_results: 5 = 1 search max) so
-  // they can access fresh data when needed without running up costs across
-  // N subagents x M rounds. gateParameters will strip webSearchEnabled if
-  // the subagent's model doesn't support tools.
+  // Web search runs via the `plugins: [{id:"web"}]` form (see
+  // `openrouter_request.ts`), which searches exactly once per request — so
+  // there's no per-subagent cumulative budget to set. `gateParameters` will
+  // strip `webSearchEnabled` if the subagent's model doesn't support the
+  // plugin (it does on every model we ship).
   const rawParams = {
     ...paramsSnapshot.requestParams,
     ...buildRegistryParams(toolRegistry),
-    webSearchMaxTotalResults: 5,
   };
   const gatedParams = gateParameters(
     rawParams,

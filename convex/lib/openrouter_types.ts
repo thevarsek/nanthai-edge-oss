@@ -100,9 +100,11 @@ export interface ChatRequestParameters {
   plugins?: { id: string }[] | null;
   webSearchEnabled?: boolean;
   /**
-   * Cap on cumulative web search results across all searches in a single
-   * OpenRouter API call. Default: 15 (= max 3 searches at 5 results each).
-   * Subagents use 5 (= 1 search max). Only relevant when webSearchEnabled.
+   * @deprecated No longer applied. Previously capped cumulative web search
+   * results across multiple searches in a single OpenRouter API call, back
+   * when we used the `openrouter:web_search` server tool. We now use the
+   * `plugins: [{id:"web"}]` form, which searches exactly once per request
+   * (see `openrouter_request.ts`). Left in the type for wire-compat only.
    */
   webSearchMaxTotalResults?: number;
   transforms?: string[] | null;

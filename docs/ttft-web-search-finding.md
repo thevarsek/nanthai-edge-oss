@@ -2,6 +2,32 @@
 
 > OpenRouter executes `openrouter:web_search` synchronously before streaming any model output. TTFB is dominated by **which search backend OR chooses**, and that choice depends on (a) the model provider's native-search support and (b) whether `provider.zdr: true` is set. The fast path is gpt-5.4 / Anthropic / xAI with native search and no ZDR (≤1.3 s). The slow path is anything routed to Exa, which includes every search request under ZDR, regardless of model (~10 s).
 
+## Decision (Apr 2026) — switched to `plugins: [{id:"web"}]` form
+
+We migrated the universal web-search path from `tools: [{type:"openrouter:web_search"}]` (server-tool form) to `plugins: [{id:"web", max_results: 5}]` (plugin form).
+
+**Why:** the two forms use the same engine pool (native / Exa / Firecrawl / Parallel) with the same native-search allowlist, but they differ in **how results reach the model**:
+
+- **Server-tool form**: adds a model round-trip — the model emits a tool call, OR runs the search, results go back, the model generates a second response. TTFB includes two model passes.
+- **Plugin form**: OR fetches search results up-front from the query and injects them into the prompt before the single model pass. TTFB includes one model pass.
+
+**Fair head-to-head at identical `max_results: 5`** (OR's default on both forms; see `/tmp/ttft_fair.txt`):
+
+| Model | no web search | server tool | plugin |
+| ----- | ------------- | ----------- | ------ |
+| `moonshotai/kimi-k2.6` | 1.67 s | **10.22 s** | **4.19 s** (6.0 s faster) |
+| `openai/gpt-5.4` (native search) | 1.11 s | 0.78 s | 0.51 s |
+
+The 6 s win on kimi (and on any other non-native-search model routing to Exa) is the whole point. gpt-5.4 uses native search either way and is fast on both.
+
+**Why `max_results: 5` and not 3?** `max_results: 3` measured ~1 s faster than 5 on kimi in an earlier probe, but we kept OR's default (5) to avoid a tuned magic number. The 10 s → 4 s win is what matters; shaving another 1 s is not worth the explanation surface area.
+
+**`engine` is intentionally unset** so OR auto-selects: native for OpenAI / Anthropic / xAI / Perplexity, Exa for everything else.
+
+**Deprecation risk:** OR's plugin docs say "deprecated, use the server tool instead." No sunset date announced. When that changes, we revert to the server-tool code in git history (see git blame of `convex/lib/openrouter_request.ts` — `openrouter:web_search` was last present before the Apr 2026 plugin migration commit).
+
+The regression test in `convex/tests/openrouter_helper_edges.test.ts` now **forbids** `openrouter:web_search` from appearing on the wire under any code path.
+
 ## Symptom
 
 iOS / web chat with the globe toggled on: first token takes ~10 s for some model/config combinations, ~1 s for others. The original report was kimi-k2.6 always hitting 10 s; follow-up was gpt-5.4 hitting 10 s only when Google Workspace integrations were attached to the chat.

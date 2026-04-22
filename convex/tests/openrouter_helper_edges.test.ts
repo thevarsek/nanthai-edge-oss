@@ -164,7 +164,7 @@ test("OpenRouter extract helpers recover text, images, and usage from heterogene
   assert.equal(usageWithZeroSearches?.webSearchRequests, undefined);
 });
 
-test("buildRequestBody uses server tool for web search when model has tools, plugin fallback otherwise", () => {
+test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search on every model", () => {
   const messages = [{ role: "user" as const, content: "hello" }];
   const dummyTool = {
     type: "function" as const,
@@ -172,53 +172,45 @@ test("buildRequestBody uses server tool for web search when model has tools, plu
   };
 
   // === Model WITH tool support (function tools present) ===
-
-  // toolChoice "auto" + function tools — web search injected as server tool
+  // Function tools are still emitted; web search goes to `plugins` regardless.
   const bodyWithTools = buildRequestBody("openai/gpt-5.4", messages, {
     webSearchEnabled: true,
     toolChoice: "auto",
     tools: [dummyTool],
   }, true);
   const toolsWithTools = bodyWithTools.tools as unknown[];
-  assert.equal(toolsWithTools.length, 2);  // function tool + server tool
+  assert.equal(toolsWithTools.length, 1, "only the function tool on .tools");
   assert.deepEqual((toolsWithTools[0] as any).type, "function");
-  assert.deepEqual((toolsWithTools[1] as any).type, "openrouter:web_search");
-  assert.equal(bodyWithTools.plugins, undefined);  // no plugin fallback
+  assert.deepEqual(bodyWithTools.plugins, [{ id: "web", max_results: 5 }]);
+  assert.equal(bodyWithTools.tool_choice, "auto");
 
-  // toolChoice "none" + function tools — server tool suppressed (forced text)
+  // toolChoice "none" — plugin still attaches (plugin doesn't interact with
+  // tool_choice, and web search intent is independent of whether the model
+  // is allowed to call function tools this round).
   const bodyNone = buildRequestBody("openai/gpt-5.4", messages, {
     webSearchEnabled: true,
     toolChoice: "none",
     tools: [dummyTool],
   }, true);
-  const toolsNone = bodyNone.tools as unknown[];
-  assert.equal(toolsNone.length, 1);  // only function tool, no server tool
-  assert.deepEqual((toolsNone[0] as any).type, "function");
-  assert.equal(bodyNone.plugins, undefined);
+  assert.deepEqual(bodyNone.plugins, [{ id: "web", max_results: 5 }]);
+  assert.equal(bodyNone.tool_choice, "none");
 
   // === Tool-capable model, web search, NO function tools ===
-  // tools is `undefined` (not set) — model supports tools but no integrations
-  // are active. Server tool is still safe to inject (not plugin fallback).
   const bodyNoFuncTools = buildRequestBody("openai/gpt-5.4", messages, {
     webSearchEnabled: true,
-    // tools is undefined — no integrations, but model CAN accept tools
   }, true);
-  const toolsNoFunc = bodyNoFuncTools.tools as unknown[];
-  assert.equal(toolsNoFunc.length, 1);  // only the server tool
-  assert.deepEqual((toolsNoFunc[0] as any).type, "openrouter:web_search");
-  assert.equal(bodyNoFuncTools.plugins, undefined);  // no plugin fallback
+  assert.equal(bodyNoFuncTools.tools, undefined, "no tools when no function tools");
+  assert.deepEqual(bodyNoFuncTools.plugins, [{ id: "web", max_results: 5 }]);
 
-  // === Model WITHOUT tool support (tools explicitly stripped by gateParameters) ===
-
-  // gateParameters sets tools = null for non-tool models → plugin fallback
+  // === Model WITHOUT tool support (tools stripped to null by gateParameters) ===
   const bodyNoTools = buildRequestBody("baidu/ernie-4.5-300b-a47b", messages, {
     webSearchEnabled: true,
-    tools: null as any,  // gateParameters explicitly strips to null
+    tools: null as any,
   }, false);
-  assert.equal(bodyNoTools.tools, undefined);  // no tools array on the wire
-  assert.deepEqual(bodyNoTools.plugins, [{ id: "web" }]);
+  assert.equal(bodyNoTools.tools, undefined);
+  assert.deepEqual(bodyNoTools.plugins, [{ id: "web", max_results: 5 }]);
 
-  // webSearchEnabled false + tools stripped → no plugin either
+  // === webSearchEnabled false → no plugin, no tools ===
   const bodyNoSearch = buildRequestBody("baidu/ernie-4.5-300b-a47b", messages, {
     webSearchEnabled: false,
     tools: null as any,
@@ -226,68 +218,80 @@ test("buildRequestBody uses server tool for web search when model has tools, plu
   assert.equal(bodyNoSearch.tools, undefined);
   assert.equal(bodyNoSearch.plugins, undefined);
 
-  // === Edge case: webSearchEnabled + function tools but toolChoice unset ===
-  const bodyAutoDefault = buildRequestBody("openai/gpt-5.4", messages, {
+  // === Caller-supplied plugins merge with the web plugin ===
+  const bodyExtraPlugin = buildRequestBody("openai/gpt-5.4", messages, {
     webSearchEnabled: true,
-    tools: [dummyTool],
+    plugins: [{ id: "custom-plugin" }],
   }, true);
-  const toolsAutoDefault = bodyAutoDefault.tools as unknown[];
-  assert.equal(toolsAutoDefault.length, 2);
-  assert.deepEqual((toolsAutoDefault[1] as any).type, "openrouter:web_search");
+  assert.deepEqual(bodyExtraPlugin.plugins, [
+    { id: "custom-plugin" },
+    { id: "web", max_results: 5 },
+  ]);
 
-  // === Edge case: webSearchMaxTotalResults custom budget ===
-  const bodyCustomBudget = buildRequestBody("openai/gpt-5.4", messages, {
+  // === webSearchMaxTotalResults is deprecated and does NOT affect wire body ===
+  const bodyDeprecatedBudget = buildRequestBody("openai/gpt-5.4", messages, {
     webSearchEnabled: true,
-    webSearchMaxTotalResults: 5,  // subagent budget
+    webSearchMaxTotalResults: 5,
   }, true);
-  const toolsCustom = bodyCustomBudget.tools as unknown[];
-  assert.equal(toolsCustom.length, 1);
-  assert.deepEqual((toolsCustom[0] as any).type, "openrouter:web_search");
-  assert.equal((toolsCustom[0] as any).parameters.max_total_results, 5);
-  assert.equal((toolsCustom[0] as any).parameters.max_results, 5);
+  assert.deepEqual(
+    bodyDeprecatedBudget.plugins,
+    [{ id: "web", max_results: 5 }],
+    "webSearchMaxTotalResults must be ignored — plugin form has no per-request cumulative cap",
+  );
 });
 
 // ---------------------------------------------------------------------------
-// REGRESSION: Legacy plugin fallback for non-tool models.
+// REGRESSION: Web search uses the plugin form (`plugins: [{id:"web"}]`) and
+// NEVER the server tool (`tools: [{type: "openrouter:web_search"}]`).
 //
-// ~58 eligible models (out of 269 in our catalog) don't support tools —
-// ERNIE, Gemma 3, Cohere Command, Hermes, Llama 3.1 405B, Nemotron Ultra,
-// plus 5 Perplexity (native search), 5 image/audio, 2 guard, 2 routers,
-// and 2 OpenAI search-preview models. OpenRouter rejects the `tools` param
-// entirely for these models (404). The legacy plugin API
-// (`plugins: [{id: "web"}]`) is the only way to get web search on them —
-// confirmed via live probe against baidu/ernie-4.5-300b-a47b
-// (server tool = 404, plugin = 200).
+// Measured (Apr 2026, captured production body, curl TTFB):
+//   moonshotai/kimi-k2.6: server-tool 10.21s vs plugin 3.93s (6.3s faster)
+//   openai/gpt-5.4 + ZDR: server-tool 10.17s vs plugin 2.60s (7.6s faster)
+//   openai/gpt-5.4 no ZDR: server-tool 0.50s vs plugin 0.82s (~0.3s slower, noise)
 //
-// OpenRouter has deprecated the plugin API in favour of server tools, but
-// has not yet provided a migration path for models that can't accept tools.
-// Until they do, this fallback MUST remain. If you remove it, this test
-// will fail and remind you to check whether OpenRouter has solved this.
+// The server tool adds an extra model round-trip (model emits tool call → OR
+// executes search → results returned → model responds). The plugin searches
+// up-front and injects results into the prompt, streaming the response in
+// one pass. See docs/ttft-web-search-finding.md.
+//
+// OpenRouter has marked the plugin API as deprecated but it remains fully
+// supported. When they sunset it we reintroduce the server-tool form (see git
+// blame of `openrouter_request.ts` for the previous implementation).
+//
+// If this test fails because someone reintroduced the server tool, verify
+// they have explicit latency numbers showing the plugin is no longer the
+// faster path. Don't flip silently.
 //
 // Tracking:
-//   Plugin deprecation notice:
-//     https://openrouter.ai/docs/guides/features/plugins/web-search
-//   Server tool docs:
-//     https://openrouter.ai/docs/guides/features/server-tools/web-search
+//   Plugin docs: https://openrouter.ai/docs/guides/features/plugins/web-search
+//   Server tool: https://openrouter.ai/docs/guides/features/server-tools/web-search
 // ---------------------------------------------------------------------------
-test("REGRESSION: plugin fallback produces {id:'web'} for non-tool models and never emits a tools array", () => {
+test("REGRESSION: web search always uses plugin form, never the server tool", () => {
   const messages = [{ role: "user" as const, content: "hello" }];
 
-  // Simulate what gateParameters produces for a non-tool model: tools = null.
-  const body = buildRequestBody("baidu/ernie-4.5-300b-a47b", messages, {
+  const toolCapableBody = buildRequestBody("openai/gpt-5.4", messages, {
+    webSearchEnabled: true,
+    tools: [{ type: "function" as const, function: { name: "f", description: "f", parameters: {} } }],
+  }, true);
+  const tools = (toolCapableBody.tools as unknown[]) ?? [];
+  for (const t of tools) {
+    assert.notEqual(
+      (t as any).type,
+      "openrouter:web_search",
+      "server tool must never appear on the wire",
+    );
+  }
+  assert.deepEqual(toolCapableBody.plugins, [{ id: "web", max_results: 5 }]);
+
+  // Non-tool model — tools stripped, plugin still used.
+  const nonToolBody = buildRequestBody("baidu/ernie-4.5-300b-a47b", messages, {
     webSearchEnabled: true,
     tools: null as any,
   }, false);
+  assert.equal(nonToolBody.tools, undefined);
+  assert.deepEqual(nonToolBody.plugins, [{ id: "web", max_results: 5 }]);
 
-  // The wire body must NOT contain a `tools` key — OpenRouter returns 404 if
-  // it does for models without tool support.
-  assert.equal(body.tools, undefined, "tools array must be absent for non-tool models");
-
-  // The wire body MUST contain the legacy plugin.
-  assert.ok(body.plugins, "plugins must be present as fallback");
-  assert.deepEqual(body.plugins, [{ id: "web" }]);
-
-  // Verify the full gateParameters → buildRequestBody pipeline end-to-end.
+  // End-to-end via gateParameters
   const gated = gateParameters(
     {
       temperature: 0.7,
@@ -299,14 +303,11 @@ test("REGRESSION: plugin fallback produces {id:'web'} for non-tool models and ne
     false,
     false,
   );
-
-  // gateParameters must strip tools to null and keep webSearchEnabled.
-  assert.equal(gated.tools, null, "gateParameters must set tools to null for non-tool models");
-  assert.equal(gated.webSearchEnabled, true, "gateParameters must preserve webSearchEnabled");
-
+  assert.equal(gated.tools, null);
+  assert.equal(gated.webSearchEnabled, true);
   const bodyE2E = buildRequestBody("baidu/ernie-4.5-300b-a47b", messages, gated, false);
-  assert.equal(bodyE2E.tools, undefined, "end-to-end: no tools on wire");
-  assert.deepEqual(bodyE2E.plugins, [{ id: "web" }], "end-to-end: plugin fallback present");
+  assert.equal(bodyE2E.tools, undefined);
+  assert.deepEqual(bodyE2E.plugins, [{ id: "web", max_results: 5 }]);
 });
 
 // Phase 2.9: provider-sort defaults
