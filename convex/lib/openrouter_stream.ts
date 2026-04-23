@@ -463,6 +463,12 @@ async function streamOnce(
  * Detect transient network errors that are safe to retry — the remote side
  * closed the connection, the socket was reset, or the fetch failed due to a
  * network-level issue (not an HTTP error).
+ *
+ * Includes OpenRouter edge-proxy error strings: OpenRouter's gateway is
+ * built on Rust/reqwest+hyper, and when an upstream provider connection
+ * dies mid-response the gateway forwards a 200 OK whose body then errors
+ * out partway through with one of the strings below. These are virtually
+ * always safe to retry against the same provider.
  */
 function isTransientNetworkError(
   message: string,
@@ -476,6 +482,10 @@ function isTransientNetworkError(
     "socket hang up",
     "network socket disconnected",
     "fetch failed",
+    // OpenRouter edge (reqwest/hyper) — upstream stream cut mid-body
+    "error decoding response body",
+    "unexpected eof",
+    "connection closed before message completed",
   ];
   const haystack = `${message} ${cause ?? ""}`.toLowerCase();
   return patterns.some((p) => haystack.includes(p.toLowerCase()));

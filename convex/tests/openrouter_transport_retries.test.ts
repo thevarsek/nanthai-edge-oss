@@ -185,6 +185,56 @@ test("callOpenRouterStreaming retries transient network failures and uses text-s
   assert.equal(result.content, "stream ok");
 });
 
+test("callOpenRouterStreaming retries on OpenRouter edge body-decode errors (reqwest 'error decoding response body')", async () => {
+  // Regression for April 2026 production incident: OpenRouter's edge proxy
+  // (Rust/reqwest+hyper) surfaces a thrown "error decoding response body"
+  // error when the upstream provider connection dies mid-stream. This must
+  // be classified as transient and retried, not surfaced as a hard failure.
+  let fetchCount = 0;
+  const sleepCalls: number[] = [];
+
+  const deps = createOpenRouterStreamingDepsForTest({
+    sleep: async (ms: number) => {
+      sleepCalls.push(ms);
+    },
+    fetch: async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        // Plain Error (matches what the SSE body iteration throws when
+        // the underlying HTTP body stream errors out partway through).
+        throw new Error("error decoding response body");
+      }
+      return textResponse(200, "data: recovered", null) as any;
+    },
+    processSSETextStream: async () => ({
+      content: "recovered ok",
+      reasoning: "",
+      usage: null,
+      finishReason: "stop",
+      imageUrls: [],
+      audioBase64: "",
+      audioTranscript: "",
+      toolCalls: [],
+      annotations: [],
+      generationId: null,
+    }),
+  });
+
+  const result = await callOpenRouterStreaming(
+    "key",
+    "moonshotai/kimi-k2.6",
+    [{ role: "user", content: "hello" }],
+    {},
+    {},
+    {},
+    deps,
+  );
+
+  assert.equal(fetchCount, 2);
+  assert.deepEqual(sleepCalls, [2000]);
+  assert.equal(result.content, "recovered ok");
+});
+
 test("callOpenRouterStreaming retries empty responses and then falls back to the backup model", async () => {
   const models: string[] = [];
 
