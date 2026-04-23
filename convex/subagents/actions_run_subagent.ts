@@ -14,8 +14,11 @@ import {
 import {
   buildProgressiveToolRegistry,
   buildRegistryParams,
+  extractLoadedSkillsFromConversation,
+  extractLoadedSkillsFromLoadSkillResults,
   extractProfilesFromConversation,
   extractProfilesFromLoadSkillResults,
+  mergeLoadedSkills,
   patchSameRoundProgressiveToolErrors,
   retrySameRoundProgressiveToolCalls,
 } from "../tools/progressive_registry";
@@ -34,12 +37,15 @@ import { COMPACTION } from "../lib/compaction_constants";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { ToolResult } from "../tools/registry";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import type { LoadedSkillState } from "../tools/progressive_registry_shared";
+import { normalizeMessagesForLoadedSkills } from "../chat/loaded_skill_prompt";
 
 interface SubagentConversationSnapshot {
   messages: OpenRouterMessage[];
   totalUsage: OpenRouterUsage | null;
   allToolCalls: RecordedToolCall[];
   allToolResults: RecordedToolResult[];
+  loadedSkills: LoadedSkillState[];
   compactionCount: number;
 }
 
@@ -178,6 +184,16 @@ export async function runSubagentRunHandler(
         },
       ];
   const restoredProfiles = extractProfilesFromConversation(messages);
+  let loadedSkills = mergeLoadedSkills(
+    snapshot?.loadedSkills,
+    extractLoadedSkillsFromConversation(messages),
+  );
+  // Snapshots already store normalized messages, but re-running normalization
+  // keeps seed and resume paths aligned and self-heals older/raw transcripts.
+  const normalizedMessages = normalizeMessagesForLoadedSkills(
+    messages,
+    loadedSkills,
+  );
   const toolRegistry = buildProgressiveToolRegistry({
     enabledIntegrations: paramsSnapshot.enabledIntegrations,
     isPro: isProUser,
@@ -238,7 +254,7 @@ export async function runSubagentRunHandler(
     const result = await runGenerationWithCompaction({
       apiKey,
       model: modelId,
-      messages,
+      messages: normalizedMessages,
       params: gatedParams,
       callbacks,
       retryConfig: {
@@ -273,8 +289,16 @@ export async function runSubagentRunHandler(
           generatedCharts: extractGeneratedCharts(liveToolResults),
         });
       },
-      onPrepareNextTurn: async (_round, toolCalls, results) => {
+      onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {
         const newProfiles = extractProfilesFromLoadSkillResults(toolCalls, results);
+        loadedSkills = mergeLoadedSkills(
+          loadedSkills,
+          extractLoadedSkillsFromLoadSkillResults(toolCalls, results),
+        );
+        const normalizedNextMessages = normalizeMessagesForLoadedSkills(
+          conversationMessages,
+          loadedSkills,
+        );
         let changed = false;
         for (const profile of newProfiles) {
           if (!activeProfiles.has(profile)) {
@@ -282,7 +306,11 @@ export async function runSubagentRunHandler(
             changed = true;
           }
         }
-        if (!changed) return;
+        if (!changed) {
+          return {
+            messages: normalizedNextMessages,
+          };
+        }
 
         const registry = buildProgressiveToolRegistry({
           enabledIntegrations: paramsSnapshot.enabledIntegrations,
@@ -304,6 +332,7 @@ export async function runSubagentRunHandler(
 
         return {
           registry,
+          messages: normalizedNextMessages,
           params: gateParameters(
             {
               ...gatedParams,
@@ -316,6 +345,9 @@ export async function runSubagentRunHandler(
         };
       },
       modelContextLimit: caps?.contextLength ?? 128_000,
+      // SubagentStreamWriter and StreamWriter intentionally share the same
+      // runtime surface. This stays casted until the chat/subagent writers are
+      // unified behind a shared interface.
       writer: writer as any,
       actionStartTime: Date.now(),
       allowContinuationHandoff: true,
@@ -388,6 +420,8 @@ export async function runSubagentRunHandler(
         return;
       }
 
+      const continuationLoadedSkills = loadedSkills;
+
       await ctx.runMutation(internal.subagents.mutations.checkpointRunContinuation, {
         runId: run._id,
         content: writer.totalContent || undefined,
@@ -397,10 +431,14 @@ export async function runSubagentRunHandler(
         toolResults: result.allToolResults.length > 0 ? result.allToolResults : undefined,
         continuationCount: nextContinuationCount,
         conversationSnapshot: {
-          messages: result.continuation.messages,
+          messages: normalizeMessagesForLoadedSkills(
+            result.continuation.messages,
+            continuationLoadedSkills,
+          ),
           totalUsage: result.totalUsage,
           allToolCalls: result.allToolCalls,
           allToolResults: result.allToolResults,
+          loadedSkills: continuationLoadedSkills,
           compactionCount: result.compactionCount,
         } satisfies SubagentConversationSnapshot,
       });
@@ -423,7 +461,9 @@ export async function runSubagentRunHandler(
       generatedCharts: extractGeneratedCharts(result.allToolResults),
     });
 
-    // M23: Track subagent generation cost against the parent message.
+    // M23: Track subagent generation cost against the parent message using the
+    // subagent's own modelId so ancillary cost breakdowns reflect the actual
+    // model that generated this child run.
     const subagentUsage = result.totalUsage ?? result.streamResult.usage;
     if (subagentUsage) {
       await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {

@@ -326,6 +326,7 @@ export const catalogSchemaTables = {
     upstreamInferenceCost: v.optional(v.number()),
     upstreamInferencePromptCost: v.optional(v.number()),
     upstreamInferenceCompletionsCost: v.optional(v.number()),
+    cacheDiscount: v.optional(v.number()),
     webSearchRequests: v.optional(v.number()),
     // M23: Cost source label for ancillary cost tracking.
     // "generation" | "title" | "compaction" | "memory_extraction" |

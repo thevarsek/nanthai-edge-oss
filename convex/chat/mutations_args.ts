@@ -7,6 +7,7 @@ import {
   memorySourceType,
   skillOverrideEntry,
   integrationOverrideEntry,
+  loadedSkillStates,
   terminalErrorCode,
 } from "../schema_validators";
 import { participantConfigValidator, videoConfigValidator } from "./actions_args";
@@ -162,6 +163,7 @@ export const finalizeGenerationArgs = {
       upstreamInferenceCost: v.optional(v.number()),
       upstreamInferencePromptCost: v.optional(v.number()),
       upstreamInferenceCompletionsCost: v.optional(v.number()),
+      cacheDiscount: v.optional(v.number()),
       webSearchRequests: v.optional(v.number()),
     }),
   ),
@@ -302,6 +304,7 @@ export const saveGenerationContinuationArgs = {
         upstreamInferenceCost: v.optional(v.number()),
         upstreamInferencePromptCost: v.optional(v.number()),
         upstreamInferenceCompletionsCost: v.optional(v.number()),
+        cacheDiscount: v.optional(v.number()),
       }),
     ),
     toolCalls: v.array(v.object({
@@ -316,6 +319,7 @@ export const saveGenerationContinuationArgs = {
       isError: v.optional(v.boolean()),
     })),
     activeProfiles: v.array(v.string()),
+    loadedSkills: v.optional(loadedSkillStates),
     compactionCount: v.number(),
     continuationCount: v.number(),
     partialContent: v.optional(v.string()),
@@ -444,6 +448,7 @@ export const storeGenerationUsageArgs = {
   upstreamInferenceCost: v.optional(v.number()),
   upstreamInferencePromptCost: v.optional(v.number()),
   upstreamInferenceCompletionsCost: v.optional(v.number()),
+  cacheDiscount: v.optional(v.number()),
   webSearchRequests: v.optional(v.number()),
 } satisfies PropertyValidators;
 

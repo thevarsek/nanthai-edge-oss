@@ -10,7 +10,8 @@
 // continuing with fresh context.
 //
 // Only activates during tool-call loops — normal chat flows through
-// unchanged.
+// unchanged. In the main participant pipeline, one tool round per action
+// usually exits via continuation before any compaction logic can run.
 // =============================================================================
 
 import {
@@ -116,6 +117,29 @@ const defaultRunGenerationWithCompactionDeps = {
   buildCompactedMessages,
 };
 
+type GenerationLoopExitPath =
+  | "plain_response"
+  | "round_budget_continuation"
+  | "deferred_tool_round"
+  | "timeout_continuation"
+  | "compaction_summary"
+  | "compaction_prune_iteration"
+  | "forced_final_after_compaction_cap"
+  | "tool_loop_complete";
+
+const generationLoopDebugEnabled = process.env.GENERATION_LOOP_DEBUG === "1";
+
+function logGenerationLoopExit(details: {
+  model: string;
+  exitPath: GenerationLoopExitPath;
+  compactionAttempted: boolean;
+  compactionCount: number;
+  continuationCount?: number;
+}): void {
+  if (!generationLoopDebugEnabled) return;
+  console.info("[generationLoop] exit", details);
+}
+
 export type RunGenerationWithCompactionDeps =
   typeof defaultRunGenerationWithCompactionDeps;
 
@@ -158,6 +182,8 @@ function aggregateUsage(
     upstreamInferenceCost: sumOptional(existing.upstreamInferenceCost, incoming.upstreamInferenceCost),
     upstreamInferencePromptCost: sumOptional(existing.upstreamInferencePromptCost, incoming.upstreamInferencePromptCost),
     upstreamInferenceCompletionsCost: sumOptional(existing.upstreamInferenceCompletionsCost, incoming.upstreamInferenceCompletionsCost),
+    // Preserve sign when rolling up cache discounts across multiple segments.
+    cacheDiscount: sumOptional(existing.cacheDiscount, incoming.cacheDiscount),
     webSearchRequests: sumOptional(existing.webSearchRequests, incoming.webSearchRequests),
   };
 }
@@ -267,6 +293,12 @@ export async function runGenerationWithCompaction(
       streamResult.finishReason !== "tool_calls" ||
       streamResult.toolCalls.length === 0
     ) {
+      logGenerationLoopExit({
+        model,
+        exitPath: "plain_response",
+        compactionAttempted: false,
+        compactionCount,
+      });
       return {
         streamResult,
         allToolCalls,
@@ -321,6 +353,12 @@ export async function runGenerationWithCompaction(
     allToolResults.push(...loopResult.allToolResults);
 
     if (loopResult.deferredToolRound) {
+      logGenerationLoopExit({
+        model,
+        exitPath: "deferred_tool_round",
+        compactionAttempted: false,
+        compactionCount,
+      });
       return {
         streamResult: loopResult.streamResult,
         allToolCalls,
@@ -334,6 +372,13 @@ export async function runGenerationWithCompaction(
     }
 
     if (loopResult.exitReason === "round_budget" && options.allowContinuationHandoff) {
+      logGenerationLoopExit({
+        model,
+        exitPath: "round_budget_continuation",
+        compactionAttempted: false,
+        compactionCount,
+        continuationCount: options.maxToolRoundsPerInvocation,
+      });
       return {
         streamResult: loopResult.streamResult,
         allToolCalls,
@@ -365,6 +410,12 @@ export async function runGenerationWithCompaction(
         loopResult.streamResult.finishReason !== "tool_calls"
       )
     ) {
+      logGenerationLoopExit({
+        model,
+        exitPath: "tool_loop_complete",
+        compactionAttempted: compactionCount > 0,
+        compactionCount,
+      });
       return {
         streamResult: loopResult.streamResult,
         allToolCalls,
@@ -390,6 +441,12 @@ export async function runGenerationWithCompaction(
         retryConfig,
       );
       totalUsage = aggregateUsage(totalUsage, finalResult.usage);
+      logGenerationLoopExit({
+        model,
+        exitPath: "forced_final_after_compaction_cap",
+        compactionAttempted: true,
+        compactionCount,
+      });
       return {
         streamResult: finalResult,
         allToolCalls,
@@ -428,6 +485,12 @@ export async function runGenerationWithCompaction(
       !needsTimeoutCompaction
     ) {
       currentMessages = pruneResult.messages;
+      logGenerationLoopExit({
+        model,
+        exitPath: "compaction_prune_iteration",
+        compactionAttempted: true,
+        compactionCount,
+      });
       continue;
     }
 
@@ -452,6 +515,13 @@ export async function runGenerationWithCompaction(
     }
 
     // Step 5c: Replace message history with compacted context.
+    // Note: the synthesized <loaded_skills_prompt> block is intentionally
+    // dropped here. After summarization the model no longer sees the
+    // load_skill tool transcript either, so it will re-call load_skill
+    // as needed on the next tool round and onPrepareNextTurn will
+    // re-synthesize the block. Preserving already-loaded skills across
+    // compaction would require threading loadedSkills state into
+    // buildCompactedMessages — not done today.
     currentMessages = deps.buildCompactedMessages(
       systemPrompt,
       compactionResult.summary,
@@ -459,6 +529,12 @@ export async function runGenerationWithCompaction(
     );
 
     if (needsTimeoutCompaction && options.allowContinuationHandoff) {
+      logGenerationLoopExit({
+        model,
+        exitPath: "timeout_continuation",
+        compactionAttempted: true,
+        compactionCount,
+      });
       return {
         streamResult: loopResult.streamResult,
         allToolCalls,
@@ -473,6 +549,13 @@ export async function runGenerationWithCompaction(
         compactionUsages,
       };
     }
+
+    logGenerationLoopExit({
+      model,
+      exitPath: "compaction_summary",
+      compactionAttempted: true,
+      compactionCount,
+    });
 
     // Continue the outer loop — the next iteration will call the model
     // with the compacted messages and resume tool calling.

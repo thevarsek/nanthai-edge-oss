@@ -124,6 +124,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     upstreamInferenceCost?: number;
     upstreamInferencePromptCost?: number;
     upstreamInferenceCompletionsCost?: number;
+    cacheDiscount?: number;
     webSearchRequests?: number;
   };
   reasoning?: string;
@@ -491,6 +492,7 @@ export async function finalizeGenerationHandler(
     upstreamInferenceCost: args.usage.upstreamInferenceCost,
     upstreamInferencePromptCost: args.usage.upstreamInferencePromptCost,
     upstreamInferenceCompletionsCost: args.usage.upstreamInferenceCompletionsCost,
+    cacheDiscount: args.usage.cacheDiscount,
     webSearchRequests: args.usage.webSearchRequests,
   };
 
@@ -807,6 +809,7 @@ export interface StoreGenerationUsageArgs extends Record<string, unknown> {
   upstreamInferenceCost?: number;
   upstreamInferencePromptCost?: number;
   upstreamInferenceCompletionsCost?: number;
+  cacheDiscount?: number;
   webSearchRequests?: number;
 }
 
@@ -824,6 +827,7 @@ function usageDetailFields(args: StoreGenerationUsageArgs): Record<string, numbe
     upstreamInferenceCost: args.upstreamInferenceCost,
     upstreamInferencePromptCost: args.upstreamInferencePromptCost,
     upstreamInferenceCompletionsCost: args.upstreamInferenceCompletionsCost,
+    cacheDiscount: args.cacheDiscount,
     webSearchRequests: args.webSearchRequests,
   };
 }

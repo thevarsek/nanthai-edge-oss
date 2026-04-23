@@ -72,9 +72,14 @@ test("model queries filter excluded providers and summarize free models", async 
     db: { query: () => ({ collect: async () => models }) },
   }, {});
 
-  assert.deepEqual(list.map((model: any) => model._id), ["m1"]);
+  // No providers are currently excluded from the OpenRouter catalog
+  // (see provider_filters.ts). Grok and DeepSeek were allow-listed in
+  // commit cee0dd33; this test verifies both models pass through and
+  // that :free slug suffix still drives isFree summarization.
+  assert.deepEqual(list.map((model: any) => model._id), ["m1", "m2"]);
   assert.equal(list[0]?.isFree, true);
-  assert.equal(hidden, null);
+  assert.equal(list[1]?.isFree, false);
+  assert.equal(hidden, models[1]);
   assert.deepEqual(internal, models);
 });
 

@@ -290,6 +290,7 @@ export async function runGenerationParticipantRuntimeHandler(
       initialToolResults: continuationState?.toolResults,
       initialCompactionCount: continuationState?.compactionCount ?? 0,
       restoredActiveProfiles: continuationState?.activeProfiles as any,
+      restoredLoadedSkills: continuationState?.loadedSkills,
       forceToolChoiceNone,
       actionStartTime: Date.now(),
       streamingMessageId,

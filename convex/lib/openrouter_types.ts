@@ -83,6 +83,7 @@ export interface OpenRouterMessage {
 export interface ContentPart {
   type: "text" | "image_url" | "file" | "input_audio" | "video_url";
   text?: string;
+  cache_control?: { type: "ephemeral" };
   image_url?: { url: string; detail?: "auto" | "low" | "high" };
   file?: { filename: string; file_data: string };
   input_audio?: { data: string; format: string };
@@ -151,6 +152,8 @@ export interface OpenRouterUsage {
   upstreamInferenceCost?: number;
   upstreamInferencePromptCost?: number;
   upstreamInferenceCompletionsCost?: number;
+  // OpenRouter reports cache savings as negative credits/adjustments.
+  cacheDiscount?: number;
   // server_tool_use
   webSearchRequests?: number;
 }

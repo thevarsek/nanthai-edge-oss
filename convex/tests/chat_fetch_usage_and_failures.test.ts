@@ -148,6 +148,7 @@ test("fetchAndStoreGenerationUsageHandler skips missing keys or empty records an
       native_tokens_reasoning: 2,
       native_tokens_completion_images: 1,
       upstream_inference_cost: 0.05,
+      cache_discount: 0.02,
     } as any),
   }));
 
@@ -164,7 +165,36 @@ test("fetchAndStoreGenerationUsageHandler skips missing keys or empty records an
     reasoningTokens: 2,
     imageCompletionTokens: 1,
     upstreamInferenceCost: 0.05,
+    cacheDiscount: 0.02,
   }]);
+});
+
+test("fetchAndStoreGenerationUsageHandler preserves non-positive cache discount values", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  const ctx = createMockCtx({
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+    },
+  });
+
+  await fetchAndStoreGenerationUsageHandler(ctx, {
+    messageId: "msg_3" as any,
+    chatId: "chat_3" as any,
+    userId: "user_3",
+    openrouterGenerationId: "gen_3",
+  }, createFetchAndStoreGenerationUsageHandlerDepsForTest({
+    getOptionalUserOpenRouterApiKey: async () => "key",
+    fetchGenerationData: async () => ({
+      id: "gen_3",
+      tokens_prompt: 7,
+      tokens_completion: 2,
+      total_cost: 0.1,
+      cache_discount: -0.01,
+    } as any),
+  }));
+
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0]?.cacheDiscount, -0.01);
 });
 
 test("failPendingParticipants finalizes only pending or streaming participants and maps cancellation correctly", async () => {

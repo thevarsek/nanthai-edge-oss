@@ -2,6 +2,7 @@ import { Id } from "../_generated/dataModel";
 import { OpenRouterMessage, OpenRouterUsage } from "../lib/openrouter";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
+import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { ParticipantConfig, VideoConfig } from "./actions_run_generation_types";
 
 export const GENERATION_CONTINUATION_LEASE_MS = 12 * 60 * 1000;
@@ -70,6 +71,7 @@ export interface GenerationContinuationCheckpoint {
   toolCalls: RecordedToolCall[];
   toolResults: RecordedToolResult[];
   activeProfiles: SkillToolProfileId[];
+  loadedSkills: LoadedSkillState[];
   compactionCount: number;
   continuationCount: number;
   partialContent?: string;
@@ -84,6 +86,7 @@ export interface GenerationContinuationState {
   toolCalls: RecordedToolCall[];
   toolResults: RecordedToolResult[];
   activeProfiles: SkillToolProfileId[];
+  loadedSkills: LoadedSkillState[];
   compactionCount: number;
   continuationCount: number;
   partialContent?: string;

@@ -99,7 +99,9 @@ export interface ToolCallLoopResult {
 
 export interface DeferredToolRound {
   round: number;
+  /** Conversation before the current tool round was appended or normalized. */
   baseConversationMessages: OpenRouterMessage[];
+  /** Conversation after the round and any onPrepareNextTurn rewrites. */
   resumeConversationMessages: OpenRouterMessage[];
   toolCalls: ToolCall[];
   recordedToolCalls: RecordedToolCall[];
@@ -148,10 +150,12 @@ export interface ToolCallLoopOptions {
     round: number,
     toolCalls: ToolCall[],
     results: Array<{ toolCallId: string; result: ToolResult }>,
+    conversationMessages: OpenRouterMessage[],
     currentRegistry: ToolRegistry,
     currentParams: ChatRequestParameters,
   ) => Promise<{
     registry?: ToolRegistry;
+    messages?: OpenRouterMessage[];
     params?: ChatRequestParameters;
   } | void>;
   /**
@@ -260,14 +264,26 @@ export async function runToolCallLoop(
       options.toolCtx,
     );
 
+    // Append assistant tool-call message + tool results to conversation.
+    const baseConversationMessages = conversationMessages;
+    const roundMessages = buildToolRoundMessages(
+      currentResult.toolCalls,
+      results,
+    );
+    conversationMessages = [...conversationMessages, ...roundMessages];
+
     if (options.onPrepareNextTurn) {
       const nextTurn = await options.onPrepareNextTurn(
         round,
         currentResult.toolCalls,
         results,
+        conversationMessages,
         currentRegistry,
         currentParams,
       );
+      if (nextTurn?.messages) {
+        conversationMessages = nextTurn.messages;
+      }
       if (nextTurn?.registry) {
         currentRegistry = nextTurn.registry;
       }
@@ -275,13 +291,6 @@ export async function runToolCallLoop(
         currentParams = nextTurn.params;
       }
     }
-
-    // Append assistant tool-call message + tool results to conversation.
-    const roundMessages = buildToolRoundMessages(
-      currentResult.toolCalls,
-      results,
-    );
-    conversationMessages = [...conversationMessages, ...roundMessages];
 
     const deferredResults = results.flatMap(({ toolCallId, result }) => {
       if (!result.deferred) return [];
@@ -317,7 +326,7 @@ export async function runToolCallLoop(
     if (deferredResults.length > 0) {
       deferredToolRound = {
         round,
-        baseConversationMessages: conversationMessages.slice(0, -roundMessages.length),
+        baseConversationMessages,
         resumeConversationMessages: [...conversationMessages],
         toolCalls: currentResult.toolCalls,
         recordedToolCalls: allToolCalls.slice(),

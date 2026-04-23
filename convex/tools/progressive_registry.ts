@@ -6,8 +6,11 @@ import { registerBaseTools, registerProfileTools } from "./progressive_registry_
 export {
   availableProgressiveProfiles,
   buildRegistryParams,
+  extractLoadedSkillsFromConversation,
+  extractLoadedSkillsFromLoadSkillResults,
   extractProfilesFromConversation,
   extractProfilesFromLoadSkillResults,
+  mergeLoadedSkills,
   patchSameRoundProgressiveToolErrors,
   retrySameRoundProgressiveToolCalls,
 } from "./progressive_registry_shared";

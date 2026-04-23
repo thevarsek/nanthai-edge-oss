@@ -6,12 +6,16 @@ import {
   availableProgressiveProfiles,
   buildProgressiveToolRegistry,
   buildRegistryParams,
+  extractLoadedSkillsFromConversation,
+  extractLoadedSkillsFromLoadSkillResults,
   extractProfilesFromConversation,
   extractProfilesFromLoadSkillResults,
+  mergeLoadedSkills,
   patchSameRoundProgressiveToolErrors,
   retrySameRoundProgressiveToolCalls,
 } from "../tools/progressive_registry";
 import { patchDeferredProgressiveToolErrors } from "../tools/progressive_registry_shared";
+import { normalizeMessagesForLoadedSkills } from "../chat/loaded_skill_prompt";
 
 test("buildProgressiveToolRegistry: base Pro registry omits docs and runtime tools", () => {
   const registry = buildProgressiveToolRegistry({
@@ -190,6 +194,275 @@ test("extractProfilesFromConversation: restores profiles from prior load_skill t
   ];
 
   assert.deepEqual(extractProfilesFromConversation(messages), ["analytics"]);
+});
+
+test("extractLoadedSkills helpers preserve canonical skill instructions", () => {
+  const toolCalls = [
+    {
+      id: "call_1",
+      function: { name: "load_skill", arguments: "{\"name\":\"docx\"}" },
+    },
+  ] as ToolCall[];
+  const results = [
+    {
+      toolCallId: "call_1",
+      result: {
+        success: true,
+        data: {
+          skill: "docx",
+          name: "Word Docs",
+          instructions: "Always use heading styles.",
+          requiredToolProfiles: ["docs"],
+          requiredToolIds: ["generate_docx"],
+          requiredIntegrationIds: [],
+          requiredCapabilities: [],
+        },
+      },
+    },
+  ];
+
+  assert.deepEqual(extractLoadedSkillsFromLoadSkillResults(toolCalls, results), [
+    {
+      skill: "docx",
+      name: "Word Docs",
+      runtimeMode: undefined,
+      instructions: "Always use heading styles.",
+      requiredToolProfiles: ["docs"],
+      requiredToolIds: ["generate_docx"],
+      requiredIntegrationIds: [],
+      requiredCapabilities: [],
+    },
+  ]);
+
+  const conversation: OpenRouterMessage[] = [
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [{
+        id: "call_1",
+        type: "function",
+        function: { name: "load_skill", arguments: "{\"name\":\"docx\"}" },
+      }],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      content: JSON.stringify(results[0].result.data),
+    },
+  ];
+
+  assert.deepEqual(
+    extractLoadedSkillsFromConversation(conversation),
+    extractLoadedSkillsFromLoadSkillResults(toolCalls, results),
+  );
+
+  const structuredConversation: OpenRouterMessage[] = [
+    conversation[0],
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      content: [{
+        type: "text",
+        text: JSON.stringify(results[0].result.data),
+      }],
+    },
+  ];
+
+  assert.deepEqual(
+    extractLoadedSkillsFromConversation(structuredConversation),
+    extractLoadedSkillsFromLoadSkillResults(toolCalls, results),
+  );
+});
+
+test("normalizeMessagesForLoadedSkills replaces load_skill tool payloads with a cacheable system block", () => {
+  const normalized = normalizeMessagesForLoadedSkills(
+    [
+      { role: "system", content: "base system" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "call_1",
+          type: "function",
+          function: { name: "load_skill", arguments: "{\"name\":\"docx\"}" },
+        }],
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_1",
+        content: JSON.stringify({
+          skill: "docx",
+          name: "Word Docs",
+          instructions: "Always use heading styles.",
+          requiredToolProfiles: ["docs"],
+          requiredToolIds: ["generate_docx"],
+          requiredIntegrationIds: [],
+          requiredCapabilities: [],
+        }),
+      },
+      { role: "user", content: "continue" },
+    ],
+    [{
+      skill: "docx",
+      name: "Word Docs",
+      runtimeMode: "runtime",
+      instructions: "Always use heading styles.",
+      requiredToolProfiles: ["docs"],
+      requiredToolIds: ["generate_docx"],
+      requiredIntegrationIds: [],
+      requiredCapabilities: [],
+    }],
+  );
+
+  assert.equal(normalized.length, 3);
+  assert.equal(normalized[0].role, "system");
+  assert.equal(normalized[1].role, "system");
+  assert.equal(normalized[2].role, "user");
+  assert.match(JSON.stringify(normalized[1].content), /loaded_skills_prompt/);
+  assert.match(JSON.stringify(normalized[1].content), /Always use heading styles/);
+  assert.match(JSON.stringify(normalized[1].content), /runtime_mode":"runtime"|runtime_mode=\\?"runtime/);
+  assert.ok(Array.isArray(normalized[1].content));
+  assert.deepEqual((normalized[1].content as Array<{ cache_control?: { type: string } }>)[0].cache_control, {
+    type: "ephemeral",
+  });
+});
+
+test("normalizeMessagesForLoadedSkills emits only one explicit cache breakpoint for loaded skills", () => {
+  const normalized = normalizeMessagesForLoadedSkills(
+    [{ role: "system", content: "base system" }],
+    [
+      {
+        skill: "docx",
+        instructions: "Always use heading styles.",
+        requiredToolProfiles: ["docs"],
+        requiredToolIds: [],
+        requiredIntegrationIds: [],
+        requiredCapabilities: [],
+      },
+      {
+        skill: "xlsx",
+        instructions: "Always use formulas.",
+        requiredToolProfiles: ["docs"],
+        requiredToolIds: [],
+        requiredIntegrationIds: [],
+        requiredCapabilities: [],
+      },
+    ],
+  );
+
+  const parts = normalized[1]?.content as Array<{ cache_control?: { type: string } }>;
+  const cacheableParts = parts.filter((part) => part.cache_control != null);
+  assert.equal(cacheableParts.length, 1);
+  assert.deepEqual(cacheableParts[0]?.cache_control, { type: "ephemeral" });
+  assert.equal(parts[0]?.cache_control?.type, "ephemeral");
+});
+
+test("normalizeMessagesForLoadedSkills recovers loaded skills from raw transcript when state is missing", () => {
+  const normalized = normalizeMessagesForLoadedSkills(
+    [
+      { role: "system", content: "base system" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "call_1",
+          type: "function",
+          function: { name: "load_skill", arguments: "{\"name\":\"docx\"}" },
+        }],
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_1",
+        content: JSON.stringify({
+          skill: "docx",
+          instructions: "Always use heading styles.",
+          requiredToolProfiles: ["docs"],
+          requiredToolIds: [],
+          requiredIntegrationIds: [],
+          requiredCapabilities: [],
+        }),
+      },
+    ],
+    [],
+  );
+
+  assert.equal(normalized.length, 2);
+  assert.equal(normalized[1]?.role, "system");
+  assert.match(JSON.stringify(normalized[1]?.content), /Always use heading styles/);
+});
+
+test("normalizeMessagesForLoadedSkills strips stale synthesized blocks when no loaded skill state is recoverable", () => {
+  const normalized = normalizeMessagesForLoadedSkills(
+    [
+      { role: "system", content: "base system" },
+      {
+        role: "system",
+        content: "<loaded_skills_prompt>\nstale\n</loaded_skills_prompt>",
+      },
+      { role: "user", content: "continue" },
+    ],
+    [],
+  );
+
+  assert.deepEqual(normalized, [
+    { role: "system", content: "base system" },
+    { role: "user", content: "continue" },
+  ]);
+});
+
+test("normalizeMessagesForLoadedSkills recovers loaded skills from a synthesized block when raw transcript is unavailable", () => {
+  const normalized = normalizeMessagesForLoadedSkills(
+    [
+      { role: "system", content: "base system" },
+      {
+        role: "system",
+        content:
+          "<loaded_skills_prompt>\n" +
+          "The following skill instructions are already loaded for this conversation.\n\n" +
+          "<loaded_skill name=\"docx\" display_name=\"Word Docs\" runtime_mode=\"runtime\">\n" +
+          "Always use heading styles.\n" +
+          "</loaded_skill>\n\n" +
+          "</loaded_skills_prompt>\n",
+      },
+      { role: "user", content: "continue" },
+    ],
+    [],
+  );
+
+  assert.equal(normalized.length, 3);
+  assert.equal(normalized[1]?.role, "system");
+  assert.match(JSON.stringify(normalized[1]?.content), /Always use heading styles/);
+  assert.match(JSON.stringify(normalized[1]?.content), /runtime_mode":"runtime"|runtime_mode=\\?"runtime/);
+});
+
+test("mergeLoadedSkills keeps the latest copy of a loaded skill", () => {
+  const merged = mergeLoadedSkills(
+    [{
+      skill: "docx",
+      instructions: "old",
+      requiredToolProfiles: ["docs"],
+      requiredToolIds: [],
+      requiredIntegrationIds: [],
+      requiredCapabilities: [],
+    }],
+    [{
+      skill: "docx",
+      instructions: "new",
+      requiredToolProfiles: ["docs"],
+      requiredToolIds: [],
+      requiredIntegrationIds: [],
+      requiredCapabilities: [],
+    }],
+  );
+
+  assert.deepEqual(merged, [{
+    skill: "docx",
+    instructions: "new",
+    requiredToolProfiles: ["docs"],
+    requiredToolIds: [],
+    requiredIntegrationIds: [],
+    requiredCapabilities: [],
+  }]);
 });
 
 test("historically loaded profiles can seed the next request registry", () => {

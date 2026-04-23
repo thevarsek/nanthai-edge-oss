@@ -82,6 +82,7 @@ test("runGenerationWithCompaction returns immediately on simple non-tool respons
     messages: [{ role: "user", content: "hi" }],
     params: {},
     callbacks: {},
+    toolRegistry: { isEmpty: false } as any,
     toolCtx: { ctx: {} as any, userId: "user_1" },
     modelContextLimit: 100,
     writer: {
@@ -199,6 +200,50 @@ test("runGenerationWithCompaction compacts overflowing tool loops and aggregates
     generationId: "compact_1",
     modelId: "compact-model",
   }]);
+});
+
+test("runGenerationWithCompaction aggregates cacheDiscount across segments with sign preserved", async () => {
+  const deps = createRunGenerationWithCompactionDepsForTest({
+    callOpenRouterStreaming: async () =>
+      makeStreamResult({
+        finishReason: "tool_calls",
+        toolCalls: [makeToolCall("call_1", "search")],
+        usage: {
+          ...makeUsage(10, 1),
+          cacheDiscount: -0.02,
+        },
+      }),
+    runToolCallLoop: async () =>
+      makeLoopResult({
+        exitedEarly: false,
+        streamResult: makeStreamResult({
+          content: "done",
+          finishReason: "stop",
+          usage: {
+            ...makeUsage(5, 2),
+            cacheDiscount: -0.03,
+          },
+        }),
+      }),
+  });
+
+  const result = await runGenerationWithCompaction({
+    apiKey: "key",
+    model: "model",
+    messages: [{ role: "user", content: "hi" }],
+    params: {},
+    callbacks: {},
+    toolRegistry: { isEmpty: false } as any,
+    toolCtx: { ctx: {} as any, userId: "user_1" },
+    modelContextLimit: 100,
+    writer: {
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+    } as any,
+    actionStartTime: 0,
+  }, deps);
+
+  assert.equal(result.totalUsage?.cacheDiscount, -0.05);
 });
 
 test("runGenerationWithCompaction returns a continuation handoff when timeout compaction is allowed", async () => {

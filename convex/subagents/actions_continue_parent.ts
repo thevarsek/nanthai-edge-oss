@@ -286,6 +286,10 @@ export async function continueParentAfterSubagentsHandler(
       requestMessagesOverride: requestMessages,
       forceToolChoiceNone: false,
       actionStartTime: Date.now(),
+      // Parent-resume runs rebuild from the parent chat transcript only; they
+      // do not carry subagent loaded-skill state across this boundary, and any
+      // needed skills are re-extracted from the rebuilt requestMessages path.
+      restoredLoadedSkills: [],
       continuationHandoff: {
         maxToolRoundsPerInvocation: 1,
         continuationCount: 0,

@@ -50,6 +50,9 @@ export async function saveGenerationContinuationHandler(
       ? args.checkpoint.toolResults
       : undefined,
     activeProfiles: args.checkpoint.activeProfiles,
+    loadedSkills: (args.checkpoint.loadedSkills ?? []).length > 0
+      ? args.checkpoint.loadedSkills
+      : undefined,
     compactionCount: args.checkpoint.compactionCount,
     continuationCount: args.checkpoint.continuationCount,
     partialContent: args.checkpoint.partialContent,
@@ -123,6 +126,7 @@ export async function claimGenerationContinuationHandler(
     toolCalls: (continuation.toolCalls ?? []) as GenerationContinuationState["toolCalls"],
     toolResults: (continuation.toolResults ?? []) as GenerationContinuationState["toolResults"],
     activeProfiles: continuation.activeProfiles as GenerationContinuationState["activeProfiles"],
+    loadedSkills: (continuation.loadedSkills ?? []) as GenerationContinuationState["loadedSkills"],
     compactionCount: continuation.compactionCount ?? 0,
     continuationCount: continuation.continuationCount ?? 0,
     partialContent: continuation.partialContent,

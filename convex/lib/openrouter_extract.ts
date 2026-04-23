@@ -133,6 +133,7 @@ export function usageFromUnknown(value: unknown): OpenRouterUsage | undefined {
       upstream_inference_cost?: number;
       upstream_inference_prompt_cost?: number;
       upstream_inference_completions_cost?: number;
+      cache_discount?: number;
     };
     server_tool_use?: {
       web_search_requests?: number;
@@ -186,6 +187,10 @@ export function usageFromUnknown(value: unknown): OpenRouterUsage | undefined {
       result.upstreamInferencePromptCost = cd.upstream_inference_prompt_cost;
     if (typeof cd.upstream_inference_completions_cost === "number" && cd.upstream_inference_completions_cost > 0)
       result.upstreamInferenceCompletionsCost = cd.upstream_inference_completions_cost;
+    // Cache discounts can be negative credits/adjustments, so preserve any
+    // numeric value instead of applying the adjacent positive-only filter.
+    if (typeof cd.cache_discount === "number")
+      result.cacheDiscount = cd.cache_discount;
   }
 
   // server_tool_use — tracks web search requests made by OpenRouter server tools

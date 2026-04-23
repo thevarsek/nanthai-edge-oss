@@ -189,6 +189,7 @@ export async function fetchAndStoreGenerationUsageHandler(
     data.native_tokens_completion_images,
   );
   const upstreamInferenceCost = numOrUndef(data.upstream_inference_cost);
+  const cacheDiscount = numOrUndef(data.cache_discount);
 
   await ctx.runMutation(internal.chat.mutations.storeGenerationUsage, {
     messageId: args.messageId,
@@ -203,6 +204,7 @@ export async function fetchAndStoreGenerationUsageHandler(
     reasoningTokens,
     imageCompletionTokens,
     upstreamInferenceCost,
+    cacheDiscount,
   });
 }
 

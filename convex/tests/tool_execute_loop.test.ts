@@ -80,14 +80,16 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   );
 
   let streamCalls = 0;
+  const streamedMessages: unknown[] = [];
   const deps = createToolCallLoopDepsForTest({
     callOpenRouterStreaming: async (
       _apiKey: unknown,
       _model: unknown,
-      _messages: unknown,
+      messages: unknown,
       params: unknown,
     ) => {
       streamCalls += 1;
+      streamedMessages.push(messages);
       if (streamCalls === 1 && (params as any).temperature === 0.4) {
         return makeStreamResult({
           finishReason: "tool_calls",
@@ -118,11 +120,19 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
       onToolRoundComplete: async (round) => {
         rounds.push(`end:${round}`);
       },
-      onPrepareNextTurn: async (round, _calls, _results, currentRegistry, currentParams) => {
+      onPrepareNextTurn: async (
+        round,
+        _calls,
+        _results,
+        conversationMessages,
+        currentRegistry,
+        currentParams,
+      ) => {
         if (round === 1) {
           return {
             registry: currentRegistry,
             params: { ...currentParams, temperature: 0.4 },
+            messages: [...conversationMessages, { role: "system", content: "normalized" }],
           };
         }
       },
@@ -136,6 +146,20 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   assert.equal(result.allToolCalls.length, 2);
   assert.equal(result.allToolResults.length, 2);
   assert.equal(result.finalParams.temperature, 0.4);
+  assert.deepEqual(streamedMessages[0], [
+    { role: "user", content: "hi" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [makeToolCall("call_1", "tool_one", { n: 1 })],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      content: JSON.stringify({ ok: 1 }),
+    },
+    { role: "system", content: "normalized" },
+  ]);
 });
 
 test("runToolCallLoop captures deferred tool rounds without re-calling the model", async () => {
@@ -181,6 +205,62 @@ test("runToolCallLoop captures deferred tool rounds without re-calling the model
   assert.equal(streamCalls, 0);
   assert.equal(result.deferredToolRound?.deferredResults[0]?.toolName, "spawn_subagents");
   assert.equal(result.deferredToolRound?.resumeConversationMessages.length, 3);
+});
+
+test("runToolCallLoop preserves pre-round baseConversationMessages when next-turn messages are rewritten", async () => {
+  const registry = new ToolRegistry();
+  registry.register(
+    createTool({
+      name: "spawn_subagents",
+      description: "spawn",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        success: true,
+        data: { accepted: true },
+        deferred: { kind: "spawn_subagents", data: { jobIds: ["child_1"] } },
+      }),
+    }),
+  );
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [makeToolCall("call_1", "spawn_subagents", {})],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "hi" }],
+      params: {},
+      callbacks: {},
+      registry,
+      toolCtx: { ctx: {} as any, userId: "user_1" },
+      onPrepareNextTurn: async (_round, _calls, _results, conversationMessages) => ({
+        messages: [
+          ...conversationMessages,
+          { role: "system", content: "normalized loaded skills" },
+        ],
+      }),
+    },
+  );
+
+  assert.deepEqual(result.deferredToolRound?.baseConversationMessages, [
+    { role: "user", content: "hi" },
+  ]);
+  assert.deepEqual(result.deferredToolRound?.resumeConversationMessages, [
+    { role: "user", content: "hi" },
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [makeToolCall("call_1", "spawn_subagents", {})],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_1",
+      content: JSON.stringify({ accepted: true }),
+    },
+    { role: "system", content: "normalized loaded skills" },
+  ]);
 });
 
 test("runToolCallLoop supports early exit and truncates stored tool metadata", async () => {

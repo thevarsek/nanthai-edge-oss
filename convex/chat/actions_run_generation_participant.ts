@@ -51,10 +51,15 @@ import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_
 import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
 import {
   availableProgressiveProfiles,
+  extractLoadedSkillsFromConversation,
+  extractLoadedSkillsFromLoadSkillResults,
   extractProfilesFromConversation,
   extractProfilesFromLoadSkillResults,
+  mergeLoadedSkills,
 } from "../tools/progressive_registry_shared";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
+import type { LoadedSkillState } from "../tools/progressive_registry_shared";
+import { normalizeMessagesForLoadedSkills } from "./loaded_skill_prompt";
 
 export function shouldPersistParticipantReasoning(totalReasoning: string): boolean {
   return totalReasoning.length > 0;
@@ -102,6 +107,8 @@ export interface GenerateForParticipantParams {
   actionStartTime: number;
   /** Optional active profiles restored from a durable continuation checkpoint. */
   restoredActiveProfiles?: SkillToolProfileId[];
+  /** Optional loaded skill instructions restored from a durable continuation checkpoint. */
+  restoredLoadedSkills?: LoadedSkillState[];
   /** Optional override to disable new tool calls while preserving tool-aware prompts. */
   forceToolChoiceNone?: boolean;
   /** Optional cross-action continuation handoff callback. */
@@ -456,6 +463,14 @@ export async function generateForParticipant(
           ...(params.restoredActiveProfiles ?? []),
         ]))
       : (params.restoredActiveProfiles ?? []);
+    let loadedSkills = mergeLoadedSkills(
+      params.restoredLoadedSkills,
+      extractLoadedSkillsFromConversation(requestMessages),
+    );
+    const normalizedRequestMessages = normalizeMessagesForLoadedSkills(
+      requestMessages,
+      loadedSkills,
+    );
     let effectiveToolRegistry = toolRegistry;
     ttftLog("[generation] request messages built", {
       chatId: args.chatId,
@@ -463,11 +478,13 @@ export async function generateForParticipant(
       jobId: participant.jobId,
       modelId: participant.modelId,
       durationMs: Date.now() - requestMessagesStartedAt,
-      requestMessageCount: requestMessages.length,
+      // Normalized count is what we actually send to OpenRouter. This can be
+      // lower than the raw transcript count once load_skill pairs collapse.
+      requestMessageCount: normalizedRequestMessages.length,
       restoredProfileCount: restoredProfiles.length,
     });
 
-    if (requestMessages.length === 0) {
+    if (normalizedRequestMessages.length === 0) {
       throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "No request messages to send" });
     }
 
@@ -696,7 +713,7 @@ export async function generateForParticipant(
     const genResult = await runGenerationWithCompaction({
       apiKey,
       model: participant.modelId,
-      messages: requestMessages,
+      messages: normalizedRequestMessages,
       params: effectiveParams,
       callbacks: streamCallbacks,
       retryConfig,
@@ -719,10 +736,18 @@ export async function generateForParticipant(
           },
         );
       },
-      onPrepareNextTurn: async (_round, toolCalls, results) => {
+      onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {
         if (!progressiveTools) return;
 
         const newProfiles = extractProfilesFromLoadSkillResults(toolCalls, results);
+        loadedSkills = mergeLoadedSkills(
+          loadedSkills,
+          extractLoadedSkillsFromLoadSkillResults(toolCalls, results),
+        );
+        const normalizedNextMessages = normalizeMessagesForLoadedSkills(
+          conversationMessages,
+          loadedSkills,
+        );
         let changed = false;
         for (const profile of newProfiles) {
           if (!activeProfiles.has(profile)) {
@@ -730,7 +755,11 @@ export async function generateForParticipant(
             changed = true;
           }
         }
-        if (!changed) return;
+        if (!changed) {
+          return {
+            messages: normalizedNextMessages,
+          };
+        }
         const expanded = await onProfilesExpanded?.(
           toolCalls,
           results,
@@ -745,7 +774,11 @@ export async function generateForParticipant(
         if (expanded?.params) {
           effectiveParams = expanded.params;
         }
-        return expanded;
+        return {
+          registry: effectiveToolRegistry,
+          params: effectiveParams,
+          messages: normalizedNextMessages,
+        };
       },
       modelContextLimit: caps?.contextLength ?? 128_000,
       writer,
@@ -835,6 +868,10 @@ export async function generateForParticipant(
     }
 
     if (genResult.continuation && continuationHandoff) {
+      const continuationMessages = normalizeMessagesForLoadedSkills(
+        genResult.continuation.messages,
+        loadedSkills,
+      );
       await continuationHandoff.onHandoff({
         participant,
         group: {
@@ -856,11 +893,12 @@ export async function generateForParticipant(
           skillDefaults: preResolvedOverrides?.skillDefaults as any,
           integrationDefaults: args.integrationDefaults as any,
         },
-        messages: genResult.continuation.messages,
+        messages: continuationMessages,
         usage: genResult.totalUsage ?? undefined,
         toolCalls: collectedToolCalls,
         toolResults: collectedToolResults,
         activeProfiles: Array.from(activeProfiles),
+        loadedSkills,
         compactionCount: genResult.compactionCount,
         continuationCount: continuationHandoff.continuationCount + 1,
         partialContent: writer.totalContent || undefined,

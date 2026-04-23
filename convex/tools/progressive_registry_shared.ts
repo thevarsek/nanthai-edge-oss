@@ -3,6 +3,97 @@ import { ToolRegistry, ToolResult } from "./registry";
 import type { OpenRouterMessage, ToolCall } from "../lib/openrouter";
 import type { ToolExecutionContext } from "./registry";
 
+const progressiveRegistryDebugEnabled = process.env.PROGRESSIVE_REGISTRY_DEBUG === "1";
+
+export interface LoadedSkillState {
+  skill: string;
+  name?: string;
+  runtimeMode?: string;
+  instructions: string;
+  requiredToolProfiles: SkillToolProfileId[];
+  requiredToolIds: string[];
+  requiredIntegrationIds: string[];
+  requiredCapabilities: string[];
+}
+
+function normalizeLoadedSkillState(
+  value: unknown,
+): LoadedSkillState | null {
+  if (!value || typeof value !== "object") return null;
+  const data = value as Record<string, unknown>;
+  if (
+    typeof data.skill !== "string" ||
+    typeof data.instructions !== "string"
+  ) {
+    return null;
+  }
+
+  const rawRequiredToolProfiles = Array.isArray(data.requiredToolProfiles)
+    ? data.requiredToolProfiles.filter((profile): profile is string =>
+      typeof profile === "string")
+    : [];
+  const requiredToolProfiles = rawRequiredToolProfiles.filter((profile): profile is SkillToolProfileId =>
+    isSkillToolProfileId(profile));
+  if (
+    progressiveRegistryDebugEnabled &&
+    requiredToolProfiles.length !== rawRequiredToolProfiles.length
+  ) {
+    const droppedProfiles = rawRequiredToolProfiles.filter(
+      (profile) => !isSkillToolProfileId(profile),
+    );
+    if (droppedProfiles.length > 0) {
+      console.info("[progressiveRegistry] dropped unknown requiredToolProfiles", {
+        skill: data.skill,
+        droppedProfiles,
+      });
+    }
+  }
+
+  return {
+    skill: data.skill,
+    name: typeof data.name === "string" ? data.name : undefined,
+    runtimeMode: typeof data.runtimeMode === "string" ? data.runtimeMode : undefined,
+    instructions: data.instructions,
+    requiredToolProfiles,
+    requiredToolIds: Array.isArray(data.requiredToolIds)
+      ? data.requiredToolIds.filter((toolId): toolId is string => typeof toolId === "string")
+      : [],
+    requiredIntegrationIds: Array.isArray(data.requiredIntegrationIds)
+      ? data.requiredIntegrationIds.filter((integrationId): integrationId is string => typeof integrationId === "string")
+      : [],
+    requiredCapabilities: Array.isArray(data.requiredCapabilities)
+      ? data.requiredCapabilities.filter((capability): capability is string => typeof capability === "string")
+      : [],
+  };
+}
+
+/** Merges loaded-skill snapshots by `skill`, with later entries overwriting earlier ones. */
+export function mergeLoadedSkills(
+  ...lists: Array<LoadedSkillState[] | undefined>
+): LoadedSkillState[] {
+  const merged = new Map<string, LoadedSkillState>();
+  for (const list of lists) {
+    for (const skill of list ?? []) {
+      merged.set(skill.skill, skill);
+    }
+  }
+  return Array.from(merged.values());
+}
+
+function textContentFromMessageContent(
+  content: OpenRouterMessage["content"],
+): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+
+  const text = content
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text)
+    .join("");
+
+  return text.length > 0 ? text : null;
+}
+
 export function buildRegistryParams(
   registry: ToolRegistry,
 ): { tools?: ReturnType<ToolRegistry["getDefinitions"]>; toolChoice?: "auto" } {
@@ -41,6 +132,24 @@ export function extractProfilesFromLoadSkillResults(
   return Array.from(profiles);
 }
 
+export function extractLoadedSkillsFromLoadSkillResults(
+  toolCalls: Array<{ function: { name: string } }>,
+  results: Array<{ toolCallId: string; result: ToolResult }>,
+): LoadedSkillState[] {
+  const loadedSkills: LoadedSkillState[] = [];
+
+  for (let index = 0; index < results.length; index += 1) {
+    const toolName = toolCalls[index]?.function.name;
+    if (toolName !== "load_skill") continue;
+
+    const skill = normalizeLoadedSkillState(results[index]?.result?.data);
+    if (!results[index]?.result?.success || !skill) continue;
+    loadedSkills.push(skill);
+  }
+
+  return mergeLoadedSkills(loadedSkills);
+}
+
 export function extractProfilesFromConversation(
   messages: OpenRouterMessage[],
 ): SkillToolProfileId[] {
@@ -77,6 +186,48 @@ export function extractProfilesFromConversation(
   }
 
   return Array.from(profiles);
+}
+
+export function extractLoadedSkillsFromConversation(
+  messages: OpenRouterMessage[],
+): LoadedSkillState[] {
+  const loadSkillCallIds = new Set<string>();
+  const loadedSkills: LoadedSkillState[] = [];
+
+  for (const message of messages) {
+    if (message.role === "assistant" && message.tool_calls) {
+      for (const toolCall of message.tool_calls) {
+        if (toolCall.function.name === "load_skill") {
+          loadSkillCallIds.add(toolCall.id);
+        }
+      }
+      continue;
+    }
+
+    if (
+      message.role === "tool" &&
+      message.tool_call_id &&
+      loadSkillCallIds.has(message.tool_call_id)
+    ) {
+      const content = textContentFromMessageContent(message.content);
+      if (!content) continue;
+      try {
+        const parsed = JSON.parse(content);
+        const skill = normalizeLoadedSkillState(parsed);
+        if (skill) {
+          loadedSkills.push(skill);
+        }
+      } catch {
+        if (progressiveRegistryDebugEnabled) {
+          console.info("[progressiveRegistry] failed to parse historical load_skill payload", {
+            toolCallId: message.tool_call_id,
+          });
+        }
+      }
+    }
+  }
+
+  return mergeLoadedSkills(loadedSkills);
 }
 
 export function patchSameRoundProgressiveToolErrors(

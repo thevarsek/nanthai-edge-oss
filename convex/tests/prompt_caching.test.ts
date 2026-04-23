@@ -105,3 +105,28 @@ test("cache_control coexists with transforms", () => {
   assert.deepStrictEqual(body.cache_control, { type: "ephemeral" });
   assert.deepStrictEqual(body.transforms, ["middle-out"]);
 });
+
+test("preserves per-part cache_control on stable prompt blocks", () => {
+  const body = buildRequestBody(
+    "google/gemini-2.5-pro-preview-05-06",
+    [
+      {
+        role: "system",
+        content: [
+          { type: "text", text: "volatile intro" },
+          { type: "text", text: "cached block", cache_control: { type: "ephemeral" } },
+        ],
+      },
+      USER_MSG,
+    ],
+    BASE_PARAMS,
+    true,
+  );
+
+  const system = (body.messages as Array<Record<string, unknown>>)[0];
+  const content = system.content as Array<Record<string, unknown>>;
+    assert.equal("cache_control" in content[0], false);
+    assert.deepStrictEqual(content[1].cache_control, { type: "ephemeral" });
+  assert.equal(JSON.stringify(body).includes("\"volatile intro\",\"cache_control\""), false);
+  assert.equal(body.cache_control, undefined);
+});

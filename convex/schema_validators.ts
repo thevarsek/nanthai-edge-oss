@@ -102,9 +102,23 @@ export const usageObject = v.object({
   upstreamInferenceCost: v.optional(v.number()),
   upstreamInferencePromptCost: v.optional(v.number()),
   upstreamInferenceCompletionsCost: v.optional(v.number()),
+  cacheDiscount: v.optional(v.number()),
   // server_tool_use
   webSearchRequests: v.optional(v.number()),
 });
+
+export const loadedSkillState = v.object({
+  skill: v.string(),
+  name: v.optional(v.string()),
+  runtimeMode: v.optional(v.string()),
+  instructions: v.string(),
+  requiredToolProfiles: v.array(v.string()),
+  requiredToolIds: v.array(v.string()),
+  requiredIntegrationIds: v.array(v.string()),
+  requiredCapabilities: v.array(v.string()),
+});
+
+export const loadedSkillStates = v.array(loadedSkillState);
 
 /** Search session status (M9 — Internet Search). */
 export const searchSessionStatus = v.union(
