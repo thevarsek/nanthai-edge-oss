@@ -117,6 +117,7 @@ export async function applySSEEventResult(
   // Capture the first generation ID we see — it is stable across all chunks.
   if (result.generationId && !state.generationId) {
     state.generationId = result.generationId;
+    await callbacks.onGenerationId?.(result.generationId);
   }
 
   // When the stream signals done, freeze in-progress tool calls.

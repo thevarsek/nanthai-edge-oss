@@ -16,10 +16,12 @@ import {
   subagentBatchStatus,
   subagentOverride,
   subagentRunStatus,
+  terminalErrorCode,
   usageObject,
   videoJobStatus,
   skillOverrideEntry,
   integrationOverrideEntry,
+  retryContract,
 } from "./schema_validators";
 
 export const coreSchemaTables = {
@@ -166,6 +168,10 @@ export const coreSchemaTables = {
     // M30: Turn-level overrides from slash chips (snapshot)
     turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
     turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+    // Retry replay snapshot and diagnostics.
+    retryContract: v.optional(retryContract),
+    openrouterGenerationId: v.optional(v.string()),
+    terminalErrorCode: v.optional(terminalErrorCode),
     createdAt: v.number(),
   })
     .index("by_chat", ["chatId", "createdAt"])
@@ -207,6 +213,8 @@ export const coreSchemaTables = {
     sourceExecutionId: v.optional(v.string()),
     sourceStepIndex: v.optional(v.number()),
     sourceStepTitle: v.optional(v.string()),
+    openrouterGenerationId: v.optional(v.string()),
+    terminalErrorCode: v.optional(terminalErrorCode),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     createdAt: v.number(),

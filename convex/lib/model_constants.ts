@@ -20,7 +20,7 @@ export const MODEL_IDS = {
     comprehensive: "perplexity/sonar-deep-research",
   },
   /** Cheap model for autonomous consensus detection (YES/NO). */
-  autonomousConsensus: "openai/gpt-4.1-nano",
+  autonomousConsensus: "openai/gpt-5-nano",
   /** Safety-net model when the primary model fails (rate-limit, outage). */
   autonomousFallback: "openai/gpt-4.1-mini",
   /** Embedding model for memory vector search. */

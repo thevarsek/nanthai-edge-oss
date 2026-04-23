@@ -228,29 +228,37 @@ export async function callOpenRouterNonStreaming(
     } catch (error) {
       // Re-throw ConvexError as-is (don't wrap structured errors)
       if (error instanceof ConvexError) throw error;
-      if (error instanceof Error) {
-        const cause = (error as NodeJS.ErrnoException).cause
-          ? String((error as NodeJS.ErrnoException).cause)
-          : undefined;
-        if (error.name === "AbortError") {
-          console.error("[openrouter:nonstream] timeout", {
-            model: currentModel, timeoutMs: REQUEST_TIMEOUT_MS, durationMs: Date.now() - startTime, msgCount,
-          });
-          // Keep as plain Error so callers with retry loops can inspect and retry
-          const abortMsg = `OpenRouter non-stream timeout after ${REQUEST_TIMEOUT_MS}ms for model ${currentModel}${cause ? `: ${cause}` : ""}`;
-          throw new Error(abortMsg);
-        }
-        if (error.message === "fetch failed") {
-          console.error("[openrouter:nonstream] fetch failed", {
-            model: currentModel, error: error.message, ...(cause ? { cause } : {}),
-            durationMs: Date.now() - startTime, msgCount,
-          });
-          // Keep as plain Error so callers with retry loops can inspect and retry
-          const fetchMsg = `OpenRouter fetch failed for model ${currentModel}${cause ? `: ${cause}` : ""}`;
-          const fetchErr = new Error(fetchMsg);
-          (fetchErr as NodeJS.ErrnoException).cause = cause;
-          throw fetchErr;
-        }
+      // Structural checks instead of `instanceof Error`: on the Convex Node
+      // runtime, aborted fetches can surface as DOMException or other
+      // non-Error objects where `instanceof Error` is false. We still need
+      // to recognize them as AbortError / fetch failures by their shape.
+      const errObj = (error ?? {}) as {
+        name?: unknown;
+        message?: unknown;
+        cause?: unknown;
+      };
+      const errName = typeof errObj.name === "string" ? errObj.name : undefined;
+      const errMessage =
+        typeof errObj.message === "string" ? errObj.message : undefined;
+      const cause = errObj.cause != null ? String(errObj.cause) : undefined;
+      if (errName === "AbortError") {
+        console.error("[openrouter:nonstream] timeout", {
+          model: currentModel, timeoutMs: REQUEST_TIMEOUT_MS, durationMs: Date.now() - startTime, msgCount,
+        });
+        // Keep as plain Error so callers with retry loops can inspect and retry
+        const abortMsg = `OpenRouter non-stream timeout after ${REQUEST_TIMEOUT_MS}ms for model ${currentModel}${cause ? `: ${cause}` : ""}`;
+        throw new Error(abortMsg);
+      }
+      if (errMessage === "fetch failed") {
+        console.error("[openrouter:nonstream] fetch failed", {
+          model: currentModel, error: errMessage, ...(cause ? { cause } : {}),
+          durationMs: Date.now() - startTime, msgCount,
+        });
+        // Keep as plain Error so callers with retry loops can inspect and retry
+        const fetchMsg = `OpenRouter fetch failed for model ${currentModel}${cause ? `: ${cause}` : ""}`;
+        const fetchErr = new Error(fetchMsg);
+        (fetchErr as NodeJS.ErrnoException).cause = cause;
+        throw fetchErr;
       }
       throw error;
     } finally {

@@ -288,6 +288,68 @@ test("finalizeGenerationHandler canonically cancels late completed jobs and clea
   assert.equal(scheduledCalls[0]?.args.error, "Generation was cancelled by user.");
 });
 
+test("finalizeGenerationHandler canonically cancels late failed jobs", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+
+  const ctx = {
+    db: {
+      get: async (id: string) => {
+        if (id === "job_late") {
+          return {
+            _id: id,
+            status: "cancelled",
+            terminalErrorCode: "cancelled_by_retry",
+          };
+        }
+        if (id === "msg_late") {
+          return {
+            _id: id,
+            modelId: "openai/gpt-4.1",
+            content: "Partial before cancel",
+            status: "cancelled",
+            terminalErrorCode: "cancelled_by_retry",
+          };
+        }
+        if (id === "chat_late") return { _id: id };
+        return null;
+      },
+      query: () => ({
+        withIndex: () => ({
+          first: async () => null,
+          collect: async () => [],
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+      delete: async () => undefined,
+      insert: async () => "usage_1",
+    },
+    scheduler: {
+      runAfter: async () => undefined,
+    },
+  } as any;
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: "msg_late" as any,
+    jobId: "job_late" as any,
+    chatId: "chat_late" as any,
+    content: "Error: provider exploded",
+    status: "failed",
+    error: "provider exploded",
+    userId: "user_1",
+  });
+
+  const messagePatch = patches.find((entry) => entry.id === "msg_late");
+  assert.equal(messagePatch?.value.status, "cancelled");
+  assert.equal(messagePatch?.value.content, "Partial before cancel");
+  assert.equal(messagePatch?.value.terminalErrorCode, "cancelled_by_retry");
+
+  const jobPatch = patches.find((entry) => entry.id === "job_late");
+  assert.equal(jobPatch?.value.status, "cancelled");
+  assert.equal(jobPatch?.value.terminalErrorCode, "cancelled_by_retry");
+});
+
 // -- M29: Video / image preview tests -----------------------------------------
 
 /**

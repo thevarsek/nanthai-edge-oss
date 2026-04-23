@@ -64,4 +64,6 @@ export interface SSECallbacks {
   onReasoningDelta?: OnReasoningDelta;
   /** Called when a new tool call name first appears in the stream (before args are complete). */
   onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
+  /** Called once when the first OpenRouter generation ID is observed. */
+  onGenerationId?: (generationId: string) => Promise<void>;
 }

@@ -4,6 +4,7 @@ import {
   isGenerationCancelledError,
 } from "./generation_helpers";
 import { RunGenerationArgs } from "./actions_run_generation_types";
+import { classifyTerminalErrorCode } from "./terminal_error";
 
 export async function failPendingParticipants(
   ctx: ActionCtx,
@@ -38,6 +39,10 @@ export async function failPendingParticipants(
           status: finalStatus,
           error: errorMessage,
           userId: args.userId,
+          terminalErrorCode: wasCancelled ? undefined : classifyTerminalErrorCode({
+            status: finalStatus,
+            error: errorMessage,
+          }),
         });
       } catch (finalizeError) {
         console.error(

@@ -46,6 +46,15 @@ export const generationJobStatus = v.union(
   v.literal("timedOut"),
 );
 
+/** Normalized terminal failure / cancellation classification. */
+export const terminalErrorCode = v.union(
+  v.literal("stream_timeout"),
+  v.literal("provider_error"),
+  v.literal("cancelled_by_retry"),
+  v.literal("cancelled_by_user"),
+  v.literal("unknown_error"),
+);
+
 /** Durable per-job continuation lifecycle for multi-action tool loops. */
 export const generationContinuationStatus = v.union(
   v.literal("waiting"),
@@ -355,6 +364,47 @@ export const skillOverrideEntry = v.object({
 export const integrationOverrideEntry = v.object({
   integrationId: v.string(),
   enabled: v.boolean(),
+});
+
+/** Retry contract participant snapshot persisted on assistant messages. */
+export const retryParticipantSnapshot = v.object({
+  modelId: v.string(),
+  personaId: v.optional(v.union(v.id("personas"), v.null())),
+  personaName: v.optional(v.union(v.string(), v.null())),
+  personaEmoji: v.optional(v.union(v.string(), v.null())),
+  personaAvatarImageUrl: v.optional(v.union(v.string(), v.null())),
+  systemPrompt: v.optional(v.union(v.string(), v.null())),
+  temperature: v.optional(v.number()),
+  maxTokens: v.optional(v.number()),
+  includeReasoning: v.optional(v.boolean()),
+  reasoningEffort: v.optional(v.union(v.string(), v.null())),
+});
+
+/** Retry contract search mode persisted on assistant messages. */
+export const retrySearchMode = v.union(
+  v.literal("none"),
+  v.literal("normal"),
+  v.literal("web"),
+);
+
+/** Retry contract video settings persisted on assistant messages. */
+export const retryVideoConfig = v.object({
+  resolution: v.optional(v.string()),
+  aspectRatio: v.optional(v.string()),
+  duration: v.optional(v.number()),
+  generateAudio: v.optional(v.boolean()),
+});
+
+/** Canonical retry snapshot persisted on assistant messages. */
+export const retryContract = v.object({
+  participants: v.array(retryParticipantSnapshot),
+  searchMode: retrySearchMode,
+  searchComplexity: v.optional(v.number()),
+  enabledIntegrations: v.optional(v.array(v.string())),
+  subagentsEnabled: v.optional(v.boolean()),
+  turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+  videoConfig: v.optional(retryVideoConfig),
 });
 
 /** Skill lock state — locked (system) vs editable (user). */

@@ -7,6 +7,7 @@ import {
   memorySourceType,
   skillOverrideEntry,
   integrationOverrideEntry,
+  terminalErrorCode,
 } from "../schema_validators";
 import { participantConfigValidator, videoConfigValidator } from "./actions_args";
 
@@ -219,6 +220,7 @@ export const finalizeGenerationArgs = {
   triggerUserMessageId: v.optional(v.id("messages")),
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId: v.optional(v.string()),
+  terminalErrorCode: v.optional(terminalErrorCode),
 } satisfies PropertyValidators;
 
 export const requestAudioGenerationArgs = {
@@ -240,6 +242,7 @@ export const patchMessageAudioArgs = {
 
 export const updateJobStatusArgs = {
   jobId: v.id("generationJobs"),
+  messageId: v.optional(v.id("messages")),
   status: v.union(
     v.literal("queued"),
     v.literal("streaming"),
@@ -250,6 +253,8 @@ export const updateJobStatusArgs = {
   ),
   startedAt: v.optional(v.number()),
   error: v.optional(v.string()),
+  openrouterGenerationId: v.optional(v.string()),
+  terminalErrorCode: v.optional(terminalErrorCode),
 } satisfies PropertyValidators;
 
 export const saveGenerationContinuationArgs = {

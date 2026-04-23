@@ -61,6 +61,7 @@ export async function callOpenRouterStreaming(
     onDelta?: OnDelta;
     onReasoningDelta?: OnReasoningDelta;
     onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
+    onGenerationId?: (generationId: string) => Promise<void>;
   },
   retryConfig: RetryConfig = {},
   deps: OpenRouterStreamingDeps = defaultOpenRouterStreamingDeps,
@@ -139,12 +140,20 @@ export async function callOpenRouterStreaming(
       // Re-throw ConvexError as-is (don't wrap structured errors)
       if (error instanceof ConvexError) throw error;
       const durationMs = Date.now() - startTime;
-      const errMsg = error instanceof Error ? error.message : String(error);
-      const cause = error instanceof Error && (error as NodeJS.ErrnoException).cause
-        ? String((error as NodeJS.ErrnoException).cause)
-        : undefined;
-      const isTimeout = error instanceof Error &&
-        (error.name === "AbortError" || errMsg.includes("timeout"));
+      // Structural shape-reading so we classify non-Error thrown values
+      // (DOMException, Convex-wrapped aborts, etc.) the same as Error.
+      const errObj = (error ?? {}) as {
+        name?: unknown;
+        message?: unknown;
+        cause?: unknown;
+      };
+      const errName = typeof errObj.name === "string" ? errObj.name : undefined;
+      const errMessage =
+        typeof errObj.message === "string" ? errObj.message : undefined;
+      const errMsg = errMessage ?? errName ?? String(error);
+      const cause = errObj.cause != null ? String(errObj.cause) : undefined;
+      const isTimeout =
+        errName === "AbortError" || errMsg.toLowerCase().includes("timeout");
       const isTransientNetwork = isTransientNetworkError(errMsg, cause);
       console.error("[openrouter:stream] error", {
         model: currentModel, attempt: attempt + 1, durationMs, msgCount,
@@ -210,6 +219,7 @@ async function streamOnce(
     onDelta?: OnDelta;
     onReasoningDelta?: OnReasoningDelta;
     onToolCallStart?: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
+    onGenerationId?: (generationId: string) => Promise<void>;
   },
   retryOnUnsupportedParam: boolean,
   deps: OpenRouterStreamingDeps,
@@ -381,6 +391,13 @@ async function streamOnce(
               await callbacks.onToolCallStart?.(toolCall);
             }
             : undefined,
+          onGenerationId: callbacks.onGenerationId
+            ? async (generationId: string) => {
+              logFirstActivityOnce();
+              resetTimeout();
+              await callbacks.onGenerationId?.(generationId);
+            }
+            : undefined,
         };
         return await deps.processSSEBodyStream(
           response.body,
@@ -398,28 +415,36 @@ async function streamOnce(
     } catch (error) {
       // Re-throw ConvexError as-is (don't wrap structured errors)
       if (error instanceof ConvexError) throw error;
-      if (error instanceof Error) {
-        const cause = (error as NodeJS.ErrnoException).cause
-          ? String((error as NodeJS.ErrnoException).cause)
-          : undefined;
-        if (error.name === "AbortError") {
-          console.error("[openrouter:stream:once] timeout", {
-            model, timeoutMs: STREAM_REQUEST_TIMEOUT_MS, rateLimitRetries,
-          });
-          // Re-throw as a regular Error so the caller's retry logic can inspect it
-          const abortMsg = `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`;
-          throw new Error(abortMsg);
-        }
-        if (error.message === "fetch failed") {
-          console.error("[openrouter:stream:once] fetch failed", {
-            model, error: error.message, ...(cause ? { cause } : {}), rateLimitRetries,
-          });
-          // Re-throw as a regular Error so the caller's retry logic can inspect it
-          const fetchMsg = `OpenRouter fetch failed for model ${model}${cause ? `: ${cause}` : ""}`;
-          const fetchErr = new Error(fetchMsg);
-          (fetchErr as NodeJS.ErrnoException).cause = cause;
-          throw fetchErr;
-        }
+      // Structural checks instead of `instanceof Error`: on the Convex Node
+      // runtime, aborted fetches can surface as DOMException or other
+      // non-Error objects where `instanceof Error` is false. We still need
+      // to recognize them as AbortError / fetch failures by their shape.
+      const errObj = (error ?? {}) as {
+        name?: unknown;
+        message?: unknown;
+        cause?: unknown;
+      };
+      const errName = typeof errObj.name === "string" ? errObj.name : undefined;
+      const errMessage =
+        typeof errObj.message === "string" ? errObj.message : undefined;
+      const cause = errObj.cause != null ? String(errObj.cause) : undefined;
+      if (errName === "AbortError") {
+        console.error("[openrouter:stream:once] timeout", {
+          model, timeoutMs: STREAM_REQUEST_TIMEOUT_MS, rateLimitRetries,
+        });
+        // Re-throw as a regular Error so the caller's retry logic can inspect it
+        const abortMsg = `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`;
+        throw new Error(abortMsg);
+      }
+      if (errMessage === "fetch failed") {
+        console.error("[openrouter:stream:once] fetch failed", {
+          model, error: errMessage, ...(cause ? { cause } : {}), rateLimitRetries,
+        });
+        // Re-throw as a regular Error so the caller's retry logic can inspect it
+        const fetchMsg = `OpenRouter fetch failed for model ${model}${cause ? `: ${cause}` : ""}`;
+        const fetchErr = new Error(fetchMsg);
+        (fetchErr as NodeJS.ErrnoException).cause = cause;
+        throw fetchErr;
       }
       throw error;
     } finally {

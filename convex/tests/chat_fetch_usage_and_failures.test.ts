@@ -200,6 +200,7 @@ test("failPendingParticipants finalizes only pending or streaming participants a
     status: "cancelled",
     error: "Generation cancelled",
     userId: "user_1",
+    terminalErrorCode: undefined,
   });
   assert.equal(finalizations[1]?.status, "cancelled");
 });

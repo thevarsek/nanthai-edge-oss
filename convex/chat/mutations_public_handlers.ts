@@ -13,6 +13,7 @@ import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./a
 import { isAudioAttachment } from "./audio_shared";
 import { patchStreamingMessageStatus } from "./streaming_state";
 import { buildSeedTitle, isPlaceholderTitle } from "./title_helpers";
+import { buildRetryContract, type RetrySearchMode } from "./retry_contract";
 import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
 import {
   createAssistantMessagesAndJobs,
@@ -221,6 +222,21 @@ export async function sendMessageHandler(
   const effectiveSubagents = toolFilter.strippedModelIds.length > 0
     ? false
     : effectiveSubagentsEnabled;
+  const retrySearchMode: RetrySearchMode =
+    effectiveSearchMode === "normal" && args.webSearchEnabled === false
+      ? "none"
+      : (effectiveSearchMode ?? "none");
+  const retryContract = buildRetryContract({
+    participants,
+    searchMode: retrySearchMode,
+    searchComplexity:
+      retrySearchMode === "web" ? effectiveComplexity : undefined,
+    enabledIntegrations: effectiveIntegrations,
+    subagentsEnabled: effectiveSubagents,
+    turnSkillOverrides: args.turnSkillOverrides,
+    turnIntegrationOverrides: args.turnIntegrationOverrides,
+    videoConfig: args.videoConfig,
+  });
 
   const audioAttachmentCount = normalizedAttachments?.filter((attachment) =>
     isAudioAttachment(attachment),
@@ -292,6 +308,7 @@ export async function sendMessageHandler(
       subagentsEnabled: effectiveSubagents,
       turnSkillOverrides: args.turnSkillOverrides,
       turnIntegrationOverrides: args.turnIntegrationOverrides,
+      retryContract,
     });
   ttftLog("[generation] assistant/jobs created", {
     chatId: args.chatId,
@@ -469,11 +486,15 @@ export async function cancelGenerationHandler(
     status: "cancelled",
     completedAt: Date.now(),
     scheduledFunctionId: undefined,
+    terminalErrorCode: "cancelled_by_user",
   });
 
   const message = await ctx.db.get(job.messageId);
   if (message && message.status !== "completed") {
-    await ctx.db.patch(job.messageId, { status: "cancelled" });
+    await ctx.db.patch(job.messageId, {
+      status: "cancelled",
+      terminalErrorCode: "cancelled_by_user",
+    });
     await patchStreamingMessageStatus(ctx, job.messageId, "cancelled");
 
     const batch = await ctx.db
@@ -559,10 +580,14 @@ export async function cancelActiveGenerationHandler(
       status: "cancelled",
       completedAt: now,
       scheduledFunctionId: undefined,
+      terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
     if (message && message.status !== "completed") {
-      await ctx.db.patch(job.messageId, { status: "cancelled" });
+      await ctx.db.patch(job.messageId, {
+        status: "cancelled",
+        terminalErrorCode: "cancelled_by_user",
+      });
       await patchStreamingMessageStatus(ctx, job.messageId, "cancelled");
     }
     const batch = await ctx.db
@@ -605,10 +630,14 @@ export async function cancelActiveGenerationHandler(
       status: "cancelled",
       completedAt: now,
       scheduledFunctionId: undefined,
+      terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
     if (message && message.status !== "completed") {
-      await ctx.db.patch(job.messageId, { status: "cancelled" });
+      await ctx.db.patch(job.messageId, {
+        status: "cancelled",
+        terminalErrorCode: "cancelled_by_user",
+      });
       await patchStreamingMessageStatus(ctx, job.messageId, "cancelled");
     }
     const batch = await ctx.db

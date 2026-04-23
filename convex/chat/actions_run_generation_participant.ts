@@ -17,6 +17,7 @@ import {
   GenerationCancelledError,
   isGenerationCancelledError,
 } from "./generation_helpers";
+import { classifyTerminalErrorCode } from "./terminal_error";
 import {
   clampMessageContent,
   dedupeImageCandidates,
@@ -50,7 +51,6 @@ import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_
 import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
 import {
   availableProgressiveProfiles,
-  buildRegistryParams,
   extractProfilesFromConversation,
   extractProfilesFromLoadSkillResults,
 } from "../tools/progressive_registry_shared";
@@ -577,7 +577,12 @@ export async function generateForParticipant(
     const streamedImagePayloads: string[] = [];
 
     // Build stream callbacks (reused across tool-call rounds).
-    const streamCallbacks: { onDelta: OnDelta; onReasoningDelta: OnReasoningDelta; onToolCallStart: (toolCall: { index: number; id: string; name: string }) => Promise<void> } = {
+    const streamCallbacks: {
+      onDelta: OnDelta;
+      onReasoningDelta: OnReasoningDelta;
+      onToolCallStart: (toolCall: { index: number; id: string; name: string }) => Promise<void>;
+      onGenerationId: (generationId: string) => Promise<void>;
+    } = {
       onDelta: async (delta) => {
         if (!hasLoggedFirstDelta && delta.length > 0) {
           hasLoggedFirstDelta = true;
@@ -657,6 +662,14 @@ export async function generateForParticipant(
             toolCalls: inProgressToolCalls,
           },
         );
+      },
+      onGenerationId: async (generationId) => {
+        await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
+          jobId: participant.jobId,
+          messageId: participant.messageId,
+          status: "streaming",
+          openrouterGenerationId: generationId,
+        });
       },
     };
 
@@ -988,6 +1001,12 @@ export async function generateForParticipant(
       status: wasCancelled ? "cancelled" : "failed",
       error: errorMessage,
       userId: args.userId,
+      terminalErrorCode: wasCancelled
+        ? undefined
+        : classifyTerminalErrorCode({
+          status: "failed",
+          error: errorMessage,
+        }),
     });
     return {
       deferredForSubagents: false,

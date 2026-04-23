@@ -2,6 +2,8 @@ import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
 import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
+import { RetryContract } from "./retry_contract";
+import { TerminalErrorCode } from "./terminal_error";
 
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -217,6 +219,7 @@ export async function createAssistantMessagesAndJobs(
     // M30 — Turn-level overrides for auditing
     turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
     turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+    retryContract?: RetryContract;
   },
 ): Promise<{
   assistantMessageIds: Id<"messages">[];
@@ -249,6 +252,7 @@ export async function createAssistantMessagesAndJobs(
       subagentsEnabled: args.subagentsEnabled,
       turnSkillOverrides: args.turnSkillOverrides,
       turnIntegrationOverrides: args.turnIntegrationOverrides,
+      retryContract: args.retryContract,
       createdAt: args.assistantCreatedAt,
     });
     assistantMessageIds.push(assistantMessageId);
@@ -303,6 +307,7 @@ export async function cancelGenerationJobsForMessage(
   ctx: MutationCtx,
   messageId: Id<"messages">,
   now: number,
+  terminalErrorCode?: Extract<TerminalErrorCode, "cancelled_by_retry" | "cancelled_by_user">,
 ): Promise<void> {
   const existingJobs = await ctx.db
     .query("generationJobs")
@@ -317,6 +322,7 @@ export async function cancelGenerationJobsForMessage(
         status: "cancelled",
         completedAt: now,
         scheduledFunctionId: undefined,
+        terminalErrorCode,
       });
     }
   }

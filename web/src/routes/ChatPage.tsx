@@ -27,7 +27,7 @@ import { AudioPlaybackProvider } from "@/components/chat/AudioPlaybackContext";
 import { AutoAudioWatcher } from "@/components/chat/AutoAudioWatcher";
 import { RenameChatDialog } from "@/components/chat-list/SidebarSections";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
-import { ModelPicker } from "@/components/shared/ModelPicker";
+import { ParticipantPicker } from "@/components/settings/ChatDefaultsSection.ParticipantPicker";
 import { useToast } from "@/components/shared/Toast.context";
 import { Defaults } from "@/lib/constants";
 import { convexErrorMessage } from "@/lib/convexErrors";
@@ -50,6 +50,23 @@ import {
   type SharedPreferences,
 } from "@/lib/chatRequestResolution";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
+
+const GOOGLE_INTEGRATION_IDS = new Set(["gmail", "drive", "calendar"]);
+
+function getRetryBaseParticipant(message: (ReturnType<typeof useChat>["messages"][number]) | undefined) {
+  return message?.retryContract?.participants[0] ?? {
+    modelId: message?.modelId ?? Defaults.model,
+    personaId: message?.participantId ?? null,
+    personaEmoji: null,
+    personaName: message?.participantName ?? null,
+    personaAvatarImageUrl: message?.participantAvatarImageUrl ?? null,
+    systemPrompt: null,
+    temperature: undefined,
+    maxTokens: undefined,
+    includeReasoning: undefined,
+    reasoningEffort: null,
+  };
+}
 
 export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
@@ -502,20 +519,93 @@ export function ChatPage() {
     [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState],
   );
 
+  const retryTargetMessage = useMemo(
+    () => retryDifferentMessageId
+      ? messages.find((message) => message._id === retryDifferentMessageId)
+      : undefined,
+    [messages, retryDifferentMessageId],
+  );
+  const retryBaseParticipant = useMemo(
+    () => getRetryBaseParticipant(retryTargetMessage),
+    [retryTargetMessage],
+  );
+  const retryGoogleIntegrationsActive = useMemo(() => {
+    const enabledIntegrations =
+      retryTargetMessage?.retryContract?.enabledIntegrations
+      ?? retryTargetMessage?.enabledIntegrations
+      ?? [];
+    return enabledIntegrations.some((integrationId) => GOOGLE_INTEGRATION_IDS.has(integrationId));
+  }, [retryTargetMessage]);
+
   const handleCancel = useCallback(() => { if (typedChatId) void cancelGeneration({ chatId: typedChatId }); }, [typedChatId, cancelGeneration]);
-  const handleRetry = useCallback((messageId: Id<"messages">) => { void retryMessage({ messageId, participants }); }, [retryMessage, participants]);
+  const handleRetry = useCallback((messageId: Id<"messages">) => {
+    const targetMessage = messages.find((message) => message._id === messageId);
+    if (!targetMessage?.retryContract) {
+      void retryMessage({
+        messageId,
+        ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
+        ...(convexComplexity ? { complexity: convexComplexity } : {}),
+        ...(Array.from(overrides.enabledIntegrations).length > 0
+          ? { enabledIntegrations: Array.from(overrides.enabledIntegrations) }
+          : {}),
+        ...(overrides.turnSkillOverrideEntries.length > 0
+          ? { turnSkillOverrides: overrides.turnSkillOverrideEntries }
+          : {}),
+        ...(overrides.turnIntegrationOverrideEntries.length > 0
+          ? { turnIntegrationOverrides: overrides.turnIntegrationOverrideEntries }
+          : {}),
+        ...(effectiveSubagentsEnabled !== undefined
+          ? { subagentsEnabled: effectiveSubagentsEnabled }
+          : {}),
+      });
+      return;
+    }
+
+    void retryMessage({ messageId });
+  }, [
+    convexComplexity,
+    convexSearchMode,
+    effectiveSubagentsEnabled,
+    messages,
+    overrides.enabledIntegrations,
+    overrides.turnIntegrationOverrideEntries,
+    overrides.turnSkillOverrideEntries,
+    retryMessage,
+  ]);
   const handleRetryWithDifferentModel = useCallback((messageId: Id<"messages">) => {
     setRetryDifferentMessageId(messageId);
   }, []);
   const handleSelectRetryModel = useCallback((modelId: string) => {
     if (!retryDifferentMessageId) return;
-    const base = participants[0] ?? { modelId };
     void retryMessage({
       messageId: retryDifferentMessageId,
-      participants: [{ ...base, modelId }],
+      participants: [{
+        ...retryBaseParticipant,
+        modelId,
+        personaId: null,
+        personaName: null,
+        personaEmoji: null,
+        personaAvatarImageUrl: null,
+      }],
     });
     setRetryDifferentMessageId(null);
-  }, [retryDifferentMessageId, retryMessage, participants]);
+  }, [retryBaseParticipant, retryDifferentMessageId, retryMessage]);
+  const handleSelectRetryPersona = useCallback((personaId: string) => {
+    if (!retryDifferentMessageId) return;
+    const persona = personas?.find((entry) => entry._id === personaId);
+    void retryMessage({
+      messageId: retryDifferentMessageId,
+      participants: [{
+        ...retryBaseParticipant,
+        modelId: persona?.modelId ?? retryBaseParticipant.modelId,
+        personaId: personaId as Id<"personas">,
+        personaName: persona?.displayName ?? null,
+        personaEmoji: persona?.avatarEmoji ?? null,
+        personaAvatarImageUrl: persona?.avatarImageUrl ?? null,
+      }],
+    });
+    setRetryDifferentMessageId(null);
+  }, [retryBaseParticipant, retryDifferentMessageId, retryMessage, personas]);
   const handleFork = useCallback(async (messageId: Id<"messages">) => {
     if (!typedChatId) return;
     navigate(`/app/chat/${await forkChat({ chatId: typedChatId, atMessageId: messageId })}`);
@@ -659,10 +749,14 @@ export function ChatPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60" onClick={() => setRetryDifferentMessageId(null)} />
           <div className="relative w-full max-w-lg max-h-[80vh] rounded-2xl overflow-hidden shadow-2xl bg-background border border-border/50">
-            <ModelPicker
-              selectedModelId={participants[0]?.modelId ?? selectedModelId}
-              onSelect={handleSelectRetryModel}
+            <ParticipantPicker
+              title={t("retry_with")}
+              selectedPersonaId={retryBaseParticipant.personaId ?? null}
+              selectedModelId={retryBaseParticipant.modelId}
+              onSelectPersona={handleSelectRetryPersona}
+              onSelectModel={handleSelectRetryModel}
               onClose={() => setRetryDifferentMessageId(null)}
+              googleIntegrationsActive={retryGoogleIntegrationsActive}
             />
           </div>
         </div>

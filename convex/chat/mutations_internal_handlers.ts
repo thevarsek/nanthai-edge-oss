@@ -1,8 +1,10 @@
 import { Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { ConvexError } from "convex/values";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
+import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
 import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
 import {
@@ -170,6 +172,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   triggerUserMessageId?: Id<"messages">;
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId?: string;
+  terminalErrorCode?: TerminalErrorCode;
 }
 
 export async function finalizeGenerationHandler(
@@ -178,19 +181,25 @@ export async function finalizeGenerationHandler(
 ): Promise<void> {
   const now = Date.now();
   const generationJob = await ctx.db.get(args.jobId);
-  const shouldTreatLateCompletionAsCancelled =
-    generationJob?.status === "cancelled" && args.status === "completed";
-  const finalStatus = shouldTreatLateCompletionAsCancelled
+  const shouldTreatLateTerminalResultAsCancelled =
+    generationJob?.status === "cancelled"
+    && (args.status === "completed" || args.status === "failed");
+  const finalStatus = shouldTreatLateTerminalResultAsCancelled
     ? "cancelled"
     : args.status;
+  const terminalErrorCode = classifyTerminalErrorCode({
+    status: finalStatus,
+    error: args.error,
+    existingCode: generationJob?.terminalErrorCode ?? args.terminalErrorCode,
+  });
 
   // Guard: if the job was already cancelled by the user, don't overwrite
   // with "completed" or "streaming" results.  We still allow overwriting
-  // with "failed" so error details are preserved.
-  // AUDIT-6: When the guard blocks a "completed" finalization for a
+  // neither "completed" nor "failed" should revive a cancelled job.
+  // AUDIT-6: When the guard blocks a late terminal finalization for a
   // cancelled job, we must still continue/fail any associated scheduled-job
   // pipeline, otherwise the pipeline stalls indefinitely.
-  if (shouldTreatLateCompletionAsCancelled) {
+  if (shouldTreatLateTerminalResultAsCancelled) {
     if (generationJob.sourceJobId && generationJob.sourceExecutionId) {
       await ctx.scheduler.runAfter(
         0,
@@ -232,6 +241,8 @@ export async function finalizeGenerationHandler(
     status: finalStatus,
     usage: args.usage,
   };
+  if (args.openrouterGenerationId) msgPatch.openrouterGenerationId = args.openrouterGenerationId;
+  if (terminalErrorCode) msgPatch.terminalErrorCode = terminalErrorCode;
   const finalReasoning = args.reasoning ?? streamingMessage?.reasoning;
   if (finalReasoning) msgPatch.reasoning = finalReasoning;
   if (args.imageUrls) msgPatch.imageUrls = args.imageUrls;
@@ -320,6 +331,8 @@ export async function finalizeGenerationHandler(
   await ctx.db.patch(args.jobId, {
     status: mapFinalMessageStatusToJobStatus(finalStatus),
     error: args.error,
+    openrouterGenerationId: args.openrouterGenerationId,
+    terminalErrorCode,
     completedAt: now,
     scheduledFunctionId: undefined,
   });
@@ -613,6 +626,7 @@ export async function updateMessageToolCallsHandler(
 
 export interface UpdateJobStatusArgs extends Record<string, unknown> {
   jobId: Id<"generationJobs">;
+  messageId?: Id<"messages">;
   status:
     | "queued"
     | "streaming"
@@ -622,6 +636,8 @@ export interface UpdateJobStatusArgs extends Record<string, unknown> {
     | "timedOut";
   startedAt?: number;
   error?: string;
+  openrouterGenerationId?: string;
+  terminalErrorCode?: TerminalErrorCode;
 }
 
 export async function updateJobStatusHandler(
@@ -633,6 +649,12 @@ export async function updateJobStatusHandler(
   // late-arriving runGeneration from reviving a job the user already cancelled.
   const existing = await ctx.db.get(args.jobId);
   if (existing) {
+    if (args.messageId && existing.messageId && existing.messageId !== args.messageId) {
+      throw new ConvexError({
+        code: "VALIDATION" as const,
+        message: "messageId does not match the generation job",
+      });
+    }
     const terminalStatuses = new Set(["cancelled", "completed", "failed", "timedOut"]);
     if (terminalStatuses.has(existing.status as string) && !terminalStatuses.has(args.status)) {
       return; // silently skip — job already finished
@@ -642,6 +664,8 @@ export async function updateJobStatusHandler(
   const patch: Record<string, unknown> = { status: args.status };
   if (args.startedAt) patch.startedAt = args.startedAt;
   if (args.error) patch.error = args.error;
+  if (args.openrouterGenerationId) patch.openrouterGenerationId = args.openrouterGenerationId;
+  if (args.terminalErrorCode) patch.terminalErrorCode = args.terminalErrorCode;
   if (
     args.status === "completed" ||
     args.status === "failed" ||
@@ -651,6 +675,16 @@ export async function updateJobStatusHandler(
     patch.completedAt = Date.now();
   }
   await ctx.db.patch(args.jobId, patch);
+  if (args.messageId && (args.openrouterGenerationId || args.terminalErrorCode)) {
+    const messagePatch: Record<string, unknown> = {};
+    if (args.openrouterGenerationId) {
+      messagePatch.openrouterGenerationId = args.openrouterGenerationId;
+    }
+    if (args.terminalErrorCode) {
+      messagePatch.terminalErrorCode = args.terminalErrorCode;
+    }
+    await ctx.db.patch(args.messageId, messagePatch);
+  }
 }
 
 export interface IsJobCancelledArgs extends Record<string, unknown> {

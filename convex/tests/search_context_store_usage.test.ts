@@ -162,9 +162,10 @@ test("retryMessageHandler reuses cached web-search context from searchContexts t
   assert.deepEqual(searchRun.payload.cachedSearchContext, cachedPayload);
 });
 
-test("retryMessageHandler silently strips original message integrations on non-tool model", async () => {
+test("retryMessageHandler strips legacy integrations for non-tool models instead of throwing", async () => {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const scheduled: Array<{ fnPath: unknown; payload: Record<string, unknown> }> = [];
 
   const ctx = {
     auth: {
@@ -245,26 +246,27 @@ test("retryMessageHandler silently strips original message integrations on non-t
       },
     },
     scheduler: {
-      runAfter: async () => "job_sched",
+      runAfter: async (
+        _: number,
+        fnPath: unknown,
+        payload: Record<string, unknown>,
+      ) => {
+        scheduled.push({ fnPath, payload });
+        return "job_sched";
+      },
     },
   } as any;
 
-  // Should succeed — integrations silently stripped for non-tool model
   await retryMessageHandler(ctx, {
     messageId: "assistant_old" as any,
     apiKey: "sk-test",
   });
 
-  // A new assistant message should have been created with empty integrations
-  const assistantInsert = inserts.find(
-    (i) => i.table === "messages" && i.value.role === "assistant",
-  );
-  assert.ok(assistantInsert, "assistant message should be inserted");
-  assert.deepEqual(
-    assistantInsert.value.enabledIntegrations,
-    [],
-    "integrations should be stripped for non-tool model",
-  );
+  assert.ok(inserts.find((i) => i.table === "messages" && i.value.role === "assistant"));
+  const genCall = scheduled.find((entry) => entry.payload?.assistantMessageIds);
+  assert.ok(genCall);
+  assert.deepEqual(genCall.payload.enabledIntegrations, []);
+  assert.equal(genCall.payload.subagentsEnabled, false);
 });
 
 test("retryMessageHandler rejects retrying old tool-backed messages without saved integrations", async () => {

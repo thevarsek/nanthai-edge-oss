@@ -32,6 +32,8 @@ interface ParticipantPickerProps {
   onSelectPersona: (personaId: string) => void;
   onSelectModel: (modelId: string) => void;
   onClose: () => void;
+  title?: string;
+  googleIntegrationsActive?: boolean;
 }
 
 // ─── Icon maps (same as ChatParticipantPicker) ──────────────────────────────
@@ -58,6 +60,8 @@ export function ParticipantPicker({
   onSelectPersona,
   onSelectModel,
   onClose,
+  title,
+  googleIntegrationsActive,
 }: ParticipantPickerProps) {
   const { t } = useTranslation();
   const { personas, prefs } = useSharedData();
@@ -76,6 +80,10 @@ export function ParticipantPicker({
   );
   const modelZdrMap = useMemo(
     () => new Map(models.map((m) => [m.modelId, m.hasZdrEndpoint === true])),
+    [models],
+  );
+  const modelProviderMap = useMemo(
+    () => new Map(models.map((m) => [m.modelId, m.provider ?? ""])),
     [models],
   );
   const query = search.toLowerCase().trim();
@@ -144,7 +152,7 @@ export function ParticipantPicker({
     <div className="flex flex-col h-full max-h-[80vh]">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
-        <span className="text-base font-semibold">{t("default_participant")}</span>
+        <span className="text-base font-semibold">{title ?? t("default_participant")}</span>
         <button
           onClick={onClose}
           className="p-1 rounded hover:bg-surface-2 transition-colors text-muted hover:text-foreground"
@@ -215,6 +223,8 @@ export function ParticipantPicker({
                 modelNameMap={modelNameMap}
                 zdrEnforced={zdrEnforced}
                 modelZdrMap={modelZdrMap}
+                googleIntegrationsActive={googleIntegrationsActive}
+                modelProviderMap={modelProviderMap}
               />
             ))}
           </div>
@@ -241,6 +251,7 @@ export function ParticipantPicker({
                 onToggle={handleToggleModel}
                 onInfo={setInfoModel}
                 zdrEnforced={zdrEnforced}
+                googleIntegrationsActive={googleIntegrationsActive}
               />
             ))
           )}
@@ -281,7 +292,13 @@ export function ParticipantPicker({
       {showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowWizard(false)}>
           <div className="w-full max-w-md max-h-[85vh] rounded-2xl border border-border/50 shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
-            <ModelWizard models={models} onSelect={handleWizardSelect} onClose={() => setShowWizard(false)} zdrEnforced={zdrEnforced} />
+            <ModelWizard
+              models={models}
+              onSelect={handleWizardSelect}
+              onClose={() => setShowWizard(false)}
+              zdrEnforced={zdrEnforced}
+              googleIntegrationsActive={googleIntegrationsActive}
+            />
           </div>
         </div>
       )}

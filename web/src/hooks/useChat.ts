@@ -22,6 +22,22 @@ export interface Participant {
   reasoningEffort?: string | null;
 }
 
+export interface RetryContract {
+  participants: Participant[];
+  searchMode: "none" | "normal" | "web";
+  searchComplexity?: number;
+  enabledIntegrations?: string[];
+  subagentsEnabled?: boolean;
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  videoConfig?: {
+    duration?: number;
+    aspectRatio?: string;
+    resolution?: string;
+    generateAudio?: boolean;
+  };
+}
+
 export interface ToolCall {
   id: string;
   name: string;
@@ -80,6 +96,11 @@ export interface Message {
   audioDurationMs?: number;
   audioGenerating?: boolean;
   citations?: Array<{ url: string; title: string }>;
+  enabledIntegrations?: string[];
+  subagentsEnabled?: boolean;
+  retryContract?: RetryContract;
+  openrouterGenerationId?: string;
+  terminalErrorCode?: "stream_timeout" | "provider_error" | "cancelled_by_retry" | "cancelled_by_user" | "unknown_error";
   createdAt: number;
 }
 
@@ -228,6 +249,18 @@ export interface UseChatReturn {
   retryMessage: (args: {
     messageId: Id<"messages">;
     participants?: Participant[];
+    searchMode?: "normal" | "web";
+    complexity?: number;
+    enabledIntegrations?: string[];
+    turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+    turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+    subagentsEnabled?: boolean;
+    videoConfig?: {
+      duration?: number;
+      aspectRatio?: string;
+      resolution?: string;
+      generateAudio?: boolean;
+    };
   }) => Promise<{ assistantMessageIds: Id<"messages">[] }>;
   deleteMessage: (args: { messageId: Id<"messages"> }) => Promise<null>;
   updateChat: (args: Partial<Chat> & { chatId: Id<"chats"> }) => Promise<null>;
@@ -369,7 +402,22 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
   );
 
   const retryMessage = useCallback(
-    (args: { messageId: Id<"messages">; participants?: Participant[] }) =>
+    (args: {
+      messageId: Id<"messages">;
+      participants?: Participant[];
+      searchMode?: "normal" | "web";
+      complexity?: number;
+      enabledIntegrations?: string[];
+      turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+      turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+      subagentsEnabled?: boolean;
+      videoConfig?: {
+        duration?: number;
+        aspectRatio?: string;
+        resolution?: string;
+        generateAudio?: boolean;
+      };
+    }) =>
       retryMessageMutation(args),
     [retryMessageMutation],
   );

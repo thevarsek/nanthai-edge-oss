@@ -22,6 +22,7 @@ import {
   RunGenerationParticipantArgs,
   TERMINAL_GENERATION_JOB_STATUSES,
 } from "./generation_continuation_shared";
+import { classifyTerminalErrorCode } from "./terminal_error";
 
 function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -95,6 +96,10 @@ async function finalizeParticipantSetupFailure(
     status: "failed",
     error: errorMessage,
     userId: args.userId,
+    terminalErrorCode: classifyTerminalErrorCode({
+      status: "failed",
+      error: errorMessage,
+    }),
   });
 }
 

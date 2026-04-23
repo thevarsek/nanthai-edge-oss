@@ -268,3 +268,60 @@ test("callOpenRouterStreaming normalizes abort timeouts into a stable error mess
     /OpenRouter stream timeout/i,
   );
 });
+
+test("callOpenRouterStreaming normalizes non-Error AbortError shapes (DOMException-like)", async () => {
+  // Regression for April 2026 production incident: on the Convex Node
+  // runtime, aborted fetches can surface as DOMException or other non-Error
+  // objects where `instanceof Error` is false. The classifier must rely on
+  // structural `.name === "AbortError"` rather than an `instanceof Error`
+  // gate, otherwise the error bubbles up as bare "AbortError" with no
+  // timeout flag and no retry attempt.
+  const fakeAbort: { name: string; message: string; cause?: unknown } = {
+    name: "AbortError",
+    message: "This operation was aborted",
+  };
+  const deps = createOpenRouterStreamingDepsForTest({
+    fetch: async () => {
+      throw fakeAbort;
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      callOpenRouterStreaming(
+        "key",
+        "timed_out_model",
+        [{ role: "user", content: "hello" }],
+        {},
+        {},
+        {},
+        deps,
+      ),
+    /OpenRouter stream timeout/i,
+  );
+});
+
+test("callOpenRouterNonStreaming normalizes non-Error AbortError shapes (DOMException-like)", async () => {
+  const fakeAbort: { name: string; message: string } = {
+    name: "AbortError",
+    message: "This operation was aborted",
+  };
+  const deps = createOpenRouterNonStreamingDepsForTest({
+    fetch: async () => {
+      throw fakeAbort;
+    },
+  });
+
+  await assert.rejects(
+    () =>
+      callOpenRouterNonStreaming(
+        "key",
+        "timed_out_model",
+        [{ role: "user", content: "hello" }],
+        {},
+        {},
+        deps,
+      ),
+    /OpenRouter non-stream timeout/i,
+  );
+});

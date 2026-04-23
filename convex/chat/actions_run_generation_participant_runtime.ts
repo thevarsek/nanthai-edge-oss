@@ -17,6 +17,7 @@ import {
   hasNodeRequiredProfiles,
 } from "../tools/runtime_safety";
 import { patchDeferredProgressiveToolErrors } from "../tools/progressive_registry_shared";
+import { classifyTerminalErrorCode } from "./terminal_error";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -90,6 +91,10 @@ async function finalizeParticipantSetupFailure(
     status: "failed",
     error: errorMessage,
     userId: args.userId,
+    terminalErrorCode: classifyTerminalErrorCode({
+      status: "failed",
+      error: errorMessage,
+    }),
   });
 }
 

@@ -14,6 +14,8 @@ function buildMockCtx(overrides: {
   isPro?: boolean;
   existingMessages?: Record<string, unknown>[];
   originalAssistantParentMessageIds?: string[];
+  originalAssistantMessage?: Record<string, unknown>;
+  cachedModels?: Record<string, Record<string, unknown>>;
 } = {}) {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
@@ -24,6 +26,8 @@ function buildMockCtx(overrides: {
     isPro = false,
     existingMessages = [],
     originalAssistantParentMessageIds = ["msg_user_1"],
+    originalAssistantMessage = {},
+    cachedModels = {},
   } = overrides;
 
   const ctx = {
@@ -46,6 +50,7 @@ function buildMockCtx(overrides: {
             modelId: "openai/gpt-4o",
             parentMessageIds: originalAssistantParentMessageIds,
             status: "done",
+            ...originalAssistantMessage,
           };
         }
         if (id === "msg_user_1") {
@@ -92,6 +97,22 @@ function buildMockCtx(overrides: {
             withIndex: () => ({
               collect: async () => [],
             }),
+          };
+        }
+        if (table === "cachedModels") {
+          return {
+            withIndex: (_index: string, apply: (query: any) => any) => {
+              let selectedModelId = "";
+              apply({
+                eq: (_field: string, modelId: string) => {
+                  selectedModelId = modelId;
+                  return {};
+                },
+              });
+              return {
+                first: async () => cachedModels[selectedModelId] ?? null,
+              };
+            },
           };
         }
         throw new Error(`Unexpected table query: ${table}`);
@@ -374,6 +395,115 @@ test("retryMessageHandler stamps turn overrides on new assistant message", async
   assert.ok(assistantMsg);
   assert.deepEqual(assistantMsg.value.turnSkillOverrides, skillOv);
   assert.deepEqual(assistantMsg.value.turnIntegrationOverrides, intOv);
+});
+
+test("retryMessageHandler replays stored retry contracts for plain retry", async () => {
+  const storedSkillOverrides = [{ skillId: "skill_saved" as any, state: "always" as const }];
+  const storedIntegrationOverrides = [{ integrationId: "gmail", enabled: true }];
+  const { ctx, scheduled, inserts } = buildMockCtx({
+    originalAssistantMessage: {
+      retryContract: {
+        participants: [{
+          modelId: "openai/gpt-4o",
+          systemPrompt: "Keep it terse",
+          temperature: 0.2,
+          maxTokens: 512,
+          includeReasoning: true,
+          reasoningEffort: "high",
+        }],
+        searchMode: "none",
+        turnSkillOverrides: storedSkillOverrides,
+        turnIntegrationOverrides: storedIntegrationOverrides,
+        videoConfig: {
+          duration: 5,
+          resolution: "720p",
+        },
+      },
+    },
+  });
+
+  await retryMessageHandler(ctx, {
+    messageId: "msg_assist_1",
+  } as any);
+
+  const assistantMsg = inserts.find(
+    (i) => i.table === "messages" && i.value.role === "assistant",
+  );
+  assert.ok(assistantMsg);
+  assert.deepEqual(assistantMsg.value.turnSkillOverrides, storedSkillOverrides);
+  assert.deepEqual(assistantMsg.value.turnIntegrationOverrides, storedIntegrationOverrides);
+
+  const genCall = scheduled.find((s) => s.args.assistantMessageIds);
+  assert.ok(genCall);
+  const participants = genCall.args.participants as Array<Record<string, unknown>>;
+  assert.deepEqual(genCall.args.turnSkillOverrides, storedSkillOverrides);
+  assert.deepEqual(genCall.args.turnIntegrationOverrides, storedIntegrationOverrides);
+  assert.deepEqual(genCall.args.videoConfig, {
+    duration: 5,
+    resolution: "720p",
+  });
+  assert.equal(participants[0]?.systemPrompt, "Keep it terse");
+  assert.equal(participants[0]?.temperature, 0.2);
+  assert.equal(participants[0]?.maxTokens, 512);
+});
+
+test("retryMessageHandler merges stored participant settings with explicit model overrides", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    originalAssistantMessage: {
+      retryContract: {
+        participants: [{
+          modelId: "openai/gpt-4o",
+          systemPrompt: "Keep it terse",
+          temperature: 0.2,
+          maxTokens: 512,
+          includeReasoning: true,
+          reasoningEffort: "high",
+        }],
+        searchMode: "none",
+      },
+    },
+  });
+
+  await retryMessageHandler(ctx, {
+    messageId: "msg_assist_1",
+    participants: [{ modelId: "anthropic/claude-3.5-sonnet" }],
+  } as any);
+
+  const genCall = scheduled.find((s) => s.args.assistantMessageIds);
+  assert.ok(genCall);
+  const participants = genCall.args.participants as Array<Record<string, unknown>>;
+  assert.equal(participants[0]?.modelId, "anthropic/claude-3.5-sonnet");
+  assert.equal(participants[0]?.systemPrompt, "Keep it terse");
+  assert.equal(participants[0]?.temperature, 0.2);
+  assert.equal(participants[0]?.maxTokens, 512);
+  assert.equal(participants[0]?.includeReasoning, true);
+  assert.equal(participants[0]?.reasoningEffort, "high");
+});
+
+test("retryMessageHandler rejects incompatible explicit participants for stored retry contracts", async () => {
+  const { ctx } = buildMockCtx({
+    originalAssistantMessage: {
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-4o" }],
+        searchMode: "none",
+        enabledIntegrations: ["gmail"],
+      },
+    },
+    cachedModels: {
+      "openai/gpt-5.2": { supportsTools: false },
+    },
+  });
+
+  await assert.rejects(
+    () => retryMessageHandler(ctx, {
+      messageId: "msg_assist_1",
+      participants: [{ modelId: "openai/gpt-5.2" }],
+    } as any),
+    (error: any) => {
+      assert.equal(error?.data?.code, "RETRY_TOOL_CAPABLE_MODEL_REQUIRED");
+      return true;
+    },
+  );
 });
 
 test("retryMessageHandler rejects assistant messages without a source user message", async () => {
