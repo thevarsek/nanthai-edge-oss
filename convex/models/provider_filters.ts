@@ -1,4 +1,4 @@
-const EXCLUDED_OPENROUTER_PROVIDERS = new Set(["deepseek", "x-ai"]);
+const EXCLUDED_OPENROUTER_PROVIDERS = new Set<string>();
 
 export function isExcludedOpenRouterProvider(
   provider: string | undefined | null,

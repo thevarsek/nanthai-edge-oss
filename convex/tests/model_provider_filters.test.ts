@@ -6,15 +6,15 @@ import {
 } from "../models/provider_filters";
 
 describe("model provider filters", () => {
-  it("flags excluded providers case-insensitively", () => {
-    assert.equal(isExcludedOpenRouterProvider("deepseek"), true);
-    assert.equal(isExcludedOpenRouterProvider("x-ai"), true);
-    assert.equal(isExcludedOpenRouterProvider("X-AI"), true);
+  it("does not exclude deepseek or x-ai", () => {
+    assert.equal(isExcludedOpenRouterProvider("deepseek"), false);
+    assert.equal(isExcludedOpenRouterProvider("x-ai"), false);
+    assert.equal(isExcludedOpenRouterProvider("X-AI"), false);
     assert.equal(isExcludedOpenRouterProvider("openai"), false);
     assert.equal(isExcludedOpenRouterProvider(undefined), false);
   });
 
-  it("filters excluded providers from model lists", () => {
+  it("keeps deepseek and x-ai in model lists", () => {
     const models = [
       { provider: "openai", modelId: "openai/gpt-5" },
       { provider: "deepseek", modelId: "deepseek/chat" },
@@ -24,6 +24,8 @@ describe("model provider filters", () => {
 
     assert.deepEqual(filterExcludedOpenRouterProviders(models), [
       { provider: "openai", modelId: "openai/gpt-5" },
+      { provider: "deepseek", modelId: "deepseek/chat" },
+      { provider: "x-ai", modelId: "x-ai/grok-4" },
       { provider: "google", modelId: "google/gemini-2.5-pro" },
     ]);
   });
