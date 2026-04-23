@@ -198,7 +198,43 @@ export const catalogSchemaTables = {
         perVideoSecond: v.optional(v.string()),
         perVideoSecond1080p: v.optional(v.string()),
       })),
+      // Full raw pricing_skus map from /api/v1/videos/models, preserved
+      // verbatim. OpenRouter ships heterogeneous SKU keys across providers
+      // (e.g. `duration_seconds_with_audio_4k`, `text_to_video_duration_seconds_1080p`,
+      // `duration_seconds_720p`) that the narrow `pricingSkus` object above
+      // cannot represent. Clients that want resolution/audio-aware pricing
+      // read this map directly; the narrow object remains for back-compat.
+      pricingSkusMap: v.optional(v.record(v.string(), v.string())),
       allowedPassthroughParameters: v.optional(v.array(v.string())),
+      syncedAt: v.number(),
+    })),
+    // Image generation — marker + pricing hint for models whose output
+    // modality includes `image`. Presence of this object is also used by
+    // `pruneStaleModels` to skip rows managed by `image_sync.ts` (image-only
+    // models like FLUX/Sourceful/Seedream are not in the general
+    // /api/v1/models endpoint). Multimodal image models (Gemini, GPT-5 Image)
+    // are owned by main sync; they get their `pricePerImage` patched here but
+    // are NOT skipped by prune because they also appear in /api/v1/models.
+    imageCapabilities: v.optional(v.object({
+      // Per-image cost from OpenRouter `pricing.image` (dollars, not per 1M).
+      // Only present for a subset of providers; image-only models typically
+      // charge via completion `image_tokens` instead.
+      pricePerImage: v.optional(v.number()),
+      // Per-SKU image pricing from /api/v1/models/{id}/endpoints (the main
+      // /api/v1/models listing reports $0 for all image models — real pricing
+      // is only exposed on the per-model endpoints route). Strings because
+      // OpenRouter returns fractional dollar amounts as JSON strings.
+      //   `imageToken`  — $/image-completion-token (what usage.image_tokens counts)
+      //   `imageOutput` — $/image output unit (same value as imageToken for
+      //                   image-only models; differs for multimodal image models
+      //                   where it represents the per-image billing hint).
+      pricingSkus: v.optional(v.object({
+        imageToken: v.optional(v.string()),
+        imageOutput: v.optional(v.string()),
+      })),
+      // True if this row was created by image_sync (i.e. not in the general
+      // /api/v1/models endpoint). Used by pruneStaleModels to skip.
+      managedByImageSync: v.boolean(),
       syncedAt: v.number(),
     })),
     // ZDR (Zero Data Retention) — true if model has a ZDR endpoint on OpenRouter

@@ -8,9 +8,9 @@ import {
   X, Sparkles, Zap, DollarSign, Code2, Brain, Image as ImageIcon, Paintbrush, Eye, Wrench,
   Mic, FileText, Video, Gift, Check, ChevronRight,
   GraduationCap, MessageSquare, PenTool, Languages, Star, Bolt,
-  ArrowLeft,
+  ArrowLeft, ExternalLink,
 } from "lucide-react";
-import { formatPrice, formatVideoPrice } from "@/components/shared/ModelPickerHelpers.utils";
+import { formatPrice, formatVideoPrice, formatImagePrice } from "@/components/shared/ModelPickerHelpers.utils";
 import { ModelSettingsEditor } from "@/components/shared/ModelSettingsEditor";
 
 // ─── Types (shared with ModelPicker.tsx) ─────────────────────────────────────
@@ -41,6 +41,11 @@ export interface ModelSummary {
     perVideoTokenNoAudio?: number;
     perVideoSecond?: number;
     perVideoSecond1080p?: number;
+  };
+  /** Image-specific pricing (image-gen models charge per image instead of per token). */
+  imagePricing?: {
+    perImageToken?: number;
+    perImageOutput?: number;
   };
   derivedGuidance?: {
     labels?: string[];
@@ -213,9 +218,20 @@ export function ModelInfoSheet({
 
         {/* Description */}
         {model.description && (
-          <div className="space-y-1">
+          <div className="space-y-2">
             <h3 className="text-xs font-medium text-muted uppercase tracking-wide">Description</h3>
             <p className="text-sm text-foreground/80 leading-relaxed">{model.description}</p>
+            {model.modelId && (
+              <a
+                href={`https://openrouter.ai/${encodeURI(model.modelId)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
+              >
+                Read more on OpenRouter
+                <ExternalLink size={12} />
+              </a>
+            )}
           </div>
         )}
 
@@ -255,6 +271,29 @@ export function ModelInfoSheet({
               )}
             </div>
           ) : model.supportsVideo ? (
+            <p className="text-xs text-muted italic">Pricing not yet published by provider</p>
+          ) : model.imagePricing && (model.imagePricing.perImageOutput != null || model.imagePricing.perImageToken != null) ? (
+            <div className="rounded-xl bg-surface-2 divide-y divide-border/50">
+              {model.imagePricing.perImageOutput != null && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">Per megapixel</span>
+                  <span className="text-xs font-mono">{formatImagePrice(model.imagePricing.perImageOutput)}</span>
+                </div>
+              )}
+              {(model.inputPricePer1M ?? 0) > 0 && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">{t("guidance_input_price")}</span>
+                  <span className="text-xs font-mono">{formatPrice(model.inputPricePer1M)}</span>
+                </div>
+              )}
+              {(model.outputPricePer1M ?? 0) > 0 && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-xs text-muted">{t("guidance_output_price")}</span>
+                  <span className="text-xs font-mono">{formatPrice(model.outputPricePer1M)}</span>
+                </div>
+              )}
+            </div>
+          ) : model.supportsImages ? (
             <p className="text-xs text-muted italic">Pricing not yet published by provider</p>
           ) : (
             <div className="rounded-xl bg-surface-2 divide-y divide-border/50">

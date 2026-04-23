@@ -16,6 +16,7 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "consolidateMemories",
     "refreshModelCatalog",
     "syncArtificialAnalysis",
+    "syncImageModels",
     "syncOpenRouterUseCases",
     "syncVideoModels",
   ]);

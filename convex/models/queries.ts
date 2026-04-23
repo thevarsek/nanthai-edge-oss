@@ -113,6 +113,29 @@ export const listModelSummaries = query({
                 : undefined,
             }
           : undefined,
+        // Raw OpenRouter pricing_skus map (keys vary by provider — e.g.
+        // `duration_seconds_with_audio_4k`, `text_to_video_duration_seconds_1080p`).
+        // Clients that need resolution/audio-aware pricing read this directly;
+        // the narrow `videoPricing` summary above is a best-effort condensation.
+        videoPricingSkus: m.videoCapabilities?.pricingSkusMap,
+        // Image pricing hint — some multimodal providers (Gemini Image) bill
+        // per image instead of (or in addition to) token-based completion
+        // pricing. Undefined for image-only models unless populated via the
+        // OpenRouter `/endpoints` pass below.
+        pricePerImage: m.imageCapabilities?.pricePerImage,
+        // Image SKU pricing from OpenRouter's /api/v1/models/{id}/endpoints.
+        // These are the real per-image-token / per-image-output rates; the
+        // listing endpoint reports $0 for image-only models.
+        imagePricing: m.imageCapabilities?.pricingSkus
+          ? {
+              perImageToken: m.imageCapabilities.pricingSkus.imageToken
+                ? parseFloat(m.imageCapabilities.pricingSkus.imageToken)
+                : undefined,
+              perImageOutput: m.imageCapabilities.pricingSkus.imageOutput
+                ? parseFloat(m.imageCapabilities.pricingSkus.imageOutput)
+                : undefined,
+            }
+          : undefined,
         // Guidance data (optional)
         derivedGuidance: m.derivedGuidance
           ? {

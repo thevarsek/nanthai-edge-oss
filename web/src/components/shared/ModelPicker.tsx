@@ -14,7 +14,7 @@ import {
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { ProviderLogo } from "./ProviderLogo";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "./ModelPickerHelpers";
-import { formatPrice } from "./ModelPickerHelpers.utils";
+import { formatPrice, formatVideoPrice, formatImagePrice } from "./ModelPickerHelpers.utils";
 import {
   type SortKey, type CapFilter, SORT_KEYS, CAP_FILTERS,
   sortMetric, filterAndSortModels, toggleCapFilter,
@@ -74,6 +74,26 @@ function GuidanceTag({ label }: { label: string }) {
 
 // ─── Model row ───────────────────────────────────────────────────────────────
 
+/**
+ * Pick the most meaningful price unit for a model when displayed in the
+ * picker row's sort-indicator. Image-gen models bill per image, video-gen
+ * per second or per-M video tokens, everything else per-1M text tokens.
+ */
+function formatListRowPrice(model: ModelSummary, fallbackPer1M: number): string {
+  if (model.supportsVideo && model.videoPricing) {
+    if (model.videoPricing.perVideoSecond != null) {
+      return formatVideoPrice(model.videoPricing.perVideoSecond, "sec");
+    }
+    if (model.videoPricing.perVideoToken != null) {
+      return formatVideoPrice(model.videoPricing.perVideoToken, "tok");
+    }
+  }
+  if (model.supportsImages && model.imagePricing?.perImageOutput != null) {
+    return formatImagePrice(model.imagePricing.perImageOutput);
+  }
+  return formatPrice(fallbackPer1M);
+}
+
 function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   model: ModelSummary; selected: boolean; sortKey: SortKey;
   onSelect: () => void; onInfo: () => void; zdrEnforced?: boolean;
@@ -118,7 +138,7 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
         <span className="text-[10px] text-muted font-mono tabular-nums shrink-0">{Math.round(score * 100)}</span>
       )}
       {score != null && sortKey === "price" && (
-        <span className="text-[10px] text-muted font-mono shrink-0">{formatPrice(score)}</span>
+        <span className="text-[10px] text-muted font-mono shrink-0">{formatListRowPrice(model, score)}</span>
       )}
 
       <button onClick={(e) => { e.stopPropagation(); onInfo(); }} className="p-1 rounded-full hover:bg-surface-2 text-muted hover:text-foreground transition-colors shrink-0" title={t("guidance_model_info")}>

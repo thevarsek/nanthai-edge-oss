@@ -53,6 +53,8 @@ const slugToAsset: Record<string, string> = {
   openrouter: "provider_openrouter",
   "z-ai": "provider_z_ai",
   switchpoint: "provider_switchpoint",
+  sourceful: "provider_sourceful",
+  "black-forest-labs": "provider_black_forest_labs",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────

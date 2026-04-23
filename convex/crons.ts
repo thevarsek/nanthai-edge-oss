@@ -80,6 +80,16 @@ crons.interval(
   internal.models.video_sync.syncVideoModels,
 );
 
+// Sync image-generation-capable models every 4 hours. The main
+// /api/v1/models endpoint silently omits image-only models (FLUX, Sourceful,
+// Seedream, etc.); this job targets ?output_modalities=image to pick them up.
+// See convex/models/image_sync.ts for full rationale.
+crons.interval(
+  "syncImageModels",
+  { hours: 4 },
+  internal.models.image_sync.syncImageModels,
+);
+
 // Slack MCP schema drift check — weekly on Monday at 6:00 UTC.
 // Compares Slack's live tools/list response to our committed baseline in
 // convex/tools/slack/mcp_tools_snapshot.ts and logs warnings on drift.

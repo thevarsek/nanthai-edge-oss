@@ -6,12 +6,41 @@ export function formatPrice(per1M?: number): string {
   return `$${per1M.toFixed(2)}/M`;
 }
 
-/** Format video pricing — per-second or per-token, depending on what's available. */
+/**
+ * Format video pricing — per-second or per-token, depending on what's
+ * available. Per-token values from OpenRouter are raw per-token dollars
+ * (e.g. 0.0000024) which are unreadable; we scale to per-1M tokens so
+ * the number matches the mental model used for text pricing.
+ */
 export function formatVideoPrice(price?: number, unit?: string): string {
   if (price == null) return "—";
   if (price === 0) return "$0.00";
+  if (unit === "tok") {
+    // Treat video-token prices like text pricing: scale to per-1M tokens.
+    return formatPrice(price * 1_000_000).replace("/M", "/M tok");
+  }
   if (price < 0.0001) return `$${price.toExponential(1)}/${unit ?? "unit"}`;
   if (price < 0.01) return `$${price.toFixed(6)}/${unit ?? "unit"}`;
   if (price < 1) return `$${price.toFixed(4)}/${unit ?? "unit"}`;
   return `$${price.toFixed(2)}/${unit ?? "unit"}`;
+}
+
+/**
+ * Format image-gen pricing as dollars-per-megapixel.
+ *
+ * OpenRouter's `image_output` SKU is dollars-per-image-token, where
+ * 1 megapixel = 4096 image tokens across providers (BFL, Google, OpenAI).
+ * This matches how providers advertise pricing (e.g. FLUX.2 = $0.06/MP,
+ * Gemini 3 Pro Image ~ $0.49/MP). Displaying per-token would be opaque
+ * (e.g. `$0.0000146/tok`); per-megapixel is the unit users recognize.
+ */
+const IMAGE_TOKENS_PER_MEGAPIXEL = 4096;
+
+export function formatImagePrice(perImageToken?: number): string {
+  if (perImageToken == null) return "—";
+  const perMP = perImageToken * IMAGE_TOKENS_PER_MEGAPIXEL;
+  if (perMP === 0) return "$0.00/MP";
+  if (perMP < 0.01) return `$${perMP.toFixed(4)}/MP`;
+  if (perMP < 1) return `$${perMP.toFixed(3)}/MP`;
+  return `$${perMP.toFixed(2)}/MP`;
 }

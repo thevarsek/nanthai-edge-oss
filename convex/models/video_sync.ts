@@ -39,6 +39,94 @@ function extractProvider(modelId: string): string {
   return slash > 0 ? modelId.substring(0, slash) : "unknown";
 }
 
+/**
+ * Condense the heterogeneous OpenRouter `pricing_skus` map into the narrow
+ * 4-key shape our existing iOS/Android/web DTOs speak. This is a best-effort
+ * mapping — clients that need exact per-resolution/per-audio pricing must
+ * read `pricingSkusMap` instead.
+ *
+ * Legacy slots (preserved for DTO back-compat):
+ *   videoTokens             — per-video-token "with audio" rate (preferred)
+ *   videoTokensWithoutAudio — per-video-token "no audio" rate
+ *   perVideoSecond          — lowest-resolution duration rate we can find
+ *   perVideoSecond1080p     — 1080p duration rate (with audio preferred)
+ *
+ * Rules (first match wins per slot):
+ *   videoTokens:
+ *     1. pricing_skus.video_tokens (seedance)
+ *     2. duration_seconds_with_audio (veo-3.1 base)
+ *     3. duration_seconds (kling, hailuo, wan-2.7)
+ *     4. duration_seconds_720p (sora-2-pro fallback)
+ *     5. text_to_video_duration_seconds_720p (wan-2.6 fallback)
+ *   videoTokensWithoutAudio:
+ *     1. pricing_skus.video_tokens_without_audio (seedance)
+ *     2. duration_seconds_without_audio (veo-3.1)
+ *   perVideoSecond:
+ *     1. pricing_skus.per_video_second (legacy; no longer emitted)
+ *     2. duration_seconds_720p (sora-2-pro, veo-3.1 720p with-audio)
+ *     3. duration_seconds_with_audio_720p (veo-3.1 720p with-audio)
+ *     4. text_to_video_duration_seconds_720p (wan-2.6)
+ *     5. duration_seconds (kling/hailuo/wan-2.7)
+ *   perVideoSecond1080p:
+ *     1. pricing_skus.per_video_second_1080p (legacy)
+ *     2. duration_seconds_1080p (sora-2-pro)
+ *     3. duration_seconds_with_audio_4k (veo-3.1 4k with-audio — closest to 1080p+)
+ *     4. text_to_video_duration_seconds_1080p (wan-2.6)
+ */
+function deriveLegacyVideoPricingSkus(
+  raw: Record<string, string> | undefined,
+): {
+  videoTokens?: string;
+  videoTokensWithoutAudio?: string;
+  perVideoSecond?: string;
+  perVideoSecond1080p?: string;
+} | undefined {
+  if (!raw) return undefined;
+  const pick = (...keys: string[]): string | undefined => {
+    for (const k of keys) {
+      const v = raw[k];
+      if (v !== undefined && v !== null && v !== "") return v;
+    }
+    return undefined;
+  };
+
+  const derived = {
+    videoTokens: pick(
+      "video_tokens",
+      "duration_seconds_with_audio",
+      "duration_seconds",
+      "duration_seconds_720p",
+      "text_to_video_duration_seconds_720p",
+    ),
+    videoTokensWithoutAudio: pick(
+      "video_tokens_without_audio",
+      "duration_seconds_without_audio",
+    ),
+    perVideoSecond: pick(
+      "per_video_second",
+      "duration_seconds_with_audio_720p",
+      "duration_seconds_720p",
+      "text_to_video_duration_seconds_720p",
+      "duration_seconds",
+    ),
+    perVideoSecond1080p: pick(
+      "per_video_second_1080p",
+      "duration_seconds_1080p",
+      "duration_seconds_with_audio_4k",
+      "text_to_video_duration_seconds_1080p",
+    ),
+  };
+
+  // Only return the object when at least one slot was populated — otherwise
+  // downstream code treats an all-undefined object as "has pricing" incorrectly.
+  const anyPresent =
+    derived.videoTokens !== undefined ||
+    derived.videoTokensWithoutAudio !== undefined ||
+    derived.perVideoSecond !== undefined ||
+    derived.perVideoSecond1080p !== undefined;
+  return anyPresent ? derived : undefined;
+}
+
 // -- Sync action --------------------------------------------------------------
 
 export const syncVideoModels = internalAction({
@@ -94,14 +182,8 @@ export const syncVideoModels = internalAction({
               supportedSizes: m.supported_sizes ?? [],
               generateAudio: m.generate_audio ?? false,
               seed: m.seed ?? false,
-              pricingSkus: m.pricing_skus
-                ? {
-                    videoTokens: m.pricing_skus.video_tokens,
-                    videoTokensWithoutAudio: m.pricing_skus.video_tokens_without_audio,
-                    perVideoSecond: m.pricing_skus.per_video_second ?? m.pricing_skus.duration_seconds,
-                    perVideoSecond1080p: m.pricing_skus.per_video_second_1080p ?? m.pricing_skus.duration_seconds_without_audio,
-                  }
-                : undefined,
+              pricingSkus: deriveLegacyVideoPricingSkus(m.pricing_skus),
+              pricingSkusMap: m.pricing_skus,
               allowedPassthroughParameters: m.allowed_passthrough_parameters,
               syncedAt: Date.now(),
             },
@@ -136,6 +218,7 @@ const videoCapabilitiesValidator = v.object({
       perVideoSecond1080p: v.optional(v.string()),
     }),
   ),
+  pricingSkusMap: v.optional(v.record(v.string(), v.string())),
   allowedPassthroughParameters: v.optional(v.array(v.string())),
   syncedAt: v.number(),
 });

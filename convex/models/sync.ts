@@ -329,16 +329,20 @@ export const pruneStaleModels = internalMutation({
   handler: async (ctx, args) => {
     const activeSet = new Set(args.activeModelIds);
     // Scan the full table and delete any model not in the active set.
-    // Skip video-only models (managed by video_sync.ts) — they don't appear
-    // in the general /api/v1/models endpoint and have videoCapabilities set.
+    // Skip rows owned by secondary syncs:
+    //   - video-only models (video_sync.ts) — `videoCapabilities` present
+    //   - image-only models (image_sync.ts) — `imageCapabilities.managedByImageSync`
+    // Both categories are absent from the general /api/v1/models endpoint
+    // and would otherwise get deleted on every main sync.
     // cachedModels is typically ~300-400 rows, well within a single mutation.
     const allModels = await ctx.db.query("cachedModels").collect();
     let deleted = 0;
     for (const model of allModels) {
-      if (!activeSet.has(model.modelId) && !model.videoCapabilities) {
-        await ctx.db.delete(model._id);
-        deleted++;
-      }
+      if (activeSet.has(model.modelId)) continue;
+      if (model.videoCapabilities) continue;
+      if (model.imageCapabilities?.managedByImageSync) continue;
+      await ctx.db.delete(model._id);
+      deleted++;
     }
     if (deleted > 0) {
       console.log(`Pruned ${deleted} stale models from cachedModels`);

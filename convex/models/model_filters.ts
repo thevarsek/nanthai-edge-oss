@@ -54,6 +54,8 @@ export function isEligibleModel(model: {
   contextLength?: number;
   outputPricePer1M?: number;
   supportsVideo?: boolean;
+  supportsImages?: boolean;
+  architecture?: { modality?: string } | undefined;
 }): boolean {
   // Provider exclusion is handled separately (filterExcludedOpenRouterProviders)
   // because it operates on the array level. This function covers the remaining
@@ -63,6 +65,14 @@ export function isEligibleModel(model: {
   // window or token pricing — they charge per video second/token. Exempt them
   // from both context-length and price filters.
   if (model.supportsVideo) return true;
+
+  // Image-output models (FLUX, Sourceful, Seedream, Gemini Image, GPT-5 Image)
+  // also have non-standard economics: tiny context windows (4K–67K) and
+  // sometimes high "output" $/1M because completion tokens represent image
+  // tokens, not text. Exempt any model whose output modality includes
+  // `image` from both context-length and price filters.
+  const outputModality = (model.architecture?.modality ?? "").split("->")[1] ?? "";
+  if (model.supportsImages && outputModality.includes("image")) return true;
 
   return (
     meetsMinContext(model.contextLength, model.provider ?? undefined) &&
