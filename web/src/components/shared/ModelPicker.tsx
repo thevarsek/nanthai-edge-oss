@@ -14,7 +14,7 @@ import {
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { ProviderLogo } from "./ProviderLogo";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "./ModelPickerHelpers";
-import { formatPrice, formatVideoPrice, formatImagePrice } from "./ModelPickerHelpers.utils";
+import { listRowPriceLabel } from "./ModelPickerHelpers.utils";
 import {
   type SortKey, type CapFilter, SORT_KEYS, CAP_FILTERS,
   sortMetric, filterAndSortModels, toggleCapFilter,
@@ -74,26 +74,6 @@ function GuidanceTag({ label }: { label: string }) {
 
 // ─── Model row ───────────────────────────────────────────────────────────────
 
-/**
- * Pick the most meaningful price unit for a model when displayed in the
- * picker row's sort-indicator. Image-gen models bill per image, video-gen
- * per second or per-M video tokens, everything else per-1M text tokens.
- */
-function formatListRowPrice(model: ModelSummary, fallbackPer1M: number): string {
-  if (model.supportsVideo && model.videoPricing) {
-    if (model.videoPricing.perVideoSecond != null) {
-      return formatVideoPrice(model.videoPricing.perVideoSecond, "sec");
-    }
-    if (model.videoPricing.perVideoToken != null) {
-      return formatVideoPrice(model.videoPricing.perVideoToken, "tok");
-    }
-  }
-  if (model.supportsImages && model.imagePricing?.perImageOutput != null) {
-    return formatImagePrice(model.imagePricing.perImageOutput);
-  }
-  return formatPrice(fallbackPer1M);
-}
-
 function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   model: ModelSummary; selected: boolean; sortKey: SortKey;
   onSelect: () => void; onInfo: () => void; zdrEnforced?: boolean;
@@ -103,6 +83,12 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   const score = sortMetric(model, sortKey);
   const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
   const primaryLabel = model.derivedGuidance?.primaryLabel;
+
+  // Always show a price label for non-free models so users see real cost at a
+  // glance, matching iOS ModelCompatibilitySummaryView and Android
+  // listRowPriceLabel. For image/video-gen we surface per-MP / per-sec / per-M
+  // tok instead of the text per-1M (which is $0 for those models).
+  const priceLabel = listRowPriceLabel(model);
 
   return (
     <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isZdrDisabled ? "opacity-45 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"} ${selected ? "bg-primary/8" : ""}`} onClick={isZdrDisabled ? undefined : onSelect}>
@@ -133,12 +119,14 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
         {isZdrDisabled && <p className="text-[10px] text-muted mt-0.5">{t("zdr_model_not_supported")}</p>}
       </div>
 
-      {/* Sort score indicator */}
+      {/* Guidance-sort score badge (kept only for guidance sorts, alongside
+          the always-on price label below). */}
       {score != null && isGuidance && score > 0 && (
         <span className="text-[10px] text-muted font-mono tabular-nums shrink-0">{Math.round(score * 100)}</span>
       )}
-      {score != null && sortKey === "price" && (
-        <span className="text-[10px] text-muted font-mono shrink-0">{formatListRowPrice(model, score)}</span>
+      {/* Always-on price label — parity with iOS / Android list rows. */}
+      {priceLabel && (
+        <span className="text-[10px] text-muted font-mono shrink-0">{priceLabel}</span>
       )}
 
       <button onClick={(e) => { e.stopPropagation(); onInfo(); }} className="p-1 rounded-full hover:bg-surface-2 text-muted hover:text-foreground transition-colors shrink-0" title={t("guidance_model_info")}>

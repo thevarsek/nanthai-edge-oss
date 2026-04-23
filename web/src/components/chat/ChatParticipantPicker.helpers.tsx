@@ -11,7 +11,7 @@ import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { sortMetric, type SortKey } from "@/components/shared/ModelPickerShared";
 import { type ModelSummary } from "@/components/shared/ModelPickerHelpers";
-import { formatPrice } from "@/components/shared/ModelPickerHelpers.utils";
+import { listRowPriceLabel } from "@/components/shared/ModelPickerHelpers.utils";
 import type { ParticipantEntry } from "@/hooks/useParticipants";
 import type { Id } from "@convex/_generated/dataModel";
 import { getModelDisplayName } from "@/lib/modelDisplay";
@@ -273,6 +273,8 @@ export function ParticipantModelRow({
   const isGoogleBlocked = googleIntegrationsActive === true && (!model.hasZdrEndpoint || !GOOGLE_ALLOWED_PROVIDERS.has((model.provider ?? "").toLowerCase()));
   const isDisabled = disabled || isZdrDisabled || isGoogleBlocked;
   const disabledReason = isZdrDisabled ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
+  // Always-on price label — parity with iOS / Android and with ModelPicker row.
+  const priceLabel = listRowPriceLabel(model);
 
   return (
     <div
@@ -308,12 +310,12 @@ export function ParticipantModelRow({
         {disabledReason && <p className="text-[10px] text-muted mt-0.5">{disabledReason}</p>}
       </div>
 
-      {/* Sort score */}
+      {/* Guidance-sort score badge — kept alongside always-on price label. */}
       {score != null && isGuidance && score > 0 && (
         <span className="text-[10px] text-muted font-mono tabular-nums shrink-0">{Math.round(score * 100)}</span>
       )}
-      {score != null && sortKey === "price" && (
-        <span className="text-[10px] text-muted font-mono shrink-0">{formatPrice(score)}</span>
+      {priceLabel && (
+        <span className="text-[10px] text-muted font-mono shrink-0">{priceLabel}</span>
       )}
 
       <button

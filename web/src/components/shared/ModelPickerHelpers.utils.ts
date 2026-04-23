@@ -44,3 +44,39 @@ export function formatImagePrice(perImageToken?: number): string {
   if (perMP < 1) return `$${perMP.toFixed(3)}/MP`;
   return `$${perMP.toFixed(2)}/MP`;
 }
+
+/**
+ * Returns a compact price label for a model picker list row, or null when
+ * the model is free (the Free capability chip already communicates that) or
+ * has no pricing data. Mirrors iOS `ModelCompatibilitySummaryView` and
+ * Android `listRowPriceLabel` so the three clients surface cost identically:
+ *
+ *   - Video models: per-second when available, else per-1M video tokens
+ *   - Image-gen models: per-megapixel (4096 image tokens per MP)
+ *   - Text models: combined prompt+completion per-1M tokens
+ */
+export function listRowPriceLabel(model: {
+  isFree?: boolean;
+  modelId: string;
+  supportsVideo?: boolean;
+  videoPricing?: { perVideoSecond?: number; perVideoToken?: number };
+  supportsImages?: boolean;
+  imagePricing?: { perImageOutput?: number };
+  inputPricePer1M?: number;
+  outputPricePer1M?: number;
+}): string | null {
+  if (model.isFree ?? model.modelId.endsWith(":free")) return null;
+  if (model.supportsVideo && model.videoPricing) {
+    if (model.videoPricing.perVideoSecond != null && model.videoPricing.perVideoSecond > 0) {
+      return formatVideoPrice(model.videoPricing.perVideoSecond, "sec");
+    }
+    if (model.videoPricing.perVideoToken != null && model.videoPricing.perVideoToken > 0) {
+      return formatVideoPrice(model.videoPricing.perVideoToken, "tok");
+    }
+  }
+  if (model.supportsImages && model.imagePricing?.perImageOutput != null && model.imagePricing.perImageOutput > 0) {
+    return formatImagePrice(model.imagePricing.perImageOutput);
+  }
+  const combined = (model.inputPricePer1M ?? 0) + (model.outputPricePer1M ?? 0);
+  return combined > 0 ? formatPrice(combined) : null;
+}
