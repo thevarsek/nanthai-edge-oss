@@ -1,6 +1,6 @@
 # Project Structure
 
-> Complete project directory tree for NanthAI Edge (post-M30 plus 2026-04 TTFT/memory-cache work — iOS/Android/Convex/Web).
+> Complete project directory tree for NanthAI Edge (post-M31 plus PR #78 retry semantics overhaul — iOS/Android/Convex/Web).
 > SwiftData models removed. Convex backend at repo root. `messageChunks` table removed.
 
 ```
@@ -11,7 +11,7 @@ nanthai-edge/                              # Repository root
 │   ├── schema_tables_catalog.ts            # Catalog table definitions (9 tables incl. skills, messageQueryEmbeddings, messageMemoryContexts)
 │   ├── schema_tables_user.ts               # User table definitions (14 tables incl. purchaseEntitlements, scheduledJobs, jobRuns, userSecrets, deviceTokens, favorites)
 │   ├── schema_tables_runtime.ts            # Runtime/capability tables (4 tables: userCapabilities, sandboxSessions, sandboxArtifacts, sandboxEvents)
-│   ├── schema_validators.ts                # Shared validators (scheduledJobStatus, scheduledJobRecurrence, jobRunStatus, chatSource, scheduledJobStep, memoryRetrievalMode, memoryScopeType, memorySourceType, subagent statuses, skillScope, skillOrigin, skillVisibility, skillLockState, skillStatus, skillRuntimeMode, skillCompilationStatus)
+│   ├── schema_validators.ts                # Shared validators (scheduledJobStatus, scheduledJobRecurrence, jobRunStatus, chatSource, scheduledJobStep, memoryRetrievalMode, memoryScopeType, memorySourceType, subagent statuses, skillScope, skillOrigin, skillVisibility, skillLockState, skillStatus, skillRuntimeMode, skillCompilationStatus, retryContract, retryParticipantSnapshot, retrySearchMode, retryVideoConfig, terminalErrorCode)
 │   ├── convex.config.ts                    # Convex project config
 │   ├── auth.config.ts                      # Clerk JWT auth config
 │   ├── crons.ts                            # Scheduled jobs — 9 crons (model sync 4h, AA daily 2 UTC, use-cases 6h, stale jobs 15m, memory consolidation daily 3 UTC, stale search phases daily 4 UTC, old job runs daily 5 UTC, markRuntimeCleanupCandidates hourly, cleanupRuntimeSandboxes daily 6 UTC)
@@ -75,7 +75,9 @@ nanthai-edge/                              # Repository root
 │   │   ├── audio_actions.ts               # TTS generation action — gpt-audio-mini via OpenRouter (M20)
 │   │   ├── audio_public_handlers.ts       # Public mutation/query handlers for audio (M20)
 │   │   ├── audio_shared.ts                # Audio constants, PCM→WAV encoder, voice helpers, Lyria model IDs, MP3 frame parser (M20/M26)
-│   │   └── audio_trigger.ts               # Auto-audio trigger wired into generation completion (M20)
+│   │   ├── audio_trigger.ts               # Auto-audio trigger wired into generation completion (M20)
+│   │   ├── retry_contract.ts              # RetryContract types + buildRetryContract() / cloneRetryContract() helpers (PR #78)
+│   │   └── terminal_error.ts              # TerminalErrorCode type + classifyTerminalErrorCode() (PR #78)
 │   ├── tools/                              # Tool infrastructure (M10/M14/M18/M19)
 │   │   ├── index.ts                        # buildToolRegistry() — shared builder for all entry points
 │   │   ├── registry.ts                     # createTool() factory + ToolRegistry class

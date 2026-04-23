@@ -11,10 +11,10 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
 | `chats` | Conversations | title, userId, folderId, activeBranchLeafId, mode (`chatMode` validator: `"chat"` / `"ideascape"`), isPinned, pinnedAt, source (M13), sourceJobId (M13), sourceJobName (M13), subagentOverride, temperatureOverride, maxTokensOverride, includeReasoningOverride, reasoningEffortOverride, webSearchOverride, searchModeOverride, searchComplexityOverride, skillOverrides (M30), integrationOverrides (M30), autoAudioResponseOverride (M20). `activeBranchLeafId` remains the only persisted branch-selection field; per-fork pill switching is resolved canonically by `chat/manage:switchBranchAtFork`. |
-| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (per-message snapshot), turnSkillOverrides (M30), turnIntegrationOverrides (M30), loadedSkillIds (M30), usedIntegrationIds (M30), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20), videoUrls (M29), hasVideo (M29). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
+| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (per-message snapshot), turnSkillOverrides (M30), turnIntegrationOverrides (M30), loadedSkillIds (M30), usedIntegrationIds (M30), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20), videoUrls (M29), hasVideo (M29), retryContract (PR #78 — full participant/config snapshot stored at send time for retry use), terminalErrorCode (PR #78 — canonical failure reason: `stream_timeout` / `provider_error` / `cancelled_by_retry` / `cancelled_by_user` / `unknown_error`). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
 | `streamingMessages` | Active streaming overlay rows | messageId, chatId, content, reasoning, status, toolCalls, createdAt, updatedAt. Written by `StreamWriter` during generation so live token patches avoid invalidating heavy `listMessages` subscriptions. |
 | `chatParticipants` | Models/personas in a chat | chatId, modelId, personaId, sortOrder, personaName, personaEmoji, personaAvatarImageUrl, createdAt |
-| `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed) |
+| `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed), terminalErrorCode (PR #78 — canonical failure code on failed jobs) |
 | `generationContinuations` | Durable generation checkpoints | chatId, messageId, jobId, userId, status (`waiting`/`running`/`completed`/`cancelled`), participantSnapshot, groupSnapshot, requestMessages, usage, toolCalls, toolResults, activeProfiles, compactionCount, continuationCount, partialContent, partialReasoning, scheduledAt, scheduledFunctionId, claimedAt, leaseExpiresAt. Indexes: `by_job`, `by_status`, `by_chat`. |
 | `autonomousSessions` | Group chat orchestration | chatId, status, cycleCount, maxCycles |
 | `subagentBatches` | Parent delegation batches | parentMessageId, parentJobId, status, tool-call round metadata, child counters, params snapshot |
@@ -49,8 +49,8 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `sandboxSessions` | Active Vercel runtime session tracking for sandbox-backed tools. Sessions are keyed by `chatId`, `userId`, and runtime `environment` (`python` / `node`). | userId, chatId, environment, providerSandboxId, provider, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
 | `sandboxArtifacts` | Runtime artifact bookkeeping for files exported from sandbox-backed tools into durable storage. | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
 | `sandboxEvents` | Runtime observability trail for sandbox-backed workflows. | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
-| `videoJobs` | Async video generation tracking (M29) | userId, chatId, messageId, modelId, status (pending/processing/completed/failed), videoUrl, error, model, createdAt, completedAt. Indexes: `by_message`, `by_chat`, `by_user` |
-| `generatedMedia` | Generated media file metadata (M29) | userId, chatId, messageId, storageId, mediaType (video/audio/image), filename, mimeType, sizeBytes, sourceModel, duration, resolution, aspectRatio |
+| `videoJobs` | Async video generation tracking (M29) | userId (v.string()), chatId, messageId, model, status (pending/in_progress/completed/failed), error, createdAt. Indexes: `by_messageId`, `by_status_createdAt` |
+| `generatedMedia` | Generated media file metadata (M29) | userId, chatId, messageId, storageId, type (video/audio/image), mimeType, sizeBytes, model, durationSeconds |
 | `_scheduled_functions` | Convex system table | Scheduled function execution |
 
 ### Identity & Scoping
@@ -454,3 +454,27 @@ Table count: 37.
 ---
 
 *Last updated: 2026-04-13 — Post-M27 durable generation continuations (generationContinuations table, isJobCancelled → internalQuery, orphan continuation reaping). M27 Free Code Execution (png_image chart type, sandboxSessionId optional, sandboxRuntime removal, deprecated runtime tables). Table count: 37.*
+
+---
+
+## PR #78 — Retry Semantics Overhaul (2026-04-22)
+
+| Change | Details |
+|--------|---------|
+| **Added `retryContract` to `messages`** | `v.optional(retryContract)` — full participant/config snapshot stored on every assistant message at send time. Shape: `{ participants[], searchMode, searchComplexity?, enabledIntegrations?, subagentsEnabled?, turnSkillOverrides?, turnIntegrationOverrides?, videoConfig? }`. Used by all clients as the read-only source of truth for base participant config when retrying a message. Clients must not round-trip it as mutable state. |
+| **Added `terminalErrorCode` to `messages`** | `v.optional(terminalErrorCode)` — canonical failure reason stored on failed assistant messages. Values: `"stream_timeout"` / `"provider_error"` / `"cancelled_by_retry"` / `"cancelled_by_user"` / `"unknown_error"`. Replaces per-client string matching on `message.status`. |
+| **Added `terminalErrorCode` to `generationJobs`** | Same `terminalErrorCode` validator — stored on failed generation jobs for backend-level failure tracking and cleanup. |
+| **New module: `convex/chat/retry_contract.ts`** | Exports `RetryContract`, `RetryParticipantSnapshot`, `RetryVideoConfig`, `RetrySearchMode` types + `cloneRetryContract()` and `buildRetryContract()` helpers. Single source of truth for retry contract assembly. |
+| **New module: `convex/chat/terminal_error.ts`** | Exports `TerminalErrorCode` type and `classifyTerminalErrorCode()` function. Fixed a race where `cancelled_by_retry` could be overwritten by late-arriving finalizations from a prior generation. |
+| **Cross-platform DTO updates** | iOS, Android, and web `RetryContract` DTOs updated to include `turnSkillOverrides`, `turnIntegrationOverrides`, `videoConfig`, and `systemPrompt` fields. |
+| **No new tables** | Table count remains 37. |
+
+### `schema_validators.ts` additions
+
+Two new shared validators added:
+
+- `retryContract` — object validator for the full retry config snapshot
+- `retryParticipantSnapshot` / `retrySearchMode` / `retryVideoConfig` — sub-validators used by `retryContract`
+- `terminalErrorCode` — union of the 5 terminal error code literals
+
+*Last updated: 2026-04-22 — PR #78 retry semantics overhaul: `retryContract` and `terminalErrorCode` on messages, `terminalErrorCode` on generationJobs, two new backend modules, cross-platform DTO parity.*

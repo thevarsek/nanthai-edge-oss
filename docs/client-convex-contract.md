@@ -169,3 +169,38 @@ Each client has a dedicated extractor that unwraps the nested `ConvexError` JSON
 | Web | `lib/convexErrors.ts` | `convexErrorMessage(error)` |
 
 All three extractors handle the same nested JSON shape (`data.data.message` or `data.message`) and fall back to the raw error string when the structured payload is absent.
+
+## Retry Contract
+
+### What it is
+
+Every assistant message stores a `retryContract` field — a read-only snapshot of the participant/config state that was active when the message was sent. Its shape:
+
+```typescript
+{
+  participants: RetryParticipantSnapshot[],  // models/personas at send time
+  searchMode: RetrySearchMode,               // "none" | "basic" | "web" | "paper"
+  searchComplexity?: number,                 // 1 | 2 | 3
+  enabledIntegrations?: string[],
+  subagentsEnabled?: boolean,
+  turnSkillOverrides?: { skillId: string, state: string }[],
+  turnIntegrationOverrides?: { integrationId: string, enabled: boolean }[],
+  videoConfig?: RetryVideoConfig,
+}
+```
+
+### Client rules
+
+1. **Read-only.** Clients must not write to or mutate `retryContract`. It is a backend-generated snapshot.
+2. **Use as base config for retry.** When a user retries a failed message, clients should use the `retryContract` from the failed assistant message as the starting config — not reconstruct participants from current chat state. This prevents retries from silently inheriting chat-level changes made after the original send.
+3. **Do not re-derive failure state from `message.status` alone.** Use `message.terminalErrorCode` for the canonical failure reason:
+   - `"stream_timeout"` — generation exceeded the timeout budget
+   - `"provider_error"` — upstream provider returned a hard error
+   - `"cancelled_by_retry"` — a retry was initiated, so this generation was cancelled
+   - `"cancelled_by_user"` — user explicitly stopped generation
+   - `"unknown_error"` — unclassified failure
+4. **All three clients use the same fields.** Do not invent per-client failure-classification heuristics based on status strings.
+
+### Canonical Convex path
+
+`retryContract` is assembled in `convex/chat/retry_contract.ts:buildRetryContract()` and stored by the send/retry mutations. There is no client-side equivalent — if a client needs any retry-related derived state, add it to the backend payload.
