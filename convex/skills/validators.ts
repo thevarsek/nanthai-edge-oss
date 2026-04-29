@@ -29,9 +29,9 @@ export interface ValidationResult {
   validationWarnings: string[];
 }
 
-export interface SkillValidationOptions {
+export type SkillValidationOptions = Record<string, never> & {
   // Reserved for future options.
-}
+};
 
 // ---------------------------------------------------------------------------
 // Banned pattern definitions
@@ -139,7 +139,7 @@ const KNOWN_TOOL_IDS = new Set([
   "vm_delete_file", "vm_make_dirs", "vm_import_file", "vm_export_file",
   "vm_reset", "read_pdf", "generate_pdf", "edit_pdf",
   // Google
-  "gmail_send", "gmail_read", "gmail_search", "gmail_delete",
+  "gmail_send", "gmail_create_draft", "gmail_read", "gmail_search", "gmail_delete",
   "gmail_modify_labels", "gmail_list_labels",
   "drive_upload", "drive_list", "drive_read", "drive_move",
   "google_calendar_list", "google_calendar_create", "google_calendar_delete",

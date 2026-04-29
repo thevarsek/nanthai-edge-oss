@@ -71,7 +71,7 @@ test("getGenerationContextHandler returns isPro, message, chat, defaults, connec
         },
       ],
       oauthConnections: [
-        { userId: "user_1", provider: "google", status: "active", scopes: ["https://www.googleapis.com/auth/drive"] },
+        { userId: "user_1", provider: "google", status: "active", scopes: ["https://www.googleapis.com/auth/drive.file"] },
         { userId: "user_1", provider: "microsoft", status: "active", scopes: [] },
         { userId: "user_1", provider: "notion", status: "expired", scopes: [] },
       ],
@@ -137,10 +137,10 @@ test("getGenerationContextHandler handles all 6 providers correctly", async () =
       userPreferences: [],
       oauthConnections: [
         { userId: "u1", provider: "google", status: "active", scopes: [
-          "https://www.googleapis.com/auth/gmail.modify",
-          "https://www.googleapis.com/auth/drive",
-          "https://www.googleapis.com/auth/calendar",
+          "https://www.googleapis.com/auth/drive.file",
+          "https://www.googleapis.com/auth/calendar.events",
         ] },
+        { userId: "u1", provider: "gmail_manual", status: "active", scopes: ["imap", "smtp"] },
         { userId: "u1", provider: "microsoft", status: "active", scopes: [] },
         { userId: "u1", provider: "apple_calendar", status: "active", scopes: [] },
         { userId: "u1", provider: "notion", status: "active", scopes: [] },

@@ -1,4 +1,4 @@
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 
 export type ScheduledJobSearchMode = "none" | "basic" | "web" | "research";
 
@@ -20,21 +20,22 @@ export interface ScheduledJobStepConfig {
   reasoningEffort?: string;
 }
 
-interface LegacyScheduledJobShape {
-  prompt: string;
-  modelId: string;
-  personaId?: Id<"personas">;
-  enabledIntegrations?: string[];
-  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
-  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
-  webSearchEnabled?: boolean;
-  searchMode?: string;
-  searchComplexity?: number;
-  knowledgeBaseFileIds?: Id<"_storage">[];
-  includeReasoning?: boolean;
-  reasoningEffort?: string;
-  steps?: ScheduledJobStepConfig[];
-}
+type LegacyScheduledJobShape = Pick<
+  Doc<"scheduledJobs">,
+  | "prompt"
+  | "modelId"
+  | "personaId"
+  | "enabledIntegrations"
+  | "turnSkillOverrides"
+  | "turnIntegrationOverrides"
+  | "webSearchEnabled"
+  | "searchMode"
+  | "searchComplexity"
+  | "knowledgeBaseFileIds"
+  | "includeReasoning"
+  | "reasoningEffort"
+  | "steps"
+>;
 
 const MAX_KB_CONTEXT_CHARS = 50_000;
 

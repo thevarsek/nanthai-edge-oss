@@ -58,16 +58,6 @@ export function IntegrationsPage() {
       steps={getSteps(t)}
       capabilities={getCapabilities(t)}
       scenarios={getScenarios(t)}
-      extraContent={
-        <div className="mx-auto max-w-3xl rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4 text-center dark:border-amber-400/25">
-          <p className="text-sm font-medium text-amber-700 dark:text-amber-200">
-            {t("ig_google_coming_soon_title")}
-          </p>
-          <p className="mt-2 text-sm text-amber-600/85 dark:text-amber-100/85">
-            {t("ig_google_coming_soon_body")}
-          </p>
-        </div>
-      }
       seoDescription={t("ig_seo_desc")}
     />
   );

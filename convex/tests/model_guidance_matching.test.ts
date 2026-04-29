@@ -24,7 +24,7 @@ import { getManualOverride, MANUAL_OVERRIDES } from "../models/guidance_manual_o
 // =============================================================================
 
 test("normalize replaces dots with hyphens", () => {
-  assert.equal(normalize("gpt-5.4"), "gpt-5-4");
+  assert.equal(normalize("gpt-5.5"), "gpt-5-5");
   assert.equal(normalize("gemini-3.1-pro-preview"), "gemini-3-1-pro-preview");
 });
 
@@ -53,9 +53,9 @@ test("normalize trims leading/trailing hyphens", () => {
 // =============================================================================
 
 test("extractOrParts splits provider and raw slug", () => {
-  const { provider, rawSlug } = extractOrParts("openai/gpt-5.4");
+  const { provider, rawSlug } = extractOrParts("openai/gpt-5.5");
   assert.equal(provider, "openai");
-  assert.equal(rawSlug, "gpt-5.4");
+  assert.equal(rawSlug, "gpt-5.5");
 });
 
 test("extractOrParts strips :free suffix", () => {
@@ -80,13 +80,13 @@ test("extractOrParts handles bare slugs", () => {
 
 test("extractCanonicalSlugPart returns second segment", () => {
   assert.equal(
-    extractCanonicalSlugPart("openai/gpt-5.4-20260305"),
-    "gpt-5.4-20260305",
+    extractCanonicalSlugPart("openai/gpt-5.5-20260305"),
+    "gpt-5.5-20260305",
   );
 });
 
 test("extractCanonicalSlugPart returns whole string if no slash", () => {
-  assert.equal(extractCanonicalSlugPart("gpt-5.4"), "gpt-5.4");
+  assert.equal(extractCanonicalSlugPart("gpt-5.5"), "gpt-5.5");
 });
 
 test("extractCanonicalSlugPart returns undefined for undefined", () => {
@@ -98,7 +98,7 @@ test("extractCanonicalSlugPart returns undefined for undefined", () => {
 // =============================================================================
 
 test("stripDateSuffix removes YYYYMMDD", () => {
-  assert.equal(stripDateSuffix("gpt-5.4-20260305"), "gpt-5.4");
+  assert.equal(stripDateSuffix("gpt-5.5-20260305"), "gpt-5.5");
 });
 
 test("stripDateSuffix removes YYYY-MM-DD", () => {
@@ -187,7 +187,7 @@ test("resolveAaProvider returns undefined for unknown providers", () => {
 test("buildAaIndex creates per-provider indexes", () => {
   const entries: AaLlmEntry[] = [
     { slug: "gpt-5-4", creatorSlug: "openai" },
-    { slug: "gpt-5-4-pro", creatorSlug: "openai" },
+    { slug: "gpt-5-5-pro", creatorSlug: "openai" },
     { slug: "claude-sonnet-4-6", creatorSlug: "anthropic" },
   ];
   const index = buildAaIndex(entries);
@@ -199,32 +199,32 @@ test("buildAaIndex creates per-provider indexes", () => {
 
 test("buildAaIndex indexes by normalized slug", () => {
   const entries: AaLlmEntry[] = [
-    { slug: "gpt-5-4", creatorSlug: "openai" },
+    { slug: "gpt-5-5", creatorSlug: "openai" },
   ];
   const index = buildAaIndex(entries);
   const openai = index.get("openai")!;
-  assert.ok(openai.byNormalizedSlug.has("gpt-5-4"));
-  assert.equal(openai.byNormalizedSlug.get("gpt-5-4")!.length, 1);
+  assert.ok(openai.byNormalizedSlug.has("gpt-5-5"));
+  assert.equal(openai.byNormalizedSlug.get("gpt-5-5")!.length, 1);
 });
 
 // =============================================================================
-// matchModelLlm — Example A: GPT-5.4 (exact slug)
+// matchModelLlm — Example A: GPT-5.5 (exact slug)
 // =============================================================================
 
-test("Example A: GPT-5.4 matches via exact slug", () => {
+test("Example A: GPT-5.5 matches via exact slug", () => {
   const entries: AaLlmEntry[] = [
-    { slug: "gpt-5-4", creatorSlug: "openai" },
-    { slug: "gpt-5-4-pro", creatorSlug: "openai" },
+    { slug: "gpt-5-5", creatorSlug: "openai" },
+    { slug: "gpt-5-5-pro", creatorSlug: "openai" },
   ];
   const index = buildAaIndex(entries);
   const or: OrModelInput = {
-    id: "openai/gpt-5.4",
-    name: "OpenAI: GPT-5.4",
-    canonicalSlug: "openai/gpt-5.4-20260305",
+    id: "openai/gpt-5.5",
+    name: "OpenAI: GPT-5.5",
+    canonicalSlug: "openai/gpt-5.5-20260305",
   };
   const result = matchModelLlm(or, index);
   assert.equal(result.status, "matched");
-  assert.equal(result.aaSlug, "gpt-5-4");
+  assert.equal(result.aaSlug, "gpt-5-5");
   assert.equal(result.rule, "exact_slug");
   assert.equal(result.confidence, "high");
 });

@@ -34,3 +34,7 @@ export function convexErrorMessage(error: unknown, fallback: string): string {
   }
   return fallback;
 }
+
+export function convexErrorData(error: unknown): unknown {
+  return error instanceof ConvexError ? error.data : undefined;
+}

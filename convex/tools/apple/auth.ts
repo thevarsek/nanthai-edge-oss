@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
+import { maybeDecryptSecret } from "../../lib/secret_crypto";
 
 export interface StoredAppleCalendarConnection {
   _id: string;
@@ -55,6 +56,6 @@ export async function getAppleCalendarCredentials(
   return {
     connection,
     username: connection.email,
-    appSpecificPassword: connection.accessToken,
+    appSpecificPassword: await maybeDecryptSecret(connection.accessToken),
   };
 }

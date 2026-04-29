@@ -15,7 +15,6 @@ import {
   createChatArgs,
   createMemoryArgs,
   createVideoJobArgs,
-  deleteKnowledgeBaseFileArgs,
   finalizeGenerationArgs,
   insertGeneratedMediaArgs,
   markChatCompletionNotifiedArgs,
@@ -52,7 +51,6 @@ import {
   cancelGenerationHandler,
   createChatHandler,
   createUploadUrlHandler,
-  deleteKnowledgeBaseFileHandler,
   requestAudioGenerationHandler,
   sendMessageHandler,
 } from "./mutations_public_handlers";
@@ -79,6 +77,8 @@ import {
   supersedeMemoryHandler,
   touchMemoriesHandler,
 } from "./mutations_memory_lifecycle_handlers";
+import { deleteKnowledgeBaseFileArgs } from "../knowledge_base/mutations_args";
+import { deleteKnowledgeBaseFileHandler } from "../knowledge_base/mutations";
 
 export const createChat = mutation({
   args: createChatArgs,
@@ -231,7 +231,8 @@ export const touchMemories = internalMutation({
   handler: touchMemoriesHandler,
 });
 
-// KB — Delete a file from the user's knowledge base (generated or uploaded).
+// KB — moved to `convex/knowledge_base/mutations.ts`. Keep wrapper for shipped
+// clients that still call the old chat/* function ID.
 export const deleteKnowledgeBaseFile = mutation({
   args: deleteKnowledgeBaseFileArgs,
   handler: deleteKnowledgeBaseFileHandler,

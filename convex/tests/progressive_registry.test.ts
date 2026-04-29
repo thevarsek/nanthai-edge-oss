@@ -99,6 +99,7 @@ test("buildProgressiveToolRegistry: integration profiles only add enabled integr
   });
 
   assert.ok(registry.get("gmail_send"));
+  assert.ok(registry.get("gmail_create_draft"));
   assert.equal(registry.get("drive_upload"), undefined);
   assert.equal(registry.get("calendar_create"), undefined);
 });

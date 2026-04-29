@@ -4,17 +4,22 @@ export const GOOGLE_DRIVE_SKILL: SystemSkillSeedData = {
   slug: "google-drive",
   name: "Google Drive",
   summary:
-    "List, read, move, and upload files in Google Drive when the task depends on Drive content.",
+    "List, read, move, and upload files in Google Drive when the task depends on Drive content. Operates only on files the user has explicitly shared with NanthAI via the Drive picker, plus files NanthAI uploaded.",
   instructionsRaw: `# Google Drive
 
 Use this skill for tasks that require Google Drive.
 
+NanthAI uses the narrow \`drive.file\` scope. That means the available tools can
+only see files the user explicitly picked for NanthAI (via the Drive file picker
+on web, or the system file picker on iOS/Android) plus files NanthAI uploaded
+itself. Tools cannot enumerate the user's entire Drive.
+
 ## When to Use
 
-- Find or list files in Google Drive
-- Read or export file content
-- Upload generated files
-- Move files between folders
+- Find or list the files the user has already shared with NanthAI
+- Read or export the content of a shared file
+- Upload generated files to Drive
+- Move shared files between folders that are also accessible to NanthAI
 
 ## Guidance
 
@@ -22,6 +27,7 @@ Use this skill for tasks that require Google Drive.
 - Summarize uploads, reads, and moves so the user can verify the result quickly.
 - If Drive list or read succeeds in the current run, assume Drive action tools are available too when this skill is loaded and the Drive integration is active.
 - Do not claim Drive action tools are unavailable without first checking whether the needed Drive tool can be called.
+- If a tool returns a "requiresDrivePicker" or similar grant-required error, ask the user to share the relevant file via the Drive picker before retrying — do not attempt to work around the scope limitation.
 - Reuse file IDs, folder IDs, and file paths from earlier Drive tool results whenever possible.`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
@@ -29,8 +35,10 @@ Use this skill for tasks that require Google Drive.
   origin: "nanthaiBuiltin",
   visibility: "integration_managed",
   lockState: "locked",
-  // Archived per M24: Google scope approval pending. Reinstate when Google integration is re-enabled.
-  status: "archived",
+  // M24 Phase 5: Reinstated under the narrow drive.file scope + Drive Picker.
+  // Tools only operate on user-granted files (recorded in googleDriveFileGrants)
+  // and files uploaded by NanthAI itself.
+  status: "active",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
     "drive_upload",

@@ -33,7 +33,7 @@ export function PersonaEditorPage() {
   const isNew = !personaId || personaId === "new";
 
   const skills = useVisibleSkills();
-  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
+  const { googleConnection, gmailManualConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const existingPersona = useQuery(
     api.personas.queries.get,
     isNew ? "skip" : { personaId: personaId as Id<"personas"> },
@@ -124,7 +124,7 @@ export function PersonaEditorPage() {
   }, []);
 
   const toggleIntegration = useCallback(async (key: IntegrationKey) => {
-    const isGoogleIntegration = key === "gmail" || key === "drive" || key === "calendar";
+    const isGoogleIntegration = key === "drive" || key === "calendar";
     const alreadyEnabled = form.enabledIntegrations.has(key);
 
     if (alreadyEnabled) {
@@ -138,9 +138,15 @@ export function PersonaEditorPage() {
       return;
     }
 
+    if (key === "gmail") {
+      if (gmailManualConnection?.status !== "active") {
+        setError(t("connect_gmail_app_password_first"));
+        return;
+      }
+    }
+
     if (isGoogleIntegration) {
       const capabilityGranted =
-        (key === "gmail" && googleConnection?.hasGmail) ||
         (key === "drive" && googleConnection?.hasDrive) ||
         (key === "calendar" && googleConnection?.hasCalendar);
 
@@ -161,7 +167,7 @@ export function PersonaEditorPage() {
       nextOverrides.set(key, true);
       return { ...prev, enabledIntegrations: next, integrationOverrides: nextOverrides };
     });
-  }, [form.enabledIntegrations, googleConnection, t]);
+  }, [form.enabledIntegrations, gmailManualConnection?.status, googleConnection, t]);
 
   const cycleSkill = useCallback((skillId: Id<"skills">) => {
     setForm((prev) => {

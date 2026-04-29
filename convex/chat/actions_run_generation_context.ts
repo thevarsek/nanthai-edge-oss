@@ -1,10 +1,10 @@
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { hydrateAttachmentsForRequest } from "./action_image_helpers";
+import { hydrateAttachmentsForRequest, type MessageWithStoredAttachments } from "./action_image_helpers";
 import { ModelCapabilities, RunGenerationArgs } from "./actions_run_generation_types";
 
 export interface GenerationContext {
-  allMessages: Array<any>;
+  allMessages: MessageWithStoredAttachments[];
   memoryContext: string | undefined;
   modelCapabilities: Map<string, ModelCapabilities>;
 }

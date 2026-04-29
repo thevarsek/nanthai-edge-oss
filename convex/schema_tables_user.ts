@@ -217,6 +217,8 @@ export const userSchemaTables = {
     modelId: v.string(),
     personaId: v.optional(v.id("personas")),
     enabledIntegrations: v.optional(v.array(v.string())),
+    turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+    turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     webSearchEnabled: v.optional(v.boolean()), // Deprecated: use searchMode
     searchMode: v.optional(v.union(
       v.literal("none"),

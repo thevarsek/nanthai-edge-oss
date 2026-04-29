@@ -41,6 +41,7 @@ export const runGenerationArgs = {
   // Optional: when runGeneration is called from a search path (C/D/regen),
   // pass the sessionId so runGeneration can mark it completed/failed on finish.
   searchSessionId: v.optional(v.id("searchSessions")),
+  drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
   // M30 — Turn-level skill & integration overrides (slash chips)
@@ -65,6 +66,7 @@ export const runGenerationParticipantArgs = {
   allowSubagents: v.boolean(),
   searchSessionId: v.optional(v.id("searchSessions")),
   subagentBatchId: v.optional(v.id("subagentBatches")),
+  drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   resumeExpected: v.optional(v.boolean()),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
@@ -130,6 +132,7 @@ export const submitVideoGenerationArgs = {
   }),
   userId: v.string(),
   searchSessionId: v.optional(v.id("searchSessions")),
+  drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   // M29 Phase 0.5 — client-controlled video config
   videoConfig: v.optional(videoConfigValidator),
 } satisfies PropertyValidators;
@@ -144,4 +147,5 @@ export const pollVideoGenerationArgs = {
   jobId: v.id("generationJobs"),
   userId: v.string(),
   searchSessionId: v.optional(v.id("searchSessions")),
+  drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
 } satisfies PropertyValidators;

@@ -264,6 +264,9 @@ async function loadPyodideInstance(packages: string[]): Promise<{
   memAfterLoad: number;
   memAfterPackages: number;
 }> {
+  // Pyodide's patched loader expects CommonJS `require` inside the evaluated wrapper.
+  // Keep this runtime-sensitive path behaviorally unchanged and suppress only this use.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const vm = require("node:vm") as typeof import("vm");
 
   // Fetch, patch, and eval pyodide.asm.js (cached after first call)

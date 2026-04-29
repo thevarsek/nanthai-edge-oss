@@ -23,7 +23,7 @@ type GoogleExchangeAction = (args: {
   code: string;
   codeVerifier: string;
   redirectUri: string;
-  requestedIntegration: "base" | "gmail" | "drive" | "calendar";
+  requestedIntegration: "base" | "gmail" | "drive" | "calendar" | "workspace";
 }) => Promise<unknown>;
 type MicrosoftExchangeAction = (args: {
   code: string;

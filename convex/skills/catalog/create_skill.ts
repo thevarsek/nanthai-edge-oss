@@ -148,7 +148,7 @@ For reference when setting requiredToolIds:
 **Scheduling:** create_scheduled_job, list_scheduled_jobs, update_scheduled_job, delete_scheduled_job
 **Personas:** create_persona, delete_persona
 **Skills:** load_skill, list_skills, create_skill, update_skill, delete_skill
-**Google:** gmail_send, gmail_read, gmail_search, gmail_delete, gmail_modify_labels, gmail_list_labels, drive_upload, drive_list, drive_read, drive_move, calendar_list, calendar_create, calendar_delete
+**Google:** gmail_send, gmail_create_draft, gmail_read, gmail_search, gmail_delete, gmail_modify_labels, gmail_list_labels, drive_upload, drive_list, drive_read, drive_move, calendar_list, calendar_create, calendar_delete
 **Microsoft:** outlook_send, outlook_read, outlook_search, outlook_delete, outlook_move, outlook_list_folders, onedrive_upload, onedrive_list, onedrive_read, onedrive_move, ms_calendar_list, ms_calendar_create, ms_calendar_delete
 **Apple:** apple_calendar_list, apple_calendar_create, apple_calendar_update, apple_calendar_delete
 **Notion:** notion_search, notion_read_page, notion_create_page, notion_update_page, notion_delete_page, notion_update_database_entry, notion_query_database`,

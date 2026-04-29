@@ -39,12 +39,16 @@ test("shared scheduled job helpers normalize legacy and step-based job shapes", 
         modelId: "openai/gpt-5",
         searchMode: "research",
         searchComplexity: 0.7,
+        turnSkillOverrides: [{ skillId: "skill_1" as any, state: "always" }],
+        turnIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
       },
     ],
   });
 
   assert.equal(steps[0]?.searchMode, "research");
   assert.equal(steps[0]?.searchComplexity, 1);
+  assert.deepEqual(steps[0]?.turnSkillOverrides, [{ skillId: "skill_1", state: "always" }]);
+  assert.deepEqual(steps[0]?.turnIntegrationOverrides, [{ integrationId: "gmail", enabled: true }]);
   assert.equal(getStepTitle(steps[0]!, 0), "Research");
   assert.equal(
     buildStepTriggerPrompt(steps[0]!, "  Prior answer  "),

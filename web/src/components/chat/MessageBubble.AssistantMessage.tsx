@@ -2,7 +2,7 @@
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
 import { memo, useState, useCallback, useMemo } from "react";
-import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download } from "lucide-react";
+import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -58,6 +58,27 @@ function WaitingIndicator() {
         />
       ))}
     </span>
+  );
+}
+
+function ModeratorDirectiveBlock({ directive }: { directive: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const trimmed = directive.trim();
+  if (!trimmed) return null;
+
+  return (
+    <div className="mb-2 rounded-xl border border-primary/15 bg-primary/5 px-3 py-2 text-xs text-muted">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center gap-2 text-left font-semibold"
+      >
+        <ShieldCheck size={14} />
+        <span className="flex-1">Moderator Guidance</span>
+        <ChevronDown size={14} className={`transition-transform ${expanded ? "rotate-180" : ""}`} />
+      </button>
+      {expanded && <p className="mt-2 whitespace-pre-wrap leading-relaxed">{trimmed}</p>}
+    </div>
   );
 }
 
@@ -264,6 +285,10 @@ export const AssistantMessage = memo(function AssistantMessage({
             </span>
           )}
         </div>
+
+        {message.moderatorDirective && (
+          <ModeratorDirectiveBlock directive={message.moderatorDirective} />
+        )}
 
         {/* Reasoning */}
         {message.reasoning && (

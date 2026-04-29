@@ -3,6 +3,9 @@ import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro, getIsProUnlocked } from "../lib/auth";
+import {
+  insertFileAttachment,
+} from "../lib/file_attachments";
 import { ttftLog } from "../lib/generation_log";
 import { assertRateLimit } from "../lib/rate_limit";
 import { validateSameModality } from "../lib/modality_utils";
@@ -281,7 +284,7 @@ export async function sendMessageHandler(
   if (normalizedAttachments && normalizedAttachments.length > 0) {
     for (const att of normalizedAttachments) {
       if (att.storageId) {
-        await ctx.db.insert("fileAttachments", {
+        await insertFileAttachment(ctx, {
           userId,
           chatId: args.chatId,
           messageId: userMessageId,
@@ -289,6 +292,8 @@ export async function sendMessageHandler(
           filename: att.name ?? "attachment",
           mimeType: att.mimeType ?? "application/octet-stream",
           sizeBytes: att.sizeBytes,
+          driveFileId: att.driveFileId,
+          lastRefreshedAt: att.lastRefreshedAt,
           createdAt: now,
         });
       }
@@ -685,81 +690,5 @@ export async function cancelActiveGenerationHandler(
 }
 
 // MARK: - Knowledge Base
-
-export interface DeleteKnowledgeBaseFileArgs extends Record<string, unknown> {
-  storageId: Id<"_storage">;
-  source: "upload" | "generated";
-}
-
-/**
- * Delete a file from the Knowledge Base.
- *
- * For "generated" files: deletes the `generatedFiles` row, removes the ID
- * from the parent message's `generatedFileIds`, and deletes the storage blob.
- *
- * For "upload" files: removes the attachment entry from the parent message's
- * `attachments` array and deletes the storage blob.
- */
-export async function deleteKnowledgeBaseFileHandler(
-  ctx: MutationCtx,
-  args: DeleteKnowledgeBaseFileArgs,
-): Promise<void> {
-  const { userId } = await requireAuth(ctx);
-
-  if (args.source === "generated") {
-    // Find the generatedFiles row by storageId (indexed, O(1))
-    const file = await ctx.db
-      .query("generatedFiles")
-      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
-      .first();
-
-    if (!file || file.userId !== userId) {
-      throw new ConvexError({ code: "NOT_FOUND" as const, message: "File not found or not owned by user." });
-    }
-
-    // Remove from parent message's generatedFileIds
-    const message = await ctx.db.get(file.messageId);
-    if (message) {
-      const updatedIds = (message.generatedFileIds ?? []).filter(
-        (id) => id !== file._id,
-      );
-      await ctx.db.patch(file.messageId, { generatedFileIds: updatedIds });
-    }
-
-    // Delete the generatedFiles row
-    await ctx.db.delete(file._id);
-
-    // Delete the storage blob
-    await ctx.storage.delete(args.storageId);
-  } else {
-    // source === "upload"
-    // Look up the fileAttachments row by storageId (indexed, O(1))
-    const fileAtt = await ctx.db
-      .query("fileAttachments")
-      .withIndex("by_storage", (q) => q.eq("storageId", args.storageId))
-      .first();
-
-    if (!fileAtt || fileAtt.userId !== userId) {
-      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Attachment not found or not owned by user." });
-    }
-
-    // Also remove the attachment entry from the parent message
-    const msg = await ctx.db.get(fileAtt.messageId);
-    if (msg && msg.attachments) {
-      const idx = msg.attachments.findIndex(
-        (a) => a.storageId === args.storageId,
-      );
-      if (idx !== -1) {
-        const updatedAttachments = [...msg.attachments];
-        updatedAttachments.splice(idx, 1);
-        await ctx.db.patch(msg._id, { attachments: updatedAttachments });
-      }
-    }
-
-    // Delete the lookup row
-    await ctx.db.delete(fileAtt._id);
-
-    // Delete the storage blob
-    await ctx.storage.delete(args.storageId);
-  }
-}
+//
+// `deleteKnowledgeBaseFile` moved to `convex/knowledge_base/mutations.ts`.

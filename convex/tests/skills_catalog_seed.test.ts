@@ -255,11 +255,14 @@ test("SYSTEM_SKILL_CATALOG: all system skills are locked", () => {
 });
 
 test("SYSTEM_SKILL_CATALOG: only the archived integration-discovery skills are not active", () => {
+  // M24 Phase 5: gmail and google-drive reinstated under narrowed scopes
+  // (Manual Gmail via IMAP/SMTP and drive.file + Drive Picker respectively).
+  // apple-calendar, google-calendar, and google-workspace remain archived
+  // because their behavior is now covered by the cross-provider Calendar
+  // Scheduler skill or has no replacement yet.
   const archivedSlugs = new Set([
     "apple-calendar",
-    "gmail",
     "google-calendar",
-    "google-drive",
     "google-workspace",
   ]);
 

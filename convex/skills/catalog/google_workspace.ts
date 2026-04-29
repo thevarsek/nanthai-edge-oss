@@ -30,7 +30,7 @@ Use this skill for tasks that require Gmail, Google Drive, or Google Calendar.
   status: "archived",
   runtimeMode: "toolAugmented",
   requiredToolIds: [
-    "gmail_send", "gmail_read", "gmail_search", "gmail_delete", "gmail_modify_labels", "gmail_list_labels",
+    "gmail_send", "gmail_create_draft", "gmail_read", "gmail_search", "gmail_delete", "gmail_modify_labels", "gmail_list_labels",
     "drive_upload", "drive_list", "drive_read", "drive_move",
     "calendar_list", "calendar_create", "calendar_delete",
   ],

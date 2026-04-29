@@ -29,6 +29,7 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   allowSubagents: boolean;
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
   resumeExpected?: boolean;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
@@ -55,6 +56,7 @@ export interface GenerationContinuationGroupSnapshot {
   allowSubagents: boolean;
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
   // Pre-resolved overrides preserved across continuations
   chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;

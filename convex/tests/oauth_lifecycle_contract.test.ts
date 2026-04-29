@@ -6,6 +6,7 @@ import {
   deleteConnection as deleteGoogleConnection,
   disconnectGoogle,
   exchangeGoogleCode,
+  getDrivePickerAccessToken,
   markConnectionExpired as markGoogleConnectionExpired,
 } from "../oauth/google";
 import {
@@ -53,7 +54,7 @@ test("exchangeGoogleCode uses the web client config and stores profile metadata"
             refresh_token: "refresh_google",
             expires_in: 3600,
             token_type: "Bearer",
-            scope: "openid https://www.googleapis.com/auth/gmail.modify",
+            scope: "openid https://www.googleapis.com/auth/drive.file",
           }),
         } as Response;
       }
@@ -73,7 +74,7 @@ test("exchangeGoogleCode uses the web client config and stores profile metadata"
       code: "code_1",
       codeVerifier: "verifier_1",
       redirectUri: "https://nanthai.tech/oauth/google/callback",
-      requestedIntegration: "gmail",
+      requestedIntegration: "drive",
     });
 
     const tokenBody = new URLSearchParams(String(requests[0]?.init?.body ?? ""));
@@ -84,7 +85,7 @@ test("exchangeGoogleCode uses the web client config and stores profile metadata"
     assert.equal(mutations[0]?.email, "user@example.com");
     assert.equal(mutations[0]?.displayName, "User Example");
     assert.deepEqual(mutations[0]?.scopes, [
-      "https://www.googleapis.com/auth/gmail.modify",
+      "https://www.googleapis.com/auth/drive.file",
       "openid",
     ]);
   } finally {
@@ -124,6 +125,24 @@ test("exchangeGoogleCode converts token exchange failures into ConvexError", asy
     globalThis.fetch = originalFetch;
     process.env = originalEnv;
   }
+});
+
+test("exchangeGoogleCode rejects legacy Google Gmail requests", async () => {
+  await assert.rejects(
+    (exchangeGoogleCode as any)._handler({
+      auth: buildAuth(),
+      runMutation: async () => undefined,
+    }, {
+      code: "code_1",
+      codeVerifier: "verifier_1",
+      redirectUri: "https://nanthai.tech/oauth/google/callback",
+      requestedIntegration: "gmail",
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof ConvexError);
+      return (error as ConvexError<any>).data?.code === "GMAIL_MANUAL_REQUIRED";
+    },
+  );
 });
 
 test("disconnectGoogle revokes the stored token and deleteConnection is idempotent", async () => {
@@ -168,6 +187,75 @@ test("disconnectGoogle revokes the stored token and deleteConnection is idempote
     assert.deepEqual(deleted, []);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("getDrivePickerAccessToken refreshes expired Drive tokens before returning them", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const mutations: Record<string, unknown>[] = [];
+  const queryResults = [
+    {
+      _id: "google_1",
+      userId: "user_1",
+      provider: "google",
+      accessToken: "expired_picker_token",
+      refreshToken: "refresh_google",
+      expiresAt: Date.now() - 1,
+      scopes: ["https://www.googleapis.com/auth/drive.file"],
+      clientType: "web",
+      status: "active",
+      connectedAt: 1,
+      lastRefreshedAt: 0,
+    },
+    {
+      _id: "google_1",
+      userId: "user_1",
+      provider: "google",
+      accessToken: "fresh_picker_token",
+      refreshToken: "refresh_google",
+      expiresAt: Date.now() + 60 * 60 * 1000,
+      scopes: ["https://www.googleapis.com/auth/drive.file"],
+      clientType: "web",
+      status: "active",
+      connectedAt: 1,
+      lastRefreshedAt: Date.now(),
+    },
+  ];
+
+  try {
+    process.env.GOOGLE_WEB_CLIENT_ID = "web_client";
+    process.env.GOOGLE_WEB_CLIENT_SECRET = "web_secret";
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      assert.equal(String(url), "https://oauth2.googleapis.com/token");
+      const body = new URLSearchParams(String(init?.body ?? ""));
+      assert.equal(body.get("client_id"), "web_client");
+      assert.equal(body.get("client_secret"), "web_secret");
+      assert.equal(body.get("refresh_token"), "refresh_google");
+      return {
+        ok: true,
+        json: async () => ({
+          access_token: "fresh_from_provider",
+          expires_in: 3600,
+          token_type: "Bearer",
+        }),
+      } as Response;
+    }) as typeof fetch;
+
+    const result = await (getDrivePickerAccessToken as any)._handler({
+      auth: buildAuth(),
+      runQuery: async () => queryResults.shift() ?? null,
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {});
+
+    assert.equal(result.accessToken, "fresh_picker_token");
+    assert.equal(mutations[0]?.accessToken, "fresh_from_provider");
+    assert.equal(mutations[0]?.clientType, "web");
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
   }
 });
 

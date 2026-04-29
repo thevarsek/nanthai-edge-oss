@@ -95,19 +95,9 @@ export const getSubagentBatchViewArgs = {
   messageId: v.id("messages"),
 } satisfies PropertyValidators;
 
-// MARK: - Knowledge Base (Phase KB)
-
-export const listKnowledgeBaseFilesArgs = {
-  search: v.optional(v.string()),
-  source: v.optional(
-    v.union(v.literal("upload"), v.literal("generated"), v.literal("all")),
-  ),
-  limit: v.optional(v.number()),
-} satisfies PropertyValidators;
-
-export const getKnowledgeBaseFilesByStorageIdsArgs = {
-  storageIds: v.array(v.id("_storage")),
-} satisfies PropertyValidators;
+// MARK: - Knowledge Base
+//
+// Validators moved to `convex/knowledge_base/queries_args.ts`.
 
 // ── Chat search (for search_chats AI tool) ─────────────────────────────
 

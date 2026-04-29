@@ -9,6 +9,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 
 
@@ -16,10 +17,34 @@ import { requireAuth, requirePro } from "../lib/auth";
 // to stay well inside Convex's 16,384-document read limit per transaction.
 const DISABLE_PRO_CHAT_BATCH_SIZE = 200;
 
+type DefaultUserPreferencesInsert = Pick<
+  Doc<"userPreferences">,
+  | "userId"
+  | "sendOnEnter"
+  | "showReasoning"
+  | "hapticFeedback"
+  | "appearanceMode"
+  | "pickerFilterFree"
+  | "pickerFilterExcludeFree"
+  | "pickerFilterVision"
+  | "pickerFilterImageGen"
+  | "pickerFilterVideoGen"
+  | "pickerFilterTools"
+  | "webSearchEnabledByDefault"
+  | "subagentsEnabledByDefault"
+  | "chatCompletionNotificationsEnabled"
+  | "autoAudioResponse"
+  | "preferredVoice"
+  | "defaultAudioSpeed"
+  | "isMemoryEnabled"
+  | "memoryGatingMode"
+  | "updatedAt"
+>;
+
 function buildDefaultUserPreferencesInsert(
   userId: string,
   now: number,
-): Record<string, unknown> {
+): DefaultUserPreferencesInsert {
   return {
     userId,
     sendOnEnter: true,
@@ -68,7 +93,7 @@ export const ensureUserPreferences = mutation({
 
     return await ctx.db.insert(
       "userPreferences",
-      buildDefaultUserPreferencesInsert(userId, now) as any,
+      buildDefaultUserPreferencesInsert(userId, now),
     );
   },
 });
@@ -90,7 +115,7 @@ export const ensureUserPreferencesInternal = internalMutation({
 
     return await ctx.db.insert(
       "userPreferences",
-      buildDefaultUserPreferencesInsert(args.userId, now) as any,
+      buildDefaultUserPreferencesInsert(args.userId, now),
     );
   },
 });
@@ -211,7 +236,7 @@ export const upsertPreferences = mutation({
 
     // Create with defaults
     return await ctx.db.insert("userPreferences", {
-      ...buildDefaultUserPreferencesInsert(userId, now) as any,
+      ...buildDefaultUserPreferencesInsert(userId, now),
       defaultModelId: args.defaultModelId,
       defaultPersonaId:
         args.clearDefaultPersona === true
@@ -290,13 +315,13 @@ export const setSkillDefault = mutation({
 
     if (!prefs) {
       return await ctx.db.insert("userPreferences", {
-        ...buildDefaultUserPreferencesInsert(userId, now) as any,
+        ...buildDefaultUserPreferencesInsert(userId, now),
         skillDefaults: [{ skillId: args.skillId, state: args.state }],
       });
     }
 
     const existing = prefs.skillDefaults ?? [];
-    const updated = existing.filter((e: any) => e.skillId !== args.skillId);
+    const updated = existing.filter((e) => e.skillId !== args.skillId);
     updated.push({ skillId: args.skillId, state: args.state });
     await ctx.db.patch(prefs._id, { skillDefaults: updated, updatedAt: now });
     return prefs._id;
@@ -318,7 +343,7 @@ export const removeSkillDefault = mutation({
       .first();
     if (!prefs || !prefs.skillDefaults) return;
 
-    const updated = (prefs.skillDefaults as any[]).filter((e: any) => e.skillId !== args.skillId);
+    const updated = prefs.skillDefaults.filter((e) => e.skillId !== args.skillId);
     await ctx.db.patch(prefs._id, {
       skillDefaults: updated.length > 0 ? updated : undefined,
       updatedAt: now,
@@ -350,13 +375,13 @@ export const setIntegrationDefault = mutation({
 
     if (!prefs) {
       return await ctx.db.insert("userPreferences", {
-        ...buildDefaultUserPreferencesInsert(userId, now) as any,
+        ...buildDefaultUserPreferencesInsert(userId, now),
         integrationDefaults: [{ integrationId: args.integrationId, enabled: args.enabled }],
       });
     }
 
     const existing = prefs.integrationDefaults ?? [];
-    const updated = existing.filter((e: any) => e.integrationId !== args.integrationId);
+    const updated = existing.filter((e) => e.integrationId !== args.integrationId);
     updated.push({ integrationId: args.integrationId, enabled: args.enabled });
     await ctx.db.patch(prefs._id, { integrationDefaults: updated, updatedAt: now });
     return prefs._id;
@@ -378,8 +403,8 @@ export const removeIntegrationDefault = mutation({
       .first();
     if (!prefs || !prefs.integrationDefaults) return;
 
-    const updated = (prefs.integrationDefaults as any[]).filter(
-      (e: any) => e.integrationId !== args.integrationId,
+    const updated = prefs.integrationDefaults.filter(
+      (e) => e.integrationId !== args.integrationId,
     );
     await ctx.db.patch(prefs._id, {
       integrationDefaults: updated.length > 0 ? updated : undefined,
@@ -651,7 +676,7 @@ export const syncEntitlement = mutation({
       .first();
 
     if (!prefs) {
-      return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, now) as any);
+      return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, now));
     }
 
     return prefs._id;
@@ -696,7 +721,7 @@ export const syncPlayEntitlement = mutation({
       .first();
 
     if (!prefs) {
-      return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, now) as any);
+      return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, now));
     }
 
     return prefs._id;

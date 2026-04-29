@@ -1,6 +1,10 @@
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import {
+  deleteDriveGrantCacheForStorage,
+  storageHasOtherFileAttachmentReferences,
+} from "../lib/file_attachments";
 
 // Maximum deletes per batch to stay well within Convex transaction limits.
 // Each row deletion touches at most ~2 documents (the row + index entries).
@@ -166,10 +170,21 @@ export async function deleteChatGraph(
     .withIndex("by_chat", (q) => q.eq("chatId", chatId))
     .take(DELETE_BATCH_SIZE);
   for (const attachment of fileAttachments) {
-    try {
-      await ctx.storage.delete(attachment.storageId);
-    } catch {
-      // Storage blob may already be deleted — continue cleanup
+    const hasOtherRefs = await storageHasOtherFileAttachmentReferences(
+      ctx,
+      attachment.userId,
+      attachment.storageId,
+      attachment._id,
+    );
+    if (attachment.driveFileId && !hasOtherRefs) {
+      await deleteDriveGrantCacheForStorage(ctx, attachment.userId, attachment.storageId);
+    }
+    if (!hasOtherRefs) {
+      try {
+        await ctx.storage.delete(attachment.storageId);
+      } catch {
+        // Storage blob may already be deleted — continue cleanup
+      }
     }
     await ctx.db.delete(attachment._id);
   }

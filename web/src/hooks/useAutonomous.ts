@@ -6,6 +6,12 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant } from "@/hooks/useChat";
+import {
+  buildParticipantIndexById,
+  participantIndexForId,
+  participantKey,
+  resolveSelectedParticipantId,
+} from "@/lib/autonomousParticipants";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -136,8 +142,8 @@ export function useAutonomous({
     const resolveParticipantName = (idx?: number): string => {
       if (idx == null || idx < 0 || idx >= session.turnOrder.length) return "...";
       const pid = session.turnOrder[idx];
-      const p = participants.find((pp) =>
-        (pp as Participant & { participantId?: string }).participantId === pid
+      const p = participants.find((pp, index) =>
+        participantKey(pp, index) === pid
         || pp.modelId === pid
         || pp.personaName === pid,
       );
@@ -198,13 +204,18 @@ export function useAutonomous({
 
   const start = useCallback(async () => {
     if (!chatId || !canConfigure) return;
+    const moderatorParticipantId = resolveSelectedParticipantId(
+      settings.moderatorParticipantId,
+      participants,
+    );
+    const participantIndexById = buildParticipantIndexById(participants);
     const turnOrder = participants
-      .map((_, i) => String(i))
-      .filter((id) => id !== settings.moderatorParticipantId);
+      .map(participantKey)
+      .filter((id) => id !== moderatorParticipantId);
     if (turnOrder.length < 2) return;
 
     const participantConfigs = turnOrder.map((id) => {
-      const idx = parseInt(id, 10);
+      const idx = participantIndexById.get(id) ?? Number.parseInt(id, 10);
       const p = participants[idx];
       return {
         participantId: id,
@@ -220,8 +231,9 @@ export function useAutonomous({
     });
 
     let moderatorConfig;
-    if (settings.moderatorParticipantId) {
-      const idx = parseInt(settings.moderatorParticipantId, 10);
+    if (moderatorParticipantId) {
+      const idx = participantIndexById.get(moderatorParticipantId)
+        ?? Number.parseInt(moderatorParticipantId, 10);
       const p = participants[idx];
       if (p) {
         moderatorConfig = {
@@ -242,7 +254,7 @@ export function useAutonomous({
         pauseBetweenTurns: settings.pauseBetweenTurns,
         autoStopOnConsensus: settings.autoStopOnConsensus,
         participantConfigs: participantConfigs as Parameters<typeof startMut>[0]["participantConfigs"],
-        ...(settings.moderatorParticipantId ? { moderatorParticipantId: settings.moderatorParticipantId } : {}),
+        ...(moderatorParticipantId ? { moderatorParticipantId } : {}),
         ...(moderatorConfig ? { moderatorConfig } : {}),
       });
       setSessionId(newSessionId as Id<"autonomousSessions">);
@@ -260,19 +272,20 @@ export function useAutonomous({
   const resume = useCallback(async () => {
     if (!sessionId) return;
     const turnOrder = session?.turnOrder ?? [];
-    const participantConfigs = turnOrder.map((id) => {
-      const idx = parseInt(id, 10);
+    const participantConfigs = turnOrder.flatMap((id) => {
+      const idx = participantIndexForId(id, participants);
+      if (idx === undefined) return [];
       const p = participants[idx];
-      return {
+      return [{
         participantId: id,
-        modelId: p?.modelId ?? "unknown",
-        displayName: p?.personaName ?? p?.modelId.split("/").pop() ?? "Unknown",
-        ...(p?.personaId ? { personaId: p.personaId } : {}),
-        ...(p?.temperature != null ? { temperature: p.temperature } : {}),
-        ...(p?.maxTokens != null ? { maxTokens: p.maxTokens } : {}),
-        ...(p?.includeReasoning != null ? { includeReasoning: p.includeReasoning } : {}),
-        ...(p?.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
-      };
+        modelId: p.modelId,
+        displayName: p.personaName ?? p.modelId.split("/").pop() ?? "Unknown",
+        ...(p.personaId ? { personaId: p.personaId } : {}),
+        ...(p.temperature != null ? { temperature: p.temperature } : {}),
+        ...(p.maxTokens != null ? { maxTokens: p.maxTokens } : {}),
+        ...(p.includeReasoning != null ? { includeReasoning: p.includeReasoning } : {}),
+        ...(p.reasoningEffort ? { reasoningEffort: p.reasoningEffort } : {}),
+      }];
     });
     try {
       await resumeMut({

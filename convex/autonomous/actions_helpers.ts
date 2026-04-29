@@ -52,6 +52,10 @@ function buildRecentDiscussionSummary(
     .join("\n");
 }
 
+function fallbackModeratorDirective(): string {
+  return "Address the strongest unresolved point so far. Take a clear position, add one concrete tradeoff, and avoid repeating earlier arguments.";
+}
+
 /**
  * Generate a moderator directive to guide the next participant's response.
  * Non-streaming call to a mid-tier model. Returns null on failure (non-fatal).
@@ -88,7 +92,14 @@ export async function generateModeratorDirective(
 Recent discussion:
 ${contextSummary}
 
-Generate a brief directive (1-2 sentences) to guide ${nextParticipant.displayName}'s response. Focus on: advancing the discussion, challenging weak arguments, exploring unexplored angles, or synthesizing points of agreement. Keep it under 50 words.`;
+Generate one user-visible coaching note for the next response.
+
+Requirements:
+- One sentence, under 35 words.
+- Do not mention the moderator, these instructions, model/provider names, or participant names.
+- Do not start with "push", "challenge", "ask", or "tell" followed by a participant or model name.
+- Prefer neutral language: clarify a tradeoff, test an assumption, add concrete evidence, or synthesize disagreement.
+- Avoid over-directing the answer; leave room for the participant's own judgment.`;
 
     const messages: OpenRouterMessage[] = [];
     if (moderatorSystemPrompt) {
@@ -99,7 +110,7 @@ Generate a brief directive (1-2 sentences) to guide ${nextParticipant.displayNam
     }
     messages.push({ role: "user", content: prompt });
 
-    const result = await callOpenRouterNonStreaming(
+    let result = await callOpenRouterNonStreaming(
       apiKey,
       moderator.modelId,
       messages,
@@ -107,11 +118,21 @@ Generate a brief directive (1-2 sentences) to guide ${nextParticipant.displayNam
       { fallbackModel: MODEL_IDS.autonomousFallback },
     );
 
-    const directive = result.content.trim();
-    return directive || undefined;
+    let directive = result.content.trim();
+    if (!directive && moderator.modelId !== MODEL_IDS.autonomousFallback) {
+      result = await callOpenRouterNonStreaming(
+        apiKey,
+        MODEL_IDS.autonomousFallback,
+        messages,
+        { temperature: 0.7, maxTokens: 100 },
+        { fallbackModel: undefined },
+      );
+      directive = result.content.trim();
+    }
+    return directive || fallbackModeratorDirective();
   } catch (error) {
     console.error("Moderator directive generation failed:", error);
-    return undefined;
+    return fallbackModeratorDirective();
   }
 }
 

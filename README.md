@@ -196,6 +196,14 @@ npx tsc --noEmit --project convex/tsconfig.json
 
 # TypeScript type checking (web)
 cd web && npx tsc --noEmit --project tsconfig.app.json
+
+# Lint checks
+npm run lint
+
+# Individual lint checks
+npm run convex:lint
+cd web && npm run lint
+cd android && ./gradlew lintDebug
 ```
 
 ## Contributing

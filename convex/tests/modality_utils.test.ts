@@ -119,6 +119,31 @@ test("getModelModalityCategory returns 'text' for multimodal text+image model (G
   assert.equal(await getModelModalityCategory(ctx, "openai/gpt-4o"), "text");
 });
 
+test("getModelModalityCategory keeps vision-only text models as text", async () => {
+  const ctx = buildModelDb({
+    "anthropic/claude-vision": {
+      supportsImages: true,
+      architecture: { modality: "text+image->text" },
+    },
+  });
+  assert.equal(await getModelModalityCategory(ctx, "anthropic/claude-vision"), "text");
+});
+
+test("getModelModalityCategory returns 'image' for image-sync managed Flux rows", async () => {
+  const ctx = buildModelDb({
+    "black-forest-labs/flux.2-flex": {
+      supportsImages: true,
+      imageCapabilities: {
+        pricePerImage: 0.08,
+        pricingSkus: [],
+        managedByImageSync: true,
+        syncedAt: 1,
+      },
+    },
+  });
+  assert.equal(await getModelModalityCategory(ctx, "black-forest-labs/flux.2-flex"), "image");
+});
+
 test("getModelModalityCategory returns 'text' for model with no architecture", async () => {
   const ctx = buildModelDb({
     "some/model": {},
@@ -184,6 +209,25 @@ test("validateSameModality passes for two image models", async () => {
   });
   assert.equal(
     await validateSameModality(ctx, ["openai/dall-e-3", "stability/sdxl"]),
+    "image",
+  );
+});
+
+test("validateSameModality passes for image models when Flux only has image sync metadata", async () => {
+  const ctx = buildModelDb({
+    "openai/dall-e-3": { supportsImages: true, architecture: { modality: "text->image" } },
+    "black-forest-labs/flux.2-flex": {
+      supportsImages: true,
+      imageCapabilities: {
+        pricePerImage: 0.08,
+        pricingSkus: [],
+        managedByImageSync: true,
+        syncedAt: 1,
+      },
+    },
+  });
+  assert.equal(
+    await validateSameModality(ctx, ["openai/dall-e-3", "black-forest-labs/flux.2-flex"]),
     "image",
   );
 });

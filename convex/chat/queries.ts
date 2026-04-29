@@ -24,12 +24,10 @@ import {
   getStreamingContentArgs,
   getUserMemoriesArgs,
   getUserPreferencesArgs,
-  getKnowledgeBaseFilesByStorageIdsArgs,
   getVideoJobInternalArgs,
   getVideoJobStatusArgs,
   listAllMessagesArgs,
   listChatsArgs,
-  listKnowledgeBaseFilesArgs,
   listMessagesArgs,
   listStreamingMessagesArgs,
   searchMessagesInternalArgs,
@@ -53,18 +51,24 @@ import {
   getStreamingContentHandler,
   getUserMemoriesHandler,
   getUserPreferencesHandler,
-  getKnowledgeBaseFilesByStorageIdsHandler,
   getVideoJobInternalHandler,
   getVideoJobStatusHandler,
   listAllMessagesHandler,
   listChatsHandler,
-  listKnowledgeBaseFilesHandler,
   listMessagesHandler,
   listStreamingMessagesHandler,
   searchMessagesInternalHandler,
 } from "./queries_handlers";
 import { isJobCancelledArgs } from "./mutations_args";
 import { isJobCancelledHandler } from "./mutations_internal_handlers";
+import {
+  listKnowledgeBaseFilesArgs,
+  getKnowledgeBaseFilesByStorageIdsArgs,
+} from "../knowledge_base/queries_args";
+import {
+  listKnowledgeBaseFilesHandler,
+  getKnowledgeBaseFilesByStorageIdsHandler,
+} from "../knowledge_base/queries";
 
 export const listChats = query({
   args: listChatsArgs,
@@ -171,7 +175,10 @@ export const getGeneratedChartsByMessage = query({
   handler: getGeneratedChartsByMessageHandler,
 });
 
-// MARK: - Knowledge Base (Phase KB)
+// MARK: - Knowledge Base
+//
+// Public KB queries moved to `convex/knowledge_base/queries.ts`. Keep wrappers
+// for shipped clients that still call the old chat/* function IDs.
 
 export const listKnowledgeBaseFiles = query({
   args: listKnowledgeBaseFilesArgs,

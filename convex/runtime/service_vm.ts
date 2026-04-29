@@ -254,7 +254,7 @@ export async function importOwnedStorageFileToPersistentRuntime(
   const finalFilename = filename?.trim() || record.filename;
   const destination = targetPath?.trim()
     ? (path.posix.isAbsolute(targetPath) ? targetPath : path.posix.join(workspace.root, targetPath))
-    : path.posix.join(workspace.inputs, finalFilename.replace(/[^\w.\-]+/g, "_"));
+    : path.posix.join(workspace.inputs, finalFilename.replace(/[^\w.-]+/g, "_"));
   await sandbox.runCommand("mkdir", ["-p", path.posix.dirname(destination)]);
   const bytes = new Uint8Array(await blob.arrayBuffer());
   await sandbox.writeFiles([{ path: destination, content: bytes }]);

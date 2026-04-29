@@ -8,8 +8,8 @@ import {
 } from "../favorites/mutations";
 import {
   getVideoJobStatusHandler,
-  listKnowledgeBaseFilesHandler,
 } from "../chat/queries_handlers_public";
+import { listKnowledgeBaseFilesHandler } from "../knowledge_base/queries";
 import {
   persistGeneratedImageUrls,
   persistGeneratedImageUrlsWithTracking,

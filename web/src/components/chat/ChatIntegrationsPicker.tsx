@@ -16,12 +16,12 @@ interface IntegrationMeta {
   label: string;
   subtitle: string;
   logoSlug: string;
-  provider: "google" | "microsoft" | "apple" | "notion" | "cloze" | "slack";
+  provider: "gmail" | "google" | "microsoft" | "apple" | "notion" | "cloze" | "slack";
 }
 
 function buildIntegrations(t: ReturnType<typeof useTranslation>["t"]): IntegrationMeta[] {
   return [
-    { key: "gmail", label: "Gmail", subtitle: t("integration_gmail_subtitle"), logoSlug: "gmail", provider: "google" },
+    { key: "gmail", label: "Gmail", subtitle: t("integration_gmail_subtitle"), logoSlug: "gmail", provider: "gmail" },
     { key: "drive", label: "Google Drive", subtitle: t("integration_google_drive_subtitle"), logoSlug: "google-drive", provider: "google" },
     { key: "calendar", label: "Google Calendar", subtitle: t("integration_google_calendar_subtitle"), logoSlug: "google-calendar", provider: "google" },
     { key: "outlook", label: "Outlook Mail", subtitle: t("integration_outlook_subtitle"), logoSlug: "outlook", provider: "microsoft" },
@@ -35,6 +35,7 @@ function buildIntegrations(t: ReturnType<typeof useTranslation>["t"]): Integrati
 }
 
 const PROVIDER_LABELS: Record<string, string> = {
+  gmail: "Gmail",
   google: "Google Workspace",
   microsoft: "Microsoft 365",
   apple: "Apple",
@@ -51,6 +52,7 @@ interface Props {
   onClose: () => void;
   /** Which providers the user has connected (from SharedData) */
   connectedProviders: {
+    gmail: boolean;
     google: boolean;
     microsoft: boolean;
     apple: boolean;
@@ -88,7 +90,7 @@ export function ChatIntegrationsPicker({
     {} as Record<string, IntegrationMeta[]>,
   );
 
-  const providerOrder = ["google", "microsoft", "apple", "notion", "cloze", "slack"];
+  const providerOrder = ["gmail", "google", "microsoft", "apple", "notion", "cloze", "slack"];
 
   return (
     <div
@@ -96,11 +98,10 @@ export function ChatIntegrationsPicker({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
-        className="w-full max-w-md bg-surface-1 rounded-t-2xl sm:rounded-2xl overflow-hidden"
-        style={{ maxHeight: "80vh" }}
+        className="flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-t-2xl bg-surface-1 sm:rounded-2xl"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
+        <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-5 py-4">
           <div className="flex items-center gap-2">
             <PuzzleIcon size={18} className="text-primary" />
             <h2 className="text-base font-semibold">{t("integrations")}</h2>
@@ -118,7 +119,7 @@ export function ChatIntegrationsPicker({
           </button>
         </div>
 
-        <div className="overflow-y-auto" style={{ maxHeight: "calc(80vh - 4rem)" }}>
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pb-safe">
           {available.length === 0 ? (
             <div className="px-5 py-12 text-center">
               <PuzzleIcon size={32} className="text-muted mx-auto mb-3 opacity-40" />

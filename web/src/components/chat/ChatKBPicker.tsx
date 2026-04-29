@@ -4,17 +4,26 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useQuery } from "convex/react";
+import { useQuery, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { X, Search, FileText, BookOpen, Image, Video } from "lucide-react";
+import { X, Search, FileText, BookOpen, Image, Video, HardDrive } from "lucide-react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { useConnectedAccounts } from "@/hooks/useSharedData";
+import { useToast } from "@/components/shared/Toast.context";
+import { convexErrorMessage } from "@/lib/convexErrors";
+import {
+  DriveImportProgress,
+  driveImportErrorMessage,
+  driveImportProgressMessage,
+} from "@/lib/driveImportFeedback";
+import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 interface KBFile {
   storageId: string;
   filename: string;
-  source: "upload" | "generated";
+  source: "upload" | "generated" | "drive";
   sizeBytes?: number;
   createdAt?: number;
   downloadUrl?: string | null;
@@ -40,12 +49,21 @@ function formatSize(bytes?: number): string {
 
 export function ChatKBPicker({ selectedFileIds, onToggle, onClose }: Props) {
   const { t } = useTranslation();
+  const { toast } = useToast();
+  const { googleConnection } = useConnectedAccounts();
   const [search, setSearch] = useState("");
+  const [importingFromDrive, setImportingFromDrive] = useState(false);
+  const [driveImportProgress, setDriveImportProgress] = useState<DriveImportProgress | null>(null);
 
-  const files = useQuery(api.chat.queries.listKnowledgeBaseFiles, {
+  const files = useQuery(api.knowledge_base.queries.listKnowledgeBaseFiles, {
     ...(search ? { search } : {}),
     source: "all" as const,
   }) as KBFile[] | undefined;
+
+  const getDrivePickerAccessToken = useAction(api.oauth.google.getDrivePickerAccessToken);
+  const importDriveFileToKnowledgeBase = useAction(
+    api.knowledge_base.actions.importDriveFileToKnowledgeBase,
+  );
 
   const filtered = useMemo(() => {
     if (!files) return [];
@@ -53,6 +71,79 @@ export function ChatKBPicker({ selectedFileIds, onToggle, onClose }: Props) {
     const q = search.toLowerCase();
     return files.filter((f) => f.filename.toLowerCase().includes(q));
   }, [files, search]);
+
+  const handleImportFromDrive = async () => {
+    if (importingFromDrive) return;
+    if (googleConnection?.hasDrive !== true) {
+      toast({
+        message: t("connect_google_drive_before_choosing_files"),
+        variant: "error",
+      });
+      return;
+    }
+    const developerKey =
+      import.meta.env.VITE_GOOGLE_PICKER_API_KEY ?? import.meta.env.VITE_GOOGLE_API_KEY;
+    const appId =
+      import.meta.env.VITE_GOOGLE_PICKER_APP_ID ?? import.meta.env.VITE_GOOGLE_PROJECT_NUMBER;
+    if (!developerKey || !appId) {
+      toast({ message: t("google_drive_picker_not_configured"), variant: "error" });
+      return;
+    }
+    setImportingFromDrive(true);
+    setDriveImportProgress(null);
+    try {
+      const token = await getDrivePickerAccessToken({});
+      const picked = await pickGoogleDriveFiles({
+        accessToken: token.accessToken,
+        appId,
+        developerKey,
+        multiselect: true,
+      });
+      if (picked.length === 0) return;
+      setDriveImportProgress({ current: 0, total: picked.length });
+      let imported = 0;
+      const failures: string[] = [];
+      for (const [index, file] of picked.entries()) {
+        setDriveImportProgress({
+          current: index + 1,
+          total: picked.length,
+          filename: file.name,
+        });
+        try {
+          const result = await importDriveFileToKnowledgeBase({ fileId: file.id });
+          if (result?.storageId) {
+            onToggle(result.storageId);
+          }
+          imported++;
+        } catch (error) {
+          failures.push(driveImportErrorMessage(error, file.name, t, navigator.language));
+        }
+      }
+      if (imported > 0) {
+        toast({
+          message: t("kb_drive_import_succeeded", { count: imported }),
+          variant: "success",
+        });
+      }
+      if (failures.length > 0) {
+        toast({
+          message: t("kb_drive_import_partial_failure", {
+            count: failures.length,
+            error: failures[0],
+          }),
+          variant: "error",
+        });
+      }
+    } catch (error) {
+      toast({
+        message: convexErrorMessage(error, t("google_drive_picker_failed")),
+        variant: "error",
+      });
+    } finally {
+      setImportingFromDrive(false);
+      setDriveImportProgress(null);
+    }
+  };
 
   return (
     <div
@@ -94,6 +185,32 @@ export function ChatKBPicker({ selectedFileIds, onToggle, onClose }: Props) {
               className="w-full pl-9 pr-4 py-2 rounded-xl text-sm bg-surface-2 border border-border/50 text-foreground placeholder-muted focus:outline-none focus:border-primary/50"
             />
           </div>
+        </div>
+
+        {driveImportProgress && (
+          <div className="mx-5 mt-3 flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/10 px-3 py-2 text-sm text-blue-500">
+            <LoadingSpinner size="sm" />
+            <span className="min-w-0 truncate">
+              {driveImportProgressMessage(driveImportProgress, t)}
+            </span>
+          </div>
+        )}
+
+        {/* Import from Drive */}
+        <div className="px-5 pt-2 pb-1">
+          <button
+            type="button"
+            onClick={handleImportFromDrive}
+            disabled={importingFromDrive}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-sm border border-border/50 transition-colors ${
+              importingFromDrive
+                ? "opacity-50 pointer-events-none"
+                : "hover:bg-surface-2 text-foreground"
+            }`}
+          >
+            <HardDrive size={14} />
+            {importingFromDrive ? t("importing") : t("import_from_drive")}
+          </button>
         </div>
 
         <div className="overflow-y-auto" style={{ maxHeight: "calc(80vh - 8rem)" }}>
@@ -200,8 +317,13 @@ function FileRow({
       <div className="flex-1 min-w-0">
         <p className="text-sm truncate">{file.filename}</p>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-[10px] px-1.5 py-0.5 rounded-md uppercase tracking-wide bg-surface-3 text-muted">
-              {file.source === "upload" ? t("uploaded") : t("generated")}
+          <span className="text-[10px] px-1.5 py-0.5 rounded-md uppercase tracking-wide bg-surface-3 text-muted inline-flex items-center gap-1">
+              {file.source === "drive" && <HardDrive size={9} />}
+              {file.source === "upload"
+                ? t("uploaded")
+                : file.source === "drive"
+                ? t("drive_source")
+                : t("generated")}
             </span>
           {file.sizeBytes != null && (
             <span className="text-xs text-muted">{formatSize(file.sizeBytes)}</span>

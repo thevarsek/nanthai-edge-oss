@@ -82,7 +82,7 @@ export function AppearanceSection() {
   useEffect(() => {
     if (!prefs?.appearanceMode) return;
     applyTheme(prefs.appearanceMode as AppearanceMode);
-  }, [prefs?.appearanceMode]);
+  }, [applyTheme, prefs?.appearanceMode]);
 
   useEffect(() => {
     applyColorTheme(currentColorTheme);

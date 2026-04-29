@@ -98,7 +98,8 @@ export function requiredToolProfilesForSkill(selection: SkillMetadataSelection):
   return Array.from(profiles).sort();
 }
 
-export function requiredCapabilitiesForSkill(_selection: SkillMetadataSelection): SkillCapabilityId[] {
+export function requiredCapabilitiesForSkill(selection?: SkillMetadataSelection): SkillCapabilityId[] {
+  void selection;
   return [];
 }
 

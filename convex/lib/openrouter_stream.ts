@@ -75,7 +75,7 @@ export async function callOpenRouterStreaming(
     networkRetryDelayMs = 2000,
   } = retryConfig;
 
-  let currentParams = { ...params };
+  const currentParams = { ...params };
   let currentModel = model;
   let attempt = 0;
   let networkAttempt = 0;
@@ -232,7 +232,6 @@ async function streamOnce(
   // stripped. See the 404 handler below for rationale.
   let strippedProviderOnce = false;
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const body = deps.buildRequestBody(
       model,

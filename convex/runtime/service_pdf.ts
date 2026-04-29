@@ -106,7 +106,7 @@ async function readPdfFromStorageInternal(
   );
   const { sandbox, workspace } = runtime;
   const { record, blob } = await resolveOwnedStorageFile(toolCtx, storageId);
-  const pdfPath = path.posix.join(workspace.inputs, record.filename.replace(/[^\w.\-]+/g, "_"));
+  const pdfPath = path.posix.join(workspace.inputs, record.filename.replace(/[^\w.-]+/g, "_"));
   await sandbox.writeFiles([{ path: pdfPath, content: new Uint8Array(await blob.arrayBuffer()) }]);
 
   const python = includeText

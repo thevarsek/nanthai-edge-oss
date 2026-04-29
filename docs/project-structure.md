@@ -102,11 +102,12 @@ nanthai-edge/                              # Repository root
 │   │   ├── read_eml.ts                   # read_eml tool (.eml parser: headers, multipart, QP)
 │   │   ├── fetch_image.ts                # fetch_image tool (URL → Convex storage)
 │   │   ├── image_resolver.ts              # Shared helper: storageId → base64 data URI
-│   │   ├── google/                        # Google Workspace tools (M10 Phase B) — 14 tools
-│   │   │   ├── auth.ts                    # Google OAuth token refresh + auth helper
-│   │   │   ├── gmail.ts                   # 6 Gmail tools: search, read, send, reply, trash, batch_modify
-│   │   │   ├── drive.ts                   # 4 Drive tools: search, upload, download, move
-│   │   │   ├── calendar.ts                # 3 Calendar tools: list, create, delete
+│   │   ├── google/                        # Google tools (M24 narrowed OAuth + Manual Gmail)
+│   │   │   ├── auth.ts                    # Google OAuth token refresh + auth helper (identity, drive.file, calendar.events)
+│   │   │   ├── gmail.ts                   # 6 Gmail tools backed by gmail_manual IMAP/SMTP credentials
+│   │   │   ├── gmail_manual_client.ts     # Manual Gmail IMAP/SMTP app-password client
+│   │   │   ├── drive.ts                   # 4 Drive tools scoped to drive.file + explicit Picker/OnePick grants
+│   │   │   ├── calendar.ts                # 3 Calendar tools scoped to calendar.events
 │   │   │   └── index.ts                   # Barrel export: registerGoogleTools()
 │   │   ├── microsoft/                     # Microsoft 365 tools (M10 Phase C) — 14 tools
 │   │   │   ├── auth.ts                    # Microsoft OAuth token refresh + auth helper
@@ -709,6 +710,37 @@ nanthai-edge/                              # Repository root
   - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailRoute.kt` — `onChatDeleted` callback + `hasReceivedChat` guard
 - tests:
   - `android/app/src/test/java/com/nanthai/edge/features/chat/AdaptiveChatPaneContractTests.kt` — 5 scaffold contract tests
+
+## M24 Phase 6 Additions Not Fully Expanded In The Tree Above
+
+- Convex backend (KB module relocation + Drive ingest):
+  - `convex/knowledge_base/queries.ts` — `listKnowledgeBaseFiles`, `getKnowledgeBaseFilesByStorageIds`, `getFileAttachmentInternal`, `getFileAttachmentByStorageInternal`
+  - `convex/knowledge_base/mutations.ts` — `addUploadToKnowledgeBase`, `deleteKnowledgeBaseFile`, `insertDriveImport`, `updateDriveAttachmentStorage`
+  - `convex/knowledge_base/mutations_args.ts` — Zod arg validators
+  - `convex/knowledge_base/actions.ts` — `importDriveFileToKnowledgeBase`, `refreshDriveStorageIfStale`
+  - `convex/lib/file_attachments.ts` — single chokepoint: `insertFileAttachment`, `deleteDriveGrantCacheForStorage`
+  - `convex/drive_picker/ingest.ts` — shared Drive metadata + bytes fetch (used by both chat-flow picker and KB import)
+  - `convex/drive_picker/actions.ts`, `convex/drive_picker/mutations.ts` — chat-side picker entry points
+  - `convex/oauth/gmail_manual.ts` — IMAP/SMTP credential path; rows stored in `oauthConnections` (no separate table)
+- Convex schema (modified):
+  - `convex/schema_tables_core.ts` — `googleDriveFileGrants` (lines ~361-382), `drivePickerBatches` (lines ~572-593); `fileAttachments` extended with `driveFileId?` + `lastRefreshedAt?` + new `by_storage` and `by_user_drive_file` indexes
+- Convex tests:
+  - `convex/tests/kb_source_parity_contract.test.ts`
+  - `convex/tests/shared_queries_contract.test.ts` — Drive refresh routing + per-id error isolation
+- iOS (KB Drive import + chat-side KB picker):
+  - `NanthAi-Edge/NanthAi-Edge/Views/Settings/KnowledgeBaseView.swift` — KB list with `source` discriminator and Drive Import action
+  - `NanthAi-Edge/NanthAi-Edge/Views/Settings/KBDriveImportSheet.swift` — Drive picker bridge for KB Settings flow
+  - `NanthAi-Edge/NanthAi-Edge/Views/Settings/KBDocumentPicker.swift` — `UIDocumentPickerViewController` wrapper for native upload path
+  - `NanthAi-Edge/NanthAi-Edge/Views/Settings/KBFileRowView.swift` — single row UI shared by upload/Drive/generated sources
+  - `NanthAi-Edge/NanthAi-Edge/Views/Chat/KBFilePickerView.swift` — chat composer KB picker (with "Import from Drive" that writes to KB but does NOT auto-attach to the message)
+- Android (Drive picker bus + KB Drive import):
+  - `android/app/src/main/java/com/nanthai/edge/app/DrivePickerCallbackBus.kt` — app-wide `SharedFlow` singleton (`replay=0`, `extraBufferCapacity=1`) for routing `nanthai-edge://drive-picker?fileIds=...` deeplinks back to whichever surface launched the picker
+  - `android/app/src/main/java/com/nanthai/edge/app/DrivePickerOnePick.kt` — shared OnePick browser-deeplink invocation helper
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatKBDriveImportDialog.kt` — chat-side composer dialog
+  - `android/app/src/main/java/com/nanthai/edge/features/knowledgebase/KBDriveImportDialog.kt` — Settings KB Drive Import dialog
+  - `android/app/src/main/java/com/nanthai/edge/data/ConvexGateway.kt` — added KB + Drive picker entry points
+  - `android/app/src/main/java/com/nanthai/edge/data/KnowledgeBaseRepository.kt` — KB DTOs + repository, source discriminator, `Double`/`Long` for Convex numbers
+  - `android/app/src/main/res/values{,-de,-es,-fr,-it,-ja,-zh-rCN}/strings.xml` — KB + Drive import localized strings
 
 ## Files Removed in M8
 

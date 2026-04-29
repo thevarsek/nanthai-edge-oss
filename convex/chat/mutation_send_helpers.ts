@@ -14,6 +14,8 @@ type RawAttachment = {
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
+  driveFileId?: string;
+  lastRefreshedAt?: number;
   videoRole?: "first_frame" | "last_frame" | "reference";
 };
 
@@ -24,6 +26,8 @@ export type NormalizedAttachment = {
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
+  driveFileId?: string;
+  lastRefreshedAt?: number;
   videoRole?: "first_frame" | "last_frame" | "reference";
 };
 
@@ -75,6 +79,8 @@ export async function normalizeMessageAttachments(
             (looksLikeBase64(resolvedUrl)
               ? Math.floor((resolvedUrl.length * 3) / 4)
               : 0),
+          driveFileId: attachment.driveFileId,
+          lastRefreshedAt: attachment.lastRefreshedAt,
           videoRole: attachment.videoRole,
         };
       }),

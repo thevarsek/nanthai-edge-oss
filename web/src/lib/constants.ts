@@ -12,7 +12,7 @@ export const ConvexFns = {
   getMessageAudioUrl: "chat/queries:getMessageAudioUrl",
   getGeneratedFilesByMessage: "chat/queries:getGeneratedFilesByMessage",
   getGeneratedChartsByMessage: "chat/queries:getGeneratedChartsByMessage",
-  listKnowledgeBaseFiles: "chat/queries:listKnowledgeBaseFiles",
+  listKnowledgeBaseFiles: "knowledge_base/queries:listKnowledgeBaseFiles",
 
   // Chat mutations
   createChat: "chat/mutations:createChat",
@@ -21,7 +21,7 @@ export const ConvexFns = {
   requestAudioGeneration: "chat/mutations:requestAudioGeneration",
   retryMessage: "chat/mutations:retryMessage",
   cancelActiveGeneration: "chat/mutations:cancelActiveGeneration",
-  deleteKnowledgeBaseFile: "chat/mutations:deleteKnowledgeBaseFile",
+  deleteKnowledgeBaseFile: "knowledge_base/mutations:deleteKnowledgeBaseFile",
 
   // Chat management
   updateChat: "chat/manage:updateChat",

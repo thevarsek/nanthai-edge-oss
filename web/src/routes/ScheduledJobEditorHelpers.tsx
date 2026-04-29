@@ -276,14 +276,16 @@ export function StepIntegrationsSection({
 }) {
   const { t } = useTranslation();
   const { toast } = useToast();
-  const { googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection } = useConnectedAccounts();
-  const hasGoogle = !!googleConnection;
+  const { googleConnection, gmailManualConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection } = useConnectedAccounts();
+  const hasGmail = gmailManualConnection?.status === "active";
+  const hasGoogleDrive = googleConnection?.hasDrive === true;
+  const hasGoogleCalendar = googleConnection?.hasCalendar === true;
   const hasMicrosoft = !!microsoftConnection;
   const hasApple = !!appleCalendarConnection;
   const hasNotion = !!notionConnection;
   const hasCloze = clozeConnection?.status === "active";
   const hasSlack = !!slackConnection;
-  const hasAny = hasGoogle || hasMicrosoft || hasApple || hasNotion || hasCloze || hasSlack;
+  const hasAny = hasGmail || hasGoogleDrive || hasGoogleCalendar || hasMicrosoft || hasApple || hasNotion || hasCloze || hasSlack;
   const handleGoogleToggle = async (
     checked: boolean,
     integrationId: "gmail" | "drive" | "calendar",
@@ -294,8 +296,19 @@ export function StepIntegrationsSection({
       return;
     }
 
+    if (integrationId === "gmail") {
+      if (!hasGmail) {
+        toast({
+          message: t("connect_gmail_app_password_first"),
+          variant: "error",
+        });
+        return;
+      }
+      onChange(patch);
+      return;
+    }
+
     const capabilityGranted =
-      (integrationId === "gmail" && googleConnection?.hasGmail) ||
       (integrationId === "drive" && googleConnection?.hasDrive) ||
       (integrationId === "calendar" && googleConnection?.hasCalendar);
 
@@ -318,12 +331,14 @@ export function StepIntegrationsSection({
     <div className="space-y-2">
       <SH>{t("integrations_tools_section")}</SH>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-        {hasGoogle && (
-          <>
-            <ToggleRow label={t("integration_gmail")} checked={step.gmailEnabled} onChange={(v) => { void handleGoogleToggle(v, "gmail", { gmailEnabled: v }); }} />
-            <ToggleRow label={t("integration_google_drive")} checked={step.driveEnabled} onChange={(v) => { void handleGoogleToggle(v, "drive", { driveEnabled: v }); }} />
-            <ToggleRow label={t("integration_google_calendar")} checked={step.calendarEnabled} onChange={(v) => { void handleGoogleToggle(v, "calendar", { calendarEnabled: v }); }} />
-          </>
+        {hasGmail && (
+          <ToggleRow label={t("integration_gmail")} checked={step.gmailEnabled} onChange={(v) => { void handleGoogleToggle(v, "gmail", { gmailEnabled: v }); }} />
+        )}
+        {hasGoogleDrive && (
+          <ToggleRow label={t("integration_google_drive")} checked={step.driveEnabled} onChange={(v) => { void handleGoogleToggle(v, "drive", { driveEnabled: v }); }} />
+        )}
+        {hasGoogleCalendar && (
+          <ToggleRow label={t("integration_google_calendar")} checked={step.calendarEnabled} onChange={(v) => { void handleGoogleToggle(v, "calendar", { calendarEnabled: v }); }} />
         )}
         {hasMicrosoft && (
           <>

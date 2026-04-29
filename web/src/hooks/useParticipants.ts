@@ -114,6 +114,7 @@ export function useParticipants(
   const asMessageParticipants = useMemo<Participant[]>(
     () =>
       participants.map((p) => ({
+        id: p.id,
         modelId: p.modelId,
         personaId: p.personaId,
         personaName: p.personaName,

@@ -66,7 +66,6 @@ export async function callOpenRouterNonStreaming(
   const startTime = Date.now();
   const msgCount = messages.length;
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const body = deps.buildRequestBody(
       currentModel,

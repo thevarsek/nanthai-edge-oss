@@ -173,7 +173,7 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
 
   // === Model WITH tool support (function tools present) ===
   // Function tools are still emitted; web search goes to `plugins` regardless.
-  const bodyWithTools = buildRequestBody("openai/gpt-5.4", messages, {
+  const bodyWithTools = buildRequestBody("openai/gpt-5.5", messages, {
     webSearchEnabled: true,
     toolChoice: "auto",
     tools: [dummyTool],
@@ -187,7 +187,7 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
   // toolChoice "none" — plugin still attaches (plugin doesn't interact with
   // tool_choice, and web search intent is independent of whether the model
   // is allowed to call function tools this round).
-  const bodyNone = buildRequestBody("openai/gpt-5.4", messages, {
+  const bodyNone = buildRequestBody("openai/gpt-5.5", messages, {
     webSearchEnabled: true,
     toolChoice: "none",
     tools: [dummyTool],
@@ -196,7 +196,7 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
   assert.equal(bodyNone.tool_choice, "none");
 
   // === Tool-capable model, web search, NO function tools ===
-  const bodyNoFuncTools = buildRequestBody("openai/gpt-5.4", messages, {
+  const bodyNoFuncTools = buildRequestBody("openai/gpt-5.5", messages, {
     webSearchEnabled: true,
   }, true);
   assert.equal(bodyNoFuncTools.tools, undefined, "no tools when no function tools");
@@ -219,7 +219,7 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
   assert.equal(bodyNoSearch.plugins, undefined);
 
   // === Caller-supplied plugins merge with the web plugin ===
-  const bodyExtraPlugin = buildRequestBody("openai/gpt-5.4", messages, {
+  const bodyExtraPlugin = buildRequestBody("openai/gpt-5.5", messages, {
     webSearchEnabled: true,
     plugins: [{ id: "custom-plugin" }],
   }, true);
@@ -229,7 +229,7 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
   ]);
 
   // === webSearchMaxTotalResults is deprecated and does NOT affect wire body ===
-  const bodyDeprecatedBudget = buildRequestBody("openai/gpt-5.4", messages, {
+  const bodyDeprecatedBudget = buildRequestBody("openai/gpt-5.5", messages, {
     webSearchEnabled: true,
     webSearchMaxTotalResults: 5,
   }, true);
@@ -246,8 +246,8 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
 //
 // Measured (Apr 2026, captured production body, curl TTFB):
 //   moonshotai/kimi-k2.6: server-tool 10.21s vs plugin 3.93s (6.3s faster)
-//   openai/gpt-5.4 + ZDR: server-tool 10.17s vs plugin 2.60s (7.6s faster)
-//   openai/gpt-5.4 no ZDR: server-tool 0.50s vs plugin 0.82s (~0.3s slower, noise)
+//   openai/gpt-5.5 + ZDR: server-tool 10.17s vs plugin 2.60s (7.6s faster)
+//   openai/gpt-5.5 no ZDR: server-tool 0.50s vs plugin 0.82s (~0.3s slower, noise)
 //
 // The server tool adds an extra model round-trip (model emits tool call → OR
 // executes search → results returned → model responds). The plugin searches
@@ -269,7 +269,7 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
 test("REGRESSION: web search always uses plugin form, never the server tool", () => {
   const messages = [{ role: "user" as const, content: "hello" }];
 
-  const toolCapableBody = buildRequestBody("openai/gpt-5.4", messages, {
+  const toolCapableBody = buildRequestBody("openai/gpt-5.5", messages, {
     webSearchEnabled: true,
     tools: [{ type: "function" as const, function: { name: "f", description: "f", parameters: {} } }],
   }, true);

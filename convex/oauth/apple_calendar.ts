@@ -7,6 +7,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import { encryptSecret } from "../lib/secret_crypto";
 import { discoverAppleCalendars } from "../tools/apple/client";
 
 const NON_EXPIRING_MS = 10 * 365 * 24 * 60 * 60 * 1000;
@@ -46,7 +47,7 @@ export const connectAppleCalendar = action({
     await ctx.runMutation(internal.oauth.apple_calendar.upsertConnection, {
       userId,
       appleId,
-      appSpecificPassword,
+      appSpecificPassword: await encryptSecret(appSpecificPassword),
       displayName: calendars[0]?.displayName,
     });
 

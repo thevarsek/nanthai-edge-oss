@@ -1,4 +1,5 @@
 import { MutationCtx } from "../_generated/server";
+import { Id } from "../_generated/dataModel";
 import { SendParticipantConfig } from "../chat/mutation_send_helpers";
 
 type ToolCapabilityCtx = Pick<MutationCtx, "db">;
@@ -43,6 +44,8 @@ async function findUnsupportedModelIds(
  */
 export interface ToolFilterResult {
   enabledIntegrations: string[] | undefined;
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   requireToolUse: boolean;
   /** Model IDs that were found to lack tool support. */
   strippedModelIds: string[];
@@ -59,17 +62,23 @@ export async function filterToolIncompatibleOptions(
   ctx: ToolCapabilityCtx,
   options: {
     enabledIntegrations?: string[];
+    turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+    turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
     modelIds: Array<string | null | undefined>;
     requireToolUse?: boolean;
   },
 ): Promise<ToolFilterResult> {
   const integrations = options.enabledIntegrations ?? [];
+  const skillOverrides = options.turnSkillOverrides ?? [];
+  const integrationOverrides = options.turnIntegrationOverrides ?? [];
   const requireToolUse = options.requireToolUse ?? false;
 
   // Nothing to strip — fast path.
-  if (integrations.length === 0 && !requireToolUse) {
+  if (integrations.length === 0 && skillOverrides.length === 0 && integrationOverrides.length === 0 && !requireToolUse) {
     return {
       enabledIntegrations: options.enabledIntegrations,
+      turnSkillOverrides: options.turnSkillOverrides,
+      turnIntegrationOverrides: options.turnIntegrationOverrides,
       requireToolUse: false,
       strippedModelIds: [],
     };
@@ -80,6 +89,8 @@ export async function filterToolIncompatibleOptions(
     // All models support tools — pass through unchanged.
     return {
       enabledIntegrations: options.enabledIntegrations,
+      turnSkillOverrides: options.turnSkillOverrides,
+      turnIntegrationOverrides: options.turnIntegrationOverrides,
       requireToolUse,
       strippedModelIds: [],
     };
@@ -88,6 +99,8 @@ export async function filterToolIncompatibleOptions(
   // At least one model lacks tool support → strip tool-dependent options.
   return {
     enabledIntegrations: integrations.length > 0 ? [] : options.enabledIntegrations,
+    turnSkillOverrides: skillOverrides.length > 0 ? [] : options.turnSkillOverrides,
+    turnIntegrationOverrides: integrationOverrides.length > 0 ? [] : options.turnIntegrationOverrides,
     requireToolUse: false,
     strippedModelIds: Array.from(unsupported),
   };

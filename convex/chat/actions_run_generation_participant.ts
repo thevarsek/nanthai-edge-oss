@@ -817,6 +817,48 @@ export async function generateForParticipant(
       const deferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "spawn_subagents",
       );
+      const drivePickerDeferred = genResult.deferredToolRound.deferredResults.find(
+        (entry) => entry.payload.kind === "drive_picker",
+      );
+      if (!deferred && drivePickerDeferred) {
+        const deferredToolCall = genResult.deferredToolRound.toolCalls.find(
+          (entry) => entry.id === drivePickerDeferred.toolCallId,
+        );
+        const currentRoundToolCallIds = new Set(
+          genResult.deferredToolRound.toolCalls.map((entry) => entry.id),
+        );
+        await ctx.runMutation(internal.drive_picker.mutations.createBatch, {
+          parentMessageId: participant.messageId,
+          sourceUserMessageId: args.userMessageId,
+          parentJobId: participant.jobId,
+          chatId: args.chatId,
+          userId: args.userId,
+          toolCallId: drivePickerDeferred.toolCallId,
+          toolCallArguments: deferredToolCall?.function.arguments ?? "{}",
+          toolRoundCalls: genResult.deferredToolRound.toolCalls,
+          toolRoundResults: genResult.deferredToolRound.recordedToolResults.filter((entry) =>
+            currentRoundToolCallIds.has(entry.toolCallId)
+          ),
+          resumeConversationSeed: genResult.deferredToolRound.resumeConversationMessages,
+          paramsSnapshot: {
+            enabledIntegrations: progressiveTools?.enabledIntegrations ?? [],
+            turnSkillOverrides: args.turnSkillOverrides,
+            turnIntegrationOverrides: args.turnIntegrationOverrides,
+            requestParams: effectiveParams,
+          },
+          participantSnapshot: {
+            chatId: args.chatId,
+            userId: args.userId,
+            participant,
+          },
+        });
+        return {
+          deferredForSubagents: true,
+          cancelled: false,
+          failed: false,
+          continued: false,
+        };
+      }
       const tasks = (deferred?.payload.data as { tasks?: Array<{ title: string; prompt: string }> } | undefined)?.tasks ?? [];
       const deferredToolCall = genResult.deferredToolRound.toolCalls.find(
         (entry) => entry.id === deferred?.toolCallId,
@@ -844,6 +886,8 @@ export async function generateForParticipant(
         resumeConversationSeed: genResult.deferredToolRound.resumeConversationMessages,
         paramsSnapshot: {
           enabledIntegrations: args.enabledIntegrations,
+          turnSkillOverrides: args.turnSkillOverrides,
+          turnIntegrationOverrides: args.turnIntegrationOverrides,
           requestParams: effectiveParams,
         },
         participantSnapshot: {
@@ -887,6 +931,7 @@ export async function generateForParticipant(
           allowSubagents: progressiveTools?.allowSubagents ?? false,
           searchSessionId: args.searchSessionId,
           subagentBatchId: (args as { subagentBatchId?: any }).subagentBatchId,
+          drivePickerBatchId: (args as { drivePickerBatchId?: any }).drivePickerBatchId,
           chatSkillOverrides: preResolvedOverrides?.chatSkillOverrides as any,
           chatIntegrationOverrides: args.chatIntegrationOverrides as any,
           personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides as any,

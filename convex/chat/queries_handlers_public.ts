@@ -170,7 +170,7 @@ export async function listMessagesHandler(
   if (!chat || chat.userId !== auth.userId) return [];
 
   const limit = args.limit ?? 500;
-  let query = ctx.db
+  const query = ctx.db
     .query("messages")
     .withIndex("by_chat", (q) => {
       const q2 = q.eq("chatId", args.chatId);
@@ -447,173 +447,10 @@ export async function getGeneratedChartsByMessageHandler(
 }
 
 // MARK: - Knowledge Base
-
-/** Unified shape returned from the KB listing query. */
-export interface KBFileRecord {
-  storageId: string;
-  filename: string;
-  mimeType: string;
-  sizeBytes?: number;
-  source: "upload" | "generated";
-  toolName?: string;
-  chatId: string;
-  messageId: string;
-  createdAt: number;
-  downloadUrl: string | null;
-}
-
-export interface ListKnowledgeBaseFilesArgs extends Record<string, unknown> {
-  search?: string;
-  source?: "upload" | "generated" | "all";
-  limit?: number;
-}
-
-export interface GetKnowledgeBaseFilesByStorageIdsArgs extends Record<string, unknown> {
-  storageIds: Id<"_storage">[];
-}
-
-/**
- * List all files belonging to the authenticated user — both uploaded
- * attachments (from messages) and AI-generated files (from generatedFiles).
- *
- * Merges both sources into a unified `KBFileRecord[]` sorted by createdAt desc.
- */
-export async function listKnowledgeBaseFilesHandler(
-  ctx: QueryCtx,
-  args: ListKnowledgeBaseFilesArgs,
-): Promise<KBFileRecord[]> {
-  const auth = await optionalAuth(ctx);
-  if (!auth) return [];
-
-  const limit = args.limit ?? 100;
-  const sourceFilter = args.source ?? "all";
-  const searchLower = args.search?.toLowerCase().trim();
-
-  // Server-side fetch cap across all sources to bound memory. Set higher than
-  // the requested limit to allow for dedup and text-search filtering, then
-  // divide across active sources so total loaded records stay bounded.
-  const sourceCount = sourceFilter === "all" ? 3 : sourceFilter === "generated" ? 2 : 1;
-  const totalFetchCap = Math.min(Math.max(limit * 5, 200), 1000);
-  const fetchCap = Math.ceil(totalFetchCap / sourceCount);
-
-  const results: KBFileRecord[] = [];
-
-  // 1. Collect AI-generated files (if source allows)
-  if (sourceFilter === "all" || sourceFilter === "generated") {
-    const generated = await ctx.db
-      .query("generatedFiles")
-      .withIndex("by_user", (q) => q.eq("userId", auth.userId))
-      .order("desc")
-      .take(fetchCap);
-
-    for (const f of generated) {
-      if (searchLower && !f.filename.toLowerCase().includes(searchLower)) {
-        continue;
-      }
-      results.push({
-        storageId: f.storageId,
-        filename: f.filename,
-        mimeType: f.mimeType,
-        sizeBytes: f.sizeBytes,
-        source: "generated",
-        toolName: f.toolName,
-        chatId: f.chatId,
-        messageId: f.messageId,
-        createdAt: f.createdAt,
-        downloadUrl: null, // resolved below
-      });
-    }
-
-    // 1b. M29: Collect generated media (images & videos) from generatedMedia table.
-    const media = await ctx.db
-      .query("generatedMedia")
-      .withIndex("by_userId", (q) => q.eq("userId", auth.userId))
-      .order("desc")
-      .take(fetchCap);
-
-    for (const m of media) {
-      const filename = m.type === "video" ? "generated-video.mp4" : "generated-image.png";
-      if (searchLower && !filename.toLowerCase().includes(searchLower)) {
-        continue;
-      }
-      results.push({
-        storageId: m.storageId,
-        filename,
-        mimeType: m.mimeType,
-        sizeBytes: m.sizeBytes,
-        source: "generated",
-        toolName: m.type === "video" ? "video_generation" : "image_generation",
-        chatId: m.chatId,
-        messageId: m.messageId,
-        createdAt: m.createdAt,
-        downloadUrl: null,
-      });
-    }
-  }
-
-  // 2. Collect user-uploaded attachments from the fileAttachments lookup table
-  if (sourceFilter === "all" || sourceFilter === "upload") {
-    const uploads = await ctx.db
-      .query("fileAttachments")
-      .withIndex("by_user", (q) => q.eq("userId", auth.userId))
-      .order("desc")
-      .take(fetchCap);
-
-    for (const att of uploads) {
-      const filename = att.filename ?? "attachment";
-      if (searchLower && !filename.toLowerCase().includes(searchLower)) {
-        continue;
-      }
-      results.push({
-        storageId: att.storageId,
-        filename,
-        mimeType: att.mimeType,
-        sizeBytes: att.sizeBytes,
-        source: "upload",
-        chatId: att.chatId,
-        messageId: att.messageId,
-        createdAt: att.createdAt,
-        downloadUrl: null, // resolved below
-      });
-    }
-  }
-
-  // 3. Deduplicate by storageId (same file referenced multiple times)
-  const seen = new Set<string>();
-  const deduped = results.filter((r) => {
-    if (seen.has(r.storageId)) return false;
-    seen.add(r.storageId);
-    return true;
-  });
-
-  // 4. Sort by createdAt desc, take limit
-  deduped.sort((a, b) => b.createdAt - a.createdAt);
-  const page = deduped.slice(0, limit);
-
-  // 5. Resolve download URLs
-  return Promise.all(
-    page.map(async (r) => ({
-      ...r,
-      downloadUrl: await ctx.storage.getUrl(r.storageId as Id<"_storage">),
-    })),
-  );
-}
-
-export async function getKnowledgeBaseFilesByStorageIdsHandler(
-  ctx: QueryCtx,
-  args: GetKnowledgeBaseFilesByStorageIdsArgs,
-): Promise<KBFileRecord[]> {
-  const auth = await optionalAuth(ctx);
-  if (!auth || args.storageIds.length === 0) return [];
-
-  const wanted = new Set(args.storageIds.map((id) => id as string));
-  const all = await listKnowledgeBaseFilesHandler(ctx, {
-    source: "all",
-    limit: 500,
-  });
-
-  return all.filter((file) => wanted.has(file.storageId));
-}
+//
+// KB queries moved to `convex/knowledge_base/queries.ts`. The handlers,
+// arg validators, and the `KBFileRecord` type now live there. Tests import
+// from the new location.
 
 // ── M23: Advanced Stats ────────────────────────────────────────────────
 

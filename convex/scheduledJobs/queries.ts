@@ -3,8 +3,10 @@
 // Scheduled job queries — public (authenticated) and internal.
 // =============================================================================
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { query, internalAction, internalQuery } from "../_generated/server";
+import { internal } from "../_generated/api";
+import { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
 
 /** List all scheduled jobs for the authenticated user. */
@@ -140,20 +142,57 @@ export const getLatestApiInvocationForJob = internalQuery({
   },
 });
 
-/** Internal: load KB file contents from storage IDs. */
+/**
+ * Internal: load KB file contents from storage IDs.
+ *
+ * For each `storageId`:
+ *   1. Look up the matching `fileAttachments` row (if any).
+ *   2. If the row is Drive-sourced (`driveFileId` set), route through the
+ *      lazy-refresh chokepoint `knowledge_base.actions.refreshDriveStorageIfStale`,
+ *      which may return a NEW `storageId` if Drive's `modifiedTime` changed.
+ *   3. Read the bytes from the (possibly new) storage id.
+ *
+ * Generated files (from `generatedFiles`/`generatedMedia`) and plain uploads
+ * skip the refresh path — they have no upstream to refresh against.
+ */
 export const getKBFileContents = internalAction({
   args: { storageIds: v.array(v.id("_storage")) },
   handler: async (ctx, args) => {
     const results: Array<{ storageId: string; content: string }> = [];
-    for (const storageId of args.storageIds) {
+    for (const originalStorageId of args.storageIds) {
+      let storageId: Id<"_storage"> = originalStorageId;
       try {
+        // 1. Resolve the fileAttachments row for this storage id (if any).
+        const att = await ctx.runQuery(
+          internal.knowledge_base.queries.getFileAttachmentByStorageInternal,
+          { storageId: originalStorageId },
+        );
+
+        // 2. If Drive-sourced, refresh lazily. The refresh action throws on
+        //    Drive errors so dev failures surface — Drive-in-KB is not yet
+        //    live for real users (M24 Phase 6).
+        if (att && att.driveFileId) {
+          const refreshed = await ctx.runAction(
+            internal.knowledge_base.actions.refreshDriveStorageIfStale,
+            { fileAttachmentId: att._id },
+          );
+          storageId = refreshed.storageId;
+        }
+
+        // 3. Read bytes from the (possibly refreshed) storage id.
         const blob = await ctx.storage.get(storageId);
-        if (!blob) continue;
+        if (!blob) {
+          throw new ConvexError({
+            code: "KB_FILE_UNREADABLE" as const,
+            message: "A selected Knowledge Base file is missing or unreadable.",
+            storageId: originalStorageId,
+          });
+        }
         const text = await blob.text();
         results.push({ storageId: storageId as string, content: text });
-      } catch {
-        // Silently skip missing/unreadable files (logged in execution action)
-        console.warn(`KB file ${storageId} not found or unreadable, skipping`);
+      } catch (err) {
+        console.warn(`KB file ${storageId} not found or unreadable`, err);
+        throw err;
       }
     }
     return results;

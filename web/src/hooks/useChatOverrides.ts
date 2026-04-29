@@ -223,11 +223,15 @@ export function useChatOverrides({
 
   useEffect(() => {
     if (chatId || draftSkillDirtyRef.current) return;
+    // New-chat draft state intentionally follows persona defaults until the user edits it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftSkillOverrides(new Map(personaSkillDefaultsMap));
   }, [chatId, personaSkillDefaultsMap]);
 
   useEffect(() => {
     if (chatId || draftIntegrationDirtyRef.current) return;
+    // New-chat draft state intentionally follows persona defaults until the user edits it.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftIntegrationOverrides(new Map(personaIntegrationDefaultsMap));
   }, [chatId, personaIntegrationDefaultsMap]);
 
@@ -235,18 +239,24 @@ export function useChatOverrides({
 
   useEffect(() => {
     if (pendingParamOverrides && JSON.stringify(pendingParamOverrides) === JSON.stringify(resolvedParamOverrides)) {
+      // Drop optimistic state once Convex reflects the same parameter overrides.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingParamOverrides(null);
     }
   }, [pendingParamOverrides, resolvedParamOverrides]);
 
   useEffect(() => {
     if (pendingSkillOverrides && mapEquals(pendingSkillOverrides, resolvedSkillOverrides)) {
+      // Drop optimistic state once Convex reflects the same skill overrides.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingSkillOverrides(null);
     }
   }, [pendingSkillOverrides, resolvedSkillOverrides]);
 
   useEffect(() => {
     if (pendingIntegrationOverrides && mapEquals(pendingIntegrationOverrides, resolvedIntegrationOverrides)) {
+      // Drop optimistic state once Convex reflects the same integration overrides.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingIntegrationOverrides(null);
     }
   }, [pendingIntegrationOverrides, resolvedIntegrationOverrides]);

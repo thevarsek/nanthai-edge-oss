@@ -8,6 +8,7 @@
 
 import { createTool } from "../registry";
 import { getGoogleAccessToken, googleCapabilityToolError } from "./auth";
+import { internal } from "../../_generated/api";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
@@ -164,6 +165,15 @@ export const driveUpload = createTool({
         size?: string;
       };
 
+      await toolCtx.ctx.runMutation(internal.oauth.google.recordDriveFileGrant, {
+        userId: toolCtx.userId,
+        fileId: result.id,
+        name: result.name,
+        mimeType: result.mimeType,
+        webViewLink: result.webViewLink,
+        size: result.size,
+      });
+
       return {
         success: true,
         data: {
@@ -195,25 +205,16 @@ export const driveUpload = createTool({
 export const driveList = createTool({
   name: "drive_list",
   description:
-    "List or search files in the user's Google Drive. " +
-    "Use when the user asks to see their Drive files, find a document, " +
-    "or check what's in their Google Drive. " +
-    "Supports Google Drive query syntax for filtering.",
+    "List or search Google Drive files that the user explicitly selected for NanthAI " +
+    "or files NanthAI created/uploaded. This does not search the user's entire Drive. " +
+    "If the requested file is not listed, ask the user to pick it in the Google Drive picker.",
   parameters: {
     type: "object",
     properties: {
       query: {
         type: "string",
         description:
-          "Google Drive search query (optional). " +
-          "Examples: \"name contains 'report'\", \"mimeType='application/pdf'\", " +
-          "\"modifiedTime > '2026-01-01'\", \"'folderId' in parents\".",
-      },
-      folder_id: {
-        type: "string",
-        description:
-          "List files in a specific folder by ID (optional). " +
-          "Overrides the query parameter for folder listing.",
+          "Optional case-insensitive filename search over files already selected for NanthAI.",
       },
       max_results: {
         type: "number",
@@ -225,78 +226,77 @@ export const driveList = createTool({
 
   execute: async (toolCtx, args) => {
     const query = args.query as string | undefined;
-    const folderId = args.folder_id as string | undefined;
     const maxResults = Math.min((args.max_results as number) || 20, 50);
 
     try {
-      const { accessToken } = await getGoogleAccessToken(
+      await getGoogleAccessToken(
         toolCtx.ctx,
         toolCtx.userId,
         "drive",
       );
-
-      // Build query string
-      let q = "";
-      if (folderId) {
-        q = `'${folderId}' in parents and trashed = false`;
-      } else if (query) {
-        q = `${query} and trashed = false`;
-      } else {
-        q = "trashed = false";
-      }
-
-      const params = new URLSearchParams({
-        q,
-        pageSize: String(maxResults),
-        fields:
-          "files(id,name,mimeType,modifiedTime,size,webViewLink,iconLink,owners)",
-        orderBy: "modifiedTime desc",
-      });
-
-      const response = await fetch(`${DRIVE_API}/files?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        return {
-          success: false,
-          data: null,
-          error: `Drive list failed (HTTP ${response.status}): ${errorText}`,
-        };
-      }
-
-      const result = (await response.json()) as {
-        files: Array<{
-          id: string;
+      const grantResult = await toolCtx.ctx.runQuery(
+        internal.oauth.google.listDriveFileGrantsInternal,
+        { userId: toolCtx.userId, maxResults, query },
+      ) as {
+        rows: Array<{
+          fileId: string;
           name: string;
           mimeType: string;
-          modifiedTime?: string;
           size?: string;
           webViewLink?: string;
-          owners?: Array<{ displayName?: string; emailAddress?: string }>;
+          lastUsedAt?: number;
+          grantedAt: number;
         }>;
+        totalGrantCount: number;
+        matchedGrantCount?: number;
       };
+      const grants = grantResult.rows;
 
-      const files = (result.files || []).map((f) => ({
-        id: f.id,
+      const files = grants.map((f) => ({
+        id: f.fileId,
         name: f.name,
         mimeType: f.mimeType,
-        modifiedTime: f.modifiedTime,
+        modifiedTime: f.lastUsedAt ? new Date(f.lastUsedAt).toISOString() : new Date(f.grantedAt).toISOString(),
         size: f.size ? formatFileSize(parseInt(f.size, 10)) : undefined,
         webViewLink: f.webViewLink,
-        owner: f.owners?.[0]?.emailAddress,
       }));
+
+      const trimmedQuery = query?.trim();
+      const shouldOpenPicker =
+        grantResult.totalGrantCount === 0 ||
+        (trimmedQuery !== undefined && trimmedQuery.length > 0 && grants.length === 0);
+
+      if (shouldOpenPicker) {
+        const hasExistingGrants = grantResult.totalGrantCount > 0;
+        return {
+          success: true,
+          data: {
+            files,
+            resultCount: 0,
+            requiresDrivePicker: true,
+            message:
+              hasExistingGrants
+                ? `No selected Google Drive files matched "${trimmedQuery}". Opening the Drive picker so the user can choose the right file.`
+                : "No Google Drive files have been selected for NanthAI yet. Opening the Drive picker so the user can choose a file.",
+          },
+          deferred: {
+            kind: "drive_picker",
+            data: {
+              query: query ?? null,
+              reason: hasExistingGrants
+                ? "no_matching_drive_file_grants"
+                : "no_drive_file_grants",
+            },
+          },
+        };
+      }
 
       return {
         success: true,
         data: {
           files,
           resultCount: files.length,
-          message:
-            files.length > 0
-              ? `Found ${files.length} file(s) in Google Drive.`
-              : "No files found in Google Drive matching the criteria.",
+          message: `Found ${files.length} file(s) in Google Drive.`,
         },
       };
     } catch (e) {
@@ -375,6 +375,21 @@ export const driveRead = createTool({
         toolCtx.userId,
         "drive",
       );
+
+      const grant = await toolCtx.ctx.runQuery(
+        internal.oauth.google.getDriveFileGrantInternal,
+        { userId: toolCtx.userId, fileId },
+      );
+      if (!grant) {
+        return {
+          success: false,
+          data: {
+            requiresDrivePicker: true,
+            fileId,
+          },
+          error: "This Drive file has not been selected for NanthAI. Ask the user to pick it in the Google Drive picker first.",
+        };
+      }
 
       // Step 1: Get file metadata to determine type
       const metaResponse = await fetch(
@@ -599,6 +614,21 @@ export const driveMove = createTool({
         toolCtx.userId,
         "drive",
       );
+
+      const grant = await toolCtx.ctx.runQuery(
+        internal.oauth.google.getDriveFileGrantInternal,
+        { userId: toolCtx.userId, fileId },
+      );
+      if (!grant) {
+        return {
+          success: false,
+          data: {
+            requiresDrivePicker: true,
+            fileId,
+          },
+          error: "This Drive file has not been selected for NanthAI. Ask the user to pick it in the Google Drive picker first.",
+        };
+      }
 
       // Step 1: Get current parents so we can remove them
       const metaResponse = await fetch(

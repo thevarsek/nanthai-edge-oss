@@ -25,12 +25,26 @@ export async function getGrantedGoogleIntegrations(
     }
     const flags = deriveGoogleCapabilityFlags(connection.scopes);
     const integrations: string[] = [];
-    if (flags.hasGmail) integrations.push("gmail");
     if (flags.hasDrive) integrations.push("drive");
     if (flags.hasCalendar) integrations.push("calendar");
     return integrations;
   } catch {
     return [];
+  }
+}
+
+export async function checkGmailManualConnection(
+  ctx: ActionCtx,
+  userId: string,
+): Promise<boolean> {
+  try {
+    const connection = await ctx.runQuery(
+      internal.oauth.gmail_manual.getConnectionInternal,
+      { userId },
+    );
+    return connection !== null && connection.status === "active";
+  } catch {
+    return false;
   }
 }
 

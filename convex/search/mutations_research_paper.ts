@@ -26,6 +26,8 @@ export const startResearchPaper = mutation({
       name: v.optional(v.string()),
       mimeType: v.optional(v.string()),
       sizeBytes: v.optional(v.number()),
+      driveFileId: v.optional(v.string()),
+      lastRefreshedAt: v.optional(v.number()),
     }))),
     participant: v.object({
       modelId: v.string(),

@@ -22,6 +22,8 @@ import {
   googleScopesForIntegration,
   mergeGoogleScopes,
 } from "./google_capabilities";
+import { getGoogleAccessToken } from "../tools/google/auth";
+import { fetchDriveMetadata } from "../drive_picker/ingest";
 
 // ---------------------------------------------------------------------------
 // Google OAuth Constants
@@ -50,10 +52,17 @@ export const exchangeGoogleCode = action({
       v.literal("gmail"),
       v.literal("drive"),
       v.literal("calendar"),
+      v.literal("workspace"),
     ),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    if (args.requestedIntegration === "gmail") {
+      throw new ConvexError({
+        code: "GMAIL_MANUAL_REQUIRED",
+        message: "Gmail is no longer connected through Google OAuth. Connect Manual Gmail with a Google app password.",
+      });
+    }
     const clientConfig = resolveGoogleOAuthClientConfigForRedirect(args.redirectUri);
 
     // Exchange authorization code for tokens.
@@ -253,6 +262,198 @@ export const getGoogleConnection = query({
   },
 });
 
+export const getDrivePickerAccessToken = action({
+  args: {},
+  handler: async (ctx): Promise<{ accessToken: string; expiresAt?: number }> => {
+    const { userId } = await requireAuth(ctx);
+    const { accessToken, connection } = await getGoogleAccessToken(ctx, userId, "drive");
+    return {
+      accessToken,
+      expiresAt: connection.expiresAt ?? undefined,
+    };
+  },
+});
+
+export const recordDriveFileGrant = internalMutation({
+  args: {
+    userId: v.string(),
+    fileId: v.string(),
+    name: v.string(),
+    mimeType: v.string(),
+    webViewLink: v.optional(v.string()),
+    size: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("googleDriveFileGrants")
+      .withIndex("by_user_file", (q) =>
+        q.eq("userId", args.userId).eq("fileId", args.fileId),
+      )
+      .unique();
+    const now = Date.now();
+    const patch = {
+      name: args.name,
+      mimeType: args.mimeType,
+      webViewLink: args.webViewLink,
+      size: args.size,
+      lastUsedAt: now,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+    return await ctx.db.insert("googleDriveFileGrants", {
+      userId: args.userId,
+      fileId: args.fileId,
+      name: args.name,
+      mimeType: args.mimeType,
+      webViewLink: args.webViewLink,
+      size: args.size,
+      grantedAt: now,
+      lastUsedAt: now,
+    });
+  },
+});
+
+export const recordDriveFileGrantCache = internalMutation({
+  args: {
+    userId: v.string(),
+    fileId: v.string(),
+    name: v.string(),
+    mimeType: v.string(),
+    webViewLink: v.optional(v.string()),
+    size: v.optional(v.string()),
+    cachedStorageId: v.id("_storage"),
+    cachedModifiedTime: v.string(),
+    cachedSizeBytes: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("googleDriveFileGrants")
+      .withIndex("by_user_file", (q) =>
+        q.eq("userId", args.userId).eq("fileId", args.fileId),
+      )
+      .unique();
+    const now = Date.now();
+    // Do not delete the previous cache blob here. Chat messages and KB rows may
+    // still point at that immutable snapshot until their own refresh path updates
+    // them. Cleanup happens only when the owning row is deleted.
+    const patch = {
+      name: args.name,
+      mimeType: args.mimeType,
+      webViewLink: args.webViewLink,
+      size: args.size,
+      cachedStorageId: args.cachedStorageId,
+      cachedModifiedTime: args.cachedModifiedTime,
+      cachedSizeBytes: args.cachedSizeBytes,
+      cachedAt: now,
+      lastUsedAt: now,
+    };
+    if (existing) {
+      await ctx.db.patch(existing._id, patch);
+      return existing._id;
+    }
+    return await ctx.db.insert("googleDriveFileGrants", {
+      userId: args.userId,
+      fileId: args.fileId,
+      name: args.name,
+      mimeType: args.mimeType,
+      webViewLink: args.webViewLink,
+      size: args.size,
+      cachedStorageId: args.cachedStorageId,
+      cachedModifiedTime: args.cachedModifiedTime,
+      cachedSizeBytes: args.cachedSizeBytes,
+      cachedAt: now,
+      grantedAt: now,
+      lastUsedAt: now,
+    });
+  },
+});
+
+export const getDriveFileGrantInternal = internalQuery({
+  args: {
+    userId: v.string(),
+    fileId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("googleDriveFileGrants")
+      .withIndex("by_user_file", (q) =>
+        q.eq("userId", args.userId).eq("fileId", args.fileId),
+      )
+      .unique();
+  },
+});
+
+export const listDriveFileGrantsInternal = internalQuery({
+  args: {
+    userId: v.string(),
+    maxResults: v.number(),
+    query: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("googleDriveFileGrants")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(Math.min(args.maxResults, 50));
+    const query = args.query?.trim().toLowerCase();
+    if (!query) return { rows, totalGrantCount: rows.length };
+    const filtered = rows.filter((row) => row.name.toLowerCase().includes(query));
+    return {
+      rows: filtered,
+      totalGrantCount: rows.length,
+      matchedGrantCount: filtered.length,
+    };
+  },
+});
+
+export const touchDriveFileGrantInternal = internalMutation({
+  args: {
+    userId: v.string(),
+    fileId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const grant = await ctx.db
+      .query("googleDriveFileGrants")
+      .withIndex("by_user_file", (q) =>
+        q.eq("userId", args.userId).eq("fileId", args.fileId),
+      )
+      .unique();
+    if (grant) {
+      await ctx.db.patch(grant._id, { lastUsedAt: Date.now() });
+    }
+  },
+});
+
+export const addDriveFileGrant = action({
+  args: {
+    fileId: v.string(),
+    name: v.optional(v.string()),
+    mimeType: v.optional(v.string()),
+    webViewLink: v.optional(v.string()),
+    size: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { userId } = await requireAuth(ctx);
+    const fileId = args.fileId.trim();
+    if (!fileId) {
+      throw new ConvexError({ code: "VALIDATION", message: "Drive fileId is required." });
+    }
+    const { accessToken } = await getGoogleAccessToken(ctx, userId, "drive");
+    const meta = await fetchDriveMetadata(accessToken, fileId);
+    await ctx.runMutation(internal.oauth.google.recordDriveFileGrant, {
+      userId,
+      fileId: meta.id,
+      name: meta.name,
+      mimeType: meta.mimeType,
+      webViewLink: meta.webViewLink,
+      size: meta.size,
+    });
+    return { success: true };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // disconnectGoogle — Revoke tokens with Google and delete from DB
 // ---------------------------------------------------------------------------
@@ -281,6 +482,10 @@ export const disconnectGoogle = action({
     } catch {
       console.warn("Google token revocation failed (non-fatal)");
     }
+
+    await ctx.runMutation(internal.oauth.google.deleteDriveFileGrantsForUser, {
+      userId,
+    });
 
     // Delete the connection from the database
     await ctx.runMutation(internal.oauth.google.deleteConnection, {
@@ -352,5 +557,32 @@ export const deleteConnection = internalMutation({
     if (connection) {
       await ctx.db.delete(connection._id);
     }
+  },
+});
+
+export const deleteDriveFileGrantsForUser = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("googleDriveFileGrants")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .collect();
+    for (const row of rows) {
+      if (row.cachedStorageId) {
+        const attachment = await ctx.db
+          .query("fileAttachments")
+          .withIndex("by_storage", (q) => q.eq("storageId", row.cachedStorageId!))
+          .first();
+        if (!attachment) {
+          try {
+            await ctx.storage.delete(row.cachedStorageId);
+          } catch {
+            // Storage blob may already be gone.
+          }
+        }
+      }
+      await ctx.db.delete(row._id);
+    }
+    return { deleted: rows.length };
   },
 });

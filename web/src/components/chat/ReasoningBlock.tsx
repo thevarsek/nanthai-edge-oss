@@ -11,7 +11,7 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 // Fixes bold headings (**Title**) concatenated onto adjacent text, which is
 // common in reasoning model output (o1, DeepSeek-R1, etc.).
 // ---------------------------------------------------------------------------
-export function normalizeReasoning(raw: string): string {
+function normalizeReasoning(raw: string): string {
   let s = raw.replace(/\r\n/g, "\n").replace(/\r/g, "\n").trim();
   if (!s) return "";
 

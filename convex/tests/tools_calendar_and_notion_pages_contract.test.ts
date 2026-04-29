@@ -53,7 +53,7 @@ function createGoogleToolCtx() {
         accessToken: "google_token",
         refreshToken: "refresh_1",
         expiresAt: Date.now() + 60 * 60 * 1000,
-        scopes: ["https://www.googleapis.com/auth/calendar"],
+        scopes: ["https://www.googleapis.com/auth/calendar.events"],
         status: "active",
         connectedAt: 1,
       }),

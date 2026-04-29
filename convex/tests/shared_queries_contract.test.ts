@@ -225,7 +225,7 @@ test("scheduled job queries enforce ownership, clamp limits, and redact secret p
   assert.deepEqual(listResult.map((row: any) => row._id), ["job_1", "job_2"]);
 });
 
-test("getKBFileContents skips missing and unreadable blobs", async () => {
+test("getKBFileContents fails when requested blobs are missing or unreadable", async () => {
   const blob = {
     text: async () => "hello world",
   };
@@ -237,7 +237,14 @@ test("getKBFileContents skips missing and unreadable blobs", async () => {
   };
 
   try {
-    const result = await (getKBFileContents as any)._handler({
+    await assert.rejects((getKBFileContents as any)._handler({
+      // M24 Phase 6: action now resolves Drive-sourced storage ids through
+      // the lazy-refresh chokepoint. For non-Drive ids the FA lookup returns
+      // null and the original storageId is used unchanged.
+      runQuery: async () => null,
+      runAction: async () => {
+        throw new Error("runAction should not be called for non-Drive ids");
+      },
       storage: {
         get: async (storageId: string) => {
           if (storageId === "good") return blob;
@@ -247,11 +254,135 @@ test("getKBFileContents skips missing and unreadable blobs", async () => {
       },
     }, {
       storageIds: ["good", "missing", "bad"],
+    }));
+
+    assert.equal(await blob.text(), "hello world");
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0] ?? "", /missing/);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M24 Phase 6 — getKBFileContents lazy Drive refresh chokepoint
+// ---------------------------------------------------------------------------
+//
+// Drive-in-KB rows live in `fileAttachments` with `driveFileId` set. When a
+// scheduled tool reads their contents we must:
+//   1. resolve the FA row via `getFileAttachmentByStorageInternal`
+//   2. call `refreshDriveStorageIfStale` (which may swap the storage id)
+//   3. read bytes from the (possibly new) storage id
+//
+// Non-Drive rows (plain uploads, generatedFiles/generatedMedia rows that have
+// no FA row at all) must skip both the FA query result and the refresh
+// action — there's no upstream to refresh against.
+//
+// These tests pin the wire contract so a future refactor that reroutes the
+// chokepoint surfaces here instead of as a silent "Drive file content went
+// stale in production" bug.
+
+test("getKBFileContents routes Drive-sourced ids through refreshDriveStorageIfStale", async () => {
+  const blobs: Record<string, { text: () => Promise<string> }> = {
+    storage_old: { text: async () => "stale bytes" },
+    storage_fresh: { text: async () => "fresh bytes" },
+  };
+
+  const runQueryCalls: Array<{ args: any }> = [];
+  const runActionCalls: Array<{ args: any }> = [];
+  const warnings: Array<{ msg: string; err: unknown }> = [];
+  const originalWarn = console.warn;
+  console.warn = (msg?: unknown, err?: unknown) => {
+    warnings.push({ msg: String(msg), err });
+  };
+
+  try {
+    const fakeCtx = {
+      runQuery: async (_ref: any, args: any) => {
+        runQueryCalls.push({ args });
+        if (args.storageId === "storage_old") {
+          return {
+            _id: "fa_drive_1",
+            storageId: "storage_old",
+            driveFileId: "drive_abc",
+            userId: "user_1",
+          };
+        }
+        return null;
+      },
+      runAction: async (_ref: any, args: any) => {
+        runActionCalls.push({ args });
+        assert.equal(args.fileAttachmentId, "fa_drive_1");
+        return { storageId: "storage_fresh" };
+      },
+      storage: {
+        get: async (storageId: string) => (
+          storageId === "storage_plain_upload"
+            ? { text: async () => "plain bytes" }
+            : blobs[storageId] ?? null
+        ),
+      },
+    };
+
+    const result = await (getKBFileContents as any)._handler(fakeCtx, {
+      storageIds: ["storage_old", "storage_plain_upload"],
     });
 
-    assert.deepEqual(result, [{ storageId: "good", content: "hello world" }]);
+    assert.deepEqual(
+      result,
+      [
+        { storageId: "storage_fresh", content: "fresh bytes" },
+        { storageId: "storage_plain_upload", content: "plain bytes" },
+      ],
+      `runQuery calls: ${JSON.stringify(runQueryCalls)}; runAction calls: ${JSON.stringify(runActionCalls)}; warnings: ${JSON.stringify(warnings.map((w) => ({ msg: w.msg, err: w.err instanceof Error ? w.err.message : String(w.err) })))}`,
+    );
+    assert.equal(runQueryCalls.length, 2);
+    assert.equal(runActionCalls.length, 1);
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
+test("getKBFileContents fails visibly on Drive refresh errors", async () => {
+  // Explicitly selected KB context must not be silently omitted; a scheduled
+  // job should fail instead of producing an answer without requested files.
+
+  const warnings: string[] = [];
+  const originalWarn = console.warn;
+  console.warn = (message?: unknown) => {
+    warnings.push(String(message));
+  };
+
+  try {
+    const fakeCtx = {
+      runQuery: async (_ref: any, args: any) => ({
+        _id: args.storageId === "drive_a" ? "fa_a" : "fa_b",
+        storageId: args.storageId,
+        driveFileId: args.storageId === "drive_a" ? "drive_a_id" : "drive_b_id",
+        userId: "user_1",
+      }),
+      runAction: async (_ref: any, args: any) => {
+        if (args.fileAttachmentId === "fa_a") {
+          // Mirror refreshDriveStorageIfStale strict behaviour: throw on
+          // Drive HTTP failure rather than silently falling back.
+          throw new Error("Drive 503 — service unavailable");
+        }
+        return { storageId: "storage_b_fresh" };
+      },
+      storage: {
+        get: async (storageId: string) =>
+          storageId === "storage_b_fresh"
+            ? { text: async () => "b bytes" }
+            : null,
+      },
+    };
+
+    await assert.rejects((getKBFileContents as any)._handler(fakeCtx, {
+      storageIds: ["drive_a", "drive_b"],
+    }));
+
     assert.equal(warnings.length, 1);
-    assert.match(warnings[0] ?? "", /bad/);
+    assert.match(warnings[0] ?? "", /drive_a/);
   } finally {
     console.warn = originalWarn;
   }

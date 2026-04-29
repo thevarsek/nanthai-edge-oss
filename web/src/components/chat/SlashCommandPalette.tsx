@@ -21,6 +21,7 @@ interface Props {
   /** Already-selected turn integration overrides */
   turnIntegrationOverrides: Map<string, boolean>;
   connectedProviders: {
+    gmail: boolean;
     google: boolean;
     microsoft: boolean;
     apple: boolean;
@@ -42,8 +43,10 @@ function buildConnectedIntegrations(
   connected: Props["connectedProviders"],
 ): IntegrationItem[] {
   const items: IntegrationItem[] = [];
+  if (connected.gmail) {
+    items.push({ key: "gmail", label: "Gmail", provider: "gmail" });
+  }
   if (connected.google) {
-    items.push({ key: "gmail", label: "Gmail", provider: "google" });
     items.push({ key: "drive", label: "Google Drive", provider: "google" });
     items.push({ key: "calendar", label: "Google Calendar", provider: "google" });
   }

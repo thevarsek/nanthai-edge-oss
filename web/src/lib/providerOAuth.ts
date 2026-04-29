@@ -1,5 +1,5 @@
 export type OAuthProvider = "google" | "microsoft" | "notion" | "slack";
-export type GoogleRequestedIntegration = "base" | "gmail" | "drive" | "calendar";
+export type GoogleRequestedIntegration = "base" | "gmail" | "drive" | "calendar" | "workspace";
 
 type OAuthContext = {
   state: string;
@@ -89,9 +89,12 @@ export function clearOAuthContext(provider: OAuthProvider) {
 
 function googleScopesForIntegration(requestedIntegration: GoogleRequestedIntegration): string[] {
   const scopes = [...GOOGLE_BASE_SCOPES];
-  if (requestedIntegration === "gmail") scopes.push("https://www.googleapis.com/auth/gmail.modify");
-  if (requestedIntegration === "drive") scopes.push("https://www.googleapis.com/auth/drive");
-  if (requestedIntegration === "calendar") scopes.push("https://www.googleapis.com/auth/calendar");
+  if (requestedIntegration === "drive" || requestedIntegration === "workspace") {
+    scopes.push("https://www.googleapis.com/auth/drive.file");
+  }
+  if (requestedIntegration === "calendar" || requestedIntegration === "workspace") {
+    scopes.push("https://www.googleapis.com/auth/calendar.events");
+  }
   return scopes;
 }
 

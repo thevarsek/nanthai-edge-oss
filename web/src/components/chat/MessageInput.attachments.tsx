@@ -1,6 +1,6 @@
 // components/chat/MessageInput.attachments.tsx — File upload logic + attachment preview pills.
 
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { X, ChevronDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AttachmentPreview, VideoRole } from "@/components/chat/MessageInput.attachments.types";
@@ -73,12 +73,9 @@ function RoleDropdown({
   onClose: () => void;
   labelFor: (role: VideoRole) => string;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
   // "below" by default; flip to "above" if there isn't enough space below.
   const [placement, setPlacement] = useState<"below" | "above">("below");
-
-  useLayoutEffect(() => {
-    const el = ref.current;
+  const ref = useCallback((el: HTMLDivElement | null) => {
     if (!el) return;
     const parent = el.parentElement;
     if (!parent) return;
@@ -86,11 +83,7 @@ function RoleDropdown({
     const estHeight = el.offsetHeight || 120; // fallback before first paint
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
-    if (spaceBelow < estHeight + 12 && spaceAbove > spaceBelow) {
-      setPlacement("above");
-    } else {
-      setPlacement("below");
-    }
+    setPlacement(spaceBelow < estHeight + 12 && spaceAbove > spaceBelow ? "above" : "below");
   }, []);
 
   // Close on outside click

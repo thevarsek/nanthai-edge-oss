@@ -39,7 +39,7 @@ function textResponse(status: number, body: string) {
 test("google capability guards surface a tool-friendly reconnect error", () => {
   assert.doesNotThrow(() => {
     assertGoogleCapabilityGranted({
-      scopes: ["https://www.googleapis.com/auth/calendar"],
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
     }, "calendar");
   });
 
@@ -79,7 +79,7 @@ test("getGoogleAccessToken returns a still-valid token without refreshing", asyn
         accessToken: "still_valid",
         refreshToken: "refresh_1",
         expiresAt: Date.now() + 60 * 60 * 1000,
-        scopes: ["https://www.googleapis.com/auth/calendar"],
+        scopes: ["https://www.googleapis.com/auth/calendar.events"],
         status: "active",
         connectedAt: 1,
       }),
@@ -108,7 +108,7 @@ test("getGoogleAccessToken refreshes expired tokens and persists the refreshed v
       accessToken: "stale_token",
       refreshToken: "refresh_1",
       expiresAt: Date.now() - 1,
-      scopes: ["https://www.googleapis.com/auth/calendar"],
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
       email: "user@example.com",
       displayName: "User",
       clientType: "native",
@@ -123,7 +123,7 @@ test("getGoogleAccessToken refreshes expired tokens and persists the refreshed v
       accessToken: "fresh_from_db",
       refreshToken: "refresh_1",
       expiresAt: Date.now() + 60 * 60 * 1000,
-      scopes: ["https://www.googleapis.com/auth/calendar"],
+      scopes: ["https://www.googleapis.com/auth/calendar.events"],
       email: "user@example.com",
       displayName: "User",
       clientType: "native",
@@ -187,7 +187,7 @@ test("getGoogleAccessToken marks the connection expired when the refresh request
             accessToken: "stale_token",
             refreshToken: "refresh_1",
             expiresAt: Date.now() - 1,
-            scopes: ["https://www.googleapis.com/auth/calendar"],
+            scopes: ["https://www.googleapis.com/auth/calendar.events"],
             status: "active",
             connectedAt: 1,
             lastRefreshedAt: 0,

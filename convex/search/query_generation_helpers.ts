@@ -44,7 +44,7 @@ export function parseGeneratedQueries(
     // Try line-separated
     const lines = response
       .split("\n")
-      .map((l) => l.replace(/^\d+[\.\)]\s*/, "").trim())
+      .map((l) => l.replace(/^\d+[.)]\s*/, "").trim())
       .filter((l) => l.length > 10);
     parsedQueries = lines.slice(0, expectedCount);
   }

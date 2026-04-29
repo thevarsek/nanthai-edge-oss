@@ -4,7 +4,7 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 4 files imported into `convex/schema.ts` — 44 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 4 files imported into `convex/schema.ts` — 46 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same documents into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
 
@@ -25,7 +25,7 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `skills` | AI skill definitions (system catalog + user-authored) | slug, name, summary, instructionsRaw, instructionsCompiled?, compilationStatus, scope (system/user), origin, visibility, lockState, status, runtimeMode, requiredToolIds, requiredToolProfiles, requiredIntegrationIds, requiredCapabilities, unsupportedCapabilityCodes, validationWarnings, version. Indexed by scope+status+visibility, slug, ownerUserId. |
 | `generatedFiles` | AI-generated file metadata (M10) | userId, chatId, messageId, storageId, filename, mimeType, sizeBytes, toolName |
 | `generatedCharts` | AI-generated native chart metadata (M19) | userId, chatId, messageId, toolName, chartType, title?, xLabel?, yLabel?, xUnit?, yUnit?, elements |
-| `fileAttachments` | Uploaded file attachment metadata | userId, chatId, messageId, storageId, filename, mimeType, sizeBytes |
+| `fileAttachments` | Uploaded file attachment metadata + KB rows | userId, chatId?, messageId?, storageId, filename, mimeType, sizeBytes, driveFileId? (M24 P6 — present iff sourced from Google Drive), lastRefreshedAt? (M24 P6 — last Drive bytes refresh). KB rows have no `chatId`/`messageId`. Indexes: `by_user`, `by_storage` (M24 P6 — single-row lookup by storage id), `by_chat`, `by_user_drive_file` (M24 P6 — dedupe Drive imports per user). |
 | `personas` | Custom AI personas | displayName, personaDescription, modelId, avatarEmoji, avatarImageStorageId, avatarSFSymbol, avatarColor, temperature, skillOverrides (M30), integrationOverrides (M30) |
 | `memories` | Extracted memories | content, category, isPending (boolean), memoryType, importanceScore, retrievalMode (post-M14), scopeType (post-M14), personaIds (post-M14), sourceType (post-M14), sourceFileName (post-M14), tags (post-M14), citationChatId, citationMessageId |
 | `memoryEmbeddings` | Memory vector index rows | memoryId, embedding, model metadata |
@@ -37,7 +37,7 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `userPreferences` | Global user settings | defaultModelId, temperature, maxTokens, hapticFeedback, onboardingCompleted (M14), defaultSearchMode (M13.5), defaultSearchComplexity (M13.5), subagentsEnabledByDefault, autoAudioResponse (M20), preferredVoice (M20), showBalanceInChat (post-M21), showAdvancedStats (M23), hasSeenIdeascapeHelp (M17), hasSeenMainHelp (post-M21), defaultVideoDuration (M29), defaultVideoResolution (M29), defaultVideoAspectRatio (M29), defaultVideoAudio (M29), skillDefaults (M30), integrationDefaults (M30), etc. |
 | `modelSettings` | Per-model overrides | openRouterId, temperature, maxTokens, systemPrompt |
 | `nodePositions` | Ideascape spatial layout | chatId, messageId, x, y, width, height |
-| `oauthConnections` | External integration OAuth tokens (M10) | userId, provider (google/microsoft/notion/slack/cloze), accessToken, refreshToken, expiresAt, scopes, email, status |
+| `oauthConnections` | External integration tokens/credentials (M10, extended M24) | userId, provider (`google`, `microsoft`, `notion`, `slack`, `cloze`, `gmail_manual`, etc.), accessToken, refreshToken, expiresAt, scopes, email, status. `google` rows are narrowed to identity + `drive.file` + `calendar.events`; `gmail_manual` rows store the manual Gmail credential path instead of Gmail OAuth scopes. |
 | `integrationRequestGates` | Per-user integration approval state | userId, provider, gating metadata, timestamps |
 | `purchaseEntitlements` | Cross-platform Pro entitlement source of truth | userId, platform, source, productId, externalPurchaseId, status, activatedAt, revokedAt, lastVerifiedAt |
 | `scheduledJobs` | User-created recurring AI tasks (M13) | userId, name, prompt, personaId, modelId, cronExpression, recurrence, status, searchMode (M13.5), searchComplexity (M13.5), includeReasoning, reasoningEffort, steps (post-M14), activeExecutionId (post-M14), activeExecutionChatId (post-M14), activeExecutionStartedAt (post-M14), activeStepIndex (post-M14), activeStepCount (post-M14), activeUserMessageId (post-M14), activeAssistantMessageId (post-M14), activeGenerationJobId (post-M14) |
@@ -51,6 +51,11 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `sandboxEvents` | Runtime observability trail for sandbox-backed workflows. | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
 | `videoJobs` | Async video generation tracking (M29) | userId (v.string()), chatId, messageId, model, status (pending/in_progress/completed/failed), error, createdAt. Indexes: `by_messageId`, `by_status_createdAt` |
 | `generatedMedia` | Generated media file metadata (M29) | userId, chatId, messageId, storageId, type (video/audio/image), mimeType, sizeBytes, model, durationSeconds |
+| `googleDriveFileGrants` | Per-user grant + cached-bytes index for Google Drive files (M24 P6) | userId, fileId, name, mimeType, webViewLink?, size?, grantedAt, lastUsedAt?, cachedStorageId? (cached Drive bytes in Convex `_storage`), cachedModifiedTime? (Drive RFC 3339 modifiedTime at ingest), cachedSizeBytes?, cachedAt?. Indexes: `by_user`, `by_user_file`, `by_user_cached_storage`. Used by chat-flow Drive picker AND KB Drive imports for lazy refresh in `getKBFileContents`. |
+| `drivePickerBatches` | Mid-generation Drive picker pause/resume snapshots (M24) | parentMessageId, sourceUserMessageId, parentJobId, chatId, userId, status, toolCallId, toolCallArguments, toolRoundCalls, toolRoundResults, resumeConversationSeed, paramsSnapshot, participantSnapshot, pickedFileIds?, createdAt, updatedAt. Indexes: `by_parent_message`, `by_parent_job`, `by_user`, `by_chat`. Backs the `requiresDrivePicker` resume flow. |
+| `scheduledJobTriggerTokens` | API trigger tokens for scheduled jobs | userId, jobId, token (hashed), createdAt, lastUsedAt?, revokedAt?. Allows external systems to invoke a scheduled job via authenticated HTTP. |
+| `scheduledJobApiInvocations` | Audit log of scheduled job API invocations | userId, jobId, tokenId?, invokedAt, status, errorMessage?. Per-call telemetry for trigger-token endpoint. |
+| `syncMeta` | Backend sync bookkeeping (cron-driven catalog refresh state) | key, value, updatedAt. Used by `models/sync` and related catalog crons to track last-sync cursors. |
 | `_scheduled_functions` | Convex system table | Scheduled function execution |
 
 ### Identity & Scoping
@@ -478,3 +483,23 @@ Two new shared validators added:
 - `terminalErrorCode` — union of the 5 terminal error code literals
 
 *Last updated: 2026-04-22 — PR #78 retry semantics overhaul: `retryContract` and `terminalErrorCode` on messages, `terminalErrorCode` on generationJobs, two new backend modules, cross-platform DTO parity.*
+
+---
+
+## M24 Phase 6 Schema Changes (2026-04-26 — Drive-in-Knowledge-Base)
+
+| Change | Details |
+|--------|---------|
+| **Added `driveFileId` + `lastRefreshedAt` to `fileAttachments`** | Both `v.optional`. `driveFileId` is set iff the FA row was sourced from Google Drive (KB import or chat picker). `lastRefreshedAt` records the last time we re-fetched Drive bytes via `refreshDriveStorageIfStale`. Source `"drive"` is derived from `driveFileId` presence — no separate enum. |
+| **Added `by_user_drive_file` + `by_storage` indexes to `fileAttachments`** | `by_user_drive_file` dedupes Drive imports per user (one FA per `(userId, driveFileId)` pair). `by_storage` enables single-row lookup by storage id (used by `getFileAttachmentByStorageInternal` during the KB lazy-refresh chokepoint). |
+| **Added `googleDriveFileGrants` table** | Per-user Drive grant cache. Stores file metadata + cached bytes (`cachedStorageId`, `cachedModifiedTime`, `cachedSizeBytes`, `cachedAt`) so we can avoid re-downloading on every model turn. Cache is invalidated when Drive's `modifiedTime` advances. Shared by chat-flow Drive picker and KB Drive import. Cleared on account purge. |
+| **Added `drivePickerBatches` table** | Backs the `requiresDrivePicker` mid-generation pause/resume flow. When a model needs a Drive picker, the in-flight generation snapshot (participant config, params, tool-call round state) is persisted into this table; the client opens the picker, posts back picked file ids, and the backend resumes from the snapshot. |
+| **Module relocation** | Knowledge Base queries/mutations/actions moved out of `convex/chat/` into a new `convex/knowledge_base/` module — no back-compat shim (dev-only deployment policy). New public functions: `listKnowledgeBaseFiles`, `getKnowledgeBaseFilesByStorageIds`, `addUploadToKnowledgeBase`, `deleteKnowledgeBaseFile`, `importDriveFileToKnowledgeBase`. Internal helpers: `getFileAttachmentInternal`, `getFileAttachmentByStorageInternal`, `insertDriveImport`, `updateDriveAttachmentStorage`, `refreshDriveStorageIfStale`. |
+| **New chokepoint: `convex/lib/file_attachments.ts`** | Single entry point (`insertFileAttachment`) for all FA inserts. Also exports `deleteDriveGrantCacheForStorage` for centralized Drive-grant cache cleanup. All callers across `chat/`, `knowledge_base/`, `drive_picker/`, and `oauth/` now go through these helpers. |
+| **New module: `convex/drive_picker/ingest.ts`** | Consolidated Drive metadata + bytes fetch shared by both the chat-flow Drive picker (`drive_picker/actions.ts`) and the KB-import flow (`knowledge_base/actions.ts`). |
+| **Lazy refresh chokepoint** | `scheduledJobs/queries.ts:getKBFileContents` resolves the FA row, calls `refreshDriveStorageIfStale` when `driveFileId` is set, and swaps the storage id if Drive's `modifiedTime` advanced since `lastRefreshedAt`. This is the single point where stale Drive bytes get refreshed for KB consumers. |
+| **Account purge extended** | `userPurge` now drains `googleDriveFileGrants` rows in addition to all other per-user tables. |
+| **Table count: 44 → 46** | 2 new tables (`googleDriveFileGrants`, `drivePickerBatches`). Plus the 5 tables previously absent from the table-list above (`googleDriveFileGrants`, `drivePickerBatches`, `scheduledJobTriggerTokens`, `scheduledJobApiInvocations`, `syncMeta`) are now documented — the M19 → post-M27 incremental counts (37) had drifted from reality. |
+| **Backend tests** | 1303 → 1310. New tests: `kb_source_parity_contract.test.ts`, `shared_queries_contract.test.ts` (Drive refresh routing + per-id error isolation). |
+
+*Last updated: 2026-04-26 — M24 Phase 6 Drive-in-KB: `googleDriveFileGrants` and `drivePickerBatches` tables added, `fileAttachments` extended with `driveFileId` + `lastRefreshedAt` + 2 new indexes, KB module relocated to `convex/knowledge_base/`, lazy-refresh chokepoint in `getKBFileContents`. Table count corrected: 46.*

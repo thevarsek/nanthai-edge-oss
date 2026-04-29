@@ -6,12 +6,14 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { filterToolIncompatibleOptions } from "../lib/tool_capability";
 import {
+  integrationOverrideEntry,
   scheduledJobRecurrence,
   scheduledJobStep,
+  skillOverrideEntry,
 } from "../schema_validators";
 import {
   computeNextRunTime,
@@ -54,6 +56,8 @@ function buildStepsFromInput(args: {
   modelId?: string;
   personaId?: Id<"personas"> | null;
   enabledIntegrations?: string[];
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   webSearchEnabled?: boolean;
   searchMode?: string;
   searchComplexity?: number;
@@ -79,6 +83,8 @@ function buildStepsFromInput(args: {
     modelId: args.modelId,
     personaId: args.personaId ?? undefined,
     enabledIntegrations: args.enabledIntegrations,
+    turnSkillOverrides: args.turnSkillOverrides,
+    turnIntegrationOverrides: args.turnIntegrationOverrides,
     webSearchEnabled: args.webSearchEnabled,
     searchMode: resolveScheduledJobSearchMode(args),
     searchComplexity: normalizeSearchComplexity(args.searchComplexity),
@@ -89,7 +95,7 @@ function buildStepsFromInput(args: {
 }
 
 async function validateKnowledgeBaseFileIds(
-  ctx: any,
+  ctx: MutationCtx,
   userId: string,
   fileIds?: Id<"_storage">[],
 ): Promise<void> {
@@ -98,15 +104,21 @@ async function validateKnowledgeBaseFileIds(
   for (const fileId of fileIds) {
     const genFile = await ctx.db
       .query("generatedFiles")
-      .withIndex("by_storage", (q: any) => q.eq("storageId", fileId))
+      .withIndex("by_storage", (q) => q.eq("storageId", fileId))
       .first();
     const attachment = genFile
       ? null
       : await ctx.db
           .query("fileAttachments")
-          .withIndex("by_storage", (q: any) => q.eq("storageId", fileId))
+          .withIndex("by_storage", (q) => q.eq("storageId", fileId))
           .first();
-    const ownerFile = genFile ?? attachment;
+    const media = genFile || attachment
+      ? null
+      : await ctx.db
+          .query("generatedMedia")
+          .withIndex("by_storageId", (q) => q.eq("storageId", fileId))
+          .first();
+    const ownerFile = genFile ?? attachment ?? media;
     if (!ownerFile || ownerFile.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Knowledge base file not found or unauthorized" });
     }
@@ -119,7 +131,7 @@ async function validateKnowledgeBaseFileIds(
  * Returns the (possibly modified) steps array.
  */
 async function validateScheduledSteps(
-  ctx: any,
+  ctx: MutationCtx,
   userId: string,
   steps: ScheduledJobStepConfig[],
 ): Promise<ScheduledJobStepConfig[]> {
@@ -152,15 +164,19 @@ async function validateScheduledSteps(
       step.knowledgeBaseFileIds,
     );
 
-    // Silently strip integrations for non-tool-capable models
+    // Silently strip tool-dependent overrides for non-tool-capable models.
     const filtered = await filterToolIncompatibleOptions(ctx, {
       enabledIntegrations: step.enabledIntegrations,
+      turnSkillOverrides: step.turnSkillOverrides,
+      turnIntegrationOverrides: step.turnIntegrationOverrides,
       modelIds: [resolvedModelId],
     });
 
     result.push({
       ...step,
       enabledIntegrations: filtered.enabledIntegrations,
+      turnSkillOverrides: filtered.turnSkillOverrides,
+      turnIntegrationOverrides: filtered.turnIntegrationOverrides,
     });
   }
 
@@ -175,6 +191,8 @@ type ScheduledJobUpdateArgs = {
   modelId?: string;
   personaId?: Id<"personas"> | null;
   enabledIntegrations?: string[];
+  turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   webSearchEnabled?: boolean;
   searchMode?: "none" | "basic" | "web" | "research";
   searchComplexity?: number;
@@ -191,7 +209,7 @@ type ScheduledJobUpdateArgs = {
 async function buildScheduledJobUpdatePatch(
   ctx: MutationCtx,
   args: ScheduledJobUpdateArgs,
-  job: any,
+  job: Doc<"scheduledJobs">,
 ): Promise<Record<string, unknown>> {
   const updates: Record<string, unknown> = { updatedAt: Date.now() };
 
@@ -225,6 +243,8 @@ async function buildScheduledJobUpdatePatch(
     || args.modelId !== undefined
     || args.personaId !== undefined
     || args.enabledIntegrations !== undefined
+    || args.turnSkillOverrides !== undefined
+    || args.turnIntegrationOverrides !== undefined
     || args.webSearchEnabled !== undefined
     || args.searchMode !== undefined
     || args.searchComplexity !== undefined
@@ -239,13 +259,15 @@ async function buildScheduledJobUpdatePatch(
       ? (job.personaId ?? undefined)
       : args.personaId,
     enabledIntegrations: args.enabledIntegrations ?? job.enabledIntegrations,
+    turnSkillOverrides: args.turnSkillOverrides ?? job.turnSkillOverrides,
+    turnIntegrationOverrides: args.turnIntegrationOverrides ?? job.turnIntegrationOverrides,
     webSearchEnabled: args.webSearchEnabled ?? job.webSearchEnabled,
     searchMode: args.searchMode ?? job.searchMode,
     searchComplexity: args.searchComplexity ?? job.searchComplexity,
     knowledgeBaseFileIds: args.knowledgeBaseFileIds ?? job.knowledgeBaseFileIds,
     includeReasoning: args.includeReasoning ?? job.includeReasoning,
     reasoningEffort: args.reasoningEffort ?? job.reasoningEffort,
-    steps: args.steps ?? (hasLegacyStepOverrides ? undefined : (job.steps as ScheduledJobStepConfig[] | undefined)),
+    steps: args.steps ?? (hasLegacyStepOverrides ? undefined : job.steps),
   });
   const effectiveStepsFiltered = await validateScheduledSteps(ctx, args.userId, effectiveSteps);
   const firstStep = mirrorFirstStep(effectiveStepsFiltered);
@@ -254,6 +276,8 @@ async function buildScheduledJobUpdatePatch(
   updates.modelId = firstStep.modelId;
   updates.personaId = firstStep.personaId;
   updates.enabledIntegrations = firstStep.enabledIntegrations;
+  updates.turnSkillOverrides = firstStep.turnSkillOverrides;
+  updates.turnIntegrationOverrides = firstStep.turnIntegrationOverrides;
   updates.webSearchEnabled = firstStep.webSearchEnabled;
   updates.searchMode = firstStep.searchMode;
   updates.searchComplexity = firstStep.searchComplexity;
@@ -316,6 +340,8 @@ export const createJob = mutation({
     modelId: v.optional(v.string()),
     personaId: v.optional(v.id("personas")),
     enabledIntegrations: v.optional(v.array(v.string())),
+    turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+    turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     webSearchEnabled: v.optional(v.boolean()),
     searchMode: v.optional(v.union(
       v.literal("none"),
@@ -375,6 +401,8 @@ export const createJob = mutation({
       modelId: firstStep.modelId,
       personaId: firstStep.personaId,
       enabledIntegrations: firstStep.enabledIntegrations,
+      turnSkillOverrides: firstStep.turnSkillOverrides,
+      turnIntegrationOverrides: firstStep.turnIntegrationOverrides,
       webSearchEnabled: firstStep.webSearchEnabled,
       searchMode: firstStep.searchMode,
       searchComplexity: firstStep.searchComplexity,
@@ -417,6 +445,8 @@ export const updateJob = mutation({
     modelId: v.optional(v.string()),
     personaId: v.optional(v.union(v.id("personas"), v.null())),
     enabledIntegrations: v.optional(v.array(v.string())),
+    turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+    turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     webSearchEnabled: v.optional(v.boolean()),
     searchMode: v.optional(v.union(
       v.literal("none"),
@@ -537,7 +567,6 @@ export const deleteJob = mutation({
     }
 
     // Delete run history in batches to stay within transaction limits
-    let deletedRuns = 0;
     let batch;
     do {
       batch = await ctx.db
@@ -547,7 +576,6 @@ export const deleteJob = mutation({
       for (const run of batch) {
         await ctx.db.delete(run._id);
       }
-      deletedRuns += batch.length;
     } while (batch.length === 100);
 
     await ctx.db.delete(args.jobId);
@@ -761,6 +789,8 @@ export const createJobInternal = internalMutation({
     modelId: v.optional(v.string()),
     personaId: v.optional(v.id("personas")),
     enabledIntegrations: v.optional(v.array(v.string())),
+    turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+    turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     webSearchEnabled: v.optional(v.boolean()),
     searchMode: v.optional(v.union(
       v.literal("none"),
@@ -820,6 +850,8 @@ export const createJobInternal = internalMutation({
       modelId: firstStep.modelId,
       personaId: firstStep.personaId,
       enabledIntegrations: firstStep.enabledIntegrations,
+      turnSkillOverrides: firstStep.turnSkillOverrides,
+      turnIntegrationOverrides: firstStep.turnIntegrationOverrides,
       webSearchEnabled: firstStep.webSearchEnabled,
       searchMode: firstStep.searchMode,
       searchComplexity: firstStep.searchComplexity,
@@ -863,6 +895,8 @@ export const updateJobInternal = internalMutation({
     modelId: v.optional(v.string()),
     personaId: v.optional(v.union(v.id("personas"), v.null())),
     enabledIntegrations: v.optional(v.array(v.string())),
+    turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+    turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     webSearchEnabled: v.optional(v.boolean()),
     searchMode: v.optional(v.union(
       v.literal("none"),

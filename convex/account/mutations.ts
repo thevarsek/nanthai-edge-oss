@@ -328,6 +328,33 @@ export const deleteUserTableBatch = internalMutation({
       return { deleted };
     }
 
+    if (tableName === "googleDriveFileGrants") {
+      // Drive grant rows may carry a cached `_storage` blob (the ingested
+      // Drive file bytes). Clean up the blob alongside the row.
+      const rows = await ctx.db
+        .query("googleDriveFileGrants")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        if (row.cachedStorageId) {
+          const attachment = await ctx.db
+            .query("fileAttachments")
+            .withIndex("by_storage", (q) => q.eq("storageId", row.cachedStorageId!))
+            .first();
+          if (!attachment) {
+            try {
+              await ctx.storage.delete(row.cachedStorageId);
+            } catch {
+              // Storage blob may already be deleted
+            }
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
     // ---------------------------------------------------------------
     // Generic: tables with a standard by_user index
     // ---------------------------------------------------------------

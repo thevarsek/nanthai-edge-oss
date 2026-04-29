@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -7,10 +7,9 @@ import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import {
-  buildProviderAuthorizationUrl,
   clearOAuthContext,
+  connectProviderWithPopup,
   getOAuthClientId,
-  type OAuthPopupMessage,
   type OAuthProvider,
 } from "@/lib/providerOAuth";
 
@@ -144,6 +143,104 @@ function AppleCalendarModal({
   );
 }
 
+// ─── Manual Gmail Modal ───────────────────────────────────────────────────
+
+function GmailManualModal({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const [email, setEmail] = useState("");
+  const [appPassword, setAppPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const connectGmailManual = useAction(api.oauth.gmail_manual_actions.connectGmailManual);
+
+  const handleConnect = async () => {
+    if (!email || !appPassword) return;
+    setLoading(true);
+    setError(null);
+    try {
+      await connectGmailManual({ email, appPassword });
+      onClose();
+    } catch (connectionError) {
+      setError(convexErrorMessage(connectionError, t("connection_failed")));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-md bg-surface-1 rounded-2xl p-6 space-y-4 shadow-xl">
+        <h2 className="text-lg font-semibold">{t("connect_gmail")}</h2>
+        <div className="text-sm text-muted space-y-2">
+          <p>{t("gmail_manual_description")}</p>
+          <ol className="list-decimal list-inside space-y-1 text-xs">
+            <li>{t("gmail_manual_step_1")}</li>
+            <li>{t("gmail_manual_step_2")}</li>
+            <li>{t("gmail_manual_step_3")}</li>
+          </ol>
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs pt-1">
+            <a
+              href="https://myaccount.google.com/apppasswords"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              {t("gmail_create_app_password")} ↗
+            </a>
+            <a
+              href="https://myaccount.google.com/signinoptions/twosv"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent hover:underline"
+            >
+              {t("gmail_enable_2fa")} ↗
+            </a>
+          </div>
+          <p className="text-[11px] text-muted/80 pt-1">{t("gmail_workspace_note")}</p>
+        </div>
+        <div className="space-y-3">
+          <input
+            type="email"
+            placeholder={t("gmail_address")}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-surface-2 text-sm border border-border/50 focus:outline-none focus:border-accent"
+          />
+          <input
+            type="password"
+            placeholder={t("google_app_password")}
+            value={appPassword}
+            onChange={(e) => setAppPassword(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg bg-surface-2 text-sm border border-border/50 focus:outline-none focus:border-accent"
+          />
+        </div>
+        {error && (
+          <p className="text-sm text-red-400">{error}</p>
+        )}
+        <div className="flex gap-2">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2 rounded-lg bg-surface-2 text-sm hover:bg-surface-3 transition-colors"
+          >
+            {t("cancel")}
+          </button>
+          <button
+            onClick={handleConnect}
+            disabled={loading || !email || !appPassword}
+            className="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
+          >
+            {loading ? t("connecting") : t("connect")}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Cloze API Key Modal ───────────────────────────────────────────────────
 
 function ClozeModal({
@@ -235,54 +332,23 @@ function ClozeModal({
 
 export function ConnectedAccountsSection() {
   const { t } = useTranslation();
-  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } =
+  const { googleConnection, gmailManualConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } =
     useConnectedAccounts();
+  const [showGmailManualModal, setShowGmailManualModal] = useState(false);
   const [showAppleModal, setShowAppleModal] = useState(false);
   const [showClozeModal, setShowClozeModal] = useState(false);
   const [showGoogleDisconnectConfirm, setShowGoogleDisconnectConfirm] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const popupRef = useRef<Window | null>(null);
 
   const disconnectGoogle = useAction(api.oauth.google.disconnectGoogle);
+  const disconnectGmailManual = useAction(api.oauth.gmail_manual_actions.disconnectGmailManual);
   const disconnectMicrosoft = useAction(api.oauth.microsoft.disconnectMicrosoft);
   const disconnectNotion = useAction(api.oauth.notion.disconnectNotion);
   const disconnectSlack = useAction(api.oauth.slack.disconnectSlack);
   const disconnectAppleCalendar = useAction(api.oauth.apple_calendar.disconnectAppleCalendar);
   const disconnectCloze = useAction(api.oauth.cloze.disconnectCloze);
-
-  useEffect(() => {
-    function handleMessage(event: MessageEvent<OAuthPopupMessage>) {
-      if (event.origin !== window.location.origin) return;
-      const message = event.data;
-      if (!message || message.type !== "nanthai-oauth-result") return;
-      popupRef.current?.close();
-      popupRef.current = null;
-      setPendingProvider(null);
-      setProviderError(message.success ? null : message.error ?? t("connection_failed"));
-    }
-
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [t]);
-
-  useEffect(() => {
-    if (!pendingProvider) return;
-
-    const timer = window.setInterval(() => {
-      if (popupRef.current && popupRef.current.closed) {
-        popupRef.current = null;
-        setPendingProvider((current) => {
-          if (current == null) return current;
-          setProviderError((existing) => existing ?? t("sign_in_cancelled_arg", { var1: labelForProvider(current) }));
-          return null;
-        });
-      }
-    }, 400);
-
-    return () => window.clearInterval(timer);
-  }, [pendingProvider, t]);
 
   const openOAuthPopup = async (provider: OAuthProvider) => {
     setProviderError(null);
@@ -292,22 +358,17 @@ export function ConnectedAccountsSection() {
       return;
     }
 
+    setPendingProvider(provider);
     try {
-      const url = await buildProviderAuthorizationUrl(
+      await connectProviderWithPopup(
         provider,
-        provider === "google" ? { requestedIntegration: "base" } : undefined,
+        provider === "google" ? { requestedIntegration: "workspace" } : undefined,
       );
-      const popup = window.open(url, "oauth-popup", "width=600,height=700,menubar=no,toolbar=no");
-      if (!popup) {
-        clearOAuthContext(provider);
-        setProviderError(t("popup_blocked_error_arg", { var1: labelForProvider(provider) }));
-        return;
-      }
-      popupRef.current = popup;
-      setPendingProvider(provider);
     } catch (error) {
       clearOAuthContext(provider);
       setProviderError(convexErrorMessage(error, t("sign_in_cancelled_arg", { var1: labelForProvider(provider) })));
+    } finally {
+      setPendingProvider(null);
     }
   };
 
@@ -336,13 +397,21 @@ export function ConnectedAccountsSection() {
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         <ConnectionRow
           label="Google Workspace"
-          description={t("google_workspace_description")}
+          description={t("google_drive_calendar_access")}
           icon={<IntegrationLogo slug="google-workspace" size={32} />}
-          isConnected={!!googleConnection}
+          isConnected={googleConnection?.hasDrive === true && googleConnection?.hasCalendar === true}
           onConnect={() => void openOAuthPopup("google")}
           onDisconnect={() => setShowGoogleDisconnectConfirm(true)}
           disabled={isBusy("google") || isActionBusy("disconnect-google")}
-          disconnectedBadgeLabel="Coming Soon"
+        />
+        <ConnectionRow
+          label={t("gmail")}
+          description={t("gmail_manual_tools")}
+          icon={<IntegrationLogo slug="gmail" size={32} />}
+          isConnected={gmailManualConnection?.status === "active"}
+          onConnect={() => setShowGmailManualModal(true)}
+          onDisconnect={() => { void runAccountAction("disconnect-gmail-manual", () => disconnectGmailManual({})); }}
+          disabled={pendingProvider !== null || isActionBusy("disconnect-gmail-manual")}
         />
         <ConnectionRow
           label="Microsoft 365"
@@ -406,10 +475,14 @@ export function ConnectedAccountsSection() {
             }
           })();
         }}
-        title="Disconnect Google?"
-        description="Your Google tokens will be revoked. Gmail, Drive, and Calendar tools will stop working, and reconnect is temporarily unavailable while Google scope approval is pending."
+        title={t("disconnect_google_2")}
+        description={t("google_disconnect_description")}
         confirmLabel={t("disconnect")}
       />
+
+      {showGmailManualModal && (
+        <GmailManualModal onClose={() => setShowGmailManualModal(false)} />
+      )}
 
       {showAppleModal && (
         <AppleCalendarModal onClose={() => setShowAppleModal(false)} />

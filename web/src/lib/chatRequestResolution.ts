@@ -48,6 +48,7 @@ export interface SharedModelSettings {
 }
 
 export interface BaseParticipant {
+  id?: string;
   modelId: string;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;
@@ -150,6 +151,7 @@ export function buildBaseParticipants(args: {
   const { convexParticipants, defaultPersona, selectedModelId } = args;
   if (convexParticipants.length > 0) {
     return convexParticipants.map((participant) => ({
+      id: participant.id,
       modelId: participant.modelId,
       personaId: participant.personaId,
       personaName: participant.personaName,

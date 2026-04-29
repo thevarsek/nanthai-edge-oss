@@ -242,7 +242,7 @@ export interface ChatModalPanelsProps {
     autoAudioResponse: boolean;
   };
   enabledIntegrations: Set<IntegrationKey>; toggleIntegration: (k: IntegrationKey) => void;
-  connectedProviders: { google: boolean; microsoft: boolean; apple: boolean; notion: boolean; cloze: boolean; slack: boolean };
+  connectedProviders: { gmail: boolean; google: boolean; microsoft: boolean; apple: boolean; notion: boolean; cloze: boolean; slack: boolean };
   googleIntegrationsBlocked?: boolean;
   enabledSkillIds: Set<string>; toggleSkill: (id: Id<"skills">) => void;
   skillOverrides: Map<string, SkillOverrideState>; cycleSkill: (id: Id<"skills">) => void;

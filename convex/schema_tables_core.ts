@@ -17,6 +17,7 @@ import {
   subagentBatchStatus,
   subagentOverride,
   subagentRunStatus,
+  drivePickerBatchStatus,
   terminalErrorCode,
   usageObject,
   videoJobStatus,
@@ -119,6 +120,8 @@ export const coreSchemaTables = {
           name: v.optional(v.string()),
           mimeType: v.optional(v.string()),
           sizeBytes: v.optional(v.number()),
+          driveFileId: v.optional(v.string()),
+          lastRefreshedAt: v.optional(v.number()),
           // M29 — Video generation role for this image attachment
           videoRole: v.optional(
             v.union(
@@ -161,6 +164,7 @@ export const coreSchemaTables = {
     }))),
     subagentsEnabled: v.optional(v.boolean()),
     subagentBatchId: v.optional(v.id("subagentBatches")),
+    drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
     // Autonomous moderator — directive injected before this turn
     moderatorDirective: v.optional(v.string()),
     // M30: Orchestration traces — which skills/integrations were used
@@ -356,6 +360,29 @@ export const coreSchemaTables = {
     .index("by_message", ["messageId"])
     .index("by_storage", ["storageId"]),
 
+  googleDriveFileGrants: defineTable({
+    userId: v.string(),
+    fileId: v.string(),
+    name: v.string(),
+    mimeType: v.string(),
+    webViewLink: v.optional(v.string()),
+    size: v.optional(v.string()),
+    grantedAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    // Cached ingest of Drive file bytes into Convex storage. Lets the model
+    // operate on the file via the standard attachment pipeline (read_pdf,
+    // image preview, etc.) without re-downloading on every turn.
+    cachedStorageId: v.optional(v.id("_storage")),
+    // Drive's `modifiedTime` (RFC 3339) at the time we ingested. If Drive
+    // reports a newer value on a later turn, we re-ingest and replace.
+    cachedModifiedTime: v.optional(v.string()),
+    cachedSizeBytes: v.optional(v.number()),
+    cachedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId", "grantedAt"])
+    .index("by_user_file", ["userId", "fileId"])
+    .index("by_user_cached_storage", ["userId", "cachedStorageId"]),
+
   generatedCharts: defineTable({
     userId: v.string(),
     chatId: v.id("chats"),
@@ -385,19 +412,43 @@ export const coreSchemaTables = {
   // M10 — Uploaded file attachment lookup: denormalized index for KB queries.
   // Populated when user messages with storage-backed attachments are created.
   // Avoids O(chats × messages) scans for Knowledge Base listing & deletion.
+  //
+  // M24 Phase 6 — `chatId` and `messageId` are now optional so KB-only entries
+  // (Settings KB upload, Drive imports) can live in this table without being
+  // tied to a specific chat message. `driveFileId` is set for rows imported
+  // from Google Drive; presence of that field is what `source: "drive"` is
+  // derived from at read time. `lastRefreshedAt` tracks the most recent
+  // Drive `modifiedTime` re-check (lazy refresh on tool/storage read).
   fileAttachments: defineTable({
     userId: v.string(),
-    chatId: v.id("chats"),
-    messageId: v.id("messages"),
+    chatId: v.optional(v.id("chats")),
+    messageId: v.optional(v.id("messages")),
     storageId: v.id("_storage"),
     filename: v.string(),
     mimeType: v.string(),
     sizeBytes: v.optional(v.number()),
     createdAt: v.number(),
+    driveFileId: v.optional(v.string()),
+    lastRefreshedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId", "createdAt"])
     .index("by_storage", ["storageId"])
-    .index("by_chat", ["chatId"]),
+    .index("by_chat", ["chatId"])
+    .index("by_user_drive_file", ["userId", "driveFileId"]),
+
+  kbUploadSessions: defineTable({
+    userId: v.string(),
+    storageId: v.optional(v.id("_storage")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("consumed"),
+      v.literal("cancelled"),
+    ),
+    createdAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_user_storage", ["userId", "storageId"]),
 
   subagentBatches: defineTable({
     parentMessageId: v.id("messages"),
@@ -527,5 +578,34 @@ export const coreSchemaTables = {
   })
     .index("by_userId", ["userId"])
     .index("by_chatId", ["chatId"])
-    .index("by_messageId", ["messageId"]),
+    .index("by_messageId", ["messageId"])
+    .index("by_storageId", ["storageId"]),
+
+  /**
+   * Drive picker resume batches. Created when `drive_list` defers because the
+   * user has no Drive grants yet; resolved when the picker callback fires
+   * `attachPickedDriveFiles`. Mirrors `subagentBatches` but without children.
+   */
+  drivePickerBatches: defineTable({
+    parentMessageId: v.id("messages"),
+    sourceUserMessageId: v.id("messages"),
+    parentJobId: v.id("generationJobs"),
+    chatId: v.id("chats"),
+    userId: v.string(),
+    status: drivePickerBatchStatus,
+    toolCallId: v.string(),
+    toolCallArguments: v.string(),
+    toolRoundCalls: v.any(),
+    toolRoundResults: v.any(),
+    resumeConversationSeed: v.any(),
+    paramsSnapshot: v.any(),
+    participantSnapshot: v.any(),
+    pickedFileIds: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_parent_message", ["parentMessageId"])
+    .index("by_parent_job", ["parentJobId"])
+    .index("by_user", ["userId", "updatedAt"])
+    .index("by_chat", ["chatId"]),
 };

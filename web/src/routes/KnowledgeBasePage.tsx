@@ -1,24 +1,35 @@
 import { useState, useMemo } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, Search, FileText, Trash2, Download, Files, Image, Video } from "lucide-react";
+import { ChevronLeft, Search, FileText, Trash2, Download, Files, Image, Video, HardDrive } from "lucide-react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
+import { useConnectedAccounts } from "@/hooks/useSharedData";
+import { useToast } from "@/components/shared/Toast.context";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import {
+  DriveImportProgress,
+  driveImportErrorMessage,
+  driveImportProgressMessage,
+} from "@/lib/driveImportFeedback";
+import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
 import { cn } from "@/lib/utils";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type KBSource = "upload" | "generated" | "all";
+const MAX_KB_UPLOAD_BYTES = 25 * 1024 * 1024;
+
+type KBSource = "upload" | "generated" | "drive" | "all";
 
 interface KBFile {
   storageId: string;
+  fileAttachmentId?: string;
   filename: string;
-  source: "upload" | "generated";
+  source: "upload" | "generated" | "drive";
   sizeBytes?: number;
   createdAt?: number;
   downloadUrl?: string | null;
@@ -70,7 +81,7 @@ function FileRow({
   onDelete,
 }: {
   file: KBFile;
-  onDelete: (storageId: string, source: "upload" | "generated") => void;
+  onDelete: (storageId: string, source: "upload" | "generated" | "drive") => void;
 }) {
   const { t } = useTranslation();
   const handleDownload = () => {
@@ -116,13 +127,20 @@ function FileRow({
         <div className="flex items-center gap-2 mt-0.5">
           <span
             className={cn(
-              "text-[10px] px-1.5 py-0.5 rounded-md uppercase tracking-wide",
+              "text-[10px] px-1.5 py-0.5 rounded-md uppercase tracking-wide inline-flex items-center gap-1",
               file.source === "upload"
                 ? "bg-surface-3 text-foreground/55"
+                : file.source === "drive"
+                ? "bg-blue-500/15 text-blue-500"
                 : "bg-accent/15 text-accent",
             )}
           >
-            {file.source === "upload" ? t("uploaded_source") : t("ai_generated_source")}
+            {file.source === "drive" && <HardDrive size={9} />}
+            {file.source === "upload"
+              ? t("uploaded_source")
+              : file.source === "drive"
+              ? t("drive_source")
+              : t("ai_generated_source")}
           </span>
           {file.sizeBytes != null && (
             <span className="text-xs text-foreground/50">
@@ -155,22 +173,39 @@ function FileRow({
 function KnowledgeBasePageContent() {
   const navigate = useNavigate();
   const { t } = useTranslation();
+  const { toast } = useToast();
+  const { googleConnection } = useConnectedAccounts();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<KBSource>("all");
   const [deleteTarget, setDeleteTarget] = useState<{
     storageId: string;
-    source: "upload" | "generated";
+    fileAttachmentId?: string;
+    source: "upload" | "generated" | "drive";
   } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [importingFromDrive, setImportingFromDrive] = useState(false);
+  const [driveImportProgress, setDriveImportProgress] = useState<DriveImportProgress | null>(null);
 
-  const files = useQuery(api.chat.queries.listKnowledgeBaseFiles, {
+  const files = useQuery(api.knowledge_base.queries.listKnowledgeBaseFiles, {
     ...(search ? { search } : {}),
     source: sourceFilter,
   });
 
-  const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
-  const deleteFile = useMutation(api.chat.mutations.deleteKnowledgeBaseFile);
+  const createKnowledgeBaseUploadUrl = useMutation(
+    api.knowledge_base.mutations.createKnowledgeBaseUploadUrl,
+  );
+  const bindKnowledgeBaseUploadSession = useMutation(
+    api.knowledge_base.mutations.bindKnowledgeBaseUploadSession,
+  );
+  const addUploadToKnowledgeBase = useMutation(
+    api.knowledge_base.mutations.addUploadToKnowledgeBase,
+  );
+  const deleteFile = useMutation(api.knowledge_base.mutations.deleteKnowledgeBaseFile);
+  const getDrivePickerAccessToken = useAction(api.oauth.google.getDrivePickerAccessToken);
+  const importDriveFileToKnowledgeBase = useAction(
+    api.knowledge_base.actions.importDriveFileToKnowledgeBase,
+  );
 
   const grouped = useMemo(() => {
     if (!files) return [];
@@ -178,18 +213,42 @@ function KnowledgeBasePageContent() {
   }, [files, t]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const selectedFiles = Array.from(e.target.files ?? []);
+    if (selectedFiles.length === 0) return;
     setUploading(true);
     setUploadError(null);
     try {
-      const uploadUrl = await createUploadUrl({});
-      const res = await fetch(uploadUrl, {
-        method: "POST",
-        headers: { "Content-Type": file.type },
-        body: file,
-      });
-      if (!res.ok) throw new Error("Upload failed");
+      for (const file of selectedFiles) {
+        if (file.size > MAX_KB_UPLOAD_BYTES) {
+          throw new Error(
+            t("kb_upload_file_too_large_arg", {
+              var1: formatFileSize(MAX_KB_UPLOAD_BYTES),
+            }),
+          );
+        }
+        const { uploadUrl, uploadSessionId } = await createKnowledgeBaseUploadUrl({});
+        const res = await fetch(uploadUrl, {
+          method: "POST",
+          headers: { "Content-Type": file.type },
+          body: file,
+        });
+        if (!res.ok) throw new Error("Upload failed");
+        const { storageId } = (await res.json()) as { storageId: string };
+        await bindKnowledgeBaseUploadSession({
+          uploadSessionId,
+          storageId: storageId as Id<"_storage">,
+        });
+        // Register the uploaded blob as a KB file. Without this, the `_storage`
+        // row exists but no `fileAttachments` row points at it, so the file
+        // never appears in the KB list.
+        await addUploadToKnowledgeBase({
+          storageId: storageId as Id<"_storage">,
+          uploadSessionId,
+          filename: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        });
+      }
     } catch (error) {
       setUploadError(
         t("upload_failed_arg", {
@@ -199,6 +258,84 @@ function KnowledgeBasePageContent() {
     } finally {
       setUploading(false);
       e.target.value = "";
+    }
+  };
+
+  const handleImportFromDrive = async () => {
+    if (importingFromDrive) return;
+    if (googleConnection?.hasDrive !== true) {
+      toast({
+        message: t("connect_google_drive_before_choosing_files"),
+        variant: "error",
+      });
+      return;
+    }
+
+    const developerKey =
+      import.meta.env.VITE_GOOGLE_PICKER_API_KEY ?? import.meta.env.VITE_GOOGLE_API_KEY;
+    const appId =
+      import.meta.env.VITE_GOOGLE_PICKER_APP_ID ?? import.meta.env.VITE_GOOGLE_PROJECT_NUMBER;
+    if (!developerKey || !appId) {
+      toast({
+        message: t("google_drive_picker_not_configured"),
+        variant: "error",
+      });
+      return;
+    }
+
+    setImportingFromDrive(true);
+    setDriveImportProgress(null);
+    try {
+      const token = await getDrivePickerAccessToken({});
+      const picked = await pickGoogleDriveFiles({
+        accessToken: token.accessToken,
+        appId,
+        developerKey,
+        multiselect: true,
+      });
+      if (picked.length === 0) return;
+      setDriveImportProgress({ current: 0, total: picked.length });
+
+      // Import sequentially so a transient failure on one file doesn't poison
+      // the rest of the batch — successful imports stay imported.
+      let imported = 0;
+      const failures: string[] = [];
+      for (const [index, file] of picked.entries()) {
+        setDriveImportProgress({
+          current: index + 1,
+          total: picked.length,
+          filename: file.name,
+        });
+        try {
+          await importDriveFileToKnowledgeBase({ fileId: file.id });
+          imported++;
+        } catch (error) {
+          failures.push(driveImportErrorMessage(error, file.name, t, navigator.language));
+        }
+      }
+      if (imported > 0) {
+        toast({
+          message: t("kb_drive_import_succeeded", { count: imported }),
+          variant: "success",
+        });
+      }
+      if (failures.length > 0) {
+        toast({
+          message: t("kb_drive_import_partial_failure", {
+            count: failures.length,
+            error: failures[0],
+          }),
+          variant: "error",
+        });
+      }
+    } catch (error) {
+      toast({
+        message: convexErrorMessage(error, t("google_drive_picker_failed")),
+        variant: "error",
+      });
+    } finally {
+      setImportingFromDrive(false);
+      setDriveImportProgress(null);
     }
   };
 
@@ -215,14 +352,29 @@ function KnowledgeBasePageContent() {
         <h1 className="text-lg font-semibold flex-1">
           {t("knowledge_base")}
         </h1>
+        <button
+          type="button"
+          onClick={handleImportFromDrive}
+          disabled={importingFromDrive || uploading}
+          className={cn(
+            "px-3 py-1.5 rounded-lg bg-surface-2 text-foreground text-sm font-medium border border-border/50 inline-flex items-center gap-1.5 transition-opacity",
+            importingFromDrive || uploading
+              ? "opacity-50 pointer-events-none"
+              : "hover:bg-surface-3",
+          )}
+          title={t("import_from_drive")}
+        >
+          <HardDrive size={14} />
+          {importingFromDrive ? t("importing") : t("import_from_drive")}
+        </button>
         <label
           className={cn(
             "px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium cursor-pointer transition-opacity",
-            uploading ? "opacity-50 pointer-events-none" : "hover:opacity-90",
+            uploading || importingFromDrive ? "opacity-50 pointer-events-none" : "hover:opacity-90",
           )}
         >
           {uploading ? t("uploading_file") : t("upload")}
-          <input type="file" className="hidden" onChange={handleUpload} accept=".pdf,.txt,.md,.docx,.csv" />
+          <input type="file" className="hidden" onChange={handleUpload} accept=".pdf,.txt,.md,.docx,.csv" multiple />
         </label>
       </div>
 
@@ -230,6 +382,14 @@ function KnowledgeBasePageContent() {
         <div className="max-w-4xl mx-auto p-4 space-y-4">
           {uploadError && (
             <p className="text-sm text-red-400">{uploadError}</p>
+          )}
+          {driveImportProgress && (
+            <div className="flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-500">
+              <LoadingSpinner size="sm" />
+              <span className="min-w-0 truncate">
+                {driveImportProgressMessage(driveImportProgress, t)}
+              </span>
+            </div>
           )}
           {/* Search */}
           <div className="relative">
@@ -248,7 +408,7 @@ function KnowledgeBasePageContent() {
 
           {/* Source filter */}
           <div className="flex gap-1.5">
-            {(["all", "upload", "generated"] as const).map((s) => (
+            {(["all", "upload", "generated", "drive"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setSourceFilter(s)}
@@ -259,7 +419,13 @@ function KnowledgeBasePageContent() {
                     : "bg-surface-2 text-foreground/60",
                 )}
               >
-                {s === "all" ? t("all_files") : s === "upload" ? t("uploaded_source") : t("ai_generated")}
+                {s === "all"
+                  ? t("all_files")
+                  : s === "upload"
+                  ? t("uploaded_source")
+                  : s === "drive"
+                  ? t("drive_source")
+                  : t("ai_generated")}
               </button>
             ))}
           </div>
@@ -292,7 +458,11 @@ function KnowledgeBasePageContent() {
                     <FileRow
                       key={file.storageId}
                       file={file}
-                      onDelete={(storageId, source) => setDeleteTarget({ storageId, source })}
+                      onDelete={(storageId, source) => setDeleteTarget({
+                        storageId,
+                        fileAttachmentId: file.fileAttachmentId,
+                        source,
+                      })}
                     />
                   ))}
                 </div>
@@ -309,6 +479,9 @@ function KnowledgeBasePageContent() {
           if (deleteTarget) {
             void deleteFile({
               storageId: deleteTarget.storageId as Id<"_storage">,
+              ...(deleteTarget.fileAttachmentId
+                ? { fileAttachmentId: deleteTarget.fileAttachmentId as Id<"fileAttachments"> }
+                : {}),
               source: deleteTarget.source,
             });
           }

@@ -19,6 +19,8 @@ export const attachmentValidator = v.object({
   name: v.optional(v.string()),
   mimeType: v.optional(v.string()),
   sizeBytes: v.optional(v.number()),
+  driveFileId: v.optional(v.string()),
+  lastRefreshedAt: v.optional(v.number()),
   // M29 — Video generation: role of image when used with a video model.
   // "first_frame" / "last_frame" → frame_images (image-to-video)
   // "reference" → input_references (style guidance)
@@ -279,6 +281,7 @@ export const saveGenerationContinuationArgs = {
       allowSubagents: v.boolean(),
       searchSessionId: v.optional(v.id("searchSessions")),
       subagentBatchId: v.optional(v.id("subagentBatches")),
+      drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
       // Pre-resolved overrides preserved across continuations (M30 skill tri-state + preflight consolidation)
       chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),
       chatIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
@@ -422,12 +425,9 @@ export const touchMemoriesArgs = {
   touchedAt: v.number(),
 } satisfies PropertyValidators;
 
-// MARK: - Knowledge Base (Phase KB)
-
-export const deleteKnowledgeBaseFileArgs = {
-  storageId: v.id("_storage"),
-  source: v.union(v.literal("upload"), v.literal("generated")),
-} satisfies PropertyValidators;
+// MARK: - Knowledge Base
+//
+// `deleteKnowledgeBaseFileArgs` moved to `convex/knowledge_base/mutations_args.ts`.
 
 export const storeGenerationUsageArgs = {
   messageId: v.id("messages"),

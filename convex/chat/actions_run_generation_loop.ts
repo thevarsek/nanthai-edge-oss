@@ -268,7 +268,6 @@ export async function runGenerationWithCompaction(
   const compactionUsages: GenerationLoopResult["compactionUsages"] = [];
 
   // Outer loop: each iteration is one "segment" (initial or post-compaction).
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     // --- 1. Initial streaming call ---
     const streamResult = await deps.callOpenRouterStreaming(
@@ -494,7 +493,7 @@ export async function runGenerationWithCompaction(
       continue;
     }
 
-    let conversationToCompact = pruneResult.messages;
+    const conversationToCompact = pruneResult.messages;
 
     // Step 5b: Call the compaction model for a summary.
     const systemPrompt = extractSystemPrompt(options.messages);

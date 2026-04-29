@@ -309,12 +309,18 @@ export async function runToolCallLoop(
         (tc) => tc.id === toolCallId,
       );
       const toolName = matchingCall?.function.name ?? "unknown";
+      // On failure, preserve any structured `data` alongside the error so clients
+      // can react to signals like `requiresDrivePicker`. On success, store the
+      // unwrapped data payload (legacy shape).
+      const persistedPayload = result.success
+        ? result.data
+        : result.data !== undefined && result.data !== null
+          ? { error: result.error, ...(typeof result.data === "object" ? result.data as Record<string, unknown> : { data: result.data }) }
+          : { error: result.error };
       allToolResults.push({
         toolCallId,
         toolName,
-        result: truncateForStorage(
-          JSON.stringify(result.success ? result.data : { error: result.error }),
-        ),
+        result: truncateForStorage(JSON.stringify(persistedPayload)),
         isError: result.success ? undefined : true,
       });
     }

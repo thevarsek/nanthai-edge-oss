@@ -57,6 +57,8 @@ export function NotificationsSection() {
 
   useEffect(() => {
     if (pendingChatCompletionEnabled === serverChatCompletionEnabled) {
+      // Clear optimistic state once the reactive server preference catches up.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingChatCompletionEnabled(null);
     }
   }, [pendingChatCompletionEnabled, serverChatCompletionEnabled]);

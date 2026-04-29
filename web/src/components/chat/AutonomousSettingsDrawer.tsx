@@ -15,6 +15,10 @@ import {
   estimateAutonomousCost,
   type CostWarningLevel,
 } from "@/hooks/useAutonomous";
+import {
+  participantKey,
+  resolveSelectedParticipantId,
+} from "@/lib/autonomousParticipants";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -39,16 +43,24 @@ export function AutonomousSettingsDrawer({
     [settings, onChange],
   );
 
+  const resolvedModeratorParticipantId = useMemo(
+    () => resolveSelectedParticipantId(settings.moderatorParticipantId, participants),
+    [participants, settings.moderatorParticipantId],
+  );
+  const resolvedSettings = useMemo(
+    () => ({ ...settings, moderatorParticipantId: resolvedModeratorParticipantId }),
+    [settings, resolvedModeratorParticipantId],
+  );
   const { cost, warning } = useMemo(
-    () => estimateAutonomousCost(settings, participants.length),
-    [settings, participants.length],
+    () => estimateAutonomousCost(resolvedSettings, participants.length),
+    [resolvedSettings, participants.length],
   );
 
   // Number of turn-takers (excluding moderator)
   const turnTakerCount = useMemo(() => {
-    if (!settings.moderatorParticipantId) return participants.length;
-    return participants.filter((_, i) => String(i) !== settings.moderatorParticipantId).length;
-  }, [participants, settings.moderatorParticipantId]);
+    if (!resolvedModeratorParticipantId) return participants.length;
+    return participants.filter((participant, i) => participantKey(participant, i) !== resolvedModeratorParticipantId).length;
+  }, [participants, resolvedModeratorParticipantId]);
 
   const totalTurns = settings.maxCycles * turnTakerCount;
 
@@ -111,7 +123,7 @@ export function AutonomousSettingsDrawer({
           {/* ── Moderator ──────────────────────────────────── */}
           <ModeratorSection
             participants={participants}
-            selectedId={settings.moderatorParticipantId}
+            selectedId={resolvedModeratorParticipantId}
             onSelect={(id) => update({ moderatorParticipantId: id })}
           />
 
@@ -209,11 +221,11 @@ function ModeratorSection({ participants, selectedId, onSelect }: {
         />
         {participants.map((p, i) => (
           <ModeratorRow
-            key={i}
+            key={participantKey(p, i)}
             label={p.personaName ?? p.modelId.split("/").pop() ?? p.modelId}
             emoji={p.personaEmoji}
-            isSelected={selectedId === String(i)}
-            onClick={() => onSelect(String(i))}
+            isSelected={selectedId === participantKey(p, i)}
+            onClick={() => onSelect(participantKey(p, i))}
           />
         ))}
       </div>

@@ -1,4 +1,4 @@
-export type GoogleIntegrationId = "base" | "gmail" | "drive" | "calendar";
+export type GoogleIntegrationId = "base" | "gmail" | "drive" | "calendar" | "workspace";
 
 export const GOOGLE_BASE_SCOPES = [
   "openid",
@@ -10,26 +10,30 @@ const GOOGLE_CAPABILITY_SCOPE_MAP: Record<GoogleIntegrationId, readonly string[]
   base: GOOGLE_BASE_SCOPES,
   gmail: [
     ...GOOGLE_BASE_SCOPES,
-    "https://www.googleapis.com/auth/gmail.modify",
   ],
   drive: [
     ...GOOGLE_BASE_SCOPES,
-    "https://www.googleapis.com/auth/drive",
+    "https://www.googleapis.com/auth/drive.file",
   ],
   calendar: [
     ...GOOGLE_BASE_SCOPES,
-    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/calendar.events",
+  ],
+  workspace: [
+    ...GOOGLE_BASE_SCOPES,
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/calendar.events",
   ],
 };
 
-const GOOGLE_PROVIDER_SCOPE_BY_INTEGRATION: Record<Exclude<GoogleIntegrationId, "base">, string> = {
-  gmail: "https://www.googleapis.com/auth/gmail.modify",
-  drive: "https://www.googleapis.com/auth/drive",
-  calendar: "https://www.googleapis.com/auth/calendar",
+const GOOGLE_PROVIDER_SCOPE_BY_INTEGRATION: Record<Exclude<GoogleIntegrationId, "base" | "workspace">, string> = {
+  gmail: "",
+  drive: "https://www.googleapis.com/auth/drive.file",
+  calendar: "https://www.googleapis.com/auth/calendar.events",
 };
 
 export function isGoogleIntegrationId(value: string): value is GoogleIntegrationId {
-  return value === "base" || value === "gmail" || value === "drive" || value === "calendar";
+  return value === "base" || value === "gmail" || value === "drive" || value === "calendar" || value === "workspace";
 }
 
 export function googleScopesForIntegration(
@@ -39,7 +43,7 @@ export function googleScopesForIntegration(
 }
 
 export function googleProviderScopeForIntegration(
-  integrationId: Exclude<GoogleIntegrationId, "base">,
+  integrationId: Exclude<GoogleIntegrationId, "base" | "workspace">,
 ): string {
   return GOOGLE_PROVIDER_SCOPE_BY_INTEGRATION[integrationId];
 }
@@ -51,7 +55,7 @@ export function deriveGoogleCapabilityFlags(scopes: readonly string[]): {
 } {
   const scopeSet = new Set(scopes);
   return {
-    hasGmail: scopeSet.has(GOOGLE_PROVIDER_SCOPE_BY_INTEGRATION.gmail),
+    hasGmail: false,
     hasDrive: scopeSet.has(GOOGLE_PROVIDER_SCOPE_BY_INTEGRATION.drive),
     hasCalendar: scopeSet.has(GOOGLE_PROVIDER_SCOPE_BY_INTEGRATION.calendar),
   };

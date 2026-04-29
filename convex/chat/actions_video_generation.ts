@@ -106,6 +106,7 @@ export interface SubmitVideoGenerationArgs extends Record<string, unknown> {
   };
   userId: string;
   searchSessionId?: Id<"searchSessions">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
   videoConfig?: VideoConfig;
 }
 
@@ -119,6 +120,19 @@ export interface PollVideoGenerationArgs extends Record<string, unknown> {
   jobId: Id<"generationJobs">;
   userId: string;
   searchSessionId?: Id<"searchSessions">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
+}
+
+async function maybeCompleteDrivePickerBatch(
+  ctx: ActionCtx,
+  batchId: Id<"drivePickerBatches"> | undefined,
+  status: "completed" | "failed" | "cancelled",
+): Promise<void> {
+  if (!batchId) return;
+  await ctx.runMutation(internal.drive_picker.mutations.completeBatch, {
+    batchId,
+    status,
+  });
 }
 
 // -- Submit handler -----------------------------------------------------------
@@ -299,6 +313,7 @@ export async function submitVideoGenerationHandler(
         jobId: participant.jobId,
         userId,
         searchSessionId: args.searchSessionId,
+        drivePickerBatchId: args.drivePickerBatchId,
       },
     );
   } catch (error) {
@@ -324,6 +339,8 @@ export async function submitVideoGenerationHandler(
       userId,
       searchSessionId: args.searchSessionId,
     });
+
+    await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
   }
 }
 
@@ -362,6 +379,7 @@ export async function pollVideoGenerationHandler(
         status: "failed",
         error: "Cancelled by user",
       });
+      await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
       return;
     }
 
@@ -416,6 +434,7 @@ export async function pollVideoGenerationHandler(
         userId,
         searchSessionId: args.searchSessionId,
       });
+      await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
       return;
     }
 
@@ -446,6 +465,7 @@ export async function pollVideoGenerationHandler(
         userId,
         searchSessionId: args.searchSessionId,
       });
+      await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
       return;
     }
 
@@ -495,6 +515,7 @@ export async function pollVideoGenerationHandler(
       userId,
       searchSessionId: args.searchSessionId,
     });
+    await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
   }
 }
 
@@ -536,6 +557,7 @@ async function handleVideoCompleted(
       userId,
       searchSessionId: args.searchSessionId,
     });
+    await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
     return;
   }
 
@@ -574,6 +596,7 @@ async function handleVideoCompleted(
       userId,
       searchSessionId: args.searchSessionId,
     });
+    await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
     return;
   }
 
@@ -627,4 +650,5 @@ async function handleVideoCompleted(
     userId,
     searchSessionId: args.searchSessionId,
   });
+  await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "completed");
 }

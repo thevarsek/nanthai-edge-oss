@@ -112,6 +112,8 @@ test("enqueueStep routes basic search via runGeneration with normalized params",
       modelId: "openai/gpt-5",
       webSearchEnabled: true,
       searchComplexity: 1.6,
+      turnSkillOverrides: [{ skillId: "skill_1" as any, state: "available" }],
+      turnIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
     },
     stepIndex: 0,
   });
@@ -119,6 +121,12 @@ test("enqueueStep routes basic search via runGeneration with normalized params",
   assert.equal(mutationCalls[0]?.args.stepTitle, "Step 1");
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.webSearchEnabled, true);
+  assert.deepEqual(scheduledCalls[0]?.args.turnSkillOverrides, [
+    { skillId: "skill_1", state: "available" },
+  ]);
+  assert.deepEqual(scheduledCalls[0]?.args.turnIntegrationOverrides, [
+    { integrationId: "gmail", enabled: true },
+  ]);
   assert.equal(
     (scheduledCalls[0]?.args.participants as Array<{ modelId: string }>)[0]?.modelId,
     "openai/gpt-5",

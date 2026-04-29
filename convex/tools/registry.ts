@@ -45,7 +45,7 @@ export interface ToolResult {
 }
 
 export interface ToolDeferredPayload {
-  kind: "spawn_subagents";
+  kind: "spawn_subagents" | "drive_picker";
   data: unknown;
 }
 

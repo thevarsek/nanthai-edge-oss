@@ -89,7 +89,8 @@ Current backend behavior is intentionally forgiving:
 | Persona management | `create_persona`, `delete_persona` | Pro |
 | Skill management and discovery | `load_skill`, `list_skills`, `create_skill`, `update_skill`, `delete_skill`, `enable_skill_for_chat`, `disable_skill_for_chat`, `assign_skill_to_persona`, `remove_skill_from_persona` | Pro |
 | Subagents | `spawn_subagents` | Pro + tool-capable model + subagents enabled + subagent profile loaded |
-| Google Workspace | `gmail_send`, `gmail_read`, `gmail_search`, `gmail_delete`, `gmail_modify_labels`, `gmail_list_labels`, `drive_upload`, `drive_list`, `drive_read`, `drive_move`, `calendar_list`, `calendar_create`, `calendar_delete` | Pro + active Google connection + requested integration |
+| Google Drive + Calendar | `drive_upload`, `drive_list`, `drive_read`, `drive_move`, `calendar_list`, `calendar_create`, `calendar_delete` | Pro + active Google OAuth connection + requested integration. OAuth is narrowed to `drive.file` + `calendar.events`; Drive access requires explicit Picker/OnePick file grants or app-created files. |
+| Gmail Manual | `gmail_send`, `gmail_read`, `gmail_search`, `gmail_delete`, `gmail_modify_labels`, `gmail_list_labels` | Pro + active `gmail_manual` connection + requested integration. Gmail no longer uses Google OAuth scopes. |
 | Microsoft 365 | `outlook_send`, `outlook_read`, `outlook_search`, `outlook_delete`, `outlook_move`, `outlook_list_folders`, `onedrive_upload`, `onedrive_list`, `onedrive_read`, `onedrive_move`, `ms_calendar_list`, `ms_calendar_create`, `ms_calendar_delete` | Pro + active Microsoft connection + requested integration |
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
@@ -108,7 +109,7 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Runtime / analytics | `code-workspace`, `persistent-runtime`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `persistentRuntime`, `analytics` | Pro (skill-activated) |
 | Documents | `documents`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
-| Connected apps | `google-workspace`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
+| Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `gmailManual`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
 | Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-release-notes`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
 | GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo`, `gtm-solo-founder` | instruction-led | Pro-useful |
@@ -149,7 +150,8 @@ These are the clearest examples of how skills and tools relate today.
 | `pptx` | `docs` | `generate_pptx`, `read_pptx`, `edit_pptx` | none |
 | `xlsx` | `docs`, `analytics` | `generate_xlsx`, `read_xlsx`, `edit_xlsx` | none explicitly |
 | `financial-statements` | `docs` | `generate_xlsx`, `read_xlsx`, `edit_xlsx`, `generate_docx` | none |
-| `google-workspace` | `google` | Gmail, Drive, Calendar tool IDs | `requiredIntegrationIds = ["gmail", "drive", "calendar"]` |
+| `google-drive` | `google` | Drive tool IDs | `requiredIntegrationIds = ["drive"]`; access is `drive.file` + Picker/OnePick grants only |
+| `gmail` | `google` | Gmail tool IDs | `requiredIntegrationIds = ["gmail"]`; the integration is satisfied by the `gmail_manual` provider, not Gmail OAuth |
 | `microsoft-365` | `microsoft` | Outlook, OneDrive, MS Calendar tool IDs | `requiredIntegrationIds = ["outlook", "onedrive", "ms_calendar"]` |
 | `notion-workspace` | `notion` | Notion page/database tool IDs | `requiredIntegrationIds = ["notion"]` |
 | `apple-calendar` | `appleCalendar` | Apple Calendar tool IDs | `requiredIntegrationIds = ["apple_calendar"]` |

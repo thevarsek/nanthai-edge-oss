@@ -26,6 +26,7 @@ type OpenRouterData = {
 
 type ConnectionsData = {
   googleConnection: ReturnType<typeof useQuery<typeof api.oauth.google.getGoogleConnection>>;
+  gmailManualConnection: ReturnType<typeof useQuery<typeof api.oauth.gmail_manual.getGmailManualConnection>>;
   microsoftConnection: ReturnType<typeof useQuery<typeof api.oauth.microsoft.getMicrosoftConnection>>;
   notionConnection: ReturnType<typeof useQuery<typeof api.oauth.notion.getNotionConnection>>;
   slackConnection: ReturnType<typeof useQuery<typeof api.oauth.slack.getSlackConnection>>;
@@ -87,6 +88,7 @@ export function useConnectedAccounts() {
 
   return {
     googleConnection: useQuery(api.oauth.google.getGoogleConnection, skip),
+    gmailManualConnection: useQuery(api.oauth.gmail_manual.getGmailManualConnection, skip),
     microsoftConnection: useQuery(api.oauth.microsoft.getMicrosoftConnection, skip),
     notionConnection: useQuery(api.oauth.notion.getNotionConnection, skip),
     slackConnection: useQuery(api.oauth.slack.getSlackConnection, skip),

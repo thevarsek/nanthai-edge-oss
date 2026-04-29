@@ -32,6 +32,7 @@ export interface GenerationContext {
 
 const OAUTH_PROVIDERS = [
   "google",
+  "gmail_manual",
   "microsoft",
   "apple_calendar",
   "notion",
@@ -117,11 +118,13 @@ export async function getGenerationContextHandler(
     switch (provider) {
       case "google": {
         const flags = deriveGoogleCapabilityFlags(conn.scopes);
-        if (flags.hasGmail) connectedIntegrationIds.push("gmail");
         if (flags.hasDrive) connectedIntegrationIds.push("drive");
         if (flags.hasCalendar) connectedIntegrationIds.push("calendar");
         break;
       }
+      case "gmail_manual":
+        connectedIntegrationIds.push("gmail");
+        break;
       case "microsoft":
         connectedIntegrationIds.push("outlook", "onedrive", "ms_calendar");
         break;

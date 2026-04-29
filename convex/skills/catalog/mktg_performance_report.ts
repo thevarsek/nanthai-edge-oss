@@ -115,8 +115,8 @@ gs = gridspec.GridSpec(3, 3, figure=fig, hspace=0.4, wspace=0.3)
 # Row 1: KPI cards (4 across using colspan)
 # Total Spend | Revenue Attributed | ROAS | CAC
 kpis = [
-    ("Total Spend", "\$XXK", "vs budget"),
-    ("Revenue", "\$XXXK", "+XX% MoM"),
+    ("Total Spend", "$XXK", "vs budget"),
+    ("Revenue", "$XXXK", "+XX% MoM"),
     ("ROAS", "X.Xx", "target: 3x"),
     # etc.
 ]

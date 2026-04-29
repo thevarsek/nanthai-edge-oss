@@ -119,8 +119,7 @@ function getIntegrations(t: (k: string) => string) {
     {
       name: t("home_int_google_name"),
       services: [t("home_int_google_s1"), t("home_int_google_s2"), t("home_int_google_s3")],
-      body: t("home_int_google_coming_soon_body"),
-      statusLabel: t("home_int_status_coming_soon"),
+      body: t("home_int_google_body"),
     },
     {
       name: t("home_int_ms_name"),
@@ -537,16 +536,9 @@ function HomeIntegrationsSection() {
               className="edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8"
             >
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-2">
-                  <h3 className="edge-sans text-[1.05rem] font-medium tracking-[-0.01em] efg-85">
-                    {item.name}
-                  </h3>
-                  {"statusLabel" in item && item.statusLabel ? (
-                    <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[0.6rem] font-semibold uppercase tracking-[0.1em] text-amber-700 dark:border-amber-400/30 dark:text-amber-300">
-                      {item.statusLabel}
-                    </span>
-                  ) : null}
-                </div>
+                <h3 className="edge-sans text-[1.05rem] font-medium tracking-[-0.01em] efg-85">
+                  {item.name}
+                </h3>
                 <Link2 className="h-4 w-4 efg-15" />
               </div>
               <div className="mt-3 flex flex-wrap gap-1.5">
@@ -565,10 +557,6 @@ function HomeIntegrationsSection() {
             </div>
           ))}
         </div>
-
-        <p className="mt-6 text-center text-sm efg-45">
-          {t("home_int_google_coming_soon_note")}
-        </p>
 
         <p className="edge-sans mt-8 text-center text-[0.82rem] font-light efg-30">
           {t("home_int_footer")}

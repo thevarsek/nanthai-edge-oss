@@ -59,12 +59,38 @@ export const createScheduledJob = createTool({
               type: "array",
               items: { type: "string" },
             },
+            turnSkillOverrides: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  skillId: { type: "string" },
+                  state: { type: "string", enum: ["always", "available", "never"] },
+                },
+                required: ["skillId", "state"],
+              },
+            },
+            turnIntegrationOverrides: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  integrationId: { type: "string" },
+                  enabled: { type: "boolean" },
+                },
+                required: ["integrationId", "enabled"],
+              },
+            },
             webSearchEnabled: { type: "boolean" },
             searchMode: {
               type: "string",
               enum: ["none", "basic", "web", "research"],
             },
             searchComplexity: { type: "number" },
+            knowledgeBaseFileIds: {
+              type: "array",
+              items: { type: "string" },
+            },
             includeReasoning: { type: "boolean" },
             reasoningEffort: { type: "string" },
           },
@@ -178,9 +204,18 @@ export const createScheduledJob = createTool({
           enabledIntegrations: Array.isArray(step.enabledIntegrations)
             ? step.enabledIntegrations as string[]
             : undefined,
+          turnSkillOverrides: Array.isArray(step.turnSkillOverrides)
+            ? step.turnSkillOverrides as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>
+            : undefined,
+          turnIntegrationOverrides: Array.isArray(step.turnIntegrationOverrides)
+            ? step.turnIntegrationOverrides as Array<{ integrationId: string; enabled: boolean }>
+            : undefined,
           webSearchEnabled: typeof step.webSearchEnabled === "boolean" ? step.webSearchEnabled : undefined,
           searchMode,
           searchComplexity: typeof step.searchComplexity === "number" ? step.searchComplexity : undefined,
+          knowledgeBaseFileIds: Array.isArray(step.knowledgeBaseFileIds)
+            ? step.knowledgeBaseFileIds as Id<"_storage">[]
+            : undefined,
           includeReasoning: typeof step.includeReasoning === "boolean" ? step.includeReasoning : undefined,
           reasoningEffort: typeof step.reasoningEffort === "string" ? step.reasoningEffort : undefined,
         };

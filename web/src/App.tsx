@@ -8,6 +8,7 @@ import { RootLayout } from "./routes/RootLayout";
 import { AppEmptyState } from "./components/shared/AppEmptyState";
 import { LoadingSpinner } from "./components/shared/LoadingSpinner";
 import { ProviderOAuthCallbackPage } from "./routes/ProviderOAuthCallbackPage";
+import { MobileDrivePickerPage } from "./routes/MobileDrivePickerPage";
 
 // Lazy-loaded marketing/public pages
 const HomePage = lazy(() =>
@@ -357,6 +358,10 @@ export function App() {
       <Route
         path="/oauth/slack/callback"
         element={<ProviderOAuthCallbackPage provider="slack" />}
+      />
+      <Route
+        path="/mobile-drive-picker"
+        element={<MobileDrivePickerPage />}
       />
 
       {/* Auth-protected app routes */}

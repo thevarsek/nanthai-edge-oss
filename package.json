@@ -5,8 +5,10 @@
   "description": "NanthAI Edge — shared Convex backend for the native iOS and Android apps",
   "scripts": {
     "dev": "convex dev",
+    "lint": "npm run convex:lint && npm --prefix web run lint && cd android && ./gradlew lintDebug",
     "convex:test": "tsx --test convex/tests/*.test.ts",
     "convex:test:coverage": "c8 --include='convex/**/*.ts' --exclude='convex/_generated/**' --exclude='convex/tests/**' --reporter=text --reporter=lcov npx tsx --test convex/tests/*.test.ts",
+    "convex:lint": "eslint convex --ext .ts",
     "convex:typecheck": "tsc --noEmit --project convex/tsconfig.json",
     "deploy": "convex deploy",
     "deploy:prod": "convex deploy --prod"
@@ -14,12 +16,17 @@
   "dependencies": {
     "@ai-sdk/openai": "^3.0.33",
     "@convex-dev/agent": "^0.3.2",
+    "@types/mailparser": "^3.4.6",
+    "@types/nodemailer": "^8.0.0",
     "@vercel/sandbox": "^1.9.3",
     "ai": "^5.0.138",
     "convex": "^1.34.0",
     "convex-helpers": "^0.1.113",
     "docx": "^9.6.0",
+    "imapflow": "^1.3.2",
     "just-bash": "^2.14.0",
+    "mailparser": "^3.9.8",
+    "nodemailer": "^8.0.6",
     "pptxgenjs": "^4.0.1",
     "pyodide": "^0.29.3",
     "tsdav": "^2.1.8",
@@ -27,9 +34,13 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
     "@types/web-push": "^3.6.4",
     "c8": "^11.0.0",
+    "eslint": "^9.39.4",
+    "globals": "^17.5.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.59.0"
   }
 }

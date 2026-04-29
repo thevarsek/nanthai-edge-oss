@@ -38,6 +38,7 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   // Optional: when called from a search path (C/D/regen), pass the session ID
   // so generation can mark the session completed/failed on finish.
   searchSessionId?: Id<"searchSessions">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
   // M30 — Turn-level overrides (slash chips)

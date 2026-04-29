@@ -115,10 +115,7 @@ export async function runGenerationHandler(
         turnOverrides: explicitTurnIntegrationOverrides as any,
         connectedIntegrationIds,
       });
-      const scheduledId = await ctx.scheduler.runAfter(
-        0,
-        internal.chat.actions_runtime.runGenerationParticipant,
-        {
+      const participantArgs = {
           chatId: args.chatId,
           userMessageId: args.userMessageId,
           assistantMessageIds: args.assistantMessageIds,
@@ -142,7 +139,15 @@ export async function runGenerationHandler(
           integrationDefaults: userDefaults?.integrationDefaults as any,
           // Phase 1 instrumentation: scheduler hop #2 latency measurement
           enqueuedAt: deps.now(),
-        },
+        };
+      if (args.drivePickerBatchId) {
+        (participantArgs as typeof participantArgs & { drivePickerBatchId: Id<"drivePickerBatches"> })
+          .drivePickerBatchId = args.drivePickerBatchId;
+      }
+      const scheduledId = await ctx.scheduler.runAfter(
+        0,
+        internal.chat.actions_runtime.runGenerationParticipant,
+        participantArgs,
       );
       scheduledParticipants.push({
         jobId: participant.jobId,
@@ -232,6 +237,19 @@ export async function runGenerationHandler(
         console.error(
           "[runGeneration] Failed to update search session on error:",
           sessionError instanceof Error ? sessionError.message : String(sessionError),
+        );
+      }
+    }
+    if (args.drivePickerBatchId) {
+      try {
+        await ctx.runMutation(internal.drive_picker.mutations.completeBatch, {
+          batchId: args.drivePickerBatchId,
+          status: "failed",
+        });
+      } catch (batchError) {
+        console.error(
+          "[runGeneration] Failed to mark Drive picker batch failed:",
+          batchError instanceof Error ? batchError.message : String(batchError),
         );
       }
     }

@@ -50,6 +50,7 @@ const PURGE_ORDER = [
   "deviceTokens",
   "usageRecords",
   "userSecrets",
+  "kbUploadSessions",
   "purchaseEntitlements",
   "favorites",
   "integrationRequestGates",
@@ -60,6 +61,9 @@ const PURGE_ORDER = [
   // Storage-bearing tables (blobs cleaned up during batch delete)
   "generatedFiles",
   "fileAttachments",
+  // Google Drive grant cache after storage owners so shared cached blobs are not
+  // deleted before rows that still reference them.
+  "googleDriveFileGrants",
   // Messages cascaded via chats (also cleans up attachment storage)
   "messages",
   // Remaining parent tables

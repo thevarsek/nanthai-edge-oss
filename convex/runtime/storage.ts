@@ -37,7 +37,7 @@ function requireChatId(toolCtx: ToolExecutionContext): string {
 }
 
 function sanitizeFilename(filename: string): string {
-  return filename.replace(/[^\w.\-]+/g, "_");
+  return filename.replace(/[^\w.-]+/g, "_");
 }
 
 function resolveWorkspacePath(

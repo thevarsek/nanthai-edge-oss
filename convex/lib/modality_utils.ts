@@ -49,8 +49,11 @@ export async function getModelModalityCategory(
 
   if (!model) return "text"; // Unknown models default to text
 
-  // Prefer explicit flags over modality string parsing
+  // Prefer explicit flags over modality string parsing. Image sync attaches
+  // pricing metadata for image-output models even when OpenRouter's main
+  // catalog row is late/missing modality details.
   if (model.supportsVideo) return "video";
+  if ("imageCapabilities" in model && model.imageCapabilities != null) return "image";
   if (model.supportsImages && !model.architecture?.modality?.split("->")[1]?.includes("text")) {
     return "image";
   }

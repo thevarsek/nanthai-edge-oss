@@ -285,7 +285,7 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
           name: name.trim(),
           steps: stepsPayload as UpdateJobArgs["steps"],
           recurrence,
-          ...(targetFolderId ? { targetFolderId: targetFolderId as Id<"folders"> } : {}),
+          targetFolderId: targetFolderId ? targetFolderId as Id<"folders"> : null,
         });
       } else {
         await createJob({

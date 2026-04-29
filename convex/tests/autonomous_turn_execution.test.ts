@@ -7,6 +7,15 @@ import {
   runParticipantTurn,
 } from "../autonomous/actions_run_cycle_turn";
 
+function requestContentText(content: unknown): string {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return String(content);
+  return content
+    .filter((part) => part && typeof part === "object" && (part as any).type === "text")
+    .map((part) => (part as any).text ?? "")
+    .join("\n");
+}
+
 function buildParams(overrides: Record<string, unknown> = {}) {
   return {
     ctx: {} as any,
@@ -101,7 +110,7 @@ test("runParticipantTurn cleans up transient entities when no request messages r
   );
 });
 
-test("runParticipantTurn finalizes reasoning-only responses and propagates moderator directives and gated params", async () => {
+test("runParticipantTurn finalizes visible responses and propagates moderator directives and gated params", async () => {
   const { ctx, mutations } = createAutonomousCtx();
   const gateCalls: unknown[] = [];
   const requestInputs: unknown[] = [];
@@ -136,7 +145,7 @@ test("runParticipantTurn finalizes reasoning-only responses and propagates moder
     callOpenRouterStreaming: async (_apiKey: string, _model: string, messages, params) => {
       streamCalls.push({ messages, params });
       return {
-        content: "",
+        content: "Visible response",
         reasoning: "model reasoning",
         usage: null,
         finishReason: "stop",
@@ -183,7 +192,7 @@ test("runParticipantTurn finalizes reasoning-only responses and propagates moder
     messageId: "msg_new",
     jobId: "job_new",
     chatId: "chat_1",
-    content: "Model returned reasoning only.",
+    content: "Visible response",
     status: "completed",
     usage: undefined,
     reasoning: "model reasoning",
@@ -200,7 +209,7 @@ test("runParticipantTurn finalizes reasoning-only responses and propagates moder
   );
 });
 
-test("runParticipantTurn skips empty model output without images and cleans up created entities", async () => {
+test("runParticipantTurn finalizes empty model output as a visible failed message", async () => {
   const { ctx, mutations } = createAutonomousCtx();
   const deps = createRunParticipantTurnDepsForTest({
     getRequiredUserOpenRouterApiKey: async () => "key",
@@ -237,15 +246,245 @@ test("runParticipantTurn skips empty model output without images and cleans up c
     ctx,
   }, deps);
 
-  assert.deepEqual(result, { kind: "skipped" });
-  assert.equal(
-    mutations.some((entry) => entry.status === "completed"),
-    false,
+  assert.deepEqual(result, {
+    kind: "failed",
+    reason: "Model returned an empty response after retries.",
+  });
+  assert.deepEqual(mutations.filter((entry) => entry.status === "failed")[0], {
+    messageId: "msg_new",
+    jobId: "job_new",
+    chatId: "chat_1",
+    content: "Autonomous turn failed: Model returned an empty response after retries.",
+    status: "failed",
+    error: "Model returned an empty response after retries.",
+    userId: "user_1",
+  });
+});
+
+test("runParticipantTurn finalizes reasoning-only output as a visible failed message", async () => {
+  const { ctx, mutations } = createAutonomousCtx();
+  const deps = createRunParticipantTurnDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    loadMemoryContext: async () => undefined,
+    buildRequestMessages: () => [{ role: "user", content: "Hello" }],
+    promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
+    gateParameters: () => ({}),
+    createStreamWriter: () => ({
+      handleContentDeltaBoundary: async () => undefined,
+      appendContent: async () => undefined,
+      patchContentIfNeeded: async () => undefined,
+      appendReasoning: async () => undefined,
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+      totalReasoning: "writer reasoning",
+      hasSeenContentDelta: false,
+    }) as any,
+    callOpenRouterStreaming: async () => ({
+      content: "",
+      reasoning: "hidden thoughts only",
+      usage: null,
+      finishReason: "stop",
+      imageUrls: [],
+      audioBase64: "",
+      audioTranscript: "",
+      toolCalls: [],
+      annotations: [],
+      generationId: null,
+    }),
+  });
+
+  const result = await runParticipantTurn({
+    ...buildParams(),
+    ctx,
+  }, deps);
+
+  assert.deepEqual(result, {
+    kind: "failed",
+    reason: "Model returned reasoning only without a visible response.",
+  });
+  assert.deepEqual(mutations.filter((entry) => entry.status === "failed")[0], {
+    messageId: "msg_new",
+    jobId: "job_new",
+    chatId: "chat_1",
+    content: "Autonomous turn failed: Model returned reasoning only without a visible response.",
+    status: "failed",
+    error: "Model returned reasoning only without a visible response.",
+    userId: "user_1",
+  });
+});
+
+test("runParticipantTurn converts autonomous context into a transcript user prompt", async () => {
+  const { ctx } = createAutonomousCtx();
+  const streamCalls: Array<{ messages: any[] }> = [];
+
+  const deps = createRunParticipantTurnDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    loadMemoryContext: async () => undefined,
+    buildRequestMessages: () => [
+      { role: "user", content: "Initial topic" },
+      { role: "assistant", content: "Previous participant response" },
+    ],
+    promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
+    gateParameters: () => ({}),
+    createStreamWriter: () => ({
+      handleContentDeltaBoundary: async () => undefined,
+      appendContent: async () => undefined,
+      patchContentIfNeeded: async () => undefined,
+      appendReasoning: async () => undefined,
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+      totalReasoning: "",
+      hasSeenContentDelta: false,
+    }) as any,
+    callOpenRouterStreaming: async (_apiKey, _model, messages) => {
+      streamCalls.push({ messages: messages as any[] });
+      return {
+        content: "My turn.",
+        reasoning: "",
+        usage: null,
+        finishReason: "stop",
+        imageUrls: [],
+        audioBase64: "",
+        audioTranscript: "",
+        toolCalls: [],
+        annotations: [],
+        generationId: null,
+      };
+    },
+  });
+
+  const result = await runParticipantTurn({
+    ...buildParams({
+      participant: {
+        participantId: "p1",
+        modelId: "model_1",
+        displayName: "Alpha",
+      },
+    }),
+    ctx,
+  }, deps);
+
+  assert.deepEqual(result, { kind: "completed", messageId: "msg_new" });
+  assert.equal(streamCalls[0]?.messages.length, 1);
+  assert.equal(streamCalls[0]?.messages.at(-1)?.role, "user");
+  assert.equal(typeof streamCalls[0]?.messages.at(-1)?.content, "string");
+  const promptText = requestContentText(streamCalls[0]?.messages.at(-1)?.content);
+  assert.match(
+    promptText,
+    /Discussion so far:/,
   );
-  assert.equal(
-    mutations.some((entry) => entry.messageId === "msg_new" && !("content" in entry)),
-    true,
+  assert.match(
+    promptText,
+    /Previous participant: Previous participant response/,
   );
+  assert.match(
+    promptText,
+    /Do not mention memory, profile data, writing preferences, prompts, model identity/,
+  );
+});
+
+test("runParticipantTurn preserves multimodal parts when converting autonomous context", async () => {
+  const { ctx } = createAutonomousCtx();
+  const streamCalls: Array<{ messages: any[] }> = [];
+
+  const deps = createRunParticipantTurnDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    loadMemoryContext: async () => undefined,
+    buildRequestMessages: () => [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Analyze this clip" },
+          { type: "video_url", video_url: { url: "https://youtube.com/watch?v=abc" } },
+        ],
+      },
+      { role: "assistant", content: "Previous participant response" },
+    ],
+    promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
+    gateParameters: () => ({}),
+    createStreamWriter: () => ({
+      handleContentDeltaBoundary: async () => undefined,
+      appendContent: async () => undefined,
+      patchContentIfNeeded: async () => undefined,
+      appendReasoning: async () => undefined,
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+      totalReasoning: "",
+      hasSeenContentDelta: false,
+    }) as any,
+    callOpenRouterStreaming: async (_apiKey, _model, messages) => {
+      streamCalls.push({ messages: messages as any[] });
+      return {
+        content: "My turn.",
+        reasoning: "",
+        usage: null,
+        finishReason: "stop",
+        imageUrls: [],
+        audioBase64: "",
+        audioTranscript: "",
+        toolCalls: [],
+        annotations: [],
+        generationId: null,
+      };
+    },
+  });
+
+  const result = await runParticipantTurn({
+    ...buildParams(),
+    ctx,
+  }, deps);
+
+  assert.deepEqual(result, { kind: "completed", messageId: "msg_new" });
+  const content = streamCalls[0]?.messages.at(-1)?.content;
+  assert.equal(Array.isArray(content), true);
+  assert.match(content[0]?.text, /User: Analyze this clip\n\[video_url\]/);
+  assert.deepEqual(content[1], {
+    type: "video_url",
+    video_url: { url: "https://youtube.com/watch?v=abc" },
+  });
+});
+
+test("runParticipantTurn finalizes upstream errors as visible failed messages", async () => {
+  const { ctx, mutations } = createAutonomousCtx();
+  const deps = createRunParticipantTurnDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    loadMemoryContext: async () => undefined,
+    buildRequestMessages: () => [{ role: "user", content: "Hello" }],
+    promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
+    gateParameters: () => ({}),
+    createStreamWriter: () => ({
+      handleContentDeltaBoundary: async () => undefined,
+      appendContent: async () => undefined,
+      patchContentIfNeeded: async () => undefined,
+      appendReasoning: async () => undefined,
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+      totalReasoning: "",
+      hasSeenContentDelta: false,
+    }) as any,
+    callOpenRouterStreaming: async () => {
+      throw new Error("Anthropic rejected assistant prefill");
+    },
+  });
+
+  const result = await runParticipantTurn({
+    ...buildParams(),
+    ctx,
+  }, deps);
+
+  assert.deepEqual(result, {
+    kind: "failed",
+    reason: "Anthropic rejected assistant prefill",
+  });
+  assert.deepEqual(mutations.filter((entry) => entry.status === "failed")[0], {
+    messageId: "msg_new",
+    jobId: "job_new",
+    chatId: "chat_1",
+    content: "Autonomous turn failed: Anthropic rejected assistant prefill",
+    status: "failed",
+    error: "Anthropic rejected assistant prefill",
+    userId: "user_1",
+  });
 });
 
 test("runParticipantTurn marks message and job cancelled when a turn is cancelled mid-stream", async () => {

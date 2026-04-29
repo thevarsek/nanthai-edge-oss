@@ -74,8 +74,7 @@ test("tool connection helpers return granted integrations and tolerate query fai
       runQuery: async () => ({
         status: "active",
         scopes: [
-          "https://www.googleapis.com/auth/gmail.modify",
-          "https://www.googleapis.com/auth/drive",
+          "https://www.googleapis.com/auth/drive.file",
         ],
       }),
     } as any,
@@ -95,7 +94,7 @@ test("tool connection helpers return granted integrations and tolerate query fai
     "user_1",
   );
 
-  assert.deepEqual(integrations, ["gmail", "drive"]);
+  assert.deepEqual(integrations, ["drive"]);
   assert.equal(microsoft, true);
   assert.equal(notion, false);
   assert.equal(apple, false);

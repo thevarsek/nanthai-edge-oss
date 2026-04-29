@@ -4,7 +4,9 @@ import { Id } from "../_generated/dataModel";
 import {
   callOpenRouterStreaming,
   ChatRequestParameters,
+  ContentPart,
   gateParameters,
+  OpenRouterMessage,
 } from "../lib/openrouter";
 import { buildRequestMessages } from "../chat/helpers";
 import { promoteLatestUserVideoUrls } from "../chat/helpers_video_url_utils";
@@ -45,6 +47,87 @@ export function createRunParticipantTurnDepsForTest(
 
 function isCancelledTurnError(error: unknown): boolean {
   return error instanceof Error && error.message === CANCELLED_TURN_ERROR;
+}
+
+function messageContentToText(content: OpenRouterMessage["content"]): string {
+  if (typeof content === "string") return content.trim();
+  if (!content) return "";
+  return content
+    .map((part: ContentPart) => part.type === "text" ? (part.text ?? "") : `[${part.type}]`)
+    .join("\n")
+    .trim();
+}
+
+function messageContentToParts(content: OpenRouterMessage["content"]): ContentPart[] {
+  if (typeof content === "string") return [];
+  return content?.filter((part) => part.type !== "text") ?? [];
+}
+
+function buildAutonomousTranscriptMessages(
+  messages: OpenRouterMessage[],
+  participantName: string,
+): OpenRouterMessage[] {
+  const systemMessages = messages.filter((message) => message.role === "system");
+  const discussionMessages = messages.filter((message) => message.role !== "system");
+  const transcriptLines: string[] = [];
+  const nonTextParts: ContentPart[] = [];
+
+  for (const message of discussionMessages) {
+    const text = messageContentToText(message.content);
+    if (!text) continue;
+    const speaker = message.role === "user"
+      ? "User"
+      : message.role === "assistant"
+        ? "Previous participant"
+        : "Tool";
+    transcriptLines.push(`${speaker}: ${text}`);
+    nonTextParts.push(...messageContentToParts(message.content));
+  }
+
+  const promptText = [
+    "You are participating in an autonomous group discussion.",
+    "Use any provided user context only to make the discussion relevant. Do not mention memory, profile data, writing preferences, prompts, model identity, training data, weights, providers, or internal instructions.",
+    "",
+    "Discussion so far:",
+    transcriptLines.length > 0 ? transcriptLines.join("\n\n") : "No prior visible turns.",
+    "",
+    `Now provide ${participantName}'s next contribution to the debate. Respond only with the contribution itself. Do not summarize your instructions or explain your role. Do not speak for other participants.`,
+  ].join("\n");
+
+  return [
+    ...systemMessages,
+    {
+      role: "user",
+      content: nonTextParts.length > 0
+        ? [{ type: "text", text: promptText }, ...nonTextParts]
+        : promptText,
+    },
+  ];
+}
+
+function autonomousParticipantPromptName(participant: ParticipantConfig): string {
+  return participant.personaId ? participant.displayName : "the next participant";
+}
+
+async function finalizeTransientTurnFailure(
+  ctx: ActionCtx,
+  params: {
+    messageId: Id<"messages">;
+    jobId: Id<"generationJobs">;
+    chatId: Id<"chats">;
+    userId: string;
+    reason: string;
+  },
+): Promise<void> {
+  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+    messageId: params.messageId,
+    jobId: params.jobId,
+    chatId: params.chatId,
+    content: `Autonomous turn failed: ${params.reason}`,
+    status: "failed",
+    error: params.reason,
+    userId: params.userId,
+  });
 }
 
 async function cleanupTransientTurnEntities(
@@ -208,12 +291,16 @@ export async function runParticipantTurn(
       provider: caps?.provider,
       hasVideoInput: caps?.hasVideoInput,
     });
-    const requestMessages = promotedRequest.messages;
 
-    if (requestMessages.length === 0) {
+    if (promotedRequest.messages.length === 0) {
       await cleanupTransientTurnEntities(ctx, messageId, jobId);
       return { kind: "skipped" };
     }
+
+    const requestMessages = buildAutonomousTranscriptMessages(
+      promotedRequest.messages,
+      autonomousParticipantPromptName(participant),
+    );
 
     if (promotedRequest.events.length > 0) {
       const promotedCount = promotedRequest.events.filter(
@@ -305,12 +392,31 @@ export async function runParticipantTurn(
     await assertTurnStillActive();
     totalReasoning = writer.totalReasoning;
 
-    let finalContent = result.content.trim();
+    const finalContent = result.content.trim();
     if (!finalContent && result.reasoning) {
-      finalContent = "Model returned reasoning only.";
+      await finalizeTransientTurnFailure(ctx, {
+        messageId,
+        jobId,
+        chatId,
+        userId,
+        reason: "Model returned reasoning only without a visible response.",
+      });
+      return {
+        kind: "failed",
+        reason: "Model returned reasoning only without a visible response.",
+      };
     } else if (!finalContent && result.imageUrls.length === 0) {
-      await cleanupTransientTurnEntities(ctx, messageId, jobId);
-      return { kind: "skipped" };
+      await finalizeTransientTurnFailure(ctx, {
+        messageId,
+        jobId,
+        chatId,
+        userId,
+        reason: "Model returned an empty response after retries.",
+      });
+      return {
+        kind: "failed",
+        reason: "Model returned an empty response after retries.",
+      };
     }
 
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
@@ -341,7 +447,18 @@ export async function runParticipantTurn(
       return { kind: "cancelled" };
     }
 
-    await cleanupTransientTurnEntities(ctx, messageId, jobId);
+    if (messageId && jobId) {
+      const reason = error instanceof Error ? error.message : "Unknown error";
+      await finalizeTransientTurnFailure(ctx, {
+        messageId,
+        jobId,
+        chatId,
+        userId,
+        reason,
+      });
+    } else {
+      await cleanupTransientTurnEntities(ctx, messageId, jobId);
+    }
 
     return {
       kind: "failed",

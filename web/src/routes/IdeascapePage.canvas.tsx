@@ -11,7 +11,7 @@ import { useChat } from "@/hooks/useChat";
 import { useParticipants } from "@/hooks/useParticipants";
 import { useChatOverrides } from "@/hooks/useChatOverrides";
 import { useMentionSuggestions, useSubagentOverride, useSearchMode } from "@/routes/ChatPage.helpers";
-import { useConnectedAccounts, useSharedData } from "@/hooks/useSharedData";
+import { useConnectedAccounts, useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { useAutonomous } from "@/hooks/useAutonomous";
 import { MessageInput } from "@/components/chat/MessageInput";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
@@ -264,8 +264,9 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const { toast } = useToast();
   const { messages, chat, isLoading, sendMessage, cancelGeneration, updateChat, isGenerating } = useChat(chatId);
   const { participants: convexParticipants, addParticipant, removeParticipant, setParticipants: setParticipantsMut } = useParticipants(chatId);
-  const { prefs, modelSettings, proStatus, personas, modelSummaries } = useSharedData();
-  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
+  const { prefs, modelSettings, proStatus, personas } = useSharedData();
+  const modelSummaries = useModelSummaries();
+  const { googleConnection, gmailManualConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const rawPositions = useQuery(api.nodePositions.queries.listByChat, { chatId });
   const upsertPosition = useMutation(api.nodePositions.mutations.upsert);
   const upsertPreferences = useMutation(api.preferences.mutations.upsertPreferences);
@@ -302,9 +303,9 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
     [overrides.selectedKBFileIds],
   );
   const selectedKBFiles = useQuery(
-    api.chat.queries.getKnowledgeBaseFilesByStorageIds,
+    api.knowledge_base.queries.getKnowledgeBaseFilesByStorageIds,
     selectedKBStorageIds.length > 0 ? { storageIds: selectedKBStorageIds } : "skip",
-  ) as Array<{ storageId: string; filename: string; mimeType: string; sizeBytes?: number }> | undefined;
+  ) as Array<{ storageId: string; filename: string; mimeType: string; sizeBytes?: number; driveFileId?: string; lastRefreshedAt?: number }> | undefined;
   const { searchMode, setSearchMode: setSearchModeOverride, globeColor } = useSearchMode({
     chat, chatId, updateChat,
     webSearchEnabledByDefault: typedPrefs?.webSearchEnabledByDefault ?? true,
@@ -318,12 +319,14 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const startResearchPaper = useMutation(api.search.mutations.startResearchPaper);
   const kbAttachments = useMemo(
     () => (selectedKBFiles ?? []).map((file) => ({
-      type: file.mimeType ? attachmentTypeForMime(file.mimeType) : "file",
-      storageId: file.storageId as Id<"_storage">,
-      name: file.filename,
-      mimeType: file.mimeType,
-      sizeBytes: file.sizeBytes,
-    })),
+        type: file.mimeType ? attachmentTypeForMime(file.mimeType) : "file",
+        storageId: file.storageId as Id<"_storage">,
+        name: file.filename,
+        mimeType: file.mimeType,
+        sizeBytes: file.sizeBytes,
+        driveFileId: file.driveFileId,
+        lastRefreshedAt: file.lastRefreshedAt,
+      })),
     [selectedKBFiles],
   );
 
@@ -406,13 +409,14 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
 
   const mentionSuggestions = useMentionSuggestions(participants);
   const connectedProviders = useMemo(() => ({
+    gmail: gmailManualConnection?.status === "active",
     google: !!googleConnection,
     microsoft: !!microsoftConnection,
     apple: !!appleCalendarConnection,
     notion: !!notionConnection,
     cloze: clozeConnection?.status === "active",
     slack: !!slackConnection,
-  }), [googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection]);
+  }), [gmailManualConnection, googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection]);
   const hasConnectedIntegrations = Object.values(connectedProviders).some(Boolean);
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
     chat,
@@ -569,6 +573,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         name?: string;
         mimeType?: string;
         sizeBytes?: number;
+        driveFileId?: string;
+        lastRefreshedAt?: number;
         videoRole?: "first_frame" | "last_frame" | "reference";
       }>;
       recordedAudio?: {

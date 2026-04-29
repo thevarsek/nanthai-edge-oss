@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useChat, type Participant } from "@/hooks/useChat";
@@ -40,6 +40,7 @@ import { SlashCommandPalette, TurnOverrideChips } from "@/components/chat/SlashC
 import { ChatSearchContext } from "@/components/chat/ChatSearchContext";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
+import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 import {
   DEFAULT_PARAMETER_OVERRIDES,
@@ -51,7 +52,21 @@ import {
 } from "@/lib/chatRequestResolution";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
 
-const GOOGLE_INTEGRATION_IDS = new Set(["gmail", "drive", "calendar"]);
+const GOOGLE_INTEGRATION_IDS = new Set(["drive", "calendar"]);
+
+function parseDrivePickerRequest(message: ReturnType<typeof useChat>["messages"][number] | undefined): { key: string; batchId: Id<"drivePickerBatches"> } | null {
+  if (!message || message.role !== "assistant" || !message.drivePickerBatchId) return null;
+  if (message.status === "failed" || message.status === "cancelled") return null;
+  return { key: `${message._id}:${message.drivePickerBatchId}`, batchId: message.drivePickerBatchId };
+}
+
+function latestDrivePickerRequest(messages: ReturnType<typeof useChat>["messages"]): { key: string; batchId: Id<"drivePickerBatches"> } | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const request = parseDrivePickerRequest(messages[index]);
+    if (request) return request;
+  }
+  return null;
+}
 
 function getRetryBaseParticipant(message: (ReturnType<typeof useChat>["messages"][number]) | undefined) {
   return message?.retryContract?.participants[0] ?? {
@@ -74,7 +89,7 @@ export function ChatPage() {
   const { t } = useTranslation();
   const { prefs, modelSettings, proStatus, personas } = useSharedData();
   const { toast } = useToast();
-  const { googleConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
+  const { googleConnection, gmailManualConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const { balance: creditBalance, refresh: refreshCreditBalance } = useCreditBalance();
   const typedChatId = chatId as Id<"chats"> | undefined;
   const typedPrefs = prefs as SharedPreferences | undefined;
@@ -110,7 +125,18 @@ export function ChatPage() {
       return () => window.clearTimeout(timer);
     }
   }, [effectiveDefaultModelId, convexParticipants.length]);
-  const connectedProviders = useMemo(() => ({ google: !!googleConnection, microsoft: !!microsoftConnection, apple: !!appleCalendarConnection, notion: !!notionConnection, cloze: clozeConnection?.status === "active", slack: !!slackConnection }), [googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection]);
+  const connectedProviders = useMemo(
+    () => ({
+      gmail: gmailManualConnection?.status === "active",
+      google: !!googleConnection,
+      microsoft: !!microsoftConnection,
+      apple: !!appleCalendarConnection,
+      notion: !!notionConnection,
+      cloze: clozeConnection?.status === "active",
+      slack: !!slackConnection,
+    }),
+    [gmailManualConnection, googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection],
+  );
   const { chat, messages, isLoading, isGenerating, sendMessage, cancelGeneration, retryMessage, updateChat, switchBranchAtFork } = useChat(typedChatId ?? null);
   const activePersona = useMemo(() => {
     const participantPersonaId = convexParticipants.find((participant) => participant.personaId)?.personaId;
@@ -135,10 +161,6 @@ export function ChatPage() {
     setSlashSkillNames((prev) => new Map(prev).set(skillId, skillName));
     setShowSlashPalette(false);
   }, [overrides]);
-  const handleSlashSelectIntegration = useCallback((key: IntegrationKey, _label: string) => {
-    overrides.addTurnIntegrationOverride(key, true);
-    setShowSlashPalette(false);
-  }, [overrides]);
   const handleIntegrationToggle = useCallback(async (key: IntegrationKey) => {
     const alreadyEnabled = overrides.enabledIntegrations.has(key);
     if (alreadyEnabled) {
@@ -146,9 +168,18 @@ export function ChatPage() {
       return;
     }
 
-    if (key === "gmail" || key === "drive" || key === "calendar") {
+    if (key === "gmail") {
+      if (gmailManualConnection?.status !== "active") {
+        toast({
+          message: t("connect_gmail_app_password_first"),
+          variant: "error",
+        });
+        return;
+      }
+    }
+
+    if (key === "drive" || key === "calendar") {
       const capabilityGranted =
-        (key === "gmail" && googleConnection?.hasGmail) ||
         (key === "drive" && googleConnection?.hasDrive) ||
         (key === "calendar" && googleConnection?.hasCalendar);
       if (!capabilityGranted) {
@@ -165,7 +196,28 @@ export function ChatPage() {
     }
 
     overrides.toggleIntegration(key);
-  }, [googleConnection, overrides, t, toast]);
+  }, [gmailManualConnection?.status, googleConnection, overrides, t, toast]);
+  const handleSlashSelectIntegration = useCallback(async (key: IntegrationKey) => {
+    if (key === "gmail" && gmailManualConnection?.status !== "active") {
+      toast({ message: t("connect_gmail_app_password_first"), variant: "error" });
+      return;
+    }
+    if (key === "drive" || key === "calendar") {
+      const capabilityGranted =
+        (key === "drive" && googleConnection?.hasDrive) ||
+        (key === "calendar" && googleConnection?.hasCalendar);
+      if (!capabilityGranted) {
+        try {
+          await connectProviderWithPopup("google", { requestedIntegration: key });
+        } catch (error) {
+          toast({ message: convexErrorMessage(error, t("google_signin_failed")), variant: "error" });
+          return;
+        }
+      }
+    }
+    overrides.addTurnIntegrationOverride(key, true);
+    setShowSlashPalette(false);
+  }, [gmailManualConnection?.status, googleConnection, overrides, t, toast]);
   const hasConnectedIntegrations = Object.values(connectedProviders).some(Boolean);
 
   const { activePath, branchNodes, navigate: navigateBranch, optimisticLeafId, setOptimisticLeafId } = useBranching(messages, {
@@ -191,15 +243,17 @@ export function ChatPage() {
 
   const createChat = useMutation(api.chat.mutations.createChat);
   const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
+  const getDrivePickerAccessToken = useAction(api.oauth.google.getDrivePickerAccessToken);
+  const attachPickedDriveFiles = useAction(api.drive_picker.actions.attachPickedDriveFiles);
   const forkChat = useMutation(api.chat.manage.forkChat);
   const selectedKBStorageIds = useMemo(
     () => Array.from(overrides.selectedKBFileIds) as Id<"_storage">[],
     [overrides.selectedKBFileIds],
   );
   const selectedKBFiles = useQuery(
-    api.chat.queries.getKnowledgeBaseFilesByStorageIds,
+    api.knowledge_base.queries.getKnowledgeBaseFilesByStorageIds,
     selectedKBStorageIds.length > 0 ? { storageIds: selectedKBStorageIds } : "skip",
-  ) as Array<{ storageId: string; filename: string; mimeType: string; sizeBytes?: number }> | undefined;
+  ) as Array<{ storageId: string; filename: string; mimeType: string; sizeBytes?: number; driveFileId?: string; lastRefreshedAt?: number }> | undefined;
   useChatScroll(messagesEndRef, visibleMessages.length, isGenerating, chatId);
   const { sessionMap } = useSearchSessions(typedChatId);
   const cancelSession = useMutation(api.search.mutations.cancelResearchPaper);
@@ -382,6 +436,8 @@ export function ChatPage() {
     type: string;
     mimeType: string;
     sizeBytes?: number;
+    driveFileId?: string;
+    lastRefreshedAt?: number;
     videoRole?: "first_frame" | "last_frame" | "reference";
   };
   const kbAttachments = useMemo(
@@ -391,6 +447,8 @@ export function ChatPage() {
       name: file.filename,
       mimeType: file.mimeType,
       sizeBytes: file.sizeBytes,
+      driveFileId: file.driveFileId,
+      lastRefreshedAt: file.lastRefreshedAt,
     })),
     [selectedKBFiles],
   );
@@ -455,13 +513,13 @@ export function ChatPage() {
           chatId: cid, text,
           participant: participants[0],
           complexity: convexComplexity ?? 1,
-          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes })),
+          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, driveFileId: a.driveFileId, lastRefreshedAt: a.lastRefreshedAt })),
           subagentsEnabled: effectiveSubagentsEnabled,
         });
       } else {
         await sendMessage({
           chatId: cid, text, participants,
-          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, videoRole: a.videoRole })),
+          attachments: mergedAttachments.map((a) => ({ type: a.type, storageId: a.storageId, url: a.url, name: a.name, mimeType: a.mimeType, sizeBytes: a.sizeBytes, driveFileId: a.driveFileId, lastRefreshedAt: a.lastRefreshedAt, videoRole: a.videoRole })),
           ...turnOverrideArgs, subagentsEnabled: effectiveSubagentsEnabled, webSearchEnabled,
           ...(convexSearchMode ? { searchMode: convexSearchMode } : {}),
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
@@ -478,6 +536,66 @@ export function ChatPage() {
     },
     [ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );
+
+  const drivePickerRequest = useMemo(
+    () => latestDrivePickerRequest(visibleMessages),
+    [visibleMessages],
+  );
+  const handledDrivePickerRequestRef = useRef<string | null>(null);
+  const [isDrivePickerOpening, setIsDrivePickerOpening] = useState(false);
+
+  const openDrivePickerForContinuation = useCallback(async (): Promise<boolean> => {
+    if (!drivePickerRequest || isDrivePickerOpening) return true;
+    if (googleConnection?.hasDrive !== true) {
+      toast({ message: t("connect_google_drive_before_choosing_files"), variant: "error" });
+      return false;
+    }
+
+    const developerKey = import.meta.env.VITE_GOOGLE_PICKER_API_KEY ?? import.meta.env.VITE_GOOGLE_API_KEY;
+    const appId = import.meta.env.VITE_GOOGLE_PICKER_APP_ID ?? import.meta.env.VITE_GOOGLE_PROJECT_NUMBER;
+    if (!developerKey || !appId) {
+      toast({ message: t("google_drive_picker_not_configured"), variant: "error" });
+      return false;
+    }
+
+    setIsDrivePickerOpening(true);
+    try {
+      const token = await getDrivePickerAccessToken({});
+      const picked = await pickGoogleDriveFiles({
+        accessToken: token.accessToken,
+        appId,
+        developerKey,
+        multiselect: true,
+      });
+      await attachPickedDriveFiles({
+        batchId: drivePickerRequest.batchId,
+        fileIds: picked.map((file) => file.id),
+      });
+      return true;
+    } catch (error) {
+      toast({ message: convexErrorMessage(error, t("google_drive_picker_failed")), variant: "error" });
+      return false;
+    } finally {
+      setIsDrivePickerOpening(false);
+    }
+  }, [
+    attachPickedDriveFiles,
+    drivePickerRequest,
+    getDrivePickerAccessToken,
+    googleConnection?.hasDrive,
+    isDrivePickerOpening,
+    t,
+    toast,
+  ]);
+
+  useEffect(() => {
+    if (!drivePickerRequest) return;
+    if (handledDrivePickerRequestRef.current === drivePickerRequest.key) return;
+    handledDrivePickerRequestRef.current = drivePickerRequest.key;
+    void openDrivePickerForContinuation().then((handled) => {
+      if (!handled) handledDrivePickerRequestRef.current = null;
+    });
+  }, [drivePickerRequest, openDrivePickerForContinuation]);
 
   const handleSendRecording = useCallback(
     async (result: RecordingResult) => {
@@ -516,7 +634,7 @@ export function ChatPage() {
       }
       overrides.clearKBFiles();
     },
-    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState],
+    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs],
   );
 
   const retryTargetMessage = useMemo(
@@ -615,7 +733,7 @@ export function ChatPage() {
       `[data-message-id="${targetMessageId}"]`,
     );
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, []);
+  }, [chatSearch.scrollContainerRef]);
 
   const paramDefaults = useMemo(() => {
     const previewParticipant = resolveParticipants({

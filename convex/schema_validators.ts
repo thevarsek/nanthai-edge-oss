@@ -71,6 +71,20 @@ export const subagentBatchStatus = v.union(
   v.literal("cancelled"),
 );
 
+/**
+ * Drive picker batch lifecycle.
+ * - `awaiting_pick`: assistant deferred; user picker UI is open.
+ * - `resuming`: picker callback fired; ingest + resume action running.
+ * - `completed` / `failed` / `cancelled`: terminal.
+ */
+export const drivePickerBatchStatus = v.union(
+  v.literal("awaiting_pick"),
+  v.literal("resuming"),
+  v.literal("completed"),
+  v.literal("failed"),
+  v.literal("cancelled"),
+);
+
 /** Child subagent run lifecycle. */
 export const subagentRunStatus = v.union(
   v.literal("queued"),
@@ -465,6 +479,8 @@ export const scheduledJobStep = v.object({
   modelId: v.string(),
   personaId: v.optional(v.id("personas")),
   enabledIntegrations: v.optional(v.array(v.string())),
+  turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   webSearchEnabled: v.optional(v.boolean()),
   searchMode: v.optional(scheduledJobSearchMode),
   searchComplexity: v.optional(v.number()),

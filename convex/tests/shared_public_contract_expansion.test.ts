@@ -13,6 +13,17 @@ import {
   getAppleCalendarConnection,
   upsertConnection as upsertAppleCalendarConnection,
 } from "../oauth/apple_calendar";
+import { getAppleCalendarCredentials } from "../tools/apple/auth";
+import {
+  deleteConnection as deleteGmailManualConnection,
+  getGmailManualConnection,
+  upsertConnection as upsertGmailManualConnection,
+} from "../oauth/gmail_manual";
+import {
+  encryptSecret,
+  maybeDecryptSecret,
+  maybeEncryptSecret,
+} from "../lib/secret_crypto";
 import { listByChat } from "../nodePositions/queries";
 import { getDeviceTokens } from "../push/queries";
 import { upsertSessionInternal } from "../runtime/mutations";
@@ -233,6 +244,153 @@ test("apple calendar connection helpers redact secrets and delete idempotently",
   assert.equal("accessToken" in (connection ?? {}), false);
   assert.deepEqual(deleted, ["oauth_1"]);
   assert.equal(patches.length, 0);
+});
+
+test("manual Gmail connection helpers redact app password and delete idempotently", async () => {
+  const inserts: Array<Record<string, unknown>> = [];
+  const deleted: string[] = [];
+
+  await (upsertGmailManualConnection as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => null,
+        }),
+      }),
+      insert: async (_table: string, value: Record<string, unknown>) => {
+        inserts.push(value);
+        return "oauth_gmail_manual";
+      },
+    },
+  }, {
+    userId: "user_1",
+    email: "USER@example.com",
+    appPassword: "secret-app-password",
+  });
+
+  const connection = await (getGmailManualConnection as any)._handler({
+    auth: buildAuth(),
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => ({
+            _id: "oauth_gmail_manual",
+            userId: "user_1",
+            provider: "gmail_manual",
+            accessToken: "secret-app-password",
+            refreshToken: "",
+            email: "user@example.com",
+            displayName: "user@example.com",
+            status: "active",
+            scopes: ["imap", "smtp"],
+            connectedAt: 1,
+            lastUsedAt: 2,
+          }),
+        }),
+      }),
+    },
+  }, {});
+
+  await (deleteGmailManualConnection as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => ({ _id: "oauth_gmail_manual" }),
+        }),
+      }),
+      delete: async (id: string) => {
+        deleted.push(id);
+      },
+    },
+  }, { userId: "user_1" });
+
+  assert.equal(inserts[0]?.provider, "gmail_manual");
+  assert.equal(inserts[0]?.email, "user@example.com");
+  assert.equal(inserts[0]?.accessToken, "secret-app-password");
+  assert.equal("accessToken" in (connection ?? {}), false);
+  assert.equal("refreshToken" in (connection ?? {}), false);
+  assert.equal((connection as any)?.email, "user@example.com");
+  assert.deepEqual(deleted, ["oauth_gmail_manual"]);
+});
+
+test("manual Gmail secret encryption preserves plaintext fallback when no env key is configured", async () => {
+  const originalEncryptionKey = process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+  delete process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+
+  try {
+    const secret = await maybeEncryptSecret("existing-app-password");
+    assert.equal(secret, "existing-app-password");
+    assert.equal(await maybeDecryptSecret(secret), "existing-app-password");
+  } finally {
+    if (originalEncryptionKey !== undefined) {
+      process.env.CONVEX_SECRET_ENCRYPTION_KEY = originalEncryptionKey;
+    }
+  }
+});
+
+test("required app-password encryption fails closed with structured ConvexError", async () => {
+  const originalEncryptionKey = process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+  delete process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+
+  try {
+    await assert.rejects(
+      encryptSecret("new-app-password"),
+      (error: any) => error?.data?.code === "SECRET_ENCRYPTION_NOT_CONFIGURED",
+    );
+  } finally {
+    if (originalEncryptionKey !== undefined) {
+      process.env.CONVEX_SECRET_ENCRYPTION_KEY = originalEncryptionKey;
+    }
+  }
+});
+
+test("manual Gmail secret encryption round trips when env key is configured", async () => {
+  const originalEncryptionKey = process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+  process.env.CONVEX_SECRET_ENCRYPTION_KEY = "test-encryption-key";
+
+  try {
+    const secret = await maybeEncryptSecret("new-app-password");
+    assert.equal(secret.startsWith("enc:v1:"), true);
+    assert.notEqual(secret, "new-app-password");
+    assert.equal(await maybeDecryptSecret(secret), "new-app-password");
+  } finally {
+    if (originalEncryptionKey === undefined) {
+      delete process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+    } else {
+      process.env.CONVEX_SECRET_ENCRYPTION_KEY = originalEncryptionKey;
+    }
+  }
+});
+
+test("apple calendar credentials decrypt encrypted app-specific password", async () => {
+  const originalEncryptionKey = process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+  process.env.CONVEX_SECRET_ENCRYPTION_KEY = "test-encryption-key";
+
+  try {
+    const encryptedPassword = await maybeEncryptSecret("apple-app-password");
+    const credentials = await getAppleCalendarCredentials({
+      runQuery: async () => ({
+        _id: "oauth_apple",
+        userId: "user_1",
+        provider: "apple_calendar",
+        accessToken: encryptedPassword,
+        refreshToken: "",
+        expiresAt: Date.now() + 1_000,
+        scopes: ["caldav"],
+        email: "user@example.com",
+        status: "active",
+        connectedAt: 1,
+      }),
+    } as any, "user_1");
+
+    assert.equal(credentials.appSpecificPassword, "apple-app-password");
+  } finally {
+    if (originalEncryptionKey === undefined) {
+      delete process.env.CONVEX_SECRET_ENCRYPTION_KEY;
+    } else {
+      process.env.CONVEX_SECRET_ENCRYPTION_KEY = originalEncryptionKey;
+    }
+  }
 });
 
 test("node positions, push tokens, runtime sessions, and capabilities mutations honor core contract semantics", async () => {

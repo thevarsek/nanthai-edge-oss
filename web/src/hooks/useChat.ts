@@ -10,6 +10,7 @@ import type { Id } from "@convex/_generated/dataModel";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface Participant {
+  id?: string;
   modelId: string;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;
@@ -78,6 +79,7 @@ export interface Message {
   multiModelGroupId?: string;
   isMultiModelResponse?: boolean;
   subagentBatchId?: Id<"subagentBatches">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
   moderatorDirective?: string;
   searchSessionId?: Id<"searchSessions">;
   loadedSkillIds?: Id<"skills">[];
@@ -91,6 +93,8 @@ export interface Message {
     name?: string;
     mimeType?: string;
     sizeBytes?: number;
+    driveFileId?: string;
+    lastRefreshedAt?: number;
   }>;
   audioStorageId?: Id<"_storage">;
   audioDurationMs?: number;
@@ -208,6 +212,8 @@ export interface SendMessageArgs extends Record<string, unknown> {
     name?: string;
     mimeType?: string;
     sizeBytes?: number;
+    driveFileId?: string;
+    lastRefreshedAt?: number;
     videoRole?: "first_frame" | "last_frame" | "reference";
   }>;
   recordedAudio?: {
@@ -230,6 +236,21 @@ export interface SendMessageArgs extends Record<string, unknown> {
     aspectRatio?: string;
     resolution?: string;
     generateAudio?: boolean;
+  };
+}
+
+function stripLocalParticipantFields(participant: Participant): Omit<Participant, "id"> {
+  return {
+    modelId: participant.modelId,
+    personaId: participant.personaId,
+    personaName: participant.personaName,
+    personaEmoji: participant.personaEmoji,
+    personaAvatarImageUrl: participant.personaAvatarImageUrl,
+    systemPrompt: participant.systemPrompt,
+    temperature: participant.temperature,
+    maxTokens: participant.maxTokens,
+    includeReasoning: participant.includeReasoning,
+    reasoningEffort: participant.reasoningEffort,
   };
 }
 
@@ -391,7 +412,10 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
 
   // ── Action wrappers ────────────────────────────────────────────────────────
   const sendMessage = useCallback(
-    (args: SendMessageArgs) => sendMessageMutation(args),
+    (args: SendMessageArgs) => sendMessageMutation({
+      ...args,
+      participants: args.participants.map(stripLocalParticipantFields),
+    }),
     [sendMessageMutation],
   );
 
@@ -417,8 +441,10 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
         resolution?: string;
         generateAudio?: boolean;
       };
-    }) =>
-      retryMessageMutation(args),
+    }) => retryMessageMutation({
+      ...args,
+      participants: args.participants?.map(stripLocalParticipantFields),
+    }),
     [retryMessageMutation],
   );
 

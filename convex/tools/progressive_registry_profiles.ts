@@ -35,6 +35,7 @@ import { generateEml } from "./generate_eml";
 import { readEml } from "./read_eml";
 import {
   gmailSend,
+  gmailCreateDraft,
   gmailRead,
   gmailSearch,
   gmailDelete,
@@ -165,7 +166,7 @@ export function registerProfileTools(
     case "google":
       if ((options.enabledIntegrations ?? []).includes("gmail")) {
         registerToolsIfMissing(registry, [
-          gmailSend, gmailRead, gmailSearch, gmailDelete, gmailModifyLabels, gmailListLabels,
+          gmailSend, gmailCreateDraft, gmailRead, gmailSearch, gmailDelete, gmailModifyLabels, gmailListLabels,
         ]);
       }
       if ((options.enabledIntegrations ?? []).includes("drive")) {

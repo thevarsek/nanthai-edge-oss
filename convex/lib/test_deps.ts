@@ -1,5 +1,5 @@
 export type DeepPartial<T> = {
-  [K in keyof T]?: T[K] extends (...args: any[]) => any
+  [K in keyof T]?: T[K] extends (...args: never[]) => unknown
     ? T[K]
     : T[K] extends readonly unknown[]
       ? T[K]

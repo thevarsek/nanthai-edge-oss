@@ -53,6 +53,16 @@
   to = "/index.html"
   status = 200
 
+[[redirects]]
+  from = "/oauth/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/mobile-drive-picker"
+  to = "/index.html"
+  status = 200
+
 # Headers — cache immutable hashed assets aggressively, everything else revalidates.
 [[headers]]
   for = "/assets/*"
@@ -75,6 +85,8 @@
     Cache-Control = "no-cache"
 
 # Security headers
+# /mobile-drive-picker is opened top-level by native Safari/Custom Tabs, not
+# embedded in an iframe/WebView, so DENY remains safe and prevents clickjacking.
 [[headers]]
   for = "/*"
   [headers.values]

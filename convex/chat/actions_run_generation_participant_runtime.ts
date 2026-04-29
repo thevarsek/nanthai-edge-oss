@@ -60,6 +60,25 @@ async function maybeFinalizeSubagentBatch(
   });
 }
 
+async function maybeFinalizeDrivePickerBatch(
+  ctx: ActionCtx,
+  args: RunGenerationParticipantArgs,
+): Promise<void> {
+  if (!args.drivePickerBatchId) return;
+  const [message, job] = await Promise.all([
+    ctx.runQuery(internal.chat.queries.getMessageInternal, {
+      messageId: args.participant.messageId,
+    }),
+    ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
+      jobId: args.participant.jobId,
+    }),
+  ]);
+  await ctx.runMutation(internal.drive_picker.mutations.completeBatch, {
+    batchId: args.drivePickerBatchId,
+    status: mapBatchTerminalStatus(message?.status, job?.status),
+  });
+}
+
 function toRunGenerationArgs(args: RunGenerationParticipantArgs) {
   return {
     chatId: args.chatId,
@@ -74,6 +93,7 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs) {
     subagentsEnabled: args.allowSubagents,
     searchSessionId: args.searchSessionId,
     subagentBatchId: args.subagentBatchId,
+    drivePickerBatchId: args.drivePickerBatchId,
   } as const;
 }
 
@@ -197,6 +217,7 @@ export async function runGenerationParticipantRuntimeHandler(
         allowSubagents: continuationState.group.allowSubagents,
         searchSessionId: continuationState.group.searchSessionId,
         subagentBatchId: continuationState.group.subagentBatchId,
+        drivePickerBatchId: continuationState.group.drivePickerBatchId,
         chatSkillOverrides: continuationState.group.chatSkillOverrides,
         chatIntegrationOverrides: continuationState.group.chatIntegrationOverrides,
         personaSkillOverrides: continuationState.group.personaSkillOverrides,
@@ -321,6 +342,7 @@ export async function runGenerationParticipantRuntimeHandler(
         jobId: effectiveArgs.participant.jobId,
       });
       await maybeFinalizeSubagentBatch(ctx, effectiveArgs);
+      await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
       await maybeFinalizeGenerationGroup(ctx, {
         chatId: effectiveArgs.chatId,
         userMessageId: effectiveArgs.userMessageId,
@@ -332,6 +354,7 @@ export async function runGenerationParticipantRuntimeHandler(
     }
   } catch (error) {
     await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
+    await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
     throw error;
   }
 }

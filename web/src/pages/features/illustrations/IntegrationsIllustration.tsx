@@ -63,8 +63,8 @@ export function IntegrationsIllustration() {
         <MockProviderCard
           icon={Mail}
           name="Google"
-          description="Coming soon on web"
-          connected={false}
+          description="Drive, Calendar, Manual Gmail"
+          connected={true}
           color="var(--edge-cyan)"
         />
         <MockProviderCard
