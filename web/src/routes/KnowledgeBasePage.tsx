@@ -4,7 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ChevronLeft, Search, FileText, Trash2, Download, Files, Image, Video, HardDrive } from "lucide-react";
+import { ChevronLeft, Search, FileText, Trash2, Download, Files, Image, Video, HardDrive, Quote } from "lucide-react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProGateWrapper } from "@/hooks/useProGate";
@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 const MAX_KB_UPLOAD_BYTES = 25 * 1024 * 1024;
 
 type KBSource = "upload" | "generated" | "drive" | "all";
+type KBFolderFilter = "all" | "unfiled" | string;
 
 interface KBFile {
   storageId: string;
@@ -35,6 +36,25 @@ interface KBFile {
   downloadUrl?: string | null;
   mimeType?: string;
   toolName?: string;
+  documentId?: string;
+  documentVersionId?: string;
+  documentStatus?: string;
+  documentExtractionStatus?: string;
+  documentVersionNumber?: number;
+  documentSyncState?: string;
+  documentExternalSyncedVersionId?: string;
+  documentExternalSyncedVersionNumber?: number;
+  documentExternalSyncedDownloadUrl?: string | null;
+  documentFolderId?: string;
+  isReadableDocument?: boolean;
+}
+
+interface DocumentVersionDownload {
+  versionId: string;
+  documentId: string;
+  filename: string;
+  mimeType: string;
+  downloadUrl: string | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -79,11 +99,16 @@ function fileIcon(mime?: string) {
 function FileRow({
   file,
   onDelete,
+  onViewDriveVersion,
+  onMakeDriveVersionCurrent,
 }: {
   file: KBFile;
   onDelete: (storageId: string, source: "upload" | "generated" | "drive") => void;
+  onViewDriveVersion: (file: KBFile) => void;
+  onMakeDriveVersionCurrent: (file: KBFile) => void;
 }) {
   const { t } = useTranslation();
+  const hasDriveUpdate = file.documentSyncState === "external_update_available" && !!file.documentExternalSyncedVersionId;
   const handleDownload = () => {
     if (!file.downloadUrl) return;
     const a = document.createElement("a");
@@ -98,6 +123,27 @@ function FileRow({
 
   const isImage = file.mimeType?.startsWith("image/");
   const isVideo = file.mimeType?.startsWith("video/");
+  const supportsDocumentChat = file.isReadableDocument === true || !!file.documentId;
+  const documentStatus = supportsDocumentChat
+    ? [
+        file.documentExtractionStatus === "ready"
+          ? t("kb_document_ready")
+          : file.documentExtractionStatus === "extracting" || file.documentExtractionStatus === "pending"
+          ? t("kb_document_preparing")
+          : file.documentExtractionStatus === "failed"
+          ? t("kb_document_unavailable")
+          : file.documentExtractionStatus === "error" || file.documentExtractionStatus === "unsupported"
+          ? t("kb_document_unavailable")
+          : t("kb_document_readable"),
+        (file.documentSyncState === "current" || file.documentSyncState === "updated_from_drive") && file.source === "drive"
+          ? t("updated_from_drive")
+          : file.documentSyncState === "external_update_available"
+          ? t("drive_update_available")
+          : file.documentSyncState === "local_ahead"
+          ? t("local_edits_ahead")
+          : null,
+      ].filter(Boolean).join(" · ")
+    : null;
 
   return (
     <div className="flex items-center gap-3 px-4 py-3">
@@ -148,6 +194,12 @@ function FileRow({
             </span>
           )}
         </div>
+        {documentStatus && (
+          <div className="mt-1 flex items-center gap-1 text-xs text-foreground/50">
+            <Quote size={11} />
+            <span className="truncate">{documentStatus}</span>
+          </div>
+        )}
       </div>
       <button
         onClick={handleDownload}
@@ -157,6 +209,24 @@ function FileRow({
       >
         <Download size={14} />
       </button>
+      {hasDriveUpdate && (
+        <>
+          <button
+            onClick={() => onViewDriveVersion(file)}
+            className="p-1.5 rounded-lg text-foreground/50 hover:text-blue-400 transition-colors flex-shrink-0"
+            title={t("view_drive_version")}
+          >
+            <HardDrive size={14} />
+          </button>
+          <button
+            onClick={() => onMakeDriveVersionCurrent(file)}
+            className="px-2 py-1 rounded-lg text-xs text-primary hover:bg-primary/10 transition-colors flex-shrink-0"
+            title={t("make_current")}
+          >
+            {t("make_current")}
+          </button>
+        </>
+      )}
       <button
         onClick={() => onDelete(file.storageId, file.source)}
         className="p-1.5 rounded-lg text-foreground/50 hover:text-red-400 transition-colors flex-shrink-0"
@@ -177,6 +247,7 @@ function KnowledgeBasePageContent() {
   const { googleConnection } = useConnectedAccounts();
   const [search, setSearch] = useState("");
   const [sourceFilter, setSourceFilter] = useState<KBSource>("all");
+  const [folderFilter, setFolderFilter] = useState<KBFolderFilter>("all");
   const [deleteTarget, setDeleteTarget] = useState<{
     storageId: string;
     fileAttachmentId?: string;
@@ -190,7 +261,10 @@ function KnowledgeBasePageContent() {
   const files = useQuery(api.knowledge_base.queries.listKnowledgeBaseFiles, {
     ...(search ? { search } : {}),
     source: sourceFilter,
+    ...(folderFilter === "unfiled" ? { folderFilter: "unfiled" as const } : {}),
+    ...(folderFilter !== "all" && folderFilter !== "unfiled" ? { folderId: folderFilter as Id<"folders"> } : {}),
   });
+  const folders = useQuery(api.folders.queries.list) as Array<{ _id: string; name: string }> | undefined;
 
   const createKnowledgeBaseUploadUrl = useMutation(
     api.knowledge_base.mutations.createKnowledgeBaseUploadUrl,
@@ -202,6 +276,7 @@ function KnowledgeBasePageContent() {
     api.knowledge_base.mutations.addUploadToKnowledgeBase,
   );
   const deleteFile = useMutation(api.knowledge_base.mutations.deleteKnowledgeBaseFile);
+  const makeCurrentVersion = useMutation(api.documents.mutations.makeCurrentVersion);
   const getDrivePickerAccessToken = useAction(api.oauth.google.getDrivePickerAccessToken);
   const importDriveFileToKnowledgeBase = useAction(
     api.knowledge_base.actions.importDriveFileToKnowledgeBase,
@@ -339,6 +414,45 @@ function KnowledgeBasePageContent() {
     }
   };
 
+  const openVersionDownload = (version: DocumentVersionDownload) => {
+    if (!version.downloadUrl) {
+      toast({ message: t("something_went_wrong"), variant: "error" });
+      return;
+    }
+    const a = document.createElement("a");
+    a.href = version.downloadUrl;
+    a.download = version.filename;
+    a.target = "_blank";
+    a.rel = "noopener noreferrer";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  const handleViewDriveVersion = (file: KBFile) => {
+    if (!file.documentExternalSyncedVersionId || !file.documentId) return;
+    openVersionDownload({
+      versionId: file.documentExternalSyncedVersionId,
+      documentId: file.documentId,
+      filename: file.filename,
+      mimeType: file.mimeType ?? "application/octet-stream",
+      downloadUrl: file.documentExternalSyncedDownloadUrl ?? null,
+    });
+  };
+
+  const handleMakeDriveVersionCurrent = async (file: KBFile) => {
+    if (!file.documentId || !file.documentExternalSyncedVersionId) return;
+    try {
+      await makeCurrentVersion({
+        documentId: file.documentId as Id<"documents">,
+        versionId: file.documentExternalSyncedVersionId as Id<"documentVersions">,
+      });
+      toast({ message: t("updated_from_drive"), variant: "success" });
+    } catch (error) {
+      toast({ message: convexErrorMessage(error, t("something_went_wrong")), variant: "error" });
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col h-full">
       {/* Header */}
@@ -383,6 +497,10 @@ function KnowledgeBasePageContent() {
           {uploadError && (
             <p className="text-sm text-red-400">{uploadError}</p>
           )}
+          <div className="flex items-center gap-2 rounded-xl border border-border/50 bg-surface-2 px-3 py-2 text-sm text-foreground/60">
+            <Quote size={15} className="text-accent" />
+            <span>{t("kb_document_chat_helper")}</span>
+          </div>
           {driveImportProgress && (
             <div className="flex items-center gap-3 rounded-xl border border-blue-500/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-500">
               <LoadingSpinner size="sm" />
@@ -430,10 +548,31 @@ function KnowledgeBasePageContent() {
             ))}
           </div>
 
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {[
+              { id: "all", label: t("all") },
+              { id: "unfiled", label: t("unfiled") },
+              ...((folders ?? []).map((folder) => ({ id: folder._id, label: folder.name }))),
+            ].map((folder) => (
+              <button
+                key={folder.id}
+                onClick={() => setFolderFilter(folder.id)}
+                className={cn(
+                  "shrink-0 px-3 py-1.5 rounded-lg text-sm transition-colors",
+                  folderFilter === folder.id
+                    ? "bg-accent text-white"
+                    : "bg-surface-2 text-foreground/60",
+                )}
+              >
+                {folder.label}
+              </button>
+            ))}
+          </div>
+
           {/* File list — grouped by date like iOS */}
           {files === undefined ? (
             <div className="flex justify-center py-8"><LoadingSpinner /></div>
-          ) : files.length === 0 ? (
+          ) : grouped.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 gap-4">
               <Files size={48} strokeWidth={1} className="text-foreground/25" />
               <div className="text-center">
@@ -463,6 +602,8 @@ function KnowledgeBasePageContent() {
                         fileAttachmentId: file.fileAttachmentId,
                         source,
                       })}
+                      onViewDriveVersion={handleViewDriveVersion}
+                      onMakeDriveVersionCurrent={handleMakeDriveVersionCurrent}
                     />
                   ))}
                 </div>

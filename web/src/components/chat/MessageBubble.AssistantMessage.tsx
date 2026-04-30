@@ -2,7 +2,7 @@
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
 import { memo, useState, useCallback, useMemo } from "react";
-import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown } from "lucide-react";
+import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -30,6 +30,19 @@ import { buildModelNameMap, getModelDisplayName } from "@/lib/modelDisplay";
 import { formatCost } from "@/hooks/useChatCosts";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+type DocumentCitation = NonNullable<Message["documentCitations"]>[number];
+
+function stripStreamingCitationBlock(content: string): string {
+  return content
+    .replace(/<CITATIONS>\s*[\s\S]*?<\/CITATIONS>/g, "")
+    .replace(/<CITATIONS>[\s\S]*$/g, "")
+    .trimEnd();
+}
+
+function hasPartialCitationBlock(content: string): boolean {
+  return /<CITATIONS>[\s\S]*$/g.test(content) && !/<CITATIONS>\s*[\s\S]*?<\/CITATIONS>/g.test(content);
+}
 
 function getParticipantInitial(name?: string | null, modelId?: string): string {
   if (name) return name[0]?.toUpperCase() ?? "A";
@@ -211,6 +224,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const isPending = message.status === "pending";
   const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder;
   const [copied, setCopied] = useState(false);
+  const [selectedDocumentCitation, setSelectedDocumentCitation] = useState<DocumentCitation | null>(null);
   const searchCtx = useChatSearchContext();
   const { sessionMap, onCancel, onRegenerate } = useSearchSessionContext();
   const audio = useAudioPlaybackContext();
@@ -242,6 +256,19 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const isCompleted = message.status === "completed";
   const showActions = isCompleted && (!!message.content || hasImageUrls || hasVideoUrls);
+  const hasDocumentTools = (message.toolCalls ?? []).some((toolCall) =>
+    toolCall.name === "list_documents" || toolCall.name === "read_document" || toolCall.name === "find_in_document"
+  );
+  const showCitationFinalizing = isStreaming && hasDocumentTools && hasPartialCitationBlock(displayed);
+  const renderedContent = isStreaming ? stripStreamingCitationBlock(displayed) : displayed;
+  const documentCitationLinks = useMemo(
+    () => (message.documentCitations ?? []).map((citation) => ({
+      ref: citation.ref,
+      title: citation.quote,
+      onClick: () => setSelectedDocumentCitation(citation),
+    })),
+    [message.documentCitations],
+  );
 
   const outerClass = hasFocusedMatch
     ? "flex gap-3 group rounded-lg ring-2 ring-primary bg-primary/5 -mx-2 px-2 py-1 transition-all duration-200"
@@ -310,11 +337,21 @@ export const AssistantMessage = memo(function AssistantMessage({
         {message.subagentBatchId && <SubagentBatchPanel messageId={message._id} />}
 
         {/* Content */}
-        {(displayed || showWaitingPlaceholder) && (
+        {(renderedContent || showWaitingPlaceholder) && (
           <div className="max-w-none">
-            <MarkdownRenderer content={displayed} streaming={isStreaming && message.status === "streaming"} />
+            <MarkdownRenderer
+              content={renderedContent}
+              streaming={isStreaming && message.status === "streaming"}
+              documentCitationLinks={documentCitationLinks}
+            />
             {showWaitingPlaceholder && (
-              displayed ? <StreamingCursor /> : <WaitingIndicator />
+              renderedContent ? <StreamingCursor /> : <WaitingIndicator />
+            )}
+            {showCitationFinalizing && (
+              <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border/35 bg-surface-2 px-2.5 py-1.5 text-xs text-muted">
+                <Loader size={12} className="animate-spin text-primary" />
+                <span>{t("formatting_document_citations")}</span>
+              </div>
             )}
           </div>
         )}
@@ -365,6 +402,24 @@ export const AssistantMessage = memo(function AssistantMessage({
               messageId={message._id}
               isUser={false}
             />
+          </div>
+        )}
+
+        {message.documentCitations && message.documentCitations.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {message.documentCitations.map((citation) => (
+              <button
+                key={`${citation.ref}-${citation.documentId}-${citation.versionId ?? "current"}`}
+                type="button"
+                onClick={() => setSelectedDocumentCitation(citation)}
+                className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border/45 bg-surface-2 px-2.5 py-1.5 text-xs text-foreground/80 hover:bg-surface-3"
+                title={citation.quote}
+              >
+                <Quote size={12} />
+                <span className="font-mono">[{citation.ref}]</span>
+                <span className="truncate">{citation.filename}</span>
+              </button>
+            ))}
           </div>
         )}
 
@@ -439,6 +494,40 @@ export const AssistantMessage = memo(function AssistantMessage({
           )}
         </p>
       </div>
+      {selectedDocumentCitation && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 px-4"
+          onClick={() => setSelectedDocumentCitation(null)}
+        >
+          <div
+            className="w-full max-w-md rounded-xl border border-border bg-[#f8fafc] p-4 text-slate-950 shadow-xl dark:bg-[#0a0a0f] dark:text-white"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start gap-3 rounded-lg bg-white px-3 py-2 dark:bg-[#11111a]">
+              <Quote size={18} className="mt-0.5 text-primary" />
+              <div className="min-w-0 flex-1">
+                <h3 className="truncate text-sm font-semibold">{t("source_quote")}</h3>
+                <p className="mt-1 truncate text-xs text-muted">{selectedDocumentCitation.filename}</p>
+                {selectedDocumentCitation.page != null && (
+                  <p className="mt-1 text-xs text-muted">{t("page_arg", { page: selectedDocumentCitation.page })}</p>
+                )}
+              </div>
+            </div>
+            <blockquote className="mt-4 rounded-lg bg-white px-3 py-2 text-sm leading-relaxed dark:bg-[#11111a]">
+              “{selectedDocumentCitation.quote}”
+            </blockquote>
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedDocumentCitation(null)}
+                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white"
+              >
+                {t("done")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 });

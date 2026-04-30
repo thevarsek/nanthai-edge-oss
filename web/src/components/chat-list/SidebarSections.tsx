@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   Pin, ChevronDown, ChevronRight, Folder, Check,
   Clock, FolderCog, GripVertical, PencilLine, Trash2,
-  FolderPlus,
+  FolderPlus, Search,
 } from "lucide-react";
 import { ChatListItem } from "@/components/chat-list/ChatListItem";
 import { cn } from "@/lib/utils";
@@ -69,6 +69,7 @@ export type ChatRow = {
   isPinned?: boolean;
   pinnedAt?: number;
   folderId?: string;
+  folderName?: string;
   source?: string;
   lastMessagePreview?: string;
   sourceJobName?: string;
@@ -235,6 +236,7 @@ export function FilterMenu({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [folderQuery, setFolderQuery] = useState("");
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -247,6 +249,9 @@ export function FilterMenu({
   }, [open]);
 
   const hasActiveFilter = selectedFolderId !== null || showScheduledOnly;
+  const visibleFolders = folderQuery.trim()
+    ? folders.filter((folder) => folder.name.toLowerCase().includes(folderQuery.trim().toLowerCase()))
+    : folders;
 
   return (
     <div ref={ref} className="relative">
@@ -302,8 +307,22 @@ export function FilterMenu({
             {/* Divider if folders exist */}
             {folders.length > 0 && <div className="h-px bg-foreground/8 my-1" />}
 
+            {folders.length > 8 && (
+              <div className="px-2 py-1.5">
+                <div className="flex items-center gap-1.5 rounded-lg bg-background/60 px-2 py-1.5">
+                  <Search size={12} className="text-foreground/40" />
+                  <input
+                    value={folderQuery}
+                    onChange={(event) => setFolderQuery(event.target.value)}
+                    placeholder={t("search_placeholder")}
+                    className="w-36 bg-transparent text-xs outline-none placeholder:text-foreground/30"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Folders */}
-            {folders.map((f) => (
+            {visibleFolders.map((f) => (
               <button
                 key={f._id as string}
                 onClick={() => { onSelectFolder(f._id as string); setOpen(false); }}

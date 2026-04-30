@@ -285,6 +285,8 @@ export async function runGenerationParticipantHandler(
       directToolNames: effectiveArgs.directToolNames ?? [],
     });
 
+    const effectiveDirectToolNames = [...(effectiveArgs.directToolNames ?? [])];
+
     const result = await generateForParticipant({
       ctx,
       args: generationArgs as any,
@@ -296,7 +298,7 @@ export async function runGenerationParticipantHandler(
       progressiveTools: {
         enabledIntegrations: effectiveArgs.effectiveIntegrations,
         allowSubagents: effectiveArgs.allowSubagents,
-        directToolNames: effectiveArgs.directToolNames ?? [],
+        directToolNames: effectiveDirectToolNames,
       },
       isPro: effectiveArgs.isPro,
       runtimeProfile: "mobileBasic",
@@ -323,7 +325,7 @@ export async function runGenerationParticipantHandler(
           isPro: effectiveArgs.isPro,
           allowSubagents: effectiveArgs.allowSubagents,
           activeProfiles,
-          directToolNames: effectiveArgs.directToolNames ?? [],
+          directToolNames: effectiveDirectToolNames,
         });
         await retrySameRoundProgressiveToolCalls(
           toolCalls as any,
@@ -344,6 +346,15 @@ export async function runGenerationParticipantHandler(
             ...buildRegistryParams(registry),
           },
         };
+      },
+      onDocumentToolsScoped: async ({ activeProfiles, directToolNames }) => {
+        return buildProgressiveToolRegistry({
+          enabledIntegrations: effectiveArgs.effectiveIntegrations,
+          isPro: effectiveArgs.isPro,
+          allowSubagents: effectiveArgs.allowSubagents,
+          activeProfiles,
+          directToolNames,
+        });
       },
       persistInlineAudio: async (audioBase64) => {
         const audioBuffer = Buffer.from(audioBase64, "base64");

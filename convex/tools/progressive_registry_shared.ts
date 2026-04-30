@@ -1,4 +1,5 @@
 import type { SkillToolProfileId } from "../skills/tool_profiles";
+import { inferProfilesFromToolIds } from "../skills/tool_profiles";
 import { ToolRegistry, ToolResult } from "./registry";
 import type { OpenRouterMessage, ToolCall } from "../lib/openrouter";
 import type { ToolExecutionContext } from "./registry";
@@ -32,8 +33,17 @@ function normalizeLoadedSkillState(
     ? data.requiredToolProfiles.filter((profile): profile is string =>
       typeof profile === "string")
     : [];
-  const requiredToolProfiles = rawRequiredToolProfiles.filter((profile): profile is SkillToolProfileId =>
-    isSkillToolProfileId(profile));
+  const requiredToolIds = Array.isArray(data.requiredToolIds)
+    ? data.requiredToolIds.filter((toolId): toolId is string => typeof toolId === "string")
+    : [];
+  const requiredIntegrationIds = Array.isArray(data.requiredIntegrationIds)
+    ? data.requiredIntegrationIds.filter((integrationId): integrationId is string => typeof integrationId === "string")
+    : [];
+  const requiredToolProfiles = Array.from(new Set([
+    ...rawRequiredToolProfiles.filter((profile): profile is SkillToolProfileId =>
+      isSkillToolProfileId(profile)),
+    ...inferProfilesFromToolIds(requiredToolIds, requiredIntegrationIds),
+  ]));
   if (
     progressiveRegistryDebugEnabled &&
     requiredToolProfiles.length !== rawRequiredToolProfiles.length
@@ -55,12 +65,8 @@ function normalizeLoadedSkillState(
     runtimeMode: typeof data.runtimeMode === "string" ? data.runtimeMode : undefined,
     instructions: data.instructions,
     requiredToolProfiles,
-    requiredToolIds: Array.isArray(data.requiredToolIds)
-      ? data.requiredToolIds.filter((toolId): toolId is string => typeof toolId === "string")
-      : [],
-    requiredIntegrationIds: Array.isArray(data.requiredIntegrationIds)
-      ? data.requiredIntegrationIds.filter((integrationId): integrationId is string => typeof integrationId === "string")
-      : [],
+    requiredToolIds,
+    requiredIntegrationIds,
     requiredCapabilities: Array.isArray(data.requiredCapabilities)
       ? data.requiredCapabilities.filter((capability): capability is string => typeof capability === "string")
       : [],
@@ -173,8 +179,12 @@ export function extractProfilesFromConversation(
       typeof message.content === "string"
     ) {
       try {
-        const parsed = JSON.parse(message.content) as { requiredToolProfiles?: string[] };
-        for (const profile of parsed.requiredToolProfiles ?? []) {
+        const parsed = JSON.parse(message.content);
+        const loadedSkill = normalizeLoadedSkillState(parsed);
+        const candidateProfiles = loadedSkill?.requiredToolProfiles ?? (
+          Array.isArray(parsed?.requiredToolProfiles) ? parsed.requiredToolProfiles : []
+        );
+        for (const profile of candidateProfiles) {
           if (isSkillToolProfileId(profile)) {
             profiles.add(profile);
           }

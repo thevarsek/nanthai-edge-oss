@@ -32,6 +32,11 @@ export interface StreamWriterOptions {
    */
   transformContent?: (content: string) => string;
   /**
+   * Transform streaming content before writing to DB while retaining raw output
+   * for final post-processing. Defaults to transformContent.
+   */
+  transformStreamingContent?: (content: string) => string;
+  /**
    * Guard that must return true for reasoning to be persisted.
    * Defaults to `totalReasoning.length > 0`.
    */
@@ -48,6 +53,7 @@ export class StreamWriter {
   private streamingMessageId: Id<"streamingMessages"> | undefined;
   private beforePatch: (() => Promise<void>) | undefined;
   private transformContent: (content: string) => string;
+  private transformStreamingContent: (content: string) => string;
   private shouldPersistReasoning: (totalReasoning: string) => boolean;
 
   // Content state
@@ -71,6 +77,7 @@ export class StreamWriter {
     this.streamingMessageId = opts.streamingMessageId;
     this.beforePatch = opts.beforePatch;
     this.transformContent = opts.transformContent ?? ((c) => c);
+    this.transformStreamingContent = opts.transformStreamingContent ?? this.transformContent;
     this.shouldPersistReasoning =
       opts.shouldPersistReasoning ?? ((r) => r.length > 0);
   }
@@ -121,7 +128,7 @@ export class StreamWriter {
     await this.ctx.runMutation(internal.chat.mutations.updateMessageContent, {
       messageId: this.messageId,
       streamingMessageId: this.streamingMessageId,
-      content: this.transformContent(this._totalContent),
+      content: this.transformStreamingContent(this._totalContent),
       status: "streaming",
     });
     this.lastPatchedContentLength = this._totalContent.length;

@@ -132,6 +132,11 @@ export interface RegisteredTool {
  * ```
  */
 export function createTool(config: ToolConfig): RegisteredTool {
+  const parameters: ToolParameterSchema = {
+    ...config.parameters,
+    additionalProperties: config.parameters.additionalProperties ?? false,
+  };
+
   return {
     name: config.name,
     definition: {
@@ -139,7 +144,7 @@ export function createTool(config: ToolConfig): RegisteredTool {
       function: {
         name: config.name,
         description: config.description,
-        parameters: config.parameters as unknown as Record<string, unknown>,
+        parameters: parameters as unknown as Record<string, unknown>,
       },
     },
     execute: config.execute,

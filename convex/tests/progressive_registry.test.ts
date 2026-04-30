@@ -47,6 +47,23 @@ test("buildProgressiveToolRegistry: direct attachment read tools can be exposed 
   assert.equal(registry.get("edit_docx"), undefined);
 });
 
+test("buildProgressiveToolRegistry: scoped document tools can be exposed without docs profile", () => {
+  const directToolNames = ["list_documents"];
+  directToolNames.push("read_document", "find_in_document");
+  const registry = buildProgressiveToolRegistry({
+    isPro: true,
+    enabledIntegrations: [],
+    allowSubagents: false,
+    directToolNames,
+  });
+
+  assert.ok(registry.get("list_documents"));
+  assert.ok(registry.get("read_document"));
+  assert.ok(registry.get("find_in_document"));
+  assert.equal(registry.get("generate_docx"), undefined);
+  assert.equal(registry.get("edit_docx"), undefined);
+});
+
 test("buildProgressiveToolRegistry: docs profile adds document tools", () => {
   const registry = buildProgressiveToolRegistry({
     isPro: true,
@@ -195,6 +212,44 @@ test("extractProfilesFromConversation: restores profiles from prior load_skill t
   ];
 
   assert.deepEqual(extractProfilesFromConversation(messages), ["analytics"]);
+});
+
+test("extractProfilesFromConversation: restores google profile from google-workspace tool metadata", () => {
+  const messages: OpenRouterMessage[] = [
+    {
+      role: "assistant",
+      content: null,
+      tool_calls: [
+        {
+          id: "call_google_workspace",
+          type: "function",
+          function: { name: "load_skill", arguments: "{\"name\":\"google-workspace\"}" },
+        },
+      ],
+    },
+    {
+      role: "tool",
+      tool_call_id: "call_google_workspace",
+      content: JSON.stringify({
+        skill: "google-workspace",
+        instructions: "Use Google Workspace tools.",
+        requiredToolIds: ["google_calendar_list", "google_calendar_create"],
+        requiredIntegrationIds: ["calendar"],
+        requiredCapabilities: [],
+      }),
+    },
+  ];
+
+  const restoredProfiles = extractProfilesFromConversation(messages);
+  assert.deepEqual(restoredProfiles, ["google"]);
+
+  const registry = buildProgressiveToolRegistry({
+    isPro: true,
+    enabledIntegrations: ["calendar"],
+    allowSubagents: false,
+    activeProfiles: restoredProfiles,
+  });
+  assert.ok(registry.get("google_calendar_create"));
 });
 
 test("extractLoadedSkills helpers preserve canonical skill instructions", () => {

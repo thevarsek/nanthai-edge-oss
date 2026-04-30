@@ -166,6 +166,16 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   }>;
   /** Perplexity citation annotations (structured for rich UI rendering). */
   citations?: Array<{ url: string; title: string }>;
+  /** M32 document citation annotations (quote-backed, version-aware). */
+  documentCitations?: Array<{
+    ref: number;
+    documentId: Id<"documents">;
+    versionId?: Id<"documentVersions">;
+    filename: string;
+    quote: string;
+    page?: number | string;
+    locator?: string;
+  }>;
   // M26 — Lyria inline audio
   audioStorageId?: Id<"_storage">;
   audioDurationMs?: number;
@@ -252,6 +262,9 @@ export async function finalizeGenerationHandler(
   if (finalToolCalls) msgPatch.toolCalls = finalToolCalls;
   if (args.toolResults) msgPatch.toolResults = args.toolResults;
   if (args.citations && args.citations.length > 0) msgPatch.citations = args.citations;
+  if (args.documentCitations && args.documentCitations.length > 0) {
+    msgPatch.documentCitations = args.documentCitations;
+  }
 
   // M26: Lyria inline audio — persist audio fields directly onto the message.
   if (args.audioStorageId) {

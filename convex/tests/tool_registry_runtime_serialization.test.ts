@@ -3,6 +3,28 @@ import test from "node:test";
 
 import { createTool, ToolRegistry } from "../tools/registry";
 
+test("createTool defaults parameter schemas to strict additionalProperties false", () => {
+  const tool = createTool({
+    name: "load_skill",
+    description: "Load a skill",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+      },
+      required: ["name"],
+    },
+    execute: async () => ({ success: true, data: null }),
+  });
+
+  assert.equal(
+    tool.definition.type === "function"
+      ? tool.definition.function.parameters.additionalProperties
+      : undefined,
+    false,
+  );
+});
+
 test("workspace and analytics tools are serialized within one tool round", async () => {
   const registry = new ToolRegistry();
   const starts: string[] = [];

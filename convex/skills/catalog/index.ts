@@ -22,6 +22,7 @@ import { CODE_WORKSPACE_SKILL } from "./code_workspace";
 import { GMAIL_SKILL } from "./gmail";
 import { GOOGLE_CALENDAR_SKILL } from "./google_calendar";
 import { GOOGLE_DRIVE_SKILL } from "./google_drive";
+import { GOOGLE_WORKSPACE_SKILL } from "./google_workspace";
 import { MICROSOFT_365_SKILL } from "./microsoft_365";
 import { NOTION_WORKSPACE_SKILL } from "./notion_workspace";
 import { SLACK_SKILL } from "./slack";
@@ -129,6 +130,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   GMAIL_SKILL,
   GOOGLE_CALENDAR_SKILL,
   GOOGLE_DRIVE_SKILL,
+  GOOGLE_WORKSPACE_SKILL,
   INCIDENT_RESPONSE_SKILL,
   INTERNAL_COMMS_SKILL,
   LAUNCH_CHECKLIST_SKILL,

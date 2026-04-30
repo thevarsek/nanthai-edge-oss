@@ -35,6 +35,8 @@ export interface BuildRequestMessagesArgs {
   systemPrompt?: string;
   /** Memory context string to inject as second system message. */
   memoryContext?: string;
+  /** Volatile date/time context for search or calendar-like tool turns. */
+  dateContext?: string;
   /** Whether to expand multi-model groups (true for chat mode, false for autonomous). */
   expandMultiModelGroups?: boolean;
   /** Max tokens for context window. Default: 75000. */

@@ -54,6 +54,7 @@ declare global {
         callbackOrConfig: (() => void) | {
           callback?: () => void;
           onerror?: () => void;
+          timeout?: number;
           ontimeout?: () => void;
         },
       ) => void;
@@ -126,6 +127,7 @@ export async function loadGoogleDrivePicker(): Promise<void> {
           window.clearTimeout(timeout);
           reject(new Error("Timed out loading Google Picker."));
         },
+        timeout: 15_000,
       });
     });
   })().catch((error: unknown) => {

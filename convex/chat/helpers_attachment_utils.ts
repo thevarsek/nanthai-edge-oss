@@ -1,5 +1,12 @@
 import { ContentPart } from "../lib/openrouter";
 import { ContextAttachment, ContextMessage } from "./helpers_types";
+import { isReadableDocumentMime } from "../documents/shared";
+
+const DOCUMENT_WORKSPACE_TOOL_NAMES = [
+  "list_documents",
+  "read_document",
+  "find_in_document",
+] as const;
 
 export function splitMessageAttachmentParts(
   message: ContextMessage,
@@ -57,6 +64,19 @@ export function attachmentTriggeredReadToolNames(
   }
 
   return Array.from(toolNames);
+}
+
+export function attachmentTriggeredDocumentWorkspaceToolNames(
+  attachments: ContextAttachment[] | undefined,
+): string[] {
+  if (!attachments?.some((attachment) =>
+    attachment.type === "document" &&
+    !!attachment.storageId &&
+    isReadableDocumentMime(attachment.mimeType, attachment.name)
+  )) {
+    return [];
+  }
+  return [...DOCUMENT_WORKSPACE_TOOL_NAMES];
 }
 
 function directAttachmentReadToolForMime(
@@ -257,6 +277,9 @@ function documentToolsForMime(
     ext === "pptx"
   ) {
     return { readTool: "read_pptx", editTool: "edit_pptx" };
+  }
+  if (m === "application/pdf" || ext === "pdf") {
+    return { readTool: "read_document", editTool: null };
   }
 
   // Data-oriented text formats — read only, flag for analysis workflow hint

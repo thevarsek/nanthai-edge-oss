@@ -176,7 +176,7 @@ export async function buildProviderAuthorizationUrl(
 }
 
 export function postOAuthResult(message: OAuthPopupMessage) {
-  if (window.opener && !window.opener.closed) {
+  if (window.opener) {
     window.opener.postMessage(message, window.location.origin);
   }
 }
@@ -219,16 +219,19 @@ export async function connectProviderWithPopup(
       }
     };
 
-    const onCloseCheck = window.setInterval(() => {
-      if (!popup.closed) return;
+    const timeout = window.setTimeout(() => {
       cleanup();
-      reject(new Error(`${providerLabel(provider)} sign-in was cancelled.`));
-    }, 400);
+      reject(new Error(`${providerLabel(provider)} sign-in timed out.`));
+    }, 5 * 60 * 1000);
 
     const cleanup = () => {
       window.removeEventListener("message", onMessage);
-      window.clearInterval(onCloseCheck);
-      popup.close();
+      window.clearTimeout(timeout);
+      // Note: we deliberately do NOT call `popup.close()` here. After the
+      // OAuth redirect, the popup is on a cross-origin document and any
+      // `window.close()` call from the opener trips a Cross-Origin-Opener-
+      // Policy warning (and is a no-op anyway). The popup closes itself
+      // via `postOAuthResult` after posting the result message.
     };
 
     window.addEventListener("message", onMessage);

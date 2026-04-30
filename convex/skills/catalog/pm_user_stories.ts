@@ -98,7 +98,8 @@ When asked to create user stories, follow these steps:
   visibility: "visible",
   lockState: "locked",
   status: "active",
-  runtimeMode: "textOnly",
-  requiredToolIds: [],
+  runtimeMode: "toolAugmented",
+  requiredToolIds: ["list_documents", "read_document", "find_in_document"],
+  requiredToolProfiles: ["docs"],
   requiredIntegrationIds: [],
 };

@@ -53,6 +53,9 @@ test("requiresNodeWorker returns true for video, audio, node tools, or node prof
     directToolNames: ["workspace_exec"], activeProfiles: [], hasVideoGeneration: false, hasAudioOutput: false,
   }), true);
   assert.equal(requiresNodeWorker({
+    directToolNames: ["list_documents", "read_document", "find_in_document"], activeProfiles: [], hasVideoGeneration: false, hasAudioOutput: false,
+  }), true);
+  assert.equal(requiresNodeWorker({
     directToolNames: [], activeProfiles: ["docs"], hasVideoGeneration: false, hasAudioOutput: false,
   }), true);
   assert.equal(requiresNodeWorker({

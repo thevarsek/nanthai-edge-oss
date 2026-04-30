@@ -126,6 +126,8 @@ export interface ChatRequestParameters {
       p90?: number;
       p99?: number;
     };
+    only?: string[];
+    ignore?: string[];
   } | null;
   /** Tool definitions to send to the model. */
   tools?: ToolDefinition[] | null;
@@ -207,6 +209,7 @@ export interface PerplexityAnnotation {
 export function resolvePerplexityCitations(
   content: string,
   annotations: PerplexityAnnotation[],
+  options: { skipRefs?: ReadonlySet<number> } = {},
 ): string {
   if (annotations.length === 0) return content;
 
@@ -224,6 +227,9 @@ export function resolvePerplexityCitations(
   // First pass: resolve [N] markers to markdown links.
   let resolved = content.replace(/\[(\d+)\]/g, (_match, numStr) => {
     const num = parseInt(numStr, 10);
+    if (options.skipRefs?.has(num)) {
+      return _match;
+    }
     const cite = citationMap.get(num);
     if (cite) {
       return `[${num}. ${cite.title}](${cite.url})`;

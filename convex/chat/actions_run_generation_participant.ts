@@ -11,7 +11,7 @@ import {
   resolvePerplexityCitations,
 } from "../lib/openrouter";
 import { ttftLog } from "../lib/generation_log";
-import { buildRequestMessages } from "./helpers";
+import { buildCurrentDatePrompt, buildRequestMessages } from "./helpers";
 import { promoteLatestUserVideoUrls } from "./helpers_video_url_utils";
 import {
   GenerationCancelledError,
@@ -44,11 +44,25 @@ import {
 import { resolveEffectiveSkills } from "../skills/resolver";
 import { StreamWriter } from "./stream_writer";
 import { ToolRegistry } from "../tools/registry";
+import {
+  documentCitationPromptSuffix,
+  parseDocumentCitations,
+  quoteExistsInText,
+  ScopedDocument,
+  stripCitationBlock,
+} from "../documents/shared";
 import { hasGoogleIntegrations, isGoogleDataAllowedProvider } from "../models/google_data_providers";
+import { MODEL_IDS } from "../lib/model_constants";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
 import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_helpers";
 import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
+// NOTE: `buildProgressiveToolRegistry` lives in a "use node" module and must
+// not be imported here — this file runs in the V8 runtime. When the registry
+// needs to be rebuilt mid-generation (e.g. document tools come into scope),
+// the Node-side caller provides an `onDocumentToolsScoped` callback that
+// performs the rebuild and returns the new registry. Same pattern as
+// `onProfilesExpanded`.
 import {
   availableProgressiveProfiles,
   extractLoadedSkillsFromConversation,
@@ -74,6 +88,44 @@ export function shouldForceParticipantReasoningPatch(
   }
 
   return /(?:\n\s*\n|[.!?]["')\]]?\s*$)$/.test(delta);
+}
+
+const DATE_CONTEXT_INTEGRATIONS = new Set([
+  "calendar",
+  "ms_calendar",
+  "apple_calendar",
+]);
+
+const DATE_CONTEXT_PROFILES = new Set<SkillToolProfileId>([
+  "google",
+  "microsoft",
+  "appleCalendar",
+  "scheduledJobs",
+]);
+
+export function shouldInjectDateContext(params: {
+  webSearchEnabled: boolean;
+  enabledIntegrations?: string[];
+  activeProfiles?: SkillToolProfileId[];
+  loadedSkills?: LoadedSkillState[];
+}): boolean {
+  if (params.webSearchEnabled) return true;
+  if (params.enabledIntegrations?.some((integration) =>
+    DATE_CONTEXT_INTEGRATIONS.has(integration)
+  )) {
+    return true;
+  }
+  if (params.activeProfiles?.some((profile) => DATE_CONTEXT_PROFILES.has(profile))) {
+    return true;
+  }
+  return params.loadedSkills?.some((skill) => {
+    if (skill.requiredIntegrationIds.some((integration) =>
+      DATE_CONTEXT_INTEGRATIONS.has(integration)
+    )) {
+      return true;
+    }
+    return skill.requiredToolProfiles.some((profile) => DATE_CONTEXT_PROFILES.has(profile));
+  }) ?? false;
 }
 
 export interface GenerateForParticipantParams {
@@ -129,6 +181,16 @@ export interface GenerateForParticipantParams {
     registry?: ToolRegistry;
     params?: ChatRequestParameters;
   } | void>;
+  /**
+   * Called when new direct tools (e.g. document_workspace tools) come into
+   * scope mid-request and the tool registry must be rebuilt. The Node-side
+   * caller rebuilds via `buildProgressiveToolRegistry` and returns the new
+   * registry. Returning `undefined` leaves the existing registry in place.
+   */
+  onDocumentToolsScoped?: (params: {
+    activeProfiles: SkillToolProfileId[];
+    directToolNames: string[];
+  }) => Promise<ToolRegistry | undefined>;
   persistInlineAudio?: (
     audioBase64: string,
   ) => Promise<{
@@ -197,10 +259,13 @@ export async function generateForParticipant(
     continuationHandoff,
     streamingMessageId,
     onProfilesExpanded,
+    onDocumentToolsScoped,
     persistInlineAudio,
     preResolvedOverrides,
   } =
     params;
+
+  const effectiveDirectToolNames = progressiveTools?.directToolNames ?? [];
 
   // Preflight parallelization: issue every independent read (cancel check,
   // user prefs, persona, chat, skills, skill-integration defaults) plus the
@@ -326,12 +391,46 @@ export async function generateForParticipant(
       durationMs: Date.now() - requestAssemblyStartedAt,
     });
 
+    let scopedDocumentsForCitations: ScopedDocument[] = [];
+    let shouldRebuildRegistryForDocumentTools = false;
+    // Always resolve scoped documents when tools are available — even on
+    // continuation/sub-agent runs (requestMessagesOverride set). Citation
+    // validation runs at the end of every generation, regardless of whether
+    // we rebuilt the system prompt this round.
+    if (toolRegistry && !toolRegistry.isEmpty && modelSupportsTools) {
+      try {
+        scopedDocumentsForCitations = await ctx.runMutation(
+          internal.documents.mutations.ensureDocumentsForChat,
+          {
+            userId: args.userId,
+            chatId: args.chatId,
+          },
+        ) as ScopedDocument[];
+        if (scopedDocumentsForCitations.length > 0) {
+          for (const toolName of ["list_documents", "read_document", "find_in_document"]) {
+            if (!effectiveDirectToolNames.includes(toolName)) {
+              effectiveDirectToolNames.push(toolName);
+              shouldRebuildRegistryForDocumentTools = true;
+            }
+          }
+        }
+      } catch (error) {
+        console.warn("[documents] Failed to resolve scoped documents:", error instanceof Error ? error.message : String(error));
+      }
+    }
+
     // M9: Append citation formatting instructions for Normal Search (Path B)
-    const effectiveSystemPrompt = args.webSearchEnabled && systemPrompt
+    let effectiveSystemPrompt = args.webSearchEnabled && systemPrompt
       ? systemPrompt + CITATION_SYSTEM_PROMPT_SUFFIX
       : args.webSearchEnabled
         ? CITATION_SYSTEM_PROMPT_SUFFIX.trim()
         : systemPrompt ?? undefined;
+    const documentCitationPrompt = documentCitationPromptSuffix(scopedDocumentsForCitations);
+    if (documentCitationPrompt) {
+      effectiveSystemPrompt = effectiveSystemPrompt
+        ? `${effectiveSystemPrompt}\n\n${documentCitationPrompt}`
+        : documentCitationPrompt;
+    }
 
     // M18/M30: Build skill catalog using layered resolver and append to system prompt.
     // Progressive disclosure: model sees lightweight catalog XML for `available` skills,
@@ -437,10 +536,17 @@ export async function generateForParticipant(
     });
 
     const requestMessagesStartedAt = Date.now();
+    const shouldAddDateContext = requestMessagesOverride == null && shouldInjectDateContext({
+      webSearchEnabled: args.webSearchEnabled,
+      enabledIntegrations: progressiveTools?.enabledIntegrations,
+      activeProfiles: params.restoredActiveProfiles,
+      loadedSkills: params.restoredLoadedSkills,
+    });
     const baseRequestMessages = requestMessagesOverride ?? buildRequestMessages({
       messages: allMessages,
       excludeMessageId: participant.messageId,
       systemPrompt: skillAugmentedPrompt ?? undefined,
+      dateContext: shouldAddDateContext ? buildCurrentDatePrompt() : undefined,
       memoryContext: resolvedMemoryContext || memoryContext,
       expandMultiModelGroups: args.expandMultiModelGroups,
       maxContextTokens:
@@ -472,6 +578,15 @@ export async function generateForParticipant(
       loadedSkills,
     );
     let effectiveToolRegistry = toolRegistry;
+    if (progressiveTools && shouldRebuildRegistryForDocumentTools && onDocumentToolsScoped) {
+      const rebuilt = await onDocumentToolsScoped({
+        activeProfiles: restoredProfiles,
+        directToolNames: effectiveDirectToolNames,
+      });
+      if (rebuilt) {
+        effectiveToolRegistry = rebuilt;
+      }
+    }
     ttftLog("[generation] request messages built", {
       chatId: args.chatId,
       messageId: participant.messageId,
@@ -588,6 +703,7 @@ export async function generateForParticipant(
         });
       },
       transformContent: clampMessageContent,
+      transformStreamingContent: (content) => clampMessageContent(stripCitationBlock(content)),
       shouldPersistReasoning: shouldPersistParticipantReasoning,
     });
     let deltaEventsSinceCancelCheck = 0;
@@ -663,20 +779,29 @@ export async function generateForParticipant(
       onToolCallStart: async (toolCall) => {
         // Write in-progress tool call to DB so clients can show it immediately
         // (before the full stream finishes and onToolRoundStart fires).
-        const inProgressToolCalls = [
-          ...progressiveToolCalls,
-          {
-            id: toolCall.id,
+        const stableId = toolCall.id || `pending-tool-${progressiveToolCalls.length}-${toolCall.index}`;
+        if (!toolCall.id) {
+          pendingProgressiveToolCallsByIndex.set(toolCall.index, stableId);
+        }
+        const existingIndex = progressiveToolCalls.findIndex((tc) => tc.id === stableId);
+        if (existingIndex >= 0) {
+          progressiveToolCalls[existingIndex] = {
+            ...progressiveToolCalls[existingIndex],
+            name: progressiveToolCalls[existingIndex].name || toolCall.name,
+          };
+        } else {
+          progressiveToolCalls.push({
+            id: stableId,
             name: toolCall.name,
             arguments: "",
-          },
-        ];
+          });
+        }
         await ctx.runMutation(
           internal.chat.mutations.updateMessageToolCalls,
           {
             messageId: participant.messageId,
             streamingMessageId,
-            toolCalls: inProgressToolCalls,
+            toolCalls: progressiveToolCalls,
           },
         );
       },
@@ -693,7 +818,7 @@ export async function generateForParticipant(
     const retryConfig = {
       emptyStreamRetries: 2,
       emptyStreamBackoffs: [500, 1500],
-      fallbackModel: undefined,
+      fallbackModel: MODEL_IDS.autonomousFallback,
     };
     ttftLog("[generation] OpenRouter request started", {
       chatId: args.chatId,
@@ -706,6 +831,7 @@ export async function generateForParticipant(
     // tool-call loop, and automatic context compaction when the context
     // window or action timeout is approaching limits.
     const progressiveToolCalls: RecordedToolCall[] = [];
+    const pendingProgressiveToolCallsByIndex = new Map<number, string>();
     const activeProfiles = new Set<SkillToolProfileId>(
       restoredProfiles,
     );
@@ -720,13 +846,23 @@ export async function generateForParticipant(
       toolRegistry: effectiveToolRegistry,
       toolCtx: sharedToolCtx,
       onToolRoundStart: async (_round, toolCalls) => {
-        for (const tc of toolCalls) {
-          progressiveToolCalls.push({
+        for (const [index, tc] of toolCalls.entries()) {
+          const recordedToolCall = {
             id: tc.id,
             name: tc.function.name,
             arguments: tc.function.arguments,
-          });
+          };
+          const pendingId = pendingProgressiveToolCallsByIndex.get(index);
+          const existingIndex = progressiveToolCalls.findIndex((entry) =>
+            entry.id === tc.id || (pendingId != null && entry.id === pendingId)
+          );
+          if (existingIndex >= 0) {
+            progressiveToolCalls[existingIndex] = recordedToolCall;
+          } else {
+            progressiveToolCalls.push(recordedToolCall);
+          }
         }
+        pendingProgressiveToolCallsByIndex.clear();
         await ctx.runMutation(
           internal.chat.mutations.updateMessageToolCalls,
           {
@@ -926,7 +1062,7 @@ export async function generateForParticipant(
           expandMultiModelGroups: args.expandMultiModelGroups,
           webSearchEnabled: args.webSearchEnabled,
           effectiveIntegrations: progressiveTools?.enabledIntegrations ?? [],
-          directToolNames: progressiveTools?.directToolNames ?? [],
+          directToolNames: effectiveDirectToolNames,
           isPro,
           allowSubagents: progressiveTools?.allowSubagents ?? false,
           searchSessionId: args.searchSessionId,
@@ -974,7 +1110,11 @@ export async function generateForParticipant(
       totalContent = extractedFromResult.text.trim();
     }
 
-    let finalContent = totalContent.trim();
+    const rawFinalContent = totalContent.trim();
+    const rawContentForCitationParsing = result.content.includes("<CITATIONS>")
+      ? result.content.trim()
+      : rawFinalContent;
+    let finalContent = rawFinalContent;
     if (!finalContent && (result.reasoning || writer.totalReasoning)) {
       finalContent = "Model returned reasoning only.";
     } else if (!finalContent && normalizedImageCandidates.length > 0) {
@@ -983,12 +1123,87 @@ export async function generateForParticipant(
       finalContent = "[No response received from model]";
     }
 
+    const documentCitations: Array<{
+      ref: number;
+      documentId: Id<"documents">;
+      versionId?: Id<"documentVersions">;
+      filename: string;
+      quote: string;
+      page?: number | string;
+      locator?: string;
+    }> = [];
+    const extractedTextCache = new Map<string, string | null>();
+    async function citationQuoteIsValid(doc: ScopedDocument, quote: string): Promise<boolean> {
+      let extractionTextStorageId = doc.extractionTextStorageId;
+      if (!extractionTextStorageId && doc.versionId) {
+        const version = await ctx.runQuery(
+          internal.documents.queries.getVersionForExtraction,
+          { versionId: doc.versionId },
+        );
+        extractionTextStorageId = version?.extractionTextStorageId;
+      }
+      if (!extractionTextStorageId) return true;
+      const cacheKey = extractionTextStorageId;
+      let extractedText = extractedTextCache.get(cacheKey);
+      if (extractedText === undefined) {
+        const blob = await ctx.storage.get(extractionTextStorageId);
+        extractedText = blob ? await blob.text() : null;
+        extractedTextCache.set(cacheKey, extractedText);
+      }
+      return extractedText == null ? true : quoteExistsInText(quote, extractedText);
+    }
+    const parsedDocumentCitations = parseDocumentCitations(rawContentForCitationParsing);
+    if (rawContentForCitationParsing.includes("<CITATIONS>")) {
+      console.info("[documents/citations] Parsed citation block", {
+        messageId: String(participant.messageId),
+        scopedDocumentCount: scopedDocumentsForCitations.length,
+        parsedCitationCount: parsedDocumentCitations.length,
+        source: rawContentForCitationParsing === rawFinalContent ? "writer" : "result",
+      });
+    }
+    let droppedCitationCount = 0;
+    for (const citation of parsedDocumentCitations) {
+      const doc = scopedDocumentsForCitations.find((candidate) =>
+        candidate.ref === citation.docId ||
+        candidate.documentId === citation.docId ||
+        candidate.versionId === citation.docId ||
+        candidate.filename.toLowerCase() === citation.docId.toLowerCase()
+      );
+      if (!doc) {
+        droppedCitationCount += 1;
+        continue;
+      }
+      if (!(await citationQuoteIsValid(doc, citation.quote))) {
+        droppedCitationCount += 1;
+        continue;
+      }
+      documentCitations.push({
+        ref: citation.ref,
+        documentId: doc.documentId,
+        versionId: doc.versionId,
+        filename: doc.filename,
+        quote: citation.quote,
+        page: citation.page,
+        locator: citation.locator,
+      });
+    }
+    if (parsedDocumentCitations.length > 0) {
+      console.info("[documents/citations] Validated citations", {
+        messageId: String(participant.messageId),
+        storedCitationCount: documentCitations.length,
+        droppedCitationCount,
+      });
+    }
+    finalContent = stripCitationBlock(finalContent);
+
     // Resolve Perplexity citation annotations: replace [N] markers with
     // markdown links so the stored content is self-contained and readable.
     const annotations = result.annotations;
     let citationsForStorage: Array<{ url: string; title: string }> | undefined;
     if (annotations.length > 0) {
-      finalContent = resolvePerplexityCitations(finalContent, annotations);
+      finalContent = resolvePerplexityCitations(finalContent, annotations, {
+        skipRefs: new Set(documentCitations.map((citation) => citation.ref)),
+      });
       citationsForStorage = annotations
         .filter((a) => a.url_citation?.url)
         .map((a) => ({
@@ -1058,6 +1273,7 @@ export async function generateForParticipant(
       generatedCharts: generatedChartsMeta.length > 0 ? generatedChartsMeta : undefined,
       // Perplexity citations (structured array for rich UI rendering)
       citations: citationsForStorage,
+      documentCitations: documentCitations.length > 0 ? documentCitations : undefined,
       // M26: Lyria inline audio
       audioStorageId,
       audioDurationMs,

@@ -100,6 +100,15 @@ export interface Message {
   audioDurationMs?: number;
   audioGenerating?: boolean;
   citations?: Array<{ url: string; title: string }>;
+  documentCitations?: Array<{
+    ref: number;
+    documentId: Id<"documents">;
+    versionId?: Id<"documentVersions">;
+    filename: string;
+    quote: string;
+    page?: number | string;
+    locator?: string;
+  }>;
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
   retryContract?: RetryContract;

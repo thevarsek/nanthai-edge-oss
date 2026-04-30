@@ -50,6 +50,7 @@ export const driveUpload = createTool({
       },
     },
     required: ["storage_id", "filename"],
+    additionalProperties: false,
   },
 
   execute: async (toolCtx, args) => {
@@ -217,11 +218,12 @@ export const driveList = createTool({
           "Optional case-insensitive filename search over files already selected for NanthAI.",
       },
       max_results: {
-        type: "number",
+        type: "integer",
         description: "Maximum number of files to return (default 20, max 50).",
       },
     },
     required: [],
+    additionalProperties: false,
   },
 
   execute: async (toolCtx, args) => {
@@ -356,6 +358,7 @@ export const driveRead = createTool({
       },
     },
     required: ["file_id"],
+    additionalProperties: false,
   },
 
   execute: async (toolCtx, args) => {
@@ -457,7 +460,53 @@ export const driveRead = createTool({
         content = await downloadResponse.text();
         contentType = meta.mimeType;
       } else {
-        // Binary file — return metadata only, no content extraction
+        // Binary file — return metadata only, no content extraction.
+        //
+        // If NanthAI has already imported this Drive file into the current
+        // chat's document workspace (via the Drive picker → fileAttachments
+        // → ensureDocumentsForChat pipeline), surface the scoped doc handle
+        // so the model can read the extracted text via `read_document` /
+        // `find_in_document` instead of giving up.
+        let scopedDocHandle: {
+          doc_id: string;
+          documentId: string;
+          versionId?: string;
+          extractionStatus?: string;
+          pageCount?: number;
+        } | undefined;
+        try {
+          if (toolCtx.chatId) {
+            const docs = await toolCtx.ctx.runMutation(
+              internal.documents.mutations.ensureDocumentsForChat,
+              {
+                userId: toolCtx.userId,
+                chatId: toolCtx.chatId as import("../../_generated/dataModel").Id<"chats">,
+              },
+            );
+            const match = docs.find((d) => d.driveFileId === meta.id);
+            if (match) {
+              scopedDocHandle = {
+                doc_id: match.ref,
+                documentId: match.documentId,
+                versionId: match.versionId,
+                extractionStatus: match.extractionStatus,
+              };
+            }
+          }
+        } catch {
+          // Swallow correlation errors — they should not block the binary
+          // metadata response. The model still gets the original message.
+        }
+
+        const baseMessage =
+          `"${meta.name}" is a binary file (${meta.mimeType}) and cannot be read as text. ` +
+          (meta.webViewLink
+            ? `[Open in Google Drive](${meta.webViewLink})`
+            : `File ID: ${meta.id}`);
+        const handoffMessage = scopedDocHandle
+          ? ` This file has already been imported into the current chat's document workspace as ${scopedDocHandle.doc_id} — call \`read_document\` with doc_id="${scopedDocHandle.doc_id}" (or \`find_in_document\` for keyword search) to read its extracted text.`
+          : "";
+
         return {
           success: true,
           data: {
@@ -467,11 +516,8 @@ export const driveRead = createTool({
             size: meta.size ? formatFileSize(parseInt(meta.size, 10)) : "unknown",
             webViewLink: meta.webViewLink,
             content: null,
-            message:
-              `"${meta.name}" is a binary file (${meta.mimeType}) and cannot be read as text. ` +
-              (meta.webViewLink
-                ? `[Open in Google Drive](${meta.webViewLink})`
-                : `File ID: ${meta.id}`),
+            scopedDocument: scopedDocHandle,
+            message: baseMessage + handoffMessage,
           },
         };
       }
@@ -577,8 +623,7 @@ export const driveMove = createTool({
     "Use when the user asks to move a file into a folder, organize their Drive, " +
     "or file a document into a specific location. " +
     "Requires the file ID (from drive_list) and the destination folder ID. " +
-    "To find folder IDs, use drive_list with a query like " +
-    "\"mimeType='application/vnd.google-apps.folder' and name contains 'Reports'\".",
+    "Use 'root' as the destination_folder_id for the top-level of My Drive.",
   parameters: {
     type: "object",
     properties: {
@@ -594,6 +639,7 @@ export const driveMove = createTool({
       },
     },
     required: ["file_id", "destination_folder_id"],
+    additionalProperties: false,
   },
 
   execute: async (toolCtx, args) => {

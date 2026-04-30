@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   shouldForceParticipantReasoningPatch,
+  shouldInjectDateContext,
   shouldPersistParticipantReasoning,
 } from "../chat/actions_run_generation_participant.ts";
 
@@ -25,5 +26,44 @@ test("shouldForceParticipantReasoningPatch avoids forcing mid-sentence before co
   assert.equal(
     shouldForceParticipantReasoningPatch("Need to verify the", false),
     false,
+  );
+});
+
+test("shouldInjectDateContext stays false for cacheable plain chat", () => {
+  assert.equal(
+    shouldInjectDateContext({
+      webSearchEnabled: false,
+      enabledIntegrations: [],
+      activeProfiles: [],
+      loadedSkills: [],
+    }),
+    false,
+  );
+});
+
+test("shouldInjectDateContext enables search and calendar-like tool turns", () => {
+  assert.equal(shouldInjectDateContext({ webSearchEnabled: true }), true);
+  assert.equal(
+    shouldInjectDateContext({
+      webSearchEnabled: false,
+      enabledIntegrations: ["calendar"],
+    }),
+    true,
+  );
+  assert.equal(
+    shouldInjectDateContext({
+      webSearchEnabled: false,
+      loadedSkills: [
+        {
+          skill: "calendar-scheduler",
+          instructions: "Use calendar tools.",
+          requiredToolProfiles: ["microsoft"],
+          requiredToolIds: ["ms_calendar_list"],
+          requiredIntegrationIds: ["ms_calendar"],
+          requiredCapabilities: [],
+        },
+      ],
+    }),
+    true,
   );
 });

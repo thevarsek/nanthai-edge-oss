@@ -20,6 +20,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { useToast } from "@/components/shared/Toast.context";
 import { getTimeGroup, debounce } from "@/lib/utils";
 import { buildDefaultParticipants, launchChat, type PersonaLike } from "@/lib/chatLaunch";
+import { sidebarChatMatchesSearch } from "@/lib/sidebarSearch";
 import { Defaults } from "@/lib/constants";
 import type { TimeGroup } from "@/lib/utils";
 import type { Id } from "@convex/_generated/dataModel";
@@ -102,16 +103,17 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
   // ── Derived data ─────────────────────────────────────────────────────────
   const chats: ChatRow[] = useMemo(() => {
     let all = (chatsRaw ?? []) as ChatRow[];
+    const folderNamesById = new Map(folders.map((folder) => [folder._id as string, folder.name]));
+    all = all.map((chat) => ({
+      ...chat,
+      folderName: chat.folderId ? folderNamesById.get(chat.folderId) : undefined,
+    }));
     if (showScheduledOnly) {
       all = all.filter((c) => c.source === "scheduled_job");
     }
     if (!debouncedSearch.trim()) return all;
-    const q = debouncedSearch.toLowerCase();
-    return all.filter((c) =>
-      (c.title ?? "New Chat").toLowerCase().includes(q) ||
-      (c.lastMessagePreview ?? "").toLowerCase().includes(q),
-    );
-  }, [chatsRaw, debouncedSearch, showScheduledOnly]);
+    return all.filter((c) => sidebarChatMatchesSearch(c, debouncedSearch));
+  }, [chatsRaw, debouncedSearch, folders, showScheduledOnly]);
 
   const pinnedChats = useMemo(
     () => chats.filter((c) => c.isPinned).sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)),

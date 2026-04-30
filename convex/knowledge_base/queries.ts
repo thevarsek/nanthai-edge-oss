@@ -16,6 +16,7 @@ import { internalQuery, query, QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { optionalAuth } from "../lib/auth";
+import { isReadableDocumentMime } from "../documents/shared";
 import {
   listKnowledgeBaseFilesArgs,
   getKnowledgeBaseFilesByStorageIdsArgs,
@@ -48,6 +49,17 @@ export interface KBFileRecord {
    * Used by clients to surface "synced X ago" hints.
    */
   lastRefreshedAt?: number;
+  documentId?: string;
+  documentVersionId?: string;
+  documentStatus?: "ready" | "extracting" | "error";
+  documentExtractionStatus?: string;
+  documentVersionNumber?: number;
+  documentSyncState?: string;
+  documentExternalSyncedVersionId?: string;
+  documentExternalSyncedVersionNumber?: number;
+  documentExternalSyncedDownloadUrl?: string | null;
+  documentFolderId?: string;
+  isReadableDocument?: boolean;
   createdAt: number;
   downloadUrl: string | null;
 }
@@ -55,6 +67,8 @@ export interface KBFileRecord {
 export interface ListKnowledgeBaseFilesArgs extends Record<string, unknown> {
   search?: string;
   source?: "upload" | "generated" | "drive" | "all";
+  folderId?: Id<"folders">;
+  folderFilter?: "all" | "unfiled";
   limit?: number;
 }
 
@@ -79,6 +93,8 @@ export async function listKnowledgeBaseFilesHandler(
   const limit = Math.min(Math.max(Math.floor(args.limit ?? 100), 1), 500);
   const sourceFilter = args.source ?? "all";
   const searchLower = args.search?.toLowerCase().trim();
+  const folderFilter = args.folderFilter ?? "all";
+  const isFolderScoped = !!args.folderId || folderFilter === "unfiled";
 
   // Server-side fetch cap across all sources to bound memory. Set higher than
   // the requested limit to allow for dedup and text-search filtering, then
@@ -87,13 +103,105 @@ export async function listKnowledgeBaseFilesHandler(
   // share the same fetch — no extra source slot needed.
   const sourceCount =
     sourceFilter === "all" ? 3 : sourceFilter === "generated" ? 2 : 1;
-  const totalFetchCap = Math.min(Math.max(limit * 5, 200), 1000);
+  const totalFetchCap = isFolderScoped ? 5000 : Math.min(Math.max(limit * 5, 200), 1000);
   const fetchCap = Math.ceil(totalFetchCap / sourceCount);
 
   const results: KBFileRecord[] = [];
 
+  if (args.folderId) {
+    const folderChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder", (q) =>
+        q.eq("userId", auth.userId).eq("folderId", args.folderId as string),
+      )
+      .order("desc")
+      .take(500);
+
+    for (const chat of folderChats) {
+      if (sourceFilter === "all" || sourceFilter === "generated") {
+        const generated = await ctx.db
+          .query("generatedFiles")
+          .withIndex("by_chat", (q) => q.eq("chatId", chat._id))
+          .take(200);
+        for (const f of generated) {
+          if (f.userId !== auth.userId) continue;
+          if (searchLower && !f.filename.toLowerCase().includes(searchLower)) continue;
+          results.push({
+            storageId: f.storageId,
+            filename: f.filename,
+            mimeType: f.mimeType,
+            sizeBytes: f.sizeBytes,
+            source: "generated",
+            toolName: f.toolName,
+            chatId: f.chatId,
+            messageId: f.messageId,
+            createdAt: f.createdAt,
+            downloadUrl: null,
+          });
+        }
+
+        const media = await ctx.db
+          .query("generatedMedia")
+          .withIndex("by_chatId", (q) => q.eq("chatId", chat._id))
+          .take(200);
+        for (const m of media) {
+          if (m.userId !== auth.userId) continue;
+          const filename = m.type === "video" ? "generated-video.mp4" : "generated-image.png";
+          if (searchLower && !filename.toLowerCase().includes(searchLower)) continue;
+          results.push({
+            storageId: m.storageId,
+            filename,
+            mimeType: m.mimeType,
+            sizeBytes: m.sizeBytes,
+            source: "generated",
+            toolName: m.type === "video" ? "video_generation" : "image_generation",
+            chatId: m.chatId,
+            messageId: m.messageId,
+            createdAt: m.createdAt,
+            downloadUrl: null,
+          });
+        }
+      }
+
+      const wantUpload = sourceFilter === "all" || sourceFilter === "upload";
+      const wantDrive = sourceFilter === "all" || sourceFilter === "drive";
+      if (wantUpload || wantDrive) {
+        const uploads = await ctx.db
+          .query("fileAttachments")
+          .withIndex("by_chat", (q) => q.eq("chatId", chat._id))
+          .take(200);
+        for (const att of uploads) {
+          if (att.userId !== auth.userId) continue;
+          const isDrive = !!att.driveFileId;
+          if (isDrive && !wantDrive) continue;
+          if (!isDrive && !wantUpload) continue;
+          const filename = att.filename ?? "attachment";
+          if (searchLower && !filename.toLowerCase().includes(searchLower)) continue;
+          results.push({
+            storageId: att.storageId,
+            fileAttachmentId: att._id,
+            filename,
+            mimeType: att.mimeType,
+            sizeBytes: att.sizeBytes,
+            source: isDrive ? "drive" : "upload",
+            chatId: att.chatId,
+            messageId: att.messageId,
+            driveFileId: att.driveFileId,
+            lastRefreshedAt: att.lastRefreshedAt,
+            createdAt: att.createdAt,
+            downloadUrl: null,
+          });
+        }
+      }
+    }
+
+    // Canonical documents in this folder are hydrated below via their source
+    // storage/file rows. Chat-origin rows are collected from the folder's chats;
+    // future document-only rows should add a dedicated source-table branch.
+  }
+
   // 1. Collect AI-generated files (if source allows)
-  if (sourceFilter === "all" || sourceFilter === "generated") {
+  if (!args.folderId && (sourceFilter === "all" || sourceFilter === "generated")) {
     const generated = await ctx.db
       .query("generatedFiles")
       .withIndex("by_user", (q) => q.eq("userId", auth.userId))
@@ -151,7 +259,7 @@ export async function listKnowledgeBaseFilesHandler(
   //    active so we don't need duplicate index scans.
   const wantUpload = sourceFilter === "all" || sourceFilter === "upload";
   const wantDrive = sourceFilter === "all" || sourceFilter === "drive";
-  if (wantUpload || wantDrive) {
+  if (!args.folderId && (wantUpload || wantDrive)) {
     const uploads = await ctx.db
       .query("fileAttachments")
       .withIndex("by_user", (q) => q.eq("userId", auth.userId))
@@ -184,19 +292,84 @@ export async function listKnowledgeBaseFilesHandler(
     }
   }
 
-  // 3. Deduplicate by storageId (same file referenced multiple times)
+  // 3. Hydrate canonical document metadata and derive folder filtering.
+  const withDocumentMetadata: KBFileRecord[] = [];
+  const canHydrateDocuments = typeof ctx.db.get === "function";
+  for (const result of results) {
+    const document =
+      canHydrateDocuments
+        ? result.fileAttachmentId
+          ? await ctx.db
+            .query("documents")
+            .withIndex("by_file_attachment", (q) =>
+              q.eq("fileAttachmentId", result.fileAttachmentId as Id<"fileAttachments">),
+            )
+            .first()
+          : result.source === "generated"
+            ? await ctx.db
+              .query("documents")
+              .withIndex("by_source_storage", (q) => q.eq("sourceStorageId", result.storageId as Id<"_storage">))
+              .first()
+            : await ctx.db
+              .query("documents")
+              .withIndex("by_source_storage", (q) => q.eq("sourceStorageId", result.storageId as Id<"_storage">))
+              .first()
+        : null;
+
+    let version = null;
+    if (document?.currentVersionId) {
+      version = await ctx.db.get(document.currentVersionId);
+    }
+    const externalSyncedVersion = document?.externalSyncedVersionId
+      ? await ctx.db.get(document.externalSyncedVersionId)
+      : null;
+
+    let derivedFolderId = document?.folderId as string | undefined;
+    if (canHydrateDocuments && !derivedFolderId && result.chatId) {
+      const chat = await ctx.db.get(result.chatId as Id<"chats">);
+      if (chat?.userId === auth.userId) {
+        derivedFolderId = chat.folderId;
+      }
+    }
+
+    if (args.folderId && derivedFolderId !== args.folderId) {
+      continue;
+    }
+    if (folderFilter === "unfiled" && derivedFolderId) {
+      continue;
+    }
+
+    withDocumentMetadata.push({
+      ...result,
+      documentId: document?._id,
+      documentVersionId: document?.currentVersionId,
+      documentStatus: document?.status,
+      documentExtractionStatus: version?.extractionStatus,
+      documentVersionNumber: version?.versionNumber,
+      documentSyncState: document?.syncState,
+      documentExternalSyncedVersionId: document?.externalSyncedVersionId,
+      documentExternalSyncedVersionNumber: externalSyncedVersion?.versionNumber,
+      documentExternalSyncedDownloadUrl: externalSyncedVersion
+        ? await ctx.storage.getUrl(externalSyncedVersion.storageId)
+        : undefined,
+      documentFolderId: derivedFolderId,
+      isReadableDocument: isReadableDocumentMime(result.mimeType, result.filename),
+    });
+  }
+
+  // 4. Deduplicate by storageId (same file referenced multiple times)
   const seen = new Set<string>();
-  const deduped = results.filter((r) => {
+  const deduped = withDocumentMetadata.filter((r) => {
     if (seen.has(r.storageId)) return false;
     seen.add(r.storageId);
     return true;
   });
 
-  // 4. Sort by createdAt desc, take limit
+  // 5. Sort by createdAt desc, take limit
   deduped.sort((a, b) => b.createdAt - a.createdAt);
   const page = deduped.slice(0, limit);
 
-  // 5. Resolve download URLs
+  // 6. Resolve download URLs
   return Promise.all(
     page.map(async (r) => ({
       ...r,

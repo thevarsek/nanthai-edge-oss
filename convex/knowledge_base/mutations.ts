@@ -27,6 +27,100 @@ import {
 
 const MAX_KB_FILE_BYTES = 25 * 1024 * 1024;
 
+async function storageHasSourceReferences(
+  ctx: MutationCtx,
+  userId: string,
+  storageId: Id<"_storage">,
+): Promise<boolean> {
+  const [fileAttachmentRef, generatedFileRef, generatedMediaRef, driveGrantRef] =
+    await Promise.all([
+      ctx.db
+        .query("fileAttachments")
+        .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+        .first(),
+      ctx.db
+        .query("generatedFiles")
+        .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+        .first(),
+      ctx.db
+        .query("generatedMedia")
+        .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
+        .first(),
+      ctx.db
+        .query("googleDriveFileGrants")
+        .withIndex("by_user_cached_storage", (q) =>
+          q.eq("userId", userId).eq("cachedStorageId", storageId),
+        )
+        .first(),
+    ]);
+  return !!(fileAttachmentRef || generatedFileRef || generatedMediaRef || driveGrantRef);
+}
+
+async function deleteDocumentForDeletedRecord(
+  ctx: MutationCtx,
+  userId: string,
+  input: {
+    storageId: Id<"_storage">;
+    fileAttachmentId?: Id<"fileAttachments">;
+    generatedFileId?: Id<"generatedFiles">;
+    generatedMediaId?: Id<"generatedMedia">;
+  },
+) {
+  const document = input.fileAttachmentId
+    ? await ctx.db
+      .query("documents")
+      .withIndex("by_file_attachment", (q) => q.eq("fileAttachmentId", input.fileAttachmentId))
+      .first()
+    : input.generatedFileId
+      ? await ctx.db
+        .query("documents")
+        .withIndex("by_generated_file", (q) => q.eq("generatedFileId", input.generatedFileId))
+        .first()
+      : input.generatedMediaId
+        ? await ctx.db
+          .query("documents")
+          .withIndex("by_generated_media", (q) => q.eq("generatedMediaId", input.generatedMediaId))
+          .first()
+        : await ctx.db
+          .query("documents")
+          .withIndex("by_source_storage", (q) => q.eq("sourceStorageId", input.storageId))
+          .first();
+  if (!document || document.userId !== userId) return;
+
+  const versions = await ctx.db
+    .query("documentVersions")
+    .withIndex("by_document", (q) => q.eq("documentId", document._id))
+    .collect();
+  for (const version of versions) {
+    if (version.storageId !== input.storageId) {
+      const hasSourceRef = await storageHasSourceReferences(ctx, userId, version.storageId);
+      if (!hasSourceRef) {
+        try {
+          await ctx.storage.delete(version.storageId);
+        } catch {
+          // Storage blob may already be gone.
+        }
+      }
+    }
+    if (version.extractionTextStorageId) {
+      try {
+        await ctx.storage.delete(version.extractionTextStorageId);
+      } catch {
+        // Storage blob may already be gone.
+      }
+    }
+    if (version.extractionMarkdownStorageId) {
+      try {
+        await ctx.storage.delete(version.extractionMarkdownStorageId);
+      } catch {
+        // Storage blob may already be gone.
+      }
+    }
+    await ctx.db.delete(version._id);
+  }
+  await ctx.db.delete(document._id);
+}
+
 // MARK: - addUploadToKnowledgeBase
 
 /**
@@ -175,6 +269,10 @@ export async function deleteKnowledgeBaseFileHandler(
         });
       }
 
+      await deleteDocumentForDeletedRecord(ctx, userId, {
+        storageId: args.storageId,
+        generatedMediaId: media._id,
+      });
       await ctx.db.delete(media._id);
       await deleteDriveGrantCacheForStorage(ctx, userId, args.storageId);
       await ctx.storage.delete(args.storageId);
@@ -196,6 +294,10 @@ export async function deleteKnowledgeBaseFileHandler(
       await ctx.db.patch(file.messageId, { generatedFileIds: updatedIds });
     }
 
+    await deleteDocumentForDeletedRecord(ctx, userId, {
+      storageId: args.storageId,
+      generatedFileId: file._id,
+    });
     await ctx.db.delete(file._id);
     await deleteDriveGrantCacheForStorage(ctx, userId, args.storageId);
     await ctx.storage.delete(args.storageId);
@@ -241,6 +343,10 @@ export async function deleteKnowledgeBaseFileHandler(
     fileAtt._id,
   );
 
+  await deleteDocumentForDeletedRecord(ctx, userId, {
+    storageId: args.storageId,
+    fileAttachmentId: fileAtt._id,
+  });
   await ctx.db.delete(fileAtt._id);
   if (!hasOtherRefs) {
     await deleteDriveGrantCacheForStorage(ctx, userId, args.storageId);
@@ -294,7 +400,10 @@ export const updateDriveAttachmentStorage = internalMutation({
   args: {
     fileAttachmentId: v.id("fileAttachments"),
     storageId: v.id("_storage"),
+    filename: v.string(),
+    mimeType: v.string(),
     sizeBytes: v.optional(v.number()),
+    externalModifiedTime: v.optional(v.string()),
     lastRefreshedAt: v.number(),
   },
   returns: v.null(),
@@ -305,9 +414,56 @@ export const updateDriveAttachmentStorage = internalMutation({
     const previousStorageId = att.storageId;
     await ctx.db.patch(args.fileAttachmentId, {
       storageId: args.storageId,
+      filename: args.filename,
+      mimeType: args.mimeType,
       sizeBytes: args.sizeBytes,
       lastRefreshedAt: args.lastRefreshedAt,
     });
+
+    const document = await ctx.db
+      .query("documents")
+      .withIndex("by_file_attachment", (q) => q.eq("fileAttachmentId", args.fileAttachmentId))
+      .first();
+    if (document && document.userId === att.userId) {
+      const versions = await ctx.db
+        .query("documentVersions")
+        .withIndex("by_document", (q) => q.eq("documentId", document._id))
+        .collect();
+      const nextVersionNumber = versions.reduce(
+        (max, version) => Math.max(max, version.versionNumber),
+        0,
+      ) + 1;
+      const currentVersion = document.currentVersionId
+        ? await ctx.db.get(document.currentVersionId)
+        : null;
+      const newVersionId = await ctx.db.insert("documentVersions", {
+        documentId: document._id,
+        userId: document.userId,
+        storageId: args.storageId,
+        filename: args.filename,
+        mimeType: args.mimeType,
+        versionNumber: nextVersionNumber,
+        source: "drive_refresh" as const,
+        parentVersionId: document.currentVersionId,
+        extractionStatus: "pending" as const,
+        externalModifiedTime: args.externalModifiedTime,
+        createdAt: Date.now(),
+      });
+      const canAdvanceCurrent =
+        !currentVersion ||
+        currentVersion.source === "drive_import" ||
+        currentVersion.source === "drive_refresh";
+      await ctx.db.patch(document._id, {
+        currentVersionId: canAdvanceCurrent ? newVersionId : document.currentVersionId,
+        externalSyncedVersionId: newVersionId,
+        filename: args.filename,
+        mimeType: args.mimeType,
+        externalModifiedTime: args.externalModifiedTime,
+        syncState: canAdvanceCurrent ? "updated_from_drive" : "external_update_available",
+        sourceStorageId: args.storageId,
+        updatedAt: Date.now(),
+      });
+    }
 
     const jobs = await ctx.db
       .query("scheduledJobs")

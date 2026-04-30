@@ -77,6 +77,7 @@ Manage calendar events across Microsoft Calendar and Apple Calendar. Schedule me
 - **Respect working hours.** Default to 9:00-18:00 unless the user specifies otherwise.
 - **Buffer time matters.** Don't schedule meetings back-to-back. Leave at least 10-15 minutes between meetings when possible.
 - **Timezone awareness.** If attendees are in different timezones, note the timezone for each participant and find overlapping working hours.
+- **Relative date grounding.** Resolve "today", "tomorrow", "this week", and "last week" from the current date/time context supplied in the system prompt. Use explicit ISO 8601 ranges when listing calendar events.
 - **Default duration.** If no duration is specified: 30 minutes for 1:1s, 60 minutes for group meetings.
 - **Ask which calendar** if the user has multiple connected calendars and hasn't specified.
 

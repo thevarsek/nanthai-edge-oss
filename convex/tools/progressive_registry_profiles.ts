@@ -31,6 +31,11 @@ import { readXlsx } from "./read_xlsx";
 import { editXlsx } from "./edit_xlsx";
 import { generateTextFile } from "./generate_text_file";
 import { readTextFile } from "./read_text_file";
+import {
+  findInDocument,
+  listDocuments,
+  readDocument,
+} from "./document_workspace";
 import { generateEml } from "./generate_eml";
 import { readEml } from "./read_eml";
 import {
@@ -113,6 +118,7 @@ import {
 import type { ProgressiveToolRegistryOptions } from "./progressive_registry";
 
 const DOC_TOOLS: RegisteredTool[] = [
+  listDocuments, readDocument, findInDocument,
   generateDocx, readDocx, editDocx,
   generatePptx, readPptx, editPptx,
   generateXlsx, readXlsx, editXlsx,

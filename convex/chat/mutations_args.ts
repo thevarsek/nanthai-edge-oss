@@ -1,6 +1,7 @@
 import { v, type PropertyValidators } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import {
+  documentCitation,
   memoryCategory,
   memoryRetrievalMode,
   memoryScopeType,
@@ -217,6 +218,7 @@ export const finalizeGenerationArgs = {
     url: v.string(),
     title: v.string(),
   }))),
+  documentCitations: v.optional(v.array(documentCitation)),
   // M26 — Lyria music generation: inline audio attached during generation
   audioStorageId: v.optional(v.id("_storage")),
   audioDurationMs: v.optional(v.number()),

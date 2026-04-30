@@ -8,8 +8,8 @@ import { SystemSkillSeedData } from "../skills/mutations_seed";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 61 skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 61);
+test("SYSTEM_SKILL_CATALOG contains 62 skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 62);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -59,13 +59,13 @@ test("SYSTEM_SKILL_CATALOG: slugs are lowercase-hyphenated", () => {
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 51 visible + 1 hidden + 9 integration_managed skills", () => {
+test("SYSTEM_SKILL_CATALOG: 51 visible + 1 hidden + 10 integration_managed skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
   const integrationManaged = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "integration_managed");
   assert.equal(visible.length, 51);
   assert.equal(hidden.length, 1);
-  assert.equal(integrationManaged.length, 9);
+  assert.equal(integrationManaged.length, 10);
 });
 
 test("SYSTEM_SKILL_CATALOG: visible skills include the 5 original curated skills", () => {
@@ -89,14 +89,19 @@ test("SYSTEM_SKILL_CATALOG: hidden skills are runtime-guard only", () => {
 // MARK: Catalog seed — mode classification
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: doc-coauthoring and internal-comms are textOnly", () => {
-  const textOnly = SYSTEM_SKILL_CATALOG.filter(
-    (s) => s.slug === "doc-coauthoring" || s.slug === "internal-comms"
+test("SYSTEM_SKILL_CATALOG: internal-comms is textOnly and doc-coauthoring can use document tools", () => {
+  const internalComms = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "internal-comms");
+  assert.ok(internalComms);
+  assert.equal(internalComms.runtimeMode, "textOnly");
+  assert.deepEqual(internalComms.requiredToolIds, []);
+
+  const docCoauthoring = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "doc-coauthoring");
+  assert.ok(docCoauthoring);
+  assert.equal(docCoauthoring.runtimeMode, "toolAugmented");
+  assert.deepEqual(
+    [...docCoauthoring.requiredToolIds].sort(),
+    ["find_in_document", "list_documents", "read_document"],
   );
-  for (const skill of textOnly) {
-    assert.equal(skill.runtimeMode, "textOnly", `${skill.slug} should be textOnly`);
-    assert.deepEqual(skill.requiredToolIds, [], `${skill.slug} should have no required tools`);
-  }
 });
 
 test("SYSTEM_SKILL_CATALOG: docx, pptx, xlsx are toolAugmented with required tools", () => {
@@ -113,7 +118,7 @@ test("SYSTEM_SKILL_CATALOG: docs, runtime, and subagent skills have requiredTool
   const expectations: Record<string, string[]> = {
     "documents": ["docs", "persistentRuntime"],
     "docx": ["docs"],
-    "pdf": ["persistentRuntime"],
+    "pdf": ["docs", "persistentRuntime"],
     "pptx": ["docs"],
     "xlsx": ["docs", "analytics"],
     "data-analyzer": ["analytics"],
@@ -151,7 +156,7 @@ test("SYSTEM_SKILL_CATALOG: pdf requires read_pdf, generate_pdf, edit_pdf", () =
   assert.ok(pdf);
   assert.deepEqual(
     [...pdf.requiredToolIds].sort(),
-    ["edit_pdf", "generate_pdf", "read_pdf"],
+    ["edit_pdf", "find_in_document", "generate_pdf", "list_documents", "read_document", "read_pdf"],
   );
 });
 
@@ -254,22 +259,29 @@ test("SYSTEM_SKILL_CATALOG: all system skills are locked", () => {
   }
 });
 
-test("SYSTEM_SKILL_CATALOG: only the archived integration-discovery skills are not active", () => {
-  // M24 Phase 5: gmail and google-drive reinstated under narrowed scopes
-  // (Manual Gmail via IMAP/SMTP and drive.file + Drive Picker respectively).
-  // apple-calendar, google-calendar, and google-workspace remain archived
-  // because their behavior is now covered by the cross-provider Calendar
-  // Scheduler skill or has no replacement yet.
+test("SYSTEM_SKILL_CATALOG: only intentionally archived integration-discovery skills are not active", () => {
+  // Gmail uses manual IMAP/SMTP auth, Drive uses Google OAuth + picker, and
+  // Calendar uses Google OAuth. google-workspace is active as the shared
+  // Google entry point; standalone google-calendar remains archived.
   const archivedSlugs = new Set([
     "apple-calendar",
     "google-calendar",
-    "google-workspace",
   ]);
 
   for (const skill of SYSTEM_SKILL_CATALOG) {
     const expectedStatus = archivedSlugs.has(skill.slug) ? "archived" : "active";
     assert.equal(skill.status, expectedStatus, `${skill.slug} should be ${expectedStatus}`);
   }
+});
+
+test("SYSTEM_SKILL_CATALOG: google-workspace exposes real Google Calendar tool names", () => {
+  const workspace = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "google-workspace");
+  assert.ok(workspace);
+  assert.equal(workspace.status, "active");
+  assert.ok(workspace.requiredToolIds.includes("google_calendar_list"));
+  assert.ok(workspace.requiredToolIds.includes("google_calendar_create"));
+  assert.ok(workspace.requiredToolIds.includes("google_calendar_delete"));
+  assert.ok(!workspace.requiredToolIds.includes("calendar_list"));
 });
 
 // =============================================================================

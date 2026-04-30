@@ -16,6 +16,13 @@ export const listKnowledgeBaseFilesArgs = {
       v.literal("all"),
     ),
   ),
+  folderId: v.optional(v.id("folders")),
+  folderFilter: v.optional(
+    v.union(
+      v.literal("all"),
+      v.literal("unfiled"),
+    ),
+  ),
   limit: v.optional(v.number()),
 } satisfies PropertyValidators;
 

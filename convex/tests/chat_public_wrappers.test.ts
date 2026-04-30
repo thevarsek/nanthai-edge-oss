@@ -2,12 +2,15 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createUploadUrl, createChat } from "../chat/mutations";
-import { deleteKnowledgeBaseFile } from "../knowledge_base/mutations";
+import { deleteKnowledgeBaseFile, updateDriveAttachmentStorage } from "../knowledge_base/mutations";
+import { ensureDocumentsForChat, makeCurrentVersion } from "../documents/mutations";
+import { getDocumentVersionDownloadUrl } from "../documents/queries";
 import {
   listKnowledgeBaseFiles,
   getKnowledgeBaseFilesByStorageIds,
 } from "../knowledge_base/queries";
 import { updateChat } from "../chat/manage";
+import { deleteChatGraph } from "../chat/manage_delete_helpers";
 import {
   getActiveJobs,
   getAttachmentUrl,
@@ -16,6 +19,7 @@ import {
   getMessageAudioUrl,
 } from "../chat/queries";
 import { appendAttachmentsAndMarkResuming } from "../drive_picker/mutations";
+import { deleteUserTableBatch } from "../account/mutations";
 
 function buildAuth(userId: string | null = "user_1") {
   return {
@@ -240,10 +244,14 @@ test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared stora
   await (deleteKnowledgeBaseFile as any)._handler({
     auth: buildAuth(),
     db: {
-      query: () => ({
-        withIndex: () => ({
+      query: (table: string) => ({
+        withIndex: (indexName: string) => ({
           first: async () => {
-            throw new Error("storage fallback should not be used when fileAttachmentId is provided");
+            if (table === "fileAttachments") {
+              throw new Error("storage fallback should not be used when fileAttachmentId is provided");
+            }
+            assert.notEqual(indexName, "by_source_storage");
+            return null;
           },
           collect: async () => [],
         }),
@@ -302,6 +310,446 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted generated fi
   }, { storageId: "storage_generated", source: "generated" });
 
   assert.deepEqual(deletes, ["gf_1", "grant_2", "storage_generated"]);
+});
+
+test("deleteUserTableBatch preserves documentVersion source blobs owned by source rows", async () => {
+  const storageDeletes: string[] = [];
+  const rowDeletes: string[] = [];
+
+  await (deleteUserTableBatch as any)._handler({
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          take: async () => (
+            table === "documentVersions"
+              ? [{
+                  _id: "version_1",
+                  userId: "user_1",
+                  storageId: "storage_source",
+                  extractionTextStorageId: "storage_text",
+                  extractionMarkdownStorageId: "storage_md",
+                }]
+              : []
+          ),
+          first: async () => (
+            table === "fileAttachments"
+              ? { _id: "fa_1", userId: "user_1", storageId: "storage_source" }
+              : null
+          ),
+        }),
+      }),
+      delete: async (id: string) => {
+        rowDeletes.push(id);
+      },
+    },
+    storage: {
+      delete: async (id: string) => {
+        storageDeletes.push(id);
+      },
+    },
+  }, { userId: "user_1", tableName: "documentVersions" });
+
+  assert.deepEqual(storageDeletes, ["storage_text", "storage_md"]);
+  assert.deepEqual(rowDeletes, ["version_1"]);
+});
+
+test("ensureDocumentsForChat reuses an existing storage-backed KB document", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const rows: Record<string, any[]> = {
+    chats: [{ _id: "chat_1", userId: "user_1" }],
+    fileAttachments: [{
+      _id: "fa_chat",
+      userId: "user_1",
+      chatId: "chat_1",
+      storageId: "storage_kb",
+      filename: "terms.md",
+      mimeType: "text/markdown",
+      createdAt: 2,
+    }],
+    documents: [{
+      _id: "doc_kb",
+      userId: "user_1",
+      title: "terms.md",
+      filename: "terms.md",
+      mimeType: "text/markdown",
+      source: "upload",
+      sourceStorageId: "storage_kb",
+      fileAttachmentId: "fa_settings",
+      currentVersionId: "version_kb",
+      status: "ready",
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+    documentVersions: [{
+      _id: "version_kb",
+      documentId: "doc_kb",
+      userId: "user_1",
+      storageId: "storage_kb",
+      filename: "terms.md",
+      mimeType: "text/markdown",
+      versionNumber: 1,
+      extractionStatus: "ready",
+      extractionTextStorageId: "storage_text",
+      createdAt: 1,
+    }],
+  };
+
+  const result = await (ensureDocumentsForChat as any)._handler({
+    db: {
+      get: async (id: string) =>
+        Object.values(rows).flat().find((row) => row._id === id) ?? null,
+      query: (table: string) => ({
+        withIndex: (indexName: string, _builder: unknown) => ({
+          collect: async () => {
+            if (table === "fileAttachments" && indexName === "by_chat") {
+              return rows.fileAttachments.filter((row) => row.chatId === "chat_1");
+            }
+            if (table === "generatedFiles" && indexName === "by_chat") return [];
+            return rows[table] ?? [];
+          },
+          first: async () => {
+            if (table === "documents" && indexName === "by_file_attachment") return null;
+            if (table === "documents" && indexName === "by_source_storage") {
+              return rows.documents.find((row) => row.sourceStorageId === "storage_kb") ?? null;
+            }
+            return null;
+          },
+        }),
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        const id = `${table}_new`;
+        rows[table] = rows[table] ?? [];
+        rows[table].push({ _id: id, ...value });
+        return id;
+      },
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+    },
+  }, { userId: "user_1", chatId: "chat_1" });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].documentId, "doc_kb");
+  assert.equal(result[0].versionId, "version_kb");
+  assert.deepEqual(inserts, []);
+  assert.deepEqual(patches, []);
+});
+
+test("ensureDocumentsForChat does not reuse a document from a different origin chat", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const rows: Record<string, any[]> = {
+    chats: [{ _id: "chat_2", userId: "user_1" }],
+    fileAttachments: [{
+      _id: "fa_chat_2",
+      userId: "user_1",
+      chatId: "chat_2",
+      storageId: "storage_shared",
+      filename: "brief.md",
+      mimeType: "text/markdown",
+      createdAt: 2,
+    }],
+    documents: [{
+      _id: "doc_chat_1",
+      userId: "user_1",
+      title: "brief.md",
+      filename: "brief.md",
+      mimeType: "text/markdown",
+      source: "upload",
+      sourceStorageId: "storage_shared",
+      fileAttachmentId: "fa_chat_1",
+      originChatId: "chat_1",
+      currentVersionId: "version_chat_1",
+      status: "ready",
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+    documentVersions: [{
+      _id: "version_chat_1",
+      documentId: "doc_chat_1",
+      userId: "user_1",
+      storageId: "storage_shared",
+      filename: "brief.md",
+      mimeType: "text/markdown",
+      versionNumber: 1,
+      extractionStatus: "ready",
+      createdAt: 1,
+    }],
+  };
+
+  const result = await (ensureDocumentsForChat as any)._handler({
+    db: {
+      get: async (id: string) =>
+        Object.values(rows).flat().find((row) => row._id === id) ?? null,
+      query: (table: string) => ({
+        withIndex: (indexName: string, _builder: unknown) => ({
+          collect: async () => {
+            if (table === "fileAttachments" && indexName === "by_chat") {
+              return rows.fileAttachments.filter((row) => row.chatId === "chat_2");
+            }
+            if (table === "generatedFiles" && indexName === "by_chat") return [];
+            return rows[table] ?? [];
+          },
+          first: async () => {
+            if (table === "documents" && indexName === "by_file_attachment") return null;
+            if (table === "documents" && indexName === "by_source_storage") {
+              return rows.documents.find((row) => row.sourceStorageId === "storage_shared") ?? null;
+            }
+            return null;
+          },
+        }),
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        const id = `${table}_new`;
+        rows[table] = rows[table] ?? [];
+        rows[table].push({ _id: id, ...value });
+        return id;
+      },
+      patch: async (id: string, value: Record<string, unknown>) => {
+        const row = Object.values(rows).flat().find((candidate) => candidate._id === id);
+        if (row) Object.assign(row, value);
+      },
+    },
+  }, { userId: "user_1", chatId: "chat_2" });
+
+  assert.equal(result.length, 1);
+  assert.equal(result[0].documentId, "documents_new");
+  assert.equal(result[0].versionId, "documentVersions_new");
+  assert.equal(inserts[0].table, "documents");
+  assert.equal(inserts[0].value.originChatId, "chat_2");
+});
+
+test("deleteChatGraph removes canonical document versions before source rows", async () => {
+  const storageDeletes: string[] = [];
+  const rowDeletes: string[] = [];
+  const rows: Record<string, any[]> = {
+    messages: [],
+    generationJobs: [],
+    autonomousSessions: [],
+    searchSessions: [],
+    searchContexts: [],
+    documents: [{ _id: "doc_1", originChatId: "chat_1", userId: "user_1" }],
+    documentVersions: [{
+      _id: "version_1",
+      documentId: "doc_1",
+      storageId: "storage_source",
+      extractionTextStorageId: "storage_text",
+      extractionMarkdownStorageId: "storage_md",
+    }],
+    generatedFiles: [{ _id: "gf_1", chatId: "chat_1", userId: "user_1", storageId: "storage_generated" }],
+    generatedCharts: [],
+    fileAttachments: [{ _id: "fa_1", chatId: "chat_1", userId: "user_1", storageId: "storage_source" }],
+    subagentBatches: [],
+  };
+
+  await deleteChatGraph({
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          take: async () => rows[table] ?? [],
+          collect: async () => rows[table] ?? [],
+        }),
+      }),
+      delete: async (id: string) => {
+        rowDeletes.push(id);
+        for (const tableRows of Object.values(rows)) {
+          const index = tableRows.findIndex((row) => row._id === id);
+          if (index >= 0) tableRows.splice(index, 1);
+        }
+      },
+    },
+    storage: {
+      delete: async (id: string) => {
+        storageDeletes.push(id);
+      },
+    },
+    scheduler: {
+      runAfter: async () => undefined,
+    },
+  } as any, "chat_1" as any);
+
+  assert.deepEqual(rowDeletes, ["version_1", "doc_1", "gf_1", "fa_1", "chat_1"]);
+  assert.deepEqual(storageDeletes, ["storage_text", "storage_md", "storage_generated", "storage_source"]);
+});
+
+test("Drive refresh creates an immutable document version and advances imported documents", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const rows: Record<string, any[]> = {
+    fileAttachments: [{
+      _id: "fa_drive",
+      userId: "user_1",
+      storageId: "storage_old",
+      filename: "contract.pdf",
+      mimeType: "application/pdf",
+    }],
+    documents: [{
+      _id: "doc_drive",
+      userId: "user_1",
+      title: "contract.pdf",
+      filename: "contract.pdf",
+      mimeType: "application/pdf",
+      source: "drive",
+      sourceStorageId: "storage_old",
+      fileAttachmentId: "fa_drive",
+      currentVersionId: "version_old",
+      externalSyncedVersionId: "version_old",
+      status: "ready",
+      syncState: "current",
+      createdAt: 1,
+      updatedAt: 1,
+    }],
+    documentVersions: [{
+      _id: "version_old",
+      documentId: "doc_drive",
+      userId: "user_1",
+      storageId: "storage_old",
+      filename: "contract.pdf",
+      mimeType: "application/pdf",
+      versionNumber: 1,
+      source: "drive_import",
+      extractionStatus: "ready",
+      createdAt: 1,
+    }],
+    scheduledJobs: [],
+  };
+
+  await (updateDriveAttachmentStorage as any)._handler({
+    db: {
+      get: async (id: string) => Object.values(rows).flat().find((row) => row._id === id) ?? null,
+      query: (table: string) => ({
+        withIndex: (_indexName: string, _builder: unknown) => ({
+          first: async () => {
+            if (table === "documents") {
+              return rows.documents.find((row) => row.fileAttachmentId === "fa_drive") ?? null;
+            }
+            return rows[table]?.[0] ?? null;
+          },
+          collect: async () => rows[table] ?? [],
+        }),
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        const id = `${table}_new`;
+        rows[table] = rows[table] ?? [];
+        rows[table].push({ _id: id, ...value });
+        return id;
+      },
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+        const row = Object.values(rows).flat().find((candidate) => candidate._id === id);
+        if (row) Object.assign(row, value);
+      },
+    },
+  }, {
+    fileAttachmentId: "fa_drive",
+    storageId: "storage_new",
+    filename: "contract.pdf",
+    mimeType: "application/pdf",
+    externalModifiedTime: "2026-04-30T00:00:00.000Z",
+    lastRefreshedAt: 123,
+  });
+
+  assert.equal(inserts.length, 1);
+  assert.equal(inserts[0].table, "documentVersions");
+  assert.equal(inserts[0].value.source, "drive_refresh");
+  assert.equal(inserts[0].value.parentVersionId, "version_old");
+  const documentPatch = patches.find((patch) => patch.id === "doc_drive")?.value;
+  assert.equal(documentPatch?.currentVersionId, "documentVersions_new");
+  assert.equal(documentPatch?.externalSyncedVersionId, "documentVersions_new");
+  assert.equal(documentPatch?.syncState, "updated_from_drive");
+});
+
+test("makeCurrentVersion switches to an owned Drive refresh version", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const rows: Record<string, any[]> = {
+    documents: [{
+      _id: "doc_1",
+      userId: "user_1",
+      filename: "contract.pdf",
+      mimeType: "application/pdf",
+      currentVersionId: "version_local",
+      externalSyncedVersionId: "version_drive",
+      syncState: "external_update_available",
+    }],
+    documentVersions: [{
+      _id: "version_drive",
+      documentId: "doc_1",
+      userId: "user_1",
+      storageId: "storage_drive",
+      filename: "contract.pdf",
+      mimeType: "application/pdf",
+      source: "drive_refresh",
+      externalModifiedTime: "2026-04-30T00:00:00.000Z",
+    }],
+  };
+
+  await (makeCurrentVersion as any)._handler({
+    auth: buildAuth(),
+    db: {
+      get: async (id: string) => Object.values(rows).flat().find((row) => row._id === id) ?? null,
+      patch: async (id: string, value: Record<string, unknown>) => patches.push({ id, value }),
+    },
+  }, { documentId: "doc_1", versionId: "version_drive" });
+
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].id, "doc_1");
+  assert.equal(patches[0].value.currentVersionId, "version_drive");
+  assert.equal(patches[0].value.sourceStorageId, "storage_drive");
+  assert.equal(patches[0].value.syncState, "updated_from_drive");
+});
+
+test("makeCurrentVersion rejects versions from another document", async () => {
+  await assert.rejects(
+    () => (makeCurrentVersion as any)._handler({
+      auth: buildAuth(),
+      db: {
+        get: async (id: string) => {
+          if (id === "doc_1") return { _id: "doc_1", userId: "user_1" };
+          if (id === "version_other") {
+            return { _id: "version_other", documentId: "doc_2", userId: "user_1" };
+          }
+          return null;
+        },
+      },
+    }, { documentId: "doc_1", versionId: "version_other" }),
+    /Document version not found or unauthorized/,
+  );
+});
+
+test("getDocumentVersionDownloadUrl returns URL only for owned versions", async () => {
+  const result = await (getDocumentVersionDownloadUrl as any)._handler({
+    auth: buildAuth(),
+    db: {
+      get: async (id: string) => {
+        if (id === "version_1") {
+          return {
+            _id: "version_1",
+            documentId: "doc_1",
+            userId: "user_1",
+            storageId: "storage_1",
+            filename: "contract.pdf",
+            mimeType: "application/pdf",
+          };
+        }
+        if (id === "doc_1") return { _id: "doc_1", userId: "user_1" };
+        return null;
+      },
+    },
+    storage: {
+      getUrl: async (storageId: string) => `https://files.example/${storageId}`,
+    },
+  }, { versionId: "version_1" });
+
+  assert.deepEqual(result, {
+    versionId: "version_1",
+    documentId: "doc_1",
+    filename: "contract.pdf",
+    mimeType: "application/pdf",
+    downloadUrl: "https://files.example/storage_1",
+  });
 });
 
 test("generation, attachment, audio, and generated-file queries are auth-gated and refresh URLs", async () => {

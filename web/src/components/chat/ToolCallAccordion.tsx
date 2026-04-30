@@ -214,7 +214,7 @@ export function ToolCallAccordion({
               </span>
 
               <span className="text-[10px] text-secondary">
-                {isPending ? t("running") : isError ? t("error") : result ? t("done") : t("done")}
+                {isPending ? t("running") : isError ? t("error") : result ? t("done") : t("waiting_to_resume")}
               </span>
 
               {isOpen ? (

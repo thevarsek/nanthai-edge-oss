@@ -250,6 +250,55 @@ test("updateChatHandler rejects folder IDs that are not owned by the user", asyn
   assert.equal(patches.length, 0);
 });
 
+test("updateChatHandler syncs canonical document folder metadata on folder moves", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") {
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+          };
+        }
+        if (id === "folder_1") {
+          return {
+            _id: "folder_1",
+            userId: "user_1",
+            name: "Folder",
+          };
+        }
+        return null;
+      },
+      query: () => ({
+        withIndex: () => ({
+          collect: async () => [
+            { _id: "doc_1", userId: "user_1", originChatId: "chat_1" },
+            { _id: "doc_other_user", userId: "user_2", originChatId: "chat_1" },
+          ],
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+    },
+  } as any;
+
+  await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    folderId: "folder_1",
+  } as any);
+
+  assert.deepEqual(patches.map((patch) => patch.id), ["chat_1", "doc_1"]);
+  assert.equal(patches[0].value.folderId, "folder_1");
+  assert.equal(patches[1].value.folderId, "folder_1");
+  assert.equal(typeof patches[1].value.updatedAt, "number");
+});
+
 test("bulkMoveChatsHandler rejects folder IDs that are not owned by the user", async () => {
   const patches: Array<Record<string, unknown>> = [];
   const ctx = {
@@ -288,4 +337,65 @@ test("bulkMoveChatsHandler rejects folder IDs that are not owned by the user", a
   );
 
   assert.equal(patches.length, 0);
+});
+
+test("bulkMoveChatsHandler syncs canonical document folder metadata", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "folder_1") {
+          return {
+            _id: "folder_1",
+            userId: "user_1",
+            name: "Folder",
+          };
+        }
+        if (id === "chat_1" || id === "chat_2") {
+          return {
+            _id: id,
+            userId: "user_1",
+          };
+        }
+        return null;
+      },
+      query: () => ({
+        withIndex: (_indexName: string, builder: (q: { eq: (field: string, value: string) => unknown }) => unknown) => {
+          let queriedChatId = "";
+          builder({
+            eq: (_field: string, value: string) => {
+              queriedChatId = value;
+              return {};
+            },
+          });
+          return {
+            collect: async () => [
+              { _id: `doc_${queriedChatId}`, userId: "user_1", originChatId: queriedChatId },
+            ],
+          };
+        },
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+    },
+  } as any;
+
+  await bulkMoveChatsHandler(ctx, {
+    chatIds: ["chat_1", "chat_2"],
+    folderId: "folder_1",
+  } as any);
+
+  assert.deepEqual(
+    patches.map((patch) => [patch.id, patch.value.folderId]),
+    [
+      ["chat_1", "folder_1"],
+      ["doc_chat_1", "folder_1"],
+      ["chat_2", "folder_1"],
+      ["doc_chat_2", "folder_1"],
+    ],
+  );
 });

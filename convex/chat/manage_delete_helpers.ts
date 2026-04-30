@@ -139,6 +139,37 @@ export async function deleteChatGraph(
   }
   if (searchContexts.length === DELETE_BATCH_SIZE) hasMore = true;
 
+  // --- Canonical documents + extracted text blobs ---
+  const documents = await ctx.db
+    .query("documents")
+    .withIndex("by_origin_chat", (q) => q.eq("originChatId", chatId))
+    .take(DELETE_BATCH_SIZE);
+  for (const document of documents) {
+    const versions = await ctx.db
+      .query("documentVersions")
+      .withIndex("by_document", (q) => q.eq("documentId", document._id))
+      .collect();
+    for (const version of versions) {
+      if (version.extractionTextStorageId) {
+        try {
+          await ctx.storage.delete(version.extractionTextStorageId);
+        } catch {
+          // Storage blob may already be deleted — continue cleanup
+        }
+      }
+      if (version.extractionMarkdownStorageId) {
+        try {
+          await ctx.storage.delete(version.extractionMarkdownStorageId);
+        } catch {
+          // Storage blob may already be deleted — continue cleanup
+        }
+      }
+      await ctx.db.delete(version._id);
+    }
+    await ctx.db.delete(document._id);
+  }
+  if (documents.length === DELETE_BATCH_SIZE) hasMore = true;
+
   // --- Generated files (delete storage blobs to avoid orphans) ---
   const generatedFiles = await ctx.db
     .query("generatedFiles")

@@ -2,7 +2,7 @@
 // Full-featured markdown renderer with syntax highlighting, LaTeX, tables,
 // code copy, and a parse cache for streaming performance.
 
-import { memo, useCallback, useMemo, useRef } from "react";
+import { Fragment, memo, useCallback, useMemo, useRef } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -12,6 +12,12 @@ import rehypeRaw from "rehype-raw";
 import { useTranslation } from "react-i18next";
 import type { Components } from "react-markdown";
 import type { PluggableList } from "unified";
+
+export interface MarkdownDocumentCitationLink {
+  ref: number;
+  title?: string;
+  onClick: () => void;
+}
 
 // ─── Convex image URL detection ───────────────────────────────────────────────
 
@@ -179,7 +185,62 @@ function MarkdownTable({
 // ─── Components map ───────────────────────────────────────────────────────────
 // Built from content so copy-table always reflects the rendered markdown.
 
-function buildComponents(content: string): Components {
+function renderCitationLinkedText(
+  children: React.ReactNode,
+  citationByRef: Map<number, MarkdownDocumentCitationLink>,
+): React.ReactNode {
+  if (citationByRef.size === 0) return children;
+
+  // Recursively walk children: replace `[N]` markers inside string nodes with
+  // clickable buttons; preserve all non-string nodes (bold, em, links, etc.)
+  // unchanged. This is critical because most paragraphs contain mixed inline
+  // content (text + <strong> + text), and the previous all-or-nothing
+  // textFromChildren approach silently dropped the citation replacement.
+  const transform = (node: React.ReactNode, keyPrefix: string): React.ReactNode => {
+    if (typeof node === "string") {
+      const citationPattern = /\[(\d+)\]/g;
+      const parts: React.ReactNode[] = [];
+      let lastIndex = 0;
+      let matchCount = 0;
+      for (const match of node.matchAll(citationPattern)) {
+        const ref = Number(match[1]);
+        const citation = citationByRef.get(ref);
+        if (!citation || match.index == null) continue;
+        if (match.index > lastIndex) {
+          parts.push(node.slice(lastIndex, match.index));
+        }
+        parts.push(
+          <button
+            key={`${keyPrefix}-cite-${ref}-${match.index}`}
+            type="button"
+            onClick={citation.onClick}
+            className="mx-0.5 inline-flex items-center rounded-md border border-primary/25 bg-primary/10 px-1 font-mono text-[0.85em] font-semibold text-primary hover:bg-primary/18"
+          >
+            [{ref}]
+          </button>,
+        );
+        lastIndex = match.index + match[0].length;
+        matchCount++;
+      }
+      if (matchCount === 0) return node;
+      if (lastIndex < node.length) parts.push(node.slice(lastIndex));
+      return parts;
+    }
+    if (typeof node === "number" || node == null || typeof node === "boolean") return node;
+    if (Array.isArray(node)) {
+      return node.map((child, i) => (
+        <Fragment key={`${keyPrefix}-${i}`}>{transform(child, `${keyPrefix}-${i}`)}</Fragment>
+      ));
+    }
+    // React element: keep it; citation markers don't span across element boundaries.
+    return node;
+  };
+
+  return transform(children, "root");
+}
+
+function buildComponents(content: string, documentCitationLinks?: MarkdownDocumentCitationLink[]): Components {
+  const citationByRef = new Map((documentCitationLinks ?? []).map((citation) => [citation.ref, citation]));
   return {
     // Code — inline vs block differentiated by the `inline` prop
     code({ className, children }) {
@@ -216,7 +277,7 @@ function buildComponents(content: string): Components {
     thead({ children }) {
       return (
         <thead className="bg-surface-3/50 text-muted text-xs uppercase tracking-wider">
-          {children}
+          {renderCitationLinkedText(children, citationByRef)}
         </thead>
       );
     },
@@ -229,31 +290,31 @@ function buildComponents(content: string): Components {
     th({ children }) {
       return (
         <th className="px-4 py-2 text-left font-semibold border-b border-border/20">
-          {children}
+          {renderCitationLinkedText(children, citationByRef)}
         </th>
       );
     },
     td({ children }) {
-      return <td className="px-4 py-2">{children}</td>;
+      return <td className="px-4 py-2">{renderCitationLinkedText(children, citationByRef)}</td>;
     },
 
     // Headings
     h1({ children }) {
-      return <h1 className="text-2xl font-bold mt-6 mb-3 text-foreground">{children}</h1>;
+      return <h1 className="text-2xl font-bold mt-6 mb-3 text-foreground">{renderCitationLinkedText(children, citationByRef)}</h1>;
     },
     h2({ children }) {
-      return <h2 className="text-xl font-semibold mt-5 mb-2 text-foreground">{children}</h2>;
+      return <h2 className="text-xl font-semibold mt-5 mb-2 text-foreground">{renderCitationLinkedText(children, citationByRef)}</h2>;
     },
     h3({ children }) {
-      return <h3 className="text-lg font-semibold mt-4 mb-2 text-foreground">{children}</h3>;
+      return <h3 className="text-lg font-semibold mt-4 mb-2 text-foreground">{renderCitationLinkedText(children, citationByRef)}</h3>;
     },
     h4({ children }) {
-      return <h4 className="text-base font-semibold mt-3 mb-1 text-foreground">{children}</h4>;
+      return <h4 className="text-base font-semibold mt-3 mb-1 text-foreground">{renderCitationLinkedText(children, citationByRef)}</h4>;
     },
 
     // Paragraph
     p({ children }) {
-      return <p className="mb-3 last:mb-0 leading-relaxed">{children}</p>;
+      return <p className="mb-3 last:mb-0 leading-relaxed">{renderCitationLinkedText(children, citationByRef)}</p>;
     },
 
     // Lists
@@ -264,14 +325,14 @@ function buildComponents(content: string): Components {
       return <ol className="mb-3 pl-5 space-y-1 list-decimal">{children}</ol>;
     },
     li({ children }) {
-      return <li className="leading-relaxed">{children}</li>;
+      return <li className="leading-relaxed">{renderCitationLinkedText(children, citationByRef)}</li>;
     },
 
     // Blockquote
     blockquote({ children }) {
       return (
         <blockquote className="border-l-4 border-primary pl-4 my-3 italic text-muted">
-          {children}
+          {renderCitationLinkedText(children, citationByRef)}
         </blockquote>
       );
     },
@@ -309,10 +370,10 @@ function buildComponents(content: string): Components {
 
     // Strong / em
     strong({ children }) {
-      return <strong className="font-semibold text-foreground">{children}</strong>;
+      return <strong className="font-semibold text-foreground">{renderCitationLinkedText(children, citationByRef)}</strong>;
     },
     em({ children }) {
-      return <em className="italic">{children}</em>;
+      return <em className="italic">{renderCitationLinkedText(children, citationByRef)}</em>;
     },
   };
 }
@@ -438,6 +499,7 @@ interface MarkdownRendererProps {
    * sizes to inline bold, and disables math/highlight plugins.
    */
   compact?: boolean;
+  documentCitationLinks?: MarkdownDocumentCitationLink[];
 }
 
 export const MarkdownRenderer = memo(function MarkdownRenderer({
@@ -445,10 +507,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   streaming = false,
   className = "",
   compact = false,
+  documentCitationLinks,
 }: MarkdownRendererProps) {
   const components = useMemo(
-    () => (compact ? buildCompactComponents() : buildComponents(content)),
-    [content, compact],
+    () => (compact ? buildCompactComponents() : buildComponents(content, documentCitationLinks)),
+    [content, compact, documentCitationLinks],
   );
 
   return (

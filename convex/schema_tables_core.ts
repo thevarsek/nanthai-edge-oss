@@ -18,6 +18,12 @@ import {
   subagentOverride,
   subagentRunStatus,
   drivePickerBatchStatus,
+  documentCitation,
+  documentExtractionStatus,
+  documentSource,
+  documentStatus,
+  documentSyncState,
+  documentVersionSource,
   terminalErrorCode,
   usageObject,
   videoJobStatus,
@@ -162,6 +168,8 @@ export const coreSchemaTables = {
       url: v.string(),
       title: v.string(),
     }))),
+    // M32 — Document Workspace citations. Separate from web-search URL citations.
+    documentCitations: v.optional(v.array(documentCitation)),
     subagentsEnabled: v.optional(v.boolean()),
     subagentBatchId: v.optional(v.id("subagentBatches")),
     drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
@@ -187,6 +195,62 @@ export const coreSchemaTables = {
       searchField: "content",
       filterFields: ["chatId", "userId"],
     }),
+
+  documents: defineTable({
+    userId: v.string(),
+    title: v.string(),
+    filename: v.string(),
+    mimeType: v.string(),
+    source: documentSource,
+    currentVersionId: v.optional(v.id("documentVersions")),
+    originChatId: v.optional(v.id("chats")),
+    folderId: v.optional(v.id("folders")),
+    sourceStorageId: v.optional(v.id("_storage")),
+    fileAttachmentId: v.optional(v.id("fileAttachments")),
+    generatedFileId: v.optional(v.id("generatedFiles")),
+    generatedMediaId: v.optional(v.id("generatedMedia")),
+    driveFileId: v.optional(v.string()),
+    externalModifiedTime: v.optional(v.string()),
+    externalSyncedVersionId: v.optional(v.id("documentVersions")),
+    status: documentStatus,
+    syncState: v.optional(documentSyncState),
+    lastExtractedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId", "updatedAt"])
+    .index("by_user_folder", ["userId", "folderId", "updatedAt"])
+    .index("by_current_version", ["currentVersionId"])
+    .index("by_source_storage", ["sourceStorageId"])
+    .index("by_file_attachment", ["fileAttachmentId"])
+    .index("by_generated_file", ["generatedFileId"])
+    .index("by_generated_media", ["generatedMediaId"])
+    .index("by_origin_chat", ["originChatId"]),
+
+  documentVersions: defineTable({
+    documentId: v.id("documents"),
+    userId: v.string(),
+    storageId: v.id("_storage"),
+    filename: v.string(),
+    mimeType: v.string(),
+    versionNumber: v.number(),
+    source: documentVersionSource,
+    parentVersionId: v.optional(v.id("documentVersions")),
+    contentHash: v.optional(v.string()),
+    extractionStatus: documentExtractionStatus,
+    extractionTextStorageId: v.optional(v.id("_storage")),
+    extractionMarkdownStorageId: v.optional(v.id("_storage")),
+    extractionByteLength: v.optional(v.number()),
+    extractionError: v.optional(v.string()),
+    pageCount: v.optional(v.number()),
+    wordCount: v.optional(v.number()),
+    externalModifiedTime: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+    .index("by_document", ["documentId", "versionNumber"])
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_storage", ["storageId"])
+    .index("by_extraction_status", ["extractionStatus"]),
 
   streamingMessages: defineTable({
     messageId: v.id("messages"),

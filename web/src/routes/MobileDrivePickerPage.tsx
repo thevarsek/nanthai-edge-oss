@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
-import { callbackUrl, pickedFileIds, safeCallbackScheme } from "./MobileDrivePickerPage.helpers";
+import {
+  androidIntentCallbackUrl,
+  callbackUrl,
+  pickedFileIds,
+  safeCallbackScheme,
+} from "./MobileDrivePickerPage.helpers";
 
 function readQueryParams(): URLSearchParams {
   return new URLSearchParams(window.location.search);
@@ -22,7 +27,10 @@ function googlePickerAppId(): string {
 }
 
 function redirectToCallback(callbackScheme: string, fileIds: string[], state?: string | null) {
-  window.location.href = callbackUrl(callbackScheme, fileIds, state);
+  const isAndroid = /Android/i.test(window.navigator.userAgent);
+  window.location.href = isAndroid
+    ? androidIntentCallbackUrl(callbackScheme, fileIds, state)
+    : callbackUrl(callbackScheme, fileIds, state);
 }
 
 export function MobileDrivePickerPage() {
@@ -48,11 +56,11 @@ export function MobileDrivePickerPage() {
     let cancelled = false;
     void (async () => {
       if (config.error) {
-        window.location.href = callbackUrl(config.callbackScheme, [], config.state);
+        redirectToCallback(config.callbackScheme, [], config.state);
         return;
       }
       if (config.selectedFileIds.length > 0) {
-        window.location.href = callbackUrl(
+        redirectToCallback(
           config.callbackScheme,
           config.selectedFileIds,
           config.state,

@@ -9,6 +9,18 @@ export function callbackUrl(callbackScheme: string, fileIds: string[], state?: s
   return `${callbackScheme}://drive-picker?${params.toString()}`;
 }
 
+export function androidIntentCallbackUrl(
+  callbackScheme: string,
+  fileIds: string[],
+  state?: string | null,
+  packageName = "com.nanthai.edge",
+): string {
+  const params = new URLSearchParams();
+  params.set("fileIds", fileIds.join(","));
+  if (state) params.set("state", state);
+  return `intent://drive-picker?${params.toString()}#Intent;scheme=${callbackScheme};package=${packageName};end`;
+}
+
 export function pickedFileIds(params: URLSearchParams): string[] {
   const values = [
     ...params.getAll("picked_file_ids"),

@@ -166,7 +166,8 @@ Most incidents have multiple contributing factors. Categorize them:
   visibility: "visible",
   lockState: "locked",
   status: "active",
-  runtimeMode: "textOnly",
-  requiredToolIds: [],
+  runtimeMode: "toolAugmented",
+  requiredToolIds: ["list_documents", "read_document", "find_in_document"],
+  requiredToolProfiles: ["docs"],
   requiredIntegrationIds: [],
 };

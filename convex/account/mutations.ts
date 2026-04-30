@@ -309,6 +309,57 @@ export const deleteUserTableBatch = internalMutation({
     // Storage-bearing tables: delete blobs alongside rows
     // ---------------------------------------------------------------
 
+    if (tableName === "documentVersions") {
+      const rows = await ctx.db
+        .query("documentVersions")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        const fileAttachmentRef = await ctx.db
+          .query("fileAttachments")
+          .withIndex("by_storage", (q) => q.eq("storageId", row.storageId))
+          .first();
+        const generatedFileRef = await ctx.db
+          .query("generatedFiles")
+          .withIndex("by_storage", (q) => q.eq("storageId", row.storageId))
+          .first();
+        const generatedMediaRef = await ctx.db
+          .query("generatedMedia")
+          .withIndex("by_storageId", (q) => q.eq("storageId", row.storageId))
+          .first();
+        const driveGrantRef = await ctx.db
+          .query("googleDriveFileGrants")
+          .withIndex("by_user_cached_storage", (q) =>
+            q.eq("userId", userId).eq("cachedStorageId", row.storageId),
+          )
+          .first();
+        if (!fileAttachmentRef && !generatedFileRef && !generatedMediaRef && !driveGrantRef) {
+          try {
+            await ctx.storage.delete(row.storageId);
+          } catch {
+            // Storage blob may already be deleted
+          }
+        }
+        if (row.extractionTextStorageId) {
+          try {
+            await ctx.storage.delete(row.extractionTextStorageId);
+          } catch {
+            // Storage blob may already be deleted
+          }
+        }
+        if (row.extractionMarkdownStorageId) {
+          try {
+            await ctx.storage.delete(row.extractionMarkdownStorageId);
+          } catch {
+            // Storage blob may already be deleted
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
     if (tableName === "generatedFiles" || tableName === "fileAttachments") {
       const rows = await ctx.db
         .query(tableName as "generatedFiles" | "fileAttachments")
@@ -321,6 +372,23 @@ export const deleteUserTableBatch = internalMutation({
           } catch {
             // Storage blob may already be deleted
           }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
+    if (tableName === "generatedMedia") {
+      const rows = await ctx.db
+        .query("generatedMedia")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        try {
+          await ctx.storage.delete(row.storageId);
+        } catch {
+          // Storage blob may already be deleted
         }
         await ctx.db.delete(row._id);
         deleted++;

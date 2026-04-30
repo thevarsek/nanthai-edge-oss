@@ -78,6 +78,18 @@ export const remove = mutation({
       .collect();
     for (const chat of chats) {
       await ctx.db.patch(chat._id, { folderId: undefined });
+      const docs = await ctx.db
+        .query("documents")
+        .withIndex("by_origin_chat", (q) => q.eq("originChatId", chat._id))
+        .collect();
+      for (const doc of docs) {
+        if (doc.userId === userId && doc.originChatId === chat._id) {
+          await ctx.db.patch(doc._id, {
+            folderId: undefined,
+            updatedAt: Date.now(),
+          });
+        }
+      }
     }
 
     await ctx.db.delete(args.folderId);
@@ -110,5 +122,20 @@ export const moveChat = mutation({
       // Don't bump updatedAt — folder moves are organisational and shouldn't
       // change the chat's position in the timeline.
     });
+
+    if (typeof ctx.db.query === "function") {
+      const docs = await ctx.db
+        .query("documents")
+        .withIndex("by_origin_chat", (q) => q.eq("originChatId", args.chatId))
+        .collect();
+      for (const doc of docs) {
+        if (doc.userId === userId && doc.originChatId === args.chatId) {
+          await ctx.db.patch(doc._id, {
+            folderId: args.folderId,
+            updatedAt: Date.now(),
+          });
+        }
+      }
+    }
   },
 });

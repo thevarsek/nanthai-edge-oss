@@ -228,3 +228,37 @@ test("gmail tools require manual Gmail credentials", async () => {
   assert.equal(draft.success, false);
   assert.match(String(draft.error), /Manual Gmail connection/);
 });
+
+// -----------------------------------------------------------------------------
+// Schema strictness — protects against Azure GPT-5 strict-mode silent drops.
+// All Google Drive tool param schemas MUST set additionalProperties: false and
+// use "integer" (not "number") for count-style fields. When this regressed in
+// the past, GPT-5.5 on Azure consumed input tokens and emitted 0 output tokens
+// (no error) the moment google-drive was loaded.
+// -----------------------------------------------------------------------------
+
+test("google drive tool schemas are strict-mode compatible", () => {
+  for (const tool of [driveUpload, driveList, driveRead, driveMove]) {
+    assert.equal(tool.definition.type, "function");
+    if (tool.definition.type !== "function") continue;
+    const params = tool.definition.function.parameters as {
+      type: string;
+      properties: Record<string, { type: string }>;
+      additionalProperties?: boolean;
+    };
+    assert.equal(
+      params.additionalProperties,
+      false,
+      `${tool.name} parameters must set additionalProperties: false ` +
+        "(Azure GPT-5 strict mode rejects schemas without it and returns 0 output tokens silently)",
+    );
+    for (const [propName, propSchema] of Object.entries(params.properties)) {
+      assert.notEqual(
+        propSchema.type,
+        "number",
+        `${tool.name}.${propName} uses type:"number" — use type:"integer" for count-style fields ` +
+          "(Azure strict mode prefers integer)",
+      );
+    }
+  }
+});

@@ -129,7 +129,10 @@ export const refreshDriveStorageIfStale = internalAction({
         await ctx.runMutation(internal.knowledge_base.mutations.updateDriveAttachmentStorage, {
           fileAttachmentId: args.fileAttachmentId,
           storageId: grant.cachedStorageId,
+          filename: grant.name,
+          mimeType: grant.mimeType,
           sizeBytes: grant.cachedSizeBytes,
+          externalModifiedTime: grant.cachedModifiedTime,
           lastRefreshedAt: Date.now(),
         });
         return { storageId: grant.cachedStorageId, refreshed: true };
@@ -144,7 +147,10 @@ export const refreshDriveStorageIfStale = internalAction({
       await ctx.runMutation(internal.knowledge_base.mutations.updateDriveAttachmentStorage, {
         fileAttachmentId: args.fileAttachmentId,
         storageId: cached.storageId,
+        filename: cached.name,
+        mimeType: cached.mimeType,
         sizeBytes: cached.sizeBytes,
+        externalModifiedTime: cached.modifiedTime,
         lastRefreshedAt: Date.now(),
       });
     }

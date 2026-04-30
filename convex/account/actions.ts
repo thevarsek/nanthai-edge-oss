@@ -56,10 +56,13 @@ const PURGE_ORDER = [
   "integrationRequestGates",
   "userCapabilities",
   "generatedCharts",
+  "documentVersions",
   // User-scoped skills (scope="user", ownerUserId)
   "skills",
   // Storage-bearing tables (blobs cleaned up during batch delete)
+  "documents",
   "generatedFiles",
+  "generatedMedia",
   "fileAttachments",
   // Google Drive grant cache after storage owners so shared cached blobs are not
   // deleted before rows that still reference them.

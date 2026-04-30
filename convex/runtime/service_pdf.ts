@@ -94,6 +94,14 @@ export async function readPdfFromStorage(
   return readPdfFromStorageInternal(toolCtx, storageId, true);
 }
 
+export async function readPdfBlob(
+  toolCtx: ToolExecutionContext,
+  blob: Blob,
+  filename: string,
+): Promise<ReadPdfResult> {
+  return readPdfBlobInternal(toolCtx, blob, filename, true);
+}
+
 async function readPdfFromStorageInternal(
   toolCtx: ToolExecutionContext,
   storageId: string,
@@ -104,9 +112,32 @@ async function readPdfFromStorageInternal(
     "python",
     PDF_TIMEOUT_MS,
   );
-  const { sandbox, workspace } = runtime;
   const { record, blob } = await resolveOwnedStorageFile(toolCtx, storageId);
-  const pdfPath = path.posix.join(workspace.inputs, record.filename.replace(/[^\w.-]+/g, "_"));
+  return readPdfBlobWithRuntime(runtime, blob, record.filename, includeText);
+}
+
+async function readPdfBlobInternal(
+  toolCtx: ToolExecutionContext,
+  blob: Blob,
+  filename: string,
+  includeText: boolean,
+): Promise<ReadPdfResult> {
+  const runtime = await getOrCreatePersistentRuntime(
+    toolCtx,
+    "python",
+    PDF_TIMEOUT_MS,
+  );
+  return readPdfBlobWithRuntime(runtime, blob, filename, includeText);
+}
+
+async function readPdfBlobWithRuntime(
+  runtime: PersistentPdfRuntime,
+  blob: Blob,
+  filename: string,
+  includeText: boolean,
+): Promise<ReadPdfResult> {
+  const { sandbox, workspace } = runtime;
+  const pdfPath = path.posix.join(workspace.inputs, filename.replace(/[^\w.-]+/g, "_"));
   await sandbox.writeFiles([{ path: pdfPath, content: new Uint8Array(await blob.arrayBuffer()) }]);
 
   const python = includeText
@@ -136,8 +167,8 @@ result = {
     "filename": payload["filename"],
     "storageId": payload["storageId"],
     "pageCount": len(reader.pages),
-    "text": full_text[:20000],
-    "textTruncated": len(full_text) > 20000,
+    "text": full_text,
+    "textTruncated": False,
     "fullTextCharCount": len(full_text),
     "pages": pages,
     "metadata": {k: str(v) for k, v in (reader.metadata or {}).items()},
@@ -171,7 +202,7 @@ with open(result_path, "w", encoding="utf-8") as f:
 
   const { payload } = await runPdfProgram(
     runtime,
-    { pdfPath, filename: record.filename, storageId },
+    { pdfPath, filename, storageId: "document-version" },
     python,
     ["pypdf"],
   );

@@ -107,6 +107,11 @@ export async function callOpenRouterStreaming(
           const delay = emptyStreamBackoffs[attempt] ?? 1500;
           console.warn("[openrouter:stream] empty response, retrying", {
             model: currentModel, attempt: attempt + 1, delayMs: delay, msgCount,
+            toolNames: currentParams.tools?.map((tool) =>
+              tool.type === "function" ? tool.function.name : tool.type
+            ),
+            toolChoice: currentParams.toolChoice,
+            provider: currentParams.provider,
           });
           await deps.sleep(delay);
           attempt++;
@@ -122,6 +127,11 @@ export async function callOpenRouterStreaming(
 
         console.error("[openrouter:stream] all retries exhausted, returning empty", {
           model: currentModel, attempts: attempt + 1, durationMs: Date.now() - startTime, msgCount,
+          toolNames: currentParams.tools?.map((tool) =>
+            tool.type === "function" ? tool.function.name : tool.type
+          ),
+          toolChoice: currentParams.toolChoice,
+          provider: currentParams.provider,
         });
         return result;
       }

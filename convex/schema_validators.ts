@@ -16,6 +16,53 @@ export const messageRole = v.union(
   v.literal("system"),
 );
 
+export const documentSource = v.union(
+  v.literal("upload"),
+  v.literal("generated"),
+  v.literal("drive"),
+);
+
+export const documentStatus = v.union(
+  v.literal("ready"),
+  v.literal("extracting"),
+  v.literal("error"),
+);
+
+export const documentVersionSource = v.union(
+  v.literal("upload"),
+  v.literal("generated"),
+  v.literal("drive_import"),
+  v.literal("drive_refresh"),
+  v.literal("user_upload"),
+  v.literal("assistant_edit"),
+);
+
+export const documentExtractionStatus = v.union(
+  v.literal("pending"),
+  v.literal("extracting"),
+  v.literal("ready"),
+  v.literal("error"),
+  v.literal("unsupported"),
+);
+
+export const documentSyncState = v.union(
+  v.literal("current"),
+  v.literal("updated_from_drive"),
+  v.literal("external_update_available"),
+  v.literal("local_ahead"),
+  v.literal("conflict"),
+);
+
+export const documentCitation = v.object({
+  ref: v.number(),
+  documentId: v.id("documents"),
+  versionId: v.optional(v.id("documentVersions")),
+  filename: v.string(),
+  quote: v.string(),
+  page: v.optional(v.union(v.number(), v.string())),
+  locator: v.optional(v.string()),
+});
+
 /** Chat mode. */
 export const chatMode = v.union(v.literal("chat"), v.literal("ideascape"));
 

@@ -21,6 +21,12 @@ itself. Tools cannot enumerate the user's entire Drive.
 - Upload generated files to Drive
 - Move shared files between folders that are also accessible to NanthAI
 
+## Reading Drive files
+
+- For Google Docs / Sheets / Slides and plain-text formats (txt, csv, json, md), \`drive_read\` returns the file's text directly.
+- **For binary files (PDF, DOCX, images, etc.), \`drive_read\` only returns metadata — it never returns text content for binaries.** When NanthAI has already imported the picked Drive file into the current chat, \`drive_read\`'s response will include a \`scopedDocument\` field with a \`doc_id\` (e.g. \`doc-0\`). When you see that, call \`read_document\` with that \`doc_id\` to get the extracted text, or \`find_in_document\` for keyword search. **Do not** attempt to download the Drive file from a public URL or claim the content cannot be read — the document workspace already has the extracted text.
+- If \`drive_read\` returns a binary file with no \`scopedDocument\` field, call \`list_documents\` first to see if the file is in the chat workspace under a different handle, and read it from there. Match by \`driveFileId\` (which equals the Drive \`fileId\`) or by filename.
+
 ## Guidance
 
 - Be explicit about which file or folder is being used.

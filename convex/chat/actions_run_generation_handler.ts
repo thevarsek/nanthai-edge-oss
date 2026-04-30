@@ -3,7 +3,10 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { failPendingParticipants } from "./actions_run_generation_failures";
 import { RunGenerationArgs } from "./actions_run_generation_types";
-import { attachmentTriggeredReadToolNames } from "./helpers_attachment_utils";
+import {
+  attachmentTriggeredDocumentWorkspaceToolNames,
+  attachmentTriggeredReadToolNames,
+} from "./helpers_attachment_utils";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { resolveEffectiveIntegrations } from "../skills/resolver";
 import type { GenerationContext } from "./queries_generation_context";
@@ -17,6 +20,7 @@ const defaultRunGenerationHandlerDeps = {
   },
   tools: {
     attachmentTriggeredReadToolNames,
+    attachmentTriggeredDocumentWorkspaceToolNames,
   },
 };
 
@@ -69,9 +73,14 @@ export async function runGenerationHandler(
     );
 
     const isProUser = genCtx.isPro;
-    const directToolNames = deps.tools.attachmentTriggeredReadToolNames(
-      genCtx.currentUserMessage?.attachments as any,
-    );
+    const directToolNames = Array.from(new Set([
+      ...deps.tools.attachmentTriggeredReadToolNames(
+        genCtx.currentUserMessage?.attachments as any,
+      ),
+      ...deps.tools.attachmentTriggeredDocumentWorkspaceToolNames(
+        genCtx.currentUserMessage?.attachments as any,
+      ),
+    ]));
     const connectedIntegrationIds = genCtx.connectedIntegrationIds;
     const chatDoc = genCtx.chatDoc;
     const userDefaults = genCtx.skillIntegrationDefaults;

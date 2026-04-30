@@ -68,10 +68,15 @@ export const attachPickedDriveFiles = action({
 
     // Persist Drive provenance with each attachment so KB listings and the
     // lazy refresh path can find these rows by `driveFileId` + `modifiedTime`.
-    const persisted = attachments.map((attachment, idx) => ({
-      ...attachment,
-      driveFileId: attachment.fileId || fileIds[idx],
-    }));
+    // NOTE: `CachedAttachment.fileId` must be renamed to `driveFileId` here —
+    // the mutation validator does not accept a raw `fileId` field.
+    const persisted = attachments.map((attachment, idx) => {
+      const { fileId, ...rest } = attachment;
+      return {
+        ...rest,
+        driveFileId: fileId || fileIds[idx],
+      };
+    });
 
     const resume = await ctx.runMutation(internal.drive_picker.mutations.appendAttachmentsAndMarkResuming, {
       batchId: args.batchId,

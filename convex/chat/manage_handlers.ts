@@ -72,6 +72,27 @@ async function assertOwnedFolder(
   }
 }
 
+async function syncDocumentFoldersForChat(
+  ctx: MutationCtx,
+  userId: string,
+  chatId: Id<"chats">,
+  folderId: string | undefined,
+): Promise<void> {
+  if (typeof ctx.db.query !== "function") return;
+  const docs = await ctx.db
+    .query("documents")
+    .withIndex("by_origin_chat", (q) => q.eq("originChatId", chatId))
+    .collect();
+  const now = Date.now();
+  for (const doc of docs) {
+    if (doc.userId !== userId || doc.originChatId !== chatId) continue;
+    await ctx.db.patch(doc._id, {
+      folderId: folderId as Id<"folders"> | undefined,
+      updatedAt: now,
+    });
+  }
+}
+
 function resolveReasoningEffortOverride(
   includeReasoningOverride: boolean | null | undefined,
   reasoningEffortOverride: string | null | undefined,
@@ -206,6 +227,9 @@ export async function updateChatHandler(
   }
 
   await ctx.db.patch(args.chatId, patch);
+  if (args.folderId !== undefined) {
+    await syncDocumentFoldersForChat(ctx, userId, args.chatId, args.folderId || undefined);
+  }
 }
 
 export interface SwitchBranchAtForkArgs extends Record<string, unknown> {
@@ -326,6 +350,7 @@ export async function bulkMoveChatsHandler(
     await ctx.db.patch(chatId, {
       folderId: args.folderId || undefined,
     });
+    await syncDocumentFoldersForChat(ctx, userId, chatId, args.folderId || undefined);
   }
 }
 

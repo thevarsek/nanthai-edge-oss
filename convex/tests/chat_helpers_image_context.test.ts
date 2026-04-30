@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Id } from "../_generated/dataModel";
-import { buildRequestMessages } from "../chat/helpers";
+import { buildCurrentDatePrompt, buildRequestMessages } from "../chat/helpers";
 import type { ContextMessage } from "../chat/helpers_types";
 import type { ContentPart, OpenRouterMessage } from "../lib/openrouter";
 
@@ -12,6 +12,83 @@ function messageParts(message: OpenRouterMessage): ContentPart[] {
   }
   return message.content ?? [];
 }
+
+test("buildCurrentDatePrompt formats UTC date/time grounding", () => {
+  const prompt = buildCurrentDatePrompt(new Date("2026-04-30T12:34:56.000Z"));
+
+  assert.equal(
+    prompt,
+    "Today is 30/04/2026. Current date/time: 2026-04-30T12:34:56.000Z (UTC). Use this to resolve relative dates such as today, yesterday, last week, and this week.",
+  );
+});
+
+test("buildRequestMessages omits volatile date grounding by default for cacheable plain chat", () => {
+  const chatId = "chat_date" as unknown as Id<"chats">;
+  const user = "m_user_date" as unknown as Id<"messages">;
+  const pending = "m_pending_date" as unknown as Id<"messages">;
+
+  const requestMessages = buildRequestMessages({
+    messages: [
+      {
+        _id: user,
+        chatId,
+        role: "user",
+        content: "What day is it?",
+        parentMessageIds: [],
+        status: "completed",
+        createdAt: 1,
+      },
+      {
+        _id: pending,
+        chatId,
+        role: "assistant",
+        content: "",
+        parentMessageIds: [user],
+        status: "pending",
+        createdAt: 2,
+      },
+    ],
+    excludeMessageId: pending,
+  });
+
+  assert.equal(requestMessages[0]?.role, "user");
+  assert.doesNotMatch(JSON.stringify(requestMessages), /Current date\/time/);
+});
+
+test("buildRequestMessages includes injected date grounding when caller requests it", () => {
+  const chatId = "chat_date_enabled" as unknown as Id<"chats">;
+  const user = "m_user_date_enabled" as unknown as Id<"messages">;
+  const pending = "m_pending_date_enabled" as unknown as Id<"messages">;
+
+  const requestMessages = buildRequestMessages({
+    messages: [
+      {
+        _id: user,
+        chatId,
+        role: "user",
+        content: "What is on my calendar tomorrow?",
+        parentMessageIds: [],
+        status: "completed",
+        createdAt: 1,
+      },
+      {
+        _id: pending,
+        chatId,
+        role: "assistant",
+        content: "",
+        parentMessageIds: [user],
+        status: "pending",
+        createdAt: 2,
+      },
+    ],
+    excludeMessageId: pending,
+    dateContext: buildCurrentDatePrompt(new Date("2026-04-30T12:34:56.000Z")),
+  });
+
+  assert.equal(requestMessages[0]?.role, "system");
+  assert.match(String(requestMessages[0]?.content), /^Today is 30\/04\/2026\./);
+  assert.match(String(requestMessages[0]?.content), /Current date\/time: 2026-04-30T12:34:56\.000Z/);
+});
 
 test("multi-model previous-turn images are attached to the next user turn", () => {
   const chatId = "chat_1" as unknown as Id<"chats">;

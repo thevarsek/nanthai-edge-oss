@@ -41,7 +41,14 @@ Use this skill when the task is specifically about PDF files.
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["read_pdf", "generate_pdf", "edit_pdf"],
-  requiredToolProfiles: ["persistentRuntime"],
+  requiredToolIds: [
+    "read_pdf",
+    "generate_pdf",
+    "edit_pdf",
+    "list_documents",
+    "read_document",
+    "find_in_document",
+  ],
+  requiredToolProfiles: ["docs", "persistentRuntime"],
   requiredIntegrationIds: [],
 };

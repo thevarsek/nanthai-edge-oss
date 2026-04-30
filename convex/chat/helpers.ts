@@ -24,6 +24,16 @@ import {
   truncateMessages,
 } from "./helpers_utils";
 
+export function buildCurrentDatePrompt(now: Date = new Date()): string {
+  const date = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(now);
+  return `Today is ${date}. Current date/time: ${now.toISOString()} (UTC). Use this to resolve relative dates such as today, yesterday, last week, and this week.`;
+}
+
 // -- Main entry point ---------------------------------------------------------
 
 /**
@@ -40,6 +50,7 @@ export function buildRequestMessages(
     excludeMessageId,
     systemPrompt,
     memoryContext,
+    dateContext,
     expandMultiModelGroups = true,
     maxContextTokens = 75_000,
   } = args;
@@ -86,6 +97,10 @@ export function buildRequestMessages(
 
   if (systemPrompt) {
     result.push({ role: "system", content: systemPrompt });
+  }
+
+  if (dateContext) {
+    result.push({ role: "system", content: dateContext });
   }
 
   if (memoryContext) {

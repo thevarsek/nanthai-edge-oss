@@ -27,6 +27,7 @@ export interface ChatListItemData {
   isPinned?: boolean;
   pinnedAt?: number;
   folderId?: string;
+  folderName?: string;
   lastMessagePreview?: string;
   sourceJobName?: string;
   participantSummary: ChatParticipantSummary[];
@@ -359,6 +360,12 @@ export function ChatListItem({
             <div className="flex items-center gap-1 mt-0.5">
               <Clock size={10} className="text-foreground/40" />
               <span className="text-[11px] text-foreground/40 truncate">{chat.sourceJobName}</span>
+            </div>
+          )}
+          {!chat.sourceJobName && chat.folderName && (
+            <div className="flex items-center gap-1 mt-0.5">
+              <Folder size={10} className="text-foreground/40" />
+              <span className="text-[11px] text-foreground/40 truncate">{chat.folderName}</span>
             </div>
           )}
           {preview && !chat.sourceJobName && (

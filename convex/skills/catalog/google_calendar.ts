@@ -1,8 +1,6 @@
 import { SystemSkillSeedData } from "../mutations_seed";
 
-// Archived: Calendar Scheduler skill now covers Google Calendar as a unified
-// cross-provider skill. Additionally paused per M24 (Google scope approval pending).
-// Reinstate when Google integration is re-enabled and if a standalone skill is needed.
+// Archived: Google Calendar is currently exposed through google-workspace.
 export const GOOGLE_CALENDAR_SKILL: SystemSkillSeedData = {
   slug: "google-calendar",
   name: "Google Calendar",
@@ -21,6 +19,7 @@ Use this skill for tasks that require Google Calendar.
 ## Guidance
 
 - Confirm dates, times, and timezone-sensitive details before changing events.
+- Resolve relative dates such as "today", "tomorrow", "this week", and "last week" from the current date/time context supplied in the system prompt. Use explicit ISO 8601 ranges for Calendar listing tools.
 - Summarize what was created or removed so the user can verify it quickly.
 - If Calendar listing succeeds in the current run, assume Calendar action tools are available too when this skill is loaded and the Calendar integration is active.
 - Do not claim Calendar action tools are unavailable without first checking whether the needed Calendar tool can be called.
