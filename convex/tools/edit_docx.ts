@@ -30,6 +30,7 @@ import {
   TableOfContents,
   convertInchesToTwip,
   ShadingType,
+  TableLayoutType,
 } from "docx";
 import { extractDocxContent } from "./docx_reader";
 import { createTool } from "./registry";
@@ -58,6 +59,8 @@ interface DocxMargins {
   bottom?: number;
   left?: number;
 }
+
+const A4_WIDTH_TWIPS = 11906;
 
 // ---------------------------------------------------------------------------
 // Inline formatting parser (same as generate_docx)
@@ -92,11 +95,36 @@ function parseInlineFormatting(
 // Table builder (same as generate_docx)
 // ---------------------------------------------------------------------------
 
-function buildTable(input: DocxTableInput): Table {
+function normalizeTable(input: DocxTableInput): DocxTableInput | undefined {
+  const headers = Array.isArray(input.headers) ? input.headers.map(String) : [];
+  if (headers.length === 0) return undefined;
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  const normalizedRows = rows.map((row) => {
+    const raw = Array.isArray(row) ? row : [];
+    return headers.map((_, index) => {
+      const value = raw[index];
+      return value == null ? "" : String(value);
+    });
+  });
+  const columnWidths = input.columnWidths && input.columnWidths.length === headers.length
+    ? input.columnWidths
+    : undefined;
+  return { headers, rows: normalizedRows, columnWidths };
+}
+
+function scaledColumnWidths(input: DocxTableInput, tableWidthTwips: number): number[] {
   const numCols = input.headers.length;
-  const colWidths = input.columnWidths && input.columnWidths.length === numCols
-    ? input.columnWidths.map((w) => convertInchesToTwip(w))
-    : null;
+  const rawWidths = input.columnWidths && input.columnWidths.length === numCols
+    ? input.columnWidths.map((w) => Math.max(1, convertInchesToTwip(w)))
+    : Array.from({ length: numCols }, () => Math.floor(tableWidthTwips / numCols));
+  const total = rawWidths.reduce((sum, width) => sum + width, 0);
+  if (total <= tableWidthTwips) return rawWidths;
+  return rawWidths.map((width) => Math.max(1, Math.floor((width / total) * tableWidthTwips)));
+}
+
+function buildTable(input: DocxTableInput, tableWidthTwips: number): Table {
+  const numCols = input.headers.length;
+  const colWidths = scaledColumnWidths(input, tableWidthTwips);
 
   const headerCells = input.headers.map((h, i) =>
     new TableCell({
@@ -104,7 +132,7 @@ function buildTable(input: DocxTableInput): Table {
         children: [new TextRun({ text: h, bold: true, font: "Calibri", size: 22, color: "FFFFFF" })],
         alignment: AlignmentType.LEFT,
       })],
-      width: colWidths ? { size: colWidths[i], type: WidthType.DXA } : undefined,
+      width: { size: colWidths[i], type: WidthType.DXA },
       shading: { type: ShadingType.SOLID, color: "2C3E50", fill: "2C3E50" },
     }),
   );
@@ -116,7 +144,7 @@ function buildTable(input: DocxTableInput): Table {
           children: [new Paragraph({
             children: [new TextRun({ text: cell ?? "", font: "Calibri", size: 22 })],
           })],
-          width: colWidths ? { size: colWidths[i], type: WidthType.DXA } : undefined,
+          width: { size: colWidths[i], type: WidthType.DXA },
         }),
       ),
     }),
@@ -127,7 +155,9 @@ function buildTable(input: DocxTableInput): Table {
       new TableRow({ children: headerCells, tableHeader: true }),
       ...dataRows,
     ],
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: tableWidthTwips, type: WidthType.DXA },
+    columnWidths: colWidths,
+    layout: TableLayoutType.FIXED,
   });
 }
 
@@ -250,6 +280,10 @@ export const editDocx = createTool({
     const headerText = (args.headerText as string) || "";
     const showPageNumbers = (args.showPageNumbers as boolean) ?? false;
     const includeToc = (args.includeToc as boolean) ?? false;
+    const tableWidthTwips = Math.max(
+      2880,
+      A4_WIDTH_TWIPS - convertInchesToTwip(margins.left!) - convertInchesToTwip(margins.right!),
+    );
 
     const HEADING_LEVELS = [
       HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3,
@@ -295,8 +329,11 @@ export const editDocx = createTool({
       }
 
       if (section.table && Array.isArray(section.table.headers) && Array.isArray(section.table.rows)) {
-        children.push(buildTable(section.table));
-        children.push(new Paragraph({ spacing: { after: 120 } }));
+        const table = normalizeTable(section.table);
+        if (table) {
+          children.push(buildTable(table, tableWidthTwips));
+          children.push(new Paragraph({ spacing: { after: 120 } }));
+        }
       }
     }
 
@@ -350,6 +387,7 @@ export const editDocx = createTool({
     const newStorageId = await toolCtx.ctx.storage.store(blob);
     const safeTitle = sanitizeFilename(title, "document");
     const filename = `${safeTitle}.docx`;
+    const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     const siteUrl = process.env.CONVEX_SITE_URL;
     const downloadUrl = siteUrl
@@ -364,13 +402,18 @@ export const editDocx = createTool({
       success: true,
       data: {
         originalStorageId: storageId,
+        storageId: newStorageId,
         newStorageId,
         downloadUrl,
         filename,
+        mimeType,
+        sizeBytes: blob.size,
+        title,
+        summary: `Regenerated document with ${sections.length} section${sections.length === 1 ? "" : "s"}.`,
         originalWordCount,
         newWordCount,
         markdownLink: `[${filename}](${downloadUrl})`,
-        message: `Document edited. Present the download link to the user using markdown: [${filename}](${downloadUrl})`,
+        message: `Document edited. The app will present a document card for ${filename}.`,
       },
     };
   },

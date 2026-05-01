@@ -2852,5 +2852,15 @@
   "inherited": "继承",
   "skill_default_update_failed": "更新技能默认值失败。",
   "integration_default_update_failed": "更新集成默认值失败。",
-  "formatting_document_citations": "正在整理精确的文档引用…"
+  "formatting_document_citations": "正在整理精确的文档引用…",
+  "folder": "文件夹",
+  "saved_document": "已保存文档",
+  "word_document": "Word 文档",
+  "spreadsheet": "电子表格",
+  "presentation": "演示文稿",
+  "pdf": "PDF",
+  "csv": "CSV",
+  "image": "图片",
+  "add": "添加",
+  "add_newly_created_document_next_message": "将新创建的文档添加到下一条消息"
 }

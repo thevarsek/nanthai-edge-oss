@@ -148,10 +148,13 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   /** Raw generated-file metadata — handler inserts rows and derives IDs. */
   generatedFiles?: Array<{
     storageId: Id<"_storage">;
+    originalStorageId?: Id<"_storage">;
     filename: string;
     mimeType: string;
     sizeBytes?: number;
     toolName: string;
+    title?: string;
+    summary?: string;
   }>;
   generatedCharts?: Array<{
     toolName: string;
@@ -176,6 +179,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     page?: number | string;
     locator?: string;
   }>;
+  documentEvents?: DocumentEvent[];
   // M26 — Lyria inline audio
   audioStorageId?: Id<"_storage">;
   audioDurationMs?: number;
@@ -184,6 +188,145 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId?: string;
   terminalErrorCode?: TerminalErrorCode;
+}
+
+type DocumentEvent = {
+  type: "document_created" | "document_updated";
+  documentId: Id<"documents">;
+  versionId: Id<"documentVersions">;
+  storageId: Id<"_storage">;
+  generatedFileId?: Id<"generatedFiles">;
+  filename: string;
+  mimeType: string;
+  title?: string;
+  summary?: string;
+};
+
+type GeneratedFileInput = NonNullable<FinalizeGenerationArgs["generatedFiles"]>[number];
+
+const DOCX_MIME_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+function isDocxGeneratedFile(file: GeneratedFileInput): boolean {
+  return file.mimeType === DOCX_MIME_TYPE || file.filename.toLowerCase().endsWith(".docx");
+}
+
+async function nextDocumentVersionNumber(
+  ctx: MutationCtx,
+  documentId: Id<"documents">,
+): Promise<number> {
+  const latest = await ctx.db
+    .query("documentVersions")
+    .withIndex("by_document", (q) => q.eq("documentId", documentId))
+    .order("desc")
+    .first();
+  return (latest?.versionNumber ?? 0) + 1;
+}
+
+async function createOrUpdateDocumentForGeneratedFile(
+  ctx: MutationCtx,
+  args: {
+    userId: string;
+    chatId: Id<"chats">;
+    generatedFileId: Id<"generatedFiles">;
+    file: GeneratedFileInput;
+  },
+): Promise<DocumentEvent | undefined> {
+  if (!isDocxGeneratedFile(args.file)) return undefined;
+
+  const now = Date.now();
+  const chat = await ctx.db.get(args.chatId);
+  const folderId = chat?.folderId ? chat.folderId as Id<"folders"> : undefined;
+
+  if (args.file.toolName === "edit_docx" && args.file.originalStorageId) {
+    const sourceVersion = await ctx.db
+      .query("documentVersions")
+      .withIndex("by_storage", (q) => q.eq("storageId", args.file.originalStorageId!))
+      .first();
+    const sourceDocument = sourceVersion ? await ctx.db.get(sourceVersion.documentId) : null;
+    if (sourceVersion && sourceDocument && sourceDocument.userId === args.userId) {
+      const versionNumber = await nextDocumentVersionNumber(ctx, sourceDocument._id);
+      const versionId = await ctx.db.insert("documentVersions", {
+        documentId: sourceDocument._id,
+        userId: args.userId,
+        storageId: args.file.storageId,
+        filename: args.file.filename,
+        mimeType: args.file.mimeType,
+        versionNumber,
+        source: "assistant_edit",
+        parentVersionId: sourceDocument.currentVersionId ?? sourceVersion._id,
+        extractionStatus: "pending",
+        createdAt: now,
+      });
+      await ctx.db.patch(sourceDocument._id, {
+        currentVersionId: versionId,
+        sourceStorageId: args.file.storageId,
+        generatedFileId: args.generatedFileId,
+        folderId,
+        status: "ready",
+        updatedAt: now,
+      });
+      await ctx.db.patch(args.generatedFileId, {
+        documentId: sourceDocument._id,
+        documentVersionId: versionId,
+      });
+      return {
+        type: "document_updated",
+        documentId: sourceDocument._id,
+        versionId,
+        storageId: args.file.storageId,
+        generatedFileId: args.generatedFileId,
+        filename: args.file.filename,
+        mimeType: args.file.mimeType,
+        title: args.file.title ?? sourceDocument.title,
+        summary: args.file.summary,
+      };
+    }
+  }
+
+  const documentId = await ctx.db.insert("documents", {
+    userId: args.userId,
+    title: args.file.title ?? args.file.filename,
+    filename: args.file.filename,
+    mimeType: args.file.mimeType,
+    source: "generated",
+    originChatId: args.chatId,
+    folderId,
+    sourceStorageId: args.file.storageId,
+    generatedFileId: args.generatedFileId,
+    status: "ready",
+    createdAt: now,
+    updatedAt: now,
+  });
+  const versionId = await ctx.db.insert("documentVersions", {
+    documentId,
+    userId: args.userId,
+    storageId: args.file.storageId,
+    filename: args.file.filename,
+    mimeType: args.file.mimeType,
+    versionNumber: 1,
+    source: "generated",
+    extractionStatus: "pending",
+    createdAt: now,
+  });
+  await ctx.db.patch(documentId, {
+    currentVersionId: versionId,
+    updatedAt: now,
+  });
+  await ctx.db.patch(args.generatedFileId, {
+    documentId,
+    documentVersionId: versionId,
+  });
+  return {
+    type: "document_created",
+    documentId,
+    versionId,
+    storageId: args.file.storageId,
+    generatedFileId: args.generatedFileId,
+    filename: args.file.filename,
+    mimeType: args.file.mimeType,
+    title: args.file.title,
+    summary: args.file.summary,
+  };
 }
 
 export async function finalizeGenerationHandler(
@@ -265,6 +408,7 @@ export async function finalizeGenerationHandler(
   if (args.documentCitations && args.documentCitations.length > 0) {
     msgPatch.documentCitations = args.documentCitations;
   }
+  const documentEvents: DocumentEvent[] = args.documentEvents ? [...args.documentEvents] : [];
 
   // M26: Lyria inline audio — persist audio fields directly onto the message.
   if (args.audioStorageId) {
@@ -290,9 +434,17 @@ export async function finalizeGenerationHandler(
         createdAt: now,
       });
       fileIds.push(id);
+      const event = await createOrUpdateDocumentForGeneratedFile(ctx, {
+        userId: args.userId,
+        chatId: args.chatId,
+        generatedFileId: id,
+        file,
+      });
+      if (event) documentEvents.push(event);
     }
   }
   if (fileIds && fileIds.length > 0) msgPatch.generatedFileIds = fileIds;
+  if (documentEvents.length > 0) msgPatch.documentEvents = documentEvents;
 
   let chartIds = args.generatedChartIds;
   if (args.generatedCharts && args.generatedCharts.length > 0) {

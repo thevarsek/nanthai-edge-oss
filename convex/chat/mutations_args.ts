@@ -2,6 +2,7 @@ import { v, type PropertyValidators } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import {
   documentCitation,
+  documentEvent,
   memoryCategory,
   memoryRetrievalMode,
   memoryScopeType,
@@ -190,10 +191,13 @@ export const finalizeGenerationArgs = {
   generatedChartIds: v.optional(v.array(v.id("generatedCharts"))),
   generatedFiles: v.optional(v.array(v.object({
     storageId: v.id("_storage"),
+    originalStorageId: v.optional(v.id("_storage")),
     filename: v.string(),
     mimeType: v.string(),
     sizeBytes: v.optional(v.number()),
     toolName: v.string(),
+    title: v.optional(v.string()),
+    summary: v.optional(v.string()),
   }))),
   generatedCharts: v.optional(v.array(v.object({
     toolName: v.string(),
@@ -219,6 +223,7 @@ export const finalizeGenerationArgs = {
     title: v.string(),
   }))),
   documentCitations: v.optional(v.array(documentCitation)),
+  documentEvents: v.optional(v.array(documentEvent)),
   // M26 — Lyria music generation: inline audio attached during generation
   audioStorageId: v.optional(v.id("_storage")),
   audioDurationMs: v.optional(v.number()),

@@ -363,40 +363,161 @@ function buildFinalizeCtx(overrides: {
   messageContent?: string;
   messageStatus?: string;
   jobStatus?: string;
+  chat?: Record<string, unknown>;
+  sourceVersion?: Record<string, unknown>;
+  sourceDocument?: Record<string, unknown>;
+  latestVersion?: Record<string, unknown>;
 } = {}) {
   const mid = overrides.messageId ?? "msg_v";
   const jid = overrides.jobId ?? "job_v";
   const cid = overrides.chatId ?? "chat_v";
 
   const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const inserts: Array<{ table: string; value: Record<string, unknown>; id: string }> = [];
 
   const ctx = {
     db: {
       get: async (id: string) => {
         if (id === jid) return { _id: id, status: overrides.jobStatus ?? "streaming" };
         if (id === mid) return { _id: id, modelId: "m", content: overrides.messageContent ?? "", status: overrides.messageStatus ?? "pending" };
-        if (id === cid) return { _id: id };
+        if (id === cid) return { _id: id, ...(overrides.chat ?? {}) };
+        if (id === overrides.sourceDocument?._id) return overrides.sourceDocument;
         return null;
       },
-      query: (_table: string) => ({
-        withIndex: () => ({
-          collect: async () => [],
-          first: async () => null,
-        }),
+      query: (table: string) => ({
+        withIndex: (indexName: string) => {
+          const first = async () => {
+            if (table === "documentVersions" && indexName === "by_storage") {
+              return overrides.sourceVersion ?? null;
+            }
+            if (table === "documentVersions" && indexName === "by_document") {
+              return overrides.latestVersion ?? null;
+            }
+            return null;
+          };
+          return {
+            collect: async () => [],
+            first,
+            order: () => ({ first }),
+          };
+        },
       }),
       patch: async (id: string, value: Record<string, unknown>) => {
         patches.push({ id, value });
       },
       delete: async () => undefined,
-      insert: async () => "usage_1",
+      insert: async (table: string, value: Record<string, unknown>) => {
+        const id = `${table}_${inserts.length + 1}`;
+        inserts.push({ table, value, id });
+        return id;
+      },
     },
     scheduler: {
       runAfter: async () => undefined,
     },
   } as any;
 
-  return { ctx, patches, mid, jid, cid };
+  return { ctx, patches, inserts, mid, jid, cid };
 }
+
+test("finalizeGenerationHandler creates document rows and document_created for generated DOCX files", async () => {
+  const { ctx, patches, inserts, mid, jid, cid } = buildFinalizeCtx({
+    chat: { folderId: "folder_1" },
+  });
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: mid as any,
+    jobId: jid as any,
+    chatId: cid as any,
+    content: "Document ready.",
+    status: "completed",
+    userId: "user_1",
+    generatedFiles: [{
+      storageId: "storage_docx" as any,
+      filename: "Agreement.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: 12000,
+      toolName: "generate_docx",
+      title: "Agreement",
+      summary: "Generated agreement.",
+    }],
+  });
+
+  assert.deepEqual(inserts.map((entry) => entry.table), [
+    "generatedFiles",
+    "documents",
+    "documentVersions",
+  ]);
+  const generatedFilePatch = patches.find((entry) => entry.id === "generatedFiles_1");
+  assert.equal(generatedFilePatch?.value.documentId, "documents_2");
+  assert.equal(generatedFilePatch?.value.documentVersionId, "documentVersions_3");
+
+  const messagePatch = patches.find((entry) => entry.id === mid);
+  const events = messagePatch?.value.documentEvents as Array<Record<string, unknown>>;
+  assert.equal(events[0]?.type, "document_created");
+  assert.equal(events[0]?.documentId, "documents_2");
+  assert.equal(events[0]?.versionId, "documentVersions_3");
+  assert.deepEqual(messagePatch?.value.generatedFileIds, ["generatedFiles_1"]);
+});
+
+test("finalizeGenerationHandler creates assistant_edit version and document_updated for edited DOCX files", async () => {
+  const { ctx, patches, inserts, mid, jid, cid } = buildFinalizeCtx({
+    sourceVersion: {
+      _id: "version_source",
+      documentId: "doc_source",
+      storageId: "storage_original",
+      versionNumber: 1,
+    },
+    sourceDocument: {
+      _id: "doc_source",
+      userId: "user_1",
+      title: "Source Agreement",
+      currentVersionId: "version_source",
+    },
+    latestVersion: {
+      _id: "version_source",
+      documentId: "doc_source",
+      versionNumber: 1,
+    },
+  });
+
+  await finalizeGenerationHandler(ctx, {
+    messageId: mid as any,
+    jobId: jid as any,
+    chatId: cid as any,
+    content: "Document updated.",
+    status: "completed",
+    userId: "user_1",
+    generatedFiles: [{
+      storageId: "storage_revised" as any,
+      originalStorageId: "storage_original" as any,
+      filename: "Agreement revised.docx",
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      sizeBytes: 13000,
+      toolName: "edit_docx",
+      title: "Revised Agreement",
+      summary: "Edited agreement.",
+    }],
+  });
+
+  assert.deepEqual(inserts.map((entry) => entry.table), [
+    "generatedFiles",
+    "documentVersions",
+  ]);
+  assert.equal(inserts[1]?.value.source, "assistant_edit");
+  assert.equal(inserts[1]?.value.versionNumber, 2);
+  assert.equal(inserts[1]?.value.parentVersionId, "version_source");
+
+  const documentPatch = patches.find((entry) => entry.id === "doc_source");
+  assert.equal(documentPatch?.value.currentVersionId, "documentVersions_2");
+  assert.equal(documentPatch?.value.generatedFileId, "generatedFiles_1");
+
+  const messagePatch = patches.find((entry) => entry.id === mid);
+  const events = messagePatch?.value.documentEvents as Array<Record<string, unknown>>;
+  assert.equal(events[0]?.type, "document_updated");
+  assert.equal(events[0]?.documentId, "doc_source");
+  assert.equal(events[0]?.versionId, "documentVersions_2");
+});
 
 test("finalizeGenerationHandler sets 'Generated video' preview for video-only messages", async () => {
   const { ctx, patches, mid, jid, cid } = buildFinalizeCtx();

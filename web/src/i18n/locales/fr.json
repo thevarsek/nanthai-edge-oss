@@ -2852,5 +2852,15 @@
   "inherited": "Hérité",
   "skill_default_update_failed": "Impossible de mettre à jour la valeur par défaut de la compétence.",
   "integration_default_update_failed": "Impossible de mettre à jour la valeur par défaut de l’intégration.",
-  "formatting_document_citations": "Mise en forme des citations exactes du document…"
+  "formatting_document_citations": "Mise en forme des citations exactes du document…",
+  "folder": "Dossier",
+  "saved_document": "Document enregistré",
+  "word_document": "Document Word",
+  "spreadsheet": "Feuille de calcul",
+  "presentation": "Présentation",
+  "pdf": "PDF",
+  "csv": "CSV",
+  "image": "Image",
+  "add": "Ajouter",
+  "add_newly_created_document_next_message": "Ajouter le document récemment créé au prochain message"
 }

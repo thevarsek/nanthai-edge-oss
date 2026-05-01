@@ -355,6 +355,8 @@ export async function getGeneratedFilesByMessageHandler(
     mimeType: string;
     sizeBytes?: number;
     toolName: string;
+    documentId?: string;
+    documentVersionId?: string;
     createdAt: number;
     downloadUrl: string | null;
   }>
@@ -384,6 +386,8 @@ export async function getGeneratedFilesByMessageHandler(
       mimeType: f.mimeType,
       sizeBytes: f.sizeBytes,
       toolName: f.toolName,
+      documentId: f.documentId,
+      documentVersionId: f.documentVersionId,
       createdAt: f.createdAt,
       downloadUrl: await ctx.storage.getUrl(f.storageId),
     })),

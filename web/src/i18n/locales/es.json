@@ -2852,5 +2852,15 @@
   "inherited": "Heredado",
   "skill_default_update_failed": "No se pudo actualizar el valor predeterminado de la habilidad.",
   "integration_default_update_failed": "No se pudo actualizar el valor predeterminado de la integración.",
-  "formatting_document_citations": "Formateando las citas exactas del documento…"
+  "formatting_document_citations": "Formateando las citas exactas del documento…",
+  "folder": "Carpeta",
+  "saved_document": "Documento guardado",
+  "word_document": "Documento de Word",
+  "spreadsheet": "Hoja de cálculo",
+  "presentation": "Presentación",
+  "pdf": "PDF",
+  "csv": "CSV",
+  "image": "Imagen",
+  "add": "Añadir",
+  "add_newly_created_document_next_message": "Añadir el documento recién creado al siguiente mensaje"
 }

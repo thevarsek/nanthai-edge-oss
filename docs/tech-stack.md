@@ -50,6 +50,7 @@
 | Validation | zod | ^4.3.6 |
 | CalDAV Client | tsdav | ^2.1.8 |
 | Document Generation | docx | ^9.6.0 |
+| Document Extraction | JSZip + custom OOXML/text/PDF readers | Used by document tools and canonical document versions |
 | Presentation Generation | pptxgenjs | ^4.0.1 |
 | Compaction Model | google/gemini-3.1-flash-lite-preview (via OpenRouter) | Used for context compaction in tool-call loops |
 | TTS Model | openai/gpt-audio-mini (via OpenRouter) | Text-to-speech for audio messages (M20) |
@@ -135,4 +136,4 @@ No Node.js runtime needed — all JWT signing and APNs calls run in Convex's def
 
 ---
 
-*Last updated: 2026-04-09 — M27 replaced E2B with three-tier free execution (just-bash, Pyodide, Vercel Sandbox). M20 audio stacks (iOS AVFoundation/Speech, Android MediaRecorder/SpeechRecognizer), and `gpt-audio-mini` TTS model.*
+*Last updated: 2026-04-30 — M33 document generation/document skills added canonical document workspace usage on top of existing OOXML tools. M27 replaced E2B with three-tier free execution (just-bash, Pyodide, Vercel Sandbox). M20 audio stacks (iOS AVFoundation/Speech, Android MediaRecorder/SpeechRecognizer), and `gpt-audio-mini` TTS model.*

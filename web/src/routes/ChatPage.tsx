@@ -485,6 +485,23 @@ export function ChatPage() {
     });
   }, [kbAttachments, isVideoMode, supportsFrameImages, kbVideoRoles]);
 
+  const generatedDocumentSuggestion = useMemo((): ChatAttachment | undefined => {
+    for (const message of [...visibleMessages].reverse()) {
+      if (message.role !== "assistant") continue;
+      const event = [...(message.documentEvents ?? [])].reverse().find((candidate) =>
+        !!candidate.storageId && !!candidate.filename && !!candidate.mimeType
+      );
+      if (!event) continue;
+      return {
+        storageId: event.storageId,
+        name: event.filename,
+        type: attachmentTypeForMime(event.mimeType),
+        mimeType: event.mimeType,
+      };
+    }
+    return undefined;
+  }, [visibleMessages]);
+
   const startResearchPaper = useMutation(api.search.mutations.startResearchPaper);
 
   const validateSendState = useCallback((attachmentCount: number) => {
@@ -838,6 +855,7 @@ export function ChatPage() {
         supportsFrameImages={supportsFrameImages}
         onTextChange={handleComposerTextChange}
         extraAttachments={kbAttachmentsForDisplay}
+        generatedDocumentSuggestion={generatedDocumentSuggestion}
         onRemoveExtra={(i) => {
           const sid = kbAttachmentsForDisplay[i]?.storageId;
           if (sid) overrides.toggleKBFile(sid);

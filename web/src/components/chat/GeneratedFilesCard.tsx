@@ -4,6 +4,7 @@
 
 import { useState } from "react";
 import { useQuery } from "convex/react";
+import type { TFunction } from "i18next";
 import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
@@ -18,6 +19,28 @@ function formatSize(bytes: number): string {
 
 function isImage(mimeType: string): boolean {
   return mimeType.startsWith("image/");
+}
+
+function fileTypeLabel(mimeType: string, t: TFunction): string {
+  if (mimeType.includes("wordprocessingml") || mimeType.includes("msword")) return t("word_document");
+  if (mimeType.includes("spreadsheet") || mimeType.includes("excel")) return t("spreadsheet");
+  if (mimeType.includes("presentation") || mimeType.includes("powerpoint")) return t("presentation");
+  if (mimeType.includes("pdf")) return t("pdf");
+  if (mimeType.includes("csv")) return t("csv");
+  if (mimeType.startsWith("image/")) return t("image");
+  return mimeType.split("/").pop() ?? t("file");
+}
+
+function fileMetadata(
+  file: { mimeType: string; sizeBytes?: number | null; documentId?: unknown; documentVersionId?: unknown },
+  t: TFunction,
+): string {
+  const parts = [
+    file.documentId || file.documentVersionId ? t("saved_document") : undefined,
+    fileTypeLabel(file.mimeType, t),
+    file.sizeBytes != null ? formatSize(file.sizeBytes) : undefined,
+  ].filter(Boolean);
+  return parts.join(" • ");
 }
 
 /** Inline image preview with expand-on-click lightbox. */
@@ -68,6 +91,7 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
 }
 
 export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> }) {
+  const { t } = useTranslation();
   const files = useQuery(api.chat.queries.getGeneratedFilesByMessage, { messageId });
   if (!files?.length) return null;
 
@@ -84,7 +108,7 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
               <ImagePreview url={f.downloadUrl!} filename={f.filename} />
               <div className="flex items-center gap-2 text-[10px] text-muted px-1">
                 <span className="truncate max-w-[200px]">{f.filename}</span>
-                {f.sizeBytes != null && <span>{formatSize(f.sizeBytes)}</span>}
+                <span>{fileMetadata(f, t)}</span>
               </div>
             </div>
           ))}
@@ -109,9 +133,7 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
           </div>
           <div className="flex-1 min-w-0">
             <p className="truncate text-sm font-medium text-foreground">{f.filename}</p>
-            {f.sizeBytes != null && (
-              <p className="text-xs text-muted">{formatSize(f.sizeBytes)}</p>
-            )}
+            <p className="text-xs text-muted">{fileMetadata(f, t)}</p>
           </div>
           <Download size={16} className="text-muted" />
         </a>

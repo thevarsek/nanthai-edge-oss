@@ -19,6 +19,7 @@ import {
   subagentRunStatus,
   drivePickerBatchStatus,
   documentCitation,
+  documentEvent,
   documentExtractionStatus,
   documentSource,
   documentStatus,
@@ -170,6 +171,8 @@ export const coreSchemaTables = {
     }))),
     // M32 — Document Workspace citations. Separate from web-search URL citations.
     documentCitations: v.optional(v.array(documentCitation)),
+    // M33 — First-class generated/updated document cards.
+    documentEvents: v.optional(v.array(documentEvent)),
     subagentsEnabled: v.optional(v.boolean()),
     subagentBatchId: v.optional(v.id("subagentBatches")),
     drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
@@ -417,12 +420,16 @@ export const coreSchemaTables = {
     mimeType: v.string(),
     sizeBytes: v.optional(v.number()),
     toolName: v.string(),
+    documentId: v.optional(v.id("documents")),
+    documentVersionId: v.optional(v.id("documentVersions")),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
     .index("by_chat", ["chatId"])
     .index("by_message", ["messageId"])
-    .index("by_storage", ["storageId"]),
+    .index("by_storage", ["storageId"])
+    .index("by_document", ["documentId"])
+    .index("by_document_version", ["documentVersionId"]),
 
   googleDriveFileGrants: defineTable({
     userId: v.string(),

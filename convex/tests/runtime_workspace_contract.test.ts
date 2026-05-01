@@ -92,7 +92,7 @@ test("workspace registry helpers register the expected tool sets and sanitize fi
   assert.equal(persistent.get("workspace_exec"), undefined);
   assert.ok(full.get("workspace_exec"));
   assert.ok(full.get("data_python_sandbox"));
-  assert.equal(sanitizeFilename(" Q1: Plan?.pptx "), "Q1 Planpptx");
+  assert.equal(sanitizeFilename(" Q1: Plan?.pptx "), "Q1_Plan_pptx");
 });
 
 test("workspace tool wrappers validate args and use the shared sandbox/runtime services", async () => {

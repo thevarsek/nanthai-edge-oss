@@ -63,6 +63,18 @@ export const documentCitation = v.object({
   locator: v.optional(v.string()),
 });
 
+export const documentEvent = v.object({
+  type: v.union(v.literal("document_created"), v.literal("document_updated")),
+  documentId: v.id("documents"),
+  versionId: v.id("documentVersions"),
+  storageId: v.id("_storage"),
+  generatedFileId: v.optional(v.id("generatedFiles")),
+  filename: v.string(),
+  mimeType: v.string(),
+  title: v.optional(v.string()),
+  summary: v.optional(v.string()),
+});
+
 /** Chat mode. */
 export const chatMode = v.union(v.literal("chat"), v.literal("ideascape"));
 

@@ -16,6 +16,17 @@ export interface ContextMessage {
   multiModelGroupId?: string;
   isMultiModelResponse?: boolean;
   imageUrls?: string[];
+  documentEvents?: Array<{
+    type: "document_created" | "document_updated";
+    documentId: string;
+    versionId: string;
+    storageId: string;
+    generatedFileId?: string;
+    filename: string;
+    mimeType: string;
+    title?: string;
+    summary?: string;
+  }>;
   attachments?: Array<{
     type: string;
     url?: string;

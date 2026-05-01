@@ -33,6 +33,9 @@ import {
   TableOfContents,
   convertInchesToTwip,
   ShadingType,
+  PageBreak,
+  PageOrientation,
+  TableLayoutType,
 } from "docx";
 import { createTool } from "./registry";
 import { sanitizeFilename } from "./sanitize";
@@ -49,11 +52,20 @@ interface DocxTableInput {
 }
 
 interface DocxSection {
-  heading: string;
+  heading?: string;
   /** Heading level 1–6. Default 1. */
   headingLevel?: number;
+  /** Alias used by some recipe prompts. */
+  level?: number;
   /** Body text. Newlines separate paragraphs. **bold** and *italic* markers supported. */
-  body: string;
+  body?: string;
+  /** Alias used by Mike-style workflow prompts. */
+  content?: string;
+  /** Render without numbered/heading styling. Useful for contract preambles and signature blocks. */
+  unnumbered?: boolean;
+  /** Start this section on a new page. */
+  pageBreak?: boolean;
+  pageBreakBefore?: boolean;
   /** Optional table to render after body text. */
   table?: DocxTableInput;
 }
@@ -63,6 +75,16 @@ interface DocxMargins {
   right?: number;
   bottom?: number;
   left?: number;
+}
+
+interface SignatureBlockInput {
+  partyName: string;
+  title?: string;
+}
+
+interface NormalizedTableResult {
+  table?: DocxTableInput;
+  warnings: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -80,6 +102,9 @@ const DEFAULTS = {
   showPageNumbers: false,
   includeToc: false,
 };
+
+const A4_WIDTH_TWIPS = 11906;
+const A4_HEIGHT_TWIPS = 16838;
 
 // ---------------------------------------------------------------------------
 // Inline formatting parser: **bold**, *italic*, ***bold+italic***
@@ -119,11 +144,51 @@ function parseInlineFormatting(
 // Table builder
 // ---------------------------------------------------------------------------
 
-function buildTable(input: DocxTableInput): Table {
+function normalizeTable(input: DocxTableInput): NormalizedTableResult {
+  const warnings: string[] = [];
+  const headers = Array.isArray(input.headers) ? input.headers.map(String) : [];
+  if (headers.length === 0) {
+    return {
+      table: undefined,
+      warnings: ["Table skipped because it has no headers."],
+    };
+  }
+  const rows = Array.isArray(input.rows) ? input.rows : [];
+  const normalizedRows = rows.map((row, rowIndex) => {
+    const raw = Array.isArray(row) ? row : [];
+    if (raw.length !== headers.length) {
+      warnings.push(`Table row ${rowIndex + 1} has ${raw.length} cells; expected ${headers.length}.`);
+    }
+    return headers.map((_, colIndex) => {
+      const value = raw[colIndex];
+      return value == null ? "" : String(value);
+    });
+  });
+  const columnWidths = input.columnWidths && input.columnWidths.length === headers.length
+    ? input.columnWidths
+    : undefined;
+  if (input.columnWidths && input.columnWidths.length !== headers.length) {
+    warnings.push("Column widths ignored because they do not match header count.");
+  }
+  return {
+    table: { headers, rows: normalizedRows, columnWidths },
+    warnings,
+  };
+}
+
+function scaledColumnWidths(input: DocxTableInput, tableWidthTwips: number): number[] {
   const numCols = input.headers.length;
-  const colWidths = input.columnWidths && input.columnWidths.length === numCols
-    ? input.columnWidths.map((w) => convertInchesToTwip(w))
-    : null;
+  const rawWidths = input.columnWidths && input.columnWidths.length === numCols
+    ? input.columnWidths.map((w) => Math.max(1, convertInchesToTwip(w)))
+    : Array.from({ length: numCols }, () => Math.floor(tableWidthTwips / numCols));
+  const total = rawWidths.reduce((sum, width) => sum + width, 0);
+  if (total <= tableWidthTwips) return rawWidths;
+  return rawWidths.map((width) => Math.max(1, Math.floor((width / total) * tableWidthTwips)));
+}
+
+function buildTable(input: DocxTableInput, tableWidthTwips: number): Table {
+  const numCols = input.headers.length;
+  const colWidths = scaledColumnWidths(input, tableWidthTwips);
 
   const headerCells = input.headers.map((h, i) =>
     new TableCell({
@@ -131,7 +196,7 @@ function buildTable(input: DocxTableInput): Table {
         children: [new TextRun({ text: h, bold: true, font: "Calibri", size: 22, color: "FFFFFF" })],
         alignment: AlignmentType.LEFT,
       })],
-      width: colWidths ? { size: colWidths[i], type: WidthType.DXA } : undefined,
+      width: { size: colWidths[i], type: WidthType.DXA },
       shading: { type: ShadingType.SOLID, color: "2C3E50", fill: "2C3E50" },
     }),
   );
@@ -143,7 +208,7 @@ function buildTable(input: DocxTableInput): Table {
           children: [new Paragraph({
             children: [new TextRun({ text: cell ?? "", font: "Calibri", size: 22 })],
           })],
-          width: colWidths ? { size: colWidths[i], type: WidthType.DXA } : undefined,
+          width: { size: colWidths[i], type: WidthType.DXA },
         }),
       ),
     }),
@@ -154,8 +219,88 @@ function buildTable(input: DocxTableInput): Table {
       new TableRow({ children: headerCells, tableHeader: true }),
       ...dataRows,
     ],
-    width: { size: 100, type: WidthType.PERCENTAGE },
+    width: { size: tableWidthTwips, type: WidthType.DXA },
+    columnWidths: colWidths,
+    layout: TableLayoutType.FIXED,
   });
+}
+
+function appendNormalizedTable(
+  children: (Paragraph | Table | TableOfContents)[],
+  input: DocxTableInput,
+  tableWidthTwips: number,
+  warnings: string[],
+): void {
+  const normalized = normalizeTable(input);
+  warnings.push(...normalized.warnings);
+  if (!normalized.table) return;
+  children.push(buildTable(normalized.table, tableWidthTwips));
+  children.push(new Paragraph({ spacing: { after: 120 } }));
+}
+
+function sectionLevel(section: DocxSection): number {
+  return Math.max(1, Math.min(6, section.headingLevel ?? section.level ?? 1));
+}
+
+function sectionBody(section: DocxSection): string {
+  return section.body ?? section.content ?? "";
+}
+
+function validateHeadingHierarchy(sections: DocxSection[]): string | undefined {
+  let deepestSeen = 0;
+  for (const section of sections) {
+    if (section.unnumbered || !section.heading) continue;
+    const level = sectionLevel(section);
+    if (level > deepestSeen + 1) {
+      return `Invalid heading hierarchy: "${section.heading}" is level ${level}, but level ${deepestSeen + 1} is required first.`;
+    }
+    deepestSeen = Math.max(deepestSeen, level);
+  }
+  return undefined;
+}
+
+function textParagraph(text: string, fontFamily: string, bodyFontSizeHp: number, lineSpacingTwips: number): Paragraph {
+  return new Paragraph({
+    children: parseInlineFormatting(text, fontFamily, bodyFontSizeHp),
+    spacing: { after: 120, line: lineSpacingTwips },
+  });
+}
+
+function buildDefinedTermsTable(terms: unknown): DocxTableInput | undefined {
+  if (!Array.isArray(terms) || terms.length === 0) return undefined;
+  const rows = terms.map((entry) => {
+    const item = entry as Record<string, unknown>;
+    return [
+      String(item.term ?? ""),
+      String(item.definition ?? ""),
+    ];
+  });
+  return {
+    headers: ["Term", "Definition"],
+    rows,
+    columnWidths: [2.2, 4.3],
+  };
+}
+
+function buildSignatureSections(input: unknown): DocxSection[] {
+  if (!Array.isArray(input) || input.length === 0) return [];
+  return [{
+    heading: "Signatures",
+    unnumbered: true,
+    pageBreak: true,
+    body: input.map((raw) => {
+      const block = raw as SignatureBlockInput;
+      const partyName = block.partyName || "Party";
+      return [
+        partyName,
+        "",
+        "By: ______________________________",
+        "Name: ____________________________",
+        `Title: ${block.title ?? "____________________________"}`,
+        "Date: ____________________________",
+      ].join("\n");
+    }).join("\n\n"),
+  }];
 }
 
 // ---------------------------------------------------------------------------
@@ -168,16 +313,22 @@ export const generateDocx = createTool({
     "Generate a Microsoft Word document (.docx) with structured sections. " +
     "Use for reports, letters, proposals, documentation, or any content the " +
     "user wants as a downloadable Word file. Supports heading levels H1-H6, " +
-    "custom fonts and sizes, tables, page margins, headers/footers with page " +
-    "numbers, table of contents, and bold/italic formatting via **bold** and " +
-    "*italic* markers in body text. All formatting params are optional with " +
-    "sensible defaults.",
+    "unnumbered preambles, page breaks, appendices/exhibits, signature blocks, " +
+    "defined-term tables, custom fonts and sizes, tables, page margins, " +
+    "headers/footers with page numbers, table of contents, landscape layout, " +
+    "and bold/italic formatting via **bold** and *italic* markers in body text. " +
+    "All formatting params are optional with sensible defaults.",
   parameters: {
     type: "object",
     properties: {
       title: {
         type: "string",
         description: "Document title displayed at the top of the document",
+      },
+      documentPurpose: {
+        type: "string",
+        enum: ["memo", "letter", "agreement", "report", "brief", "proposal", "checklist"],
+        description: "Optional purpose hint used for naming and structure.",
       },
       sections: {
         type: "array",
@@ -187,7 +338,7 @@ export const generateDocx = createTool({
           properties: {
             heading: {
               type: "string",
-              description: "Section heading",
+              description: "Section heading. Omit for unnumbered preamble paragraphs.",
             },
             headingLevel: {
               type: "number",
@@ -195,11 +346,31 @@ export const generateDocx = createTool({
                 "Heading level 1-6 (default 1). Use 1 for major sections, " +
                 "2 for subsections, 3+ for deeper nesting.",
             },
+            level: {
+              type: "number",
+              description: "Alias for headingLevel. Useful for template-style prompts.",
+            },
             body: {
               type: "string",
               description:
                 "Section body text. Use newlines to separate paragraphs. " +
                 "Use **text** for bold, *text* for italic, ***text*** for both.",
+            },
+            content: {
+              type: "string",
+              description: "Alias for body. Use body unless following a provided template.",
+            },
+            unnumbered: {
+              type: "boolean",
+              description: "Render this section as plain unnumbered content. Use for preambles, recitals, and signature blocks.",
+            },
+            pageBreak: {
+              type: "boolean",
+              description: "Start this section on a new page.",
+            },
+            pageBreakBefore: {
+              type: "boolean",
+              description: "Alias for pageBreak.",
             },
             table: {
               type: "object",
@@ -226,7 +397,52 @@ export const generateDocx = createTool({
               required: ["headers", "rows"],
             },
           },
-          required: ["heading", "body"],
+          required: [],
+        },
+      },
+      appendices: {
+        type: "array",
+        description: "Optional appendix or exhibit sections appended after the main sections.",
+        items: {
+          type: "object",
+          properties: {
+            heading: { type: "string" },
+            body: { type: "string" },
+            content: { type: "string" },
+            table: {
+              type: "object",
+              properties: {
+                headers: { type: "array", items: { type: "string" } },
+                rows: { type: "array", items: { type: "array", items: { type: "string" } } },
+                columnWidths: { type: "array", items: { type: "number" } },
+              },
+              required: ["headers", "rows"],
+            },
+          },
+        },
+      },
+      definedTerms: {
+        type: "array",
+        description: "Optional defined-term table, rendered with Term and Definition columns near the front.",
+        items: {
+          type: "object",
+          properties: {
+            term: { type: "string" },
+            definition: { type: "string" },
+          },
+          required: ["term", "definition"],
+        },
+      },
+      signatureBlocks: {
+        type: "array",
+        description: "Optional signature blocks. For agreements, put these at the end on a fresh page.",
+        items: {
+          type: "object",
+          properties: {
+            partyName: { type: "string" },
+            title: { type: "string" },
+          },
+          required: ["partyName"],
         },
       },
       // ---- Optional formatting params (all have sensible defaults) ----
@@ -277,6 +493,10 @@ export const generateDocx = createTool({
           "Include a Table of Contents after the title (default false). " +
           "Best for documents with 4+ sections.",
       },
+      landscape: {
+        type: "boolean",
+        description: "Use landscape page orientation. Useful for wide checklists and tables.",
+      },
     },
     required: ["title", "sections"],
   },
@@ -284,6 +504,7 @@ export const generateDocx = createTool({
   execute: async (toolCtx, args) => {
     const title = args.title as string;
     const sections = args.sections as DocxSection[];
+    const documentPurpose = typeof args.documentPurpose === "string" ? args.documentPurpose : undefined;
 
     if (!title || typeof title !== "string") {
       return { success: false, data: null, error: "Missing or invalid 'title'" };
@@ -294,6 +515,10 @@ export const generateDocx = createTool({
         data: null,
         error: "'sections' must be a non-empty array",
       };
+    }
+    const hierarchyError = validateHeadingHierarchy(sections);
+    if (hierarchyError) {
+      return { success: false, data: null, error: hierarchyError };
     }
 
     // Resolve optional params with defaults
@@ -310,6 +535,13 @@ export const generateDocx = createTool({
     const headerText = (args.headerText as string) || "";
     const showPageNumbers = (args.showPageNumbers as boolean) ?? false;
     const includeToc = (args.includeToc as boolean) ?? false;
+    const landscape = (args.landscape as boolean) ?? false;
+    const warnings: string[] = [];
+    const pageWidthTwips = landscape ? A4_HEIGHT_TWIPS : A4_WIDTH_TWIPS;
+    const tableWidthTwips = Math.max(
+      2880,
+      pageWidthTwips - convertInchesToTwip(margins.left!) - convertInchesToTwip(margins.right!),
+    );
 
     // Heading level → HeadingLevel enum
     const HEADING_LEVELS = [
@@ -351,35 +583,81 @@ export const generateDocx = createTool({
       children.push(new Paragraph({ spacing: { after: 200 } })); // spacer
     }
 
-    for (const section of sections) {
-      const level = Math.max(1, Math.min(6, section.headingLevel ?? 1));
+    const definedTermsTable = buildDefinedTermsTable(args.definedTerms);
+    if (definedTermsTable) {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: "Defined Terms", font: headingFont, size: headingSizesHp[0], bold: true })],
+          heading: HeadingLevel.HEADING_1,
+          spacing: { before: 240, after: 120 },
+        }),
+      );
+      appendNormalizedTable(children, definedTermsTable, tableWidthTwips, warnings);
+    }
+
+    const appendices = Array.isArray(args.appendices)
+      ? (args.appendices as DocxSection[]).map((appendix, index) => ({
+        ...appendix,
+        heading: appendix.heading ?? `Appendix ${index + 1}`,
+        headingLevel: appendix.headingLevel ?? 1,
+        pageBreak: appendix.pageBreak ?? index === 0,
+      }))
+      : [];
+    const allSections = [
+      ...sections,
+      ...appendices,
+      ...buildSignatureSections(args.signatureBlocks),
+    ];
+
+    for (const section of allSections) {
+      if (section.pageBreak || section.pageBreakBefore) {
+        children.push(new Paragraph({ children: [new PageBreak()] }));
+      }
+
+      const body = sectionBody(section);
+      if (section.unnumbered) {
+        if (section.heading) {
+          children.push(
+            new Paragraph({
+              children: [new TextRun({ text: section.heading, font: headingFont, size: headingSizesHp[1], bold: true })],
+              spacing: { before: 240, after: 120 },
+            }),
+          );
+        }
+        const bodyLines = body.split("\n").filter((l) => l.trim());
+        for (const line of bodyLines) {
+          children.push(textParagraph(line, fontFamily, bodyFontSizeHp, lineSpacingTwips));
+        }
+        if (section.table && Array.isArray(section.table.headers) && Array.isArray(section.table.rows)) {
+          appendNormalizedTable(children, section.table, tableWidthTwips, warnings);
+        }
+        continue;
+      }
+
+      const level = sectionLevel(section);
       const headingEnum = HEADING_LEVELS[level - 1];
       const headingSizeHp = headingSizesHp[level - 1];
 
       // Section heading
-      children.push(
-        new Paragraph({
-          children: [new TextRun({ text: section.heading, font: headingFont, size: headingSizeHp, bold: true })],
-          heading: headingEnum,
-          spacing: { before: 240, after: 120 },
-        }),
-      );
-
-      // Body paragraphs with inline formatting
-      const bodyLines = (section.body ?? "").split("\n").filter((l) => l.trim());
-      for (const line of bodyLines) {
+      if (section.heading) {
         children.push(
           new Paragraph({
-            children: parseInlineFormatting(line, fontFamily, bodyFontSizeHp),
-            spacing: { after: 120, line: lineSpacingTwips },
+            children: [new TextRun({ text: section.heading, font: headingFont, size: headingSizeHp, bold: true })],
+            heading: headingEnum,
+            spacing: { before: 240, after: 120 },
           }),
         );
       }
 
+      // Body paragraphs with inline formatting
+      const bodyLines = body.split("\n").filter((l) => l.trim());
+      for (const line of bodyLines) {
+        children.push(textParagraph(line, fontFamily, bodyFontSizeHp, lineSpacingTwips));
+      }
+
       // Optional table
       if (section.table && Array.isArray(section.table.headers) && Array.isArray(section.table.rows)) {
-        children.push(buildTable(section.table));
-        children.push(new Paragraph({ spacing: { after: 120 } })); // spacer after table
+        appendNormalizedTable(children, section.table, tableWidthTwips, warnings);
       }
     }
 
@@ -424,6 +702,7 @@ export const generateDocx = createTool({
       sections: [{
         properties: {
           page: {
+            size: landscape ? { orientation: PageOrientation.LANDSCAPE } : undefined,
             margin: {
               top: convertInchesToTwip(margins.top!),
               right: convertInchesToTwip(margins.right!),
@@ -447,6 +726,7 @@ export const generateDocx = createTool({
     // Sanitize filename: replace non-alphanumeric chars with underscores.
     const safeTitle = sanitizeFilename(title, "document");
     const filename = `${safeTitle}.docx`;
+    const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
     // Build a download URL through our HTTP endpoint so the file downloads
     // with the correct filename (Convex storage URLs use opaque IDs).
@@ -461,8 +741,14 @@ export const generateDocx = createTool({
         storageId,
         downloadUrl,
         filename,
+        mimeType,
+        sizeBytes: blob.size,
+        title,
+        documentPurpose,
+        summary: `Generated ${documentPurpose ?? "document"} with ${allSections.length} section${allSections.length === 1 ? "" : "s"}.`,
+        warnings,
         markdownLink: `[${filename}](${downloadUrl})`,
-        message: `Document generated. Present the download link to the user using markdown: [${filename}](${downloadUrl})`,
+        message: `Document generated. The app will present a document card for ${filename}.`,
       },
     };
   },

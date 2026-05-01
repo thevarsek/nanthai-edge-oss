@@ -2852,5 +2852,15 @@
   "inherited": "Ereditato",
   "skill_default_update_failed": "Impossibile aggiornare il valore predefinito della skill.",
   "integration_default_update_failed": "Impossibile aggiornare il valore predefinito dell’integrazione.",
-  "formatting_document_citations": "Formattazione delle citazioni esatte del documento…"
+  "formatting_document_citations": "Formattazione delle citazioni esatte del documento…",
+  "folder": "Cartella",
+  "saved_document": "Documento salvato",
+  "word_document": "Documento Word",
+  "spreadsheet": "Foglio di calcolo",
+  "presentation": "Presentazione",
+  "pdf": "PDF",
+  "csv": "CSV",
+  "image": "Immagine",
+  "add": "Aggiungi",
+  "add_newly_created_document_next_message": "Aggiungi il documento appena creato al prossimo messaggio"
 }

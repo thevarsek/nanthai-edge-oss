@@ -1,17 +1,17 @@
 # Project Structure
 
-> Complete project directory tree for NanthAI Edge (post-M31 plus PR #78 retry semantics overhaul — iOS/Android/Convex/Web).
+> Complete project directory tree for NanthAI Edge (post-M33 document generation — iOS/Android/Convex/Web).
 > SwiftData models removed. Convex backend at repo root. `messageChunks` table removed.
 
 ```
 nanthai-edge/                              # Repository root
 ├── convex/                                 # Convex backend (TypeScript)
-│   ├── schema.ts                           # Database schema (44 app tables, imports 4 table files)
-│   ├── schema_tables_core.ts               # Core table definitions (15 tables incl. generatedFiles/generatedCharts and search state)
+│   ├── schema.ts                           # Database schema (49 app tables, imports 4 table files)
+│   ├── schema_tables_core.ts               # Core table definitions (22 tables incl. messages, documents/documentVersions, generated files/media, search state)
 │   ├── schema_tables_catalog.ts            # Catalog table definitions (9 tables incl. skills, messageQueryEmbeddings, messageMemoryContexts)
 │   ├── schema_tables_user.ts               # User table definitions (14 tables incl. purchaseEntitlements, scheduledJobs, jobRuns, userSecrets, deviceTokens, favorites)
 │   ├── schema_tables_runtime.ts            # Runtime/capability tables (4 tables: userCapabilities, sandboxSessions, sandboxArtifacts, sandboxEvents)
-│   ├── schema_validators.ts                # Shared validators (scheduledJobStatus, scheduledJobRecurrence, jobRunStatus, chatSource, scheduledJobStep, memoryRetrievalMode, memoryScopeType, memorySourceType, subagent statuses, skillScope, skillOrigin, skillVisibility, skillLockState, skillStatus, skillRuntimeMode, skillCompilationStatus, retryContract, retryParticipantSnapshot, retrySearchMode, retryVideoConfig, terminalErrorCode)
+│   ├── schema_validators.ts                # Shared validators (scheduledJobStatus, scheduledJobRecurrence, jobRunStatus, chatSource, document citation/event validators, scheduledJobStep, memoryRetrievalMode, memoryScopeType, memorySourceType, subagent statuses, skillScope, skillOrigin, skillVisibility, skillLockState, skillStatus, skillRuntimeMode, skillCompilationStatus, retryContract, retryParticipantSnapshot, retrySearchMode, retryVideoConfig, terminalErrorCode)
 │   ├── convex.config.ts                    # Convex project config
 │   ├── auth.config.ts                      # Clerk JWT auth config
 │   ├── crons.ts                            # Scheduled jobs — 9 crons (model sync 4h, AA daily 2 UTC, use-cases 6h, stale jobs 15m, memory consolidation daily 3 UTC, stale search phases daily 4 UTC, old job runs daily 5 UTC, markRuntimeCleanupCandidates hourly, cleanupRuntimeSandboxes daily 6 UTC)

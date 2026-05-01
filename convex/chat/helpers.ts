@@ -11,7 +11,7 @@
 // =============================================================================
 
 import { ContentPart, OpenRouterMessage } from "../lib/openrouter";
-import { BuildRequestMessagesArgs } from "./helpers_types";
+import { BuildRequestMessagesArgs, ContextMessage } from "./helpers_types";
 import {
   resolveAllowedImageMessageIds,
   splitMessageAttachmentParts,
@@ -129,6 +129,10 @@ export function buildRequestMessages(
       if (assistantText.length > 0) {
         parts.push({ type: "text", text: assistantText });
       }
+      const documentContext = generatedDocumentContext(msg);
+      if (documentContext) {
+        parts.push({ type: "text", text: documentContext });
+      }
       parts.push(...nonImageParts);
     } else {
       if (content.length > 0) {
@@ -159,6 +163,32 @@ export function buildRequestMessages(
 
   const consolidated = consolidateConsecutiveRoles(result);
   return truncateMessages(consolidated, maxContextTokens);
+}
+
+function generatedDocumentContext(msg: {
+  documentEvents?: ContextMessage["documentEvents"];
+}): string | undefined {
+  const events = msg.documentEvents?.filter((event) =>
+    event.documentId &&
+    event.versionId &&
+    event.storageId &&
+    event.filename
+  );
+  if (!events || events.length === 0) return undefined;
+
+  const lines = events.map((event) => {
+    const action = event.type === "document_updated" ? "Updated" : "Created";
+    const title = event.title?.trim() ? `, title "${event.title.trim()}"` : "";
+    const summary = event.summary?.trim() ? `, summary "${event.summary.trim()}"` : "";
+    const generatedFileId = event.generatedFileId ? `, generatedFileId ${event.generatedFileId}` : "";
+    return `- ${action} document "${event.filename}"${title} (${event.mimeType}), documentId ${event.documentId}, versionId ${event.versionId}, storageId ${event.storageId}${generatedFileId}${summary}.`;
+  });
+
+  return [
+    "[Hidden document context from prior assistant output]",
+    ...lines,
+    "If the user asks to inspect, revise, summarize, or reuse one of these documents, use the document/read tools with these IDs rather than guessing from chat text.",
+  ].join("\n");
 }
 
 /**

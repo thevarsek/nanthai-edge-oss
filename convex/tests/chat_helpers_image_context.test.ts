@@ -177,3 +177,80 @@ test("multi-model previous-turn images are attached to the next user turn", () =
     "https://example.com/b.png",
   ]);
 });
+
+test("buildRequestMessages adds hidden generated document handles to model history", () => {
+  const chatId = "chat_doc_context" as unknown as Id<"chats">;
+  const user1 = "m_user_doc_1" as unknown as Id<"messages">;
+  const assistant1 = "m_assistant_doc_1" as unknown as Id<"messages">;
+  const user2 = "m_user_doc_2" as unknown as Id<"messages">;
+  const pending = "m_assistant_doc_2" as unknown as Id<"messages">;
+
+  const requestMessages = buildRequestMessages({
+    messages: [
+      {
+        _id: user1,
+        chatId,
+        role: "user",
+        content: "Create a Word document.",
+        parentMessageIds: [],
+        status: "completed",
+        createdAt: 1,
+      },
+      {
+        _id: assistant1,
+        chatId,
+        role: "assistant",
+        content: "Done — I created the Word document.",
+        parentMessageIds: [user1],
+        status: "completed",
+        documentEvents: [{
+          type: "document_created",
+          documentId: "doc_1",
+          versionId: "ver_1",
+          storageId: "storage_1",
+          generatedFileId: "gf_1",
+          filename: "Test Agreement.docx",
+          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          title: "Test Agreement",
+        }],
+        createdAt: 2,
+      },
+      {
+        _id: user2,
+        chatId,
+        role: "user",
+        content: "Now revise it to add a signature block.",
+        parentMessageIds: [assistant1],
+        status: "completed",
+        createdAt: 3,
+      },
+      {
+        _id: pending,
+        chatId,
+        role: "assistant",
+        content: "",
+        parentMessageIds: [user2],
+        status: "pending",
+        createdAt: 4,
+      },
+    ],
+    excludeMessageId: pending,
+  });
+
+  const assistantTurn = requestMessages.find(
+    (message: OpenRouterMessage) => message.role === "assistant",
+  );
+  assert.ok(assistantTurn, "expected prior assistant message in request history");
+
+  const assistantText = messageParts(assistantTurn!)
+    .filter((part) => part.type === "text")
+    .map((part) => part.text ?? "")
+    .join("\n");
+
+  assert.match(assistantText, /Done — I created the Word document\./);
+  assert.match(assistantText, /Hidden document context from prior assistant output/);
+  assert.match(assistantText, /documentId doc_1/);
+  assert.match(assistantText, /versionId ver_1/);
+  assert.match(assistantText, /storageId storage_1/);
+  assert.match(assistantText, /Test Agreement\.docx/);
+});

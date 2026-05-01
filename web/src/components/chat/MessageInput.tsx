@@ -58,6 +58,8 @@ interface Props {
   onRemoveExtra?: (index: number) => void;
   /** Change video role for an extra attachment. */
   onChangeExtraRole?: (index: number, role: NonNullable<AttachmentPreview["videoRole"]>) => void;
+  /** Suggested generated document that can be staged into the next message. */
+  generatedDocumentSuggestion?: AttachmentPreview;
 }
 
 export function MessageInput({
@@ -72,6 +74,7 @@ export function MessageInput({
   extraAttachments = [],
   onRemoveExtra,
   onChangeExtraRole,
+  generatedDocumentSuggestion,
 }: Props) {
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -247,6 +250,17 @@ export function MessageInput({
 
   const canSend = (text.trim().length > 0 || attachments.length > 0) && !isGenerating && !isUploading;
   const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled;
+  const suggestionStorageId = generatedDocumentSuggestion?.storageId;
+  const isSuggestionAlreadyAttached = !!suggestionStorageId && (
+    attachments.some((attachment) => attachment.storageId === suggestionStorageId) ||
+    extraAttachments.some((attachment) => attachment.storageId === suggestionStorageId)
+  );
+  const [dismissedSuggestionStorageIds, setDismissedSuggestionStorageIds] = useState<Set<string>>(() => new Set());
+  const showGeneratedDocumentSuggestion =
+    !!generatedDocumentSuggestion &&
+    !!suggestionStorageId &&
+    !isSuggestionAlreadyAttached &&
+    !dismissedSuggestionStorageIds.has(suggestionStorageId);
 
   // ── Recording mode — replaces normal input ──────────────────────────────────
   if (recorderState.isRecording || recorderState.isPreparing) {
@@ -279,6 +293,39 @@ export function MessageInput({
           <p className="text-xs text-purple-300 leading-relaxed">
             {supportsFrameImages ? t("video_hint") : t("video_hint_no_frames")}
           </p>
+        </div>
+      )}
+
+      {showGeneratedDocumentSuggestion && (
+        <div className="mb-2 flex items-center gap-3 rounded-xl border border-primary/20 bg-surface-2/70 px-3 py-2">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
+            <Plus size={15} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-foreground">{t("add_newly_created_document_next_message")}</p>
+            <p className="truncate text-[11px] text-muted">{generatedDocumentSuggestion.name}</p>
+          </div>
+          <button
+            type="button"
+            className="text-xs font-semibold text-primary hover:underline"
+            onClick={() => {
+              setAttachments((prev) => [...prev, generatedDocumentSuggestion]);
+              setDismissedSuggestionStorageIds((prev) => new Set(prev).add(suggestionStorageId));
+            }}
+          >
+            {t("add")}
+          </button>
+          <button
+            type="button"
+            className="text-xs text-muted hover:text-foreground"
+            aria-label={t("dismiss")}
+            onClick={() => {
+              if (!suggestionStorageId) return;
+              setDismissedSuggestionStorageIds((prev) => new Set(prev).add(suggestionStorageId));
+            }}
+          >
+            ×
+          </button>
         </div>
       )}
 

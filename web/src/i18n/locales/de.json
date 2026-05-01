@@ -2852,5 +2852,15 @@
   "inherited": "Geerbt",
   "skill_default_update_failed": "Skill-Standard konnte nicht aktualisiert werden.",
   "integration_default_update_failed": "Integrationsstandard konnte nicht aktualisiert werden.",
-  "formatting_document_citations": "Exakte Dokumentzitate werden formatiert…"
+  "formatting_document_citations": "Exakte Dokumentzitate werden formatiert…",
+  "folder": "Ordner",
+  "saved_document": "Gespeichertes Dokument",
+  "word_document": "Word-Dokument",
+  "spreadsheet": "Tabellendokument",
+  "presentation": "Präsentation",
+  "pdf": "PDF",
+  "csv": "CSV",
+  "image": "Bild",
+  "add": "Hinzufügen",
+  "add_newly_created_document_next_message": "Neu erstelltes Dokument zur nächsten Nachricht hinzufügen"
 }

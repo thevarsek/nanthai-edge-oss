@@ -8,8 +8,8 @@ import { SystemSkillSeedData } from "../skills/mutations_seed";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 62 skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 62);
+test("SYSTEM_SKILL_CATALOG contains 71 skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 71);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -59,11 +59,11 @@ test("SYSTEM_SKILL_CATALOG: slugs are lowercase-hyphenated", () => {
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 51 visible + 1 hidden + 10 integration_managed skills", () => {
+test("SYSTEM_SKILL_CATALOG: 60 visible + 1 hidden + 10 integration_managed skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
   const integrationManaged = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "integration_managed");
-  assert.equal(visible.length, 51);
+  assert.equal(visible.length, 60);
   assert.equal(hidden.length, 1);
   assert.equal(integrationManaged.length, 10);
 });
@@ -149,6 +149,33 @@ test("SYSTEM_SKILL_CATALOG: integration discovery skills are present", () => {
   assert.ok(slugs.has("notion-workspace"));
   assert.ok(slugs.has("apple-calendar"));
   assert.ok(slugs.has("parallel-subagents"));
+});
+
+test("SYSTEM_SKILL_CATALOG: M33 document skills and template-like skills are present", () => {
+  const slugs = new Set(SYSTEM_SKILL_CATALOG.map((skill) => skill.slug));
+  for (const slug of [
+    "document-review",
+    "document-drafting",
+    "contract-drafting",
+    "legal-memo",
+    "clause-extraction",
+    "policy-review",
+    "conditions-precedent-checklist",
+    "credit-agreement-summary",
+    "shareholder-agreement-summary",
+  ]) {
+    assert.ok(slugs.has(slug), `Missing M33 skill ${slug}`);
+  }
+
+  const templateLike = SYSTEM_SKILL_CATALOG.filter((skill) =>
+    ["conditions-precedent-checklist", "credit-agreement-summary", "shareholder-agreement-summary"].includes(skill.slug)
+  );
+  for (const skill of templateLike) {
+    assert.equal(skill.visibility, "visible");
+    assert.equal(skill.lockState, "locked");
+    assert.equal(skill.runtimeMode, "toolAugmented");
+    assert.deepEqual(skill.requiredToolProfiles ?? [], ["docs"]);
+  }
 });
 
 test("SYSTEM_SKILL_CATALOG: pdf requires read_pdf, generate_pdf, edit_pdf", () => {

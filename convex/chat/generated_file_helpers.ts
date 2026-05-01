@@ -29,17 +29,23 @@ export function extractGeneratedFiles(
   toolResults: RecordedToolResult[],
 ): Array<{
   storageId: Id<"_storage">;
+  originalStorageId?: Id<"_storage">;
   filename: string;
   mimeType: string;
   sizeBytes?: number;
   toolName: string;
+  title?: string;
+  summary?: string;
 }> {
   const files: Array<{
     storageId: Id<"_storage">;
+    originalStorageId?: Id<"_storage">;
     filename: string;
     mimeType: string;
     sizeBytes?: number;
     toolName: string;
+    title?: string;
+    summary?: string;
   }> = [];
 
   for (const tr of toolResults) {
@@ -56,13 +62,23 @@ export function extractGeneratedFiles(
         if (!sid || !filename) continue;
         const extMatch = filename.match(/\.[a-z]+$/i);
         const ext = extMatch ? extMatch[0].toLowerCase() : "";
-        files.push({
+        const file = {
           storageId: sid as Id<"_storage">,
           filename,
           mimeType: candidate.mimeType ?? MIME_BY_EXT[ext] ?? "application/octet-stream",
           sizeBytes: typeof candidate.sizeBytes === "number" ? candidate.sizeBytes : undefined,
           toolName: typeof candidate.toolName === "string" ? candidate.toolName : tr.toolName,
-        });
+        };
+        if (candidate.originalStorageId) {
+          Object.assign(file, { originalStorageId: candidate.originalStorageId as Id<"_storage"> });
+        }
+        if (typeof candidate.title === "string") {
+          Object.assign(file, { title: candidate.title });
+        }
+        if (typeof candidate.summary === "string") {
+          Object.assign(file, { summary: candidate.summary });
+        }
+        files.push(file);
       }
     } catch {
       // Ignore malformed/truncated tool results.

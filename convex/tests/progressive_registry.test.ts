@@ -664,7 +664,7 @@ test("retrySameRoundProgressiveToolCalls: executes newly unlocked tools after lo
   assert.equal(results[1]?.result.success, true);
   assert.equal(
     (results[1]?.result.data as { filename?: string }).filename,
-    "Iran report.docx",
+    "Iran_report.docx",
   );
 });
 

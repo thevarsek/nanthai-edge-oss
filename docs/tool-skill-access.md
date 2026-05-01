@@ -81,7 +81,8 @@ Current backend behavior is intentionally forgiving:
 
 | Tool family | Tool IDs | Gate |
 |---|---|---|
-| Document tools | `generate_docx`, `read_docx`, `edit_docx`, `generate_pptx`, `read_pptx`, `edit_pptx`, `generate_xlsx`, `read_xlsx`, `edit_xlsx` | Pro |
+| Document workspace tools | `list_documents`, `read_document`, `find_in_document` | Pro + explicit scoped documents in the current chat turn |
+| Document generation/editing tools | `generate_docx`, `read_docx`, `edit_docx`, `generate_pptx`, `read_pptx`, `edit_pptx`, `generate_xlsx`, `read_xlsx`, `edit_xlsx` | Pro |
 | Text/file tools | `generate_text_file`, `read_text_file`, `generate_eml`, `read_eml` | Pro |
 | Utility | `fetch_image` | Pro |
 | Chat search | `search_chats` | Pro |
@@ -107,7 +108,7 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Family | Skills | Typical profile(s) | Gate |
 |---|---|---|---|
 | Runtime / analytics | `code-workspace`, `persistent-runtime`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `persistentRuntime`, `analytics` | Pro (skill-activated) |
-| Documents | `documents`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
+| Documents | `documents`, `document-review`, `document-drafting`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
 | Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `gmailManual`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
@@ -117,9 +118,19 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Design | `design-critique`, `ux-copy` | instruction-led | Pro-useful |
 | Engineering | `incident-response`, `testing-strategy` | instruction-led | Pro-useful |
 | Finance | `financial-statements`, `reconciliation` | instruction-led; `reconciliation` uses analytics profile | Pro-useful |
-| Legal | `contract-review` | instruction-led | Pro-useful |
+| Legal / business documents | `contract-review`, `contract-drafting`, `legal-memo`, `clause-extraction`, `policy-review`, `conditions-precedent-checklist`, `credit-agreement-summary`, `shareholder-agreement-summary` | `docs` for citation-aware review and generated DOCX workflows | Pro-useful |
 | Operations | `process-documentation` | instruction-led | Pro-useful |
 | Internal communications | `internal-comms` | instruction-led | Pro-useful |
+
+### M33 document workflow skills
+
+M33 added a dedicated document workflow layer on top of the lower-level file tools:
+
+- review/citation skills: `document-review`, `clause-extraction`, `credit-agreement-summary`, `shareholder-agreement-summary`
+- drafting/generation skills: `document-drafting`, `contract-drafting`, `legal-memo`, `policy-review`, `conditions-precedent-checklist`
+- all use the existing progressive skill resolver; there is no separate template catalog or legal-only product mode
+- generated DOCX outputs are saved as normal generated files and linked to canonical `documents` / `documentVersions`
+- citation-aware skills only operate over explicit document scope from attachments, KB picker selections, or existing chat context; they do not search the whole Knowledge Base by default
 
 ### Hidden built-in skills
 
@@ -145,11 +156,20 @@ These are the clearest examples of how skills and tools relate today.
 | `persistent-runtime` | `persistentRuntime` | `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset` | none |
 | `pdf` | `persistentRuntime` | `read_pdf`, `generate_pdf`, `edit_pdf` | none |
 | `parallel-subagents` | `subagents` | `spawn_subagents` | none |
-| `documents` | `docs`, `persistentRuntime` | profile-driven document/text/email/PDF tools | none |
+| `documents` | `docs`, `persistentRuntime` | profile-driven document/text/email/PDF tools, plus scoped document workspace tools | none |
+| `document-review` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
+| `document-drafting` | `docs` | `read_document`, `generate_docx` | none |
 | `docx` | `docs` | `generate_docx`, `read_docx`, `edit_docx` | none |
 | `pptx` | `docs` | `generate_pptx`, `read_pptx`, `edit_pptx` | none |
 | `xlsx` | `docs`, `analytics` | `generate_xlsx`, `read_xlsx`, `edit_xlsx` | none explicitly |
 | `financial-statements` | `docs` | `generate_xlsx`, `read_xlsx`, `edit_xlsx`, `generate_docx` | none |
+| `contract-drafting` | `docs` | `read_document`, `generate_docx` | none |
+| `legal-memo` | `docs` | `read_document`, `find_in_document`, `generate_docx` | none |
+| `clause-extraction` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
+| `policy-review` | `docs` | `read_document`, `find_in_document`, `generate_docx` | none |
+| `conditions-precedent-checklist` | `docs` | `read_document`, `generate_docx` | none |
+| `credit-agreement-summary` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
+| `shareholder-agreement-summary` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
 | `google-drive` | `google` | Drive tool IDs | `requiredIntegrationIds = ["drive"]`; access is `drive.file` + Picker/OnePick grants only |
 | `gmail` | `google` | Gmail tool IDs | `requiredIntegrationIds = ["gmail"]`; the integration is satisfied by the `gmail_manual` provider, not Gmail OAuth |
 | `microsoft-365` | `microsoft` | Outlook, OneDrive, MS Calendar tool IDs | `requiredIntegrationIds = ["outlook", "onedrive", "ms_calendar"]` |
@@ -176,7 +196,7 @@ On create/update, NanthAI normalizes skill metadata like this:
 
 | Signal | Inferred result |
 |---|---|
-| Document tool IDs | add `docs` profile |
+| Document workspace/generation tool IDs | add `docs` profile |
 | `workspace_import_file` or `data_python_exec` | add `analytics` profile |
 | Generic workspace tool IDs | add `workspace` profile |
 | Persistent VM and PDF tool IDs | add `persistentRuntime` profile |

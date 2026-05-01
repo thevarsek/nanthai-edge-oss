@@ -213,6 +213,18 @@ Generated charts are not streamed through a new iOS service. The chat UI follows
 
 This keeps the service layer thin: `ConvexService` remains the generic subscription/query/mutation bridge, while chart-specific behavior lives at the DTO/view layer.
 
+## Document Workspace UI Seam (M32/M33)
+
+Document workspace and generated-document behavior follows the same thin-client pattern as files and charts:
+
+- readable KB uploads, Drive imports, and generated DOCX outputs are canonicalized server-side into `documents` and immutable `documentVersions`
+- scoped document reads/searches happen through Convex tools (`list_documents`, `read_document`, `find_in_document`) during generation, not through client-side document parsing
+- assistant messages persist `documentCitations` and `documentEvents`; clients render chips/cards from stored annotations and do not validate citation identity locally
+- generated document cards use the enriched `generatedFileIds` path for open/download/share behavior, with `documentId`/`documentVersionId` available for follow-up attachment and future version/redline surfaces
+- Knowledge Base folder filtering is backend-driven from existing chat folders plus special filters such as All and Unfiled
+
+iOS-specific parsing is still used only for local upload/import preparation (`DocumentImportTextExtractor.swift`, picker flows). Product state, citation validity, Drive version state, and generated-document lifecycle all belong to Convex.
+
 ## Audio Message Services (M20)
 
 Audio messages follow the same thin-service pattern. No dedicated AudioService class exists — audio responsibilities are distributed across existing layers:

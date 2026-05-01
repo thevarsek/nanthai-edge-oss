@@ -109,6 +109,17 @@ export interface Message {
     page?: number | string;
     locator?: string;
   }>;
+  documentEvents?: Array<{
+    type: "document_created" | "document_updated";
+    documentId: Id<"documents">;
+    versionId: Id<"documentVersions">;
+    storageId: Id<"_storage">;
+    generatedFileId?: Id<"generatedFiles">;
+    filename: string;
+    mimeType: string;
+    title?: string;
+    summary?: string;
+  }>;
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
   retryContract?: RetryContract;

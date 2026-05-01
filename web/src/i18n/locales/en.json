@@ -2852,5 +2852,15 @@
   "inherited": "Inherited",
   "skill_default_update_failed": "Failed to update skill default.",
   "integration_default_update_failed": "Failed to update integration default.",
-  "formatting_document_citations": "Formatting exact document citations…"
+  "formatting_document_citations": "Formatting exact document citations…",
+  "folder": "Folder",
+  "saved_document": "Saved document",
+  "word_document": "Word document",
+  "spreadsheet": "Spreadsheet",
+  "presentation": "Presentation",
+  "pdf": "PDF",
+  "csv": "CSV",
+  "image": "Image",
+  "add": "Add",
+  "add_newly_created_document_next_message": "Add newly created document to the next message"
 }

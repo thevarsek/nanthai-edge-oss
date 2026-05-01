@@ -86,7 +86,7 @@ test("generateXlsx and readXlsx round-trip sanitized workbook content", async ()
   });
 
   assert.equal(generated.success, true);
-  assert.equal((generated.data as any).filename, "Ops  Scorecard.xlsx");
+  assert.equal((generated.data as any).filename, "Ops_Scorecard.xlsx");
 
   const readBack = await readXlsx.execute(harness.toolCtx, {
     storageId: (generated.data as any).storageId,
@@ -163,7 +163,8 @@ test("generateDocx creates a readable document with TOC, header, footer, and tab
   });
 
   assert.equal(generated.success, true);
-  assert.equal((generated.data as any).filename, "Quarterly  Review.docx");
+  assert.equal((generated.data as any).filename, "Quarterly_Review.docx");
+  assert.ok((generated.data as any).sizeBytes > 0);
 
   const blob = harness.files.get((generated.data as any).storageId);
   assert.ok(blob);
@@ -174,6 +175,8 @@ test("generateDocx creates a readable document with TOC, header, footer, and tab
   assert.match(documentXml ?? "", /Table of Contents/);
   assert.match(documentXml ?? "", /Overview/);
   assert.match(documentXml ?? "", /Metrics/);
+  assert.match(documentXml ?? "", /<w:tblLayout w:type="fixed"\/>/);
+  assert.match(documentXml ?? "", /<w:tblW w:type="dxa"/);
   assert.match(footerXml ?? "", /PAGE/);
 
   const readBack = await readDocx.execute(harness.toolCtx, {
@@ -184,6 +187,112 @@ test("generateDocx creates a readable document with TOC, header, footer, and tab
   assert.match(String((readBack.data as any).text), /overview/i);
   assert.match(String((readBack.data as any).text), /Revenue/);
   assert.ok((readBack.data as any).wordCount > 0);
+});
+
+test("generateDocx supports M33 legal document structure", async () => {
+  const harness = createStorageHarness();
+  const generated = await generateDocx.execute(harness.toolCtx, {
+    title: "Execution / Checklist: CP?",
+    documentPurpose: "agreement",
+    landscape: true,
+    definedTerms: [
+      { term: "Agreement", definition: "This document and its appendices." },
+    ],
+    sections: [
+      {
+        content: "This preamble is intentionally unnumbered.",
+        unnumbered: true,
+      },
+      {
+        heading: "Overview",
+        level: 1,
+        body: "Primary terms.",
+        table: {
+          headers: ["Item", "Status"],
+          rows: [["KYC"], ["Board approval", "Pending", "Extra cell"]],
+        },
+      },
+      {
+        heading: "Closing Deliverables",
+        headingLevel: 2,
+        pageBreakBefore: true,
+        body: "Deliverables start on a new page.",
+      },
+    ],
+    appendices: [
+      {
+        heading: "Appendix A - Forms",
+        body: "Form documents.",
+      },
+    ],
+    signatureBlocks: [
+      { partyName: "Borrower", title: "Director" },
+      { partyName: "Lender" },
+    ],
+  });
+
+  assert.equal(generated.success, true);
+  assert.equal((generated.data as any).filename, "Execution_Checklist_CP.docx");
+  assert.equal((generated.data as any).mimeType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  assert.equal((generated.data as any).documentPurpose, "agreement");
+  assert.ok(((generated.data as any).warnings as string[]).length >= 2);
+
+  const blob = harness.files.get((generated.data as any).storageId);
+  assert.ok(blob);
+  const zip = await unzipBlob(blob!);
+  const documentXml = await zip.file("word/document.xml")?.async("string");
+
+  assert.match(documentXml ?? "", /Defined Terms/);
+  assert.match(documentXml ?? "", /Closing Deliverables/);
+  assert.match(documentXml ?? "", /Appendix A - Forms/);
+  assert.match(documentXml ?? "", /Signatures/);
+  assert.match(documentXml ?? "", /w:br w:type="page"/);
+  assert.match(documentXml ?? "", /w:orient="landscape"/);
+  assert.doesNotMatch(documentXml ?? "", /<w:tblGrid\/>/);
+});
+
+test("generateDocx skips empty tables instead of writing invalid OOXML", async () => {
+  const harness = createStorageHarness();
+  const generated = await generateDocx.execute(harness.toolCtx, {
+    title: "Empty table guard",
+    sections: [
+      {
+        heading: "Overview",
+        body: "This table should be skipped.",
+        table: {
+          headers: [],
+          rows: [],
+        },
+      },
+    ],
+  });
+
+  assert.equal(generated.success, true);
+  assert.deepEqual((generated.data as any).warnings, ["Table skipped because it has no headers."]);
+
+  const blob = harness.files.get((generated.data as any).storageId);
+  assert.ok(blob);
+  const zip = await unzipBlob(blob!);
+  const documentXml = await zip.file("word/document.xml")?.async("string");
+
+  assert.doesNotMatch(documentXml ?? "", /<w:tbl>/);
+});
+
+test("generateDocx rejects skipped heading levels", async () => {
+  const harness = createStorageHarness();
+  const generated = await generateDocx.execute(harness.toolCtx, {
+    title: "Bad hierarchy",
+    sections: [
+      {
+        heading: "Skipped",
+        headingLevel: 3,
+        body: "This skips H1 and H2.",
+      },
+    ],
+  });
+
+  assert.equal(generated.success, false);
+  assert.match(String(generated.error), /Invalid heading hierarchy/);
 });
 
 test("editDocx regenerates the document and reports old and new word counts", async () => {
@@ -268,7 +377,7 @@ test("generatePptx and readPptx round-trip multiple slide layouts and notes", as
   });
 
   assert.equal(generated.success, true);
-  assert.equal((generated.data as any).filename, "Board  Review.pptx");
+  assert.equal((generated.data as any).filename, "Board_Review.pptx");
   assert.equal((generated.data as any).slideCount, 6);
 
   const blob = harness.files.get((generated.data as any).storageId);
