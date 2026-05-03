@@ -12,6 +12,14 @@ NanthAI Edge is a production-grade AI chat platform you can study, run, and adap
 
 This repository contains the **web client** and **Convex backend**. It is meant for builders who want more than a starter chat demo: model comparison, persistent product state, memory, tools, integrations, and real backend contracts are all here.
 
+## Screenshots
+
+![Multi-model chat with reasoning and per-model cost visibility](docs/assets/screenshots/multimodel-chat.png)
+
+| Ideascape branching canvas | Model and persona picker |
+|----------------------------|--------------------------|
+| ![Ideascape branching canvas](docs/assets/screenshots/ideascape-branching.png) | ![Participant picker with models and personas](docs/assets/screenshots/participant-picker.png) |
+
 ## Why Use It?
 
 - **Bring your own AI account** — no shared server-side OpenRouter key, no hidden inference bill for the host.
