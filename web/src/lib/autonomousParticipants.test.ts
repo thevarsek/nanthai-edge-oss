@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, test } from "vitest";
 
 import {
   participantIndexForId,
@@ -7,36 +6,38 @@ import {
   resolveSelectedParticipantId,
 } from "./autonomousParticipants";
 
+describe("autonomous participants", () => {
 test("participantKey prefers stable Convex participant ids over array indexes", () => {
-  assert.equal(participantKey({ id: "chatParticipant_1" }, 0), "chatParticipant_1");
-  assert.equal(participantKey({}, 1), "1");
+  expect(participantKey({ id: "chatParticipant_1" }, 0)).toBe("chatParticipant_1");
+  expect(participantKey({}, 1)).toBe("1");
 });
 
 test("resolveSelectedParticipantId migrates legacy index selections to stable ids", () => {
   const participants = [{ id: "p0" }, { id: "p1" }, { id: "p2" }];
 
-  assert.equal(resolveSelectedParticipantId("1", participants), "p1");
-  assert.equal(resolveSelectedParticipantId("p2", participants), "p2");
+  expect(resolveSelectedParticipantId("1", participants)).toBe("p1");
+  expect(resolveSelectedParticipantId("p2", participants)).toBe("p2");
 });
 
 test("resolveSelectedParticipantId keeps legacy indexes when stable ids are absent", () => {
   const participants = [{}, {}, {}];
 
-  assert.equal(resolveSelectedParticipantId("1", participants), "1");
+  expect(resolveSelectedParticipantId("1", participants)).toBe("1");
 });
 
 test("resolveSelectedParticipantId clears invalid stale selections", () => {
   const participants = [{ id: "p0" }, { id: "p1" }, { id: "p2" }];
 
-  assert.equal(resolveSelectedParticipantId("p3", participants), null);
-  assert.equal(resolveSelectedParticipantId("7", participants), null);
-  assert.equal(resolveSelectedParticipantId("1abc", participants), null);
+  expect(resolveSelectedParticipantId("p3", participants)).toBeNull();
+  expect(resolveSelectedParticipantId("7", participants)).toBeNull();
+  expect(resolveSelectedParticipantId("1abc", participants)).toBeNull();
 });
 
 test("participantIndexForId resolves stable ids and legacy numeric ids", () => {
   const participants = [{ id: "p0" }, { id: "p1" }, {}];
 
-  assert.equal(participantIndexForId("p1", participants), 1);
-  assert.equal(participantIndexForId("2", participants), 2);
-  assert.equal(participantIndexForId("missing", participants), undefined);
+  expect(participantIndexForId("p1", participants)).toBe(1);
+  expect(participantIndexForId("2", participants)).toBe(2);
+  expect(participantIndexForId("missing", participants)).toBeUndefined();
+});
 });

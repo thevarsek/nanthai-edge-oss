@@ -1,6 +1,6 @@
 # Project Structure
 
-> Complete project directory tree for NanthAI Edge (post-M33 document generation — iOS/Android/Convex/Web).
+> Complete project directory tree for NanthAI Edge (post-M34 Android/web test and performance work — iOS/Android/Convex/Web).
 > SwiftData models removed. Convex backend at repo root. `messageChunks` table removed.
 
 ```
@@ -289,17 +289,34 @@ nanthai-edge/                              # Repository root
 │       ├── dataModel.d.ts
 │       └── server.d.ts
 │
-├── android/                                # Native Android app scaffold + parity routes (M16 Phases B–D)
+├── android/                                # Native Android app + parity routes + M34 test/perf harness
 │   ├── build.gradle.kts                    # Root Android build plugins
-│   ├── settings.gradle.kts                 # Module include + repositories
+│   ├── settings.gradle.kts                 # Module includes (:app, :baselineprofile) + repositories
 │   ├── gradle.properties                   # Android/Kotlin build settings
+│   ├── baselineprofile/                    # Macrobenchmark + Baseline Profile module (M34)
+│   │   └── src/main/java/com/nanthai/edge/baselineprofile/
+│   │       ├── BaselineProfileGenerator.kt  # Baseline Profile generation for startup/chat shell/list-detail/keyboard
+│   │       └── ChatMacrobenchmark.kt        # Startup, scroll, list-detail/back, and keyboard frame timing
 │   └── app/
 │       ├── build.gradle.kts                # Compose app module config
+│       ├── src/androidTest/java/com/nanthai/edge/
+│       │   ├── features/chat/
+│       │   │   ├── ChatSurfacesSmokeTest.kt          # Seeded chat list/detail smoke tests
+│       │   │   ├── ChatDetailFocusedComponentsTest.kt # Timeline/scaffold focused UI coverage
+│       │   │   └── RichChatInputBarFocusedTest.kt    # Composer/focus/attachment control coverage
+│       │   └── features/settings/SettingsSurfacesSmokeTest.kt
+│       ├── src/test/java/com/nanthai/edge/
+│       │   ├── features/chat/ChatDetailStateSliceTests.kt      # Projected state equivalence tests
+│       │   ├── features/chat/ChatTimelineSegmentationTests.kt  # Long markdown block splitting tests
+│       │   ├── features/chat/ChatListFilterReducerTests.kt     # Pure chat-list filter projection tests
+│       │   ├── features/chat/ChatListOwnerTests.kt             # Chat-list creation/action/folder/share/selection owner tests
+│       │   ├── ui/shared/SimpleMarkdownParityTests.kt          # Native markdown parity tests
+│       │   └── ui/shared/SimpleMarkdownFootnoteTests.kt        # Footnote parsing/rendering tests
 │       └── src/main/
 │           ├── AndroidManifest.xml         # Android app manifest + launcher activity
 │           ├── java/com/nanthai/edge/
 │           │   ├── NanthAiApplication.kt   # Application container bootstrap
-│           │   ├── MainActivity.kt         # Compose host activity
+│           │   ├── MainActivity.kt         # Compose host activity + benchmarkScenario intent plumbing
 │           │   ├── app/                    # App container, root VM, Navigation Compose host
 │           │   │   └── navigation/         # AppDestination.kt, AppNavHost.kt, AdaptiveChatPane.kt (M25), SettingsNavHost.kt (M25)
 │           │   ├── data/                   # Auth/Convex bridge interfaces + repositories + fake gateway state
@@ -311,7 +328,17 @@ nanthai-edge/                              # Repository root
 │           │   │   │   ├── FavoritesStrip.kt  # Horizontal scrollable favorites strip (Compose)
 │           │   │   │   ├── LyriaAudioPlayer.kt # Inline Lyria music audio player — play/pause, seek, speed, download (M26)
 │           │   │   │   ├── ChatSkillsDialog.kt # Per-chat skill picker dialog (M18.1)
-│           │   │   │   └── (ChatDetailComposerComponents, ChatDetailDialogs, ChatDetailRoute, ChatDetailViewModel updated for skills)
+│           │   │   │   ├── ChatDetailScaffold.kt # Stateless seeded chat-detail surface (M34)
+│           │   │   │   ├── ChatDetailStateSlices.kt # Timeline/composer/header/bottom/dialog state projections (M34)
+│           │   │   │   ├── ChatDetailTimeline.kt # Timeline LazyColumn and row ownership (M34)
+│           │   │   │   ├── ChatDetailTopBar.kt, ChatDetailBottomOverlay.kt, ChatDetailFloatingControls.kt
+│           │   │   │   ├── ChatDetailAudioLifecycle.kt, ChatDetailAttachmentLaunchers.kt
+│           │   │   │   ├── ChatDetailComposerAttachments.kt, ChatGlassComponents.kt, ChatRenderTuning.kt
+│           │   │   │   ├── ChatListFilterReducer.kt, ChatListFeedOwner.kt, ChatCreationOwner.kt
+│           │   │   │   ├── ChatListActionOwner.kt, ChatFolderActionOwner.kt, ChatShareIntentProcessor.kt
+│           │   │   │   ├── ChatListSelectionOwner.kt, ChatListContentHost.kt, ChatListRowHost.kt
+│           │   │   │   ├── ChatListFloatingControlsHost.kt # Chat-list owner/host split after M34 extraction
+│           │   │   │   └── ChatDetailRoute.kt / ChatDetailViewModel.kt / ChatRoute.kt / ChatViewModel.kt # Thin route/facade owners after M34 extraction
 │           │   │   ├── favorites/           # Manage favorites feature
 │           │   │   │   ├── ManageFavoritesViewModel.kt  # Favorites CRUD + reorder VM
 │           │   │   │   └── ManageFavoritesRoute.kt      # Favorites management screen (Compose)
@@ -319,6 +346,7 @@ nanthai-edge/                              # Repository root
 │           │   │       ├── SkillsListViewModel.kt  # Skills list + CRUD + filtering VM
 │           │   │       ├── SkillsListRoute.kt      # Full-screen skills list (system/user sections, inline editor)
 │           │   │       └── SkillDetailRoute.kt     # Full-screen skill detail (metadata chips, instructions card)
+│           │   ├── performance/            # AndroidPerformanceTracing.kt (JankStats debug/benchmark tracing)
 │           │   └── ui/
 │           │       ├── shared/             # Shared picker/help/info components incl. model guidance surfaces
 │           │       │   ├── SelectionDialogs.kt       # Full-screen participant + model pickers
@@ -581,6 +609,9 @@ nanthai-edge/                              # Repository root
 │   │   │   └── Markdown/
 │   │   │       ├── MarkdownParser.swift      # Markdown-to-node parser
 │   │   │       ├── MarkdownParser+Inline.swift # Inline element parsing
+│   │   │       ├── MarkdownParser+DefinitionList.swift # Definition list parsing (M34)
+│   │   │       ├── MarkdownParser+Math.swift # Inline/display equation-text fallback parsing (M34)
+│   │   │       ├── MarkdownParser+Table.swift # Table parsing helpers
 │   │   │       ├── MarkdownParseCache.swift  # Parse cache keyed by messageId+contentHash (M9.5)
 │   │   │       └── MarkdownNode.swift        # AST node types
 │   │   │
@@ -618,7 +649,19 @@ nanthai-edge/                              # Repository root
 │       ├── NanthAi_EdgeUITests.swift
 │       └── NanthAi_EdgeUITestsLaunchTests.swift
 │
-├── convex/tests/                            # Convex backend tests (138 test files, subset listed below)
+├── fixtures/
+│   └── m34/document_artifacts.json          # Shared generated-document/event fixture payloads (M34)
+│
+├── web/                                     # Vite + React PWA
+│   ├── playwright.config.ts                 # Playwright smoke config (M34)
+│   ├── vitest.config.ts                     # Vitest + jsdom config (M34)
+│   ├── src/test/setupTests.ts               # React test setup/mocks
+│   └── tests/e2e/web-smoke.spec.ts          # Browser smoke canary
+│
+├── scripts/
+│   └── android_markdown_ab_capture.sh       # Android markdown full-vs-hybrid capture helper (M34)
+│
+├── convex/tests/                            # Convex backend tests (138+ test files, subset listed below)
 │   ├── chat_stream_patch_throttle.test.ts   # Stream patch cadence unit tests (M9.5)
 │   ├── chat_stream_writer.test.ts           # StreamWriter unit tests
 │   ├── chat_title_helpers.test.ts           # Title helper tests
@@ -711,6 +754,21 @@ nanthai-edge/                              # Repository root
 - tests:
   - `android/app/src/test/java/com/nanthai/edge/features/chat/AdaptiveChatPaneContractTests.kt` — 5 scaffold contract tests
 
+## M34 Android Chat Ownership Additions Not Fully Expanded In The Tree Above
+
+- Android chat list ownership:
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatListFilterReducer.kt` — Pure search/folder/scheduled filtering and visible/pinned/unpinned projections
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatListFeedOwner.kt` — Subscription params, pagination, initial-empty grace, backend-unreachable timeout, and perf logging
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatCreationOwner.kt` — Normal/favorite chat creation and default participant resolution
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatListActionOwner.kt` — Delete, duplicate, move, bulk actions, rename, pin/unpin, and pinned reorder commands
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatFolderActionOwner.kt` — Folder create/rename/delete and selected-folder cleanup
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatShareIntentProcessor.kt` — Serialized share queue processing and duplicate nonce prevention
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatListSelectionOwner.kt` — Edit-mode selection, bulk action state, moving-chat dialog state, and pinned reorder state
+  - `android/app/src/main/java/com/nanthai/edge/features/chat/ChatListContentHost.kt`, `ChatListRowHost.kt`, `ChatListFloatingControlsHost.kt` — Stateless route hosts
+- Android chat list tests:
+  - `android/app/src/test/java/com/nanthai/edge/features/chat/ChatListFilterReducerTests.kt` — Filter, folder-name search, scheduled, and pinned projection coverage
+  - `android/app/src/test/java/com/nanthai/edge/features/chat/ChatListOwnerTests.kt` — Creation, list actions, folders, share nonce processing, selection, and pinned reorder coverage
+
 ## M24 Phase 6 Additions Not Fully Expanded In The Tree Above
 
 - Convex backend (KB module relocation + Drive ingest):
@@ -769,4 +827,4 @@ The following files were deleted as part of the Convex migration:
 
 ---
 
-*Last updated: 2026-04-07 — M26 Lyria music generation: AudioPlayerView.swift (iOS), LyriaAudioPlayer.kt (Android), audio_shared.ts Lyria constants + MP3 parser. Prompt caching + model sync test files. M25 Android tablet adaptive.*
+*Last updated: 2026-05-03 — M34 web test harness, Android Compose UI/performance harness, chat detail/list owner extraction, route/keyboard macrobenchmarks, shared fixtures, and native markdown parity files.*

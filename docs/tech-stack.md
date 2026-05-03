@@ -36,7 +36,18 @@
 | Push | Firebase Cloud Messaging | Native Android push path |
 | Min SDK | Android 9 | API 28 |
 | Target SDK | Android 16 | API 36 |
-| Testing | JUnit + JVM ViewModel tests | Local verification gate |
+| Testing | JUnit + JVM ViewModel tests + Compose UI tests | Local/unit plus connected-device verification gate |
+| Performance | JankStats + Macrobenchmark + Baseline Profiles | M34 seeded chat-shell benchmark and generated profiles |
+
+### Web Client Stack
+
+| Component | Technology | Version |
+|-----------|-----------|---------|
+| App | Vite + React + TypeScript | Vite 7.3.x, React 19.2.x, TypeScript 5.9.x |
+| Backend Client | `convex/react` + Clerk provider | Shared Convex product API |
+| Markdown | `react-markdown` + `remark-gfm` + `remark-math` + KaTeX | High-fidelity web math renderer |
+| Unit/Component Tests | Vitest + React Testing Library + jsdom | `npm run test` |
+| Browser Smoke Tests | Playwright | `npm run test:e2e` |
 
 ### Convex Backend Stack
 
@@ -136,4 +147,4 @@ No Node.js runtime needed — all JWT signing and APNs calls run in Convex's def
 
 ---
 
-*Last updated: 2026-04-30 — M33 document generation/document skills added canonical document workspace usage on top of existing OOXML tools. M27 replaced E2B with three-tier free execution (just-bash, Pyodide, Vercel Sandbox). M20 audio stacks (iOS AVFoundation/Speech, Android MediaRecorder/SpeechRecognizer), and `gpt-audio-mini` TTS model.*
+*Last updated: 2026-05-03 — M34 added web Vitest/Playwright test tooling and Android Compose UI, JankStats, Macrobenchmark, and Baseline Profile performance infrastructure. M33 document generation/document skills added canonical document workspace usage on top of existing OOXML tools.*

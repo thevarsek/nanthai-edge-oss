@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import { APP_DEFAULT_MODEL_ID } from "../lib/modelDefaults";
 import {
@@ -11,8 +10,8 @@ import {
 test("scheduled job draft defaults match app model default", () => {
   const step = createDraftStep();
 
-  assert.equal(SCHEDULED_JOB_DEFAULT_MODEL, APP_DEFAULT_MODEL_ID);
-  assert.equal(step.modelId, APP_DEFAULT_MODEL_ID);
+  expect(SCHEDULED_JOB_DEFAULT_MODEL).toBe(APP_DEFAULT_MODEL_ID);
+  expect(step.modelId).toBe(APP_DEFAULT_MODEL_ID);
 });
 
 test("scheduled job payload preserves knowledge base file ids", () => {
@@ -24,7 +23,7 @@ test("scheduled job payload preserves knowledge base file ids", () => {
 
   const payload = buildStepsPayload([step]);
 
-  assert.deepEqual(payload[0]?.knowledgeBaseFileIds, ["kb_1", "kb_2"]);
+  expect(payload[0]?.knowledgeBaseFileIds).toEqual(["kb_1", "kb_2"]);
 });
 
 test("scheduled job payload explicitly clears knowledge base file ids", () => {
@@ -36,5 +35,5 @@ test("scheduled job payload explicitly clears knowledge base file ids", () => {
 
   const payload = buildStepsPayload([step]);
 
-  assert.deepEqual(payload[0]?.knowledgeBaseFileIds, []);
+  expect(payload[0]?.knowledgeBaseFileIds).toEqual([]);
 });

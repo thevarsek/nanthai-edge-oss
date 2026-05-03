@@ -2,13 +2,12 @@
 // Full-featured markdown renderer with syntax highlighting, LaTeX, tables,
 // code copy, and a parse cache for streaming performance.
 
-import { Fragment, memo, useCallback, useMemo, useRef } from "react";
+import { Fragment, cloneElement, isValidElement, memo, useCallback, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
 import rehypeKatex from "rehype-katex";
-import rehypeRaw from "rehype-raw";
 import { useTranslation } from "react-i18next";
 import type { Components } from "react-markdown";
 import type { PluggableList } from "unified";
@@ -59,12 +58,91 @@ const REMARK_PLUGINS: PluggableList = [
   remarkGfm,
   [remarkMath, { singleDollarTextMath: false }],
 ];
-const REHYPE_PLUGINS: PluggableList = [rehypeHighlight, rehypeKatex, rehypeRaw];
+const REHYPE_PLUGINS: PluggableList = [rehypeHighlight, rehypeKatex];
 
 // Compact mode drops math + highlight entirely — unreadable at node scale
 // and adds bundle cost for little value inside ~200px ideascape nodes.
 const REMARK_PLUGINS_COMPACT: PluggableList = [remarkGfm];
-const REHYPE_PLUGINS_COMPACT: PluggableList = [rehypeRaw];
+const REHYPE_PLUGINS_COMPACT: PluggableList = [];
+
+// ─── Definition-list preprocessing ───────────────────────────────────────────
+//
+// remark-gfm does not support PHP Markdown Extra definition lists. iOS renders
+// `Term` + `: Definition` pairs as a structured block; on web we translate the
+// same source into a small GFM table before ReactMarkdown parses it.
+
+function isDefinitionTermLine(line: string): boolean {
+  const trimmed = line.trim();
+  if (!trimmed) return false;
+  if (/^(#{1,6}\s|>|[-*+]\s|\d+\.\s|```|~~~|\|)/.test(trimmed)) return false;
+  return true;
+}
+
+function isDefinitionLine(line: string): boolean {
+  return line.trimStart().startsWith(":");
+}
+
+function escapeTableCell(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\n+/g, "<br />")
+    .trim();
+}
+
+function preprocessDefinitionLists(content: string): string {
+  const lines = content.split("\n");
+  const output: string[] = [];
+  let i = 0;
+  let inFence = false;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trimStart();
+    if (trimmed.startsWith("```") || trimmed.startsWith("~~~")) {
+      inFence = !inFence;
+      output.push(line);
+      i += 1;
+      continue;
+    }
+
+    if (!inFence && i + 1 < lines.length && isDefinitionTermLine(line) && isDefinitionLine(lines[i + 1])) {
+      const items: Array<{ term: string; definition: string }> = [];
+
+      while (i + 1 < lines.length && isDefinitionTermLine(lines[i]) && isDefinitionLine(lines[i + 1])) {
+        const term = lines[i].trim();
+        let definition = lines[i + 1].trimStart().slice(1).trim();
+        i += 2;
+
+        while (i < lines.length && (/^( {4}|\t)/.test(lines[i]) || lines[i].trim() === "")) {
+          if (lines[i].trim() === "") {
+            if (i + 2 < lines.length && isDefinitionTermLine(lines[i + 1]) && isDefinitionLine(lines[i + 2])) {
+              i += 1;
+              break;
+            }
+            break;
+          }
+          definition += "\n" + lines[i].trim();
+          i += 1;
+        }
+
+        items.push({ term, definition });
+      }
+
+      output.push("| Term | Definition |");
+      output.push("|:--|:--|");
+      for (const item of items) {
+        output.push(`| ${escapeTableCell(item.term)} | ${escapeTableCell(item.definition)} |`);
+      }
+      continue;
+    }
+
+    output.push(line);
+    i += 1;
+  }
+
+  return output.join("\n");
+}
 
 // ─── Copy helper ──────────────────────────────────────────────────────────────
 
@@ -176,9 +254,47 @@ function MarkdownTable({
         {t("copy_table")}
       </button>
       <div className="overflow-x-auto rounded-xl border border-border/20">
-        <table className="w-full text-sm border-collapse">{children}</table>
+        <table className="min-w-max table-auto text-sm border-collapse">{children}</table>
       </div>
     </div>
+  );
+}
+
+function tableTextAlignClass(align: unknown, node?: unknown): string {
+  const nodeAlign =
+    typeof node === "object" && node !== null && "properties" in node
+      ? (node as { properties?: { align?: unknown } }).properties?.align
+      : undefined;
+  switch (align ?? nodeAlign) {
+    case "center":
+      return "text-center";
+    case "right":
+      return "text-right";
+    default:
+      return "text-left";
+  }
+}
+
+function MarkdownImage({ src, alt, compact = false }: { src?: string; alt?: string; compact?: boolean }) {
+  const [failed, setFailed] = useState(false);
+  const label = alt ?? "Markdown image";
+  if (!src) return null;
+  if (failed) {
+    return (
+      <span className="my-3 flex min-h-16 w-full items-center justify-center rounded-xl border border-border/20 bg-surface-2 px-3 py-4 text-center text-xs text-muted">
+        Failed to load image: {label}
+      </span>
+    );
+  }
+  return (
+    <img
+      src={src}
+      alt={label}
+      className={compact ? "max-w-full rounded-md my-1" : "my-3 max-w-full rounded-xl border border-border/20 shadow-sm"}
+      loading="lazy"
+      draggable={compact ? false : undefined}
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -239,6 +355,62 @@ function renderCitationLinkedText(
   return transform(children, "root");
 }
 
+type CalloutType = "note" | "tip" | "warning" | "important" | "caution";
+
+const CALLOUT_LABELS: Record<CalloutType, string> = {
+  note: "Note",
+  tip: "Tip",
+  warning: "Warning",
+  important: "Important",
+  caution: "Caution",
+};
+
+const CALLOUT_CLASSES: Record<CalloutType, string> = {
+  note: "border-primary/80 bg-primary/10 text-foreground",
+  tip: "border-primary/80 bg-primary/10 text-foreground",
+  warning: "border-primary/80 bg-primary/10 text-foreground",
+  important: "border-primary/80 bg-primary/10 text-foreground",
+  caution: "border-primary/80 bg-primary/10 text-foreground",
+};
+
+function textFromNode(node: React.ReactNode): string {
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (node == null || typeof node === "boolean") return "";
+  if (Array.isArray(node)) return node.map(textFromNode).join("");
+  if (isValidElement<{ children?: React.ReactNode }>(node)) {
+    return textFromNode(node.props.children);
+  }
+  return "";
+}
+
+function calloutTypeFromChildren(children: React.ReactNode): CalloutType | null {
+  const match = textFromNode(children).trimStart().match(/^\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]/i);
+  return match ? (match[1].toLowerCase() as CalloutType) : null;
+}
+
+function stripCalloutMarker(children: React.ReactNode): React.ReactNode {
+  let stripped = false;
+  const strip = (node: React.ReactNode, keyPrefix: string): React.ReactNode => {
+    if (stripped) return node;
+    if (typeof node === "string") {
+      const next = node.replace(/^\s*\[!(NOTE|TIP|WARNING|IMPORTANT|CAUTION)\]\s*/i, "");
+      stripped = next !== node;
+      return next;
+    }
+    if (Array.isArray(node)) {
+      return node.map((child, index) => (
+        <Fragment key={`${keyPrefix}-${index}`}>{strip(child, `${keyPrefix}-${index}`)}</Fragment>
+      ));
+    }
+    if (isValidElement<{ children?: React.ReactNode }>(node)) {
+      const updatedChildren = strip(node.props.children, `${keyPrefix}-child`);
+      return cloneElement(node, undefined, updatedChildren);
+    }
+    return node;
+  };
+  return strip(children, "callout");
+}
+
 function buildComponents(content: string, documentCitationLinks?: MarkdownDocumentCitationLink[]): Components {
   const citationByRef = new Map((documentCitationLinks ?? []).map((citation) => [citation.ref, citation]));
   return {
@@ -287,15 +459,19 @@ function buildComponents(content: string, documentCitationLinks?: MarkdownDocume
     tr({ children }) {
       return <tr className="hover:bg-surface-3/50 transition-colors">{children}</tr>;
     },
-    th({ children }) {
+    th({ children, align, node }) {
       return (
-        <th className="px-4 py-2 text-left font-semibold border-b border-border/20">
+        <th className={`max-w-[14rem] whitespace-normal break-words px-4 py-2 align-top font-semibold border-b border-border/20 ${tableTextAlignClass(align, node)}`}>
           {renderCitationLinkedText(children, citationByRef)}
         </th>
       );
     },
-    td({ children }) {
-      return <td className="px-4 py-2">{renderCitationLinkedText(children, citationByRef)}</td>;
+    td({ children, align, node }) {
+      return (
+        <td className={`max-w-[14rem] whitespace-normal break-words px-4 py-2 align-top ${tableTextAlignClass(align, node)}`}>
+          {renderCitationLinkedText(children, citationByRef)}
+        </td>
+      );
     },
 
     // Headings
@@ -330,6 +506,17 @@ function buildComponents(content: string, documentCitationLinks?: MarkdownDocume
 
     // Blockquote
     blockquote({ children }) {
+      const calloutType = calloutTypeFromChildren(children);
+      if (calloutType) {
+        return (
+          <blockquote className={`my-3 rounded-xl border-l-4 px-4 py-3 not-italic ${CALLOUT_CLASSES[calloutType]}`}>
+            <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+              {CALLOUT_LABELS[calloutType]}
+            </div>
+            {renderCitationLinkedText(stripCalloutMarker(children), citationByRef)}
+          </blockquote>
+        );
+      }
       return (
         <blockquote className="border-l-4 border-primary pl-4 my-3 italic text-muted">
           {renderCitationLinkedText(children, citationByRef)}
@@ -366,6 +553,10 @@ function buildComponents(content: string, documentCitationLinks?: MarkdownDocume
           {children}
         </a>
       );
+    },
+
+    img({ src, alt }) {
+      return <MarkdownImage src={src} alt={alt ?? undefined} />;
     },
 
     // Strong / em
@@ -415,11 +606,11 @@ function buildCompactComponents(): Components {
     tr({ children }) {
       return <tr>{children}</tr>;
     },
-    th({ children }) {
-      return <th className="px-1.5 py-0.5 text-left font-semibold border-b border-border/20">{children}</th>;
+    th({ children, align, node }) {
+      return <th className={`px-1.5 py-0.5 font-semibold border-b border-border/20 ${tableTextAlignClass(align, node)}`}>{children}</th>;
     },
-    td({ children }) {
-      return <td className="px-1.5 py-0.5 border-b border-border/10 align-top">{children}</td>;
+    td({ children, align, node }) {
+      return <td className={`px-1.5 py-0.5 border-b border-border/10 align-top ${tableTextAlignClass(align, node)}`}>{children}</td>;
     },
     h1({ children }) {
       return <strong className="block text-[1.1em] mt-1 text-foreground">{children}</strong>;
@@ -461,15 +652,7 @@ function buildCompactComponents(): Components {
       // steal clicks and open tabs, breaking the canvas interaction model.
       // Mirror iOS compact behavior: render links as non-interactive styled text.
       if (href && isConvexImageUrl(href)) {
-        return (
-          <img
-            src={href}
-            alt={typeof children === "string" ? children : getFilenameFromUrl(href) ?? "Image"}
-            className="max-w-full rounded-md my-1"
-            loading="lazy"
-            draggable={false}
-          />
-        );
+        return <MarkdownImage src={href} alt={typeof children === "string" ? children : getFilenameFromUrl(href) ?? "Image"} compact />;
       }
       return (
         <span className="text-primary underline underline-offset-2 opacity-90">
@@ -513,6 +696,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
     () => (compact ? buildCompactComponents() : buildComponents(content, documentCitationLinks)),
     [content, compact, documentCitationLinks],
   );
+  const renderedContent = useMemo(() => preprocessDefinitionLists(content), [content]);
 
   return (
     <div
@@ -530,7 +714,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         rehypePlugins={compact ? REHYPE_PLUGINS_COMPACT : REHYPE_PLUGINS}
         components={components}
       >
-        {content}
+        {renderedContent}
       </ReactMarkdown>
     </div>
   );

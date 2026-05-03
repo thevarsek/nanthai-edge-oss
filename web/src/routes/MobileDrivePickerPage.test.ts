@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import {
   androidIntentCallbackUrl,
@@ -15,29 +14,26 @@ test("pickedFileIds accepts all callback key variants and trims blanks", () => {
   params.append("file_ids", " d ");
   params.append("fileIds", ",e,,");
 
-  assert.deepEqual(pickedFileIds(params), ["a", "b", "c", "d", "e"]);
+  expect(pickedFileIds(params)).toEqual(["a", "b", "c", "d", "e"]);
 });
 
 test("callbackUrl preserves state for success and cancel callbacks", () => {
-  assert.equal(
+  expect(
     callbackUrl("nanthai-edge", ["file_1", "file_2"], "state_1"),
-    "nanthai-edge://drive-picker?fileIds=file_1%2Cfile_2&state=state_1",
-  );
-  assert.equal(
+  ).toBe("nanthai-edge://drive-picker?fileIds=file_1%2Cfile_2&state=state_1");
+  expect(
     callbackUrl("nanthai-edge", [], "state_1"),
-    "nanthai-edge://drive-picker?fileIds=&state=state_1",
-  );
+  ).toBe("nanthai-edge://drive-picker?fileIds=&state=state_1");
 });
 
 test("safeCallbackScheme allowlists the native callback scheme", () => {
-  assert.equal(safeCallbackScheme("nanthai-edge"), "nanthai-edge");
-  assert.equal(safeCallbackScheme("https"), "nanthai-edge");
-  assert.equal(safeCallbackScheme(null), "nanthai-edge");
+  expect(safeCallbackScheme("nanthai-edge")).toBe("nanthai-edge");
+  expect(safeCallbackScheme("https")).toBe("nanthai-edge");
+  expect(safeCallbackScheme(null)).toBe("nanthai-edge");
 });
 
 test("androidIntentCallbackUrl targets the native Android package", () => {
-  assert.equal(
+  expect(
     androidIntentCallbackUrl("nanthai-edge", ["file_1"], "state_1"),
-    "intent://drive-picker?fileIds=file_1&state=state_1#Intent;scheme=nanthai-edge;package=com.nanthai.edge;end",
-  );
+  ).toBe("intent://drive-picker?fileIds=file_1&state=state_1#Intent;scheme=nanthai-edge;package=com.nanthai.edge;end");
 });

@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { describe, expect, test } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   buildBaseParticipants,
@@ -19,6 +18,7 @@ const defaultOverrides: ParameterOverrides = {
 };
 const personaId = "persona_1" as Id<"personas">;
 
+describe("chat request resolution", () => {
 test("resolveParticipants uses persona before per-model and global defaults", () => {
   const participants = resolveParticipants({
     baseParticipants: [{
@@ -49,7 +49,7 @@ test("resolveParticipants uses persona before per-model and global defaults", ()
     overrides: defaultOverrides,
   });
 
-  assert.deepEqual(participants[0], {
+  expect(participants[0]).toEqual({
     modelId: "anthropic/claude-sonnet-4",
     personaId: "persona_1",
     personaName: "Research Analyst",
@@ -80,10 +80,10 @@ test("resolveParticipants uses per-model defaults when persona is absent", () =>
     overrides: defaultOverrides,
   });
 
-  assert.equal(participants[0]?.temperature, 0.8);
-  assert.equal(participants[0]?.maxTokens, 8192);
-  assert.equal(participants[0]?.includeReasoning, true);
-  assert.equal(participants[0]?.reasoningEffort, "high");
+  expect(participants[0]?.temperature).toBe(0.8);
+  expect(participants[0]?.maxTokens).toBe(8192);
+  expect(participants[0]?.includeReasoning).toBe(true);
+  expect(participants[0]?.reasoningEffort).toBe("high");
 });
 
 test("resolveParticipants applies explicit chat overrides and clears reasoning effort when disabled", () => {
@@ -107,17 +107,17 @@ test("resolveParticipants applies explicit chat overrides and clears reasoning e
     },
   });
 
-  assert.equal(participants[0]?.temperature, 1.3);
-  assert.equal(participants[0]?.maxTokens, 1024);
-  assert.equal(participants[0]?.includeReasoning, false);
-  assert.equal(participants[0]?.reasoningEffort, null);
+  expect(participants[0]?.temperature).toBe(1.3);
+  expect(participants[0]?.maxTokens).toBe(1024);
+  expect(participants[0]?.includeReasoning).toBe(false);
+  expect(participants[0]?.reasoningEffort).toBeNull();
 });
 
 test("resolveParameterDefaults falls back to true reasoning and medium effort", () => {
   const defaults = resolveParameterDefaults("openai/gpt-4.1", undefined, undefined);
 
-  assert.equal(defaults.includeReasoning, true);
-  assert.equal(defaults.reasoningEffort, "medium");
+  expect(defaults.includeReasoning).toBe(true);
+  expect(defaults.reasoningEffort).toBe("medium");
 });
 
 test("buildBaseParticipants uses default persona model when creating a new chat", () => {
@@ -132,30 +132,31 @@ test("buildBaseParticipants uses default persona model when creating a new chat"
     selectedModelId: "openai/gpt-4.1",
   });
 
-  assert.equal(participants[0]?.modelId, "anthropic/claude-sonnet-4");
-  assert.equal(participants[0]?.personaId, personaId);
-  assert.equal(participants[0]?.personaEmoji, "🔎");
+  expect(participants[0]?.modelId).toBe("anthropic/claude-sonnet-4");
+  expect(participants[0]?.personaId).toBe(personaId);
+  expect(participants[0]?.personaEmoji).toBe("🔎");
 });
 
 test("validateSendState blocks invalid research paper sends", () => {
-  assert.equal(validateSendState({
+  expect(validateSendState({
     participantCount: 2,
     isResearchPaper: true,
     attachmentCount: 0,
     complexity: 1,
-  }), "Research Paper requires a single participant.");
+  })).toBe("Research Paper requires a single participant.");
 
-  assert.equal(validateSendState({
+  expect(validateSendState({
     participantCount: 1,
     isResearchPaper: false,
     attachmentCount: 1,
     complexity: 3,
-  }), "Complexity 3 search does not support attachments.");
+  })).toBe("Complexity 3 search does not support attachments.");
 
-  assert.equal(validateSendState({
+  expect(validateSendState({
     participantCount: 1,
     isResearchPaper: true,
     attachmentCount: 0,
     complexity: 2,
-  }), null);
+  })).toBeNull();
+});
 });

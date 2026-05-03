@@ -102,7 +102,7 @@ export interface Message {
   citations?: Array<{ url: string; title: string }>;
   documentCitations?: Array<{
     ref: number;
-    documentId: Id<"documents">;
+    documentId?: Id<"documents">;
     versionId?: Id<"documentVersions">;
     filename: string;
     quote: string;
@@ -110,13 +110,13 @@ export interface Message {
     locator?: string;
   }>;
   documentEvents?: Array<{
-    type: "document_created" | "document_updated";
+    type: string;
     documentId: Id<"documents">;
-    versionId: Id<"documentVersions">;
-    storageId: Id<"_storage">;
+    versionId?: Id<"documentVersions">;
+    storageId?: Id<"_storage">;
     generatedFileId?: Id<"generatedFiles">;
-    filename: string;
-    mimeType: string;
+    filename?: string;
+    mimeType?: string;
     title?: string;
     summary?: string;
   }>;

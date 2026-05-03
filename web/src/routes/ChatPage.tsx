@@ -31,6 +31,7 @@ import { ParticipantPicker } from "@/components/settings/ChatDefaultsSection.Par
 import { useToast } from "@/components/shared/Toast.context";
 import { Defaults } from "@/lib/constants";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { hasDocumentAttachmentPayload } from "@/lib/documentEvents";
 import {
   useChatScroll, useChatSearchWiring, useMentionSuggestions, useSubagentOverride,
   useSearchMode,
@@ -489,9 +490,9 @@ export function ChatPage() {
     for (const message of [...visibleMessages].reverse()) {
       if (message.role !== "assistant") continue;
       const event = [...(message.documentEvents ?? [])].reverse().find((candidate) =>
-        !!candidate.storageId && !!candidate.filename && !!candidate.mimeType
+        hasDocumentAttachmentPayload(candidate)
       );
-      if (!event) continue;
+      if (!event || !hasDocumentAttachmentPayload(event)) continue;
       return {
         storageId: event.storageId,
         name: event.filename,
