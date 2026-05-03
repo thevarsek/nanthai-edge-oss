@@ -1,6 +1,17 @@
-# NanthAI Edge — OSS Documentation Index
+# NanthAI Edge — OSS Docs
 
-> Public documentation for the source-available web client and Convex backend.
+> The map for understanding, running, and extending the source-available web client and Convex backend.
+
+## Start Here
+
+| Goal | Read |
+|------|------|
+| Run the app locally | [`../README.md`](../README.md) |
+| Understand the repo layout | [`project-structure.md`](project-structure.md) |
+| Change backend behavior safely | [`client-convex-contract.md`](client-convex-contract.md), [`data-model.md`](data-model.md), [`testing-strategy.md`](testing-strategy.md) |
+| Add tools, skills, or integrations | [`architecture.md`](architecture.md), [`service-layer.md`](service-layer.md), [`tool-skill-access.md`](tool-skill-access.md) |
+| Understand chat UX and product concepts | [`design-philosophy.md`](design-philosophy.md), [`user-flows.md`](user-flows.md), [`ideascapes.md`](ideascapes.md) |
+| Debug model/search behavior | [`openrouter-api.md`](openrouter-api.md), [`ttft-web-search-finding.md`](ttft-web-search-finding.md) |
 
 ## Documents
 
@@ -28,9 +39,6 @@
 - Native iOS/Android apps, milestone plans, internal risk logs, launch plans, and private marketing materials are not part of this OSS checkout.
 - Some deep architecture docs mention native clients where the Convex contract is shared with the commercial sibling. Treat those references as compatibility context, not files expected to exist in this repository.
 
-## How to Use
+## Why These Docs Matter
 
-- Start with [`../README.md`](../README.md) for setup and self-hosting.
-- Use [`project-structure.md`](project-structure.md) to find the implementation surface for a feature.
-- Use [`testing-strategy.md`](testing-strategy.md) before changing shared backend behavior or web UI flows.
-- Use [`client-convex-contract.md`](client-convex-contract.md) and [`data-model.md`](data-model.md) before changing public Convex function payloads or schema.
+NanthAI Edge is intentionally more complete than a starter template. The docs are here to make the implementation approachable: where state lives, which contracts are public, how streaming is persisted, how tools run, and which optional services unlock which features.

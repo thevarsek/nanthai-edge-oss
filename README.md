@@ -1,6 +1,6 @@
 # NanthAI Edge
 
-> **Source-available AI chat platform** — web client (React/Vite) + real-time backend (Convex) + Clerk auth. Users bring their own OpenRouter API key and chat with 300+ AI models.
+> **A self-hostable AI workspace for people who want control.** Run a polished multi-model chat app with personas, memory, tools, scheduled jobs, document workflows, and your own OpenRouter key.
 
 [![License: Source-Available](https://img.shields.io/badge/License-Source--Available-blue)](/LICENSE)
 
@@ -8,21 +8,39 @@
 
 ## What is NanthAI Edge?
 
-NanthAI Edge is a full-featured AI chat application with multi-model conversations, personas, memory, scheduled jobs, internet search, integrations, and more — all powered by a [Convex](https://convex.dev) real-time backend.
+NanthAI Edge is a production-grade AI chat platform you can study, run, and adapt. It combines a React/Vite web app with a real-time [Convex](https://convex.dev) backend, [Clerk](https://clerk.com) auth, and per-user OpenRouter OAuth so every user brings their own AI account.
 
-This repository contains the **web client** and **Convex backend**. It's everything you need to self-host your own instance.
+This repository contains the **web client** and **Convex backend**. It is meant for builders who want more than a starter chat demo: model comparison, persistent product state, memory, tools, integrations, and real backend contracts are all here.
 
-### Key Features
+## Why Use It?
+
+- **Bring your own AI account** — no shared server-side OpenRouter key, no hidden inference bill for the host.
+- **Compare models in one conversation** — send the same turn to multiple models and keep the outputs side-by-side.
+- **Build on a real app architecture** — Convex schema, actions, streaming, crons, tests, web routes, and public docs are included.
+- **Host the parts you care about** — core chat works with only Convex, Clerk, and OpenRouter; integrations are optional.
+- **Learn from a complete implementation** — tool execution, retry contracts, generated files, memory, OAuth, search, and scheduled jobs are implemented as product surfaces, not isolated examples.
+
+## What You Get
 
 - **Multi-model chat** — Send to 2–3 models simultaneously, compare side-by-side
 - **Personas** — Custom AI alter-egos with model assignment, system prompts, parameter overrides
 - **AI Skills** — Progressive disclosure skill system with catalog and per-chat bindings
 - **Internet Search** — 3 tiers (Basic, Web Search, Research Paper) with complexity settings
 - **Memory** — Vector-based memory with 10 categories, extraction modes, persona scoping
+- **Document Workflows** — Generate, read, edit, cite, and attach DOCX/PPTX/XLSX/text-style artifacts
 - **Audio Messages** — Voice recording, TTS playback, auto-audio mode
 - **Scheduled Jobs** — Recurring AI tasks with multi-step pipelines
 - **Integrations** — Google Workspace, Microsoft 365, Notion, Slack, Cloze, and calendar/email tools
 - **BYOK** — Every user brings their own OpenRouter API key via PKCE OAuth. No server-side AI key needed.
+
+## What This Repo Is Best For
+
+| Use case | Why it fits |
+|----------|-------------|
+| Self-hosted AI workspace | You can run the web app and Convex backend with your own auth and user-provided AI keys |
+| AI product reference app | The codebase shows real patterns for streaming, tools, memory, OAuth, files, search, and scheduled work |
+| Team or client prototype | Start from a complete app instead of wiring auth, storage, streaming, and model selection from scratch |
+| Learning Convex + AI apps | The backend is organized around queries, mutations, actions, crons, schema files, and contract tests |
 
 ## Self-Hosting Quick Start
 
@@ -74,7 +92,7 @@ Then set the required Convex backend env vars:
 npx convex env set CLERK_JWT_ISSUER_DOMAIN https://your-instance.clerk.accounts.dev
 ```
 
-See `.env.example` for the full list of optional env vars (Stripe, Google, Microsoft, Notion, VAPID push).
+See `.env.example` for the full list of optional env vars (Stripe, Google, Microsoft, Notion, Slack, Vercel Sandbox, push).
 
 ### 5. Run the dev server
 
@@ -86,7 +104,22 @@ npx convex dev
 cd web && npm run dev
 ```
 
-Open `http://localhost:5173` and sign in with Clerk. Connect your OpenRouter account to start chatting.
+Open `http://localhost:5173`, sign in with Clerk, connect OpenRouter, and start chatting.
+
+## Optional Capabilities
+
+NanthAI Edge starts small and expands as you configure more providers:
+
+| Capability | Required setup |
+|------------|----------------|
+| Core chat, personas, memory, model picker | Convex, Clerk, OpenRouter user connection |
+| Google Drive/Calendar | Google OAuth client and Picker credentials |
+| Microsoft 365 | Microsoft OAuth app |
+| Notion | Notion OAuth app |
+| Slack tools | Slack OAuth app |
+| Payments / Pro gates | Stripe env vars |
+| Heavy runtime tools | Vercel Sandbox env vars |
+| Web push | VAPID keys |
 
 ## Project Layout
 
@@ -216,7 +249,9 @@ cd web && npm run lint
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. Contributions use an inbound=outbound model — by submitting a PR you grant the author rights to include your work in commercial versions.
+Useful contributions are welcome: docs fixes, setup improvements, tests, Convex backend hardening, web UI polish, and provider integration fixes. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+Contributions use an inbound=outbound model — by submitting a PR you grant the author rights to include your work in commercial versions.
 
 ## License
 
