@@ -1,150 +1,66 @@
 # Technology Stack
 
-> Technologies used in NanthAI Edge across the native iOS app, native Android app, and shared Convex backend.
+> Technologies shipped in the NanthAI Edge OSS repository.
 
 ## Stack Overview
 
 | Component | Technology | Version |
 |-----------|-----------|---------|
-| Language | Swift | 6.x toolchain via Xcode 26.2 beta |
-| UI | SwiftUI | Latest (deployment target iOS 26+) |
-| Backend | Convex | 1.32.0 (TypeScript functions) |
-| Realtime Client | ConvexMobile (`convex-swift`) | 0.8.1 (SPM) |
-| Identity Auth | Clerk iOS SDK (`ClerkKit` + `ClerkKitUI`) | Latest (SPM) |
-| Auth UI (Identity) | `ClerkKitUI.AuthView` | Clerk-managed sign-in/sign-up |
-| Auth UI (API Key) | ASWebAuthenticationSession | PKCE flow for OpenRouter key provisioning |
-| Secrets | Security.framework (Keychain) | Built-in |
-| Networking | ConvexMobile WebSocket | Reactive subscriptions, mutations, actions |
-| Canvas (Ideascapes) | SwiftUI Canvas / GeometryReader | Built-in |
-| Markdown | AttributedString (Foundation) | iOS 26+ (by app baseline) |
-| Testing | XCTest + Swift Testing | Built-in |
+| Web app | Vite + React + TypeScript | Vite 7.3.x, React 19.2.x, TypeScript 5.9.x |
+| Styling | Tailwind CSS + utility helpers | Tailwind 3.4.x, `clsx`, `tailwind-merge` |
+| Routing | React Router | 7.13.x |
+| Auth UI/session | Clerk React SDK | 5.61.x |
+| Backend | Convex TypeScript functions | 1.34.x |
+| Realtime client | `convex/react` | Convex WebSocket subscriptions, mutations, actions |
+| AI SDK | Vercel AI SDK + OpenAI provider | `ai` 5.0.x, `@ai-sdk/openai` 3.0.x |
+| Agent runtime | `@convex-dev/agent` | 0.3.x |
+| Validation | Convex validators + Zod | Zod 4.3.x |
+| Unit/component tests | Vitest + React Testing Library + jsdom | Web package scripts |
+| Browser tests | Playwright | `cd web && npm run test:e2e` |
+| Backend tests | Node test runner through `tsx` | `npm run convex:test` |
 
-### Android Client Stack
+## Web Client
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Language | Kotlin | 2.2.20 |
-| UI | Jetpack Compose + Material 3 | Compose BOM 2025.06.00 |
-| State | `ViewModel` + `StateFlow` | AndroidX Lifecycle current |
-| Navigation | Navigation Compose | AndroidX current |
-| Concurrency | Kotlin coroutines | Current |
-| Build | Android Gradle Plugin | 9.1.0 |
-| Identity Auth | Clerk Android SDK | 1.0.10 |
-| Realtime/Data | Convex Kotlin SDK | 0.8.0 |
-| Secure Storage | Android Keystore wrapper | Built-in |
-| Billing | Google Play Billing client | Native Android billing path |
-| Push | Firebase Cloud Messaging | Native Android push path |
-| Min SDK | Android 9 | API 28 |
-| Target SDK | Android 16 | API 36 |
-| Testing | JUnit + JVM ViewModel tests + Compose UI tests | Local/unit plus connected-device verification gate |
-| Performance | JankStats + Macrobenchmark + Baseline Profiles | M34 seeded chat-shell benchmark and generated profiles |
+| Area | Technology | Notes |
+|------|------------|-------|
+| Markdown | `react-markdown`, `remark-gfm`, `remark-math`, `rehype-katex`, `rehype-highlight` | Chat, ideascapes, and generated content rendering |
+| Charts | Recharts | Generated chart display |
+| Icons | Lucide React | App controls and route UI |
+| PWA | `vite-plugin-pwa`, Workbox | Installability and service worker support |
+| i18n | i18next + React bindings | Locale files under `web/src/i18n` |
+| SEO/static pages | React Helmet Async | Public feature, privacy, terms, support, and licensing pages |
 
-### Web Client Stack
+## Convex Backend
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| App | Vite + React + TypeScript | Vite 7.3.x, React 19.2.x, TypeScript 5.9.x |
-| Backend Client | `convex/react` + Clerk provider | Shared Convex product API |
-| Markdown | `react-markdown` + `remark-gfm` + `remark-math` + KaTeX | High-fidelity web math renderer |
-| Unit/Component Tests | Vitest + React Testing Library + jsdom | `npm run test` |
-| Browser Smoke Tests | Playwright | `npm run test:e2e` |
+| Area | Technology | Notes |
+|------|------------|-------|
+| Data | Convex schema split across `schema_tables_*` files | Core, catalog, user, and runtime tables |
+| Auth | Clerk JWT provider | Configured in `convex/auth.config.ts` |
+| Streaming | Convex actions + `StreamWriter` | Server-side OpenRouter streaming persisted into message state |
+| Model catalog | OpenRouter + Artificial Analysis enrichment | Model sync, guidance scoring, image/video catalog helpers |
+| Runtime tools | just-bash, Pyodide, Vercel Sandbox | Shell/file workspace, lightweight Python analytics, heavier sandbox execution |
+| File generation | `docx`, `pptxgenjs`, custom OOXML readers/writers | DOCX/PPTX/XLSX/text/email generation and extraction |
+| Email/Calendar | `imapflow`, `mailparser`, `nodemailer`, `tsdav` | Manual Gmail and Apple Calendar-style CalDAV tooling |
+| Push | `web-push`, APNs/FCM helpers | Web push and provider-specific backend delivery helpers |
+| Payments | Stripe webhooks/actions | Optional commercial entitlement integration |
 
-### Convex Backend Stack
+## External Integration Pattern
 
-| Component | Technology | Version |
-|-----------|-----------|---------|
-| Runtime | Convex | 1.32.0 |
-| AI Agent | @convex-dev/agent | 0.3.2 |
-| AI SDK | ai (Vercel) | 5.0.138 |
-| OpenAI Provider | @ai-sdk/openai | 3.0.33 |
-| Helpers | convex-helpers | 0.1.113 |
-| Validation | zod | ^4.3.6 |
-| CalDAV Client | tsdav | ^2.1.8 |
-| Document Generation | docx | ^9.6.0 |
-| Document Extraction | JSZip + custom OOXML/text/PDF readers | Used by document tools and canonical document versions |
-| Presentation Generation | pptxgenjs | ^4.0.1 |
-| Compaction Model | google/gemini-3.1-flash-lite-preview (via OpenRouter) | Used for context compaction in tool-call loops |
-| TTS Model | openai/gpt-audio-mini (via OpenRouter) | Text-to-speech for audio messages (M20) |
-| Workspace Runtime | just-bash | Per-generation ephemeral sandbox for shell commands and file operations (M27) |
-| Lightweight Analytics | Pyodide (WASM) | In-process Python for data analysis, matplotlib charts (M27) |
-| Heavy Analytics | Vercel Sandbox (@anthropic-ai/sdk) | Cloud sandbox for packages exceeding Pyodide capabilities (M27) |
-
-### iOS Audio Stack (M20)
-
-| Component | Technology | Notes |
-|-----------|-----------|-------|
-| Recording | AVAudioRecorder (AVFoundation) | Linear PCM format |
-| Transcription | SFSpeechRecognizer (Speech framework) | Real-time speech-to-text during recording |
-| Playback | AVPlayer (AVFoundation) | Audio session configured for playback category |
-
-### Android Audio Stack (M20)
-
-| Component | Technology | Notes |
-|-----------|-----------|-------|
-| Recording | MediaRecorder | AAC encoding |
-| Transcription | SpeechRecognizer | Android speech API |
-| Playback | MediaPlayer | DisposableEffect lifecycle in Compose |
-
-### External Integration API Pattern (M10)
-
-All Google Workspace, Microsoft 365, Notion, Slack, and Cloze API calls use raw `fetch()` — **no Node.js SDKs** (`googleapis`, `@microsoft/microsoft-graph-client`, `@notionhq/client`, `@slack/web-api`). This avoids large dependency trees and keeps tools runnable in Convex's default V8 runtime without `"use node"` directives.
+Google Workspace, Microsoft 365, Notion, Slack, Cloze, and calendar/email integrations are implemented as Convex-side tools. Most provider calls use raw `fetch()` to avoid large SDK dependency trees and keep functions compatible with Convex's default runtime where possible.
 
 | Integration | Auth Pattern | Token Storage |
 |-------------|-------------|---------------|
-| Google Workspace | OAuth 2.0 PKCE (public client) | Convex `oauthConnections` table |
-| Microsoft 365 | OAuth 2.0 PKCE (public/native client, no client_secret) | Convex `oauthConnections` table |
-| Notion | OAuth 2.0 with HTTP Basic Auth (`base64(client_id:client_secret)`) | Convex `oauthConnections` table |
-| Slack | OAuth 2.0 (workspace tokens) | Convex `oauthConnections` table |
+| Google Workspace | OAuth 2.0 PKCE with reduced scopes | Convex `oauthConnections` table |
+| Microsoft 365 | OAuth 2.0 PKCE public-client flow | Convex `oauthConnections` table |
+| Notion | OAuth 2.0 with HTTP Basic token exchange | Convex `oauthConnections` table |
+| Slack | OAuth 2.0 workspace tokens + hosted MCP JSON-RPC | Convex `oauthConnections` table |
 | Cloze | API key auth | Convex `userSecrets` table |
-
-### Push Notifications (M13.5 + M16)
-
-Push notifications use provider-native APIs called from Convex actions — no third-party push libraries.
-
-| Component | Technology | Notes |
-|-----------|-----------|-------|
-| JWT Signing | WebCrypto (`crypto.subtle`) ES256 | P8 key converted to JWK at runtime; DER-to-raw signature conversion |
-| APNs Transport | `fetch()` to `api.sandbox.push.apple.com` / `api.push.apple.com` | HTTP/2 with bearer token auth |
-| FCM Transport | `fetch()` to `https://fcm.googleapis.com/fcm/send` | Legacy HTTP endpoint with server key auth (`FCM_SERVER_KEY`); 2xx responses must parse valid JSON and expose no per-token error to be logged as success |
-| Token Storage | Convex `deviceTokens` table | Per-user, per-provider (`apns` / `fcm`), APNs environment-aware |
-| iOS Registration | `UIApplicationDelegate` + `NotificationService` | Token hex-encoded, sent to Convex on registration and sign-in |
-| Android Registration | FCM token lifecycle repository | Token sent to Convex with `platform: "android"` + `provider: "fcm"` |
-| Deep Links | `UNUserNotificationCenter` delegate / Android intent routing | `chatId` included in provider payload for navigation handoff |
-
-No Node.js runtime needed — all JWT signing and APNs calls run in Convex's default V8 runtime using `crypto.subtle`.
-
-## Deployment Target Policy
-
-- iOS minimum deployment target for v1: **iOS 26.0** (iPhone and iPad).
-- Android minimum SDK for v1: **API 28 / Android 9**.
-- Android target/compile SDK for the current branch: **API 36**.
-- Build with latest Xcode/iOS SDK and current Android SDK; platform-native APIs are allowed within those baselines.
-- Acceptance testing runs on:
-  - one iOS 26.0 simulator/device
-  - one iOS 26.2 simulator/device
-  - one Android emulator or device on the current release branch
 
 ## Dependency Policy
 
-- **Clerk iOS SDK** (`ClerkKit` + `ClerkKitUI`) — managed identity, session tokens, pre-built sign-in UI
-- **ConvexMobile** (`convex-swift`) — realtime subscriptions, mutations, actions over WebSocket with Clerk JWT auth
-- No other SPM dependencies. All other functionality uses Apple platform frameworks.
-- URLSession used only for OpenRouter credits check (simple GET) and PKCE key exchange
-- Security.framework for Keychain access
-- Minimal dependencies = faster builds, smaller binary, reduced supply chain risk
+- Keep product logic in Convex functions; keep the web client as a rendering and interaction layer over shared backend state.
+- Prefer raw provider REST calls from Convex tools unless an SDK materially reduces risk or complexity.
+- Keep generated Convex files (`convex/_generated/`) out of source control; `npx convex dev` recreates them.
+- Treat optional integrations as optional at runtime. The app should run without Stripe, Google, Microsoft, Notion, Slack, Cloze, push, and benchmark-enrichment keys unless that feature is explicitly enabled.
 
-## What Changed in M8
-
-| Before (M0–M7.5) | After (M8) |
-|-------------------|------------|
-| SwiftData + CloudKit for persistence | Convex tables (server-side) |
-| Direct OpenRouter API calls from device | Convex Actions call OpenRouter server-side |
-| SSE parsing on device (`SSEParser`) | Server writes chunks; client subscribes to queries |
-| `URLSession.AsyncBytes` streaming | ConvexMobile WebSocket subscriptions |
-| `NaturalLanguage.framework` tokenization | Server-side context building |
-| 8+ service protocols | Single `ConvexService` gateway |
-| `ModelContainer` at app root | No SwiftData at all |
-
----
-
-*Last updated: 2026-05-03 — M34 added web Vitest/Playwright test tooling and Android Compose UI, JankStats, Macrobenchmark, and Baseline Profile performance infrastructure. M33 document generation/document skills added canonical document workspace usage on top of existing OOXML tools.*
+*Last updated: 2026-05-03 — refreshed for the OSS web + Convex checkout.*

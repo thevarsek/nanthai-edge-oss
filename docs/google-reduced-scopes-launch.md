@@ -64,8 +64,8 @@ Use this flow if Google asks for a verification video:
 
 ## Operational References
 
-- Milestone detail: [`../milestones/M24-google-coming-soon.md`](../milestones/M24-google-coming-soon.md)
-- Shared client contract: [`mobile-api-contract.md`](mobile-api-contract.md)
+- OSS implementation surfaces: `convex/oauth/google.ts`, `convex/oauth/google_capabilities.ts`, `convex/tools/google/`, `convex/drive_picker/`, and `web/src/lib/googleDrivePicker.ts`
+- Shared client contract principles: [`client-convex-contract.md`](client-convex-contract.md)
 - Tool and skill gates: [`tool-skill-access.md`](tool-skill-access.md)
 - Data model: [`data-model.md`](data-model.md)
 

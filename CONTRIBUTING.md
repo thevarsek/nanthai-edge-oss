@@ -39,7 +39,6 @@ Contributions are welcome for:
      actions (HTTP/streaming)
    - Run `npx tsc --noEmit --project convex/tsconfig.json` and `npm run convex:lint` for backend changes
    - Run `cd web && npx tsc --noEmit --project tsconfig.app.json` and `cd web && npm run lint` for web changes
-   - Run `cd android && ./gradlew lintDebug` for Android changes
    - Run `npx tsx --test convex/tests/*.test.ts` to verify backend tests pass
 
 4. **Submit a pull request** against `main` with a clear description of the

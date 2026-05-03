@@ -262,10 +262,9 @@ In practice there are now two runtime shapes:
 
 ## See Also
 
-- [`monetization.md`](monetization.md) — commercial Free vs Pro positioning
-- [`max-runtime-analytics.md`](max-runtime-analytics.md) — internal runtime architecture
 - [`architecture.md`](architecture.md) — backend tool registry and Convex execution flow
-- [`mobile-api-contract.md`](mobile-api-contract.md) — shared client-facing Convex contract
+- [`client-convex-contract.md`](client-convex-contract.md) — shared client-facing Convex contract
+- [`tech-stack.md`](tech-stack.md) — OSS runtime and dependency overview
 
 ## Slack MCP Tools — Hosted MCP And Drift Detection
 

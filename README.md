@@ -21,7 +21,7 @@ This repository contains the **web client** and **Convex backend**. It's everyth
 - **Memory** — Vector-based memory with 10 categories, extraction modes, persona scoping
 - **Audio Messages** — Voice recording, TTS playback, auto-audio mode
 - **Scheduled Jobs** — Recurring AI tasks with multi-step pipelines
-- **Integrations** — Google Workspace, Microsoft 365, Notion
+- **Integrations** — Google Workspace, Microsoft 365, Notion, Slack, Cloze, and calendar/email tools
 - **BYOK** — Every user brings their own OpenRouter API key via PKCE OAuth. No server-side AI key needed.
 
 ## Self-Hosting Quick Start
@@ -123,7 +123,7 @@ nanthai-edge-oss/
 │          (@clerk/clerk-react)                │
 ├──────────────────────────────────────────────┤
 │            Convex React Client               │
-│   (WebSocket subscriptions, mutations, acts)  │
+│   (WebSocket subscriptions, mutations, actions)│
 ├──────────────────────────────────────────────┤
 │            Convex Backend (Server)            │
 │  Schema · Mutations · Actions · Queries · Crons│
@@ -172,6 +172,7 @@ nanthai-edge-oss/
 | `STRIPE_PRICE_ID` | No* | Pro tier product |
 | `STRIPE_WEBHOOK_SECRET` | No* | Stripe webhook verification |
 | `WEB_APP_URL` | No* | Web app URL (for Stripe redirects) |
+| `CONVEX_SECRET_ENCRYPTION_KEY` | No | Encrypt stored app passwords/API keys |
 | `GOOGLE_CLIENT_ID` | No | Google OAuth |
 | `GOOGLE_WEB_CLIENT_ID` | No | Google web OAuth |
 | `GOOGLE_WEB_CLIENT_SECRET` | No | Google OAuth secret |
@@ -179,9 +180,17 @@ nanthai-edge-oss/
 | `MICROSOFT_CLIENT_SECRET` | No | Microsoft OAuth secret |
 | `NOTION_CLIENT_ID` | No | Notion OAuth |
 | `NOTION_CLIENT_SECRET` | No | Notion OAuth secret |
+| `SLACK_CLIENT_ID` | No | Slack OAuth |
+| `SLACK_CLIENT_SECRET` | No | Slack OAuth secret |
+| `VERCEL_SANDBOX_TOKEN` | No | Vercel Sandbox runtime |
+| `VERCEL_SANDBOX_PROJECT_ID` | No | Vercel Sandbox runtime |
+| `VERCEL_SANDBOX_TEAM_ID` | No | Vercel Sandbox runtime |
 | `WEB_PUSH_VAPID_PUBLIC_KEY` | No | Web push notifications |
 | `WEB_PUSH_VAPID_PRIVATE_KEY` | No | Web push notifications |
 | `WEB_PUSH_VAPID_SUBJECT` | No | Web push sender identity |
+| `FCM_PROJECT_ID` | No | FCM push delivery |
+| `FCM_CLIENT_EMAIL` | No | FCM push delivery |
+| `FCM_PRIVATE_KEY` | No | FCM push delivery |
 
 \* All four Stripe/WEB_APP_URL vars are required together if you enable Pro tier payments. Without them the app works fine — Pro gating is simply disabled.
 
@@ -203,7 +212,6 @@ npm run lint
 # Individual lint checks
 npm run convex:lint
 cd web && npm run lint
-cd android && ./gradlew lintDebug
 ```
 
 ## Contributing

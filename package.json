@@ -2,10 +2,10 @@
   "name": "nanthai-edge",
   "version": "1.0.0",
   "private": true,
-  "description": "NanthAI Edge — shared Convex backend for the native iOS and Android apps",
+  "description": "NanthAI Edge — source-available web client and Convex backend",
   "scripts": {
     "dev": "convex dev",
-    "lint": "npm run convex:lint && npm --prefix web run lint && cd android && ./gradlew lintDebug",
+    "lint": "npm run convex:lint && npm --prefix web run lint",
     "convex:test": "tsx --test convex/tests/*.test.ts",
     "convex:test:coverage": "c8 --include='convex/**/*.ts' --exclude='convex/_generated/**' --exclude='convex/tests/**' --reporter=text --reporter=lcov npx tsx --test convex/tests/*.test.ts",
     "convex:lint": "eslint convex --ext .ts",

@@ -1,46 +1,36 @@
-# NanthAI Edge — Documentation Index
+# NanthAI Edge — OSS Documentation Index
 
-> Detailed architecture and reference documentation extracted from the master plan.
-> For milestone tracking, see [`milestones/`](../milestones/).
+> Public documentation for the source-available web client and Convex backend.
 
 ## Documents
 
 | Document | Description |
 |----------|-------------|
-| [`design-philosophy.md`](design-philosophy.md) | Product vision, core features, iMessage design language, non-goals |
-| [`architecture.md`](architecture.md) | Confirmed architectural decisions, layer diagram, DI container, navigation coordinator, server seam |
-| [`tech-stack.md`](tech-stack.md) | Technology table, deployment target policy, zero-dependency rationale |
-| [`data-model.md`](data-model.md) | Convex schema — 49 app tables (4 schema files), document/version tables, runtime/capability tables, DTO types, indexes, identity scoping |
-| [`service-layer.md`](service-layer.md) | Service protocols, ConvexService, SharedAppDataStore, capability subscriptions, generated-chart UI seams, OAuth VMs, tool auth helpers, error types |
-| [`project-structure.md`](project-structure.md) | Complete directory tree for Xcode project, tests, and utilities |
-| [`testing-strategy.md`](testing-strategy.md) | Cross-platform test pyramid, web/Android harness commands, M34 journey ownership, Android performance policy |
-| [`max-runtime-analytics.md`](max-runtime-analytics.md) | Max runtime architecture — capabilities, three-tier execution (just-bash, Pyodide, Vercel Sandbox), workspace/analytics tools, generated charts, iOS/Android status |
-| [`tool-skill-access.md`](tool-skill-access.md) | Product-facing access matrix for tiers, tools, skills, connected apps, and internal Max/runtime capability |
-| [`subagents.md`](subagents.md) | Depth-1 delegated child runs — gating, lifecycle, async parent resume, child continuation |
-| [`openrouter-api.md`](openrouter-api.md) | OpenRouter API endpoints, OAuth PKCE flow, chat completion request/response, SSE stream format, required headers |
-| [`risks.md`](risks.md) | Risk log with severity ratings and mitigations, Apple API validation notes |
-| [`reference-app.md`](reference-app.md) | Analysis of the existing web app (chatology-nanthai) — stack, DB schema, patterns to preserve, pain points, file map |
-| [`future-notes.md`](future-notes.md) | Pre-launch review & technical debt notes (M1–M13); future enhancements |
-| [`ideascapes.md`](ideascapes.md) | Branching architecture & ideascape spatial canvas — branch path resolution, auto-layout, canvas architecture, divergence indicators |
-| [`monetization.md`](monetization.md) | Free vs Pro feature tiers, pricing rationale, gating implementation, paywall content reference |
-| [`mobile-api-contract.md`](mobile-api-contract.md) | Public Convex function surface — queries, mutations, actions consumed by iOS and Android clients |
-| [`google-reduced-scopes-launch.md`](google-reduced-scopes-launch.md) | M24 Google reduced-scope launch status — final OAuth scopes, launch gate, demo flow, and invariants |
-| [`android-architecture-notes.md`](android-architecture-notes.md) | Android app architecture — package layout, Jetpack Compose UI, Clerk/Convex integration, navigation |
-| [`android-release-guide.md`](android-release-guide.md) | Android release checklist — versioning, signing, Play Console workflow, pre-launch report |
+| [`architecture.md`](architecture.md) | Backend-first product architecture, Convex data flow, streaming, tools, integrations, runtime, and feature contracts |
+| [`client-convex-contract.md`](client-convex-contract.md) | Shared Convex API principles for thin clients, ownership, payload compatibility, and error contracts |
+| [`data-model.md`](data-model.md) | Convex schema tables, indexes, identity scoping, generated artifacts, runtime state, memory, and retry contracts |
+| [`design-philosophy.md`](design-philosophy.md) | Product vision, conversation UX principles, ideascapes, personas, memory, and non-goals |
+| [`google-reduced-scopes-launch.md`](google-reduced-scopes-launch.md) | Google integration launch scope, OAuth constraints, Picker/Drive behavior, and verification notes |
+| [`ideascapes.md`](ideascapes.md) | Branching architecture, spatial canvas model, node positioning, branch resolution, and rendering contract |
+| [`openrouter-api.md`](openrouter-api.md) | OpenRouter OAuth PKCE, model/catalog endpoints, chat completion shape, streaming format, and headers |
+| [`project-structure.md`](project-structure.md) | OSS repository layout for `convex/`, `web/`, docs, configuration, and generated files |
+| [`service-layer.md`](service-layer.md) | Service boundaries between web UI, Convex functions, tools, integrations, generated artifacts, and errors |
+| [`subagents.md`](subagents.md) | Delegated child-run architecture, parent continuation, lifecycle, persistence, and UI status model |
+| [`tech-stack.md`](tech-stack.md) | Versions and dependency policy for the OSS web client, Convex backend, tools, and integrations |
+| [`testing-strategy.md`](testing-strategy.md) | OSS test pyramid, commands, and coverage ownership for Convex and web surfaces |
+| [`tool-skill-access.md`](tool-skill-access.md) | Product-facing access matrix for tools, skills, connected apps, runtime capability, and commercial gates |
+| [`ttft-web-search-finding.md`](ttft-web-search-finding.md) | Web-search first-token latency investigation and OpenRouter server-tool routing notes |
+| [`user-flows.md`](user-flows.md) | Product workflows for onboarding, chat, tools, personas, memory, integrations, jobs, documents, and errors |
 
-## Current Drift Notes
+## OSS Notes
 
-- M32 is complete: readable Knowledge Base files can become canonical `documents`/`documentVersions`, scoped chat turns can use document tools, and assistant messages persist validated document citation annotations.
-- M33 is complete: generated DOCX files are linked to canonical documents/versions, assistant messages carry document-created/updated event metadata, and document/legal workflow behavior is packaged through built-in skills.
-- M34 is complete: web now has Vitest + Playwright coverage, Android has Compose UI smoke tests plus JankStats/Macrobenchmark/Baseline Profile infrastructure, Android chat detail/list state ownership has been split into narrower tested surfaces, and Android route/keyboard benchmark coverage now guards list/detail/back and IME frame tails.
-- M28 is abandoned by product decision; OpenRouter remains the active inference-provider architecture.
+- This repository ships the React/Vite web client and Convex backend.
+- Native iOS/Android apps, milestone plans, internal risk logs, launch plans, and private marketing materials are not part of this OSS checkout.
+- Some deep architecture docs mention native clients where the Convex contract is shared with the commercial sibling. Treat those references as compatibility context, not files expected to exist in this repository.
 
 ## How to Use
 
-- **Before making structural changes**, read the relevant doc(s) above plus [`plan.md`](../plan.md) (the hub document).
-- **For implementation work**, check the relevant [`milestones/M*.md`](../milestones/) file for task-level detail.
-- **For code style and conventions**, see [`AGENTS.md`](../AGENTS.md).
-
----
-
-*These docs are the authoritative source for confirmed architecture. `plan.md` serves as a lean index pointing here.*
+- Start with [`../README.md`](../README.md) for setup and self-hosting.
+- Use [`project-structure.md`](project-structure.md) to find the implementation surface for a feature.
+- Use [`testing-strategy.md`](testing-strategy.md) before changing shared backend behavior or web UI flows.
+- Use [`client-convex-contract.md`](client-convex-contract.md) and [`data-model.md`](data-model.md) before changing public Convex function payloads or schema.
