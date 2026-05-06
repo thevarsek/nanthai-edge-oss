@@ -2835,7 +2835,7 @@
   "skill_state_blocked": "Blocked",
   "skill_state_inherit": "Inherit",
   "skill_state_default_badge": "{{state}} (default)",
-  "skill_override_cycle_hint": "Tap to cycle: Inherit, Available to Load, Always On, Blocked.",
+  "skill_override_cycle_hint": "Tap to cycle: Inherit, Always On, Available to Load, Blocked.",
   "chat_skills_inherit_help": "Inherit uses the persona setting for this chat, or your Settings default when the persona does not override it.",
   "persona_skills_inherit_help": "Inherit uses your Settings default for this skill. Persona overrides apply before chat and one-message overrides.",
   "settings_skill_defaults_help": "Choose the default state for each skill in new chats. Personas, chats, and one-message overrides can still change it later.",

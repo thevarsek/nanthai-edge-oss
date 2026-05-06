@@ -1,6 +1,6 @@
 // components/chat/ChatSkillsPicker.tsx
 // Modal picker for per-chat skill overrides (M30 tri-state).
-// Shows all visible skills with tri-state cycling: available → always → never → (inherit).
+// Shows all visible skills with tri-state cycling: always → available → never → inherit.
 
 import { useMemo, useState } from "react";
 import { X, Search, Sparkles } from "lucide-react";
@@ -32,7 +32,7 @@ function SkillStateChip({ state }: { state: SkillOverrideState }) {
 interface Props {
   /** M30: current skill overrides map (skillId → state) */
   skillOverrides: Map<string, SkillOverrideState>;
-  /** Cycle a skill through states: available → always → never → (remove) */
+  /** Cycle a skill through states: always → available → never → inherit. */
   onCycleSkill: (skillId: Id<"skills">) => void;
   onClose: () => void;
 }

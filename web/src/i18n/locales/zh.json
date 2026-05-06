@@ -2835,7 +2835,7 @@
   "skill_state_blocked": "已阻止",
   "skill_state_inherit": "继承",
   "skill_state_default_badge": "{{state}}（默认）",
-  "skill_override_cycle_hint": "点击循环切换：继承、可加载、始终开启、已阻止。",
+  "skill_override_cycle_hint": "点击循环切换：继承、始终开启、可加载、已阻止。",
   "chat_skills_inherit_help": "“继承”会使用此对话的人设设置；如果人设没有覆盖，则使用“设置”中的默认值。",
   "persona_skills_inherit_help": "“继承”会为此技能使用“设置”中的默认值。人设覆盖会先于对话和单条消息覆盖生效。",
   "settings_skill_defaults_help": "为新对话中的每个技能选择默认状态。人设、对话和单条消息覆盖之后仍可更改它。",

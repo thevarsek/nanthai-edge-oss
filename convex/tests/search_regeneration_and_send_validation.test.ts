@@ -238,6 +238,7 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   const result = await regeneratePaperHandler(ctx, {
     sessionId: sourceSessionId as any,
     modelId: "openai/gpt-5.2",
+    subagentsEnabled: true,
   });
 
   assert.equal(result.assistantMessageId, newAssistantMessageId);
@@ -263,4 +264,5 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.ok(searchRun.fnPath);
   assert.equal(searchRun.payload.sessionId, newSessionId);
   assert.equal(searchRun.payload.sourceSessionId, sourceSessionId);
+  assert.equal(searchRun.payload.subagentsEnabled, false);
 });

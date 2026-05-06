@@ -8,12 +8,39 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { ChatParameterOverrides } from "@/components/chat/ChatParametersDrawer";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
-import type { PlusMenuItem } from "@/components/chat/ChatPlusMenu";
 import type { Chat, UseChatReturn } from "@/hooks/useChat";
+import {
+  useChatPanelState,
+  useKnowledgeBaseSelection,
+  useTurnOverrideState,
+} from "@/hooks/useChatOverrides.domains";
+import {
+  buildOverrideBadges,
+  chatOverridesFromChat,
+  DEFAULT_OVERRIDES,
+  enabledIntegrationKeysFromOverrides,
+  enabledSkillIdsFromOverrides,
+  integrationOverridesFromChat,
+  personaIntegrationDefaults,
+  personaSkillDefaults,
+  skillOverridesFromChat,
+  type SkillPersonaSource,
+  type SkillOverrideState,
+} from "@/hooks/useChatOverrides.resolution";
+import {
+  buildFlushPlan,
+  nextCycledSkillOverrides,
+  nextToggledIntegrationOverrides,
+  nextToggledSkillOverrides,
+  pendingMapConverged,
+  pendingParamOverridesConverged,
+  serializeIntegrationOverrideEntries,
+  serializeSkillOverrideEntries,
+} from "@/hooks/useChatOverrides.state";
 
 // ─── M30 types ──────────────────────────────────────────────────────────────
 
-export type SkillOverrideState = "always" | "available" | "never";
+export type { SkillOverrideState } from "@/hooks/useChatOverrides.resolution";
 
 export interface SkillOverrideEntry {
   skillId: Id<"skills">;
@@ -25,17 +52,7 @@ export interface IntegrationOverrideEntry {
   enabled: boolean;
 }
 
-// ─── Default parameter overrides ────────────────────────────────────────────
-
-export const DEFAULT_OVERRIDES: ChatParameterOverrides = {
-  temperatureMode: "default",
-  temperature: 1.0,
-  maxTokensMode: "default",
-  maxTokens: undefined,
-  reasoningMode: "default",
-  reasoningEffort: "medium",
-  autoAudioResponseMode: "default",
-};
+export { DEFAULT_OVERRIDES } from "@/hooks/useChatOverrides.resolution";
 
 // ─── Active panel type ──────────────────────────────────────────────────────
 
@@ -49,119 +66,11 @@ export type ChatPanel =
   | "autonomous"
   | null;
 
-interface SkillPersonaSource {
-  /** M30: layered skill overrides on persona */
-  skillOverrides?: Array<{ skillId: string; state: SkillOverrideState }> | null;
-  /** M30: layered integration overrides on persona */
-  integrationOverrides?: Array<{ integrationId: string; enabled: boolean }> | null;
-}
-
 interface UseChatOverridesArgs {
   chat: Chat | null | undefined;
   chatId: Id<"chats"> | undefined;
   activePersona: SkillPersonaSource | null;
   updateChat: UseChatReturn["updateChat"];
-}
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-
-function mapEquals<V>(a: Map<string, V>, b: Map<string, V>): boolean {
-  if (a.size !== b.size) return false;
-  for (const [key, val] of a) {
-    if (b.get(key) !== val) return false;
-  }
-  return true;
-}
-
-function chatOverridesFromChat(chat: Chat | null | undefined): ChatParameterOverrides {
-  return {
-    temperatureMode: chat?.temperatureOverride == null ? "default" : "override",
-    temperature: chat?.temperatureOverride ?? DEFAULT_OVERRIDES.temperature,
-    maxTokensMode: chat?.maxTokensOverride == null ? "default" : "override",
-    maxTokens: chat?.maxTokensOverride ?? undefined,
-    reasoningMode:
-      chat?.includeReasoningOverride == null
-        ? "default"
-        : chat.includeReasoningOverride
-          ? "on"
-          : "off",
-    reasoningEffort: (chat?.reasoningEffortOverride as ChatParameterOverrides["reasoningEffort"] | undefined)
-      ?? DEFAULT_OVERRIDES.reasoningEffort,
-    autoAudioResponseMode:
-      chat?.autoAudioResponseOverride == null
-        ? "default"
-        : chat.autoAudioResponseOverride === "enabled"
-          ? "on"
-          : "off",
-  };
-}
-
-/** Build skill overrides map from chat M30 fields layered on top of persona defaults. */
-function skillOverridesFromChat(
-  chat: Chat | null | undefined,
-  personaDefaults: Map<string, SkillOverrideState>,
-): Map<string, SkillOverrideState> {
-  const result = new Map(personaDefaults);
-  for (const entry of chat?.skillOverrides ?? []) {
-    result.set(entry.skillId, entry.state);
-  }
-  return result;
-}
-
-/** Build integration overrides map from chat M30 fields, falling back to persona defaults. */
-function integrationOverridesFromChat(
-  chat: Chat | null | undefined,
-  personaDefaults: Map<string, boolean>,
-): Map<string, boolean> {
-  if (chat?.integrationOverrides && chat.integrationOverrides.length > 0) {
-    const result = new Map(personaDefaults);
-    for (const entry of chat.integrationOverrides) {
-      result.set(entry.integrationId, entry.enabled);
-    }
-    return result;
-  }
-  // No chat-level overrides — inherit persona defaults
-  return new Map(personaDefaults);
-}
-
-/** Derive persona skill defaults from M30 skillOverrides, falling back to legacy discoverableSkillIds. */
-function personaSkillDefaults(persona: SkillPersonaSource | null): Map<string, SkillOverrideState> {
-  if (!persona) return new Map();
-  return new Map((persona.skillOverrides ?? []).map((e) => [e.skillId, e.state]));
-}
-
-/** Derive persona integration defaults from M30 integrationOverrides. */
-function personaIntegrationDefaults(persona: SkillPersonaSource | null): Map<string, boolean> {
-  if (!persona) return new Map();
-  return new Map((persona.integrationOverrides ?? []).map((e) => [e.integrationId, e.enabled]));
-}
-
-/** Derive enabled skill IDs from skill overrides (for backward-compat send path). */
-export function enabledSkillIdsFromOverrides(overrides: Map<string, SkillOverrideState>): Set<string> {
-  const result = new Set<string>();
-  for (const [id, state] of overrides) {
-    if (state === "always" || state === "available") result.add(id);
-  }
-  return result;
-}
-
-/** Derive enabled integration keys from integration overrides. */
-export function enabledIntegrationKeysFromOverrides(overrides: Map<string, boolean>): Set<IntegrationKey> {
-  const result = new Set<IntegrationKey>();
-  for (const [key, enabled] of overrides) {
-    if (enabled) result.add(key as IntegrationKey);
-  }
-  return result;
-}
-
-/** Cycle skill override state: null → available → always → never → null */
-export function cycleSkillState(current: SkillOverrideState | undefined): SkillOverrideState | undefined {
-  switch (current) {
-    case undefined: return "available";
-    case "available": return "always";
-    case "always": return "never";
-    case "never": return undefined;
-  }
 }
 
 // ─── Hook ───────────────────────────────────────────────────────────────────
@@ -181,11 +90,9 @@ export function useChatOverrides({
   const [pendingSkillOverrides, setPendingSkillOverrides] = useState<Map<string, SkillOverrideState> | null>(null);
   const [draftIntegrationOverrides, setDraftIntegrationOverrides] = useState<Map<string, boolean>>(new Map());
   const [pendingIntegrationOverrides, setPendingIntegrationOverrides] = useState<Map<string, boolean> | null>(null);
-  const [selectedKBFileIds, setSelectedKBFileIds] = useState<Set<string>>(new Set());
-  const [activePanel, setActivePanel] = useState<ChatPanel>(null);
-  // Turn overrides (slash chips) — ephemeral per-send
-  const [turnSkillOverrides, setTurnSkillOverrides] = useState<Map<string, SkillOverrideState>>(new Map());
-  const [turnIntegrationOverrides, setTurnIntegrationOverrides] = useState<Map<string, boolean>>(new Map());
+  const turnOverrides = useTurnOverrideState();
+  const knowledgeBaseSelection = useKnowledgeBaseSelection();
+  const panelState = useChatPanelState();
   const draftParamDirtyRef = useRef(false);
   const draftSkillDirtyRef = useRef(false);
   const draftIntegrationDirtyRef = useRef(false);
@@ -238,7 +145,7 @@ export function useChatOverrides({
   // ── Pending → resolved convergence ──────────────────────────────────────
 
   useEffect(() => {
-    if (pendingParamOverrides && JSON.stringify(pendingParamOverrides) === JSON.stringify(resolvedParamOverrides)) {
+    if (pendingParamOverridesConverged(pendingParamOverrides, resolvedParamOverrides)) {
       // Drop optimistic state once Convex reflects the same parameter overrides.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingParamOverrides(null);
@@ -246,7 +153,7 @@ export function useChatOverrides({
   }, [pendingParamOverrides, resolvedParamOverrides]);
 
   useEffect(() => {
-    if (pendingSkillOverrides && mapEquals(pendingSkillOverrides, resolvedSkillOverrides)) {
+    if (pendingMapConverged(pendingSkillOverrides, resolvedSkillOverrides)) {
       // Drop optimistic state once Convex reflects the same skill overrides.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingSkillOverrides(null);
@@ -254,7 +161,7 @@ export function useChatOverrides({
   }, [pendingSkillOverrides, resolvedSkillOverrides]);
 
   useEffect(() => {
-    if (pendingIntegrationOverrides && mapEquals(pendingIntegrationOverrides, resolvedIntegrationOverrides)) {
+    if (pendingMapConverged(pendingIntegrationOverrides, resolvedIntegrationOverrides)) {
       // Drop optimistic state once Convex reflects the same integration overrides.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setPendingIntegrationOverrides(null);
@@ -315,11 +222,10 @@ export function useChatOverrides({
 
   const persistSkillOverrides = useCallback(
     async (targetChatId: Id<"chats">, next: Map<string, SkillOverrideState>) => {
-      const entries: SkillOverrideEntry[] = Array.from(next, ([skillId, state]) => ({ skillId: skillId as Id<"skills">, state }));
       // M30 path
       await setChatSkillOverrides({
         chatId: targetChatId,
-        skillOverrides: entries,
+        skillOverrides: serializeSkillOverrideEntries(next),
       });
     },
     [setChatSkillOverrides],
@@ -327,10 +233,9 @@ export function useChatOverrides({
 
   const persistIntegrationOverrides = useCallback(
     async (targetChatId: Id<"chats">, next: Map<string, boolean>) => {
-      const entries: IntegrationOverrideEntry[] = Array.from(next, ([integrationId, enabled]) => ({ integrationId, enabled }));
       await setChatIntegrationOverrides({
         chatId: targetChatId,
-        integrationOverrides: entries,
+        integrationOverrides: serializeIntegrationOverrideEntries(next),
       });
     },
     [setChatIntegrationOverrides],
@@ -354,24 +259,17 @@ export function useChatOverrides({
     [chatId, persistParamOverrides],
   );
 
-  /** Cycle a skill's override state: undefined → available → always → never → undefined */
+  /** Cycle a skill's override state: inherited → always → available → never → inherited. */
   const cycleSkill = useCallback((skillId: Id<"skills">) => {
     const id = skillId as string;
-    const applyUpdate = (current: Map<string, SkillOverrideState>) => {
-      const next = new Map(current);
-      const newState = cycleSkillState(next.get(id));
-      if (newState === undefined) next.delete(id);
-      else next.set(id, newState);
-      return next;
-    };
 
     if (!chatId) {
       draftSkillDirtyRef.current = true;
-      setDraftSkillOverrides((prev) => applyUpdate(prev));
+      setDraftSkillOverrides((prev) => nextCycledSkillOverrides(prev, id));
       return;
     }
 
-    const next = applyUpdate(skillOverrides);
+    const next = nextCycledSkillOverrides(skillOverrides, id);
     setPendingSkillOverrides(next);
     void persistSkillOverrides(chatId, next).catch((err) => {
       console.error("[useChatOverrides] persistSkillOverrides failed:", err);
@@ -382,24 +280,14 @@ export function useChatOverrides({
   /** Binary toggle for legacy consumers. Toggles between available and never. */
   const toggleSkill = useCallback((skillId: Id<"skills">) => {
     const id = skillId as string;
-    const applyToggle = (current: Map<string, SkillOverrideState>) => {
-      const next = new Map(current);
-      const currentState = next.get(id);
-      if (currentState === "always" || currentState === "available") {
-        next.delete(id);
-      } else {
-        next.set(id, "available");
-      }
-      return next;
-    };
 
     if (!chatId) {
       draftSkillDirtyRef.current = true;
-      setDraftSkillOverrides((prev) => applyToggle(prev));
+      setDraftSkillOverrides((prev) => nextToggledSkillOverrides(prev, id));
       return;
     }
 
-    const next = applyToggle(skillOverrides);
+    const next = nextToggledSkillOverrides(skillOverrides, id);
     setPendingSkillOverrides(next);
     void persistSkillOverrides(chatId, next).catch((err) => {
       console.error("[useChatOverrides] persistSkillOverrides failed:", err);
@@ -408,21 +296,13 @@ export function useChatOverrides({
   }, [chatId, skillOverrides, persistSkillOverrides]);
 
   const toggleIntegration = useCallback((key: IntegrationKey) => {
-    const applyToggle = (current: Map<string, boolean>) => {
-      const next = new Map(current);
-      const isEnabled = next.get(key);
-      if (isEnabled === true) next.set(key, false);
-      else next.set(key, true);
-      return next;
-    };
-
     if (!chatId) {
       draftIntegrationDirtyRef.current = true;
-      setDraftIntegrationOverrides((prev) => applyToggle(prev));
+      setDraftIntegrationOverrides((prev) => nextToggledIntegrationOverrides(prev, key));
       return;
     }
 
-    const next = applyToggle(integrationOverrides);
+    const next = nextToggledIntegrationOverrides(integrationOverrides, key);
     setPendingIntegrationOverrides(next);
     void persistIntegrationOverrides(chatId, next).catch((err) => {
       console.error("[useChatOverrides] persistIntegrationOverrides failed:", err);
@@ -430,121 +310,45 @@ export function useChatOverrides({
     });
   }, [chatId, integrationOverrides, persistIntegrationOverrides]);
 
-  // ── Turn overrides (slash chips) ──────────────────────────────────────────
-
-  const addTurnSkillOverride = useCallback((skillId: string, state: SkillOverrideState) => {
-    setTurnSkillOverrides((prev) => new Map(prev).set(skillId, state));
-  }, []);
-
-  const removeTurnSkillOverride = useCallback((skillId: string) => {
-    setTurnSkillOverrides((prev) => {
-      const next = new Map(prev);
-      next.delete(skillId);
-      return next;
-    });
-  }, []);
-
-  const addTurnIntegrationOverride = useCallback((integrationKey: string, enabled: boolean) => {
-    setTurnIntegrationOverrides((prev) => new Map(prev).set(integrationKey, enabled));
-  }, []);
-
-  const removeTurnIntegrationOverride = useCallback((integrationKey: string) => {
-    setTurnIntegrationOverrides((prev) => {
-      const next = new Map(prev);
-      next.delete(integrationKey);
-      return next;
-    });
-  }, []);
-
-  const clearTurnOverrides = useCallback(() => {
-    setTurnSkillOverrides(new Map());
-    setTurnIntegrationOverrides(new Map());
-  }, []);
-
-  // Serialized turn overrides for the send path
-  const turnSkillOverrideEntries = useMemo(
-    () => Array.from(turnSkillOverrides, ([skillId, state]) => ({ skillId: skillId as Id<"skills">, state })),
-    [turnSkillOverrides],
-  );
-
-  const turnIntegrationOverrideEntries = useMemo(
-    () => Array.from(turnIntegrationOverrides, ([integrationId, enabled]) => ({ integrationId, enabled })),
-    [turnIntegrationOverrides],
-  );
-
-  // ── KB files ──────────────────────────────────────────────────────────────
-
-  const toggleKBFile = useCallback((storageId: string) => {
-    setSelectedKBFileIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(storageId)) next.delete(storageId);
-      else next.add(storageId);
-      return next;
-    });
-  }, []);
-
-  const clearKBFiles = useCallback(() => {
-    setSelectedKBFileIds(new Set());
-  }, []);
-
-  // ── Plus menu ─────────────────────────────────────────────────────────────
-
-  const handlePlusMenuSelect = useCallback((item: PlusMenuItem) => {
-    switch (item) {
-      case "parameters":
-      case "integrations":
-      case "skills":
-      case "knowledgeBase":
-      case "participants":
-      case "subagents":
-      case "autonomous":
-        setActivePanel(item);
-        break;
-      // "file", "image" handled by MessageInput / ChatPage
-    }
-  }, []);
-
-  const closePanel = useCallback(() => setActivePanel(null), []);
-
   // ── Badge counts ──────────────────────────────────────────────────────────
 
-  const badges = useMemo(() => {
-    const hasParamOverride =
-      paramOverrides.temperatureMode === "override" ||
-      paramOverrides.maxTokensMode === "override" ||
-      paramOverrides.reasoningMode !== "default";
-    return {
-      parameters: hasParamOverride ? 1 : 0,
-      integrations: enabledIntegrations.size,
-      skills: enabledSkillIds.size,
-      knowledgeBase: selectedKBFileIds.size,
-    } as Partial<Record<PlusMenuItem, number>>;
-  }, [paramOverrides, enabledIntegrations, enabledSkillIds, selectedKBFileIds]);
+  const badges = useMemo(
+    () => buildOverrideBadges({
+      paramOverrides,
+      enabledIntegrations,
+      enabledSkillIds,
+      selectedKBFileIds: knowledgeBaseSelection.selectedKBFileIds,
+    }),
+    [paramOverrides, enabledIntegrations, enabledSkillIds, knowledgeBaseSelection.selectedKBFileIds],
+  );
 
   // ── Flush pending state (on first send for new chats) ─────────────────────
 
   const flushPendingState = useCallback(
     async (targetChatId: Id<"chats">) => {
+      const plan = buildFlushPlan({
+        chatId,
+        draftParamDirty: draftParamDirtyRef.current,
+        draftSkillDirty: draftSkillDirtyRef.current,
+        draftIntegrationDirty: draftIntegrationDirtyRef.current,
+        pendingParamOverrides,
+        pendingSkillOverrides,
+        pendingIntegrationOverrides,
+      });
       if (!chatId) {
-        if (draftParamDirtyRef.current) {
-          await persistParamOverrides(targetChatId, draftParamOverrides);
-        }
-        if (draftSkillDirtyRef.current) {
-          await persistSkillOverrides(targetChatId, draftSkillOverrides);
-        }
-        if (draftIntegrationDirtyRef.current) {
-          await persistIntegrationOverrides(targetChatId, draftIntegrationOverrides);
-        }
+        if (plan.parameters) await persistParamOverrides(targetChatId, draftParamOverrides);
+        if (plan.skills) await persistSkillOverrides(targetChatId, draftSkillOverrides);
+        if (plan.integrations) await persistIntegrationOverrides(targetChatId, draftIntegrationOverrides);
         return;
       }
 
-      if (pendingParamOverrides) {
+      if (plan.parameters && pendingParamOverrides) {
         await persistParamOverrides(targetChatId, pendingParamOverrides);
       }
-      if (pendingSkillOverrides) {
+      if (plan.skills && pendingSkillOverrides) {
         await persistSkillOverrides(targetChatId, pendingSkillOverrides);
       }
-      if (pendingIntegrationOverrides) {
+      if (plan.integrations && pendingIntegrationOverrides) {
         await persistIntegrationOverrides(targetChatId, pendingIntegrationOverrides);
       }
     },
@@ -576,24 +380,24 @@ export function useChatOverrides({
     enabledIntegrations, // derived, backward compat
     toggleIntegration,
     // Turn overrides
-    turnSkillOverrides,
-    turnIntegrationOverrides,
-    turnSkillOverrideEntries,
-    turnIntegrationOverrideEntries,
-    addTurnSkillOverride,
-    removeTurnSkillOverride,
-    addTurnIntegrationOverride,
-    removeTurnIntegrationOverride,
-    clearTurnOverrides,
+    turnSkillOverrides: turnOverrides.turnSkillOverrides,
+    turnIntegrationOverrides: turnOverrides.turnIntegrationOverrides,
+    turnSkillOverrideEntries: turnOverrides.turnSkillOverrideEntries,
+    turnIntegrationOverrideEntries: turnOverrides.turnIntegrationOverrideEntries,
+    addTurnSkillOverride: turnOverrides.addTurnSkillOverride,
+    removeTurnSkillOverride: turnOverrides.removeTurnSkillOverride,
+    addTurnIntegrationOverride: turnOverrides.addTurnIntegrationOverride,
+    removeTurnIntegrationOverride: turnOverrides.removeTurnIntegrationOverride,
+    clearTurnOverrides: turnOverrides.clearTurnOverrides,
     // KB files
-    selectedKBFileIds,
-    toggleKBFile,
-    clearKBFiles,
+    selectedKBFileIds: knowledgeBaseSelection.selectedKBFileIds,
+    toggleKBFile: knowledgeBaseSelection.toggleKBFile,
+    clearKBFiles: knowledgeBaseSelection.clearKBFiles,
     // Panel
-    activePanel,
-    setActivePanel,
-    closePanel,
-    handlePlusMenuSelect,
+    activePanel: panelState.activePanel,
+    setActivePanel: panelState.setActivePanel,
+    closePanel: panelState.closePanel,
+    handlePlusMenuSelect: panelState.handlePlusMenuSelect,
     badges,
     flushPendingState,
   };

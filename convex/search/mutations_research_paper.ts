@@ -185,7 +185,7 @@ export const startResearchPaper = mutation({
         includeReasoning: args.participant.includeReasoning,
         reasoningEffort: args.participant.reasoningEffort ?? undefined,
         enabledIntegrations: args.enabledIntegrations,
-        subagentsEnabled: args.subagentsEnabled,
+        subagentsEnabled: false,
       },
     );
 

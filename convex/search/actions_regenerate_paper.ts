@@ -139,7 +139,7 @@ export const regeneratePaperAction = internalAction({
         expandMultiModelGroups: true,
         webSearchEnabled: false, // Synthesis data is already available
         enabledIntegrations: args.enabledIntegrations,
-        subagentsEnabled: args.subagentsEnabled,
+        subagentsEnabled: false,
         searchSessionId: args.sessionId,
       });
 

@@ -69,12 +69,12 @@ export function integrationSetToArray(s: Set<IntegrationKey>): string[] {
   return Array.from(s);
 }
 
-/** Cycle tri-state: inherit → available → always → never → inherit */
+/** Cycle tri-state: inherit → always → available → never → inherit */
 export function cycleSkillOverride(
   current: SkillOverrideState | undefined,
 ): SkillOverrideState | undefined {
-  if (current === undefined) return "available";
-  if (current === "available") return "always";
-  if (current === "always") return "never";
+  if (current === undefined) return "always";
+  if (current === "always") return "available";
+  if (current === "available") return "never";
   return undefined; // never → inherit
 }

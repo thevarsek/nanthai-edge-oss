@@ -2835,7 +2835,7 @@
   "skill_state_blocked": "Bloqueado",
   "skill_state_inherit": "Heredar",
   "skill_state_default_badge": "{{state}} (predeterminado)",
-  "skill_override_cycle_hint": "Toca para alternar: Heredar, Disponible para cargar, Siempre activo, Bloqueado.",
+  "skill_override_cycle_hint": "Toca para alternar: Heredar, Siempre activo, Disponible para cargar, Bloqueado.",
   "chat_skills_inherit_help": "Heredar usa la configuración de la persona para este chat, o tu valor predeterminado de Ajustes si la persona no la sobrescribe.",
   "persona_skills_inherit_help": "Heredar usa tu valor predeterminado de Ajustes para esta habilidad. Las anulaciones de persona se aplican antes que las del chat y las de un solo mensaje.",
   "settings_skill_defaults_help": "Elige el estado predeterminado de cada habilidad en chats nuevos. Las personas, los chats y las anulaciones de un solo mensaje aún pueden cambiarlo después.",

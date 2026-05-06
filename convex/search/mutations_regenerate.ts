@@ -125,7 +125,7 @@ export async function regeneratePaperHandler(
       includeReasoning: args.includeReasoning ?? undefined,
       reasoningEffort: args.reasoningEffort ?? undefined,
       enabledIntegrations: args.enabledIntegrations,
-      subagentsEnabled: args.subagentsEnabled,
+      subagentsEnabled: false,
     },
   );
 

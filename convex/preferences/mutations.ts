@@ -295,8 +295,8 @@ export const upsertPreferences = mutation({
  * Set or update a single global skill default.
  *
  * The `skillDefaults` array on `userPreferences` is sparse: absence of an entry
- * means the system default applies (built-in system skills = "available",
- * custom/user skills = "never"). Calling this upserts one entry.
+ * means the system default applies (visible active system/user skills =
+ * "available"). Calling this upserts one entry.
  */
 export const setSkillDefault = mutation({
   args: {

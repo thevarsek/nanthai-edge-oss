@@ -72,6 +72,7 @@ test("startResearchPaper normalizes complexity and schedules title generation fo
     text: "Research prompt",
     participant: { modelId: "openai/gpt-5.2" },
     complexity: 9,
+    subagentsEnabled: true,
   });
 
   assert.deepEqual(result, {
@@ -84,6 +85,8 @@ test("startResearchPaper normalizes complexity and schedules title generation fo
   const chatPatch = patches.find((entry) => entry.id === "chat_1");
   assert.equal(chatPatch?.patch.activeBranchLeafId, "message_assistant");
   assert.equal(scheduled.length, 2);
+  const researchRun = scheduled.find((entry) => entry.payload.sessionId === "session_1");
+  assert.equal(researchRun?.payload.subagentsEnabled, false);
 });
 
 test("startResearchPaper rejects non-Pro users", async () => {

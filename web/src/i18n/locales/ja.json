@@ -2835,7 +2835,7 @@
   "skill_state_blocked": "ブロック",
   "skill_state_inherit": "継承",
   "skill_state_default_badge": "{{state}}（デフォルト）",
-  "skill_override_cycle_hint": "タップして切り替え: 継承、読み込み可能、常にオン、ブロック。",
+  "skill_override_cycle_hint": "タップして切り替え: 継承、常にオン、読み込み可能、ブロック。",
   "chat_skills_inherit_help": "継承はこのチャットでペルソナ設定を使います。ペルソナが上書きしていない場合は、設定のデフォルトを使います。",
   "persona_skills_inherit_help": "継承はこのスキルに対して設定のデフォルトを使います。ペルソナの上書きは、チャットや1回のメッセージの上書きより前に適用されます。",
   "settings_skill_defaults_help": "新しいチャットでの各スキルのデフォルト状態を選びます。ペルソナ、チャット、1回のメッセージの上書きで後から変更できます。",

@@ -6,6 +6,11 @@ import { useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import {
+  createChatMergeCache,
+  reconcileStreamingMessages,
+  type ChatMergeCache,
+} from "@/hooks/useChat.streaming";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -136,58 +141,15 @@ export interface StreamingMessage {
   toolCalls?: ToolCall[];
 }
 
-interface MergeCache {
-  previousMessages: Message[];
-  pendingFallbackMessages: Map<Id<"messages">, Message>;
-}
+const mergeCacheByChatId = new Map<string, ChatMergeCache>();
 
-const mergeCacheByChatId = new Map<string, MergeCache>();
-
-function getMergeCache(chatId: Id<"chats"> | null | undefined): MergeCache {
+function getMergeCache(chatId: Id<"chats"> | null | undefined): ChatMergeCache {
   const key = (chatId ?? "__none__") as string;
   const existing = mergeCacheByChatId.get(key);
   if (existing) return existing;
-  const created: MergeCache = {
-    previousMessages: [],
-    pendingFallbackMessages: new Map<Id<"messages">, Message>(),
-  };
+  const created = createChatMergeCache();
   mergeCacheByChatId.set(key, created);
   return created;
-}
-
-function mergeMessageWithFallback(previous: Message, current: Message): Message {
-  return {
-    ...current,
-    content: previous.content,
-    status: previous.status,
-    reasoning: previous.reasoning,
-    toolCalls: previous.toolCalls,
-  };
-}
-
-function shouldReleasePendingStreamingFallback(
-  fallback: Message,
-  previous: Message,
-  current: Message,
-  base: Message,
-): boolean {
-  const overlayStillTerminal = previous.status === fallback.status;
-  const currentAdvancedPastFallbackStatus = current.status !== fallback.status;
-  const currentIncludesAtLeastFallbackContent = current.content.length >= fallback.content.length;
-  const currentMatchesBase = current === base;
-  // Server-authoritative terminal status always releases the fallback,
-  // even if content shrank (e.g. trailing whitespace trim on finalize).
-  const currentReachedTerminal =
-    current.status === "completed" ||
-    current.status === "failed" ||
-    current.status === "cancelled";
-  return (
-    !overlayStillTerminal ||
-    currentAdvancedPastFallbackStatus ||
-    currentIncludesAtLeastFallbackContent ||
-    currentMatchesBase ||
-    currentReachedTerminal
-  );
 }
 
 export interface Chat {
@@ -339,78 +301,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
     () => {
       const mergeCache = getMergeCache(chatId);
       const base = (rawMessages as Message[] | undefined) ?? [];
-      const overlays = new Map((streamingMessages ?? []).map((overlay) => [overlay.messageId, overlay]));
-      const merged = base.map((message) => {
-        const overlay = overlays.get(message._id);
-        if (!overlay) return message;
-        return {
-          ...message,
-          content: overlay.content,
-          reasoning: overlay.reasoning,
-          status: overlay.status,
-          toolCalls: overlay.toolCalls ?? message.toolCalls,
-        };
-      });
-
-      const previousById = new Map(
-        mergeCache.previousMessages.map((message) => [message._id, message]),
-      );
-      const reconciled = merged.map((message) => {
-        const previous = previousById.get(message._id);
-        if (!previous) {
-          mergeCache.pendingFallbackMessages.delete(message._id);
-          return message;
-        }
-        const baseMessage = base.find((candidate) => candidate._id === message._id) ?? message;
-        const pendingFallback = mergeCache.pendingFallbackMessages.get(message._id);
-
-        // When the server transitions a message to a terminal status
-        // (completed/failed/cancelled), it is authoritative — shorter
-        // finalized content is an expected server transform (e.g. trimming
-        // trailing whitespace deltas from models like kimi-k2), not a lost
-        // overlay. Synthesizing a "streaming" fallback in that case would
-        // strand isGenerating=true with no way to release, since the
-        // fallback's length guard can never be satisfied.
-        const finalizedToTerminal =
-          message.status === "completed" ||
-          message.status === "failed" ||
-          message.status === "cancelled";
-
-        const lostStreamingOverlay =
-          !finalizedToTerminal &&
-          previous.status === "streaming" &&
-          message.status !== "streaming" &&
-          message.content.length < previous.content.length;
-        const lostCancelledOverlay =
-          !finalizedToTerminal &&
-          previous.status === "cancelled" &&
-          message.status !== "cancelled" &&
-          message.content.length < previous.content.length;
-
-        if (lostStreamingOverlay || lostCancelledOverlay) {
-          const fallback = mergeMessageWithFallback(previous, message);
-          mergeCache.pendingFallbackMessages.set(message._id, fallback);
-          return fallback;
-        }
-
-        if (
-          pendingFallback &&
-          shouldReleasePendingStreamingFallback(pendingFallback, previous, message, baseMessage)
-        ) {
-          mergeCache.pendingFallbackMessages.delete(message._id);
-          return message;
-        }
-
-        if (pendingFallback) {
-          return pendingFallback;
-        }
-
-        mergeCache.pendingFallbackMessages.delete(message._id);
-        return message;
-      });
-
-      mergeCache.previousMessages = reconciled;
-      return reconciled;
+      return reconcileStreamingMessages(mergeCache, base, streamingMessages);
     },
     [rawMessages, streamingMessages, chatId],
   );

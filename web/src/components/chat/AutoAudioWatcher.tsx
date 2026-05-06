@@ -16,6 +16,7 @@ const LYRIA_MODEL_IDS = new Set([
 
 interface Props {
   messages: Message[];
+  isLoading?: boolean;
 }
 
 /** Returns true if the message is a user message with recorded audio. */
@@ -33,7 +34,7 @@ function isLyriaMusic(m: Message): boolean {
  * absent → present, and auto-plays them if their preceding user message
  * was an audio message. Renders nothing.
  */
-export function AutoAudioWatcher({ messages }: Props) {
+export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
   const audio = useAudioPlaybackContext();
   // Track which audioStorageIds we've already seen to detect new arrivals.
   const seenAudioRef = useRef<Set<string>>(new Set());
@@ -41,6 +42,8 @@ export function AutoAudioWatcher({ messages }: Props) {
   const mountedRef = useRef(false);
 
   useEffect(() => {
+    if (isLoading) return;
+
     if (!mountedRef.current) {
       // Seed the seen set with all existing audioStorageIds on mount.
       for (const m of messages) {
@@ -75,7 +78,7 @@ export function AutoAudioWatcher({ messages }: Props) {
       void audio.play(m._id, m.audioStorageId as Id<"_storage">);
       break; // Only auto-play one at a time.
     }
-  }, [messages, audio]);
+  }, [messages, audio, isLoading]);
 
   return null;
 }
