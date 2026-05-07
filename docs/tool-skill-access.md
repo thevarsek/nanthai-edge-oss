@@ -122,16 +122,20 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Operations | `process-documentation` | instruction-led | Pro-useful |
 | Internal communications | `internal-comms` including release notes, changelogs, stakeholder updates, and app-store update copy | instruction-led | Pro-useful |
 
-### M33 document workflow skills
+### M33/M36 document workflow skills
 
 M33 added a dedicated document workflow layer on top of the lower-level file tools:
 
 - review/citation skills: `document-review`, `contract-review`, `clause-extraction`
 - drafting/generation skills: `document-drafting`, `contract-drafting`, `legal-memo`, `policy-review`
-- removed M36 standalone legal templates (`conditions-precedent-checklist`, `credit-agreement-summary`, `shareholder-agreement-summary`) are preserved as M38 tabular review template requirements, not active catalog skills
+- M36 removed overlapping standalone seeded skills (`conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, `solo-founder-gtm`) and keeps their workflows covered by broader document/legal, internal communications, GTM, and M38 tabular-review requirements
 - all use the existing progressive skill resolver; there is no separate template catalog or legal-only product mode
 - generated DOCX outputs are saved as normal generated files and linked to canonical `documents` / `documentVersions`
 - citation-aware skills only operate over explicit document scope from attachments, KB picker selections, or existing chat context; they do not search the whole Knowledge Base by default
+
+### M36 catalog closeout
+
+The seeded system catalog is now 66 system skills: 55 visible skills, 10 integration-managed skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
 
 ### Hidden built-in skills
 
@@ -264,6 +268,8 @@ In practice there are now two runtime shapes:
 - [`architecture.md`](architecture.md) — backend tool registry and Convex execution flow
 - [`client-convex-contract.md`](client-convex-contract.md) — shared client-facing Convex contract
 - [`tech-stack.md`](tech-stack.md) — OSS runtime and dependency overview
+
+*Last updated: 2026-05-07 — M36 skill catalog consolidation and removed-skill cleanup documented.*
 
 ## Slack MCP Tools — Hosted MCP And Drift Detection
 

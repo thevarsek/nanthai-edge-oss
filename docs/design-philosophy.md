@@ -4,7 +4,7 @@
 
 ## Overview
 
-NanthAI Edge replaces a React + Supabase web app (chatology-nanthai, 200+ users) with native iOS and Android apps backed by Convex. iOS remains the primary visual design reference for conversation ergonomics, while Android follows platform-native interaction patterns against the same backend behavior. **Minimum iOS deployment target: iOS 26.0+** (current SDK baseline 26.2).
+NanthAI Edge replaces a React + Supabase web app (chatology-nanthai, 200+ users) with native iOS and Android apps backed by Convex. iOS remains the primary visual design reference for conversation ergonomics, while Android follows platform-native interaction patterns against the same backend behavior. **Minimum iOS deployment target: iOS 26.0+** (current SDK baseline 26.4.1).
 
 ## Core Features (Priority Order)
 

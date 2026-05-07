@@ -186,6 +186,38 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 
 ---
 
+## M35/M36 Client Ownership, UI Parity, And Skill Catalog Architecture
+
+M35/M36 did not change the product API ownership rule: Convex remains the shared source of truth, and iOS, Android, and web remain thin clients over the same functions. The week’s architecture work reduced client-side blast radius and then used those boundaries for parity polish.
+
+### Client Ownership Boundaries
+
+- **iOS:** `ChatViewModel` remains the SwiftUI-facing facade, but high-risk behavior now lives in tested owners/value types: timeline merge/fallback, composer state, send payload construction, attachment projection, branch projection, audio resource cleanup, picker/modal presentation, and streaming interpolation.
+- **Web:** `ChatPage` is split into a route/controller plus `ChatPage.view.tsx` and focused helpers for send, retry, branch, attachment, Drive picker, participants, and search behavior. `useChatOverrides` remains as the compatibility adapter while domain/resolution/state helpers own the smaller pieces.
+- **Android:** M34 chat/list owners remain the primary Android boundary. M35/M36 Android changes reuse those owners and add parity helpers rather than re-centralizing route logic.
+
+### UI Parity Semantics
+
+Cross-platform UI parity now treats shared meaning separately from platform-native rendering:
+
+- Status/progress/error tone names are the portable contract; each client maps them to native color/type primitives.
+- Generated file, citation, chart, pending/search, attachment, integration, Knowledge Base, and skill surfaces should reuse existing backend fields and client owners before adding new client-only interpretation.
+- Visual parity work may add platform-specific components, but status and capability decisions should stay in Convex or in small tested client helpers.
+
+### Skill Catalog Seed Contract
+
+The built-in system skill catalog is consolidated to 66 seeded skills. `skills/actions:seedSystemCatalog` upserts active system skills and then hard-deletes removed system skills only after pruning their IDs from all persisted override locations:
+
+- `userPreferences.skillDefaults`
+- `personas.skillOverrides`
+- `chats.skillOverrides`
+- `scheduledJobs.turnSkillOverrides`
+- `scheduledJobs.steps[].turnSkillOverrides`
+
+The removed standalone skills are `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. Their workflows are represented by broader active skills and by M37/M38 workspace requirements rather than by separate catalog rows.
+
+---
+
 ## M9.5 Performance Architecture Changes
 
 ### Streaming Protocol
@@ -1071,4 +1103,4 @@ Android routes the Drive-picker deeplink callback through an app-wide `DrivePick
 
 ---
 
-*Last updated: 2026-04-26 — M24 Phase 6 Drive-in-KB: KB module relocated to `convex/knowledge_base/`, lazy-refresh chokepoint in `getKBFileContents`, single FA insert chokepoint in `convex/lib/file_attachments.ts`, single Drive ingest chokepoint in `convex/drive_picker/ingest.ts`. Google OAuth scopes narrowed to 5; Gmail moved exclusively to `gmail_manual` (IMAP/SMTP).*
+*Last updated: 2026-05-07 — M35/M36 architecture notes added for client ownership boundaries, UI parity semantics, and 66-skill catalog seed cleanup. M24 Phase 6 Drive-in-KB remains the latest KB architecture change.*

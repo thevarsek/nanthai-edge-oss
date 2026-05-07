@@ -42,7 +42,7 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `oauthConnections` | External integration tokens/credentials (M10, extended M24) | userId, provider (`google`, `microsoft`, `notion`, `slack`, `cloze`, `gmail_manual`, etc.), accessToken, refreshToken, expiresAt, scopes, email, status. `google` rows are narrowed to identity + `drive.file` + `calendar.events`; `gmail_manual` rows store the manual Gmail credential path instead of Gmail OAuth scopes. |
 | `integrationRequestGates` | Per-user integration approval state | userId, provider, gating metadata, timestamps |
 | `purchaseEntitlements` | Cross-platform Pro entitlement source of truth | userId, platform, source, productId, externalPurchaseId, status, activatedAt, revokedAt, lastVerifiedAt |
-| `scheduledJobs` | User-created recurring AI tasks (M13) | userId, name, prompt, personaId, modelId, cronExpression, recurrence, status, searchMode (M13.5), searchComplexity (M13.5), includeReasoning, reasoningEffort, steps (post-M14), activeExecutionId (post-M14), activeExecutionChatId (post-M14), activeExecutionStartedAt (post-M14), activeStepIndex (post-M14), activeStepCount (post-M14), activeUserMessageId (post-M14), activeAssistantMessageId (post-M14), activeGenerationJobId (post-M14) |
+| `scheduledJobs` | User-created recurring AI tasks (M13) | userId, name, prompt, personaId, modelId, cronExpression, recurrence, status, searchMode (M13.5), searchComplexity (M13.5), includeReasoning, reasoningEffort, turnSkillOverrides (M30), turnIntegrationOverrides (M30), steps with per-step overrides (post-M14/M30), activeExecutionId (post-M14), activeExecutionChatId (post-M14), activeExecutionStartedAt (post-M14), activeStepIndex (post-M14), activeStepCount (post-M14), activeUserMessageId (post-M14), activeAssistantMessageId (post-M14), activeGenerationJobId (post-M14) |
 | `jobRuns` | Execution history for scheduled jobs (M13) | jobId, userId, status, chatId, startedAt, completedAt, errorMessage |
 | `userSecrets` | Server-side API key storage (M13) | userId, apiKey — synced during PKCE exchange + app launch |
 | `deviceTokens` | Provider-based push notification tokens (M13.5/M16) | userId, token, platform (`ios`/`android`), provider (`apns`/`fcm`), optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider` |
@@ -363,8 +363,26 @@ Memory categories expanded to 10 (defined in `convex/memory/shared.ts` as single
 | `activeUserMessageId` | `v.optional(v.id("messages"))` | User message ID for current step |
 | `activeAssistantMessageId` | `v.optional(v.id("messages"))` | Assistant message ID for current step |
 | `activeGenerationJobId` | `v.optional(v.id("generationJobs"))` | Generation job tracking current step |
+| `turnSkillOverrides` | `v.optional(v.array(v.object({ skillId, state })))` | Legacy/top-level turn-only skill override defaults used when a job normalizes into a single execution step (M30). |
+| `turnIntegrationOverrides` | `v.optional(v.array(v.object({ integrationId, enabled })))` | Legacy/top-level turn-only integration override defaults used when a job normalizes into a single execution step (M30). |
+| `steps[].turnSkillOverrides` | `v.optional(v.array(v.object({ skillId, state })))` | Per-step skill override state stamped onto generated job messages for auditability (M30). |
+| `steps[].turnIntegrationOverrides` | `v.optional(v.array(v.object({ integrationId, enabled })))` | Per-step integration override state stamped onto generated job messages for auditability (M30). |
 
 New shared validator: `scheduledJobStep` (in `schema_validators.ts`).
+
+### `skills` catalog — M36 Seed Cleanup
+
+M36 keeps the `skills` table as the single catalog table and consolidates the seeded system catalog to 66 system skills. No schema table was added or removed.
+
+The seed action now treats removed system skill IDs as real data cleanup, not only visibility changes. Before hard-deleting removed system skill rows, it prunes references from:
+
+- `userPreferences.skillDefaults`
+- `personas.skillOverrides`
+- `chats.skillOverrides`
+- `scheduledJobs.turnSkillOverrides`
+- `scheduledJobs.steps[].turnSkillOverrides`
+
+This cleanup covers the M36 removed standalone skills: `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. The corresponding workflows remain represented by broader document/legal, internal-communications, GTM, and M38 tabular-review requirements rather than separate active catalog rows.
 
 ### `messages` table — Integration Tracking (PR #30)
 

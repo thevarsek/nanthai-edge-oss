@@ -145,6 +145,12 @@ When a shared feature adds or changes its canonical Convex path, document it in 
 
 The goal is simple: shared behavior should be solved once in Convex, then rendered consistently by every client.
 
+## M35/M36 Client Boundary Note
+
+The M35 ownership splits were client-internal and did not create alternate product APIs. iOS owners, web route helpers/domain hooks, and Android route owners must continue to consume the same Convex functions for the same use case.
+
+The M36 UI parity pass introduced shared status/tone semantics and skill catalog cleanup, not client-specific business rules. Status tone helpers are presentation mapping only; capability, default-skill, integration, and removed-system-skill cleanup decisions remain backend-authored.
+
 ## Error Format Contract
 
 All Convex mutations and actions use structured `ConvexError` with a `{ code, message }` payload:
