@@ -314,7 +314,7 @@ export function ChatListItem({
         onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleClick(); } }}
         onContextMenu={handleContextMenu}
         className={cn(
-          "relative w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left transition-colors cursor-pointer",
+          "relative flex min-h-[64px] w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 pr-9 text-left transition-colors",
           isSelected && !isEditMode
             ? "bg-primary/12 text-foreground"
             : "hover:bg-foreground/5 text-foreground",
@@ -379,7 +379,7 @@ export function ChatListItem({
         {!isEditMode && (
           <button
             onClick={(e) => { e.stopPropagation(); setMenuOpen(true); }}
-            className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-lg bg-muted/95 p-1 opacity-0 shadow-sm transition-opacity hover:bg-foreground/8 group-hover:opacity-100 focus:opacity-100"
+            className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-lg border border-border/25 bg-input p-1 opacity-0 shadow-sm transition-opacity hover:bg-surface-3 group-hover:opacity-100 focus:opacity-100"
             aria-label={t("chat_options")}
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">

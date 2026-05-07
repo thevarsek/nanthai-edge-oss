@@ -87,6 +87,22 @@ test("validateSkillInstructions: detects screenshot keyword", () => {
   assert.ok(result.unsupportedCapabilityCodes.includes("USES_BROWSER"));
 });
 
+test("validateSkillInstructions: detects plural screenshot capture instructions", () => {
+  const result = validateSkillInstructions(
+    "Capture screenshots for each responsive breakpoint and compare the browser layout."
+  );
+  assert.equal(result.isCompatible, false);
+  assert.ok(result.unsupportedCapabilityCodes.includes("USES_BROWSER"));
+});
+
+test("validateSkillInstructions: does not block screenshot as static content noun", () => {
+  const result = validateSkillInstructions(
+    "When building a presentation, treat an existing product screenshot as supplied source material and describe where it should appear."
+  );
+  assert.equal(result.isCompatible, true);
+  assert.ok(!result.unsupportedCapabilityCodes.includes("USES_BROWSER"));
+});
+
 test("validateSkillInstructions: detects USES_MCP", () => {
   const result = validateSkillInstructions(
     "Start an MCP server to handle incoming tool requests from the client. Configure the model context protocol."
@@ -199,6 +215,25 @@ test("validateToolIds: slack tool IDs are known", () => {
       "slack_update_canvas",
       "slack_read_canvas",
       "slack_read_user_profile",
+    ]),
+    [],
+  );
+});
+
+test("validateToolIds: cloze tool IDs are known", () => {
+  assert.deepEqual(
+    validateToolIds([
+      "cloze_person_find",
+      "cloze_person_count",
+      "cloze_person_add",
+      "cloze_person_change",
+      "cloze_project_find",
+      "cloze_project_change",
+      "cloze_add_note",
+      "cloze_add_todo",
+      "cloze_timeline",
+      "cloze_save_draft",
+      "cloze_about_me",
     ]),
     [],
   );

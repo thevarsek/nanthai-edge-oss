@@ -8,20 +8,21 @@ import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
 import type { SkillOverrideState } from "@/hooks/useChatOverrides";
 import { useVisibleSkills } from "@/hooks/useSharedData";
+import { statusBadgeClass } from "@/lib/uiTokens";
 
 // ─── Skill state chip ───────────────────────────────────────────────────────
 
-const STATE_CONFIG: Record<SkillOverrideState, { labelKey: string; bg: string; text: string }> = {
-  always: { labelKey: "skill_state_always", bg: "bg-green-500/15", text: "text-green-600 dark:text-green-400" },
-  available: { labelKey: "skill_state_available", bg: "bg-primary/15", text: "text-primary" },
-  never: { labelKey: "skill_state_blocked", bg: "bg-red-500/15", text: "text-red-600 dark:text-red-400" },
+const STATE_CONFIG: Record<SkillOverrideState, { labelKey: string; status: string }> = {
+  always: { labelKey: "skill_state_always", status: "accepted" },
+  available: { labelKey: "skill_state_available", status: "running" },
+  never: { labelKey: "skill_state_blocked", status: "rejected" },
 };
 
 function SkillStateChip({ state }: { state: SkillOverrideState }) {
   const { t } = useTranslation();
   const config = STATE_CONFIG[state];
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${config.bg} ${config.text}`}>
+    <span className={statusBadgeClass(config.status, "border-0")}>
       {t(config.labelKey)}
     </span>
   );
@@ -193,7 +194,7 @@ function SkillOverrideRow({
       {state ? (
         <SkillStateChip state={state} />
       ) : (
-        <span className="text-[10px] px-2 py-0.5 rounded-full bg-surface-3 text-muted font-medium">
+        <span className={statusBadgeClass("locked", "border-0")}>
           {t("skill_state_inherit")}
         </span>
       )}

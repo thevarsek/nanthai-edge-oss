@@ -13,7 +13,7 @@ export const XLSX_SKILL: SystemSkillSeedData = {
   summary:
     "Create, read, edit, and manipulate Excel spreadsheets (.xlsx). Covers formulas, " +
     "cell formatting, number formats, merged cells, named ranges, and professional " +
-    "spreadsheet structure. Use when working with .xlsx files or tabular data.",
+    "spreadsheet structure. Use when working with .xlsx files, exports, review grids, or tabular data.",
   instructionsRaw: `# Spreadsheet (XLSX) Skill
 
 Create, read, and edit Excel spreadsheets using NanthAI's document tools. If Max analytics runtime tools are available, prefer notebook-style Python for data cleaning, charting, and exploratory analysis, then use the spreadsheet tools for polished workbook output.
@@ -196,6 +196,12 @@ edit_xlsx uses a read → regenerate approach:
 3. All formatting params from generate_xlsx are available on edit_xlsx too
 
 The model must provide the complete sheet data — this is a full replacement, not a patch.
+
+## Tabular Review Workflows
+
+For document or data review grids, use a compact worksheet with stable columns for item, source, status, recommendation, owner, and notes. Keep review state values consistent across rows (for example pending, accepted, rejected, needs-review) so the client can render status chips predictably.
+
+When the user asks to create an interactive tabular review workspace, do not substitute a static XLSX export for the workspace. Use the tabular review workflow/tooling when it exists. Use XLSX for import, analysis, export, or offline review-grid deliverables.
 
 ## Spreadsheet Type Recipes
 

@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { getFileIconComponent } from "./fileIcons";
+import { workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -52,7 +53,7 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
     <>
       <button
         onClick={() => setExpanded(true)}
-        className="block rounded-lg overflow-hidden border border-border/20 hover:border-border/40 transition-colors cursor-zoom-in"
+        className={workspaceSurfaceClass("block overflow-hidden transition-colors hover:border-border/40 cursor-zoom-in")}
       >
         <img
           src={url}
@@ -123,9 +124,11 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
           target="_blank"
           rel="noopener noreferrer"
           download={f.filename}
-          className="flex items-center gap-3 rounded-xl border border-border/20 bg-surface-2/50 px-3 py-2.5 transition-colors hover:bg-surface-3/50"
+          className={workspaceSurfaceClass(
+            "flex min-h-[64px] items-center gap-3 px-3 py-2.5 text-foreground transition-colors hover:bg-surface-3/50",
+          )}
         >
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-primary/12 text-primary">
+          <div className={workspaceIconBlockClass()}>
             {(() => {
               const Icon = getFileIconComponent(f.mimeType);
               return <Icon size={18} />;

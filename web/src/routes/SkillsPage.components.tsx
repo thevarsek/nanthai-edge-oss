@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ChevronRight, Copy, SquarePen, Trash2, Sparkles } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
+import { statusBadgeClass } from "@/lib/uiTokens";
 import { isSystemSkill, type SkillDefaultState, type SkillDoc } from "./SkillsPage.helpers";
 
 export function DefaultStateBadge({
@@ -12,19 +13,14 @@ export function DefaultStateBadge({
   inherited: boolean;
 }) {
   const { t } = useTranslation();
-  const className =
-    state === "always"
-      ? "bg-green-500/15 text-green-600 dark:text-green-400"
-      : state === "available"
-        ? "bg-primary/15 text-primary"
-        : "bg-red-500/15 text-red-600 dark:text-red-400";
+  const status = state === "always" ? "accepted" : state === "available" ? "running" : "rejected";
   const label = state === "always"
     ? t("skill_state_always")
     : state === "available"
       ? t("skill_state_available")
       : t("skill_state_blocked");
   return (
-    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${className}`}>
+    <span className={statusBadgeClass(status, "border-0")}>
       {inherited ? t("skill_state_default_badge", { state: label }) : label}
     </span>
   );
@@ -86,7 +82,7 @@ export function SkillCard({
             </Link>
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); onDelete(skill._id); }}
-              className="p-1.5 rounded-lg text-foreground/50 hover:text-red-400 transition-colors"
+              className="p-1.5 rounded-lg text-foreground/50 hover:text-destructive transition-colors"
               title={t("delete")}
             >
               <Trash2 size={14} />

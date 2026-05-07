@@ -9,6 +9,7 @@
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { skillToolProfile } from "../schema_validators";
+import type { Doc, Id } from "../_generated/dataModel";
 
 /** Union of valid skill tool profile values. */
 type SkillToolProfile =
@@ -153,3 +154,111 @@ export const upsertSystemSkill = internalMutation({
     return skillId;
   },
 });
+
+/**
+ * Hard-delete removed system skills after the catalog seed has converged.
+ *
+ * This is intentionally scoped to explicit slugs from the current catalog
+ * module, not a generic "delete anything missing" prune. It keeps the seed
+ * action safe for historical system skills that may be temporarily omitted
+ * during development while still allowing deliberate catalog consolidation.
+ */
+export const deleteRemovedSystemSkills = internalMutation({
+  args: {
+    slugs: v.array(v.string()),
+  },
+  handler: async (ctx, { slugs }) => {
+    const skillIdsToDelete: Id<"skills">[] = [];
+
+    for (const slug of slugs) {
+      const candidates = await ctx.db
+        .query("skills")
+        .withIndex("by_slug", (q) => q.eq("slug", slug))
+        .collect();
+      for (const skill of candidates) {
+        if (skill.scope === "system") {
+          skillIdsToDelete.push(skill._id);
+        }
+      }
+    }
+
+    if (skillIdsToDelete.length === 0) {
+      return { deletedCount: 0 };
+    }
+
+    const skillIdSet = new Set(skillIdsToDelete.map(String));
+    const now = Date.now();
+
+    const preferences = await ctx.db.query("userPreferences").collect();
+    for (const prefs of preferences) {
+      const skillDefaults = prefs.skillDefaults ?? [];
+      const nextDefaults = skillDefaults.filter((entry) => !skillIdSet.has(String(entry.skillId)));
+      if (nextDefaults.length === skillDefaults.length) continue;
+      await ctx.db.patch(prefs._id, {
+        skillDefaults: nextDefaults.length > 0 ? nextDefaults : undefined,
+        updatedAt: now,
+      });
+    }
+
+    const personas = await ctx.db.query("personas").collect();
+    for (const persona of personas) {
+      const skillOverrides = persona.skillOverrides ?? [];
+      const nextOverrides = skillOverrides.filter((entry) => !skillIdSet.has(String(entry.skillId)));
+      if (nextOverrides.length === skillOverrides.length) continue;
+      await ctx.db.patch(persona._id, {
+        skillOverrides: nextOverrides.length > 0 ? nextOverrides : undefined,
+        updatedAt: now,
+      });
+    }
+
+    const chats = await ctx.db.query("chats").collect();
+    for (const chat of chats) {
+      const skillOverrides = chat.skillOverrides ?? [];
+      const nextOverrides = skillOverrides.filter((entry) => !skillIdSet.has(String(entry.skillId)));
+      if (nextOverrides.length === skillOverrides.length) continue;
+      await ctx.db.patch(chat._id, {
+        skillOverrides: nextOverrides.length > 0 ? nextOverrides : undefined,
+        updatedAt: now,
+      });
+    }
+
+    const scheduledJobs = await ctx.db.query("scheduledJobs").collect();
+    for (const job of scheduledJobs) {
+      const topLevel = filterSkillOverrideEntries(job.turnSkillOverrides, skillIdSet);
+      let stepsChanged = false;
+      const nextSteps = job.steps?.map((step) => {
+        const filtered = filterSkillOverrideEntries(step.turnSkillOverrides, skillIdSet);
+        if (!filtered.changed) return step;
+        stepsChanged = true;
+        return { ...step, turnSkillOverrides: filtered.next };
+      });
+      if (!topLevel.changed && !stepsChanged) continue;
+
+      const updates: Partial<Doc<"scheduledJobs">> = { updatedAt: now };
+      if (topLevel.changed) updates.turnSkillOverrides = topLevel.next;
+      if (stepsChanged) updates.steps = nextSteps;
+      await ctx.db.patch(job._id, updates);
+    }
+
+    for (const skillId of skillIdsToDelete) {
+      await ctx.db.delete(skillId);
+    }
+
+    console.info(`[skills/seed] Deleted ${skillIdsToDelete.length} removed system skills.`);
+    return { deletedCount: skillIdsToDelete.length };
+  },
+});
+
+function filterSkillOverrideEntries<T extends { skillId: Id<"skills"> }>(
+  entries: T[] | undefined,
+  skillIdSet: Set<string>,
+): { changed: boolean; next: T[] | undefined } {
+  if (!entries || entries.length === 0) {
+    return { changed: false, next: entries };
+  }
+  const next = entries.filter((entry) => !skillIdSet.has(String(entry.skillId)));
+  return {
+    changed: next.length !== entries.length,
+    next: next.length > 0 ? next : undefined,
+  };
+}

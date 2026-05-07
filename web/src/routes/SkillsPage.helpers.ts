@@ -32,10 +32,8 @@ export function effectiveDefaultState(
   return override ?? defaultSkillState(skill);
 }
 
-export function nextDefaultState(skill: SkillDoc, current: SkillDefaultState): SkillDefaultState {
-  if (current === undefined) {
-    return defaultSkillState(skill) === "available" ? "always" : "available";
-  }
+export function nextDefaultState(_skill: SkillDoc, current: SkillDefaultState): SkillDefaultState {
+  if (current === undefined) return "always";
   if (current === "always") return "available";
   if (current === "available") return "never";
   return undefined;

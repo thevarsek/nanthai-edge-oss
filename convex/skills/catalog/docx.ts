@@ -13,7 +13,7 @@ export const DOCX_SKILL: SystemSkillSeedData = {
   summary:
     "Create, read, edit, and manipulate Word documents (.docx). Covers professional formatting, " +
     "tables of contents, headings, page numbers, letterheads, tracked changes, comments, and " +
-    "content extraction. Use when working with .docx files or producing professional documents.",
+    "content extraction. Use when working with .docx files, redline-style reviews, or producing professional documents.",
   instructionsRaw: `# Word Document (DOCX) Skill
 
 Create, read, and edit Word documents using NanthAI's document tools.
@@ -122,6 +122,15 @@ edit_docx uses a read → regenerate approach. The original file is read for con
 3. All formatting params from generate_docx are available on edit_docx too
 
 The model must provide the complete document content — this is a full replacement, not a patch.
+
+## Redline and Tracked-Change Requests
+
+When the user asks for a redline, tracked changes, accept/reject edits, or clause-level revisions in an existing DOCX, distinguish the requested workflow from ordinary full-document regeneration:
+
+- **Current edit_docx behavior:** full replacement document generated from supplied sections.
+- **Tracked-change behavior:** proposed edits that preserve the Word document and expose accept/reject state.
+
+Do not present edit_docx output as true Word tracked changes. If tracked-change tooling is available in the runtime, use that stricter workflow for requested redlines. If it is not available, offer a redline-style review with precise proposed changes, reasons, and citations, or generate a revised DOCX only after the user accepts that it is a replacement draft.
 
 ## Document Type Recipes
 

@@ -18,9 +18,9 @@ const variantClasses: Record<IconButtonVariant, string> = {
 };
 
 const sizeClasses: Record<IconButtonSize, string> = {
-  xs: "h-6 w-6 rounded",
-  sm: "h-7 w-7 rounded-md",
-  md: "h-8 w-8 rounded-lg",
+  xs: "h-8 w-8 rounded-lg",
+  sm: "h-10 w-10 rounded-xl",
+  md: "h-10 w-10 rounded-xl",
   lg: "h-10 w-10 rounded-xl",
 };
 
@@ -61,7 +61,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         "inline-flex shrink-0 items-center justify-center",
         "transition-colors duration-150",
         "active:scale-[0.96] active:transition-transform active:duration-75",
-        "disabled:pointer-events-none disabled:opacity-35",
+        "disabled:pointer-events-none disabled:opacity-50",
         // Variant + size
         sizeClasses[size],
         variantClasses[variant],

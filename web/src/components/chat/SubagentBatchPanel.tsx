@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Layers, ChevronDown, ChevronUp } from "lucide-react";
+import { statusBadgeClass, statusTextClass } from "@/lib/uiTokens";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -94,7 +95,7 @@ export function SubagentBatchPanel({ messageId }: Props) {
     <div className="mt-2 rounded-xl bg-surface-2/50 border border-border/20 p-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-xs font-semibold text-primary">
+        <div className={`flex items-center gap-2 text-xs font-semibold ${statusTextClass(batch.status)}`}>
           <Layers size={14} className={isActive ? "animate-pulse" : ""} />
           <span>{title}</span>
           {isActive && (
@@ -138,7 +139,7 @@ export function SubagentBatchPanel({ messageId }: Props) {
           {/* Selected run content */}
           {selectedRun && (
             <div className="space-y-1.5">
-              <p className="text-[10px] font-medium text-muted">
+              <p className={statusBadgeClass(selectedRun.status, "w-fit border-0")}>
                 {runStatusLabel(selectedRun.status)}
               </p>
               {selectedRun.reasoning && (
@@ -157,7 +158,7 @@ export function SubagentBatchPanel({ messageId }: Props) {
                 </div>
               )}
               {selectedRun.error && (
-                <p className="text-xs text-red-400">{selectedRun.error}</p>
+                <p className="text-xs text-destructive">{selectedRun.error}</p>
               )}
             </div>
           )}

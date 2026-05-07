@@ -5,19 +5,20 @@
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import type { SearchSession, SearchSessionStatus } from "@/hooks/useSearchSessions";
+import { statusBadgeClass, statusTextClass } from "@/lib/uiTokens";
 
 // ─── Badge config per status ──────────────────────────────────────────────────
 
 function badgeConfig(status: SearchSessionStatus) {
   switch (status) {
     case "completed":
-      return { Icon: CheckCircle2, color: "text-green-400", bg: "bg-green-400/10" };
+      return { Icon: CheckCircle2 };
     case "failed":
-      return { Icon: AlertTriangle, color: "text-red-400", bg: "bg-red-400/10" };
+      return { Icon: AlertTriangle };
     case "cancelled":
-      return { Icon: XCircle, color: "text-orange-400", bg: "bg-orange-400/10" };
+      return { Icon: XCircle };
     default:
-      return { Icon: CheckCircle2, color: "text-blue-400", bg: "bg-blue-400/10" };
+      return { Icon: CheckCircle2 };
   }
 }
 
@@ -41,12 +42,13 @@ const PHASE_LABEL_KEYS: Record<SearchSessionStatus, string> = {
 
 export function SearchSessionBadge({ session }: SearchSessionBadgeProps) {
   const { t } = useTranslation();
-  const { Icon, color, bg } = badgeConfig(session.status);
+  const { Icon } = badgeConfig(session.status);
+  const toneClass = statusTextClass(session.status);
 
   return (
-    <div className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${bg} mt-2`}>
-      <Icon size={12} className={color} />
-      <span className={`text-[11px] ${color}`}>{t(PHASE_LABEL_KEYS[session.status])}</span>
+    <div className={statusBadgeClass(session.status, "mt-2 border-0")}>
+      <Icon size={12} className={toneClass} />
+      <span className={`text-[11px] ${toneClass}`}>{t(PHASE_LABEL_KEYS[session.status])}</span>
     </div>
   );
 }

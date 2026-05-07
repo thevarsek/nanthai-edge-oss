@@ -11,7 +11,7 @@ export const MULTI_PLATFORM_LAUNCH_SKILL: SystemSkillSeedData = {
   name: "Product Launch",
   summary:
     "Plan and execute multi-channel product launches. Covers launch strategy across Product Hunt, " +
-    "social media, communities, email, PR, and paid channels with timeline and checklist.",
+    "social media, communities, email, PR, and paid channels with timeline and checklist. Use for launch execution; use Campaign Planning for broader demand-gen or solo-founder GTM planning.",
   instructionsRaw: `# Product Launch — Multi-Platform Strategy
 
 Plan and execute product launches across multiple channels with coordinated timing, messaging, and follow-through.

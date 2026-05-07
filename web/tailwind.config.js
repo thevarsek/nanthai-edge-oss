@@ -36,6 +36,7 @@ export default {
           destructive: "hsl(var(--nanth-destructive) / <alpha-value>)",
           success: "hsl(var(--nanth-success) / <alpha-value>)",
           warning: "hsl(var(--nanth-warning) / <alpha-value>)",
+          info: "hsl(var(--nanth-info) / <alpha-value>)",
         },
         // Un-namespaced aliases — support opacity modifiers (bg-accent/10 etc.)
         // IMPORTANT: `text-muted` is overridden in index.css @layer utilities
@@ -55,6 +56,7 @@ export default {
         destructive: "hsl(var(--nanth-destructive) / <alpha-value>)",
         success:     "hsl(var(--nanth-success) / <alpha-value>)",
         warning:     "hsl(var(--nanth-warning) / <alpha-value>)",
+        info:        "hsl(var(--nanth-info) / <alpha-value>)",
         "surface-1": "hsl(var(--nanth-surface-1) / <alpha-value>)",
         "surface-2": "hsl(var(--nanth-surface-2) / <alpha-value>)",
         "surface-3": "hsl(var(--nanth-surface-3) / <alpha-value>)",

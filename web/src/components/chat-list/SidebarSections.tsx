@@ -9,7 +9,7 @@ import { useTranslation } from "react-i18next";
 import {
   Pin, ChevronDown, ChevronRight, Folder, Check,
   Clock, FolderCog, GripVertical, PencilLine, Trash2,
-  FolderPlus, Search,
+  FolderPlus, ListFilter, Search,
 } from "lucide-react";
 import { ChatListItem } from "@/components/chat-list/ChatListItem";
 import { cn } from "@/lib/utils";
@@ -249,9 +249,10 @@ export function FilterMenu({
   }, [open]);
 
   const hasActiveFilter = selectedFolderId !== null || showScheduledOnly;
+  const userFolders = folders.filter((folder) => folder.name.localeCompare("Scheduled", undefined, { sensitivity: "base" }) !== 0);
   const visibleFolders = folderQuery.trim()
-    ? folders.filter((folder) => folder.name.toLowerCase().includes(folderQuery.trim().toLowerCase()))
-    : folders;
+    ? userFolders.filter((folder) => folder.name.toLowerCase().includes(folderQuery.trim().toLowerCase()))
+    : userFolders;
 
   return (
     <div ref={ref} className="relative">
@@ -259,12 +260,14 @@ export function FilterMenu({
         onClick={() => setOpen((v) => !v)}
         className={cn(
           "p-2 rounded-xl transition-colors relative",
-          "hover:bg-foreground/8 text-muted hover:text-foreground",
+          hasActiveFilter
+            ? "text-primary hover:bg-primary/10"
+            : "text-muted hover:bg-foreground/8 hover:text-foreground",
         )}
         title="Filter chats"
         aria-label="Filter chats"
       >
-        <Folder size={16} />
+        <ListFilter size={16} />
         {hasActiveFilter && (
           <div className="absolute top-1 right-1 w-2 h-2 rounded-full bg-primary" />
         )}
@@ -284,7 +287,7 @@ export function FilterMenu({
                   : "text-secondary hover:bg-foreground/5",
               )}
             >
-              <Folder size={14} />
+              <ListFilter size={14} />
               <span className="flex-1">{t("all_chats")}</span>
               {!hasActiveFilter && <Check size={14} className="text-primary" />}
             </button>
@@ -305,9 +308,9 @@ export function FilterMenu({
             </button>
 
             {/* Divider if folders exist */}
-            {folders.length > 0 && <div className="h-px bg-foreground/8 my-1" />}
+            {userFolders.length > 0 && <div className="h-px bg-foreground/8 my-1" />}
 
-            {folders.length > 8 && (
+            {userFolders.length > 8 && (
               <div className="px-2 py-1.5">
                 <div className="flex items-center gap-1.5 rounded-lg bg-background/60 px-2 py-1.5">
                   <Search size={12} className="text-foreground/40" />

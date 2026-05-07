@@ -12,7 +12,7 @@ export const LAUNCH_CHECKLIST_SKILL: SystemSkillSeedData = {
   summary:
     "Create a comprehensive pre-launch checklist covering engineering, design, marketing, " +
     "support, legal, and operations readiness. Use before releasing features, products, or " +
-    "major updates to ensure nothing is missed.",
+    "major updates to ensure nothing is missed; use Product Launch for channel execution planning.",
   instructionsRaw: `# Launch Checklist
 
 A launch checklist ensures all functions are ready before releasing a feature or product. It coordinates across engineering, QA, design, marketing, support, legal, and operations to prevent launch-day surprises.

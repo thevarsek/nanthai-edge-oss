@@ -15,6 +15,7 @@ import { ProGateWrapper } from "@/hooks/useProGate";
 import { useToast } from "@/components/shared/Toast.context";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import { convexSiteUrl } from "@/lib/constants";
+import { statusBadgeClass, statusDotClass, statusTextClass, tonePanelClass } from "@/lib/uiTokens";
 import { ScheduledJobEditor } from "./ScheduledJobEditor";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -73,14 +74,11 @@ type PageView = "list" | "detail" | "create" | "edit";
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function statusDot(status: string) {
-  const colors: Record<string, string> = {
-    active: "bg-green-400", paused: "bg-orange-400", error: "bg-red-400",
-  };
-  return colors[status] ?? "bg-foreground/30";
+  return statusDotClass(status);
 }
 
 function statusColor(status: string) {
-  return ({ active: "text-green-400", paused: "text-orange-400", error: "text-red-400" } as Record<string, string>)[status] ?? "text-foreground/50";
+  return statusTextClass(status);
 }
 
 function formatDate(ts?: number) {
@@ -265,11 +263,11 @@ function JobDetailPanel({
 
       {/* Error banner */}
       {job.lastRunError && (
-        <div className="rounded-2xl bg-red-400/10 border border-red-400/20 px-4 py-3 flex items-start gap-3">
-          <AlertCircle size={16} className="text-red-400 flex-shrink-0 mt-0.5" />
+        <div className={tonePanelClass("danger", "px-4 py-3 flex items-start gap-3")}>
+          <AlertCircle size={16} className="flex-shrink-0 mt-0.5" />
           <div className="min-w-0">
-            <p className="text-sm font-medium text-red-400">{t("last_run_failed")}</p>
-            <p className="text-xs text-red-400/80 mt-0.5 break-words">{job.lastRunError}</p>
+            <p className="text-sm font-medium">{t("last_run_failed")}</p>
+            <p className="text-xs text-destructive/80 mt-0.5 break-words">{job.lastRunError}</p>
           </div>
         </div>
       )}
@@ -325,13 +323,13 @@ function JobDetailPanel({
           </button>
           <button onClick={onToggle} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
             {isActive
-              ? <Pause size={16} className="text-orange-400 flex-shrink-0" />
-              : <Play size={16} className="text-green-400 flex-shrink-0" />}
+              ? <Pause size={16} className={`${statusTextClass("paused")} flex-shrink-0`} />
+              : <Play size={16} className={`${statusTextClass("active")} flex-shrink-0`} />}
             <span className="text-sm">{isActive ? t("pause_job") : t("resume_job")}</span>
           </button>
-          <button onClick={onDelete} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-red-500/5 transition-colors text-left">
-            <Trash2 size={16} className="text-red-400 flex-shrink-0" />
-            <span className="text-sm text-red-400">{t("delete_job")}</span>
+          <button onClick={onDelete} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-destructive/10 transition-colors text-left">
+            <Trash2 size={16} className="text-destructive flex-shrink-0" />
+            <span className="text-sm text-destructive">{t("delete_job")}</span>
           </button>
         </div>
       </div>
@@ -380,7 +378,7 @@ function JobDetailPanel({
                     <p className="text-xs text-muted font-mono mt-0.5">{token.tokenPrefix}…</p>
                     <p className="text-[11px] text-foreground/50 mt-1">{t("created_with_date", { var1: formatDate(token.createdAt) })}</p>
                   </div>
-                  <button onClick={() => void handleRevokeTriggerToken(token._id)} className="text-xs text-red-400 hover:text-red-300 transition-colors">
+                  <button onClick={() => void handleRevokeTriggerToken(token._id)} className="text-xs text-destructive hover:text-destructive/80 transition-colors">
                     {t("revoke")}
                   </button>
                 </div>
@@ -415,8 +413,8 @@ function JobDetailPanel({
               <div key={run._id} className="px-4 py-3">
                 <div className="flex items-center gap-2.5">
                   {run.status === "success"
-                    ? <CheckCircle size={16} className="text-green-400 flex-shrink-0" />
-                    : <XCircle size={16} className="text-red-400 flex-shrink-0" />}
+                    ? <CheckCircle size={16} className={`${statusTextClass("success")} flex-shrink-0`} />
+                    : <XCircle size={16} className={`${statusTextClass("failed")} flex-shrink-0`} />}
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium">{formatDate(run.startedAt)}</p>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -425,7 +423,7 @@ function JobDetailPanel({
                           {Math.round((run.completedAt - run.startedAt) / 1000)}s
                         </span>
                       )}
-                      <span className={`text-[11px] ${run.status === "success" ? "text-green-400" : "text-red-400"}`}>
+                      <span className={`text-[11px] ${statusTextClass(run.status === "success" ? "success" : "failed")}`}>
                         {run.status === "success" ? t("job_status_active") : t("job_run_failed_label")}
                       </span>
                     </div>
@@ -472,8 +470,8 @@ function JobRow({ job, onSelect }: { job: JobDoc; onSelect: () => void }) {
         <p className="text-sm font-semibold truncate">{job.name}</p>
         <div className="flex items-center gap-3 mt-0.5">
           <span className="text-xs text-muted">{scheduleDescription(job.recurrence)}</span>
-          {job.status === "paused" && <span className="text-xs text-orange-400">{t("job_status_paused")}</span>}
-          {job.status === "error" && <span className="text-xs text-red-400">{t("job_status_error")}</span>}
+          {job.status === "paused" && <span className={statusBadgeClass("paused", "border-0 text-[11px]")}>{t("job_status_paused")}</span>}
+          {job.status === "error" && <span className={statusBadgeClass("error", "border-0 text-[11px]")}>{t("job_status_error")}</span>}
           {nextRunLabel && <span className="text-xs text-foreground/50">{nextRunLabel}</span>}
         </div>
       </div>
@@ -590,10 +588,10 @@ function ScheduledJobsPageContent() {
                   {pausedCount > 0 && (
                     <div className="flex items-center justify-between px-4 py-3">
                       <div className="flex items-center gap-2">
-                        <Pause size={14} className="text-orange-400" />
+                        <Pause size={14} className={statusTextClass("paused")} />
                         <span className="text-sm">{t("paused_label")}</span>
                       </div>
-                      <span className="text-sm text-orange-400">{pausedCount}</span>
+                      <span className={`text-sm ${statusTextClass("paused")}`}>{pausedCount}</span>
                     </div>
                   )}
                 </div>

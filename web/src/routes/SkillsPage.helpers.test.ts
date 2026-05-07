@@ -41,7 +41,7 @@ describe("SkillsPage helpers", () => {
     expect(effectiveDefaultState(userSkill, "never")).toBe("never");
   });
 
-  it("cycles inherited visible skills through always, explicit available, blocked, default", () => {
+  it("cycles explicit defaults through all states", () => {
     const userSkill = skill({ scope: "user", ownerUserId: "user_1" });
     expect(nextDefaultState(userSkill, undefined)).toBe("always");
     expect(nextDefaultState(userSkill, "always")).toBe("available");

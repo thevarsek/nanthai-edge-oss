@@ -10,17 +10,19 @@ export const RETROSPECTIVE_SKILL: SystemSkillSeedData = {
   slug: "retrospective",
   name: "Retrospective",
   summary:
-    "Facilitate and document team retrospectives that drive actionable improvements. " +
-    "Use after sprints, projects, incidents, or any team effort worth reflecting on.",
+    "Facilitate and document structured retrospectives or reflections that drive actionable improvements. " +
+    "Use after sprints, projects, launches, incidents, campaigns, personal workflows, or any completed effort worth reflecting on.",
   instructionsRaw: `# Retrospective
 
-A retrospective is a structured reflection on a period of work to identify what went well, what didn't, and what to change. Effective retros create actionable improvements rather than just venting sessions. They build team trust and drive continuous improvement.
+A retrospective is a structured reflection on a completed period of work or activity to identify what went well, what didn't, what was learned, and what to change. Effective retros create actionable improvements rather than just venting sessions. For teams, they build trust and drive continuous improvement. For individuals, founders, operators, or non-technical groups, they turn experience into concrete next steps.
 
 ## When to Use
 
 - After completing a sprint or iteration
 - At the end of a project or major initiative
 - After an incident or outage
+- After a launch, campaign, event, trip, hiring process, or operational change
+- When an individual wants to reflect on a workflow, habit, goal, or recent period
 - When team morale or velocity has shifted notably
 - Quarterly as a regular practice
 - After a launch to capture learnings while fresh
@@ -45,18 +47,18 @@ When asked to facilitate or document a retrospective, follow these steps:
    For significant issues, ask "why" 2-3 times to get past symptoms to root causes. If "deploys were slow," ask why — was it test suite speed, review bottlenecks, or CI infrastructure?
 
 6. **Generate Action Items**
-   Convert insights into specific, actionable improvements. Every action item needs an owner and a target date. Limit to 2-3 actions — teams that try to fix everything fix nothing.
+   Convert insights into specific, actionable improvements. For team retros, every action item needs an owner and a target date. For individual reflection, every action item needs a clear next behavior, trigger, or review date. Limit to 2-3 actions — people who try to fix everything fix nothing.
 
 7. **Track Follow-Through**
-   Reference action items from the previous retro. Were they completed? Did they help? Accountability makes retros meaningful over time.
+   Reference action items from the previous retro or reflection when available. Were they completed? Did they help? Accountability makes retros meaningful over time.
 
 ## Output Format
 
 ### Retrospective: [Sprint/Project/Incident Name]
 
 **Period:** [Start date] — [End date]
-**Facilitator:** [Name]
-**Participants:** [Names]
+**Facilitator / Owner:** [Name]
+**Participants:** [Names, or "Individual reflection"]
 
 #### Context
 Brief summary of what was attempted during this period. Key events and milestones.

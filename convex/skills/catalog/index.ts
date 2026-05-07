@@ -35,7 +35,6 @@ import { EXPANSION_RETENTION_SKILL } from "./gtm_expansion_retention";
 import { MULTI_PLATFORM_LAUNCH_SKILL } from "./gtm_multi_platform_launch";
 import { POSITIONING_ICP_SKILL } from "./gtm_positioning_icp";
 import { SEO_SKILL } from "./gtm_seo";
-import { SOLO_FOUNDER_GTM_SKILL } from "./gtm_solo_founder";
 
 // --- PM skills ---
 import { ADR_SKILL } from "./pm_adr";
@@ -46,7 +45,6 @@ import { PERSONA_SKILL } from "./pm_persona";
 import { PARALLEL_SUBAGENTS_SKILL } from "./parallel_subagents";
 import { PRD_SKILL } from "./pm_prd";
 import { PROBLEM_STATEMENT_SKILL } from "./pm_problem_statement";
-import { RELEASE_NOTES_SKILL } from "./pm_release_notes";
 import { RETROSPECTIVE_SKILL } from "./pm_retrospective";
 import { USER_STORIES_SKILL } from "./pm_user_stories";
 
@@ -81,14 +79,11 @@ import { RECONCILIATION_SKILL } from "./finance_reconciliation";
 import { CONTRACT_REVIEW_SKILL } from "./legal_contract_review";
 import {
   CLAUSE_EXTRACTION_SKILL,
-  CONDITIONS_PRECEDENT_CHECKLIST_SKILL,
   CONTRACT_DRAFTING_SKILL,
-  CREDIT_AGREEMENT_SUMMARY_SKILL,
   DOCUMENT_DRAFTING_SKILL,
   DOCUMENT_REVIEW_SKILL,
   LEGAL_MEMO_SKILL,
   POLICY_REVIEW_SKILL,
-  SHAREHOLDER_AGREEMENT_SUMMARY_SKILL,
 } from "./document_generation_workflows";
 
 // --- Marketing skills ---
@@ -105,6 +100,14 @@ import { SPRINT_PLANNING_SKILL } from "./pm_sprint_planning";
 // --- Hidden skills ---
 import { NANTHAI_MOBILE_RUNTIME_SKILL } from "./nanthai_mobile_runtime";
 import { CREATE_SKILL_SKILL } from "./create_skill";
+
+export const REMOVED_SYSTEM_SKILL_SLUGS = [
+  "conditions-precedent-checklist",
+  "credit-agreement-summary",
+  "release-notes",
+  "shareholder-agreement-summary",
+  "solo-founder-gtm",
+] as const;
 
 /**
  * All system skills to seed into the database.
@@ -124,12 +127,10 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   COLD_OUTREACH_SKILL,
   CLAUSE_EXTRACTION_SKILL,
   COMPETITIVE_ANALYSIS_SKILL,
-  CONDITIONS_PRECEDENT_CHECKLIST_SKILL,
   CONTENT_TO_PIPELINE_SKILL,
   CONTRACT_REVIEW_SKILL,
   CONTRACT_DRAFTING_SKILL,
   CREATE_SKILL_SKILL,
-  CREDIT_AGREEMENT_SUMMARY_SKILL,
   DASHBOARD_BUILDER_SKILL,
   DATA_ANALYZER_SKILL,
   DATA_VALIDATION_SKILL,
@@ -169,13 +170,10 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   PROBLEM_STATEMENT_SKILL,
   PROCESS_DOC_SKILL,
   RECONCILIATION_SKILL,
-  RELEASE_NOTES_SKILL,
   RETROSPECTIVE_SKILL,
   SCHEDULED_JOBS_SKILL,
   SEO_SKILL,
-  SHAREHOLDER_AGREEMENT_SUMMARY_SKILL,
   SLACK_SKILL,
-  SOLO_FOUNDER_GTM_SKILL,
   SPRINT_PLANNING_SKILL,
   SQL_DATA_QUERY_SKILL,
   STATISTICAL_ANALYSIS_SKILL,

@@ -52,7 +52,9 @@ const BANNED_PATTERNS: BannedPattern[] = [
       /\bplaywright\b/i,
       /\bpuppeteer\b/i,
       /\bselenium\b/i,
-      /\bscreenshot\b/i,
+      /\b(?:take|capture|grab)\s+(?:a\s+)?screenshots?\b/i,
+      /\bscreenshots?\s+(?:capture|testing|of|the|current|page|browser|website|screen|state)\b/i,
+      /\bpage\s+screenshots?\b/i,
       /\bwebdriver\b/i,
       /\bbrowser\s+automation\b/i,
       /\bdesktop\s+control\b/i,
@@ -162,6 +164,11 @@ const KNOWN_TOOL_IDS = new Set([
   "slack_send_message", "slack_read_channel", "slack_read_thread",
   "slack_create_canvas", "slack_update_canvas", "slack_read_canvas",
   "slack_read_user_profile",
+  // Cloze
+  "cloze_person_find", "cloze_person_count", "cloze_person_add",
+  "cloze_person_change", "cloze_project_find", "cloze_project_change",
+  "cloze_add_note", "cloze_add_todo", "cloze_timeline",
+  "cloze_save_draft", "cloze_about_me",
   // Skills (self-referential)
   "load_skill", "list_skills", "create_skill", "update_skill",
   "delete_skill", "enable_skill_for_chat", "disable_skill_for_chat",

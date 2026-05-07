@@ -38,17 +38,17 @@ export function isSessionActive(status: SearchSessionStatus): boolean {
   return ACTIVE_STATUSES.has(status);
 }
 
-export function phaseLabel(status: SearchSessionStatus): string {
+export function phaseLabelKey(status: SearchSessionStatus): string {
   switch (status) {
-    case "planning": return "Planning queries...";
-    case "searching": return "Searching...";
-    case "analyzing": return "Analyzing results...";
-    case "deepening": return "Deepening research...";
-    case "synthesizing": return "Synthesizing findings...";
-    case "writing": return "Writing paper...";
-    case "completed": return "Completed";
-    case "failed": return "Failed";
-    case "cancelled": return "Cancelled";
+    case "planning": return "search_phase_planning";
+    case "searching": return "search_phase_searching";
+    case "analyzing": return "search_phase_analyzing";
+    case "deepening": return "search_phase_deepening";
+    case "synthesizing": return "search_phase_synthesizing";
+    case "writing": return "search_phase_writing";
+    case "completed": return "search_phase_completed";
+    case "failed": return "search_phase_failed";
+    case "cancelled": return "search_phase_cancelled";
   }
 }
 

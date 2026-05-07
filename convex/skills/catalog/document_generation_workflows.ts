@@ -10,7 +10,8 @@ const DOCS_PROFILE = ["docs"] as const;
 export const DOCUMENT_REVIEW_SKILL: SystemSkillSeedData = {
   slug: "document-review",
   name: "Document Review",
-  summary: "Review scoped documents with quote-backed citations, issue spotting, and concise recommendations.",
+  summary:
+    "Review scoped documents with quote-backed citations, issue spotting, concise recommendations, redline-style change lists, and structured review-grid/table outlines when requested.",
   instructionsRaw: `# Document Review
 
 Use this skill when the user asks to review, summarize, critique, compare, or risk-check one or more scoped documents.
@@ -21,6 +22,8 @@ Workflow:
 3. Use find_in_document for targeted clauses, defined terms, dates, obligations, or suspected issues.
 4. Cite document-specific claims with the existing document citation rules.
 5. Separate facts from recommendations.
+6. If the user asks for true DOCX tracked changes, use the DOCX/tracked-change workflow when available rather than treating a review memo as an edited document. Without that tool, return a redline-style issue/change list with quotes, reasons, and recommended replacement wording.
+7. If the user asks for a review matrix, extraction grid, or tabular review draft, structure the response as stable rows and columns that can later map to the M38 tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
 
 Output should be structured for scanning: executive summary, key findings, risks/gaps, and recommended next steps. Do not make legal advice the app default; for legal documents, frame analysis as informational and recommend qualified counsel for binding decisions.`,
   instructionsCompiled: undefined,
@@ -183,7 +186,8 @@ Workflow:
 export const CONDITIONS_PRECEDENT_CHECKLIST_SKILL: SystemSkillSeedData = {
   slug: "conditions-precedent-checklist",
   name: "Conditions Precedent Checklist",
-  summary: "Template-like workflow for generating a landscape DOCX conditions precedent checklist from financing documents.",
+  summary:
+    "Template-like workflow for generating a landscape DOCX conditions precedent checklist from financing documents; a future tabular review template candidate.",
   instructionsRaw: `# Conditions Precedent Checklist
 
 This is a template-like workflow inspired by Mike's "Generate CP Checklist" assistant workflow.
@@ -216,12 +220,15 @@ Requirements:
 export const CREDIT_AGREEMENT_SUMMARY_SKILL: SystemSkillSeedData = {
   slug: "credit-agreement-summary",
   name: "Credit Agreement Summary",
-  summary: "Template-like workflow for summarizing core commercial, finance, security, covenant, and default terms in credit agreements.",
+  summary:
+    "Template-like workflow for summarizing core credit-agreement terms; a future tabular review-grid preset candidate.",
   instructionsRaw: `# Credit Agreement Summary
 
 This is a template-like workflow inspired by Mike's "Credit Agreement Summary" assistant workflow.
 
 Review the scoped credit agreement and produce a comprehensive summary. Use read_document and find_in_document as needed. Deliver inline unless the user explicitly asks for a Word document.
+
+If the user asks for a review matrix or extraction grid, structure the answer as stable rows/columns that can later map to a tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
 
 Cover these topics where present: lenders, borrowers, guarantors, other material parties, date, facilities, total commitments, purpose, interest, commitment or utilization fees, repayment schedule, maturity, security, guarantees, financial covenants, events of default, assignment/transfer, change of control, prepayment fees, governing law, and dispute resolution.
 
@@ -242,12 +249,15 @@ For each section, identify key provisions, quote relevant clause or schedule ref
 export const SHAREHOLDER_AGREEMENT_SUMMARY_SKILL: SystemSkillSeedData = {
   slug: "shareholder-agreement-summary",
   name: "Shareholder Agreement Summary",
-  summary: "Template-like workflow for summarizing shareholder agreement governance, transfer, exit, and protection terms.",
+  summary:
+    "Template-like workflow for summarizing shareholder-agreement terms; a future tabular review-grid preset candidate.",
   instructionsRaw: `# Shareholder Agreement Summary
 
 This is a template-like workflow inspired by Mike's "Shareholder Agreement Summary" assistant workflow.
 
 Review the scoped shareholder agreement and produce a structured summary. Use read_document and find_in_document as needed. Deliver inline unless the user explicitly asks for a Word document.
+
+If the user asks for a review matrix or extraction grid, structure the answer as stable rows/columns that can later map to a tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
 
 Cover these topics where present: parties, date, share classes, shareholdings, board composition, reserved matters, new-issue pre-emption rights, transfer restrictions, transfer pre-emption or ROFR, drag-along, tag-along, anti-dilution, dividends, exit/liquidity, deadlock, non-compete/non-solicit, confidentiality, warranties/indemnities, governing law, and dispute resolution.
 

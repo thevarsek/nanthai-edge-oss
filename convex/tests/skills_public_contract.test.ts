@@ -305,13 +305,17 @@ test("skill detail and internal lookup helpers are scoped correctly", async () =
 
 test("seedSystemCatalog upserts every system skill", async () => {
   const seeded: string[] = [];
+  const deleted: string[] = [];
 
   await (seedSystemCatalog as any)._handler({
-    runMutation: async (_ref: unknown, args: { slug: string }) => {
-      seeded.push(args.slug);
+    runMutation: async (_ref: unknown, args: { slug?: string; slugs?: string[] }) => {
+      if (args.slug) seeded.push(args.slug);
+      if (args.slugs) deleted.push(...args.slugs);
     },
   }, {});
 
   assert.equal(seeded.length, SYSTEM_SKILL_CATALOG.length);
   assert.equal(seeded[0], SYSTEM_SKILL_CATALOG[0]?.slug);
+  assert.ok(deleted.includes("release-notes"));
+  assert.ok(deleted.includes("solo-founder-gtm"));
 });

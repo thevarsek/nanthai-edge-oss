@@ -5,17 +5,13 @@
 
 import { File, Folder, Terminal, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { statusBadgeClass } from "@/lib/uiTokens";
 import { formatBytes } from "./ToolResultRenderers.utils";
 
 export function Badge({ children, variant = "default" }: { children: React.ReactNode; variant?: "default" | "success" | "error" }) {
-  const cls =
-    variant === "success"
-      ? "bg-green-900/30 text-green-400 border-green-700/40"
-      : variant === "error"
-        ? "bg-red-900/30 text-red-400 border-red-700/40"
-        : "bg-surface-3/50 text-muted border-border/20";
+  const status = variant === "success" ? "success" : variant === "error" ? "failed" : "pending";
   return (
-    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium border ${cls}`}>
+    <span className={statusBadgeClass(status, "rounded px-1.5")}>
       {children}
     </span>
   );
@@ -110,7 +106,7 @@ export function WorkspaceListFilesResult({ data }: { data: Record<string, unknow
         {files.map((f, i) => (
           <div key={i} className="flex items-center gap-1.5 text-[11px] font-mono text-foreground">
             {f.type === "dir" ? (
-              <Folder size={11} className="text-blue-400 shrink-0" />
+              <Folder size={11} className="text-info shrink-0" />
             ) : (
               <File size={11} className="text-muted shrink-0" />
             )}
@@ -212,7 +208,7 @@ export function DataPythonExecResult({ data }: { data: Record<string, unknown> }
         <div>
           <SectionLabel>{t("warnings")}</SectionLabel>
           {warnings.map((w, i) => (
-            <p key={i} className="text-yellow-400 text-[11px]">{w}</p>
+            <p key={i} className="text-warning text-[11px]">{w}</p>
           ))}
         </div>
       ) : null}

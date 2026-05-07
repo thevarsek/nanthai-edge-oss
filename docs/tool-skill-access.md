@@ -96,7 +96,7 @@ Current backend behavior is intentionally forgiving:
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
 | Slack | `slack_send_message`, `slack_read_messages`, `slack_search_messages`, `slack_list_channels`, `slack_search_users`, `slack_create_canvas`, `slack_update_canvas`, `slack_read_canvas`, `slack_read_user_profile` | Pro + active Slack connection + requested integration |
-| Cloze | `cloze_search_contacts`, `cloze_read_contact`, `cloze_create_contact`, `cloze_search_companies`, `cloze_read_company`, `cloze_list_projects` | Pro + active Cloze connection + requested integration |
+| Cloze | `cloze_person_find`, `cloze_person_count`, `cloze_person_add`, `cloze_person_change`, `cloze_project_find`, `cloze_project_change`, `cloze_add_note`, `cloze_add_todo`, `cloze_timeline`, `cloze_save_draft`, `cloze_about_me` | Pro + active Cloze connection + requested integration |
 | Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset`, `data_python_exec`, `data_python_sandbox`, `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset`, `read_pdf`, `generate_pdf`, `edit_pdf` | Pro (skill-activated) |
 
 ## Skills And Their Practical Role
@@ -112,22 +112,23 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
 | Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `gmailManual`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
-| Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-release-notes`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
-| GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo`, `gtm-solo-founder` | instruction-led | Pro-useful |
+| Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
+| GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo` | instruction-led | Pro-useful |
 | Marketing | `campaign-planning`, `email-sequence`, `marketing-performance-report` | instruction-led; `marketing-performance-report` uses analytics profile | Pro-useful |
 | Design | `design-critique`, `ux-copy` | instruction-led | Pro-useful |
 | Engineering | `incident-response`, `testing-strategy` | instruction-led | Pro-useful |
 | Finance | `financial-statements`, `reconciliation` | instruction-led; `reconciliation` uses analytics profile | Pro-useful |
-| Legal / business documents | `contract-review`, `contract-drafting`, `legal-memo`, `clause-extraction`, `policy-review`, `conditions-precedent-checklist`, `credit-agreement-summary`, `shareholder-agreement-summary` | `docs` for citation-aware review and generated DOCX workflows | Pro-useful |
+| Legal / business documents | `contract-review`, `contract-drafting`, `legal-memo`, `clause-extraction`, `policy-review` | `docs` for citation-aware review and generated DOCX workflows | Pro-useful |
 | Operations | `process-documentation` | instruction-led | Pro-useful |
-| Internal communications | `internal-comms` | instruction-led | Pro-useful |
+| Internal communications | `internal-comms` including release notes, changelogs, stakeholder updates, and app-store update copy | instruction-led | Pro-useful |
 
 ### M33 document workflow skills
 
 M33 added a dedicated document workflow layer on top of the lower-level file tools:
 
-- review/citation skills: `document-review`, `clause-extraction`, `credit-agreement-summary`, `shareholder-agreement-summary`
-- drafting/generation skills: `document-drafting`, `contract-drafting`, `legal-memo`, `policy-review`, `conditions-precedent-checklist`
+- review/citation skills: `document-review`, `contract-review`, `clause-extraction`
+- drafting/generation skills: `document-drafting`, `contract-drafting`, `legal-memo`, `policy-review`
+- removed M36 standalone legal templates (`conditions-precedent-checklist`, `credit-agreement-summary`, `shareholder-agreement-summary`) are preserved as M38 tabular review template requirements, not active catalog skills
 - all use the existing progressive skill resolver; there is no separate template catalog or legal-only product mode
 - generated DOCX outputs are saved as normal generated files and linked to canonical `documents` / `documentVersions`
 - citation-aware skills only operate over explicit document scope from attachments, KB picker selections, or existing chat context; they do not search the whole Knowledge Base by default
@@ -137,7 +138,8 @@ M33 added a dedicated document workflow layer on top of the lower-level file too
 | Skill | Purpose | Visibility |
 |---|---|---|
 | `nanthai-mobile-runtime` | Internal capability-aware runtime instruction injection | Hidden |
-| `create-skill` | Internal guidance for generating/editing skills correctly | Hidden |
+
+`create-skill` remains visible and active as the user-facing skill management workflow.
 
 ## Skills With Explicit Tool Profile Metadata
 
@@ -167,9 +169,6 @@ These are the clearest examples of how skills and tools relate today.
 | `legal-memo` | `docs` | `read_document`, `find_in_document`, `generate_docx` | none |
 | `clause-extraction` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
 | `policy-review` | `docs` | `read_document`, `find_in_document`, `generate_docx` | none |
-| `conditions-precedent-checklist` | `docs` | `read_document`, `generate_docx` | none |
-| `credit-agreement-summary` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
-| `shareholder-agreement-summary` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
 | `google-drive` | `google` | Drive tool IDs | `requiredIntegrationIds = ["drive"]`; access is `drive.file` + Picker/OnePick grants only |
 | `gmail` | `google` | Gmail tool IDs | `requiredIntegrationIds = ["gmail"]`; the integration is satisfied by the `gmail_manual` provider, not Gmail OAuth |
 | `microsoft-365` | `microsoft` | Outlook, OneDrive, MS Calendar tool IDs | `requiredIntegrationIds = ["outlook", "onedrive", "ms_calendar"]` |

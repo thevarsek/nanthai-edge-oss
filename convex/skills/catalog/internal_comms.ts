@@ -10,9 +10,9 @@ export const INTERNAL_COMMS_SKILL: SystemSkillSeedData = {
   slug: "internal-comms",
   name: "Internal Communications",
   summary:
-    "Write internal communications using structured company formats — " +
-    "status reports, leadership updates, 3P updates, company newsletters, " +
-    "FAQs, incident reports, and project updates.",
+    "Write internal and stakeholder communications using structured formats — " +
+    "status reports, leadership updates, 3P updates, newsletters, FAQs, " +
+    "incident reports, project updates, release notes, changelogs, and app-store update copy.",
   instructionsRaw: `# Internal Communications
 
 Write internal communications using structured formats appropriate for the communication type.
@@ -88,6 +88,23 @@ Write internal communications using structured formats appropriate for the commu
 
 **Tone:** Clear, honest about status. Bad news early.
 
+### Release Notes / Changelogs
+**Format:**
+- Release title, product name, version, and release date when known
+- Highlights: 1-3 sentences on the most important user-visible changes
+- New Features, Improvements, Bug Fixes, Breaking Changes, and Deprecations as needed
+- For breaking changes: migration guidance, dates, and recommended alternatives
+
+**Tone:** Clear, benefit-focused, and audience-aware. Translate implementation details into what users or stakeholders can now do. Avoid internal ticket numbers and jargon in customer-facing notes.
+
+### App Store / Customer Update Copy
+**Format:**
+- Short headline or first sentence with the main user benefit
+- 2-5 concise bullets for notable additions, improvements, and fixes
+- Optional closing line for upgrade or rollout context
+
+**Tone:** Plain, concise, and useful. Do not over-market small maintenance releases.
+
 ## General Guidelines
 
 1. **Ask for context** before writing — who's the audience, what's the occasion, what tone?
@@ -96,7 +113,8 @@ Write internal communications using structured formats appropriate for the commu
 4. **Use bullet points** liberally — walls of text don't get read
 5. **Include specific dates, names, and numbers** where possible
 6. **End with clear next steps** when applicable
-7. If the type doesn't match any above, ask for clarification about the desired format`,
+7. For release notes and changelogs, separate user-visible value from implementation details
+8. If the type doesn't match any above, ask for clarification about the desired format`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
   scope: "system",

@@ -13,7 +13,7 @@ export const CONTRACT_REVIEW_SKILL: SystemSkillSeedData = {
   summary:
     "Clause-by-clause contract analysis with risk flagging, NDA triage, and compliance checks. " +
     "Use when reviewing contracts, NDAs, service agreements, or any legal document for " +
-    "risks, non-standard terms, and negotiation points.",
+    "risks, non-standard terms, negotiation points, redline-style change recommendations, credit agreement summaries, shareholder agreement summaries, or conditions precedent checklists.",
   instructionsRaw: `# Contract Review
 
 Analyze contracts clause by clause, flag risks, identify non-standard terms, and provide actionable negotiation recommendations. This skill covers general contract review, NDA fast-triage, and compliance checks.
@@ -28,6 +28,9 @@ Analyze contracts clause by clause, flag risks, identify non-standard terms, and
 - Identifying risks and negotiation leverage points
 - Preparing a summary for legal or executive review
 - Checking compliance with specific regulatory requirements
+- Preparing redline-style change recommendations or tracked-change proposals for a DOCX contract
+- Summarizing credit agreements or shareholder agreements with cited key terms
+- Drafting conditions precedent checklist requirements from financing documents
 
 ## Contract Review Workflow
 
@@ -142,6 +145,19 @@ Organize findings into:
 4. **Request clarification:** [Ambiguous areas needing definition]
 
 **Disclaimer:** This analysis is for informational purposes only and does not constitute legal advice. Consult qualified legal counsel before making binding legal decisions.
+
+## Redline and Tracked-Change Guidance
+
+If the user asks for true Word tracked changes, use the DOCX tracked-change workflow when it is available. Keep the legal analysis in this contract-review skill, but let the tracked-change workflow own the actual accept/reject-able edit proposals. If tracked-change tooling is unavailable, produce a redline-style table with clause, current text, proposed replacement, reason, risk, and citation instead of claiming to modify the DOCX.
+
+## Template and Review-Grid Guidance
+
+Use these template modes when requested, while keeping factual claims tied to document citations:
+
+- **Conditions precedent checklist:** Review the scoped credit agreement or financing document and produce a checklist grouped into practical categories such as Corporate, Financial, Legal, Security, Regulatory, Tax, and Miscellaneous. For a DOCX checklist, use landscape orientation when available and use four columns in this order: Index, Clause Number, Clause, Status. Number each row from 1 within its category and leave Status blank for user completion.
+- **Credit agreement summary:** Cover lenders, borrowers, guarantors, material parties, date, facilities, total commitments, purpose, interest, commitment or utilization fees, repayment schedule, maturity, security, guarantees, financial covenants, events of default, assignment/transfer, change of control, prepayment fees, governing law, and dispute resolution where present. Flag unusual, onerous, missing, or non-market terms.
+- **Shareholder agreement summary:** Cover parties, date, share classes, shareholdings, board composition, reserved matters, new-issue pre-emption rights, transfer restrictions, transfer pre-emption or ROFR, drag-along, tag-along, anti-dilution, dividends, exit/liquidity, deadlock, non-compete/non-solicit, confidentiality, warranties/indemnities, governing law, and dispute resolution where present.
+- **Tabular review draft:** If the user asks for a review matrix or extraction grid, structure the answer as stable rows and columns that can later map to a tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
 
 ## Guidelines
 

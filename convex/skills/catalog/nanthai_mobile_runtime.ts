@@ -17,8 +17,8 @@ export const NANTHAI_MOBILE_RUNTIME_SKILL: SystemSkillSeedData = {
   instructionsRaw: `You are running inside NanthAI, a mobile AI assistant. You do NOT have access to:
 - Local shell, bash, terminal, or command-line tools
 - Local filesystem read/write
-- Browser automation, screenshots, or desktop control
-- MCP servers or external process management
+- Visual browser control, external screen capture, or desktop app control
+- External protocol servers or process supervisors
 - Raw HTTP fetches outside of named NanthAI tools
 
 You CAN use any tools explicitly provided in this conversation's tool list.

@@ -288,9 +288,9 @@ export function MessageInput({
 
       {/* Video mode hint banner */}
       {isVideoMode && (
-        <div className="flex items-start gap-2 px-3 py-2 mb-2 rounded-xl bg-purple-500/10 border border-purple-500/20">
-          <Video size={14} className="text-purple-400 shrink-0 mt-0.5" />
-          <p className="text-xs text-purple-300 leading-relaxed">
+        <div className="mb-2 flex items-start gap-2 rounded-xl border border-purple-300 bg-purple-50 px-3 py-2 dark:border-purple-500/20 dark:bg-purple-500/10">
+          <Video size={14} className="mt-0.5 shrink-0 text-purple-700 dark:text-purple-400" />
+          <p className="text-xs leading-relaxed text-purple-950 dark:text-purple-300">
             {supportsFrameImages ? t("video_hint") : t("video_hint_no_frames")}
           </p>
         </div>
@@ -361,10 +361,10 @@ export function MessageInput({
               });
             }}
             disabled={disabled || isUploading}
-            className="w-10 h-10 rounded-full bg-surface-2/50 backdrop-blur-sm border border-border/20 flex items-center justify-center text-muted hover:text-foreground hover:bg-surface-3 transition-colors disabled:opacity-40"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-border/20 bg-surface-2/50 text-foreground backdrop-blur-sm transition-colors hover:bg-surface-3 disabled:opacity-40"
             title={t("more_options")}
           >
-            <Plus size={18} strokeWidth={2.5} />
+            <Plus size={17} strokeWidth={2.4} />
           </button>
           {showPlusMenu && (
             <ChatPlusMenu
@@ -405,27 +405,27 @@ export function MessageInput({
           <button
             type="button"
             onClick={queueFollowUp}
-            className="w-10 h-10 rounded-full bg-accent/10 text-accent hover:bg-accent/20 transition-colors shrink-0 flex items-center justify-center"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10"
             title={t("queue_follow_up")}
             aria-label={t("queue_follow_up")}
           >
-            <Plus size={18} strokeWidth={2.5} />
+            <Plus size={17} strokeWidth={2.4} />
           </button>
         ) : isGenerating ? (
-          <button onClick={() => { void onCancel(); }} className="w-10 h-10 rounded-full bg-destructive/20 text-destructive hover:bg-destructive/30 transition-colors shrink-0 flex items-center justify-center" title={t("stop_generation")}>
-            <Square size={16} fill="currentColor" />
+          <button onClick={() => { void onCancel(); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10" title={t("stop_generation")}>
+            <Square size={15} fill="currentColor" />
           </button>
         ) : canSend ? (
-          <button onClick={() => void handleSend()} className="w-10 h-10 rounded-full bg-primary text-white hover:opacity-90 transition-opacity shrink-0 flex items-center justify-center" title="Send (Enter)">
-            <ArrowUp size={20} strokeWidth={2.5} />
+          <button onClick={() => void handleSend()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title="Send (Enter)">
+            <ArrowUp size={19} strokeWidth={2.6} />
           </button>
         ) : canRecord ? (
-          <button onClick={() => void recorder.start()} className="w-10 h-10 rounded-full bg-primary/20 text-primary hover:bg-primary/30 transition-colors shrink-0 flex items-center justify-center" title={t("record_voice")}>
-            <Mic size={18} />
+          <button onClick={() => void recorder.start()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title={t("record_voice")}>
+            <Mic size={17} />
           </button>
         ) : (
-          <button disabled className="w-10 h-10 rounded-full bg-primary text-white opacity-30 cursor-not-allowed shrink-0 flex items-center justify-center" title="Send (Enter)">
-            <ArrowUp size={20} strokeWidth={2.5} />
+          <button disabled className="flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-full text-muted opacity-40" title="Send (Enter)">
+            <ArrowUp size={19} strokeWidth={2.6} />
           </button>
         )}
       </div>

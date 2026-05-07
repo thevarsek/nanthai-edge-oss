@@ -14,211 +14,88 @@ export const DATA_ANALYZER_SKILL: SystemSkillSeedData = {
     "plot visualizations with matplotlib, process CSV/TSV/XLSX files, and export cleaned outputs.",
   instructionsRaw: `# Data Analyzer
 
-Analyze tabular data to uncover patterns, trends, and actionable insights. Use NanthAI's Max analytics runtime to import files, run Python, create charts, and export cleaned outputs.
+Analyze tabular data, create charts, explain findings, and export cleaned or derived outputs. Use NanthAI's analytics runtime as the primary path for CSV, TSV, XLSX, JSON tables, and similar structured data.
 
-## Available Tools
+## Tools
 
-- **workspace_import_file** — Import a user-owned file from NanthAI storage into the chat workspace.
-- **data_python_exec** — Run notebook-style Python (Pyodide) with numpy, pandas, and matplotlib. Preferred first choice for analysis and charting. ~400 MB memory limit, 120s timeout.
-- **data_python_sandbox** — Full Linux Python sandbox with pip and network. Use when data_python_exec fails due to missing packages (scipy, scikit-learn, etc.), memory limits, or timeouts. State persists across calls within the same chat session.
-- **workspace_export_file** — Export important workspace files back into durable NanthAI storage.
+- **workspace_import_file**: import user-owned files into the chat workspace before analysis.
+- **data_python_exec**: preferred notebook-style Python runtime with pandas, numpy, and matplotlib. Use first for inspection, ordinary analysis, and charting.
+- **data_python_sandbox**: persistent Linux Python sandbox. Use when data_python_exec fails because of package, memory, or timeout limits.
+- **workspace_export_file**: export important workspace files back into durable NanthAI storage.
 
-## Runtime Split
+## Non-Negotiables
 
-- Prefer **data_python_exec** first for ordinary analysis and charting.
-- Use **data_python_sandbox** when the task is still analytics-centric but needs persistence, bigger packages, more memory, or longer execution.
-- Do not default to generic shell runtimes for chart work; keep the notebook path as the primary analytics surface unless the workflow clearly escapes analytics.
+- Always analyze the complete uploaded file, not truncated inline preview text.
+- Import files with **workspace_import_file** or pass storage IDs through data_python_exec/data_python_sandbox input files so data is available under \`/tmp/inputs/\`.
+- Save user-meaningful output files to \`/tmp/outputs/\`; NanthAI auto-captures this directory as downloadable artifacts.
+- Prefer **data_python_exec** for charts because shown matplotlib figures can become native chart cards.
+- For chart runs, call \`plt.tight_layout()\` and \`plt.show()\`. Save a durable PNG to \`/tmp/outputs/\` only when a file artifact is useful.
+- Do not retry the same failing data_python_exec code more than once. Escalate to data_python_sandbox on package, memory, or timeout failures.
 
-## Important Charting Rule
+## Workflow
 
-- When the user asks for charts, plots, or visual analysis, prefer **data_python_exec** over generic shell/runtime execution.
-- NanthAI can render inline/native chart cards only from notebook-style Python chart output. Exported PNG files are companion downloads, not the primary chart path.
-- Use exported PNGs and workbooks as supporting artifacts after the notebook output has already produced visible charts.
+1. Inspect the data.
+   - Load each relevant file with pandas.
+   - Report rows, columns, data types, date ranges, and likely grain.
+   - Check missing values, duplicates, mixed types, suspicious ranges, and obvious outliers.
+   - Ask a clarifying question when the grain, metric definitions, or target decision is ambiguous.
 
-## File Output Rule — /tmp/outputs/
+2. Clean and validate.
+   - Normalize dates, numeric strings, category labels, and duplicate rows when appropriate.
+   - Preserve raw values unless the user asked for destructive cleaning.
+   - Document assumptions and data quality issues before drawing conclusions.
 
-- **Always save output files (CSV, JSON, XLSX, etc.) to \`/tmp/outputs/\`.**
-  Files written to this directory are auto-captured and stored as downloadable artifacts in NanthAI — they appear as download cards in chat and in the user's Knowledge Base.
-- Example: \`df.to_csv('/tmp/outputs/cleaned_data.csv', index=False)\`
-- Charts from \`plt.show()\` are captured automatically — no need to save them to /tmp/outputs/ (though you can also \`fig.savefig('/tmp/outputs/chart.png')\` for a durable copy).
-- Do NOT save output files to random paths like \`/tmp/result.csv\` or \`output.csv\` — only \`/tmp/outputs/\` is auto-captured.
+3. Analyze.
+   - Use summary statistics for numeric fields.
+   - Compare groups by category.
+   - Analyze time trends when there is a date/time field.
+   - Check distributions, correlations, and outliers when relevant.
+   - Use statistical tests only when the question needs significance, and report the test, p-value, effect size, confidence interval, and caveats.
 
-## When to Use
+4. Visualize.
+   - Use simple matplotlib charts: line, bar, scatter, pie, or box plot.
+   - Prefer one clear chart per figure so NanthAI can capture each chart cleanly.
+   - Avoid noisy dashboards, unrelated multi-axis composites, and decorative charts.
 
-- Analyzing uploaded CSV, TSV, or XLSX files
-- Exploring a dataset for patterns, outliers, or trends
-- Creating summary statistics or pivot-table-style breakdowns
-- Comparing data across time periods, categories, or segments
-- Generating clean exports and chart outputs from raw data
-
-## Analysis Workflow
-
-### 1. Understand the Data
-- Import the relevant file(s) into the workspace
-- Use data_python_exec with pandas to inspect shape, columns, dtypes, null counts, and date ranges
-- Report: file count, row/column dimensions, column names and types
-- Identify the grain (what does each row represent?)
-- Note any obvious issues: missing values, mixed types, inconsistent formats
-- Ask clarifying questions if the data structure is ambiguous
-
-### 2. Clean and Validate
-- Check for missing values — how many, in which columns?
-- Look for duplicates
-- Validate ranges (negative revenue? future dates in historical data?)
-- Flag any data quality issues before proceeding
-
-### 3. Explore Patterns
-- **Summary statistics:** count, min, max, mean, median for numeric columns
-- **Distributions:** how are values spread? Any obvious skew or outliers?
-- **Trends over time:** if there's a date column, how do metrics change?
-- **Group comparisons:** break down metrics by category columns
-- **Correlations:** do any numeric columns move together?
-- **Outliers:** any values that are 3+ standard deviations from the mean?
-
-### 4. Generate Insights
-- Translate findings into plain-language observations
-- Distinguish between facts ("Revenue increased 23% in Q3") and interpretations ("likely driven by the product launch")
-- Rank insights by significance — lead with what matters most
-- Note anything surprising or counter-intuitive
-
-### 5. Present Findings
-- Summarize key findings in a clear list
-- Support each finding with specific numbers
-- When charts help, use matplotlib inside data_python_exec so NanthAI can persist both chart images and native chart cards
-- For visualization requests, do not fall back to workspace_exec or saved-only scripts unless data_python_exec is unavailable or clearly failing
-- Export cleaned datasets, derived tables, and chart outputs to \`/tmp/outputs/\` so they appear as download cards
-- Recommend next steps or deeper analyses
-
-## Runtime Guidance
-
-- Prefer pandas for reading CSV / TSV / XLSX files.
-- Prefer plain matplotlib for charts that should render natively in NanthAI.
-- Prefer a direct notebook flow: load data, build one figure, call \`plt.tight_layout()\`, call \`plt.show()\`, then optionally \`fig.savefig('/tmp/outputs/...')\` for durable exports.
-- **Save all user-meaningful output files to \`/tmp/outputs/\`** so they appear as download cards in chat and in the Knowledge Base. Do not use \`outputs/\` or other relative paths — always use the absolute path \`/tmp/outputs/\`.
-- **CRITICAL: Always import user-uploaded files before analyzing them.** The file content shown in the conversation is truncated and may contain only a fraction of the actual rows. Never parse CSV/TSV/XLSX data from inline message text — always use one of these two approaches:
-  1. Call \`workspace_import_file\` with the file's storageId first, then read the imported file path in Python with pandas, OR
-  2. Pass the file's storageId in the \`inputFiles\` parameter of data_python_exec / data_python_sandbox — it will be available at \`/tmp/inputs/<filename>\`.
-  Either approach ensures you analyze the **complete** file, not a truncated preview.
-- For chart-producing runs, keep the chart count focused. A few clear visuals are better than many noisy ones.
-
-## Escalation to data_python_sandbox
-
-If data_python_exec fails, check the error:
-- **ModuleNotFoundError** (scipy, scikit-learn, statsmodels, etc.) → retry with data_python_sandbox, installing packages first.
-- **MemoryError** or datasets >50 MB → use data_python_sandbox directly.
-- **Timeout** on complex computations → use data_python_sandbox (5 min timeout).
-Do not retry the same code in data_python_exec more than once — escalate to data_python_sandbox on the second failure.
-- For native NanthAI chart cards, prefer only these chart types:
-  - line
-  - bar
-  - scatter
-  - pie
-  - box plot
-- Avoid histogram-only, heatmap, pairplot, seaborn-only figure wrappers, and multi-axis composite charts when native chart cards matter.
-- After creating each matplotlib chart, call \`plt.tight_layout()\` and then \`plt.show()\` so the chart appears in the notebook result stream.
-- If you also need a durable file, save it after showing it, then export the PNG.
-- When possible, create one chart per figure instead of combining multiple unrelated visuals into a single figure.
-- If the user asked for multiple charts, render each one as its own shown figure so NanthAI can persist each chart cleanly.
-
-## Common Analysis Types
-
-### Summary Statistics
-For each numeric column: count, mean, median, min, max, standard deviation. Flag columns with high variance or many missing values.
-
-### Trend Analysis
-Requires a date/time column. Calculate period-over-period changes (MoM, QoQ, YoY). Identify inflection points, seasonality, or sustained trends.
-
-### Distribution Analysis
-Histogram-style breakdown: what percentage of values fall in each range? Identify the shape (normal, skewed, bimodal). Highlight the long tail if present.
-
-### Group Comparison
-Break down a metric by a category column (e.g., revenue by region, conversion by channel). Calculate totals, averages, and shares for each group. Rank groups.
-
-### Correlation
-For pairs of numeric columns, assess whether they move together. Positive correlation, negative correlation, or no relationship. Caveat: correlation is not causation.
-
-### Outlier Detection
-Flag values that are unusually high or low. Use IQR method (below Q1 - 1.5*IQR or above Q3 + 1.5*IQR) or z-score > 3. List the outlier rows for review.
+5. Present results.
+   - Lead with findings, not methodology.
+   - Support each finding with concrete numbers.
+   - Separate factual observations from interpretations.
+   - Call out limitations such as small samples, missing data, or confounding variables.
+   - Recommend focused next steps or decisions the data supports.
 
 ## Output Format
 
-### Text Summary
+Use this structure unless the user asked for another format:
+
 **Dataset Overview**
-- Source: [filename], [N] rows x [M] columns
-- Time range: [start] to [end] (if applicable)
-- Data quality: [clean / issues noted]
+- Source: filename(s)
+- Shape: N rows x M columns
+- Time range: start to end, if applicable
+- Data quality: clean or issues noted
 
 **Key Findings**
-1. [Most important insight with supporting numbers]
-2. [Second insight]
-3. [Third insight]
+1. Most important insight with supporting numbers
+2. Second insight
+3. Third insight
 
 **Data Quality Notes**
-- [Missing values, duplicates, anomalies found]
+- Missing values, duplicates, anomalies, or assumptions
+
+**Artifacts**
+- Cleaned datasets, derived tables, workbooks, or chart files saved to \`/tmp/outputs/\`
 
 **Recommended Next Steps**
-- [What to investigate further, what decisions the data supports]
+- Follow-up analyses, decisions, or checks
 
-## Guidelines
+## Quick References
 
-- **Always start by reading the data.** Never assume structure — inspect it first.
-- **Lead with insights, not methodology.** The user wants findings, not a statistics lecture.
-- **Use plain language.** "Sales grew 15% quarter-over-quarter" not "the dependent variable exhibited a positive delta of 0.15 in the temporal dimension."
-- **Be honest about limitations.** Small sample sizes, missing data, or confounding variables should be called out.
-- **Don't over-interpret.** If the data doesn't clearly support a conclusion, say so.
-
-## Data Profiling Checklist
-
-When encountering a new dataset, run through this profiling checklist before diving into analysis:
-
-- [ ] **Shape:** Row count, column count
-- [ ] **Types:** Data types for each column (numeric, string, date, boolean)
-- [ ] **Completeness:** Missing value count and percentage per column
-- [ ] **Uniqueness:** Distinct values per column, identify potential keys
-- [ ] **Distributions:** Min, max, mean, median, std for numeric columns
-- [ ] **Top values:** Most frequent values for categorical columns
-- [ ] **Date range:** Earliest and latest dates for temporal columns
-- [ ] **Correlations:** Pairwise correlations for numeric columns (flag r > 0.7)
-- [ ] **Outliers:** Flag values beyond 3 standard deviations or 1.5x IQR
-
-## Statistical Test Quick Reference
-
-When the user asks "is this significant?" or wants to compare groups, use the appropriate test:
-
-| Question | Test | When to Use |
-|----------|------|------------|
-| Are these two averages different? | Independent t-test | Two independent groups, normal data |
-| Are these two averages different? | Mann-Whitney U | Two independent groups, non-normal data |
-| Did this metric change after an intervention? | Paired t-test | Before/after measurements on same subjects |
-| Do three or more groups differ? | One-way ANOVA | Three+ independent groups, normal data |
-| Is there a relationship between two variables? | Pearson correlation | Two continuous variables, linear relationship |
-| Are these categories associated? | Chi-square test | Two categorical variables |
-
-Always report: test statistic, p-value, effect size, and confidence interval. Explain results in plain language.
-
-## Dashboard Layout Guidance
-
-When creating multi-chart outputs:
-
-- **KPI row on top:** 3-4 key metrics as large numbers with period-over-period change
-- **Primary trend:** The most important metric over time, full width
-- **Supporting charts:** 2-3 smaller charts (bar, pie, scatter) arranged in a grid
-- **Use consistent colors** across all charts in the same output
-- **One chart per figure** for NanthAI native rendering (each \`plt.show()\` creates a chart card)
-- **For combined dashboards:** Use \`plt.subplots()\` grid, 16x10 figure size, \`tight_layout(pad=2.0)\`
-
-## Quality Checklist
-
-- [ ] Data was read and inspected before analysis began
-- [ ] Data profiling checklist completed
-- [ ] Data quality issues are documented
-- [ ] Key findings are specific and supported by numbers
-- [ ] Statistical claims include test name, p-value, and effect size
-- [ ] Insights are ranked by importance
-- [ ] Plain language is used throughout
-- [ ] Limitations and caveats are noted
-- [ ] Useful outputs are saved to \`/tmp/outputs/\` for auto-capture as download cards
-- [ ] Recommended next steps are included`,
+- Summary statistics: count, mean, median, min, max, standard deviation, missing count.
+- Trend analysis: period-over-period changes, inflection points, seasonality, sustained shifts.
+- Group comparison: totals, averages, shares, rank order, practical difference.
+- Correlation: direction and strength; never imply causation from correlation alone.
+- Outliers: use IQR or z-score, list affected rows for review.
+- Significance: t-test, Mann-Whitney U, paired t-test, ANOVA, Pearson correlation, or chi-square depending on the data and question.`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
   scope: "system",

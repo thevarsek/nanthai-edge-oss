@@ -7,7 +7,7 @@ import { useEffect, useState } from "react";
 import { FileText, Globe, XCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { SearchSession } from "@/hooks/useSearchSessions";
-import { phaseLabel, isSessionActive } from "@/hooks/useSearchSessions";
+import { phaseLabelKey, isSessionActive } from "@/hooks/useSearchSessions";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ export function ResearchProgressPanel({ session, onCancel }: ResearchProgressPan
 
       {/* Phase label */}
       <p className="text-sm text-foreground">
-        {phaseLabel(session.status)}
+        {t(phaseLabelKey(session.status))}
       </p>
 
       {/* Progress bar */}

@@ -12,11 +12,11 @@ export const CAMPAIGN_PLANNING_SKILL: SystemSkillSeedData = {
   name: "Campaign Planning",
   summary:
     "Plan multi-channel marketing campaigns with audience targeting, messaging, channel " +
-    "strategy, timeline, budget allocation, and measurement framework. Use when designing " +
-    "a product launch, seasonal campaign, or demand generation program.",
+    "strategy, timeline, budget allocation, and measurement framework. Use for demand generation, " +
+    "seasonal campaigns, event marketing, or solo-founder/small-team GTM plans; use Product Launch for launch execution.",
   instructionsRaw: `# Campaign Planning
 
-Design end-to-end marketing campaigns: define objectives, target audience, messaging, channel strategy, content plan, timeline, budget allocation, and measurement framework. Supports product launches, demand gen, brand awareness, seasonal campaigns, and event marketing.
+Design end-to-end marketing campaigns: define objectives, target audience, messaging, channel strategy, content plan, timeline, budget allocation, and measurement framework. Supports demand gen, brand awareness, seasonal campaigns, event marketing, and solo-founder or small-team GTM plans. Use the Product Launch skill instead when the user primarily needs a launch-day/multi-platform launch execution plan.
 
 ## When to Use
 
@@ -26,6 +26,8 @@ Design end-to-end marketing campaigns: define objectives, target audience, messa
 - Creating a brand awareness initiative
 - Planning event marketing (webinars, conferences, virtual events)
 - Coordinating multi-channel campaigns across paid, owned, and earned media
+- Creating a resource-constrained GTM plan for a solo founder or 1-3 person team
+- Prioritizing GTM activities by revenue stage, limited hours, or limited budget
 
 ## Campaign Planning Framework
 
@@ -181,6 +183,34 @@ For each channel, define:
 - Monthly: ROI, CAC, attribution analysis
 - End of campaign: Comprehensive report + retrospective
 
+### Solo Founder / Small-Team Constraints
+
+When the user is a solo founder or a team of 1-3, filter the campaign plan through limited time, money, and headcount:
+
+**Revenue stage:**
+- $0-$1K MRR: prioritize direct customer conversations, validation, and one primary channel. Avoid paid ads, complex funnels, and SEO that delays learning.
+- $1K-$10K MRR: double down on the channel that created early traction and test one additional channel.
+- $10K-$50K MRR: build repeatable systems and automate proven tasks.
+- $50K+ MRR: document playbooks and hire only after a channel is repeatable.
+
+**Lean tool stack:**
+- Recommend one tool per job.
+- Prefer free or low-cost tiers until a limit is actually blocking execution.
+- Avoid overlapping CRM, email, analytics, and social scheduling tools.
+
+**AI delegation:**
+- Use AI for drafts, content briefs, competitor synthesis, social variants, and interview synthesis.
+- Keep strategy, customer relationships, sales calls, and final voice/positioning human-owned.
+
+**Time allocation:**
+- Start from a 40/40/20 split: product/building, selling/marketing, operations/admin.
+- For pre-revenue work, bias toward more customer conversations.
+- Use weekly blocks for content, direct outreach, community/partner work, and analytics review.
+
+**First hire readiness:**
+- Hire only when a proven channel is bottlenecked by time, the business can sustain the hire for 6+ months, and week-one responsibilities are clear.
+- Do not hire someone to "figure out GTM" before ICP, value proposition, and primary channel are clear.
+
 ## Campaign Output Format
 
 Deliver the campaign plan as a structured document with all 8 sections above, plus:
@@ -196,6 +226,16 @@ Deliver the campaign plan as a structured document with all 8 sections above, pl
 | Risk | Likelihood | Impact | Mitigation |
 |------|-----------|--------|------------|
 | [Risk 1] | High/Med/Low | High/Med/Low | [Plan] |
+
+For solo-founder or small-team GTM plans, also include:
+- Current revenue stage
+- Monthly tool budget
+- Weekly GTM hours available
+- Top 5 stage-specific priorities
+- Lean tool stack
+- AI delegation plan
+- 90-day milestones
+- First-hire readiness assessment
 
 ## Guidelines
 

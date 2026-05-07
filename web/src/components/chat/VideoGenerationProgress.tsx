@@ -21,8 +21,10 @@ function formatElapsed(startedAt: number, now: number): string {
 function statusLabel(status: string, t: (key: string) => string): string {
   switch (status) {
     case "pending":
+    case "submitted":
       return t("video_queued");
     case "in_progress":
+    case "polling":
       return t("video_generating");
     case "completed":
       return t("video_completed");
@@ -44,7 +46,10 @@ export function VideoGenerationProgress({ messageId }: VideoGenerationProgressPr
   const videoJob = useQuery(api.chat.queries.getVideoJobStatus, { messageId });
   const [now, setNow] = useState<number>(() => Date.now());
 
-  const active = videoJob?.status === "pending" || videoJob?.status === "in_progress";
+  const active = videoJob?.status === "pending" ||
+    videoJob?.status === "in_progress" ||
+    videoJob?.status === "submitted" ||
+    videoJob?.status === "polling";
 
   // Tick elapsed timer every second while active
   useEffect(() => {

@@ -28,6 +28,7 @@ import { IconButton } from "@/components/shared/IconButton";
 import { useModelSummaries } from "@/hooks/useSharedData";
 import { buildModelNameMap, getModelDisplayName } from "@/lib/modelDisplay";
 import { formatCost } from "@/hooks/useChatCosts";
+import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -307,7 +308,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             {matchedParticipant?.personaName ?? getModelDisplayName(message.modelId, modelNameMap)}
           </p>
           {hasMatches && (
-             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/20 text-primary font-medium">
+             <span className={statusBadgeClass("running", "px-1.5 py-0.5")}>
               {messageMatches.length === 1 ? t("n_matches", { count: messageMatches.length }) : t("n_matches_plural", { count: messageMatches.length })}
             </span>
           )}
@@ -348,7 +349,7 @@ export const AssistantMessage = memo(function AssistantMessage({
               renderedContent ? <StreamingCursor /> : <WaitingIndicator />
             )}
             {showCitationFinalizing && (
-              <div className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border/35 bg-surface-2 px-2.5 py-1.5 text-xs text-muted">
+              <div className={tonePanelClass("info", "mt-2 inline-flex items-center gap-2 px-2.5 py-1.5 text-xs")}>
                 <Loader size={12} className="animate-spin text-primary" />
                 <span>{t("formatting_document_citations")}</span>
               </div>
@@ -412,7 +413,9 @@ export const AssistantMessage = memo(function AssistantMessage({
                 key={`${citation.ref}-${citation.documentId}-${citation.versionId ?? "current"}`}
                 type="button"
                 onClick={() => setSelectedDocumentCitation(citation)}
-                className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-border/45 bg-surface-2 px-2.5 py-1.5 text-xs text-foreground/80 hover:bg-surface-3"
+                className={workspaceSurfaceClass(
+                  "inline-flex max-w-full items-center gap-1.5 px-2.5 py-1.5 text-xs text-foreground/80 transition-colors hover:bg-surface-3",
+                )}
                 title={citation.quote}
               >
                 <Quote size={12} />
@@ -500,11 +503,13 @@ export const AssistantMessage = memo(function AssistantMessage({
           onClick={() => setSelectedDocumentCitation(null)}
         >
           <div
-            className="w-full max-w-md rounded-xl border border-border bg-[#f8fafc] p-4 text-slate-950 shadow-xl dark:bg-[#0a0a0f] dark:text-white"
+            className="w-full max-w-md rounded-xl border border-border bg-background p-4 text-foreground shadow-lg"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start gap-3 rounded-lg bg-white px-3 py-2 dark:bg-[#11111a]">
-              <Quote size={18} className="mt-0.5 text-primary" />
+            <div className={workspaceSurfaceClass("flex items-start gap-3 px-3 py-2")}>
+              <div className={workspaceIconBlockClass("mt-0.5 h-9 w-9")}>
+                <Quote size={17} />
+              </div>
               <div className="min-w-0 flex-1">
                 <h3 className="truncate text-sm font-semibold">{t("source_quote")}</h3>
                 <p className="mt-1 truncate text-xs text-muted">{selectedDocumentCitation.filename}</p>
@@ -513,7 +518,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                 )}
               </div>
             </div>
-            <blockquote className="mt-4 rounded-lg bg-white px-3 py-2 text-sm leading-relaxed dark:bg-[#11111a]">
+            <blockquote className={workspaceSurfaceClass("mt-4 px-3 py-2 text-sm leading-relaxed")}>
               “{selectedDocumentCitation.quote}”
             </blockquote>
             <div className="mt-4 flex justify-end">
