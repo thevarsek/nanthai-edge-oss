@@ -23,7 +23,7 @@ Workflow:
 4. Cite document-specific claims with the existing document citation rules.
 5. Separate facts from recommendations.
 6. If the user asks for true DOCX tracked changes, use the DOCX/tracked-change workflow when available rather than treating a review memo as an edited document. Without that tool, return a redline-style issue/change list with quotes, reasons, and recommended replacement wording.
-7. If the user asks for a review matrix, extraction grid, or tabular review draft, structure the response as stable rows and columns that can later map to the M38 tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
+7. If the user asks for a review matrix, extraction grid, or tabular review draft, structure the response as stable rows and columns that can later map to the M39 tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
 
 Output should be structured for scanning: executive summary, key findings, risks/gaps, and recommended next steps. Do not make legal advice the app default; for legal documents, frame analysis as informational and recommend qualified counsel for binding decisions.`,
   instructionsCompiled: undefined,

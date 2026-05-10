@@ -6,6 +6,7 @@ import {
   runAnalysisPhase,
   runDepthSearchPhase,
   runInitialSearchPhase,
+  runPaperArchitecturePhase,
   runPlanningPhase,
   runSynthesisPhase,
 } from "../search/workflow_nonstream_phases";
@@ -246,4 +247,51 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   assert.equal(result, "{\"findings\":\"Done\",\"sources\":[\"https://example.com\"]}");
   assert.equal(writes[0]?.phaseType, "synthesis");
   assert.equal(ancillaryCalls[0]?.source, "search_synthesis");
+});
+
+test("runPaperArchitecturePhase persists structured artifact and tracks cost", async () => {
+  const writes: Record<string, unknown>[] = [];
+  const ancillaryCalls: Record<string, unknown>[] = [];
+
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async () => undefined,
+    callOpenRouterNonStreaming: async () => ({
+      content: "{\"title\":\"Swift concurrency paper\",\"thesis\":\"Actors improve isolation\",\"outline\":[],\"evidenceMap\":[],\"argumentBlueprint\":[],\"draftingNotes\":[]}",
+      usage: {
+        promptTokens: 12,
+        completionTokens: 8,
+        totalTokens: 20,
+        cost: 0.3,
+      },
+      finishReason: "stop",
+      audioBase64: "",
+      audioTranscript: "",
+      generationId: "gen_arch",
+    }),
+  });
+
+  const ctx = createMockCtx({
+    runQuery: async () => null,
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      writes.push(args);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        ancillaryCalls.push(args);
+      },
+    },
+  });
+
+  const result = await runPaperArchitecturePhase(
+    ctx,
+    buildArgs(),
+    "{\"researchQuestion\":\"What changed?\"}",
+    "{\"findings\":\"Actors improve isolation\"}",
+    6,
+    deps,
+  );
+
+  assert.match(result, /Swift concurrency paper/);
+  assert.equal(writes[0]?.phaseType, "paper_architecture");
+  assert.equal(ancillaryCalls[0]?.source, "search_architecture");
 });

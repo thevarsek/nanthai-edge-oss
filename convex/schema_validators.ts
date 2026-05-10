@@ -213,6 +213,7 @@ export const searchPhaseType = v.union(
   v.literal("analysis"),
   v.literal("depth_iteration"),
   v.literal("synthesis"),
+  v.literal("paper_architecture"),
   v.literal("paper"),
 );
 

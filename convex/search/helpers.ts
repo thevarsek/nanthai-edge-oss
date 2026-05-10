@@ -344,65 +344,17 @@ export {
 
 // -- Research Paper Prompts ---------------------------------------------------
 
-export function buildResearchPlanningPrompt(
-  userQuery: string,
-  breadth: number,
-): string {
-  return [
-    `You are a research planning assistant. Create a research plan for the following topic and generate ${breadth} diverse, specific search queries.`,
-    "",
-    "Return your response as a JSON object with this exact structure:",
-    '{ "plan": "Brief research plan outline", "queries": ["query1", "query2", ...] }',
-    "",
-    `Topic: ${userQuery}`,
-  ].join("\n");
-}
-
-export function buildResearchAnalysisPrompt(
-  priorResults: string,
-  breadth: number,
-): string {
-  return [
-    "You are a research analyst. Analyze the following search results and identify gaps in the current research.",
-    `Generate ${breadth} follow-up search queries to fill those gaps.`,
-    "",
-    "Return your response as a JSON object with this exact structure:",
-    '{ "gaps": "Summary of identified gaps", "queries": ["query1", "query2", ...] }',
-    "",
-    "Current research results:",
-    priorResults,
-  ].join("\n");
-}
-
-export function buildResearchSynthesisPrompt(
-  allResults: string,
-): string {
-  return [
-    "You are a research synthesizer. Analyze ALL the following search results and create a structured research summary.",
-    "",
-    "Return your response as a JSON object with this exact structure:",
-    '{ "findings": "Comprehensive structured summary of all findings", "sources": ["source1", "source2", ...] }',
-    "",
-    "All research results:",
-    allResults,
-  ].join("\n");
-}
-
-export function buildPaperGenerationSystemPrompt(
-  synthesisData: string,
-): string {
-  return [
-    "You are a research paper writer. Using the synthesized research findings below, write a comprehensive, well-structured research paper.",
-    "",
-    "Guidelines:",
-    "- Use clear section headers (## for main sections, ### for subsections)",
-    "- Include an executive summary at the top",
-    "- Cite sources as clickable markdown links: [Source Title](https://url)",
-    "- Present findings objectively with supporting evidence",
-    "- Include a conclusion section summarizing key insights",
-    "- Use professional, academic-quality writing",
-    "",
-    "Research findings:",
-    synthesisData,
-  ].join("\n");
-}
+export {
+  extractQueryStrings,
+  parseAnalysisArtifact,
+  parsePlanningArtifact,
+  parseStructuredArtifact,
+  summarizeSearchResults,
+} from "./research_artifacts";
+export {
+  buildPaperArchitecturePrompt,
+  buildPaperGenerationSystemPrompt,
+  buildResearchAnalysisPrompt,
+  buildResearchPlanningPrompt,
+  buildResearchSynthesisPrompt,
+} from "./research_prompts";

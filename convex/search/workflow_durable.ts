@@ -15,7 +15,7 @@ import { ActionCtx } from "../_generated/server";
 import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
-import { resolveComplexityPreset, SearchResult } from "./helpers";
+import { extractQueryStrings, resolveComplexityPreset, SearchResult } from "./helpers";
 import {
   checkCancellation,
   PipelineArgs,
@@ -27,6 +27,7 @@ import {
   runInitialSearchPhase,
   runAnalysisPhase,
   runDepthSearchPhase,
+  runPaperArchitecturePhase,
   runSynthesisPhase,
 } from "./workflow_nonstream_phases";
 import { runPaperGenerationPhase } from "./workflow_paper_phase";
@@ -120,8 +121,11 @@ export async function readQueriesFromPhase(
   for (const phase of [...phases].reverse()) {
     if (phase.phaseType !== phaseType) continue;
     if (phaseType === "analysis" && phase.iteration !== iteration) continue;
-    const data = phase.data as { queries?: string[] };
-    if (Array.isArray(data?.queries)) return data.queries;
+    const data = phase.data as { queries?: unknown; followUpQueries?: unknown };
+    const queries = extractQueryStrings(
+      phaseType === "analysis" ? (data?.followUpQueries ?? data?.queries) : data?.queries,
+    );
+    if (queries.length > 0) return queries;
   }
 
   // Fallback — should not happen if prior phase succeeded
@@ -358,7 +362,48 @@ export const runSynthesisAction = internalAction({
         args.phaseOrder,
       );
 
-      // Schedule final phase: paper generation handoff
+      // Schedule architecture/argument phase before final paper handoff
+      await ctx.scheduler.runAfter(
+        0,
+        internal.search.workflow_durable.runPaperArchitectureAction,
+        { ...args, phaseOrder: args.phaseOrder + 1 },
+      );
+    } catch (error) {
+      await handlePhaseError(ctx, toPipelineArgs(args), error);
+    }
+  },
+});
+
+// -- Phase 5: Paper Architecture / Argument -----------------------------------
+
+export const runPaperArchitectureAction = internalAction({
+  args: phaseActionArgs,
+  handler: async (ctx, args) => {
+    try {
+      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
+      const pipelineArgs = toPipelineArgs(args);
+      const argsWithApiKey = { ...pipelineArgs, apiKey };
+
+      const phases = await ctx.runQuery(
+        internal.search.queries.getSearchPhases,
+        { sessionId: args.sessionId },
+      );
+      const planningData = stringifyLatestPhaseData(phases, "planning")
+        ?? JSON.stringify({ researchQuestion: args.query, plan: `Direct research on: ${args.query}` });
+      const synthesisData = stringifyLatestPhaseData(phases, "synthesis");
+      if (!synthesisData) {
+        throw new Error("No synthesis phase found — cannot build paper architecture");
+      }
+
+      await checkCancellation(ctx, args.sessionId);
+      await runPaperArchitecturePhase(
+        ctx,
+        argsWithApiKey,
+        planningData,
+        synthesisData,
+        args.phaseOrder,
+      );
+
       await ctx.scheduler.runAfter(
         0,
         internal.search.workflow_durable.runPaperHandoffAction,
@@ -370,7 +415,7 @@ export const runSynthesisAction = internalAction({
   },
 });
 
-// -- Phase 5: Paper Generation Handoff ----------------------------------------
+// -- Phase 6: Paper Generation Handoff ----------------------------------------
 
 export const runPaperHandoffAction = internalAction({
   args: phaseActionArgs,
@@ -387,22 +432,21 @@ export const runPaperHandoffAction = internalAction({
         internal.search.queries.getSearchPhases,
         { sessionId: args.sessionId },
       );
-      const synthesisPhase = [...phases].reverse().find(
-        (p) => p.phaseType === "synthesis",
-      );
-      if (!synthesisPhase) {
+      const planningData = stringifyLatestPhaseData(phases, "planning");
+      const synthesisData = stringifyLatestPhaseData(phases, "synthesis");
+      const architectureData = stringifyLatestPhaseData(phases, "paper_architecture");
+      if (!synthesisData) {
         throw new Error("No synthesis phase found — cannot generate paper");
       }
-      const synthesisData =
-        typeof synthesisPhase.data === "string"
-          ? synthesisPhase.data
-          : JSON.stringify(synthesisPhase.data);
 
       // Persist search context on the message (queries + full results with citations)
       const searchContext = {
         complexity: args.complexity,
         queries: allSearchResults.map((r) => r.query),
         searchResults: allSearchResults,
+        synthesis: parseMaybeJson(synthesisData),
+        ...(planningData ? { planning: parseMaybeJson(planningData) } : {}),
+        ...(architectureData ? { architecture: parseMaybeJson(architectureData) } : {}),
       };
       await ctx.runMutation(internal.search.mutations.patchMessageSearchContext, {
         messageId: args.assistantMessageId,
@@ -413,7 +457,10 @@ export const runPaperHandoffAction = internalAction({
       });
 
       await checkCancellation(ctx, args.sessionId);
-      await runPaperGenerationPhase(ctx, pipelineArgs, synthesisData, args.phaseOrder);
+      await runPaperGenerationPhase(ctx, pipelineArgs, synthesisData, args.phaseOrder, {
+        planningData,
+        architectureData,
+      });
 
       // Write search stats — runGeneration (scheduled inside
       // runPaperGenerationPhase) will mark the session completed/failed.
@@ -427,3 +474,32 @@ export const runPaperHandoffAction = internalAction({
     }
   },
 });
+
+function stringifyLatestPhaseData(
+  phases: Array<{ phaseType: string; phaseOrder: number; data: unknown }>,
+  phaseType: string,
+): string | null {
+  const phase = [...phases]
+    .filter((p) => p.phaseType === phaseType)
+    .sort((a, b) => b.phaseOrder - a.phaseOrder)
+    .at(0);
+  if (!phase) return null;
+  if (typeof phase.data === "string") {
+    const trimmed = phase.data.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (phase.data == null) return null;
+  try {
+    return JSON.stringify(phase.data);
+  } catch {
+    return null;
+  }
+}
+
+function parseMaybeJson(value: string): unknown {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}

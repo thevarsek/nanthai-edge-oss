@@ -481,7 +481,14 @@ export interface ChatCostSummary {
 // Source → bucket mapping for cost breakdown.
 // "responses" = primary generation (no source). Others are grouped by domain.
 const MEMORY_SOURCES = new Set(["memory_extraction", "memory_embedding_store", "memory_embedding_retrieve"]);
-const SEARCH_SOURCES = new Set(["search_query_gen", "search_perplexity", "search_planning", "search_analysis", "search_synthesis"]);
+const SEARCH_SOURCES = new Set([
+  "search_query_gen",
+  "search_perplexity",
+  "search_planning",
+  "search_analysis",
+  "search_synthesis",
+  "search_architecture",
+]);
 
 export async function getChatCostSummaryHandler(
   ctx: QueryCtx,

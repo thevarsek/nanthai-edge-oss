@@ -367,7 +367,8 @@ export const catalogSchemaTables = {
     // M23: Cost source label for ancillary cost tracking.
     // "generation" | "title" | "compaction" | "memory_extraction" |
     // "memory_embedding" | "search_query_gen" | "search_perplexity" |
-    // "search_planning" | "search_analysis" | "search_synthesis" | "subagent"
+    // "search_planning" | "search_analysis" | "search_synthesis" |
+    // "search_architecture" | "subagent"
     source: v.optional(v.string()),
     createdAt: v.number(),
   })

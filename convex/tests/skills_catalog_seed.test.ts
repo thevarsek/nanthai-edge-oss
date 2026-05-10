@@ -232,7 +232,7 @@ test("SYSTEM_SKILL_CATALOG: M33 document skills remain and removed templates are
   }
 });
 
-test("SYSTEM_SKILL_CATALOG: M37/M38 adjacent skills distinguish tracked changes and review grids", () => {
+test("SYSTEM_SKILL_CATALOG: M38/M39 adjacent skills distinguish tracked changes and review grids", () => {
   const bySlug = new Map(SYSTEM_SKILL_CATALOG.map((skill) => [skill.slug, skill]));
 
   const docx = bySlug.get("docx");
@@ -346,7 +346,7 @@ test("SYSTEM_SKILL_CATALOG: xlsx requires generate_xlsx, read_xlsx, edit_xlsx", 
   );
 });
 
-test("SYSTEM_SKILL_CATALOG: M37 and M38 format skills keep narrow trigger wording", () => {
+test("SYSTEM_SKILL_CATALOG: M38 and M39 format skills keep narrow trigger wording", () => {
   const docx = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "docx");
   assert.ok(docx);
   assert.match(docx.summary, /redline-style reviews/);

@@ -5,9 +5,14 @@ import {
   buildResearchPlanningPrompt,
   buildResearchAnalysisPrompt,
   buildResearchSynthesisPrompt,
+  buildPaperArchitecturePrompt,
   executePerplexitySearch,
+  parseAnalysisArtifact,
+  parsePlanningArtifact,
+  parseStructuredArtifact,
   SEARCH_TRANSFORMS,
   SearchResult,
+  summarizeSearchResults,
 } from "./helpers";
 import { MODEL_IDS } from "../lib/model_constants";
 import { computeProgress, PipelineArgs, updateSession } from "./workflow_shared";
@@ -40,6 +45,8 @@ interface AnalysisResult {
   gaps: string;
   queries: string[];
 }
+
+type StructuredPhaseResult = string;
 
 async function buildOrchestrationMessages(
   ctx: ActionCtx,
@@ -107,34 +114,15 @@ export async function runPlanningPhase(
     });
   }
 
-  let plan = "";
-  let queries: string[] = [];
-
-  try {
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      plan = parsed.plan ?? "";
-      queries = Array.isArray(parsed.queries)
-        ? parsed.queries
-          .filter((q: unknown) => typeof q === "string" && (q as string).trim().length > 0)
-          .slice(0, breadth)
-        : [];
-    }
-  } catch {
-    // Fall through
-  }
-
-  if (queries.length === 0) {
-    queries = [args.query];
-    plan = `Direct research on: ${args.query}`;
-  }
+  const artifact = parsePlanningArtifact(result.content, args.query, breadth);
+  const queries = artifact.queries.map((query) => query.query);
+  const plan = artifact.plan;
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,
     phaseType: "planning",
     phaseOrder,
-    data: { plan, queries },
+    data: artifact,
   });
 
   return { plan, queries };
@@ -195,10 +183,7 @@ export async function runAnalysisPhase(
     phaseOrder,
   });
 
-  const priorSummary = priorResults
-    .filter((r) => r.success)
-    .map((r, i) => `[Result ${i + 1}] Query: "${r.query}"\n${r.content.slice(0, 2000)}`)
-    .join("\n\n---\n\n");
+  const priorSummary = summarizeSearchResults(priorResults, 2000);
 
   const prompt = buildResearchAnalysisPrompt(priorSummary, breadth);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
@@ -226,35 +211,16 @@ export async function runAnalysisPhase(
     });
   }
 
-  let gaps = "";
-  let queries: string[] = [];
-
-  try {
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      gaps = parsed.gaps ?? "";
-      queries = Array.isArray(parsed.queries)
-        ? parsed.queries
-          .filter((q: unknown) => typeof q === "string" && (q as string).trim().length > 0)
-          .slice(0, breadth)
-        : [];
-    }
-  } catch {
-    // Fall through
-  }
-
-  if (queries.length === 0) {
-    queries = [`More details about: ${args.query}`];
-    gaps = "Could not parse gap analysis; performing general follow-up search.";
-  }
+  const artifact = parseAnalysisArtifact(result.content, args.query, breadth);
+  const gaps = artifact.coverageSummary;
+  const queries = artifact.followUpQueries.map((query) => query.query);
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,
     phaseType: "analysis",
     phaseOrder,
     iteration,
-    data: { gaps, queries },
+    data: artifact,
   });
 
   return { gaps, queries };
@@ -307,7 +273,7 @@ export async function runSynthesisPhase(
   allResults: SearchResult[],
   phaseOrder: number,
   deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
-): Promise<string> {
+): Promise<StructuredPhaseResult> {
   await deps.updateSession(ctx, args.sessionId, {
     status: "synthesizing",
     progress: computeProgress(args.complexity, "synthesis", 0),
@@ -315,15 +281,7 @@ export async function runSynthesisPhase(
     phaseOrder,
   });
 
-  const allResultsSummary = allResults
-    .filter((r) => r.success)
-    .map((r, i) => {
-      const citations = r.citations.length > 0
-        ? `\nSources: ${r.citations.map((c, j) => `[${j + 1}] ${c}`).join(", ")}`
-        : "";
-      return `[Result ${i + 1}] Query: "${r.query}"\n${r.content}${citations}`;
-    })
-    .join("\n\n---\n\n");
+  const allResultsSummary = summarizeSearchResults(allResults, Number.MAX_SAFE_INTEGER);
 
   const prompt = buildResearchSynthesisPrompt(allResultsSummary);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
@@ -351,30 +309,87 @@ export async function runSynthesisPhase(
     });
   }
 
-  let synthesisData = result.content.trim();
-  try {
-    const jsonMatch = result.content.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      const parsed = JSON.parse(jsonMatch[0]);
-      synthesisData = JSON.stringify(parsed);
-    }
-  } catch {
-    // Use raw content as-is
-  }
-
-  if (!synthesisData) {
-    synthesisData = JSON.stringify({
-      findings: "No synthesis output was returned; use collected results from the session context.",
-      sources: [],
-    });
-  }
+  const artifact = parseStructuredArtifact(result.content, {
+    findings: "No synthesis output was returned; use collected results from the session context.",
+    sourceNotes: [],
+    literatureMatrix: [],
+    claimBank: [],
+    contradictions: [],
+    limitations: ["Limited or unavailable synthesis output."],
+    researchGaps: [],
+  });
+  const synthesisData = JSON.stringify(artifact);
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,
     phaseType: "synthesis",
     phaseOrder,
-    data: synthesisData,
+    data: artifact,
   });
 
   return synthesisData;
+}
+
+export async function runPaperArchitecturePhase(
+  ctx: ActionCtx,
+  args: PipelineArgsWithApiKey,
+  planningData: string,
+  synthesisData: string,
+  phaseOrder: number,
+  deps: WorkflowNonstreamDeps = defaultWorkflowNonstreamDeps,
+): Promise<StructuredPhaseResult> {
+  await deps.updateSession(ctx, args.sessionId, {
+    status: "synthesizing",
+    progress: computeProgress(args.complexity, "synthesis", 0),
+    currentPhase: "synthesizing",
+    phaseOrder,
+  });
+
+  const prompt = buildPaperArchitecturePrompt(
+    `Planning artifact:\n${planningData}\n\nSynthesis artifact:\n${synthesisData}`,
+    args.complexity,
+  );
+  const messages = await buildOrchestrationMessages(ctx, args, prompt);
+  const result = await deps.callOpenRouterNonStreaming(
+    args.apiKey,
+    args.modelId,
+    messages,
+    { temperature: 0.3, maxTokens: 6144, transforms: SEARCH_TRANSFORMS },
+    { fallbackModel: MODEL_IDS.searchResearchOrchestration },
+  );
+
+  if (result.usage) {
+    await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
+      messageId: args.assistantMessageId,
+      chatId: args.chatId,
+      userId: args.userId,
+      modelId: args.modelId,
+      promptTokens: result.usage.promptTokens,
+      completionTokens: result.usage.completionTokens,
+      totalTokens: result.usage.totalTokens,
+      cost: result.usage.cost ?? undefined,
+      source: "search_architecture",
+      generationId: result.generationId ?? undefined,
+    });
+  }
+
+  const artifact = parseStructuredArtifact(result.content, {
+    title: args.query,
+    structurePattern: "Fallback structure based on available synthesis.",
+    thesis: "Use the synthesis findings to answer the research question cautiously.",
+    outline: [],
+    evidenceMap: [],
+    argumentBlueprint: [],
+    draftingNotes: ["Architecture generation returned no structured artifact; draft from synthesis and search context."],
+  });
+  const architectureData = JSON.stringify(artifact);
+
+  await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
+    sessionId: args.sessionId,
+    phaseType: "paper_architecture",
+    phaseOrder,
+    data: artifact,
+  });
+
+  return architectureData;
 }

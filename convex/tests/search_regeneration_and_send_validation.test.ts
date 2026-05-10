@@ -183,7 +183,7 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
     assistantMessageId: "message_original",
     query: "Research synthesis prompt",
     mode: "paper",
-    complexity: 2,
+    complexity: 3,
     status: "completed",
   };
   const originalMessage = {
@@ -249,6 +249,7 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.equal(searchSessionInsert.value.status, "writing");
   assert.equal(searchSessionInsert.value.progress, 90);
   assert.equal(searchSessionInsert.value.query, sourceSession.query);
+  assert.equal(searchSessionInsert.value.complexity, 3);
 
   const assistantLinkPatch = patches.find((item) => item.id === newAssistantMessageId);
   assert.ok(assistantLinkPatch);
@@ -264,5 +265,6 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.ok(searchRun.fnPath);
   assert.equal(searchRun.payload.sessionId, newSessionId);
   assert.equal(searchRun.payload.sourceSessionId, sourceSessionId);
+  assert.equal(searchRun.payload.complexity, 3);
   assert.equal(searchRun.payload.subagentsEnabled, false);
 });

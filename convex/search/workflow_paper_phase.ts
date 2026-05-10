@@ -19,6 +19,7 @@ export async function runPaperGenerationPhase(
   args: PipelineArgs,
   synthesisData: string,
   phaseOrder: number,
+  artifacts: { planningData?: string | null; architectureData?: string | null } = {},
 ): Promise<void> {
   await updateSession(ctx, args.sessionId, {
     status: "writing",
@@ -28,7 +29,11 @@ export async function runPaperGenerationPhase(
   });
 
   // Build the paper-generation system prompt from synthesis data.
-  const paperSystemPrompt = buildPaperGenerationSystemPrompt(synthesisData);
+  const paperSystemPrompt = buildPaperGenerationSystemPrompt(synthesisData, {
+    planningData: artifacts.planningData ?? undefined,
+    architectureData: artifacts.architectureData ?? undefined,
+    complexity: args.complexity,
+  });
 
   let effectiveSystemPrompt = paperSystemPrompt;
   if (args.systemPrompt) {

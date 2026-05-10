@@ -57,6 +57,7 @@ export const regeneratePaperActionArgs = {
   maxTokens: v.optional(v.union(v.number(), v.null())),
   includeReasoning: v.optional(v.union(v.boolean(), v.null())),
   reasoningEffort: v.optional(v.union(v.string(), v.null())),
+  complexity: v.optional(v.number()),
   enabledIntegrations: v.optional(v.array(v.string())),
   subagentsEnabled: v.optional(v.boolean()),
 } satisfies PropertyValidators;
@@ -90,7 +91,9 @@ export const regeneratePaperAction = internalAction({
       const sourceSessionId = args.sourceSessionId ?? args.sessionId;
       const synthesisData = await resolveRegenerationSynthesisData(ctx, sourceSessionId);
 
-      const paperSystemPrompt = buildPaperGenerationSystemPrompt(synthesisData);
+      const paperSystemPrompt = buildPaperGenerationSystemPrompt(synthesisData, {
+        complexity: args.complexity ?? 2,
+      });
       let baseSystemPrompt = args.systemPrompt;
       if (!baseSystemPrompt && args.personaId) {
         const persona = await ctx.runQuery(internal.chat.queries.getPersona, {
@@ -196,12 +199,20 @@ export async function resolveRegenerationSynthesisData(
   const phases = await ctx.runQuery(internal.search.queries.getSearchPhases, {
     sessionId,
   });
-  const synthesisPhase = phases
-    .filter((p: { phaseType: string }) => p.phaseType === "synthesis")
-    .sort((a: { phaseOrder: number }, b: { phaseOrder: number }) => b.phaseOrder - a.phaseOrder)
-    .at(0);
+  const planningData = latestPhaseText(phases, "planning");
+  const synthesisDataFromPhase = latestPhaseText(phases, "synthesis");
+  const architectureData = latestPhaseText(phases, "paper_architecture");
 
-  let synthesisData: string | null = coerceToText(synthesisPhase?.data);
+  let synthesisData: string | null = null;
+  if (synthesisDataFromPhase && (planningData || architectureData)) {
+    synthesisData = [
+      planningData ? `Planning artifact:\n${planningData}` : null,
+      `Synthesis artifact:\n${synthesisDataFromPhase}`,
+      architectureData ? `Paper architecture artifact:\n${architectureData}` : null,
+    ].filter(Boolean).join("\n\n");
+  } else {
+    synthesisData = synthesisDataFromPhase;
+  }
   if (synthesisData) {
     return synthesisData;
   }
@@ -230,6 +241,17 @@ export async function resolveRegenerationSynthesisData(
   }
 
   return "No structured synthesis data was saved for this session. Regenerate using the available conversation context.";
+}
+
+function latestPhaseText(
+  phases: Array<{ phaseType: string; phaseOrder: number; data: unknown }>,
+  phaseType: string,
+): string | null {
+  const phase = phases
+    .filter((p) => p.phaseType === phaseType)
+    .sort((a, b) => b.phaseOrder - a.phaseOrder)
+    .at(0);
+  return coerceToText(phase?.data);
 }
 
 function coerceToText(value: unknown): string | null {

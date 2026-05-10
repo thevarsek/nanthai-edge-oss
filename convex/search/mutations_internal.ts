@@ -98,7 +98,7 @@ export const writeSearchPhase = internalMutation({
   handler: async (ctx, args) => {
     return await ctx.db.insert("searchPhases", {
       sessionId: args.sessionId,
-      phaseType: args.phaseType as "planning" | "initial_search" | "analysis" | "depth_iteration" | "synthesis" | "paper",
+      phaseType: args.phaseType as "planning" | "initial_search" | "analysis" | "depth_iteration" | "synthesis" | "paper_architecture" | "paper",
       phaseOrder: args.phaseOrder,
       iteration: args.iteration,
       status: "completed",

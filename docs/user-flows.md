@@ -298,7 +298,7 @@ Model runs web search tool during generation.
 | Convex | `search/actions_web_search.ts:runWebSearch`, `search/queries:watchSearchSession` |
 
 ### 7.2 Research Paper Generation
-Multi-phase deep research pipeline (planning, search, analysis, depth search, synthesis, paper).
+Multi-phase deep research pipeline (planning, search, analysis, depth search, synthesis, internal paper architecture, paper). M37 keeps the same client-facing Research Paper mode, Quick/Thorough/Comprehensive selector, and progress statuses; Convex now stores richer academic artifacts in `searchPhases.data` for research question/scope, source notes, literature matrix, claim bank, contradictions, outline, evidence map, and argument blueprint.
 
 | Platform | Key Files |
 |----------|-----------|

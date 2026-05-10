@@ -4,6 +4,7 @@ import test from "node:test";
 import { GenerationCancelledError } from "../chat/generation_helpers";
 import {
   buildPaperGenerationSystemPrompt,
+  buildPaperArchitecturePrompt,
   buildResearchAnalysisPrompt,
   buildResearchPlanningPrompt,
   buildResearchSynthesisPrompt,
@@ -63,10 +64,19 @@ test("search helper prompts cover successful and empty search contexts", () => {
   assert.match(synthesisPrompt, /<search_results>/);
   assert.match(synthesisPrompt, /\[1\] https:\/\/example.com\/source/);
   assert.match(buildSearchSynthesisPrompt([]), /No search results were found/);
-  assert.match(buildResearchPlanningPrompt("AI pricing", 2), /generate 2 diverse, specific search queries/i);
-  assert.match(buildResearchAnalysisPrompt("Prior result", 4), /Generate 4 follow-up search queries/i);
-  assert.match(buildResearchSynthesisPrompt("All results"), /structured research summary/i);
+  assert.match(buildResearchPlanningPrompt("AI pricing", 2), /research question/i);
+  assert.match(buildResearchPlanningPrompt("AI pricing", 2), /inclusionCriteria/);
+  assert.match(buildResearchAnalysisPrompt("Prior result", 4), /counter-evidence/i);
+  assert.match(buildResearchAnalysisPrompt("Prior result", 4), /followUpQueries/);
+  assert.match(buildResearchSynthesisPrompt("All results"), /literatureMatrix/);
+  assert.match(buildResearchSynthesisPrompt("All results"), /claimBank/);
+  assert.match(buildPaperArchitecturePrompt("Artifacts", 3), /argumentBlueprint/);
   assert.match(buildPaperGenerationSystemPrompt("Synthesis"), /executive summary/i);
+  assert.match(buildPaperGenerationSystemPrompt("Synthesis"), /do not fabricate sources/i);
+  assert.match(
+    buildPaperGenerationSystemPrompt("Synthesis", { complexity: 3 }),
+    /Comprehensive: before finalizing/,
+  );
   assert.equal(resolveComplexityPreset("paper", 99).depth, 3);
 });
 

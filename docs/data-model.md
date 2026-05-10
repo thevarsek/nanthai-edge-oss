@@ -382,7 +382,7 @@ The seed action now treats removed system skill IDs as real data cleanup, not on
 - `scheduledJobs.turnSkillOverrides`
 - `scheduledJobs.steps[].turnSkillOverrides`
 
-This cleanup covers the M36 removed standalone skills: `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. The corresponding workflows remain represented by broader document/legal, internal-communications, GTM, and M38 tabular-review requirements rather than separate active catalog rows.
+This cleanup covers the M36 removed standalone skills: `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. The corresponding workflows remain represented by broader document/legal, internal-communications, GTM, and M39 tabular-review requirements rather than separate active catalog rows.
 
 ### `messages` table — Integration Tracking (PR #30)
 

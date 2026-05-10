@@ -10,6 +10,7 @@ import {
   runAnalysisAction,
   runDepthSearchAction,
   runSynthesisAction,
+  runPaperArchitectureAction,
   runPaperHandoffAction,
 } from "../search/workflow_durable";
 import { GenerationCancelledError } from "../chat/generation_helpers";
@@ -192,6 +193,30 @@ test("readQueriesFromPhase reads queries from planning phase", async () => {
 
   const queries = await readQueriesFromPhase(ctx, "session_1" as any, "planning");
   assert.deepEqual(queries, ["q1", "q2", "q3"]);
+});
+
+test("readQueriesFromPhase reads structured M37 query objects from planning and analysis phases", async () => {
+  const { ctx } = buildFakeCtx({
+    phases: [
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        data: { queries: [{ query: "structured q1", rationale: "r1" }, { query: "structured q2" }] },
+      },
+      {
+        phaseType: "analysis",
+        phaseOrder: 2,
+        iteration: 0,
+        data: { followUpQueries: [{ query: "follow up q1", gapAddressed: "counter-evidence" }] },
+      },
+    ],
+  });
+
+  const planning = await readQueriesFromPhase(ctx, "session_1" as any, "planning");
+  const analysis = await readQueriesFromPhase(ctx, "session_1" as any, "analysis", 0);
+
+  assert.deepEqual(planning, ["structured q1", "structured q2"]);
+  assert.deepEqual(analysis, ["follow up q1"]);
 });
 
 test("readQueriesFromPhase reads queries from analysis phase matching iteration", async () => {
@@ -402,6 +427,26 @@ test("runSynthesisAction calls handlePhaseError on LLM failure (does not schedul
     (s.args as Record<string, unknown>).phaseOrder === 5,
   );
   assert.equal(handoffScheduled, false, "should not schedule paper handoff on error");
+});
+
+test("runPaperArchitectureAction fails when synthesis is missing", async () => {
+  const { ctx, mutations } = buildFakeCtx({
+    phases: [
+      { phaseType: "planning", phaseOrder: 0, data: { queries: [{ query: "q1" }] } },
+    ],
+    apiKey: "sk-test",
+  });
+
+  await (runPaperArchitectureAction as any)._handler(ctx, buildBaseArgs({ phaseOrder: 5 }));
+
+  const failMutation = mutations.find((m) =>
+    (m.args as Record<string, unknown>).status === "failed",
+  );
+  assert.ok(failMutation);
+  assert.match(
+    (failMutation.args as Record<string, unknown>).error as string,
+    /No synthesis phase found/,
+  );
 });
 
 // -- Paper handoff: citations preserved end-to-end ----------------------------

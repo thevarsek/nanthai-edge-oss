@@ -124,6 +124,7 @@ export async function regeneratePaperHandler(
       maxTokens: args.maxTokens ?? undefined,
       includeReasoning: args.includeReasoning ?? undefined,
       reasoningEffort: args.reasoningEffort ?? undefined,
+      complexity: sourceSession.complexity,
       enabledIntegrations: args.enabledIntegrations,
       subagentsEnabled: false,
     },
