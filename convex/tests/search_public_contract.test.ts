@@ -70,7 +70,7 @@ test("startResearchPaper normalizes complexity and schedules title generation fo
   }, {
     chatId: "chat_1",
     text: "Research prompt",
-    participant: { modelId: "openai/gpt-5.2" },
+    participant: { id: "participant_1", modelId: "openai/gpt-5.2" },
     complexity: 9,
     subagentsEnabled: true,
   });

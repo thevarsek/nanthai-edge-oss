@@ -30,6 +30,9 @@ export const startResearchPaper = mutation({
       lastRefreshedAt: v.optional(v.number()),
     }))),
     participant: v.object({
+      // UI participant shapes may include the chatParticipants row id. The
+      // Research Paper pipeline uses only the generation snapshot fields below.
+      id: v.optional(v.string()),
       modelId: v.string(),
       personaId: v.optional(v.union(v.id("personas"), v.null())),
       personaName: v.optional(v.union(v.string(), v.null())),
