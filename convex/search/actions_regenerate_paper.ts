@@ -63,12 +63,12 @@ export const regeneratePaperActionArgs = {
 } satisfies PropertyValidators;
 
 /**
- * Regenerate a research paper from cached synthesis data.
+ * Legacy direct-draft regenerate action for cached synthesis data.
  *
  * Instead of doing its own `callOpenRouterStreaming` + tool loop, this now
- * builds the paper system prompt and hands off to `runGeneration` — the full
- * tool-aware pipeline — so the model gets skills, progressive tool loading,
- * memory, compaction, subagents, etc.
+ * New regenerate requests schedule the durable workflow from synthesis onward.
+ * Keep this action for already-scheduled jobs, but run final drafting with
+ * chat tools disabled so skills/image fetching cannot steer paper generation.
  */
 export const regeneratePaperAction = internalAction({
   args: regeneratePaperActionArgs,
@@ -143,6 +143,7 @@ export const regeneratePaperAction = internalAction({
         webSearchEnabled: false, // Synthesis data is already available
         enabledIntegrations: args.enabledIntegrations,
         subagentsEnabled: false,
+        disableTools: true,
         searchSessionId: args.sessionId,
       });
 

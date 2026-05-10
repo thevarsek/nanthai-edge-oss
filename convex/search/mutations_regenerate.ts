@@ -4,6 +4,21 @@ import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
 
+const REGENERATE_REUSED_PHASE_TYPES = new Set([
+  "planning",
+  "initial_search",
+  "analysis",
+  "depth_iteration",
+]);
+
+type ReusableResearchPhase = {
+  phaseType: "planning" | "initial_search" | "analysis" | "depth_iteration";
+  phaseOrder: number;
+  iteration?: number;
+  status: "pending" | "running" | "completed" | "failed";
+  data: unknown;
+};
+
 export interface RegeneratePaperArgs extends Record<string, unknown> {
   sessionId: Id<"searchSessions">;
   modelId: string;
@@ -65,6 +80,10 @@ export async function regeneratePaperHandler(
   if (!originalMessage) {
     throw new ConvexError({ code: "NOT_FOUND", message: "Original message not found" });
   }
+  const userMessageId = originalMessage.parentMessageIds?.[0];
+  if (!userMessageId) {
+    throw new ConvexError({ code: "INTERNAL_ERROR", message: "Could not resolve user message for regeneration" });
+  }
 
   const assistantMessageId = await ctx.db.insert("messages", {
     chatId: sourceSession.chatId,
@@ -97,9 +116,9 @@ export async function regeneratePaperHandler(
     query: sourceSession.query,
     mode: "paper",
     complexity: sourceSession.complexity,
-    status: "writing",
-    progress: 90,
-    currentPhase: "writing",
+    status: "synthesizing",
+    progress: 75,
+    currentPhase: "synthesis",
     phaseOrder: 0,
     participantId: args.personaId ?? undefined,
     startedAt: now,
@@ -107,16 +126,82 @@ export async function regeneratePaperHandler(
 
   await ctx.db.patch(assistantMessageId, { searchSessionId: regenerationSessionId });
 
+  const sourcePhases = await ctx.db
+    .query("searchPhases")
+    .withIndex("by_session", (q) => q.eq("sessionId", args.sessionId))
+    .collect();
+  let reusablePhases: ReusableResearchPhase[] = sourcePhases
+    .filter((phase) => REGENERATE_REUSED_PHASE_TYPES.has(phase.phaseType))
+    .map((phase) => ({
+      phaseType: phase.phaseType as ReusableResearchPhase["phaseType"],
+      phaseOrder: phase.phaseOrder,
+      iteration: phase.iteration,
+      status: phase.status,
+      data: phase.data,
+    }))
+    .sort((a, b) => a.phaseOrder - b.phaseOrder);
+
+  if (!reusablePhases.some((phase) => phase.phaseType === "initial_search" || phase.phaseType === "depth_iteration")) {
+    const cachedContext = await ctx.db
+      .query("searchContexts")
+      .withIndex("by_message", (q) => q.eq("messageId", sourceSession.assistantMessageId))
+      .first();
+    const payload = cachedContext?.payload as { searchResults?: unknown } | undefined;
+    const searchResults = Array.isArray(payload?.searchResults) ? payload.searchResults : [];
+    if (searchResults.length === 0) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: "Cannot regenerate analysis because saved research results are unavailable",
+      });
+    }
+    reusablePhases = [
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        iteration: undefined,
+        status: "completed",
+        data: {
+          researchQuestion: sourceSession.query,
+          plan: `Regenerate synthesis from ${searchResults.length} saved search results.`,
+        },
+      },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        iteration: undefined,
+        status: "completed",
+        data: { results: searchResults },
+      },
+    ];
+  }
+
+  for (const phase of reusablePhases) {
+    await ctx.db.insert("searchPhases", {
+      sessionId: regenerationSessionId,
+      phaseType: phase.phaseType,
+      phaseOrder: phase.phaseOrder,
+      iteration: phase.iteration,
+      status: phase.status,
+      data: phase.data,
+      startedAt: now,
+      completedAt: now,
+    });
+  }
+
+  const nextPhaseOrder =
+    reusablePhases.reduce((max, phase) => Math.max(max, phase.phaseOrder), -1) + 1;
+
   await ctx.scheduler.runAfter(
     0,
-    internal.search.actions.regeneratePaperAction,
+    internal.search.workflow_durable.runSynthesisAction,
     {
       sessionId: regenerationSessionId,
-      sourceSessionId: args.sessionId,
       assistantMessageId,
       jobId,
       chatId: sourceSession.chatId,
+      userMessageId,
       userId,
+      query: sourceSession.query,
       modelId: args.modelId,
       personaId: args.personaId ?? undefined,
       systemPrompt: args.systemPrompt ?? undefined,
@@ -125,8 +210,10 @@ export async function regeneratePaperHandler(
       includeReasoning: args.includeReasoning ?? undefined,
       reasoningEffort: args.reasoningEffort ?? undefined,
       complexity: sourceSession.complexity,
+      expandMultiModelGroups: false,
       enabledIntegrations: args.enabledIntegrations,
       subagentsEnabled: false,
+      phaseOrder: nextPhaseOrder,
     },
   );
 

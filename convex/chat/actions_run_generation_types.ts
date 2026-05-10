@@ -35,6 +35,7 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
+  disableTools?: boolean;
   // Optional: when called from a search path (C/D/regen), pass the session ID
   // so generation can mark the session completed/failed on finish.
   searchSessionId?: Id<"searchSessions">;

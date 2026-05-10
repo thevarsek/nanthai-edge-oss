@@ -121,6 +121,7 @@ test("runPaperGenerationPhase schedules runGeneration with persona or explicit s
 
   assert.equal(scheduled.length, 1);
   assert.equal(scheduled[0]?.webSearchEnabled, false);
+  assert.equal(scheduled[0]?.disableTools, true);
   const participants = (scheduled[0]?.participants ?? []) as Array<{ systemPrompt?: string }>;
   assert.match(String(participants[0]?.systemPrompt ?? ""), /Persona voice/);
   assert.match(String(participants[0]?.systemPrompt ?? ""), /Research synthesis/);

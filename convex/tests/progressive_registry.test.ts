@@ -33,6 +33,23 @@ test("buildProgressiveToolRegistry: base Pro registry omits docs and runtime too
   assert.equal(registry.get("data_python_exec"), undefined);
 });
 
+test("buildProgressiveToolRegistry: disabled mode returns no base or profile tools", () => {
+  const registry = buildProgressiveToolRegistry({
+    isPro: true,
+    enabledIntegrations: ["gmail"],
+    allowSubagents: true,
+    activeProfiles: ["docs", "google"],
+    disabled: true,
+  });
+
+  assert.equal(registry.isEmpty, true);
+  assert.equal(registry.get("fetch_image"), undefined);
+  assert.equal(registry.get("load_skill"), undefined);
+  assert.equal(registry.get("generate_docx"), undefined);
+  assert.equal(registry.get("gmail_search"), undefined);
+});
+
+
 test("buildProgressiveToolRegistry: direct attachment read tools can be exposed without docs profile", () => {
   const registry = buildProgressiveToolRegistry({
     isPro: true,

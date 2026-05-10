@@ -38,6 +38,9 @@ export const runGenerationArgs = {
   // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
   enabledIntegrations: v.optional(v.array(v.string())),
   subagentsEnabled: v.optional(v.boolean()),
+  // Optional controlled generation mode for compiler-style phases such as
+  // final research paper drafting, where chat tools/skills should not steer output.
+  disableTools: v.optional(v.boolean()),
   // Optional: when runGeneration is called from a search path (C/D/regen),
   // pass the sessionId so runGeneration can mark it completed/failed on finish.
   searchSessionId: v.optional(v.id("searchSessions")),
@@ -64,6 +67,7 @@ export const runGenerationParticipantArgs = {
   directToolNames: v.optional(v.array(v.string())),
   isPro: v.boolean(),
   allowSubagents: v.boolean(),
+  disableTools: v.optional(v.boolean()),
   searchSessionId: v.optional(v.id("searchSessions")),
   subagentBatchId: v.optional(v.id("subagentBatches")),
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),

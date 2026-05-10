@@ -196,6 +196,12 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
     userId: "user_1",
     messageCount: 5,
   };
+  const sourcePhases = [
+    { phaseType: "planning", phaseOrder: 0, status: "completed", data: { plan: "Plan" } },
+    { phaseType: "initial_search", phaseOrder: 1, status: "completed", data: { results: [{ query: "q1" }] } },
+    { phaseType: "synthesis", phaseOrder: 2, status: "completed", data: { old: "synthesis" } },
+    { phaseType: "paper_architecture", phaseOrder: 3, status: "completed", data: { old: "architecture" } },
+  ];
 
   const ctx = {
     auth: {
@@ -218,9 +224,10 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
       patch: async (id: string, patch: Record<string, unknown>) => {
         patches.push({ id, patch });
       },
-      query: () => ({
+      query: (table: string) => ({
         withIndex: () => ({
           first: async () => ({ userId: "user_1", status: "active" }),
+          collect: async () => table === "searchPhases" ? sourcePhases : [],
         }),
       }),
     },
@@ -246,10 +253,18 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   const searchSessionInsert = inserts.find((item) => item.table === "searchSessions");
   assert.ok(searchSessionInsert);
   assert.equal(searchSessionInsert.value.mode, "paper");
-  assert.equal(searchSessionInsert.value.status, "writing");
-  assert.equal(searchSessionInsert.value.progress, 90);
+  assert.equal(searchSessionInsert.value.status, "synthesizing");
+  assert.equal(searchSessionInsert.value.progress, 75);
+  assert.equal(searchSessionInsert.value.currentPhase, "synthesis");
   assert.equal(searchSessionInsert.value.query, sourceSession.query);
   assert.equal(searchSessionInsert.value.complexity, 3);
+
+  const copiedPhases = inserts.filter((item) => item.table === "searchPhases");
+  assert.deepEqual(
+    copiedPhases.map((item) => item.value.phaseType),
+    ["planning", "initial_search"],
+  );
+  assert.equal(copiedPhases[0]?.value.sessionId, newSessionId);
 
   const assistantLinkPatch = patches.find((item) => item.id === newAssistantMessageId);
   assert.ok(assistantLinkPatch);
@@ -264,7 +279,9 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.ok(searchRun);
   assert.ok(searchRun.fnPath);
   assert.equal(searchRun.payload.sessionId, newSessionId);
-  assert.equal(searchRun.payload.sourceSessionId, sourceSessionId);
+  assert.equal(searchRun.payload.userMessageId, "user_message_1");
+  assert.equal(searchRun.payload.query, sourceSession.query);
   assert.equal(searchRun.payload.complexity, 3);
   assert.equal(searchRun.payload.subagentsEnabled, false);
+  assert.equal(searchRun.payload.phaseOrder, 2);
 });

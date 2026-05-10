@@ -109,6 +109,7 @@ test("runGenerationHandler intersects enabled integrations and schedules per-par
     directToolNames: ["read_docx"],
     isPro: false,
     allowSubagents: false,
+    disableTools: undefined,
     searchSessionId: undefined,
     resumeExpected: false,
     videoConfig: undefined,

@@ -137,6 +137,7 @@ export async function runGenerationHandler(
           directToolNames,
           isPro: isProUser,
           allowSubagents,
+          disableTools: args.disableTools,
           searchSessionId: args.searchSessionId,
           resumeExpected: false,
           videoConfig: args.videoConfig,

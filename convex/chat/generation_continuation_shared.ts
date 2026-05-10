@@ -27,6 +27,7 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   directToolNames?: string[];
   isPro: boolean;
   allowSubagents: boolean;
+  disableTools?: boolean;
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
@@ -54,6 +55,7 @@ export interface GenerationContinuationGroupSnapshot {
   directToolNames: string[];
   isPro: boolean;
   allowSubagents: boolean;
+  disableTools?: boolean;
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;

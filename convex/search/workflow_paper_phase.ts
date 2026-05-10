@@ -5,8 +5,8 @@ import { computeProgress, PipelineArgs, updateSession } from "./workflow_shared"
 
 /**
  * Build the augmented system prompt for the paper generation phase, then hand
- * off to `runGeneration` (the full tool-aware pipeline) so the model gets
- * skills, progressive tool loading, memory, compaction, subagents, etc.
+ * off to `runGeneration` in controlled compiler mode. The final paper writer
+ * should draft from research artifacts rather than invoke chat skills/tools.
  *
  * Previously this function did its own `callOpenRouterStreaming` + tool loop
  * inline.  Now it mirrors Path C (web search): bake the synthesis data into
@@ -48,8 +48,8 @@ export async function runPaperGenerationPhase(
     }
   }
 
-  // Hand off to the full generation pipeline so the model gets skills,
-  // progressive tool loading, memory, compaction, subagents, etc.
+  // Hand off to the generation pipeline with tools disabled so base chat
+  // utilities such as load_skill/fetch_image cannot steer autonomous drafting.
   // The job status is already "streaming" — runGeneration will re-set it
   // (idempotent) and handle finalization, post-processing, and tool loops.
   await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
@@ -75,6 +75,7 @@ export async function runPaperGenerationPhase(
     webSearchEnabled: false, // Perplexity already searched
     enabledIntegrations: args.enabledIntegrations,
     subagentsEnabled: args.subagentsEnabled,
+    disableTools: true,
     searchSessionId: args.sessionId,
   });
 }

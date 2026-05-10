@@ -6,6 +6,7 @@ import { ToolRegistry } from "./registry";
 
 export interface RuntimeBaseToolRegistryOptions {
   isPro: boolean;
+  disabled?: boolean;
 }
 
 const RUNTIME_BASE_TOOLS = [
@@ -19,7 +20,7 @@ export function buildRuntimeBaseToolRegistry(
   options: RuntimeBaseToolRegistryOptions,
 ): ToolRegistry {
   const registry = new ToolRegistry();
-  if (!options.isPro) {
+  if (options.disabled === true || !options.isPro) {
     return registry;
   }
 

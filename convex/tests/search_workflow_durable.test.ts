@@ -524,6 +524,7 @@ test("runPaperHandoffAction reads synthesis data from persisted phase", async ()
     return Array.isArray(a.participants);
   });
   assert.ok(runGenCall, "runGeneration should be scheduled");
+  assert.equal((runGenCall.args as Record<string, unknown>).disableTools, true);
 
   const participants = (runGenCall.args as Record<string, unknown>).participants as Array<{ systemPrompt?: string }>;
   assert.ok(participants[0]?.systemPrompt);

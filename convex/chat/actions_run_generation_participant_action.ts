@@ -96,6 +96,7 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs) {
     webSearchEnabled: args.webSearchEnabled,
     enabledIntegrations: args.effectiveIntegrations,
     subagentsEnabled: args.allowSubagents,
+    disableTools: args.disableTools,
     searchSessionId: args.searchSessionId,
     subagentBatchId: args.subagentBatchId,
     drivePickerBatchId: args.drivePickerBatchId,
@@ -171,6 +172,7 @@ export async function runGenerationParticipantHandler(
         directToolNames: continuationState.group.directToolNames,
         isPro: continuationState.group.isPro,
         allowSubagents: continuationState.group.allowSubagents,
+        disableTools: continuationState.group.disableTools,
         searchSessionId: continuationState.group.searchSessionId,
         subagentBatchId: continuationState.group.subagentBatchId,
         drivePickerBatchId: continuationState.group.drivePickerBatchId,
@@ -281,6 +283,7 @@ export async function runGenerationParticipantHandler(
       enabledIntegrations: effectiveArgs.effectiveIntegrations,
       isPro: effectiveArgs.isPro,
       allowSubagents: effectiveArgs.allowSubagents,
+      disabled: effectiveArgs.disableTools === true,
       activeProfiles: continuationState?.activeProfiles,
       directToolNames: effectiveArgs.directToolNames ?? [],
     });
@@ -324,6 +327,7 @@ export async function runGenerationParticipantHandler(
           enabledIntegrations: effectiveArgs.effectiveIntegrations,
           isPro: effectiveArgs.isPro,
           allowSubagents: effectiveArgs.allowSubagents,
+          disabled: effectiveArgs.disableTools === true,
           activeProfiles,
           directToolNames: effectiveDirectToolNames,
         });
@@ -352,6 +356,7 @@ export async function runGenerationParticipantHandler(
           enabledIntegrations: effectiveArgs.effectiveIntegrations,
           isPro: effectiveArgs.isPro,
           allowSubagents: effectiveArgs.allowSubagents,
+          disabled: effectiveArgs.disableTools === true,
           activeProfiles,
           directToolNames,
         });

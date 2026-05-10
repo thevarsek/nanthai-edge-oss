@@ -1065,6 +1065,7 @@ export async function generateForParticipant(
           directToolNames: effectiveDirectToolNames,
           isPro,
           allowSubagents: progressiveTools?.allowSubagents ?? false,
+          disableTools: (args as { disableTools?: boolean }).disableTools,
           searchSessionId: args.searchSessionId,
           subagentBatchId: (args as { subagentBatchId?: any }).subagentBatchId,
           drivePickerBatchId: (args as { drivePickerBatchId?: any }).drivePickerBatchId,

@@ -52,6 +52,7 @@ test("saveGenerationContinuationArgs.checkpoint.group validator covers every Gen
     directToolNames: [],
     isPro: false,
     allowSubagents: false,
+    disableTools: true,
     searchSessionId: "search_1" as any,
     subagentBatchId: "batch_1" as any,
     drivePickerBatchId: "drive_picker_batch_1" as any,

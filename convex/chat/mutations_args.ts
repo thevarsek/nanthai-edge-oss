@@ -286,6 +286,7 @@ export const saveGenerationContinuationArgs = {
       directToolNames: v.array(v.string()),
       isPro: v.boolean(),
       allowSubagents: v.boolean(),
+      disableTools: v.optional(v.boolean()),
       searchSessionId: v.optional(v.id("searchSessions")),
       subagentBatchId: v.optional(v.id("subagentBatches")),
       drivePickerBatchId: v.optional(v.id("drivePickerBatches")),

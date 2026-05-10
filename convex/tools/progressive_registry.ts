@@ -21,13 +21,14 @@ export interface ProgressiveToolRegistryOptions {
   allowSubagents?: boolean;
   activeProfiles?: SkillToolProfileId[];
   directToolNames?: string[];
+  disabled?: boolean;
 }
 
 export function buildProgressiveToolRegistry(
   options: ProgressiveToolRegistryOptions,
 ): ToolRegistry {
   const registry = new ToolRegistry();
-  if (!options.isPro) {
+  if (options.disabled === true || !options.isPro) {
     return registry;
   }
 
