@@ -54,6 +54,9 @@ interface AnalysisResult {
 
 type StructuredPhaseResult = string;
 
+const DEFAULT_SYNTHESIS_MAX_TOKENS = 8192;
+const DEFAULT_PAPER_ARCHITECTURE_MAX_TOKENS = 6144;
+
 async function buildOrchestrationMessages(
   ctx: ActionCtx,
   args: PipelineArgsWithApiKey,
@@ -299,7 +302,7 @@ export async function runSynthesisPhase(
     messages,
     {
       temperature: 0.3,
-      maxTokens: args.maxTokens,
+      maxTokens: args.maxTokens ?? DEFAULT_SYNTHESIS_MAX_TOKENS,
       includeReasoning: args.includeReasoning,
       reasoningEffort: clampResearchPaperReasoningEffort(
         args.includeReasoning,
@@ -373,7 +376,7 @@ export async function runPaperArchitecturePhase(
     messages,
     {
       temperature: 0.3,
-      maxTokens: args.maxTokens,
+      maxTokens: args.maxTokens ?? DEFAULT_PAPER_ARCHITECTURE_MAX_TOKENS,
       includeReasoning: args.includeReasoning,
       reasoningEffort: clampResearchPaperReasoningEffort(
         args.includeReasoning,

@@ -266,6 +266,38 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   assert.equal(requestParams[0]?.reasoningEffort, "minimal");
 });
 
+test("runSynthesisPhase uses the stable artifact cap when no user max tokens is set", async () => {
+  const requestParams: Record<string, unknown>[] = [];
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async () => undefined,
+    callOpenRouterNonStreaming: async (_apiKey, _model, _messages, params) => {
+      requestParams.push(params as Record<string, unknown>);
+      return {
+        content: "{\"findings\":\"Done\"}",
+        usage: null,
+        finishReason: "stop",
+        audioBase64: "",
+        audioTranscript: "",
+        generationId: null,
+      };
+    },
+  });
+  const ctx = createMockCtx({
+    runQuery: async () => null,
+    runMutation: async () => undefined,
+  });
+
+  await runSynthesisPhase(
+    ctx,
+    { ...buildArgs(), maxTokens: undefined },
+    [{ query: "swift actors", success: true, content: "Actor guidance", citations: [] }],
+    5,
+    deps,
+  );
+
+  assert.equal(requestParams[0]?.maxTokens, 8192);
+});
+
 test("runPaperArchitecturePhase persists structured artifact and tracks cost", async () => {
   const writes: Record<string, unknown>[] = [];
   const ancillaryCalls: Record<string, unknown>[] = [];
@@ -323,4 +355,37 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
   assert.equal(requestParams[0]?.maxTokens, 12_000);
   assert.equal(requestParams[0]?.includeReasoning, true);
   assert.equal(requestParams[0]?.reasoningEffort, "minimal");
+});
+
+test("runPaperArchitecturePhase uses the stable artifact cap when no user max tokens is set", async () => {
+  const requestParams: Record<string, unknown>[] = [];
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async () => undefined,
+    callOpenRouterNonStreaming: async (_apiKey, _model, _messages, params) => {
+      requestParams.push(params as Record<string, unknown>);
+      return {
+        content: "{\"title\":\"Paper\",\"outline\":[]}",
+        usage: null,
+        finishReason: "stop",
+        audioBase64: "",
+        audioTranscript: "",
+        generationId: null,
+      };
+    },
+  });
+  const ctx = createMockCtx({
+    runQuery: async () => null,
+    runMutation: async () => undefined,
+  });
+
+  await runPaperArchitecturePhase(
+    ctx,
+    { ...buildArgs(), maxTokens: undefined },
+    "{\"researchQuestion\":\"What changed?\"}",
+    "{\"findings\":\"Actors improve isolation\"}",
+    6,
+    deps,
+  );
+
+  assert.equal(requestParams[0]?.maxTokens, 6144);
 });
