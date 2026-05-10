@@ -18,6 +18,7 @@ import {
 import { extractQueryStrings, resolveComplexityPreset, SearchResult } from "./helpers";
 import {
   checkCancellation,
+  formatResearchPaperFailureMessage,
   PipelineArgs,
   updateSession,
 } from "./workflow_shared";
@@ -141,8 +142,7 @@ export async function handlePhaseError(
   args: PipelineArgs,
   error: unknown,
 ): Promise<void> {
-  const errorMessage =
-    error instanceof Error ? error.message : "Unknown research paper error";
+  const errorMessage = formatResearchPaperFailureMessage(error);
   const wasCancelled = isGenerationCancelledError(error);
 
   await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {

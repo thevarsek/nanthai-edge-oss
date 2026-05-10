@@ -3,9 +3,9 @@ export const HTTP_REFERER = "https://nanthai.tech";
 export const X_TITLE = "NanthAi:Edge";
 // Non-streaming OpenRouter calls are used by durable research phases such as
 // paper synthesis and architecture. Uncapped Anthropic generations can exceed
-// 3 minutes even when they eventually complete, so keep this below Convex's
-// 10-minute action ceiling but high enough for long paper artifacts.
-export const REQUEST_TIMEOUT_MS = 540_000;
+// 3 minutes even when they eventually complete, so keep this just below
+// Convex's 10-minute action ceiling but high enough for long paper artifacts.
+export const REQUEST_TIMEOUT_MS = 590_000;
 // Per-chunk idle timeout: abort if no SSE data arrives within this window.
 // Resets on every received chunk. Sized to match Convex's 600s action limit
 // (any stall longer than that gets killed by the platform anyway, so a

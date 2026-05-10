@@ -8,7 +8,10 @@ import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
 import { buildPaperGenerationSystemPrompt } from "./helpers";
-import { clampResearchPaperReasoningEffort } from "./workflow_shared";
+import {
+  clampResearchPaperReasoningEffort,
+  formatResearchPaperFailureMessage,
+} from "./workflow_shared";
 
 const CANCEL_CHECK_INTERVAL_EVENTS = 10;
 
@@ -164,8 +167,7 @@ export const regeneratePaperAction = internalAction({
         },
       });
     } catch (error) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
+      const errorMessage = formatResearchPaperFailureMessage(error);
       const wasCancelled = isGenerationCancelledError(error);
 
       await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {

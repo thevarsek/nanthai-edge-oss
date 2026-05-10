@@ -18,9 +18,13 @@ import {
   parseGeneratedQueries,
 } from "../search/query_generation_helpers";
 import { researchPaperPipeline } from "../search/workflow";
-import { checkCancellation, computeProgress } from "../search/workflow_shared";
+import {
+  checkCancellation,
+  clampResearchPaperReasoningEffort,
+  computeProgress,
+  formatResearchPaperFailureMessage,
+} from "../search/workflow_shared";
 import { runPaperGenerationPhase } from "../search/workflow_paper_phase";
-import { clampResearchPaperReasoningEffort } from "../search/workflow_shared";
 
 test("query generation helpers build prompts and normalize generated query lists", () => {
   const prompt = buildQueryGenerationPrompt("AI pricing", 3);
@@ -125,6 +129,16 @@ test("workflow shared helpers compute progress and throw on cancelled sessions",
   assert.equal(clampResearchPaperReasoningEffort(true, undefined), "minimal");
   assert.equal(clampResearchPaperReasoningEffort(false, "high"), null);
   assert.equal(clampResearchPaperReasoningEffort(undefined, undefined), null);
+  assert.match(
+    formatResearchPaperFailureMessage(
+      new Error("OpenRouter non-stream timeout after 590000ms for model anthropic/claude-sonnet-4.6"),
+    ),
+    /did not finish in time/i,
+  );
+  assert.equal(
+    formatResearchPaperFailureMessage(new Error("Provider returned 400")),
+    "Provider returned 400",
+  );
 
   await assert.rejects(
     checkCancellation({

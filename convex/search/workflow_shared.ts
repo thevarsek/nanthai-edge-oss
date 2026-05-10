@@ -52,6 +52,22 @@ export function clampResearchPaperReasoningEffort(
   return "minimal";
 }
 
+export function formatResearchPaperFailureMessage(error: unknown): string {
+  const rawMessage = error instanceof Error
+    ? error.message
+    : "Unknown research paper error";
+  const lower = rawMessage.toLowerCase();
+  if (
+    lower.includes("openrouter non-stream timeout") ||
+    lower.includes("openrouter stream timeout") ||
+    lower.includes("perplexity search timeout") ||
+    lower.includes("aborterror")
+  ) {
+    return "The model did not finish in time (timeout) while preparing the research paper. Please retry or choose a faster model.";
+  }
+  return rawMessage;
+}
+
 export function computeProgress(
   complexity: number,
   phase: string,
