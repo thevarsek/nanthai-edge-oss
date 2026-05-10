@@ -196,12 +196,15 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   const updates: Record<string, unknown>[] = [];
   const writes: Record<string, unknown>[] = [];
   const ancillaryCalls: Record<string, unknown>[] = [];
+  const requestParams: Record<string, unknown>[] = [];
 
   const deps = createWorkflowNonstreamDepsForTest({
     updateSession: async (_ctx: unknown, _id: unknown, patch: unknown) => {
       updates.push(patch as Record<string, unknown>);
     },
-    callOpenRouterNonStreaming: async () => ({
+    callOpenRouterNonStreaming: async (_apiKey, _model, _messages, params) => {
+      requestParams.push(params as Record<string, unknown>);
+      return {
       content: "{\"findings\":\"Done\",\"sources\":[\"https://example.com\"]}",
       usage: {
         promptTokens: 10,
@@ -213,7 +216,8 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
       audioBase64: "",
       audioTranscript: "",
       generationId: "gen_synth",
-    }),
+      };
+    },
   });
 
   const ctx = createMockCtx({
@@ -230,7 +234,12 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
 
   const result = await runSynthesisPhase(
     ctx,
-    buildArgs(),
+    {
+      ...buildArgs(),
+      maxTokens: 12_000,
+      includeReasoning: true,
+      reasoningEffort: "high",
+    },
     [
       {
         query: "swift actors",
@@ -247,15 +256,21 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   assert.equal(result, "{\"findings\":\"Done\",\"sources\":[\"https://example.com\"]}");
   assert.equal(writes[0]?.phaseType, "synthesis");
   assert.equal(ancillaryCalls[0]?.source, "search_synthesis");
+  assert.equal(requestParams[0]?.maxTokens, 12_000);
+  assert.equal(requestParams[0]?.includeReasoning, true);
+  assert.equal(requestParams[0]?.reasoningEffort, "minimal");
 });
 
 test("runPaperArchitecturePhase persists structured artifact and tracks cost", async () => {
   const writes: Record<string, unknown>[] = [];
   const ancillaryCalls: Record<string, unknown>[] = [];
+  const requestParams: Record<string, unknown>[] = [];
 
   const deps = createWorkflowNonstreamDepsForTest({
     updateSession: async () => undefined,
-    callOpenRouterNonStreaming: async () => ({
+    callOpenRouterNonStreaming: async (_apiKey, _model, _messages, params) => {
+      requestParams.push(params as Record<string, unknown>);
+      return {
       content: "{\"title\":\"Swift concurrency paper\",\"thesis\":\"Actors improve isolation\",\"outline\":[],\"evidenceMap\":[],\"argumentBlueprint\":[],\"draftingNotes\":[]}",
       usage: {
         promptTokens: 12,
@@ -267,7 +282,8 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
       audioBase64: "",
       audioTranscript: "",
       generationId: "gen_arch",
-    }),
+      };
+    },
   });
 
   const ctx = createMockCtx({
@@ -284,7 +300,12 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
 
   const result = await runPaperArchitecturePhase(
     ctx,
-    buildArgs(),
+    {
+      ...buildArgs(),
+      maxTokens: 12_000,
+      includeReasoning: true,
+      reasoningEffort: "medium",
+    },
     "{\"researchQuestion\":\"What changed?\"}",
     "{\"findings\":\"Actors improve isolation\"}",
     6,
@@ -294,4 +315,7 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
   assert.match(result, /Swift concurrency paper/);
   assert.equal(writes[0]?.phaseType, "paper_architecture");
   assert.equal(ancillaryCalls[0]?.source, "search_architecture");
+  assert.equal(requestParams[0]?.maxTokens, 12_000);
+  assert.equal(requestParams[0]?.includeReasoning, true);
+  assert.equal(requestParams[0]?.reasoningEffort, "minimal");
 });

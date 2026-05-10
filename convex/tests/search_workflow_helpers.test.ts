@@ -18,6 +18,7 @@ import {
 import { researchPaperPipeline } from "../search/workflow";
 import { checkCancellation, computeProgress } from "../search/workflow_shared";
 import { runPaperGenerationPhase } from "../search/workflow_paper_phase";
+import { clampResearchPaperReasoningEffort } from "../search/workflow_shared";
 
 test("query generation helpers build prompts and normalize generated query lists", () => {
   const prompt = buildQueryGenerationPrompt("AI pricing", 3);
@@ -84,6 +85,11 @@ test("workflow shared helpers compute progress and throw on cancelled sessions",
   assert.equal(computeProgress(1, "planning", 0), 25);
   assert.equal(computeProgress(2, "depth_iteration", 0), 55);
   assert.equal(computeProgress(3, "analysis", 1), 54);
+  assert.equal(clampResearchPaperReasoningEffort(true, "high"), "minimal");
+  assert.equal(clampResearchPaperReasoningEffort(undefined, "medium"), "minimal");
+  assert.equal(clampResearchPaperReasoningEffort(true, undefined), "minimal");
+  assert.equal(clampResearchPaperReasoningEffort(false, "high"), null);
+  assert.equal(clampResearchPaperReasoningEffort(undefined, undefined), null);
 
   await assert.rejects(
     checkCancellation({
@@ -117,14 +123,25 @@ test("runPaperGenerationPhase schedules runGeneration with persona or explicit s
     expandMultiModelGroups: false,
     modelId: "openai/gpt-5.2",
     personaId: "persona_1",
+    maxTokens: 12_000,
+    includeReasoning: true,
+    reasoningEffort: "high",
   } as any, "Research synthesis", 4);
 
   assert.equal(scheduled.length, 1);
   assert.equal(scheduled[0]?.webSearchEnabled, false);
   assert.equal(scheduled[0]?.disableTools, true);
-  const participants = (scheduled[0]?.participants ?? []) as Array<{ systemPrompt?: string }>;
+  const participants = (scheduled[0]?.participants ?? []) as Array<{
+    systemPrompt?: string;
+    maxTokens?: number;
+    includeReasoning?: boolean;
+    reasoningEffort?: string | null;
+  }>;
   assert.match(String(participants[0]?.systemPrompt ?? ""), /Persona voice/);
   assert.match(String(participants[0]?.systemPrompt ?? ""), /Research synthesis/);
+  assert.equal(participants[0]?.maxTokens, 12_000);
+  assert.equal(participants[0]?.includeReasoning, true);
+  assert.equal(participants[0]?.reasoningEffort, "minimal");
 });
 
 test("researchPaperPipeline finalizes cancelled sessions cleanly", async () => {

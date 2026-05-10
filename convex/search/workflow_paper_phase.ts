@@ -1,7 +1,12 @@
 import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
 import { buildPaperGenerationSystemPrompt } from "./helpers";
-import { computeProgress, PipelineArgs, updateSession } from "./workflow_shared";
+import {
+  clampResearchPaperReasoningEffort,
+  computeProgress,
+  PipelineArgs,
+  updateSession,
+} from "./workflow_shared";
 
 /**
  * Build the augmented system prompt for the paper generation phase, then hand
@@ -65,7 +70,10 @@ export async function runPaperGenerationPhase(
         temperature: args.temperature ?? 0.4, // Paper generation default (lower than chat's 0.7)
         maxTokens: args.maxTokens,
         includeReasoning: args.includeReasoning,
-        reasoningEffort: args.reasoningEffort ?? null,
+        reasoningEffort: clampResearchPaperReasoningEffort(
+          args.includeReasoning,
+          args.reasoningEffort ?? null,
+        ),
         messageId: args.assistantMessageId,
         jobId: args.jobId,
       },

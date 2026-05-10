@@ -8,6 +8,7 @@ import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
 import { buildPaperGenerationSystemPrompt } from "./helpers";
+import { clampResearchPaperReasoningEffort } from "./workflow_shared";
 
 const CANCEL_CHECK_INTERVAL_EVENTS = 10;
 
@@ -133,7 +134,10 @@ export const regeneratePaperAction = internalAction({
             temperature: args.temperature ?? 0.4, // Paper generation default (lower than chat's 0.7)
             maxTokens: args.maxTokens ?? undefined,
             includeReasoning: args.includeReasoning ?? undefined,
-            reasoningEffort: args.reasoningEffort ?? null,
+            reasoningEffort: clampResearchPaperReasoningEffort(
+              args.includeReasoning ?? null,
+              args.reasoningEffort ?? null,
+            ),
             messageId: args.assistantMessageId,
             jobId: args.jobId,
           },

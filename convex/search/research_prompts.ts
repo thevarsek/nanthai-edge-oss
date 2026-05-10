@@ -173,6 +173,7 @@ export function buildPaperGenerationSystemPrompt(
     "- do not fabricate sources, orphan references, bibliography entries, DOIs, or verification claims",
     "- hedge low-confidence claims and disclose contradictions where relevant",
     "- include a concise research basis or source limitations section when source quality is mixed",
+    "- write the final paper directly; do not output planning notes, synthesis notes, self-review narration, or drafting commentary",
     `- ${complexityGuidance}`,
     "",
     "Citation honesty:",

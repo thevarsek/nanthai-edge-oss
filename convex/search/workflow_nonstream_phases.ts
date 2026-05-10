@@ -15,7 +15,12 @@ import {
   summarizeSearchResults,
 } from "./helpers";
 import { MODEL_IDS } from "../lib/model_constants";
-import { computeProgress, PipelineArgs, updateSession } from "./workflow_shared";
+import {
+  clampResearchPaperReasoningEffort,
+  computeProgress,
+  PipelineArgs,
+  updateSession,
+} from "./workflow_shared";
 import { trackPerplexitySearchCosts } from "./actions_web_search_shared";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
@@ -289,7 +294,16 @@ export async function runSynthesisPhase(
     args.apiKey,
     args.modelId,
     messages,
-    { temperature: 0.3, maxTokens: 8192, transforms: SEARCH_TRANSFORMS },
+    {
+      temperature: 0.3,
+      maxTokens: args.maxTokens,
+      includeReasoning: args.includeReasoning,
+      reasoningEffort: clampResearchPaperReasoningEffort(
+        args.includeReasoning,
+        args.reasoningEffort ?? null,
+      ),
+      transforms: SEARCH_TRANSFORMS,
+    },
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
   );
 
@@ -354,7 +368,16 @@ export async function runPaperArchitecturePhase(
     args.apiKey,
     args.modelId,
     messages,
-    { temperature: 0.3, maxTokens: 6144, transforms: SEARCH_TRANSFORMS },
+    {
+      temperature: 0.3,
+      maxTokens: args.maxTokens,
+      includeReasoning: args.includeReasoning,
+      reasoningEffort: clampResearchPaperReasoningEffort(
+        args.includeReasoning,
+        args.reasoningEffort ?? null,
+      ),
+      transforms: SEARCH_TRANSFORMS,
+    },
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
   );
 

@@ -36,6 +36,22 @@ export async function checkCancellation(
   }
 }
 
+/**
+ * Research-paper synthesis, architecture, and final drafting already receive
+ * planning/search artifacts. Keep user-controlled reasoning available, but
+ * clamp enabled reasoning to the smallest OpenRouter effort so large paper
+ * output budgets do not become huge provider thinking budgets.
+ */
+export function clampResearchPaperReasoningEffort(
+  includeReasoning?: boolean | null,
+  reasoningEffort?: string | null,
+): string | null {
+  if (includeReasoning === false) return null;
+  if (!reasoningEffort && includeReasoning !== true) return null;
+  if (reasoningEffort === "none") return "none";
+  return "minimal";
+}
+
 export function computeProgress(
   complexity: number,
   phase: string,
