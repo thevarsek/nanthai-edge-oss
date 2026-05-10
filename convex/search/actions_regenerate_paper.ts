@@ -9,7 +9,6 @@ import {
 } from "../chat/generation_helpers";
 import { buildPaperGenerationSystemPrompt } from "./helpers";
 import {
-  clampResearchPaperReasoningEffort,
   formatResearchPaperFailureMessage,
 } from "./workflow_shared";
 
@@ -136,11 +135,8 @@ export const regeneratePaperAction = internalAction({
             systemPrompt: effectiveSystemPrompt,
             temperature: args.temperature ?? 0.4, // Paper generation default (lower than chat's 0.7)
             maxTokens: args.maxTokens ?? undefined,
-            includeReasoning: args.includeReasoning ?? undefined,
-            reasoningEffort: clampResearchPaperReasoningEffort(
-              args.includeReasoning ?? null,
-              args.reasoningEffort ?? null,
-            ),
+            includeReasoning: false,
+            reasoningEffort: null,
             messageId: args.assistantMessageId,
             jobId: args.jobId,
           },

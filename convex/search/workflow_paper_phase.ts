@@ -2,7 +2,6 @@ import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
 import { buildPaperGenerationSystemPrompt } from "./helpers";
 import {
-  clampResearchPaperReasoningEffort,
   computeProgress,
   PipelineArgs,
   updateSession,
@@ -69,11 +68,8 @@ export async function runPaperGenerationPhase(
         systemPrompt: effectiveSystemPrompt,
         temperature: args.temperature ?? 0.4, // Paper generation default (lower than chat's 0.7)
         maxTokens: args.maxTokens,
-        includeReasoning: args.includeReasoning,
-        reasoningEffort: clampResearchPaperReasoningEffort(
-          args.includeReasoning,
-          args.reasoningEffort ?? null,
-        ),
+        includeReasoning: false,
+        reasoningEffort: null,
         messageId: args.assistantMessageId,
         jobId: args.jobId,
       },

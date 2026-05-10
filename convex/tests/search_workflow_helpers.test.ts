@@ -189,8 +189,8 @@ test("runPaperGenerationPhase schedules runGeneration with persona or explicit s
   assert.match(String(participants[0]?.systemPrompt ?? ""), /Persona voice/);
   assert.match(String(participants[0]?.systemPrompt ?? ""), /Research synthesis/);
   assert.equal(participants[0]?.maxTokens, 12_000);
-  assert.equal(participants[0]?.includeReasoning, true);
-  assert.equal(participants[0]?.reasoningEffort, "minimal");
+  assert.equal(participants[0]?.includeReasoning, false);
+  assert.equal(participants[0]?.reasoningEffort, null);
 });
 
 test("researchPaperPipeline finalizes cancelled sessions cleanly", async () => {
