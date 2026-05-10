@@ -12,6 +12,7 @@ import {
 const chatId = "chat_1" as Id<"chats">;
 const storageId = "storage_1" as Id<"_storage">;
 const participant: Participant = {
+  id: "participant_1",
   modelId: "openai/gpt-5.2",
   personaId: null,
 };
@@ -107,10 +108,20 @@ describe("ChatPage send flow helpers", () => {
   });
 
   it("builds research paper args with one participant and no video role", () => {
+    const researchParticipant: Participant = {
+      ...participant,
+      personaName: null,
+      personaEmoji: null,
+      personaAvatarImageUrl: null,
+      systemPrompt: null,
+      temperature: 0.7,
+      includeReasoning: true,
+      reasoningEffort: "medium",
+    };
     const args = buildResearchPaperArgs({
       chatId,
       text: "paper",
-      participant,
+      participant: researchParticipant,
       complexity: 3,
       attachments: [imageAttachment],
       enabledIntegrations: new Set(["gmail", "drive"]),
@@ -119,10 +130,21 @@ describe("ChatPage send flow helpers", () => {
     expect(args).toMatchObject({
       chatId,
       text: "paper",
-      participant,
+      participant: {
+        modelId: "openai/gpt-5.2",
+        personaId: null,
+        personaName: null,
+        personaEmoji: null,
+        personaAvatarImageUrl: null,
+        systemPrompt: null,
+        temperature: 0.7,
+        includeReasoning: true,
+        reasoningEffort: "medium",
+      },
       complexity: 3,
       enabledIntegrations: ["gmail", "drive"],
     });
+    expect(args.participant).not.toHaveProperty("id");
     expect(args.attachments?.[0]).not.toHaveProperty("videoRole");
   });
 });

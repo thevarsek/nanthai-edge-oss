@@ -35,6 +35,7 @@ import {
   validateSendState as validateChatSendState,
   type SharedPreferences,
 } from "@/lib/chatRequestResolution";
+import { serializeResearchParticipant } from "@/routes/ChatPage.sendFlow";
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 
 // ─── Viewport persistence ───────────────────────────────────────────────────
@@ -605,7 +606,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       if (isResearchPaper) {
         await startResearchPaper({
           chatId, text,
-          participant: participants[0],
+          participant: serializeResearchParticipant(participants[0]),
           complexity: convexComplexity ?? 1,
           attachments: mergedAttachments,
           enabledIntegrations: Array.from(overrides.enabledIntegrations),

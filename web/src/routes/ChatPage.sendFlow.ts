@@ -91,6 +91,23 @@ export function buildSendMessageArgs(args: {
   };
 }
 
+export function serializeResearchParticipant(participant: Participant) {
+  return {
+    modelId: participant.modelId,
+    ...(participant.personaId !== undefined ? { personaId: participant.personaId } : {}),
+    ...(participant.personaName !== undefined ? { personaName: participant.personaName } : {}),
+    ...(participant.personaEmoji !== undefined ? { personaEmoji: participant.personaEmoji } : {}),
+    ...(participant.personaAvatarImageUrl !== undefined
+      ? { personaAvatarImageUrl: participant.personaAvatarImageUrl }
+      : {}),
+    ...(participant.systemPrompt !== undefined ? { systemPrompt: participant.systemPrompt } : {}),
+    ...(participant.temperature !== undefined ? { temperature: participant.temperature } : {}),
+    ...(participant.maxTokens !== undefined ? { maxTokens: participant.maxTokens } : {}),
+    ...(participant.includeReasoning !== undefined ? { includeReasoning: participant.includeReasoning } : {}),
+    ...(participant.reasoningEffort !== undefined ? { reasoningEffort: participant.reasoningEffort } : {}),
+  };
+}
+
 export function buildResearchPaperArgs(args: {
   chatId: Id<"chats">;
   text: string;
@@ -103,7 +120,7 @@ export function buildResearchPaperArgs(args: {
   return {
     chatId: args.chatId,
     text: args.text,
-    participant: args.participant,
+    participant: serializeResearchParticipant(args.participant),
     complexity: args.complexity,
     attachments: serializeChatAttachments(args.attachments, { includeVideoRole: false }),
     ...(args.recordedAudio ? { recordedAudio: args.recordedAudio } : {}),
