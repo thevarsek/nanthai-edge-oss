@@ -9,6 +9,7 @@ import {
 import {
   resolveComplexityPreset,
   executePerplexitySearch,
+  resolveSearchMaxTokens,
   buildQueryGenerationPrompt,
   parseGeneratedQueries,
   buildSearchSynthesisPrompt,
@@ -179,6 +180,7 @@ async function runDirectSearch(
     [args.query],
     searchModel,
     apiKey,
+    { maxTokens: resolveSearchMaxTokens("web", args.complexity, searchModel) },
   );
 
   // M23: Track Perplexity search costs.
@@ -274,6 +276,7 @@ async function runQueryGenAndSearch(
     queries,
     preset.searchModel,
     apiKey,
+    { maxTokens: resolveSearchMaxTokens("web", args.complexity, preset.searchModel) },
   );
 
   // M23: Track Perplexity search costs.

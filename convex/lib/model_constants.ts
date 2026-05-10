@@ -17,7 +17,7 @@ export const MODEL_IDS = {
   searchPerplexity: {
     quick: "perplexity/sonar",
     thorough: "perplexity/sonar-pro",
-    comprehensive: "perplexity/sonar-deep-research",
+    comprehensive: "perplexity/sonar-pro-search",
   },
   /** Cheap model for autonomous consensus detection (YES/NO). */
   autonomousConsensus: "openai/gpt-5-nano",

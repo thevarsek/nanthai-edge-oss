@@ -344,9 +344,14 @@ export function ChatPage() {
         sessionId,
         participant,
         enabledIntegrations: overrides.enabledIntegrations,
-      }));
+      })).catch((error) => {
+        const fallback = t("failed_to_regenerate_paper_arg", {
+          var1: t("something_went_wrong"),
+        });
+        toast({ message: convexErrorMessage(error, fallback), variant: "error" });
+      });
     },
-    [overrides.enabledIntegrations, participants, regeneratePaper],
+    [overrides.enabledIntegrations, participants, regeneratePaper, t, toast],
   );
   const searchSessionCtx = useMemo(
     () => ({ sessionMap, onCancel: handleCancelSession, onRegenerate: handleRegeneratePaper }),

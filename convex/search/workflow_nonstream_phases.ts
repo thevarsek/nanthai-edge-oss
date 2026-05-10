@@ -10,6 +10,7 @@ import {
   parseAnalysisArtifact,
   parsePlanningArtifact,
   parseStructuredArtifact,
+  resolveSearchMaxTokens,
   SEARCH_TRANSFORMS,
   SearchResult,
   summarizeSearchResults,
@@ -152,6 +153,7 @@ export async function runInitialSearchPhase(
     queries,
     searchModel,
     args.apiKey,
+    { maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel) },
   );
 
   // M23: Track Perplexity search costs.
@@ -251,6 +253,7 @@ export async function runDepthSearchPhase(
     queries,
     searchModel,
     args.apiKey,
+    { maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel) },
   );
 
   // M23: Track Perplexity search costs.

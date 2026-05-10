@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import { GenerationCancelledError } from "../chat/generation_helpers";
 import {
@@ -9,7 +9,9 @@ import {
   buildResearchPlanningPrompt,
   buildResearchSynthesisPrompt,
   buildSearchSynthesisPrompt,
+  executePerplexitySearch,
   resolveComplexityPreset,
+  resolveSearchMaxTokens,
 } from "../search/helpers";
 import {
   buildQueryGenerationPrompt,
@@ -74,11 +76,44 @@ test("search helper prompts cover successful and empty search contexts", () => {
   assert.match(buildPaperArchitecturePrompt("Artifacts", 3), /argumentBlueprint/);
   assert.match(buildPaperGenerationSystemPrompt("Synthesis"), /executive summary/i);
   assert.match(buildPaperGenerationSystemPrompt("Synthesis"), /do not fabricate sources/i);
+  assert.match(buildPaperGenerationSystemPrompt("Synthesis"), /write the final paper directly/i);
   assert.match(
     buildPaperGenerationSystemPrompt("Synthesis", { complexity: 3 }),
     /Comprehensive: before finalizing/,
   );
   assert.equal(resolveComplexityPreset("paper", 99).depth, 3);
+  assert.equal(resolveSearchMaxTokens("paper", 1), 4096);
+  assert.equal(resolveSearchMaxTokens("paper", 2), 6144);
+  assert.equal(resolveSearchMaxTokens("paper", 3), 8000);
+  assert.equal(resolveSearchMaxTokens("web", 1), 4096);
+  assert.equal(resolveSearchMaxTokens("web", 2), 6144);
+  assert.equal(resolveSearchMaxTokens("web", 3), 8000);
+  assert.equal(resolveSearchMaxTokens("paper", 3, "perplexity/sonar-pro"), 8000);
+  assert.equal(resolveSearchMaxTokens("paper", 3, "perplexity/sonar-pro-search"), 8000);
+  assert.equal(resolveSearchMaxTokens("paper", 3, "perplexity/sonar"), 8000);
+});
+
+test("executePerplexitySearch normalizes timeout aborts", async (t) => {
+  t.after(() => mock.restoreAll());
+
+  const fakeAbort: { name: string; message: string } = {
+    name: "AbortError",
+    message: "This operation was aborted",
+  };
+  mock.method(globalThis, "fetch", async () => {
+    throw fakeAbort;
+  });
+
+  const [result] = await executePerplexitySearch(
+    ["latest AI search benchmarks"],
+    "perplexity/sonar-pro-search",
+    "test-key",
+    { maxTokens: 8000 },
+  );
+
+  assert.equal(result?.success, false);
+  assert.match(result?.error ?? "", /Perplexity search timeout after/);
+  assert.doesNotMatch(result?.error ?? "", /^AbortError$/);
 });
 
 test("workflow shared helpers compute progress and throw on cancelled sessions", async () => {

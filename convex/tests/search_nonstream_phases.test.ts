@@ -82,18 +82,21 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   const updates: Record<string, unknown>[] = [];
   const trackCalls: Record<string, unknown>[] = [];
   const writes: Record<string, unknown>[] = [];
+  const searchOptions: Array<Record<string, unknown> | undefined> = [];
 
   const deps = createWorkflowNonstreamDepsForTest({
     updateSession: async (_ctx: unknown, _id: unknown, patch: unknown) => {
       updates.push(patch as Record<string, unknown>);
     },
-    executePerplexitySearch: async (queries: unknown) =>
-      (queries as string[]).map((query) => ({
+    executePerplexitySearch: async (queries: unknown, _model, _apiKey, options) => {
+      searchOptions.push(options as Record<string, unknown> | undefined);
+      return (queries as string[]).map((query) => ({
         query,
         success: true,
         content: `result:${query}`,
         citations: ["https://example.com"],
-      })),
+      }));
+    },
     trackPerplexitySearchCosts: async (_ctx: unknown, results: unknown, meta: unknown) => {
       trackCalls.push({
         count: (results as unknown[]).length,
@@ -112,7 +115,7 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
 
   const initial = await runInitialSearchPhase(
     ctx,
-    buildArgs(),
+    { ...buildArgs(), complexity: 3 },
     ["swift actors"],
     "perplexity/sonar",
     2,
@@ -120,7 +123,7 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   );
   const depth = await runDepthSearchPhase(
     ctx,
-    buildArgs(),
+    { ...buildArgs(), complexity: 3 },
     ["swift isolated"],
     "perplexity/sonar",
     3,
@@ -133,6 +136,8 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   assert.equal(updates[0]?.status, "searching");
   assert.equal(updates[1]?.status, "deepening");
   assert.equal(trackCalls.length, 2);
+  assert.equal(searchOptions[0]?.maxTokens, 8000);
+  assert.equal(searchOptions[1]?.maxTokens, 8000);
   assert.equal(writes[0]?.phaseType, "initial_search");
   assert.equal(writes[1]?.phaseType, "depth_iteration");
 });

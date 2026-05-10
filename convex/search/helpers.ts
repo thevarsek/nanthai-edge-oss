@@ -28,6 +28,28 @@ export interface ComplexityPreset {
   queryGen: "none" | "per-participant";
 }
 
+const SEARCH_COMPLEXITY_MAX_TOKENS: Record<number, number> = {
+  1: 4096,
+  2: 6144,
+  3: 8000,
+};
+
+const SEARCH_MODEL_MAX_TOKENS: Record<string, number> = {
+  [MODEL_IDS.searchPerplexity.thorough]: 8000,
+  [MODEL_IDS.searchPerplexity.comprehensive]: 8000,
+};
+
+export function resolveSearchMaxTokens(
+  _mode: "web" | "paper",
+  complexity: number,
+  searchModel?: string,
+): number {
+  const clamped = Math.max(1, Math.min(3, Math.round(complexity)));
+  const desired = SEARCH_COMPLEXITY_MAX_TOKENS[clamped] ?? 6144;
+  const modelCap = searchModel ? SEARCH_MODEL_MAX_TOKENS[searchModel] : undefined;
+  return modelCap ? Math.min(desired, modelCap) : desired;
+}
+
 const WEB_PRESETS: Record<number, ComplexityPreset> = {
   1: {
     searchModel: MODEL_IDS.searchPerplexity.quick,
@@ -105,9 +127,10 @@ export async function executePerplexitySearch(
   queries: string[],
   searchModel: string,
   apiKey: string,
+  options: { maxTokens?: number } = {},
 ): Promise<SearchResult[]> {
   const results = await Promise.allSettled(
-    queries.map((query) => callPerplexity(query, searchModel, apiKey)),
+    queries.map((query) => callPerplexity(query, searchModel, apiKey, options.maxTokens)),
   );
 
   return results.map((result, i) => {
@@ -150,6 +173,7 @@ async function callPerplexity(
   query: string,
   model: string,
   apiKey: string,
+  maxTokens = 5120,
 ): Promise<PerplexityResponse> {
   // Perplexity models have native web search — they always search, that's their
   // purpose.  Adding the `openrouter:web_search` server tool causes a 404
@@ -163,14 +187,16 @@ async function callPerplexity(
       {
         role: "system",
         content:
-          "You are a web research assistant. Include ALL source URLs as inline clickable markdown links: [Source Title](https://url). " +
+          "You are a web research assistant. Return dense research notes, not a narrative essay. " +
+          "Prioritize source-backed claims, named studies, concrete numbers, counterpoints, limitations, and direct URLs. " +
+          "Avoid generic background prose and repetition. Include ALL source URLs as inline clickable markdown links: [Source Title](https://url). " +
           "Place citations near the claims they support — do not group them at the end.",
       },
       { role: "user", content: query },
     ],
     stream: false,
     temperature: 0.3,
-    max_tokens: 5120,
+    max_tokens: maxTokens,
     // Non-Perplexity models: add server tool so they can search the web.
     // Perplexity models: omit tools — they search natively and reject the
     // tools parameter with a 404.
@@ -288,6 +314,43 @@ async function callPerplexity(
       : undefined;
 
     return { content, citations, usage, generationId: parsed?.id ?? undefined };
+  } catch (error) {
+    if (error instanceof ConvexError) throw error;
+
+    const errObj = (error ?? {}) as {
+      name?: unknown;
+      message?: unknown;
+      cause?: unknown;
+    };
+    const errName = typeof errObj.name === "string" ? errObj.name : undefined;
+    const errMessage =
+      typeof errObj.message === "string" ? errObj.message : undefined;
+    const cause = errObj.cause != null ? String(errObj.cause) : undefined;
+
+    if (errName === "AbortError") {
+      console.error("[perplexity:search] timeout", {
+        model,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      });
+      throw new Error(
+        `Perplexity search timeout after ${REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`,
+      );
+    }
+
+    if (errMessage === "fetch failed") {
+      console.error("[perplexity:search] fetch failed", {
+        model,
+        error: errMessage,
+        ...(cause ? { cause } : {}),
+      });
+      const fetchErr = new Error(
+        `Perplexity search fetch failed for model ${model}${cause ? `: ${cause}` : ""}`,
+      );
+      (fetchErr as NodeJS.ErrnoException).cause = cause;
+      throw fetchErr;
+    }
+
+    throw error;
   } finally {
     clearTimeout(timeout);
   }
