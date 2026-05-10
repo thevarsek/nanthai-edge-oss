@@ -17,7 +17,6 @@ import {
 } from "./helpers";
 import { MODEL_IDS } from "../lib/model_constants";
 import {
-  clampResearchPaperReasoningEffort,
   computeProgress,
   PipelineArgs,
   updateSession,
@@ -300,11 +299,8 @@ export async function runSynthesisPhase(
     {
       temperature: 0.3,
       maxTokens: args.maxTokens,
-      includeReasoning: args.includeReasoning,
-      reasoningEffort: clampResearchPaperReasoningEffort(
-        args.includeReasoning,
-        args.reasoningEffort ?? null,
-      ),
+      includeReasoning: false,
+      reasoningEffort: null,
       transforms: SEARCH_TRANSFORMS,
     },
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
@@ -374,11 +370,8 @@ export async function runPaperArchitecturePhase(
     {
       temperature: 0.3,
       maxTokens: args.maxTokens,
-      includeReasoning: args.includeReasoning,
-      reasoningEffort: clampResearchPaperReasoningEffort(
-        args.includeReasoning,
-        args.reasoningEffort ?? null,
-      ),
+      includeReasoning: false,
+      reasoningEffort: null,
       transforms: SEARCH_TRANSFORMS,
     },
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },

@@ -262,8 +262,8 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   assert.equal(writes[0]?.phaseType, "synthesis");
   assert.equal(ancillaryCalls[0]?.source, "search_synthesis");
   assert.equal(requestParams[0]?.maxTokens, 12_000);
-  assert.equal(requestParams[0]?.includeReasoning, true);
-  assert.equal(requestParams[0]?.reasoningEffort, "minimal");
+  assert.equal(requestParams[0]?.includeReasoning, false);
+  assert.equal(requestParams[0]?.reasoningEffort, null);
 });
 
 test("runPaperArchitecturePhase persists structured artifact and tracks cost", async () => {
@@ -321,6 +321,6 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
   assert.equal(writes[0]?.phaseType, "paper_architecture");
   assert.equal(ancillaryCalls[0]?.source, "search_architecture");
   assert.equal(requestParams[0]?.maxTokens, 12_000);
-  assert.equal(requestParams[0]?.includeReasoning, true);
-  assert.equal(requestParams[0]?.reasoningEffort, "minimal");
+  assert.equal(requestParams[0]?.includeReasoning, false);
+  assert.equal(requestParams[0]?.reasoningEffort, null);
 });
