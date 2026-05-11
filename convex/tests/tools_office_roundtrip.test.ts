@@ -333,6 +333,105 @@ test("editDocx regenerates the document and reports old and new word counts", as
   assert.doesNotMatch(String((readBack.data as any).text), /original document body/i);
 });
 
+test("editDocx covers validation, extraction failures, advanced options, and site download URLs", async () => {
+  const harness = createStorageHarness();
+  const originalSiteUrl = process.env.CONVEX_SITE_URL;
+  process.env.CONVEX_SITE_URL = "https://convex.example";
+
+  const missingStorageId = await editDocx.execute(harness.toolCtx, {
+    storageId: "",
+    title: "Doc",
+    sections: [{ heading: "One", body: "Body" }],
+  });
+  const missingTitle = await editDocx.execute(harness.toolCtx, {
+    storageId: "missing",
+    title: "",
+    sections: [{ heading: "One", body: "Body" }],
+  });
+  const missingSections = await editDocx.execute(harness.toolCtx, {
+    storageId: "missing",
+    title: "Doc",
+    sections: [],
+  });
+  const missingOriginal = await editDocx.execute(harness.toolCtx, {
+    storageId: "missing",
+    title: "Doc",
+    sections: [{ heading: "One", body: "Body" }],
+  });
+  const throwingCtx = {
+    userId: "user_1",
+    ctx: {
+      storage: {
+        get: async () => {
+          throw new Error("bad id");
+        },
+      },
+    },
+  } as any;
+  const invalidStorage = await editDocx.execute(throwingCtx, {
+    storageId: "bad",
+    title: "Doc",
+    sections: [{ heading: "One", body: "Body" }],
+  });
+
+  assert.equal(missingStorageId.success, false);
+  assert.equal(missingTitle.success, false);
+  assert.equal(missingSections.success, false);
+  assert.equal(missingOriginal.success, false);
+  assert.equal(invalidStorage.success, false);
+
+  const corruptStorageId = await harness.storage.store(new Blob(["not a docx"], { type: "text/plain" }));
+  try {
+    const edited = await editDocx.execute(harness.toolCtx, {
+      storageId: corruptStorageId,
+      title: "Advanced / Edit",
+      fontFamily: "Aptos",
+      fontSize: 12,
+      headingFont: "Aptos Display",
+      lineSpacing: 1.4,
+      margins: { top: 0.25, right: 0.25, bottom: 0.25, left: 0.25 },
+      headerText: "Confidential",
+      showPageNumbers: true,
+      includeToc: true,
+      sections: [
+        {
+          heading: "Too high",
+          headingLevel: 99,
+          body: "***both*** **bold** *italic*\nPlain text",
+          table: {
+            headers: ["A", "B"],
+            rows: [["one"], ["two", null as any, "extra"]],
+            columnWidths: [100, 100],
+          },
+        },
+        {
+          heading: "Too low",
+          headingLevel: -5,
+          body: "",
+          table: { headers: [], rows: [] },
+        },
+        {
+          heading: "No table",
+          body: "Final words",
+          table: { headers: "bad" as any, rows: [] },
+        },
+      ],
+    });
+
+    assert.equal(edited.success, true);
+    assert.equal((edited.data as any).originalWordCount, 0);
+    assert.equal((edited.data as any).newWordCount, 7);
+    assert.match(String((edited.data as any).downloadUrl), /^https:\/\/convex\.example\/download/);
+    assert.match(String((edited.data as any).summary), /3 sections/);
+  } finally {
+    if (originalSiteUrl === undefined) {
+      delete process.env.CONVEX_SITE_URL;
+    } else {
+      process.env.CONVEX_SITE_URL = originalSiteUrl;
+    }
+  }
+});
+
 test("generatePptx and readPptx round-trip multiple slide layouts and notes", async () => {
   const harness = createStorageHarness();
   const generated = await generatePptx.execute(harness.toolCtx, {
@@ -452,4 +551,120 @@ test("editPptx verifies the source deck and stores a regenerated presentation", 
   assert.match(String((readBack.data as any).text), /Updated section/);
   assert.match(String((readBack.data as any).text), /Updated chart/);
   assert.doesNotMatch(String((readBack.data as any).text), /Initial content/);
+});
+
+test("editPptx validates required arguments and missing source storage", async () => {
+  const harness = createStorageHarness();
+
+  const missingStorageId = await editPptx.execute(harness.toolCtx, {
+    storageId: "",
+    title: "Deck",
+    slides: [{ title: "Slide" }],
+  });
+  const missingTitle = await editPptx.execute(harness.toolCtx, {
+    storageId: "storage_missing",
+    title: "",
+    slides: [{ title: "Slide" }],
+  });
+  const missingSlides = await editPptx.execute(harness.toolCtx, {
+    storageId: "storage_missing",
+    title: "Deck",
+    slides: [],
+  });
+  const missingSource = await editPptx.execute(harness.toolCtx, {
+    storageId: "storage_missing",
+    title: "Deck",
+    slides: [{ title: "Slide" }],
+  });
+
+  assert.equal(missingStorageId.success, false);
+  assert.match(String(missingStorageId.error), /storageId/);
+  assert.equal(missingTitle.success, false);
+  assert.match(String(missingTitle.error), /title/);
+  assert.equal(missingSlides.success, false);
+  assert.match(String(missingSlides.error), /non-empty array/);
+  assert.equal(missingSource.success, false);
+  assert.match(String(missingSource.error), /Original file not found/);
+});
+
+test("editPptx covers fallback layouts, image branches, warnings, and site download URLs", async () => {
+  const harness = createStorageHarness();
+  const originalSiteUrl = process.env.CONVEX_SITE_URL;
+  process.env.CONVEX_SITE_URL = "https://convex.example";
+
+  const original = await generatePptx.execute(harness.toolCtx, {
+    title: "Original",
+    slides: [{ title: "Source", body: "Base" }],
+  });
+  const pixelPng = "image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";
+
+  try {
+    const edited = await editPptx.execute(harness.toolCtx, {
+      storageId: (original.data as any).storageId,
+      title: "Branch Deck",
+      theme: {
+        primaryColor: "#101010",
+        secondaryColor: "#202020",
+        accentColor: "#303030",
+        titleFont: "Aptos Display",
+        bodyFont: "Aptos",
+        titleFontSize: 22,
+        bodyFontSize: 14,
+        backgroundColor: "#FAFAFA",
+      },
+      showSlideNumbers: true,
+      slides: [
+        {
+          title: "Fallback table",
+          layout: "table",
+          body: "- fallback body",
+          table: { headers: "not-an-array", rows: [] },
+        },
+        {
+          title: "Fallback chart",
+          layout: "chart",
+          body: "chart fallback",
+          chart: { type: "pie", labels: ["A"], datasets: "bad" },
+        },
+        {
+          title: "Image grid empty",
+          layout: "image",
+          body: "No images should still render",
+        },
+        {
+          title: "Image grid populated",
+          layout: "image",
+          body: "Visible caption",
+          backgroundImage: { data: pixelPng, altText: "Background" },
+          images: [
+            { data: pixelPng, altText: "One" },
+            { data: pixelPng, altText: "Two" },
+            { data: pixelPng, altText: "Three" },
+            { data: pixelPng, altText: "Four" },
+            { data: pixelPng, altText: "Five" },
+            { data: pixelPng, altText: "Six" },
+            { data: pixelPng, altText: "Seven" },
+            { imageStorageId: "missing_image", altText: "Missing" },
+          ],
+        },
+        {
+          title: "Unknown layout",
+          layout: "unexpected",
+          body: "Default text branch",
+        },
+      ],
+    });
+
+    assert.equal(edited.success, true);
+    assert.match(String((edited.data as any).downloadUrl), /^https:\/\/convex\.example\/download/);
+    assert.match(String((edited.data as any).message), /Warnings:/);
+    assert.equal((edited.data as any).imageCount, 8);
+    assert.equal((edited.data as any).newSlideCount, 6);
+  } finally {
+    if (originalSiteUrl === undefined) {
+      delete process.env.CONVEX_SITE_URL;
+    } else {
+      process.env.CONVEX_SITE_URL = originalSiteUrl;
+    }
+  }
 });

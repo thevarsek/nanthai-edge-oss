@@ -4,9 +4,12 @@ import test from "node:test";
 import { generateEml } from "../tools/generate_eml";
 import { readEml } from "../tools/read_eml";
 import {
+  checkClozeConnection,
+  checkGmailManualConnection,
   checkAppleCalendarConnection,
   checkMicrosoftConnection,
   checkNotionConnection,
+  checkSlackConnection,
   getGrantedGoogleIntegrations,
 } from "../tools/index";
 import {
@@ -68,6 +71,127 @@ test("generateEml and readEml round-trip multipart email content", async () => {
   assert.equal((parsed.data as any).hasHtmlBody, true);
 });
 
+test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies", async () => {
+  const invalid = await readEml.execute(
+    {
+      userId: "user_1",
+      ctx: { storage: { get: async () => { throw new Error("bad id"); } } },
+    } as any,
+    { storageId: "bad" },
+  );
+  assert.equal(invalid.success, false);
+  assert.match(invalid.error ?? "", /Invalid storageId/);
+
+  const missing = await readEml.execute(
+    { userId: "user_1", ctx: { storage: { get: async () => null } } } as any,
+    { storageId: "missing" },
+  );
+  assert.equal(missing.success, false);
+  assert.match(missing.error ?? "", /File not found/);
+
+  const empty = await readEml.execute(
+    { userId: "user_1", ctx: { storage: { get: async () => new Blob(["  \n "]) } } } as any,
+    { storageId: "empty" },
+  );
+  assert.equal(empty.success, true);
+  assert.equal((empty.data as any).message, "The .eml file is empty.");
+
+  const htmlOnly = await readEml.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        storage: {
+          get: async () => new Blob([
+            [
+              "From: Ada <ada@example.com>",
+              "To: Team <team@example.com>",
+              "Subject: HTML",
+              "Content-Type: text/html",
+              "",
+              "<style>.x{}</style><script>x()</script><p>Hello&nbsp;&amp;&nbsp;goodbye<br>next</p>",
+            ].join("\r\n"),
+          ]),
+        },
+      },
+    } as any,
+    { storageId: "html" },
+  );
+  assert.equal(htmlOnly.success, true);
+  assert.equal((htmlOnly.data as any).body, "Hello & goodbye\nnext");
+  assert.equal((htmlOnly.data as any).hasHtmlBody, true);
+
+  const encoded = await readEml.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        storage: {
+          get: async () => new Blob([
+            [
+              "From: first@example.com",
+              "From: duplicate@example.com",
+              "To: you@example.com",
+              "Subject: =?utf-8?Q?ignored?=",
+              "Content-Type: multipart/alternative; boundary=\"b1\"",
+              "",
+              "--b1",
+              "Content-Type: text/plain",
+              "Content-Transfer-Encoding: quoted-printable",
+              "",
+              "Hello=20soft=\r\nline",
+              "--b1",
+              "Content-Type: text/html",
+              "Content-Transfer-Encoding: base64",
+              "",
+              "PGI+SFRNTDwvYj4=",
+              "--b1--",
+            ].join("\r\n"),
+          ]),
+        },
+      },
+    } as any,
+    { storageId: "encoded" },
+  );
+  assert.equal(encoded.success, true);
+  assert.equal((encoded.data as any).from, "first@example.com, duplicate@example.com");
+  assert.equal((encoded.data as any).body, "Hello softline");
+  assert.equal((encoded.data as any).headerCount, 4);
+
+  const malformedBase64 = await readEml.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        storage: {
+          get: async () => new Blob([
+            [
+              "Content-Type: text/html",
+              "Content-Transfer-Encoding: base64",
+              "",
+              "not valid base64%%%<p>fallback</p>",
+            ].join("\n"),
+          ]),
+        },
+      },
+    } as any,
+    { storageId: "bad_base64" },
+  );
+  assert.equal(malformedBase64.success, true);
+  assert.match(String((malformedBase64.data as any).body), /fallback/);
+
+  const large = await readEml.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        storage: {
+          get: async () => new Blob([`Subject: Large\n\n${"x".repeat(50_001)}`]),
+        },
+      },
+    } as any,
+    { storageId: "large" },
+  );
+  assert.equal(large.success, true);
+  assert.match(String((large.data as any).warning), /large/);
+});
+
 test("tool connection helpers return granted integrations and tolerate query failures", async () => {
   const integrations = await getGrantedGoogleIntegrations(
     {
@@ -93,11 +217,26 @@ test("tool connection helpers return granted integrations and tolerate query fai
     { runQuery: async () => { throw new Error("missing"); } } as any,
     "user_1",
   );
+  const gmailManual = await checkGmailManualConnection(
+    { runQuery: async () => ({ status: "active" }) } as any,
+    "user_1",
+  );
+  const clozeInactive = await checkClozeConnection(
+    { runQuery: async () => ({ status: "expired" }) } as any,
+    "user_1",
+  );
+  const slackThrows = await checkSlackConnection(
+    { runQuery: async () => { throw new Error("offline"); } } as any,
+    "user_1",
+  );
 
   assert.deepEqual(integrations, ["drive"]);
   assert.equal(microsoft, true);
   assert.equal(notion, false);
   assert.equal(apple, false);
+  assert.equal(gmailManual, true);
+  assert.equal(clozeInactive, false);
+  assert.equal(slackThrows, false);
 });
 
 test("progressive registry profiles add only the tools unlocked by profile and runtime", () => {

@@ -94,6 +94,34 @@ test("clozeHeaders and validateClozeApiKey normalize successful profile response
   }
 });
 
+test("validateClozeApiKey reports unauthorized and non-ok Cloze responses", async () => {
+  const originalFetch = globalThis.fetch;
+  const responses = [
+    jsonResponse(401, { error: "unauthorized" }),
+    jsonResponse(500, { error: "server" }),
+    jsonResponse(200, { email: "raw@example.com", name: "Raw Name" }),
+  ];
+  let callCount = 0;
+  globalThis.fetch = (async () => responses[callCount++]) as any;
+
+  try {
+    await assert.rejects(
+      validateClozeApiKey("bad_key"),
+      /unauthorized/,
+    );
+    await assert.rejects(
+      validateClozeApiKey("server_key"),
+      /Cloze API error 500/,
+    );
+    assert.deepEqual(await validateClozeApiKey("raw_key"), {
+      email: "raw@example.com",
+      displayName: "Raw Name",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("clozeFetch gates requests and returns final non-retryable responses", async () => {
   const { toolCtx, gateCalls } = buildGatedToolCtx();
   const originalFetch = globalThis.fetch;
@@ -114,6 +142,65 @@ test("clozeFetch gates requests and returns final non-retryable responses", asyn
     assert.equal(fetchCalls[0].url, "https://api.cloze.com/v1/people/find");
     assert.equal(fetchCalls[0].auth, "Bearer cloze_token");
     assert.equal(gateCalls.length, 2, "claim and release should both run");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("clozeFetch waits for gates, retries retryable responses, and releases failed attempts", async () => {
+  const gateCalls: Array<Record<string, unknown>> = [];
+  let claimCount = 0;
+  const toolCtx = {
+    userId: "user_1",
+    ctx: {
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        gateCalls.push(args);
+        if ("leaseMs" in args) {
+          claimCount += 1;
+          return claimCount === 1
+            ? { granted: false, waitMs: 1 }
+            : { granted: true, waitMs: 0 };
+        }
+        return undefined;
+      },
+    },
+  } as any;
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    return fetchCount === 1
+      ? jsonResponse(429, { error: "slow down" }, { "retry-after": "0" })
+      : jsonResponse(200, { ok: true });
+  }) as any;
+
+  try {
+    const response = await clozeFetch(toolCtx, "https://api.cloze.com/v1/user/profile", "token");
+    assert.equal(response.status, 200);
+    assert.equal(fetchCount, 2);
+    assert.ok(gateCalls.some((call) => call.lastResponseStatus === 429));
+    assert.ok(gateCalls.some((call) => call.lastResponseStatus === 200));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("clozeFetch retries thrown fetches and rethrows the final failure", async () => {
+  const { toolCtx, gateCalls } = buildGatedToolCtx();
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = (async () => {
+    fetchCount += 1;
+    throw new Error(`network ${fetchCount}`);
+  }) as any;
+
+  try {
+    await assert.rejects(
+      clozeFetch(toolCtx, "/people/find", "token"),
+      /network 5/,
+    );
+    assert.equal(fetchCount, 5);
+    assert.equal(gateCalls.filter((call) => "lastResponseStatus" in call).length, 5);
   } finally {
     globalThis.fetch = originalFetch;
   }

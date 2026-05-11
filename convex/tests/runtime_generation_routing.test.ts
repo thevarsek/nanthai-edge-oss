@@ -13,6 +13,29 @@ import {
 } from "../tools/runtime_safety";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
+function baseRuntimeArgs(overrides: Record<string, unknown> = {}) {
+  return {
+    chatId: "chat_1" as any,
+    userMessageId: "msg_user" as any,
+    assistantMessageIds: ["msg_assistant" as any],
+    generationJobIds: ["job_1" as any],
+    participant: {
+      modelId: "openai/gpt-5",
+      messageId: "msg_assistant" as any,
+      jobId: "job_1" as any,
+    } as any,
+    userId: "user_1",
+    expandMultiModelGroups: false,
+    webSearchEnabled: false,
+    effectiveIntegrations: [],
+    directToolNames: [],
+    isPro: true,
+    allowSubagents: false,
+    resumeExpected: false,
+    ...overrides,
+  };
+}
+
 test("buildRuntimeBaseToolRegistry exposes only the always-on runtime-safe base tools", () => {
   const registry = buildRuntimeBaseToolRegistry({ isPro: true });
 
@@ -113,4 +136,163 @@ test("runGenerationParticipantRuntimeHandler delegates to Node when continuation
   assert.equal(delegatedArgs.length, 1);
   assert.equal(delegatedArgs[0]?.userId, "user_1");
   assert.equal((delegatedArgs[0]?.participant as Record<string, unknown>)?.jobId, "job_1");
+});
+
+test("runGenerationParticipantRuntimeHandler delegates direct node-required runtime work", async () => {
+  const delegatedArgs: Array<Record<string, unknown>> = [];
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return {
+          hasVideoGeneration: true,
+          hasAudioOutput: false,
+        };
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runAction: async (_ref: unknown, args: Record<string, unknown>) => {
+      delegatedArgs.push(args);
+    },
+  });
+
+  await runGenerationParticipantRuntimeHandler(
+    ctx,
+    baseRuntimeArgs({ directToolNames: ["workspace_exec"], enqueuedAt: Date.now() - 5 }),
+  );
+
+  assert.equal(delegatedArgs.length, 1);
+});
+
+test("runGenerationParticipantRuntimeHandler exits when expected continuation cannot be claimed", async () => {
+  const mutationCalls: Array<Record<string, unknown>> = [];
+  let jobQueryCount = 0;
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("jobId" in args && Object.keys(args).length === 1) {
+        jobQueryCount += 1;
+        return null;
+      }
+      if ("modelId" in args) {
+        return {
+          hasVideoGeneration: false,
+          hasAudioOutput: false,
+        };
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutationCalls.push(args);
+      return null;
+    },
+  });
+
+  await runGenerationParticipantRuntimeHandler(
+    ctx,
+    baseRuntimeArgs({ resumeExpected: true }),
+  );
+
+  assert.equal(jobQueryCount, 1);
+  assert.deepEqual(mutationCalls, [{ jobId: "job_1" }]);
+});
+
+test("runGenerationParticipantRuntimeHandler clears continuations for missing and terminal jobs", async () => {
+  for (const job of [null, { status: "completed" }, { status: "timedOut" }]) {
+    const scheduled: Array<Record<string, unknown>> = [];
+    const ctx = createMockCtx({
+      runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+        if ("modelId" in args) {
+          return {
+            hasVideoGeneration: false,
+            hasAudioOutput: false,
+          };
+        }
+        if ("jobId" in args) {
+          return job;
+        }
+        throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+      },
+      scheduler: {
+        runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+          scheduled.push(args);
+          return "sched_1";
+        },
+        runAt: async () => "unused",
+      },
+    });
+
+    await runGenerationParticipantRuntimeHandler(ctx, baseRuntimeArgs());
+
+    assert.deepEqual(scheduled, [{ jobId: "job_1" }]);
+  }
+});
+
+test("runGenerationParticipantRuntimeHandler finalizes setup failures and related batches", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  let jobQueryCount = 0;
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return {
+          hasVideoGeneration: false,
+          hasAudioOutput: false,
+          supportedParameters: [],
+          contextLength: 1024,
+        };
+      }
+      if ("jobId" in args) {
+        jobQueryCount += 1;
+        return { status: jobQueryCount === 1 ? "queued" : "failed" };
+      }
+      if ("messageId" in args) {
+        return { status: "failed" };
+      }
+      if ("userId" in args) {
+        return null;
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
+      runAt: async () => "unused",
+    },
+  });
+
+  await assert.rejects(
+    runGenerationParticipantRuntimeHandler(
+      ctx,
+      baseRuntimeArgs({
+        subagentBatchId: "batch_1" as any,
+        drivePickerBatchId: "drive_batch_1" as any,
+        searchSessionId: "search_1" as any,
+      }),
+    ),
+    /OpenRouter API key/,
+  );
+
+  assert.ok(scheduled.some((args) => args.jobId === "job_1"));
+  assert.ok(mutations.some((args) =>
+    args.messageId === "msg_assistant"
+    && args.jobId === "job_1"
+    && args.status === "failed"
+  ));
+  assert.ok(mutations.some((args) =>
+    args.batchId === "batch_1"
+    && args.expectedCurrentStatus === "resuming"
+    && args.status === "failed"
+  ));
+  assert.ok(mutations.some((args) =>
+    args.batchId === "drive_batch_1"
+    && args.status === "failed"
+  ));
+  assert.ok(mutations.some((args) =>
+    args.sessionId === "search_1"
+    && (args.patch as any)?.status === "failed"
+  ));
 });
