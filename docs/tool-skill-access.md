@@ -39,13 +39,30 @@ Some lightweight general tools remain in the base registry for reliability and b
 - `load_skill`
 - `search_chats`
 - `fetch_image`
-- scheduled job tools
-- persona tools
-- skill management tools
+- `list_skills`
 
 Subagents are no longer part of the base registry. They are unlocked through the dedicated `parallel-subagents` skill and a small set of built-in strategic planning skills that can genuinely benefit from parallel decomposition.
 
-The heaviest tool families — docs, connected apps, and runtime — now sit behind profile-driven expansion.
+Scheduled job tools, persona tools, skill management mutators, docs, connected apps, analytics, workspace/runtime tools, and subagents now sit behind profile-driven expansion.
+
+### Static context measurements (May 11, 2026)
+
+The current progressive implementation materially reduces the default model-facing context surface before any skill is loaded:
+
+| Measurement | Approximate value |
+|---|---:|
+| Visible system skills | 55 |
+| Hidden / non-visible system skills | 11 |
+| `<available_skills>` catalog size | ~5.1k tokens |
+| Full visible skill instruction size | ~67k tokens |
+| Catalog vs full instruction reduction | ~92.5% |
+| Base registry tools | 4 |
+| Fully expanded registry tools | 115 |
+| Base tool-schema size | ~649 tokens |
+| Fully expanded tool-schema size | ~28.4k tokens |
+| Base registry vs full registry reduction | ~97.7% |
+
+These are static architecture measurements. They validate reduced default context and schema exposure, not improved task success or routing accuracy.
 
 ### Runtime compatibility fallback
 
@@ -71,7 +88,8 @@ Current backend behavior is intentionally forgiving:
 
 | Tool family | Gate |
 |---|---|
-| Document, text, utility, search, persona, scheduled-job, and skill tools | Pro + active model tool-capable |
+| Base discovery/search/image tools (`load_skill`, `list_skills`, `search_chats`, `fetch_image`) | Pro + active model tool-capable |
+| Document, text, persona, scheduled-job, and skill-management mutator tools | Pro + active model tool-capable + matching skill/tool profile |
 | Connected-app tools | Pro + active model tool-capable + active connection + integration requested for the run |
 | Subagents | Pro + active model tool-capable + single-participant chat + subagents enabled |
 | Workspace/runtime tools | Pro + active model tool-capable (skill-activated via `code_workspace`) |
@@ -84,11 +102,12 @@ Current backend behavior is intentionally forgiving:
 | Document workspace tools | `list_documents`, `read_document`, `find_in_document` | Pro + explicit scoped documents in the current chat turn |
 | Document generation/editing tools | `generate_docx`, `read_docx`, `edit_docx`, `generate_pptx`, `read_pptx`, `edit_pptx`, `generate_xlsx`, `read_xlsx`, `edit_xlsx` | Pro |
 | Text/file tools | `generate_text_file`, `read_text_file`, `generate_eml`, `read_eml` | Pro |
-| Utility | `fetch_image` | Pro |
-| Chat search | `search_chats` | Pro |
-| Scheduled jobs | `create_scheduled_job`, `list_scheduled_jobs`, `update_scheduled_job`, `delete_scheduled_job` | Pro |
-| Persona management | `create_persona`, `delete_persona` | Pro |
-| Skill management and discovery | `load_skill`, `list_skills`, `create_skill`, `update_skill`, `delete_skill`, `enable_skill_for_chat`, `disable_skill_for_chat`, `assign_skill_to_persona`, `remove_skill_from_persona` | Pro |
+| Utility | `fetch_image` | Pro + base registry |
+| Chat search | `search_chats` | Pro + base registry |
+| Skill discovery | `load_skill`, `list_skills` | Pro + base registry |
+| Scheduled jobs | `create_scheduled_job`, `list_scheduled_jobs`, `update_scheduled_job`, `delete_scheduled_job` | Pro + `scheduledJobs` profile |
+| Persona management | `create_persona`, `delete_persona` | Pro + `personas` profile |
+| Skill management mutators | `create_skill`, `update_skill`, `delete_skill`, `enable_skill_for_chat`, `disable_skill_for_chat`, `assign_skill_to_persona`, `remove_skill_from_persona` | Pro + `skillsManagement` profile |
 | Subagents | `spawn_subagents` | Pro + tool-capable model + subagents enabled + subagent profile loaded |
 | Google Drive + Calendar | `drive_upload`, `drive_list`, `drive_read`, `drive_move`, `calendar_list`, `calendar_create`, `calendar_delete` | Pro + active Google OAuth connection + requested integration. OAuth is narrowed to `drive.file` + `calendar.events`; Drive access requires explicit Picker/OnePick file grants or app-created files. |
 | Gmail Manual | `gmail_send`, `gmail_read`, `gmail_search`, `gmail_delete`, `gmail_modify_labels`, `gmail_list_labels` | Pro + active `gmail_manual` connection + requested integration. Gmail no longer uses Google OAuth scopes. |

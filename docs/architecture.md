@@ -351,8 +351,8 @@ For a product-facing summary of which tiers expose which skills and tool familie
 
 ### Tool Gating Strategy
 
-- **Base tools**: Minimal shared registry for normal tool-capable chats (`fetch_image`, `search_chats`, scheduled jobs, persona tools, skill tools including `load_skill`).
-- **Profile-expanded tools**: Documents, connected apps, runtime/analytics, and subagents are added on later turns after a loaded skill unlocks the corresponding `requiredToolProfiles`.
+- **Base tools**: Minimal shared registry for normal tool-capable chats (`load_skill`, `list_skills`, `search_chats`, `fetch_image`).
+- **Profile-expanded tools**: Documents, scheduled jobs, personas, skill-management mutators, connected apps, runtime/analytics, and subagents are added on later turns after a loaded skill unlocks the corresponding `requiredToolProfiles`.
 - **Connection-gated tools**: Google Workspace, Microsoft 365, Notion, Apple Calendar, Slack, and Cloze profiles only register tools when the relevant integrations are both requested and actually connected.
 - **Subagent tool**: `spawn_subagents` now lives behind the `subagents` profile, so it is only exposed after a loaded skill calls for delegated parallel work. Child runs never receive this tool.
 

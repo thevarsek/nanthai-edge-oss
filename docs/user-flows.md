@@ -291,6 +291,16 @@ Select nodes as context, send message referencing selected nodes.
 ### 7.1 Web Search (Inline)
 Model runs web search tool during generation.
 
+Search complexity controls both query breadth and Perplexity output budget:
+
+| Complexity | Web search breadth | Per-query Perplexity output budget |
+|---|---:|---:|
+| Quick | 1 query | 4,096 tokens |
+| Thorough | 3 generated queries | 6,144 tokens |
+| Comprehensive | 5 generated queries | 8,000 tokens |
+
+Perplexity search prompts request dense research notes with claims, evidence, URLs, counterpoints, and limitations rather than narrative prose. These budgets apply to both normal web search and research-paper search phases; current thorough/comprehensive Perplexity model tiers also have an 8,000-token model guardrail.
+
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ChatViewModel+Preferences` (toggleWebSearch, setSearchMode), `SearchPanelView` |
@@ -299,6 +309,13 @@ Model runs web search tool during generation.
 
 ### 7.2 Research Paper Generation
 Multi-phase deep research pipeline (planning, search, analysis, depth search, synthesis, internal paper architecture, paper). M37 keeps the same client-facing Research Paper mode, Quick/Thorough/Comprehensive selector, and progress statuses; Convex now stores richer academic artifacts in `searchPhases.data` for research question/scope, source notes, literature matrix, claim bank, contradictions, outline, evidence map, and argument blueprint.
+
+Current backend behavior:
+
+- Research Paper regeneration reuses saved research artifacts and restarts from synthesis onward. It does not re-run the initial/depth Perplexity search phases when saved search results are available.
+- Synthesis, paper architecture, and final paper drafting inherit the user's requested `maxTokens`; the backend does not impose hidden phase-specific output caps.
+- Synthesis, paper architecture, and final paper drafting disable model reasoning (`includeReasoning: false`, `reasoningEffort: null`) so output budgets are reserved for artifacts and paper text rather than hidden reasoning.
+- Final paper drafting runs through the normal generation pipeline with chat tools disabled. Paper drafting does not auto-load chat skills or call `fetch_image` unless a future explicit paper-safe workflow enables those tools.
 
 | Platform | Key Files |
 |----------|-----------|
