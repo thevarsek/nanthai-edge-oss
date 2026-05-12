@@ -220,3 +220,79 @@ test("extractErrorMessage covers string, simple, metadata, duplicate raw, and un
   }), "same (provider: Anthropic)");
   assert.equal(extractErrorMessage(null), "Unknown OpenRouter error.");
 });
+
+test("processSSEEvent covers sparse event payloads without inventing deltas", () => {
+  assert.deepEqual(processSSEEvent({
+    data: JSON.stringify({ type: "state", state: "error", error: { message: "state failed" } }),
+  }), { error: "state failed" });
+  assert.deepEqual(processSSEEvent({
+    event: "chunk",
+    data: JSON.stringify({ content: "", reasoning: "", images: [] }),
+  }), {
+    contentDelta: "",
+    reasoningDelta: undefined,
+    imageUrls: undefined,
+  });
+  assert.deepEqual(processSSEEvent({
+    event: "complete",
+    data: JSON.stringify({ content: "" }),
+  }), {
+    contentDelta: undefined,
+    usage: undefined,
+    done: true,
+  });
+  assert.deepEqual(processSSEEvent({
+    event: "response.output_image.delta",
+    data: JSON.stringify({ delta: "" }),
+  }), { imageUrls: undefined });
+});
+
+test("processSSEEvent handles response-completed top-level usage and non-object response payloads", () => {
+  assert.deepEqual(processSSEEvent({
+    data: JSON.stringify({
+      type: "response.completed",
+      content: [{ type: "text", text: "from content" }],
+      output: [{ type: "output_image", image_url: "https://example.com/from-output.png" }],
+      response: 42,
+      usage: { prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 },
+    }),
+  }), {
+    contentDelta: "from content",
+    usage: { promptTokens: 2, completionTokens: 3, totalTokens: 5 },
+    imageUrls: ["https://example.com/from-output.png"],
+    done: true,
+  });
+});
+
+test("processSSEEvent reads complete choice messages when providers omit streaming delta", () => {
+  const result = processSSEEvent({
+    data: JSON.stringify({
+      choices: [{
+        message: {
+          content: [{ type: "text", text: "message text" }],
+          reasoning: "message reasoning",
+          images: ["https://example.com/message.png"],
+          tool_calls: [{ id: "call_1", function: { name: "lookup", arguments: "{}" } }],
+          annotations: [{ type: "url_citation", url_citation: { url: "https://example.com/citation" } }],
+        },
+        finish_reason: "stop",
+      }],
+    }),
+  });
+
+  assert.equal(result.contentDelta, "message text");
+  assert.equal(result.reasoningDelta, "message reasoning");
+  assert.deepEqual(result.imageUrls, ["https://example.com/message.png"]);
+  assert.equal(result.toolCallDeltas?.[0]?.id, "call_1");
+  assert.equal(result.annotations?.[0]?.url_citation.url, "https://example.com/citation");
+  assert.equal(result.done, true);
+});
+
+test("processSSEEvent returns usage-only chunks and non-streaming extraction falls through output", () => {
+  assert.deepEqual(processSSEEvent({
+    data: JSON.stringify({ usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }),
+  }), { usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } });
+  assert.equal(extractContentFromNonStreamingPayload({
+    output: [{ type: "output_text", text: "output fallback" }],
+  }).content, "output fallback");
+});
