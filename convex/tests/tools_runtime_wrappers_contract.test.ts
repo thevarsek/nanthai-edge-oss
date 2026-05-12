@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
+
+import { Sandbox } from "@vercel/sandbox";
 
 import { dataPythonExec } from "../tools/data_python_exec";
 import { dataPythonSandbox } from "../tools/data_python_sandbox";
@@ -94,6 +96,164 @@ test("persistent VM wrappers surface context errors and normalize environment se
   assert.equal(parseVmEnvironment("python"), "python");
   assert.equal(parseVmEnvironment("ruby"), "python");
   assert.equal(parseVmEnvironment(undefined), "python");
+});
+
+test("persistent VM wrappers execute successful filesystem workflows through the public tool API", async () => {
+  const previousEnv = {
+    token: process.env.VERCEL_SANDBOX_TOKEN,
+    project: process.env.VERCEL_SANDBOX_PROJECT_ID,
+    team: process.env.VERCEL_SANDBOX_TEAM_ID,
+    siteUrl: process.env.CONVEX_SITE_URL,
+  };
+  process.env.VERCEL_SANDBOX_TOKEN = "token";
+  process.env.VERCEL_SANDBOX_PROJECT_ID = "project";
+  process.env.VERCEL_SANDBOX_TEAM_ID = "team";
+  delete process.env.CONVEX_SITE_URL;
+
+  const commands: Array<{ cmd: string; args: string[] }> = [];
+  const writes: Array<Array<Record<string, unknown>>> = [];
+  const stored: Blob[] = [];
+  const mutations: Array<Record<string, unknown>> = [];
+  const sandbox = {
+    sandboxId: "sandbox_1",
+    runCommand: async (cmd: string, args: string[]) => {
+      commands.push({ cmd, args });
+      if (cmd === "bash" && args.join(" ").includes("find")) {
+        return {
+          exitCode: 0,
+          stdout: async () => "d\t/tmp/nanthai-edge/chat_1/vm-node/outputs\nf\t/tmp/nanthai-edge/chat_1/vm-node/outputs/report.txt\n",
+          stderr: async () => "",
+        };
+      }
+      return { exitCode: 0, stdout: async () => "ok", stderr: async () => "" };
+    },
+    readFileToBuffer: async ({ path }: { path: string }) => {
+      if (path.endsWith("missing.txt")) return null;
+      if (path.endsWith("image.png")) return Buffer.from([137, 80, 78, 71]);
+      if (path.endsWith("existing.txt")) return Buffer.from("old");
+      if (path.endsWith("export.txt")) return Buffer.from("exported");
+      return Buffer.from("hello world");
+    },
+    writeFiles: async (files: Array<Record<string, unknown>>) => {
+      writes.push(files);
+    },
+  } as any;
+  const createMock = mock.method(Sandbox, "create", async () => sandbox);
+  const getMock = mock.method(Sandbox, "get", async () => sandbox);
+
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    ctx: {
+      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+        if (args.storageId) {
+          return {
+            storageId: args.storageId,
+            filename: "Notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 5,
+            source: "upload",
+          };
+        }
+        return null;
+      },
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+        return "session_1";
+      },
+      storage: {
+        get: async () => new Blob(["notes"], { type: "text/plain" }),
+        store: async (blob: Blob) => {
+          stored.push(blob);
+          return "stored_1";
+        },
+        getUrl: async (id: string) => `https://files.example/${id}`,
+      },
+    },
+  } as any;
+
+  try {
+    const exec = await vmExec.execute(toolCtx, {
+      environment: "node",
+      command: "node -e 'console.log(1)'",
+      cwd: "/tmp/nanthai-edge/chat_1/vm-node",
+      timeoutMs: 1000,
+    });
+    const listed = await vmListFiles.execute(toolCtx, { environment: "node" });
+    const textRead = await vmReadFile.execute(toolCtx, {
+      environment: "node",
+      path: "/tmp/nanthai-edge/chat_1/vm-node/outputs/report.txt",
+      maxBytes: 5,
+    });
+    const binaryRead = await vmReadFile.execute(toolCtx, {
+      environment: "node",
+      path: "/tmp/nanthai-edge/chat_1/vm-node/outputs/image.png",
+    });
+    const missingRead = await vmReadFile.execute(toolCtx, {
+      environment: "node",
+      path: "/tmp/nanthai-edge/chat_1/vm-node/outputs/missing.txt",
+    });
+    const conflict = await vmWriteFile.execute(toolCtx, {
+      environment: "node",
+      path: "/tmp/nanthai-edge/chat_1/vm-node/outputs/existing.txt",
+      content: "new",
+    });
+    const replaced = await vmWriteFile.execute(toolCtx, {
+      environment: "node",
+      path: "/tmp/nanthai-edge/chat_1/vm-node/outputs/new.txt",
+      content: "new",
+      overwrite: true,
+    });
+    const made = await vmMakeDirs.execute(toolCtx, { environment: "node", path: "outputs/nested" });
+    const imported = await vmImportFile.execute(toolCtx, {
+      environment: "node",
+      storageId: "storage_1",
+      targetPath: "inputs/notes.txt",
+    });
+    const exported = await vmExportFile.execute(toolCtx, {
+      environment: "node",
+      path: "/tmp/nanthai-edge/chat_1/vm-node/outputs/export.txt",
+    });
+    const deleted = await vmDeleteFile.execute(toolCtx, {
+      environment: "node",
+      path: "outputs/old.txt",
+    });
+    const reset = await vmReset.execute(toolCtx, { environment: "node", confirm: true });
+
+    assert.equal(exec.success, true);
+    assert.equal((exec.data as any).stdout, "ok");
+    assert.equal(listed.success, true);
+    assert.equal((listed.data as any).files[1].name, "report.txt");
+    assert.equal((textRead.data as any).content, "hello");
+    assert.equal((textRead.data as any).truncated, true);
+    assert.equal((binaryRead.data as any).isBinary, true);
+    assert.equal((missingRead.data as any).content, null);
+    assert.equal(conflict.success, false);
+    assert.match(String(conflict.error), /overwrite=false/);
+    assert.equal(replaced.success, true);
+    assert.equal((replaced.data as any).bytesWritten, 3);
+    assert.equal((made.data as any).created, true);
+    assert.equal((imported.data as any).path, "/tmp/nanthai-edge/chat_1/vm-node/inputs/notes.txt");
+    assert.equal(exported.success, true);
+    assert.equal((exported.data as any).storageId, "stored_1");
+    assert.equal((deleted.data as any).deleted, true);
+    assert.equal((reset.data as any).environment, "node");
+    assert.ok(commands.some((entry) => entry.args.join(" ").includes("node -e")));
+    assert.ok(writes.some((batch) => String(batch[0].path).endsWith("inputs/notes.txt")));
+    assert.equal(stored.length, 1);
+    assert.ok(mutations.some((args) => args.storageId === "stored_1"));
+  } finally {
+    createMock.mock.restore();
+    getMock.mock.restore();
+    if (previousEnv.token === undefined) delete process.env.VERCEL_SANDBOX_TOKEN;
+    else process.env.VERCEL_SANDBOX_TOKEN = previousEnv.token;
+    if (previousEnv.project === undefined) delete process.env.VERCEL_SANDBOX_PROJECT_ID;
+    else process.env.VERCEL_SANDBOX_PROJECT_ID = previousEnv.project;
+    if (previousEnv.team === undefined) delete process.env.VERCEL_SANDBOX_TEAM_ID;
+    else process.env.VERCEL_SANDBOX_TEAM_ID = previousEnv.team;
+    if (previousEnv.siteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+    else process.env.CONVEX_SITE_URL = previousEnv.siteUrl;
+  }
 });
 
 test("spawnSubagents validates tasks and returns deferred payload for valid requests", async () => {
