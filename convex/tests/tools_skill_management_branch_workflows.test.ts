@@ -191,3 +191,89 @@ test("persona skill tools cover persona-id misses, name misses, ambiguous remove
   assert.equal(removeFailure.success, false);
   assert.match(String(removeFailure.error), /remove patch failed/);
 });
+
+test("skill assignment tools preserve existing overrides while applying real chat and persona changes", async () => {
+  const chatMutations: Array<Record<string, unknown>> = [];
+  const disabled = await disableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : {
+          _id: "chat_1",
+          userId: "user_1",
+          skillOverrides: [
+            { skillId: "skill_1", state: "available" },
+            { skillId: "skill_other", state: "always" },
+          ],
+        },
+    runMutation: async (args) => {
+      chatMutations.push(args);
+    },
+  }), {
+    chatId: "chat_1",
+    skillSlug: " docs ",
+  });
+  assert.equal(disabled.success, true);
+  assert.deepEqual(chatMutations[0]?.skillOverrides, [
+    { skillId: "skill_other", state: "always" },
+    { skillId: "skill_1", state: "never" },
+  ]);
+
+  const alreadyDisabled = await disableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : { _id: "chat_1", userId: "user_1", skillOverrides: [{ skillId: "skill_1", state: "never" }] },
+  }), {
+    chatId: "chat_1",
+    skillSlug: "docs",
+  });
+  assert.equal(alreadyDisabled.success, true);
+  assert.match(String((alreadyDisabled.data as any).message), /already disabled/);
+
+  const unauthorizedChat = await enableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : { _id: "chat_1", userId: "other_user", skillOverrides: [] },
+  }), {
+    chatId: "chat_1",
+    skillSlug: "docs",
+  });
+  assert.equal(unauthorizedChat.success, false);
+  assert.match(String(unauthorizedChat.error), /Not authorized/);
+
+  const personaMutations: Array<Record<string, unknown>> = [];
+  const assigned = await assignSkillToPersona.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [{ skillId: "skill_1", state: "never" }] }],
+    runMutation: async (args) => {
+      personaMutations.push(args);
+    },
+  }), {
+    personaName: "research",
+    skillSlug: "docs",
+  });
+  assert.equal(assigned.success, true);
+  assert.deepEqual(personaMutations[0]?.skillOverrides, [{ skillId: "skill_1", state: "available" }]);
+
+  const alreadyAssigned = await assignSkillToPersona.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [{ skillId: "skill_1", state: "always" }] }],
+  }), {
+    personaId: "persona_1",
+    skillSlug: "docs",
+  });
+  assert.equal(alreadyAssigned.success, true);
+  assert.match(String((alreadyAssigned.data as any).message), /already assigned/);
+
+  const notAssigned = await removeSkillFromPersona.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [{ skillId: "other", state: "available" }] }],
+  }), {
+    personaId: "persona_1",
+    skillSlug: "docs",
+  });
+  assert.equal(notAssigned.success, true);
+  assert.match(String((notAssigned.data as any).message), /was not assigned/);
+});

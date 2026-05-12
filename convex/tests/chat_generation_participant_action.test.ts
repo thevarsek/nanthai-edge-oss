@@ -215,3 +215,62 @@ test("runGenerationParticipantHandler finalizes video setup failure when schedul
   ));
   assert.ok(mutationCalls.some((args) => args.jobId === "job_1"));
 });
+
+test("runGenerationParticipantHandler finalizes subagent and Drive picker batches after setup failure", async () => {
+  const mutationCalls: Array<Record<string, unknown>> = [];
+  const jobStatuses = ["queued", "failed", "failed", "timedOut"];
+  const messageStatuses = ["cancelled", "completed"];
+
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("jobId" in args) {
+        return { status: jobStatuses.shift() ?? "failed" };
+      }
+      if ("messageId" in args) {
+        return { status: messageStatuses.shift() ?? "completed" };
+      }
+      if ("modelId" in args) {
+        return { hasVideoGeneration: false };
+      }
+      if ("userId" in args) {
+        return null;
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutationCalls.push(args);
+      return undefined;
+    },
+  });
+
+  await assert.rejects(
+    runGenerationParticipantHandler(
+      ctx,
+      baseRunGenerationParticipantArgs({
+        subagentBatchId: "batch_subagents",
+        drivePickerBatchId: "batch_drive",
+        searchSessionId: "search_1",
+      }),
+    ),
+    (error: unknown) => error instanceof ConvexError,
+  );
+
+  assert.ok(mutationCalls.some((args) =>
+    args.messageId === "msg_assistant"
+    && args.jobId === "job_1"
+    && args.status === "failed"
+  ));
+  assert.ok(mutationCalls.some((args) =>
+    args.batchId === "batch_subagents"
+    && args.status === "cancelled"
+    && args.expectedCurrentStatus === "resuming"
+  ));
+  assert.ok(mutationCalls.some((args) =>
+    args.batchId === "batch_drive"
+    && args.status === "failed"
+  ));
+  assert.ok(mutationCalls.some((args) =>
+    args.sessionId === "search_1"
+    && (args.patch as any)?.status === "failed"
+  ));
+});
