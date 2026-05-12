@@ -6,6 +6,8 @@ import {
   archiveSkillInternal,
   createSkillInternal,
   deleteSkillInternal,
+  deleteSkill,
+  duplicateSystemSkill,
   setChatIntegrationOverrides,
   setChatIntegrationOverridesInternal,
   setChatSkillOverrides,
@@ -66,6 +68,55 @@ test("internal skill creation rejects incompatible instructions and system slug 
       instructionsRaw: "Use Playwright browser automation to capture screenshots.",
     }),
     (error: unknown) => error instanceof ConvexError && error.data?.code === "SKILL_INCOMPATIBLE",
+  );
+});
+
+test("skill metadata validation rejects unknown tools, profiles, integrations, and capabilities", async () => {
+  const ctx = {
+    db: {
+      query: () => queryChain({ collect: [] }),
+    },
+  } as any;
+
+  await assert.rejects(
+    (createSkillInternal as any)._handler(ctx, {
+      userId: "user_1",
+      name: "Unknown Tool",
+      summary: "Invalid",
+      instructionsRaw: "Use a tool.",
+      requiredToolIds: ["not_a_real_tool"],
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "UNKNOWN_TOOL_IDS",
+  );
+  await assert.rejects(
+    (createSkillInternal as any)._handler(ctx, {
+      userId: "user_1",
+      name: "Unknown Profile",
+      summary: "Invalid",
+      instructionsRaw: "Use a profile.",
+      requiredToolProfiles: ["not_a_real_profile"],
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "UNKNOWN_TOOL_PROFILES",
+  );
+  await assert.rejects(
+    (createSkillInternal as any)._handler(ctx, {
+      userId: "user_1",
+      name: "Unknown Integration",
+      summary: "Invalid",
+      instructionsRaw: "Use an integration.",
+      requiredIntegrationIds: ["not_a_real_integration"],
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "UNKNOWN_INTEGRATIONS",
+  );
+  await assert.rejects(
+    (createSkillInternal as any)._handler(ctx, {
+      userId: "user_1",
+      name: "Unknown Capability",
+      summary: "Invalid",
+      instructionsRaw: "Use a capability.",
+      requiredCapabilities: ["not_a_real_capability"],
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "UNKNOWN_CAPABILITIES",
   );
 });
 
@@ -165,6 +216,81 @@ test("deleting and archiving internal skills enforce ownership and clean all ref
     },
   }, { skillId: "skill_2", userId: "user_1" });
   assert.ok(patches.some((entry) => entry.id === "skill_2" && entry.patch.status === "archived"));
+});
+
+test("public skill duplication suffixes colliding slugs and delete rejects system skills", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+
+  const ctx = {
+    auth: auth(),
+    db: {
+      get: async (id: string) => {
+        if (id === "system_skill") {
+          return {
+            _id: "system_skill",
+            slug: "writer",
+            name: "Writer",
+            summary: "Writes",
+            instructionsRaw: "Draft.",
+            instructionsCompiled: "Draft.",
+            compilationStatus: "compiled",
+            scope: "system",
+            runtimeMode: "textOnly",
+            requiredToolIds: [],
+            requiredToolProfiles: undefined,
+            requiredIntegrationIds: [],
+            requiredCapabilities: undefined,
+            unsupportedCapabilityCodes: [],
+            validationWarnings: [],
+          };
+        }
+        if (id === "user_skill") {
+          return {
+            _id: "user_skill",
+            scope: "user",
+            ownerUserId: "other_user",
+          };
+        }
+        return null;
+      },
+      query: (table: string) => {
+        if (table === "purchaseEntitlements") return queryChain({ first: { _id: "ent_1", status: "active" } });
+        if (table === "skills") {
+          return queryChain({
+            collect: [
+              { _id: "skill_custom_1", slug: "writer-custom" },
+              { _id: "skill_custom_2", slug: "writer-custom-2" },
+            ],
+          });
+        }
+        return queryChain({});
+      },
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        return "skill_new";
+      },
+      patch: async () => undefined,
+    },
+  } as any;
+
+  assert.equal(await (duplicateSystemSkill as any)._handler(ctx, { skillId: "system_skill" }), "skill_new");
+  assert.equal(inserts[0]?.value.slug, "writer-custom-3");
+  assert.equal(inserts[0]?.value.name, "Writer (Custom 3)");
+
+  await assert.rejects(
+    (deleteSkill as any)._handler({
+      ...ctx,
+      db: {
+        ...ctx.db,
+        get: async () => ({ _id: "system_skill", scope: "system", ownerUserId: undefined }),
+      },
+    }, { skillId: "system_skill" }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "NOT_AUTHORIZED",
+  );
+  await assert.rejects(
+    (deleteSkill as any)._handler(ctx, { skillId: "user_skill" }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "NOT_AUTHORIZED",
+  );
 });
 
 test("layered skill and integration override mutations patch owned persona and chat surfaces", async () => {

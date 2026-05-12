@@ -464,6 +464,120 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
   assert.equal(capabilityPatches[0]?.value.status, "revoked");
 });
 
+test("capability grants reject Pro overrides and cover insert, update, revoke, and no-op paths", async () => {
+  await assert.rejects(
+    () => (setUserCapabilityInternal as any)._handler({
+      db: {
+        query: () => ({
+          withIndex: () => ({
+            first: async () => null,
+            collect: async () => [],
+          }),
+        }),
+      },
+    }, {
+      userId: "user_1",
+      capability: "pro",
+      source: "manual_override",
+      active: true,
+    }),
+    (error: any) => error.data?.code === "FORBIDDEN",
+  );
+
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const insertedId = await (setUserCapabilityInternal as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => null,
+          collect: async () => [],
+        }),
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        return "cap_inserted";
+      },
+    },
+  }, {
+    userId: "user_1",
+    capability: "mcpRuntime",
+    source: "internal_grant",
+    active: true,
+    grantedBy: "admin_1",
+    metadata: { reason: "testing" },
+  });
+  assert.equal(insertedId, "cap_inserted");
+  assert.equal(inserts[0]?.table, "userCapabilities");
+  assert.equal(inserts[0]?.value.status, "active");
+  assert.equal(inserts[0]?.value.grantedBy, "admin_1");
+
+  const updatePatches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const updatedId = await (setUserCapabilityInternal as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => ({ _id: "cap_existing", grantedAt: 77 }),
+          collect: async () => [],
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        updatePatches.push({ id, value });
+      },
+    },
+  }, {
+    userId: "user_1",
+    capability: "mcpRuntime",
+    source: "manual_override",
+    active: true,
+    expiresAt: 1234,
+  });
+  assert.equal(updatedId, "cap_existing");
+  assert.equal(updatePatches[0]?.id, "cap_existing");
+  assert.equal(updatePatches[0]?.value.grantedAt, 77);
+  assert.equal(updatePatches[0]?.value.expiresAt, 1234);
+  assert.equal(updatePatches[0]?.value.revokedAt, undefined);
+
+  const noOpRevoke = await (setUserCapabilityInternal as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => null,
+          collect: async () => [],
+        }),
+      }),
+    },
+  }, {
+    userId: "user_1",
+    capability: "mcpRuntime",
+    source: "manual_override",
+    active: false,
+  });
+  assert.equal(noOpRevoke, null);
+
+  const revokePatches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const revokedId = await (setUserCapabilityInternal as any)._handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => ({ _id: "cap_1" }),
+          collect: async () => [{ _id: "cap_1" }, { _id: "cap_2" }],
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        revokePatches.push({ id, value });
+      },
+    },
+  }, {
+    userId: "user_1",
+    capability: "mcpRuntime",
+    source: "manual_override",
+    active: false,
+  });
+  assert.equal(revokedId, "cap_1");
+  assert.deepEqual(revokePatches.map((patch) => patch.id), ["cap_1", "cap_2"]);
+  assert.ok(revokePatches.every((patch) => patch.value.status === "revoked"));
+});
+
 test("runWebSearch finalizes missing-API-key failures and Stripe checkout maps config and upstream errors", async () => {
   const originalFetch = globalThis.fetch;
   const originalSecretKey = process.env.STRIPE_SECRET_KEY;

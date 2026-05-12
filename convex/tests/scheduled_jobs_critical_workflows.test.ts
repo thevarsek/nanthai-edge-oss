@@ -1,23 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { ConvexError } from "convex/values";
 import {
   beginExecution,
   cleanOldJobRuns,
+  createJob,
   createJobChat,
+  createJobTriggerToken,
   createScheduledExecutionTurn,
   createSearchSession,
+  deleteApiKey,
+  deleteJob,
+  pauseJob,
   recordRunFailure,
   recordRunSuccess,
   replaceScheduledFunction,
+  resumeJob,
+  revokeJobTriggerToken,
+  rotateJobTriggerToken,
   triggerJobViaApi,
   updateJobInternal,
+  upsertApiKey,
 } from "../scheduledJobs/mutations";
 
 function queryChain(result: {
   first?: unknown;
   collect?: unknown[];
   take?: unknown[];
+  unique?: unknown;
 }) {
   return {
     withIndex: (_index: string, apply?: (q: any) => unknown) => {
@@ -32,10 +43,231 @@ function queryChain(result: {
         first: async () => result.first ?? null,
         collect: async () => result.collect ?? [],
         take: async () => result.take ?? result.collect ?? [],
+        unique: async () => result.unique ?? result.first ?? null,
       };
     },
   };
 }
+
+function auth(userId = "user_1") {
+  return { getUserIdentity: async () => ({ subject: userId }) };
+}
+
+test("public scheduled job creation validates inputs and skips scheduling manual jobs", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+
+  const ctx = {
+    auth: auth(),
+    db: {
+      get: async (id: string) => {
+        if (id === "folder_1") return { _id: "folder_1", userId: "user_1" };
+        if (id === "persona_1") return { _id: "persona_1", userId: "user_1", modelId: "model/tools" };
+        return null;
+      },
+      query: (table: string) => {
+        if (table === "purchaseEntitlements") return queryChain({ first: { _id: "ent_1", status: "active" } });
+        if (table === "cachedModels") return queryChain({ first: { _id: "model_1", supportsTools: false } });
+        if (table === "generatedFiles") return queryChain({ first: { _id: "file_1", userId: "user_1", storageId: "storage_1" } });
+        if (table === "fileAttachments") return queryChain({ first: null });
+        if (table === "generatedMedia") return queryChain({ first: null });
+        return queryChain({});
+      },
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        return "job_1";
+      },
+      patch: async () => undefined,
+    },
+    scheduler: {
+      runAt: async (_when: number, _ref: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+        return "sched_1";
+      },
+    },
+  } as any;
+
+  const jobId = await (createJob as any)._handler(ctx, {
+    name: "  Manual Digest  ",
+    prompt: "Summarize updates",
+    modelId: "model/plain",
+    personaId: "persona_1",
+    targetFolderId: "folder_1",
+    enabledIntegrations: ["notion"],
+    turnSkillOverrides: [{ skillId: "skill_1", state: "always" }],
+    turnIntegrationOverrides: [{ integrationId: "notion", enabled: true }],
+    recurrence: { type: "manual" },
+    timezone: "UTC",
+  });
+
+  assert.equal(jobId, "job_1");
+  assert.equal(inserts[0]?.value.name, "Manual Digest");
+  assert.equal(inserts[0]?.value.status, "active");
+  assert.deepEqual(inserts[0]?.value.enabledIntegrations, []);
+  assert.deepEqual(inserts[0]?.value.turnSkillOverrides, []);
+  assert.deepEqual(inserts[0]?.value.turnIntegrationOverrides, []);
+  assert.deepEqual(scheduled, []);
+
+  await assert.rejects(
+    (createJob as any)._handler(ctx, {
+      name: "No model",
+      recurrence: { type: "manual" },
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "VALIDATION",
+  );
+
+  await assert.rejects(
+    (createJob as any)._handler(ctx, {
+      name: "Wrong folder",
+      prompt: "Run",
+      modelId: "model/plain",
+      recurrence: { type: "manual" },
+      targetFolderId: "folder_other",
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "NOT_FOUND",
+  );
+});
+
+test("public scheduled job lifecycle covers idempotent pause/resume/delete and trigger tokens", async () => {
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const deleted: string[] = [];
+  const cancelled: string[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  let jobStatus = "active";
+  let jobRunsBatch = 0;
+
+  const ctx = {
+    auth: auth(),
+    db: {
+      get: async (id: string) => {
+        if (id === "job_1") {
+          return {
+            _id: "job_1",
+            userId: "user_1",
+            status: jobStatus,
+            scheduledFunctionId: "sched_old",
+            recurrence: { type: "daily", hourUTC: 9, minuteUTC: 30 },
+            timezone: "UTC",
+          };
+        }
+        if (id === "token_1") return { _id: "token_1", userId: "user_1", status: "active" };
+        if (id === "token_revoked") return { _id: "token_revoked", userId: "user_1", status: "revoked" };
+        return null;
+      },
+      query: (table: string) => {
+        if (table === "purchaseEntitlements") return queryChain({ first: { _id: "ent_1", status: "active" } });
+        if (table === "scheduledJobTriggerTokens") {
+          return queryChain({ collect: [{ _id: "token_old", label: "Daily hook" }] });
+        }
+        if (table === "jobRuns") {
+          jobRunsBatch += 1;
+          return queryChain({
+            take: jobRunsBatch === 1
+              ? Array.from({ length: 100 }, (_, index) => ({ _id: `run_${index}` }))
+              : [{ _id: "run_final" }],
+          });
+        }
+        return queryChain({});
+      },
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        return `${table}_${inserts.length}`;
+      },
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        patches.push({ id, patch });
+        if (id === "job_1" && typeof patch.status === "string") jobStatus = patch.status;
+      },
+      delete: async (id: string) => {
+        deleted.push(id);
+      },
+    },
+    scheduler: {
+      cancel: async (id: string) => {
+        cancelled.push(id);
+        if (id === "sched_old") throw new Error("already gone");
+      },
+      runAt: async (_when: number, _ref: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+        return "sched_new";
+      },
+    },
+  } as any;
+
+  await (pauseJob as any)._handler(ctx, { jobId: "job_1" });
+  await (pauseJob as any)._handler(ctx, { jobId: "job_1" });
+  assert.ok(patches.some((entry) => entry.id === "job_1" && entry.patch.status === "paused"));
+
+  await (resumeJob as any)._handler(ctx, { jobId: "job_1" });
+  await (resumeJob as any)._handler(ctx, { jobId: "job_1" });
+  assert.ok(patches.some((entry) => entry.id === "job_1" && entry.patch.status === "active" && entry.patch.scheduledFunctionId === "sched_new"));
+  assert.deepEqual(scheduled, [{ jobId: "job_1" }]);
+
+  const createdToken = await (createJobTriggerToken as any)._handler(ctx, {
+    jobId: "job_1",
+    label: "  Daily hook  ",
+  });
+  assert.equal(createdToken.tokenId, "scheduledJobTriggerTokens_1");
+  assert.equal(inserts[0]?.value.label, "Daily hook");
+
+  const rotatedToken = await (rotateJobTriggerToken as any)._handler(ctx, { jobId: "job_1" });
+  assert.equal(rotatedToken.tokenId, "scheduledJobTriggerTokens_2");
+  assert.ok(patches.some((entry) => entry.id === "token_old" && entry.patch.status === "revoked"));
+  assert.equal(inserts[1]?.value.label, "Daily hook");
+
+  await (revokeJobTriggerToken as any)._handler(ctx, { tokenId: "token_1" });
+  await (revokeJobTriggerToken as any)._handler(ctx, { tokenId: "token_revoked" });
+  assert.ok(patches.some((entry) => entry.id === "token_1" && entry.patch.status === "revoked"));
+
+  await (deleteJob as any)._handler(ctx, { jobId: "job_1" });
+  assert.equal(deleted.length, 102);
+  assert.equal(deleted.at(-1), "job_1");
+  assert.ok(cancelled.includes("sched_old"));
+});
+
+test("scheduled job API key mutations validate, upsert, and delete user secrets", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const deleted: string[] = [];
+  let secret: Record<string, unknown> | null = null;
+
+  const ctx = {
+    auth: auth(),
+    db: {
+      query: (table: string) => {
+        if (table === "userSecrets") return queryChain({ unique: secret });
+        return queryChain({});
+      },
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        secret = { _id: "secret_1", ...value };
+        return "secret_1";
+      },
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        patches.push({ id, patch });
+        secret = { ...(secret ?? {}), ...patch };
+      },
+      delete: async (id: string) => {
+        deleted.push(id);
+        secret = null;
+      },
+    },
+  } as any;
+
+  await assert.rejects(
+    (upsertApiKey as any)._handler(ctx, { apiKey: "  " }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "VALIDATION",
+  );
+  await (upsertApiKey as any)._handler(ctx, { apiKey: "sk-first" });
+  await (upsertApiKey as any)._handler(ctx, { apiKey: "sk-second" });
+  await (deleteApiKey as any)._handler(ctx, {});
+  await (deleteApiKey as any)._handler(ctx, {});
+
+  assert.deepEqual(inserts.map((entry) => entry.table), ["userSecrets"]);
+  assert.equal(patches[0]?.id, "secret_1");
+  assert.equal(patches[0]?.patch.apiKey, "sk-second");
+  assert.deepEqual(deleted, ["secret_1"]);
+});
 
 test("updateJobInternal validates folders, personas, KB ownership, and reschedules active jobs", async () => {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];

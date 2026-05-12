@@ -10,11 +10,14 @@ import {
   grantManualPro,
   removeIntegrationDefault,
   removeSkillDefault,
+  revokeEntitlement,
+  revokePlayEntitlement,
   revokeManualPro,
   setIntegrationDefault,
   setOnboardingCompleted,
   setSkillDefault,
   syncEntitlement,
+  syncPlayEntitlement,
   upsertModelSettings,
   upsertPreferences,
 } from "../preferences/mutations";
@@ -271,6 +274,124 @@ test("entitlement sync detects cross-account duplicates and manual grants are id
   assert.ok(inserts.some((entry) => entry.value.source === "manual"));
   assert.ok(patches.some((entry) => entry.patch.status === "revoked"));
   assert.deepEqual(deleted, []);
+});
+
+test("store entitlements update canonical rows, delete duplicates, and preserve Pro state when another entitlement is active", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const deleted: string[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  const externalMatches: Record<string, Array<Record<string, unknown>>> = {
+    ios_tx: [
+      {
+        _id: "ios_canonical",
+        userId: "user_1",
+        source: "app_store",
+        activatedAt: 111,
+        status: "revoked",
+      },
+      {
+        _id: "ios_duplicate",
+        userId: "user_1",
+        source: "app_store",
+        status: "active",
+      },
+    ],
+    play_token: [
+      {
+        _id: "play_canonical",
+        userId: "user_1",
+        source: "play_store",
+        activatedAt: 222,
+        status: "expired",
+      },
+    ],
+    play_revoke: [
+      { _id: "play_revoke", userId: "user_1", source: "play_store", status: "active" },
+      { _id: "ios_other", userId: "user_1", source: "app_store", status: "active" },
+      { _id: "foreign_play", userId: "other_user", source: "play_store", status: "active" },
+    ],
+    ios_revoke: [
+      { _id: "ios_revoke", userId: "user_1", source: "app_store", status: "active" },
+      { _id: "play_other", userId: "user_1", source: "play_store", status: "active" },
+    ],
+  };
+
+  const ctx = {
+    auth: auth(),
+    db: {
+      query: (table: string) => ({
+        withIndex: (index: string, apply?: (q: any) => unknown) => {
+          let externalPurchaseId = "";
+          apply?.({
+            eq: (field: string, value: string) => {
+              if (field === "externalPurchaseId") externalPurchaseId = value;
+              return {
+                eq: () => ({}),
+              };
+            },
+            field: (name: string) => name,
+          });
+          return {
+            first: async () => {
+              if (table === "userPreferences") return { _id: "prefs_1", userId: "user_1" };
+              if (table === "purchaseEntitlements" && index === "by_user_status") {
+                return { _id: "still_active", userId: "user_1", status: "active" };
+              }
+              return null;
+            },
+            collect: async () => {
+              if (table === "purchaseEntitlements" && index === "by_external_purchase") {
+                return externalMatches[externalPurchaseId] ?? [];
+              }
+              return [];
+            },
+          };
+        },
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        return `${table}_${inserts.length}`;
+      },
+      patch: async (id: string, patch: Record<string, unknown>) => patches.push({ id, patch }),
+      delete: async (id: string) => deleted.push(id),
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+        return "sched_1";
+      },
+    },
+  } as any;
+
+  assert.equal(await (syncEntitlement as any)._handler(ctx, { originalTransactionId: "ios_tx" }), "prefs_1");
+  assert.equal(await (syncPlayEntitlement as any)._handler(ctx, {
+    purchaseToken: "play_token",
+    productId: "nanthai.pro.monthly",
+    environment: "sandbox",
+    packageName: "com.nanthai.edge",
+  }), "prefs_1");
+  await (revokePlayEntitlement as any)._handler(ctx, {
+    purchaseToken: "play_revoke",
+    status: "expired",
+  });
+  await (revokeEntitlement as any)._handler(ctx, {
+    originalTransactionId: "ios_revoke",
+  });
+
+  assert.ok(patches.some((entry) =>
+    entry.id === "ios_canonical"
+      && entry.patch.status === "active"
+      && entry.patch.revokedAt === undefined));
+  assert.ok(patches.some((entry) =>
+    entry.id === "play_canonical"
+      && entry.patch.platform === "android"
+      && (entry.patch.metadata as any)?.packageName === "com.nanthai.edge"));
+  assert.ok(patches.some((entry) => entry.id === "play_revoke" && entry.patch.status === "expired"));
+  assert.ok(patches.some((entry) => entry.id === "ios_revoke" && entry.patch.status === "revoked"));
+  assert.deepEqual(deleted, ["ios_duplicate"]);
+  assert.deepEqual(inserts, []);
+  assert.deepEqual(scheduled, []);
 });
 
 test("disableProChatsBatch clears full batches and schedules continuation only when needed", async () => {
