@@ -146,6 +146,40 @@ test("generateForParticipant enforces ZDR before opening a model stream", async 
   assert.match(String(finalize?.args.content), /Zero Data Retention/);
 });
 
+test("generateForParticipant rejects Google Workspace data on disallowed providers", async () => {
+  const { ctx, mutations } = makeCtx();
+
+  const result = await generateForParticipant({
+    ctx,
+    args: makeArgs(),
+    participant: makeParticipant(),
+    allMessages: [{ _id: "msg_user", role: "user", content: "Summarize my Drive file" }],
+    memoryContext: undefined,
+    modelCapabilities: new Map([[
+      "model_1",
+      {
+        provider: "mistral",
+        supportedParameters: [],
+        contextLength: 1024,
+        hasZdrEndpoint: true,
+      } as any,
+    ]]),
+    progressiveTools: {
+      enabledIntegrations: ["drive"],
+      allowSubagents: false,
+    },
+    isPro: true,
+    runtimeProfile: "mobileBasic",
+    apiKey: "key",
+    actionStartTime: Date.now(),
+    requestMessagesOverride: [{ role: "user", content: "Summarize my Drive file" }],
+  });
+
+  assert.equal(result.failed, true);
+  const finalize = mutations.find((entry) => entry.args.status === "failed");
+  assert.match(String(finalize?.args.content), /Google Workspace data/);
+});
+
 test("generation participant helpers cover date context and reasoning patch branches", () => {
   assert.equal(shouldPersistParticipantReasoning(""), false);
   assert.equal(shouldPersistParticipantReasoning("thinking"), true);

@@ -113,11 +113,39 @@ test("createSkill validates input, creates skills, and surfaces compatibility fa
   });
   assert.equal(incompatible.success, false);
   assert.match(String(incompatible.error), /incompatible/i);
+
+  const warned = await createSkill.execute(createToolCtx({
+    runMutation: async () => ({
+      skillId: "skill_warn",
+      validationWarnings: ["Profile docs was inferred"],
+    }),
+  }), {
+    name: "Warned",
+    summary: "Has warnings",
+    instructionsRaw: "Write a document.",
+  });
+  assert.equal(warned.success, true);
+  assert.match(String((warned.data as any).message), /Warnings: Profile docs was inferred/);
 });
 
 test("updateSkill resolves by name, detects ambiguity, validates runtime mode, and updates by id", async () => {
   const missing = await updateSkill.execute(createToolCtx(), {});
   assert.equal(missing.success, false);
+
+  const noMatch = await updateSkill.execute(createToolCtx({
+    runQuery: async () => [],
+  }), {
+    skillName: "missing",
+  });
+  assert.equal(noMatch.success, false);
+  assert.match(String(noMatch.error), /No user skill found/);
+
+  const badMode = await updateSkill.execute(createToolCtx(), {
+    skillId: "skill_1",
+    runtimeMode: "browserAugmented",
+  });
+  assert.equal(badMode.success, false);
+  assert.match(String(badMode.error), /runtimeMode/);
 
   const ambiguous = await updateSkill.execute(createToolCtx({
     runQuery: async () => ([
@@ -166,9 +194,31 @@ test("updateSkill resolves by name, detects ambiguity, validates runtime mode, a
   });
   assert.equal(incompatible.success, false);
   assert.match(String(incompatible.error), /Incompatible instructions/);
+
+  const mutationFailure = await updateSkill.execute(createToolCtx({
+    runMutation: async () => {
+      throw new Error("db write failed");
+    },
+  }), {
+    skillId: "skill_1",
+    name: "Updated",
+  });
+  assert.equal(mutationFailure.success, false);
+  assert.match(String(mutationFailure.error), /Failed to update skill: db write failed/);
 });
 
 test("deleteSkill resolves by name and deletes uniquely matched skills", async () => {
+  const missing = await deleteSkill.execute(createToolCtx(), {});
+  assert.equal(missing.success, false);
+
+  const noMatch = await deleteSkill.execute(createToolCtx({
+    runQuery: async () => [],
+  }), {
+    skillName: "missing",
+  });
+  assert.equal(noMatch.success, false);
+  assert.match(String(noMatch.error), /No user skill found/);
+
   const ambiguous = await deleteSkill.execute(createToolCtx({
     runQuery: async () => ([
       { _id: "skill_1", name: "Research" },
@@ -196,6 +246,16 @@ test("deleteSkill resolves by name and deletes uniquely matched skills", async (
     skillId: "skill_1",
     userId: "user_1",
   });
+
+  const directFailure = await deleteSkill.execute(createToolCtx({
+    runMutation: async () => {
+      throw new Error("system skill");
+    },
+  }), {
+    skillId: "system_skill",
+  });
+  assert.equal(directFailure.success, false);
+  assert.match(String(directFailure.error), /Failed to delete skill: system skill/);
 });
 
 test("enableSkillForChat and disableSkillForChat update discoverable and disabled ids", async () => {
@@ -252,7 +312,84 @@ test("enableSkillForChat and disableSkillForChat update discoverable and disable
   });
 });
 
+test("chat skill management covers missing, unauthorized, already-set, and mutation failure branches", async () => {
+  const missingArgs = await enableSkillForChat.execute(createToolCtx(), { skillSlug: "docs" });
+  assert.equal(missingArgs.success, false);
+  assert.match(String(missingArgs.error), /chatId/);
+
+  const missingSkill = await enableSkillForChat.execute(createToolCtx({
+    runQuery: async () => null,
+  }), {
+    chatId: "chat_1",
+    skillSlug: "missing",
+  });
+  assert.equal(missingSkill.success, false);
+  assert.match(String(missingSkill.error), /No skill found/);
+
+  const unauthorized = await disableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : { _id: "chat_1", userId: "other_user", skillOverrides: [] },
+  }), {
+    chatId: "chat_1",
+    skillSlug: "docs",
+  });
+  assert.equal(unauthorized.success, false);
+  assert.match(String(unauthorized.error), /Not authorized/);
+
+  const alreadyEnabled = await enableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : { _id: "chat_1", userId: "user_1", skillOverrides: [{ skillId: "skill_1", state: "always" }] },
+  }), {
+    chatId: "chat_1",
+    skillSlug: "docs",
+  });
+  assert.equal(alreadyEnabled.success, true);
+  assert.match(String((alreadyEnabled.data as any).message), /already enabled/);
+
+  const alreadyDisabled = await disableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : { _id: "chat_1", userId: "user_1", skillOverrides: [{ skillId: "skill_1", state: "never" }] },
+  }), {
+    chatId: "chat_1",
+    skillSlug: "docs",
+  });
+  assert.equal(alreadyDisabled.success, true);
+  assert.match(String((alreadyDisabled.data as any).message), /already disabled/);
+
+  const mutationFailure = await enableSkillForChat.execute(createToolCtx({
+    runQuery: async (args) => args.slug
+      ? { _id: "skill_1", name: "Docs" }
+      : { _id: "chat_1", userId: "user_1", skillOverrides: [] },
+    runMutation: async () => {
+      throw new Error("patch failed");
+    },
+  }), {
+    chatId: "chat_1",
+    skillSlug: "docs",
+  });
+  assert.equal(mutationFailure.success, false);
+  assert.match(String(mutationFailure.error), /patch failed/);
+});
+
 test("assignSkillToPersona and removeSkillFromPersona resolve personas and manage discoverable skills", async () => {
+  const missingPersona = await assignSkillToPersona.execute(createToolCtx(), {
+    skillSlug: "docs",
+  });
+  assert.equal(missingPersona.success, false);
+  assert.match(String(missingPersona.error), /personaId/);
+
+  const missingSkill = await removeSkillFromPersona.execute(createToolCtx({
+    runQuery: async () => null,
+  }), {
+    personaId: "persona_1",
+    skillSlug: "missing",
+  });
+  assert.equal(missingSkill.success, false);
+  assert.match(String(missingSkill.error), /No skill found/);
+
   const personas = [
     { _id: "persona_1", displayName: "Researcher", skillOverrides: [] },
     { _id: "persona_2", displayName: "Research Assistant", skillOverrides: [] },
@@ -322,4 +459,43 @@ test("assignSkillToPersona and removeSkillFromPersona resolve personas and manag
     userId: "user_1",
     skillOverrides: [{ skillId: "skill_2", state: "available" }],
   });
+
+  const alreadyAssigned = await assignSkillToPersona.execute(createToolCtx({
+    runQuery: async (args) => {
+      if (args.slug) return { _id: "skill_1", name: "Research Skill" };
+      return [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [{ skillId: "skill_1", state: "available" }] }];
+    },
+  }), {
+    personaId: "persona_1",
+    skillSlug: "research-skill",
+  });
+  assert.equal(alreadyAssigned.success, true);
+  assert.match(String((alreadyAssigned.data as any).message), /already assigned/);
+
+  const notAssigned = await removeSkillFromPersona.execute(createToolCtx({
+    runQuery: async (args) => {
+      if (args.slug) return { _id: "skill_1", name: "Research Skill" };
+      return [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [] }];
+    },
+  }), {
+    personaId: "persona_1",
+    skillSlug: "research-skill",
+  });
+  assert.equal(notAssigned.success, true);
+  assert.match(String((notAssigned.data as any).message), /was not assigned/);
+
+  const personaMutationFailure = await assignSkillToPersona.execute(createToolCtx({
+    runQuery: async (args) => {
+      if (args.slug) return { _id: "skill_1", name: "Research Skill" };
+      return [{ _id: "persona_1", displayName: "Researcher", skillOverrides: [] }];
+    },
+    runMutation: async () => {
+      throw new Error("persona patch failed");
+    },
+  }), {
+    personaId: "persona_1",
+    skillSlug: "research-skill",
+  });
+  assert.equal(personaMutationFailure.success, false);
+  assert.match(String(personaMutationFailure.error), /persona patch failed/);
 });

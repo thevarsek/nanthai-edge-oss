@@ -700,6 +700,81 @@ test("runSubagentRunHandler cancels claimed work when the batch is already cance
       && call.error === "Subagent batch was cancelled."));
 });
 
+test("runSubagentRunHandler stops safely for missing runs, missing batches, and missing API keys", async () => {
+  const noRunMutations: Array<Record<string, unknown>> = [];
+  const noRunScheduled: Array<Record<string, unknown>> = [];
+  await runSubagentRunHandler({
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      noRunMutations.push(args);
+      return true;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) return null;
+      throw new Error(`Unexpected no-run query: ${JSON.stringify(args)}`);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        noRunScheduled.push(args);
+        return "sched_unexpected";
+      },
+    },
+  } as any, { runId: "run_missing" } as any);
+  assert.deepEqual(noRunMutations, [{ runId: "run_missing", expectedStatuses: ["queued", "waiting_continuation"] }]);
+  assert.deepEqual(noRunScheduled, []);
+
+  const missingBatchScheduled: Array<Record<string, unknown>> = [];
+  await runSubagentRunHandler({
+    runMutation: async () => true,
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) return { _id: "run_1", batchId: "batch_missing", status: "queued" };
+      if ("batchId" in args) return null;
+      throw new Error(`Unexpected missing-batch query: ${JSON.stringify(args)}`);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        missingBatchScheduled.push(args);
+        return "sched_1";
+      },
+    },
+  } as any, { runId: "run_1" } as any);
+  assert.deepEqual(missingBatchScheduled, [{ runId: "run_1" }]);
+
+  const missingKeyMutations: Array<Record<string, unknown>> = [];
+  await assert.rejects(
+    runSubagentRunHandler({
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        missingKeyMutations.push(args);
+        return true;
+      },
+      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+        if ("runId" in args) return { _id: "run_1", batchId: "batch_1", status: "queued" };
+        if ("batchId" in args) {
+          return {
+            _id: "batch_1",
+            status: "running_children",
+            userId: "user_1",
+            chatId: "chat_1",
+            parentMessageId: "parent_1",
+            childConversationSeed: [],
+            paramsSnapshot: { requestParams: {} },
+            participantSnapshot: { userId: "user_1", chatId: "chat_1", participant: { modelId: "openai/gpt-5" } },
+          };
+        }
+        if ("userId" in args) return null;
+        throw new Error(`Unexpected missing-key query: ${JSON.stringify(args)}`);
+      },
+      scheduler: {
+        runAfter: async () => "sched_1",
+      },
+    } as any, { runId: "run_1" } as any),
+    /MISSING_API_KEY|No OpenRouter API key/,
+  );
+  assert.deepEqual(missingKeyMutations[0], {
+    runId: "run_1",
+    expectedStatuses: ["queued", "waiting_continuation"],
+  });
+});
+
 test("runSubagentRunHandler completes a simple streaming run and schedules parent continuation", async (t) => {
   t.after(() => mock.restoreAll());
 
