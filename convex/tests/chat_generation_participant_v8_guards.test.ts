@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import {
   generateForParticipant,
@@ -66,6 +66,20 @@ function makeCtx(overrides: {
       },
     } as any,
   };
+}
+
+function sseTextResponse(content: string, usage?: Record<string, unknown>) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: async () => [
+      `data: ${JSON.stringify({ id: "gen_success", choices: [{ delta: { content } }] })}`,
+      `data: ${JSON.stringify({ choices: [{ finish_reason: "stop" }], usage })}`,
+      "data: [DONE]",
+      "",
+    ].join("\n\n"),
+  } as any;
 }
 
 test("generateForParticipant exits before request assembly when the job was already cancelled", async () => {
@@ -178,6 +192,46 @@ test("generateForParticipant rejects Google Workspace data on disallowed provide
   assert.equal(result.failed, true);
   const finalize = mutations.find((entry) => entry.args.status === "failed");
   assert.match(String(finalize?.args.content), /Google Workspace data/);
+});
+
+test("generateForParticipant completes a streamed response and stores usage metadata", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => sseTextResponse("Done.", {
+    prompt_tokens: 4,
+    completion_tokens: 2,
+    total_tokens: 6,
+    cost: 0.01,
+  })) as any;
+
+  const { ctx, mutations } = makeCtx();
+
+  const result = await generateForParticipant({
+    ctx,
+    args: makeArgs(),
+    participant: makeParticipant(),
+    allMessages: [{ _id: "msg_user", role: "user", content: "Hello" }],
+    memoryContext: undefined,
+    modelCapabilities: new Map([[
+      "model_1",
+      {
+        provider: "openai",
+        supportedParameters: [],
+        contextLength: 1024,
+        hasZdrEndpoint: true,
+      } as any,
+    ]]),
+    isPro: true,
+    runtimeProfile: "mobileBasic",
+    apiKey: "key",
+    actionStartTime: Date.now(),
+    requestMessagesOverride: [{ role: "user", content: "Hello" }],
+  });
+
+  assert.equal(result.failed, false);
+  const finalize = mutations.find((entry) => entry.args.status === "completed");
+  assert.equal(finalize?.args.content, "Done.");
+  assert.equal((finalize?.args.usage as any).totalTokens, 6);
+  assert.equal(finalize?.args.openrouterGenerationId, "gen_success");
 });
 
 test("generation participant helpers cover date context and reasoning patch branches", () => {

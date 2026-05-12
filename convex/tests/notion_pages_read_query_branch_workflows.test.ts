@@ -161,3 +161,62 @@ test("notion read/query branches cover empty search, fallback errors, and proper
     globalThis.setTimeout = originalSetTimeout;
   }
 });
+
+test("notion database queries preserve nullable property values and non-error failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalSetTimeout = globalThis.setTimeout;
+  const { toolCtx } = createNotionToolCtx();
+  let callIndex = 0;
+
+  globalThis.setTimeout = ((callback: (...args: unknown[]) => void) => {
+    callback();
+    return 0 as any;
+  }) as any;
+  globalThis.fetch = (async () => {
+    callIndex += 1;
+    if (callIndex === 1) {
+      return jsonResponse(200, {
+        results: [{
+          id: "entry_nulls",
+          properties: {
+            Title: { type: "title" },
+            Notes: { type: "rich_text" },
+            Status: { type: "status", status: null },
+            Tags: { type: "multi_select" },
+            Date: { type: "date", date: null },
+            People: { type: "people" },
+            Relation: { type: "relation" },
+          },
+        }],
+        has_more: false,
+      });
+    }
+    throw "notion transport unavailable";
+  }) as any;
+
+  try {
+    const queried = await notionQueryDatabase.execute(toolCtx, {
+      database_id: "db_nullable_shapes",
+    });
+    assert.equal(queried.success, true);
+    assert.deepEqual((queried.data as any).entries[0].properties, {
+      Title: "",
+      Notes: "",
+      Status: null,
+      Tags: [],
+      Date: null,
+      People: "",
+      Relation: [],
+    });
+    assert.equal((queried.data as any).entries[0].title, "Untitled");
+
+    const failed = await notionQueryDatabase.execute(toolCtx, {
+      database_id: "db_failure",
+    });
+    assert.equal(failed.success, false);
+    assert.equal(failed.error, "notion transport unavailable");
+  } finally {
+    globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
