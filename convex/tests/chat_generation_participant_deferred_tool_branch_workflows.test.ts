@@ -45,6 +45,20 @@ function registryWithDeferred(kind: "spawn_subagents" | "drive_picker", data: un
   return registry;
 }
 
+function registryWithImmediateTool() {
+  const registry = new ToolRegistry();
+  registry.register(createTool({
+    name: "inspect_context",
+    description: "Immediate tool used to exercise continuation handoff.",
+    parameters: { type: "object", properties: {} },
+    execute: async () => ({
+      success: true,
+      data: { inspected: true, note: "tool result" },
+    }),
+  }));
+  return registry;
+}
+
 function makeCtx() {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
@@ -80,7 +94,7 @@ function makeCtx() {
   };
 }
 
-async function runParticipant(toolRegistry: ToolRegistry) {
+async function runParticipant(toolRegistry: ToolRegistry, overrides: Record<string, unknown> = {}) {
   const state = makeCtx();
   const result = await generateForParticipant({
     ctx: state.ctx,
@@ -122,6 +136,7 @@ async function runParticipant(toolRegistry: ToolRegistry) {
     apiKey: "key",
     actionStartTime: Date.now(),
     progressiveTools: { enabledIntegrations: ["drive"], directToolNames: [], allowSubagents: true },
+    ...overrides,
   } as any);
   return { result, mutations: state.mutations, scheduled: state.scheduled };
 }
@@ -175,5 +190,35 @@ test("generateForParticipant stores deferred Drive picker batches without creati
   const driveBatch = mutations.find((args) => args.toolCallId === "call_drive");
   assert.equal(driveBatch?.parentMessageId, "msg_assistant");
   assert.equal((driveBatch?.paramsSnapshot as any).turnIntegrationOverrides[0].integrationId, "drive");
+  assert.deepEqual(scheduled, []);
+});
+
+test("generateForParticipant hands off after a completed tool round when invocation budget is exhausted", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => streamToolCall("inspect_context", "call_inspect")) as any;
+
+  const handoffs: Array<Record<string, unknown>> = [];
+  const { result, mutations, scheduled } = await runParticipant(registryWithImmediateTool(), {
+    continuationHandoff: {
+      continuationCount: 0,
+      maxToolRoundsPerInvocation: 1,
+      onHandoff: async (handoff: Record<string, unknown>) => {
+        handoffs.push(handoff);
+      },
+    },
+  });
+
+  assert.deepEqual(result, {
+    deferredForSubagents: false,
+    cancelled: false,
+    failed: false,
+    continued: true,
+  });
+  assert.equal(handoffs.length, 1);
+  assert.equal((handoffs[0]?.participant as any)?.jobId, "job_1");
+  assert.equal(((handoffs[0]?.toolCalls as unknown[])?.[0] as any)?.name, "inspect_context");
+  assert.match(String(((handoffs[0]?.toolResults as unknown[])?.[0] as any)?.result), /inspected/);
+  assert.equal(handoffs[0]?.continuationCount, 1);
+  assert.equal(mutations.some((args) => args.status === "completed"), false);
   assert.deepEqual(scheduled, []);
 });

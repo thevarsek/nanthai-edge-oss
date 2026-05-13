@@ -4,15 +4,18 @@ import test from "node:test";
 import { ConvexError } from "convex/values";
 import {
   deleteConnection as deleteGoogleConnection,
+  deleteDriveFileGrantsForUser,
   disconnectGoogle,
   exchangeGoogleCode,
   getDrivePickerAccessToken,
   markConnectionExpired as markGoogleConnectionExpired,
+  upsertConnection as upsertGoogleConnection,
 } from "../oauth/google";
 import {
   disconnectMicrosoft,
   exchangeMicrosoftCode,
   markConnectionExpired as markMicrosoftConnectionExpired,
+  upsertConnection as upsertMicrosoftConnection,
 } from "../oauth/microsoft";
 import {
   disconnectNotion,
@@ -259,6 +262,175 @@ test("getDrivePickerAccessToken refreshes expired Drive tokens before returning 
   }
 });
 
+test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS refreshes", async () => {
+  const googlePatches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const googleExisting = {
+    _id: "google_1",
+    userId: "user_1",
+    provider: "google",
+    accessToken: "old_access",
+    refreshToken: "old_refresh",
+    expiresAt: 1,
+    scopes: ["openid"],
+    status: "active",
+    connectedAt: 1,
+    lastRefreshedAt: 42,
+  };
+  const googleDb = {
+    query: () => ({ withIndex: () => ({ unique: async () => googleExisting }) }),
+    patch: async (id: string, patch: Record<string, unknown>) => {
+      googlePatches.push({ id, patch });
+    },
+  };
+
+  const staleGoogle = await (upsertGoogleConnection as any)._handler({ db: googleDb }, {
+    userId: "user_1",
+    accessToken: "stale_access",
+    refreshToken: "new_refresh_should_not_write",
+    expiresAt: 100,
+    scopes: ["https://www.googleapis.com/auth/drive.file"],
+    expectedLastRefreshedAt: 1,
+  });
+  assert.equal(staleGoogle, "google_1");
+  assert.deepEqual(googlePatches, []);
+
+  await (upsertGoogleConnection as any)._handler({ db: googleDb }, {
+    userId: "user_1",
+    accessToken: "fresh_access",
+    refreshToken: "",
+    expiresAt: 200,
+    scopes: ["https://www.googleapis.com/auth/drive.file"],
+    email: "new@example.com",
+    displayName: "New User",
+    clientType: "web",
+    expectedLastRefreshedAt: 42,
+  });
+  const googlePatch = googlePatches.at(0) as { id: string; patch: Record<string, unknown> } | undefined;
+  assert.ok(googlePatch);
+  assert.equal(googlePatch.id, "google_1");
+  assert.equal(googlePatch.patch.refreshToken, undefined);
+  assert.equal(googlePatch.patch.email, "new@example.com");
+  assert.equal(googlePatch.patch.clientType, "web");
+  assert.deepEqual(
+    [...(googlePatch.patch.scopes as string[])].sort(),
+    ["https://www.googleapis.com/auth/drive.file", "openid"],
+  );
+
+  const microsoftPatches: Array<Record<string, unknown>> = [];
+  const microsoftExisting = {
+    _id: "microsoft_1",
+    userId: "user_1",
+    provider: "microsoft",
+    accessToken: "old_access",
+    refreshToken: "old_refresh",
+    expiresAt: 1,
+    scopes: ["Mail.Read"],
+    status: "active",
+    connectedAt: 1,
+    lastRefreshedAt: 7,
+  };
+  const microsoftDb = {
+    query: () => ({ withIndex: () => ({ unique: async () => microsoftExisting }) }),
+    patch: async (_id: string, patch: Record<string, unknown>) => {
+      microsoftPatches.push(patch);
+    },
+  };
+  const staleMicrosoft = await (upsertMicrosoftConnection as any)._handler({ db: microsoftDb }, {
+    userId: "user_1",
+    accessToken: "stale_access",
+    refreshToken: "rotated_refresh",
+    expiresAt: 100,
+    scopes: ["Calendars.ReadWrite"],
+    expectedLastRefreshedAt: 6,
+  });
+  assert.equal(staleMicrosoft, "microsoft_1");
+  assert.deepEqual(microsoftPatches, []);
+
+  await (upsertMicrosoftConnection as any)._handler({ db: microsoftDb }, {
+    userId: "user_1",
+    accessToken: "fresh_access",
+    refreshToken: "",
+    expiresAt: 200,
+    scopes: ["Calendars.ReadWrite"],
+    displayName: "MS User",
+    expectedLastRefreshedAt: 7,
+  });
+  const microsoftPatch = microsoftPatches.at(0) as Record<string, unknown> | undefined;
+  assert.ok(microsoftPatch);
+  assert.equal(microsoftPatch.refreshToken, undefined);
+  assert.deepEqual(microsoftPatch.scopes, ["Calendars.ReadWrite"]);
+  assert.equal(microsoftPatch.displayName, "MS User");
+});
+
+test("Google Drive grant cleanup removes only unreferenced cached blobs and tolerates missing storage", async () => {
+  const deletedRows: string[] = [];
+  const deletedStorage: string[] = [];
+  const rows = [
+    { _id: "grant_referenced", cachedStorageId: "storage_referenced" },
+    { _id: "grant_unreferenced", cachedStorageId: "storage_unreferenced" },
+    { _id: "grant_missing_blob", cachedStorageId: "storage_missing" },
+    { _id: "grant_no_cache" },
+  ];
+  const db = {
+    query: (table: string) => ({
+      withIndex: () => ({
+        collect: async () => {
+          assert.equal(table, "googleDriveFileGrants");
+          return rows;
+        },
+        first: async () => {
+          assert.equal(table, "fileAttachments");
+          return rows[0]?.cachedStorageId === "storage_referenced"
+            ? { _id: "attachment_1" }
+            : null;
+        },
+      }),
+    }),
+    delete: async (id: string) => {
+      deletedRows.push(id);
+    },
+  };
+  let currentStorageId = "";
+  const result = await (deleteDriveFileGrantsForUser as any)._handler({
+    db: {
+      ...db,
+      query: (table: string) => ({
+        withIndex: (_index: string, apply: (q: any) => unknown) => {
+          apply({
+            eq: (_field: string, value: string) => {
+              if (table === "fileAttachments") currentStorageId = value;
+              return {};
+            },
+          });
+          return {
+            collect: async () => rows,
+            first: async () => currentStorageId === "storage_referenced"
+              ? { _id: "attachment_1" }
+              : null,
+          };
+        },
+      }),
+    },
+    storage: {
+      delete: async (id: string) => {
+        deletedStorage.push(id);
+        if (id === "storage_missing") {
+          throw new Error("already gone");
+        }
+      },
+    },
+  }, { userId: "user_1" });
+
+  assert.deepEqual(result, { deleted: 4 });
+  assert.deepEqual(deletedStorage, ["storage_unreferenced", "storage_missing"]);
+  assert.deepEqual(deletedRows, [
+    "grant_referenced",
+    "grant_unreferenced",
+    "grant_missing_blob",
+    "grant_no_cache",
+  ]);
+});
+
 test("exchangeMicrosoftCode requires config and disconnect helpers delete stored connections", async () => {
   const originalFetch = globalThis.fetch;
   const originalClientId = process.env.MICROSOFT_CLIENT_ID;
@@ -324,6 +496,73 @@ test("exchangeMicrosoftCode requires config and disconnect helpers delete stored
     assert.equal(mutations[0]?.displayName, "MS User");
     assert.deepEqual(disconnect, { success: true });
     assert.deepEqual(mutations[1], { userId: "user_1" });
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.MICROSOFT_CLIENT_ID = originalClientId;
+  }
+});
+
+test("exchangeMicrosoftCode handles missing access tokens and non-fatal profile lookup failures", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalClientId = process.env.MICROSOFT_CLIENT_ID;
+  process.env.MICROSOFT_CLIENT_ID = "ms_client";
+
+  try {
+    globalThis.fetch = (async () => ({
+      ok: true,
+      json: async () => ({
+        refresh_token: "refresh_ms",
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope: "",
+      }),
+    })) as unknown as typeof fetch;
+    await assert.rejects(
+      (exchangeMicrosoftCode as any)._handler({
+        auth: buildAuth(),
+        runMutation: async () => undefined,
+      }, {
+        code: "code_missing_access",
+        codeVerifier: "verifier",
+        redirectUri: "msauth://callback",
+      }),
+      (error: unknown) => error instanceof ConvexError
+        && (error as ConvexError<any>).data?.message === "Microsoft did not return an access token.",
+    );
+
+    const mutations: Record<string, unknown>[] = [];
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: "access_ms",
+            expires_in: 3600,
+            token_type: "Bearer",
+          }),
+        } as Response;
+      }
+      throw new Error("graph unavailable");
+    }) as typeof fetch;
+
+    const result = await (exchangeMicrosoftCode as any)._handler({
+      auth: buildAuth(),
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {
+      code: "code_no_profile",
+      codeVerifier: "verifier",
+      redirectUri: "msauth://callback",
+    });
+
+    assert.deepEqual(result, { success: true, email: null });
+    assert.equal(mutations[0]?.accessToken, "access_ms");
+    assert.deepEqual(mutations[0]?.scopes, []);
+    assert.equal(mutations[0]?.email, undefined);
+    assert.equal(mutations[0]?.displayName, undefined);
   } finally {
     globalThis.fetch = originalFetch;
     process.env.MICROSOFT_CLIENT_ID = originalClientId;

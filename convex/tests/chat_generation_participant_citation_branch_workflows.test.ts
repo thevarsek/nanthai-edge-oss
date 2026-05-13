@@ -33,6 +33,7 @@ function makeCtx(options: {
   extractedText?: string | null;
   userPrefs?: Record<string, unknown> | null;
   cancelled?: boolean;
+  throwScopedDocuments?: boolean;
 } = {}) {
   const mutations: Array<Record<string, unknown>> = [];
   const scopedDocuments = options.scopedDocuments ?? [];
@@ -57,6 +58,9 @@ function makeCtx(options: {
           && !("jobId" in mutationArgs)
           && !("messageId" in mutationArgs)
         ) {
+          if (options.throwScopedDocuments) {
+            throw new Error("document index offline");
+          }
           return scopedDocuments;
         }
         return null;
@@ -245,6 +249,34 @@ test("generateForParticipant rejects Google Workspace turns on disallowed provid
   assert.equal(result.failed, true);
   const finalize = mutations.find((entry) => entry.status === "failed");
   assert.match(String(finalize?.content), /Google Workspace data/);
+});
+
+test("generateForParticipant continues when scoped document resolution fails", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => streamResponse([
+    {
+      id: "gen_doc_scope_failed",
+      choices: [{ delta: { content: "Plain answer without scoped documents." } }],
+    },
+    { choices: [{ finish_reason: "stop" }] },
+  ])) as any;
+
+  const scopedCalls: Record<string, unknown>[] = [];
+  const { result, mutations } = await runParticipant({
+    toolRegistry: makeRegistry(),
+    progressiveTools: { directToolNames: [], enabledIntegrations: [], allowSubagents: false },
+    onDocumentToolsScoped: async (args: Record<string, unknown>) => {
+      scopedCalls.push(args);
+      return makeRegistry();
+    },
+    ctxOptions: { throwScopedDocuments: true },
+  });
+
+  assert.equal(result.failed, false);
+  assert.deepEqual(scopedCalls, []);
+  const finalize = mutations.find((entry) => entry.status === "completed");
+  assert.equal(finalize?.content, "Plain answer without scoped documents.");
+  assert.equal(finalize?.documentCitations, undefined);
 });
 
 test("generateForParticipant drops document citations outside scope or missing quoted text", async (t) => {
