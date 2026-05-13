@@ -269,7 +269,9 @@ function textParagraph(text: string, fontFamily: string, bodyFontSizeHp: number,
 function buildDefinedTermsTable(terms: unknown): DocxTableInput | undefined {
   if (!Array.isArray(terms) || terms.length === 0) return undefined;
   const rows = terms.map((entry) => {
-    const item = entry as Record<string, unknown>;
+    const item = entry && typeof entry === "object"
+      ? entry as Record<string, unknown>
+      : {};
     return [
       String(item.term ?? ""),
       String(item.definition ?? ""),
@@ -289,7 +291,9 @@ function buildSignatureSections(input: unknown): DocxSection[] {
     unnumbered: true,
     pageBreak: true,
     body: input.map((raw) => {
-      const block = raw as SignatureBlockInput;
+      const block = raw && typeof raw === "object"
+        ? raw as SignatureBlockInput
+        : { partyName: "Party" };
       const partyName = block.partyName || "Party";
       return [
         partyName,

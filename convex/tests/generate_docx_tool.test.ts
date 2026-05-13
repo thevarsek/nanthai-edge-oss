@@ -43,6 +43,21 @@ async function docxXml(blob: Blob, path: string): Promise<string> {
   return file.async("string");
 }
 
+test("generate_docx validates required title and non-empty sections", async () => {
+  const missingTitle = await runGenerateDocx({
+    sections: [{ heading: "Scope", body: "Draft the scope." }],
+  });
+  const emptySections = await runGenerateDocx({
+    title: "Empty report",
+    sections: [],
+  });
+
+  assert.equal(missingTitle.result.success, false);
+  assert.equal(missingTitle.result.error, "Missing or invalid 'title'");
+  assert.equal(emptySections.result.success, false);
+  assert.equal(emptySections.result.error, "'sections' must be a non-empty array");
+});
+
 test("generate_docx rejects skipped heading hierarchy levels", async () => {
   const { result } = await runGenerateDocx({
     title: "Hierarchy Test",
@@ -98,6 +113,66 @@ test("generate_docx includes defined terms, appendices, page breaks, signatures,
   assert.match(xml, /Customer Inc/);
   assert.match(xml, /w:type="page"/);
   assert.match(xml, /w:orient="landscape"/);
+});
+
+test("generate_docx applies inline formatting and optional defaults in legal-style sections", async () => {
+  const previousSiteUrl = process.env.CONVEX_SITE_URL;
+  process.env.CONVEX_SITE_URL = "https://app.example";
+  try {
+    const { result, data, stored } = await runGenerateDocx({
+      title: "Formatting Defaults",
+      sections: [
+        {
+          heading: "Summary",
+          level: 1,
+          content: "Use **bold**, *italic*, and ***both*** markers.",
+        },
+        {
+          heading: "Plain Annex",
+          unnumbered: true,
+          pageBreakBefore: true,
+          content: "First line\n\nSecond line",
+          table: { headers: [], rows: [["ignored"]] },
+        },
+      ],
+      definedTerms: [
+        { term: "Agreement", definition: null },
+        null,
+      ],
+      signatureBlocks: [
+        { partyName: "", title: undefined },
+      ],
+      appendices: [
+        { content: "The default appendix title is assigned." },
+        { heading: "Appendix B", pageBreak: false, body: "No automatic page break here." },
+      ],
+      margins: { top: 0.5 },
+    });
+
+    assert.equal(result.success, true);
+    const docxData = data as Record<string, unknown> | undefined;
+    assert.equal(
+      docxData?.downloadUrl,
+      "https://app.example/download?storageId=storage_1&filename=Formatting_Defaults.docx",
+    );
+    assert.deepEqual(docxData?.warnings, ["Table skipped because it has no headers."]);
+    assert.match(String(docxData?.summary ?? ""), /5 sections/);
+
+    const xml = await docxXml(stored[0]!, "word/document.xml");
+    assert.match(xml, /Use /);
+    assert.match(xml, /bold/);
+    assert.match(xml, /italic/);
+    assert.match(xml, /both/);
+    assert.match(xml, /Appendix 1/);
+    assert.match(xml, /Party/);
+    assert.match(xml, /Title: ____________________________/);
+  } finally {
+    if (previousSiteUrl === undefined) {
+      delete process.env.CONVEX_SITE_URL;
+    } else {
+      process.env.CONVEX_SITE_URL = previousSiteUrl;
+    }
+  }
 });
 
 test("generate_docx normalizes malformed table rows and keeps fixed table widths", async () => {

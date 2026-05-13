@@ -5,8 +5,16 @@ import { ConvexError } from "convex/values";
 import {
   archiveSkill,
   createSkillInternal,
+  deleteSkill,
   duplicateSystemSkillInternal,
+  setChatIntegrationOverrides,
+  setChatIntegrationOverridesInternal,
+  setChatSkillOverridesInternal,
   setChatSkillsPublic,
+  setPersonaIntegrationOverrides,
+  setPersonaIntegrationOverridesInternal,
+  setPersonaSkillOverridesInternal,
+  setPersonaSkillsPublic,
   updateSkill,
   updateSkillInternal,
 } from "../skills/mutations";
@@ -180,4 +188,49 @@ test("public skill update, archive, and chat assignment mutations enforce pro au
     { skillId: "skill_old", state: "never" },
     { skillId: "skill_new", state: "available" },
   ]);
+});
+
+test("skill public and internal override mutations reject missing or foreign owners", async () => {
+  const proCtx = {
+    auth: buildAuth(),
+    db: {
+      get: async (id: string) => {
+        if (id === "foreign_skill") return { ...baseSkill, _id: id, ownerUserId: "user_2" };
+        if (id === "system_skill") return { ...baseSkill, _id: id, scope: "system" };
+        if (id === "foreign_chat") return { _id: id, userId: "user_2" };
+        if (id === "foreign_persona") return { _id: id, userId: "user_2" };
+        return null;
+      },
+      query: (table: string) => queryFor({
+        entitlement: table === "purchaseEntitlements"
+          ? { _id: "ent_1", status: "active" }
+          : null,
+      }),
+      patch: async () => {
+        throw new Error("unauthorized paths must not patch");
+      },
+      delete: async () => {
+        throw new Error("unauthorized paths must not delete");
+      },
+    },
+  } as any;
+  const rejects = (promise: Promise<unknown>, message: RegExp) =>
+    assert.rejects(() => promise, message);
+
+  await rejects((archiveSkill as any)._handler(proCtx, { skillId: "missing_skill" }), /Skill not found/);
+  await rejects((archiveSkill as any)._handler(proCtx, { skillId: "foreign_skill" }), /Not authorized/);
+  await rejects((deleteSkill as any)._handler(proCtx, { skillId: "missing_skill" }), /Skill not found/);
+  await rejects((deleteSkill as any)._handler(proCtx, { skillId: "system_skill" }), /System skills cannot be deleted/);
+  await rejects((setPersonaSkillsPublic as any)._handler(proCtx, { personaId: "missing_persona", discoverableSkillIds: [] }), /Persona not found/);
+  await rejects((setPersonaSkillsPublic as any)._handler(proCtx, { personaId: "foreign_persona", discoverableSkillIds: [] }), /Not authorized/);
+  await rejects((setChatSkillsPublic as any)._handler(proCtx, { chatId: "missing_chat", discoverableSkillIds: [] }), /Chat not found/);
+  await rejects((setChatSkillsPublic as any)._handler(proCtx, { chatId: "foreign_chat", disabledSkillIds: [] }), /Not authorized/);
+  await rejects((setPersonaIntegrationOverrides as any)._handler(proCtx, { personaId: "missing_persona", integrationOverrides: [] }), /Persona not found/);
+  await rejects((setChatIntegrationOverrides as any)._handler(proCtx, { chatId: "foreign_chat", integrationOverrides: [] }), /Not authorized/);
+
+  const internalArgs = { userId: "user_1" };
+  await rejects((setChatSkillOverridesInternal as any)._handler(proCtx, { ...internalArgs, chatId: "missing_chat", skillOverrides: [] }), /Chat not found/);
+  await rejects((setChatIntegrationOverridesInternal as any)._handler(proCtx, { ...internalArgs, chatId: "foreign_chat", integrationOverrides: [] }), /Not authorized/);
+  await rejects((setPersonaSkillOverridesInternal as any)._handler(proCtx, { ...internalArgs, personaId: "missing_persona", skillOverrides: [] }), /Persona not found/);
+  await rejects((setPersonaIntegrationOverridesInternal as any)._handler(proCtx, { ...internalArgs, personaId: "foreign_persona", integrationOverrides: [] }), /Not authorized/);
 });

@@ -10,6 +10,9 @@ const UNSUPPORTED_PARAM_PATTERNS: RegExp[] = [
 
 export function normalizeUnsupportedParameterName(rawName: string): string {
   const normalized = rawName.trim().toLowerCase();
+  if (normalized === "reasoning.effort") {
+    return "reasoning";
+  }
   const terminal = normalized.split(".").pop() ?? normalized;
 
   switch (terminal) {
@@ -17,7 +20,6 @@ export function normalizeUnsupportedParameterName(rawName: string): string {
     case "max_completion_tokens":
       return "max_tokens";
     case "reasoning_effort":
-    case "reasoning.effort":
       return "reasoning";
     case "imageconfig":
       return "image_config";

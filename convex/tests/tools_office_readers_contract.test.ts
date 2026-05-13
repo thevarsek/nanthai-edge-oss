@@ -159,3 +159,106 @@ test("extractPptxContent resolves titles, subtitles, notes, and fallback title l
   assert.match(result.markdown, /\> \*\*Notes:\*\* Speaker note text/);
   assert.ok(result.wordCount >= 8);
 });
+
+test("extractPptxContent handles fallback slide order and placeholder variants", async () => {
+  const zip = new JSZip();
+  zip.file("ppt/slides/slide10.xml", `<?xml version="1.0" encoding="UTF-8"?>
+    <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+      <p:cSld><p:spTree>
+        <p:sp>
+          <p:nvSpPr><p:nvPr><p:ph type="obj"/></p:nvPr></p:nvSpPr>
+          <p:txBody><a:p><a:r><a:t>Second ordered slide</a:t></a:r></a:p></p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld>
+    </p:sld>`);
+  zip.file("ppt/slides/slide2.xml", `<?xml version="1.0" encoding="UTF-8"?>
+    <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+      <p:cSld><p:spTree>
+        <p:sp>
+          <p:nvSpPr><p:nvPr><p:ph/></p:nvPr></p:nvSpPr>
+          <p:txBody>
+            <a:p><a:r><a:rPr b="1"/></a:r><a:fld><a:t>Field title</a:t></a:fld></a:p>
+            <a:p><a:r><a:t>Body &amp; details</a:t></a:r></a:p>
+          </p:txBody>
+        </p:sp>
+      </p:spTree></p:cSld>
+    </p:sld>`);
+  zip.file("ppt/slides/_rels/slide2.xml.rels", `<?xml version="1.0" encoding="UTF-8"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rNote1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/notesSlide" Target="notesSlide2.xml"/>
+    </Relationships>`);
+  zip.file("ppt/slides/_rels/slide10.xml.rels", `<?xml version="1.0" encoding="UTF-8"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="layout" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout" Target="../slideLayouts/slideLayout1.xml"/>
+    </Relationships>`);
+  zip.file("ppt/notesSlides/notesSlide2.xml", `<?xml version="1.0" encoding="UTF-8"?>
+    <p:notes xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+      xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+      <p:cSld><p:spTree>
+        <p:sp><p:txBody>
+          <a:p><a:r><a:t>3</a:t></a:r></a:p>
+          <a:p><a:r><a:t>Fallback note</a:t></a:r></a:p>
+        </p:txBody></p:sp>
+      </p:spTree></p:cSld>
+    </p:notes>`);
+
+  const result = await extractPptxContent(await zip.generateAsync({ type: "arraybuffer" }));
+
+  assert.equal(result.slideCount, 2);
+  assert.deepEqual(
+    result.slides.map((slide) => slide.title),
+    ["Field title", "Second ordered slide"],
+  );
+  assert.equal(result.slides[0].bodyParagraphs[1].text, "Body & details");
+  assert.equal(result.slides[0].notesText, "Fallback note");
+});
+
+test("extractPptxContent respects presentation relationships and falls back when they are incomplete", async () => {
+  async function buildOrderedDeck(relsXml?: string, sldIdXml = `<p:sldId id="256" r:id="rId1"/>`) {
+    const zip = new JSZip();
+    zip.file("ppt/presentation.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+        xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+        <p:sldIdLst>${sldIdXml}</p:sldIdLst>
+      </p:presentation>`);
+    if (relsXml !== undefined) {
+      zip.file("ppt/_rels/presentation.xml.rels", relsXml);
+    }
+    zip.file("ppt/slides/slide1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:cSld><p:spTree><p:sp>
+          <p:txBody><a:p><a:r><a:t>Fallback deck title</a:t></a:r></a:p></p:txBody>
+        </p:sp></p:spTree></p:cSld>
+      </p:sld>`);
+    return zip.generateAsync({ type: "arraybuffer" });
+  }
+
+  const fullPathResult = await extractPptxContent(await buildOrderedDeck(`<?xml version="1.0" encoding="UTF-8"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="rId1" Target="ppt/slides/slide1.xml"/>
+    </Relationships>`));
+  const missingRelsResult = await extractPptxContent(await buildOrderedDeck(undefined));
+  const unmappedRelResult = await extractPptxContent(await buildOrderedDeck(`<?xml version="1.0" encoding="UTF-8"?>
+    <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+      <Relationship Id="other" Target="slides/slide2.xml"/>
+    </Relationships>`));
+  const noIdsResult = await extractPptxContent(await buildOrderedDeck("", ""));
+
+  assert.equal(fullPathResult.slides[0].title, "Fallback deck title");
+  assert.equal(missingRelsResult.slideCount, 1);
+  assert.equal(unmappedRelResult.slideCount, 1);
+  assert.equal(noIdsResult.slideCount, 1);
+});
+
+test("extractPptxContent rejects archives without slides", async () => {
+  const zip = new JSZip();
+  zip.file("ppt/presentation.xml", "<p:presentation/>");
+
+  await assert.rejects(
+    extractPptxContent(await zip.generateAsync({ type: "arraybuffer" })),
+    /no slides found/,
+  );
+});

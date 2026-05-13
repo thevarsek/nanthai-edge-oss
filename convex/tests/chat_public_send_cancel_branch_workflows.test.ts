@@ -3,6 +3,8 @@ import test from "node:test";
 
 import {
   cancelGenerationHandler,
+  createChatHandler,
+  createUploadUrlHandler,
   sendMessageHandler,
 } from "../chat/mutations_public_handlers";
 
@@ -74,6 +76,7 @@ function buildCtx(options?: {
     },
     storage: {
       getUrl: async () => options?.storageUrl ?? "https://files.example/report.pdf",
+      generateUploadUrl: async () => "https://uploads.example/new",
     },
   } as any;
 
@@ -89,6 +92,38 @@ function proTableRows(): Record<string, Row[]> {
     userPreferences: [{ _id: "prefs_1", userId: "user_1", titleModelId: "   " }],
   };
 }
+
+test("createChatHandler persists optional web participants and createUploadUrl requires auth", async () => {
+  const { ctx, inserts } = buildCtx();
+
+  const chatId = await createChatHandler(ctx, {
+    title: "Architecture review",
+    mode: "chat",
+    folderId: "folder_1",
+    participants: [
+      { modelId: "model_a", personaId: "persona_1" as any, personaName: "Planner", personaEmoji: "P" },
+      { modelId: "model_b", personaAvatarImageUrl: "https://avatar.example/p.png" },
+      { modelId: "model_c", personaName: null },
+      { modelId: "model_d" },
+    ],
+  });
+  const uploadUrl = await createUploadUrlHandler(ctx);
+
+  assert.equal(chatId, "chats_1");
+  assert.equal(uploadUrl, "https://uploads.example/new");
+  assert.equal(inserts.find((entry) => entry.table === "chats")?.value.folderId, "folder_1");
+  const participants = inserts.filter((entry) => entry.table === "chatParticipants");
+  assert.equal(participants.length, 3);
+  assert.deepEqual(participants.map((entry) => entry.value.sortOrder), [0, 1, 2]);
+  assert.equal(participants[0].value.personaId, "persona_1");
+  assert.equal(participants[1].value.personaAvatarImageUrl, "https://avatar.example/p.png");
+  assert.equal(participants[2].value.personaName, undefined);
+
+  const legacy = buildCtx();
+  await createChatHandler(legacy.ctx, { mode: "ideascape" });
+  assert.equal(legacy.inserts.filter((entry) => entry.table === "chatParticipants").length, 0);
+  assert.equal(legacy.inserts.find((entry) => entry.table === "chats")?.value.title, "New conversation");
+});
 
 test("sendMessageHandler creates web-search turns with storage attachments and title seeding", async () => {
   const { ctx, inserts, patches, scheduled } = buildCtx({

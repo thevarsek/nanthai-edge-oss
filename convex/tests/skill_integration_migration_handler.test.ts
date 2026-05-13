@@ -72,3 +72,62 @@ test("migrateSkillIntegrationOverrides converts legacy fields and clears them ev
     },
   ]);
 });
+
+test("migrateSkillIntegrationOverrides dry-run counts chat merges without patching existing overrides", async () => {
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const ctx = {
+    db: {
+      query: (table: string) => ({
+        collect: async () => {
+          if (table === "personas") {
+            return [
+              {
+                _id: "persona_existing",
+                discoverableSkillIds: ["skill_1"],
+                enabledIntegrations: ["gmail"],
+                skillOverrides: [{ skillId: "skill_keep", state: "always" }],
+                integrationOverrides: [{ integrationId: "drive", enabled: true }],
+              },
+              {
+                _id: "persona_empty",
+                discoverableSkillIds: [],
+                enabledIntegrations: [],
+              },
+            ];
+          }
+          if (table === "chats") {
+            return [
+              {
+                _id: "chat_merge",
+                discoverableSkillIds: ["skill_a", "skill_b"],
+                disabledSkillIds: ["skill_b", "skill_c"],
+              },
+              {
+                _id: "chat_existing",
+                discoverableSkillIds: ["skill_d"],
+                disabledSkillIds: ["skill_e"],
+                skillOverrides: [{ skillId: "skill_keep", state: "available" }],
+              },
+            ];
+          }
+          return [];
+        },
+      }),
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        patches.push({ id, patch });
+      },
+    },
+  } as any;
+
+  const result = await (migrateSkillIntegrationOverrides as any)._handler(ctx, { dryRun: true });
+
+  assert.deepEqual(result, {
+    personasSkillOverrides: 0,
+    personasIntegrationOverrides: 0,
+    chatsSkillOverrides: 1,
+    chatsIntegrationOverrides: 0,
+    personasLegacyCleared: 2,
+    chatsLegacyCleared: 2,
+  });
+  assert.deepEqual(patches, []);
+});

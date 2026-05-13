@@ -1,0 +1,89 @@
+import test, { mock } from "node:test";
+import assert from "node:assert/strict";
+
+import { executePerplexitySearch } from "../search/helpers";
+
+test("executePerplexitySearch rewrites OpenRouter annotations and adds web tools for non-Perplexity models", async (t) => {
+  t.after(() => mock.restoreAll());
+  const bodies: Array<Record<string, any>> = [];
+
+  mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify({
+      id: "gen_search_1",
+      choices: [{
+        message: {
+          content: "Claim[1] and fallback[3].",
+          annotations: [
+            {
+              type: "url_citation",
+              url_citation: { url: "https://source.example/a", title: "Source A" },
+            },
+            {
+              type: "url_citation",
+              url_citation: { url: "https://source.example/b" },
+            },
+            { type: "other" },
+          ],
+        },
+      }],
+      usage: {
+        prompt_tokens: 11,
+        completion_tokens: 7,
+        total_tokens: 18,
+        cost: 0.002,
+      },
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  const [result] = await executePerplexitySearch(
+    ["latest policy"],
+    "openai/gpt-4.1",
+    "test-key",
+    { maxTokens: 1234 },
+  );
+
+  assert.equal(result?.success, true);
+  assert.equal(
+    result?.content,
+    "Claim [1. Source A](https://source.example/a) and fallback[3].",
+  );
+  assert.deepEqual(result?.citations, ["https://source.example/a", "https://source.example/b"]);
+  assert.deepEqual(result?.usage, {
+    promptTokens: 11,
+    completionTokens: 7,
+    totalTokens: 18,
+    cost: 0.002,
+  });
+  assert.equal(result?.generationId, "gen_search_1");
+  assert.equal(bodies[0]?.max_tokens, 1234);
+  assert.equal(bodies[0]?.tools?.[0]?.type, "openrouter:web_search");
+});
+
+test("executePerplexitySearch preserves HTTP and network failure context per query", async (t) => {
+  t.after(() => mock.restoreAll());
+  let call = 0;
+  mock.method(globalThis, "fetch", async () => {
+    call += 1;
+    if (call === 1) {
+      return new Response("upstream unavailable", { status: 503 });
+    }
+    if (call === 2) {
+      throw Object.assign(new Error("fetch failed"), { cause: "ECONNRESET" });
+    }
+    throw "primitive failure";
+  });
+
+  const results = await executePerplexitySearch(
+    ["first", "second", "third"],
+    "perplexity/sonar-pro-search",
+    "test-key",
+  );
+
+  assert.equal(results[0]?.success, false);
+  assert.match(results[0]?.error ?? "", /Perplexity API error \(503\): upstream unavailable/);
+  assert.equal(results[1]?.success, false);
+  assert.match(results[1]?.error ?? "", /fetch failed.*ECONNRESET/);
+  assert.equal(results[2]?.success, false);
+  assert.equal(results[2]?.error, "Unknown search error");
+});

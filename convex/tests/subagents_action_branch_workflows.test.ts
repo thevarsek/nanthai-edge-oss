@@ -1,7 +1,86 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import { runSubagentRunHandler } from "../subagents/actions_run_subagent";
+
+function sseResponse(events: unknown[]) {
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: () => null },
+    text: async () => [
+      ...events.map((event) => `data: ${JSON.stringify(event)}`),
+      "data: [DONE]",
+      "",
+    ].join("\n\n"),
+  } as any;
+}
+
+function makeClaimedRunCtx(options: {
+  fetchError?: unknown;
+  streamEvents?: unknown[];
+  finalizeResult?: Record<string, unknown> | null;
+  updateBatchResult?: boolean;
+} = {}) {
+  const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  const run = {
+    _id: "run_1",
+    batchId: "batch_1",
+    status: "queued",
+    title: "Research",
+    taskPrompt: "Find the answer.",
+    content: "",
+    reasoning: "",
+    toolCalls: [],
+    toolResults: [],
+    continuationCount: 0,
+  };
+  const batch = {
+    _id: "batch_1",
+    status: "running_children",
+    userId: "user_1",
+    chatId: "chat_1",
+    parentMessageId: "parent_1",
+    childConversationSeed: [{ role: "assistant", content: "Seed context." }],
+    paramsSnapshot: { requestParams: {} },
+    participantSnapshot: {
+      userId: "user_1",
+      chatId: "chat_1",
+      participant: { modelId: "openai/gpt-5" },
+    },
+  };
+  return {
+    mutations,
+    scheduled,
+    ctx: {
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+        if ("expectedStatuses" in args) return true;
+        if ("runId" in args && "status" in args) return options.finalizeResult ?? null;
+        if ("batchId" in args && args.status === "waiting_to_resume") {
+          return options.updateBatchResult ?? false;
+        }
+        return null;
+      },
+      runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+        if ("runId" in args) return run;
+        if ("batchId" in args) return batch;
+        if ("modelId" in args) {
+          return { supportedParameters: [], hasImageGeneration: false, hasReasoning: false };
+        }
+        if ("userId" in args) return "sk-test";
+        return null;
+      },
+      scheduler: {
+        runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+          scheduled.push(args);
+          return "scheduled_1";
+        },
+      },
+    } as any,
+  };
+}
 
 test("unclaimed stale streaming subagent runs are failed and resume the parent when all children are terminal", async () => {
   const mutations: Array<Record<string, unknown>> = [];
@@ -133,4 +212,49 @@ test("claimed subagent run marks itself cancelled when its batch was cancelled",
     && args.reasoning === "thinking"
     && args.error === "Subagent batch was cancelled."
   ));
+});
+
+test("claimed subagent run stores an explicit empty-response fallback without resuming unfinished batches", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => sseResponse([
+    { choices: [{ delta: { content: "   " } }] },
+    { choices: [{ finish_reason: "stop" }] },
+  ])) as any;
+
+  const state = makeClaimedRunCtx({
+    finalizeResult: { batchId: "batch_1", allTerminal: false },
+  });
+
+  await runSubagentRunHandler(state.ctx, { runId: "run_1" as any });
+
+  const completed = state.mutations.find((args) => args.status === "completed");
+  assert.equal(completed?.content, "[No response received from subagent]");
+  assert.equal(completed?.reasoning, undefined);
+  assert.equal(completed?.usage, undefined);
+  assert.equal(state.scheduled.some((args) => args.batchId === "batch_1"), false);
+});
+
+test("claimed subagent run records stream failures and respects a failed parent-resume status transition", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => {
+    throw "subagent transport failed";
+  }) as any;
+
+  const state = makeClaimedRunCtx({
+    finalizeResult: { batchId: "batch_1", allTerminal: true },
+    updateBatchResult: false,
+  });
+
+  await runSubagentRunHandler(state.ctx, { runId: "run_1" as any });
+
+  const failed = state.mutations.find((args) => args.status === "failed");
+  assert.equal(failed?.content, undefined);
+  assert.equal(failed?.reasoning, undefined);
+  assert.equal(failed?.error, "subagent transport failed");
+  assert.ok(state.mutations.some((args) =>
+    args.batchId === "batch_1"
+    && args.status === "waiting_to_resume"
+    && args.expectedCurrentStatus === "running_children"
+  ));
+  assert.equal(state.scheduled.some((args) => args.batchId === "batch_1"), false);
 });

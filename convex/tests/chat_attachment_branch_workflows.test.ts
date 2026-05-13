@@ -90,6 +90,32 @@ test("attachment-triggered read tools and workspace tools cover extension fallba
   ] as never), ["list_documents", "read_document", "find_in_document"]);
 });
 
+test("document attachment prompts select MIME-aware read and edit workflows", () => {
+  const { nonImageParts } = splitMessageAttachmentParts({
+    _id: "msg_docs",
+    role: "user",
+    content: "Docs",
+    attachments: [
+      { type: "document", storageId: "xlsx", name: "sheet.bin", mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+      { type: "document", storageId: "pptx", name: "deck.bin", mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" },
+      { type: "document", storageId: "pdf", name: "paper.unknown", mimeType: "application/pdf" },
+      { type: "document", storageId: "tsv", name: "table.tsv", mimeType: "application/octet-stream" },
+      { type: "document", storageId: "txt", name: "notes.txt", mimeType: "application/octet-stream" },
+      { type: "document", storageId: "eml", name: "mail.bin", mimeType: "message/rfc822" },
+    ],
+  } as never);
+
+  const text = nonImageParts.map((part) => part.text ?? "").join("\n");
+  assert.match(text, /read_xlsx/);
+  assert.match(text, /edit_xlsx/);
+  assert.match(text, /read_pptx/);
+  assert.match(text, /edit_pptx/);
+  assert.match(text, /read_document/);
+  assert.match(text, /\/tmp\/inputs\/table.tsv/);
+  assert.match(text, /read_text_file/);
+  assert.match(text, /read_eml/);
+});
+
 test("resolveAllowedImageMessageIds keeps the newest assistant image per participant identity", () => {
   const allowed = resolveAllowedImageMessageIds([
     {

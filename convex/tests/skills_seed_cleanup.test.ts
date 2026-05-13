@@ -203,3 +203,93 @@ test("deleteRemovedSystemSkills exits without patches when removed slugs have no
   assert.deepEqual(patches, []);
   assert.deepEqual(deleted, []);
 });
+
+test("deleteRemovedSystemSkills deletes removed skills without touching unrelated owner config", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const deleted: string[] = [];
+  const rows: Record<string, Array<Record<string, unknown>>> = {
+    skills: [{ _id: "skill_removed", slug: "removed-skill", scope: "system" }],
+    userPreferences: [{
+      _id: "prefs_1",
+      skillDefaults: [{ skillId: "skill_keep", state: "available" }],
+    }],
+    personas: [{
+      _id: "persona_1",
+      skillOverrides: [{ skillId: "skill_keep", state: "always" }],
+    }],
+    chats: [{
+      _id: "chat_1",
+      skillOverrides: [{ skillId: "skill_keep", state: "never" }],
+    }],
+    scheduledJobs: [{
+      _id: "job_1",
+      turnSkillOverrides: [{ skillId: "skill_keep", state: "available" }],
+      steps: [
+        { prompt: "No overrides" },
+        { prompt: "Keep override", turnSkillOverrides: [{ skillId: "skill_keep", state: "always" }] },
+      ],
+    }],
+  };
+
+  const result = await deleteRemovedSystemSkillsHandler({
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          collect: async () => rows[table] ?? [],
+        }),
+        collect: async () => rows[table] ?? [],
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+      delete: async (id: string) => {
+        deleted.push(id);
+      },
+    },
+  }, { slugs: ["removed-skill"] });
+
+  assert.deepEqual(result, { deletedCount: 1 });
+  assert.deepEqual(deleted, ["skill_removed"]);
+  assert.deepEqual(patches, []);
+});
+
+test("upsertSystemSkill bumps legacy system rows with undefined version", async () => {
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const db = {
+    query: () => ({
+      withIndex: () => ({
+        collect: async () => [{ _id: "skill_legacy", slug: "legacy", scope: "system" }],
+      }),
+      collect: async () => [],
+    }),
+    patch: async (id: string, value: Record<string, unknown>) => {
+      patches.push({ id, value });
+    },
+    insert: async () => "unused",
+    delete: async () => undefined,
+  };
+
+  const id = await upsertSystemSkillHandler({ db }, {
+    slug: "legacy",
+    name: "Legacy",
+    summary: "Legacy summary",
+    instructionsRaw: "Help safely.",
+    instructionsCompiled: undefined,
+    compilationStatus: "compiled",
+    scope: "system",
+    origin: "nanthaiBuiltin",
+    visibility: "hidden",
+    lockState: "locked",
+    status: "active",
+    runtimeMode: "textOnly",
+    requiredToolIds: [],
+    requiredToolProfiles: undefined,
+    requiredIntegrationIds: [],
+    requiredCapabilities: undefined,
+  });
+
+  assert.equal(id, "skill_legacy");
+  assert.equal(patches[0]?.value.version, 1);
+  assert.deepEqual(patches[0]?.value.requiredToolProfiles, []);
+  assert.deepEqual(patches[0]?.value.requiredCapabilities, []);
+});

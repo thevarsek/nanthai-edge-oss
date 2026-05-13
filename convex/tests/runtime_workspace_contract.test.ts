@@ -181,3 +181,105 @@ test("workspace tool wrappers validate args and use the shared sandbox/runtime s
   assert.equal(resetRejected.success, false);
   assert.equal(resetNoSandbox.success, true);
 });
+
+test("workspace tool wrappers surface sandbox and storage failures clearly", async () => {
+  const throwingCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    workspaceSandbox: {
+      runCommand: async () => { throw "exec exploded"; },
+      readFile: async () => { throw new Error("read exploded"); },
+      writeFiles: async () => { throw "write exploded"; },
+      mkDir: async () => { throw new Error("mkdir exploded"); },
+      stop: async () => {},
+    },
+    ctx: {
+      runQuery: async () => null,
+      storage: {
+        get: async () => null,
+        store: async () => { throw "store exploded"; },
+        getUrl: async () => null,
+      },
+    },
+  } as any;
+
+  const missingRead = await workspaceReadFile.execute(throwingCtx, { path: "" });
+  const readFailure = await workspaceReadFile.execute(throwingCtx, { path: "/workspace/a.txt" });
+  const writeFailure = await workspaceWriteFile.execute(throwingCtx, {
+    path: "a.txt",
+    content: "x",
+    overwrite: true,
+  });
+  const listFailure = await workspaceListFiles.execute(throwingCtx, { path: "/workspace" });
+  const mkdirFailure = await workspaceMakeDirs.execute(throwingCtx, { path: "/workspace/new" });
+  const importMissing = await workspaceImportFile.execute(throwingCtx, { storageId: "storage_missing" });
+  const exportFailure = await workspaceExportFile.execute(throwingCtx, { path: "/workspace/out.txt" });
+
+  assert.equal(missingRead.success, false);
+  assert.equal(missingRead.error, "Missing path.");
+  assert.equal(readFailure.success, true);
+  assert.match(String((readFailure.data as any).error), /File not found/);
+  assert.equal(writeFailure.success, false);
+  assert.equal(writeFailure.error, "write exploded");
+  assert.equal(listFailure.success, false);
+  assert.equal(listFailure.error, "exec exploded");
+  assert.equal(mkdirFailure.success, false);
+  assert.equal(mkdirFailure.error, "mkdir exploded");
+  assert.equal(importMissing.success, false);
+  assert.match(importMissing.error ?? "", /not[ _]found|missing|storage/i);
+  assert.equal(exportFailure.success, false);
+});
+
+test("workspace wrappers reject missing paths and forward optional import/write arguments", async () => {
+  const writes: Array<Record<string, unknown>> = [];
+  const sandbox = {
+    readFile: async () => "old",
+    writeFiles: async (files: Record<string, unknown>) => {
+      writes.push(files);
+    },
+    mkDir: async () => {},
+  } as any;
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    workspaceSandbox: sandbox,
+    ctx: {
+      runQuery: async () => ({
+        storageId: "storage_1",
+        filename: "from-storage.txt",
+        mimeType: "text/plain",
+        source: "upload",
+      }),
+      storage: {
+        get: async () => new Blob(["imported"], { type: "text/plain" }),
+      },
+    },
+  } as any;
+
+  const missingWrite = await workspaceWriteFile.execute(toolCtx, { content: "x" });
+  const missingImport = await workspaceImportFile.execute(toolCtx, { storageId: "   " });
+  const missingExport = await workspaceExportFile.execute(toolCtx, { path: "   " });
+  const overwritten = await workspaceWriteFile.execute(toolCtx, {
+    path: "/workspace/existing.txt",
+    content: "new",
+    overwrite: true,
+  });
+  const imported = await workspaceImportFile.execute(toolCtx, {
+    storageId: "storage_1",
+    filename: "renamed.txt",
+    targetPath: "/workspace/custom/renamed.txt",
+  });
+
+  assert.equal(missingWrite.success, false);
+  assert.equal(missingWrite.error, "Missing path.");
+  assert.equal(missingImport.success, false);
+  assert.equal(missingImport.error, "Missing storageId.");
+  assert.equal(missingExport.success, false);
+  assert.equal(missingExport.error, "Missing path.");
+  assert.equal(overwritten.success, true);
+  assert.equal(imported.success, true);
+  assert.deepEqual(writes, [
+    { "/workspace/existing.txt": "new" },
+    { "/workspace/custom/renamed.txt": "imported" },
+  ]);
+});

@@ -184,3 +184,78 @@ test("enqueueStep routes research mode through the paper pipeline", async () => 
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.complexity, 3);
 });
+
+test("enqueueStep preserves explicit reasoning flags on direct generation steps", async () => {
+  const { ctx, scheduledCalls } = buildCtx();
+
+  await enqueueStep(ctx, {
+    jobId: "job_1" as any,
+    chatId: "chat_1" as any,
+    userId: "user_1",
+    executionId: "exec_1",
+    step: {
+      prompt: "Summarize updates",
+      modelId: "openai/gpt-5",
+      searchMode: "none",
+      includeReasoning: false,
+      reasoningEffort: "low",
+    },
+    stepIndex: 0,
+  });
+
+  const participant = (scheduledCalls[0]?.args.participants as Array<Record<string, unknown>>)[0];
+  assert.equal(participant.includeReasoning, false);
+  assert.equal(participant.reasoningEffort, "low");
+});
+
+test("enqueueStep falls back when a configured persona is unavailable", async () => {
+  const { ctx, mutationCalls, scheduledCalls } = buildCtx();
+  ctx.runQuery = (async () => null) as any;
+
+  await enqueueStep(ctx, {
+    jobId: "job_1" as any,
+    chatId: "chat_1" as any,
+    userId: "user_1",
+    executionId: "exec_1",
+    step: {
+      prompt: "Search without persona",
+      modelId: "openai/gpt-5",
+      personaId: "deleted_persona" as any,
+      searchMode: "web",
+      searchComplexity: undefined,
+      includeReasoning: true,
+    },
+    stepIndex: 2,
+  });
+
+  assert.equal(mutationCalls[0]?.args.modelId, "openai/gpt-5");
+  assert.equal(mutationCalls[0]?.args.personaId, undefined);
+  assert.equal(scheduledCalls[0]?.args.complexity, 1);
+  assert.equal(scheduledCalls[0]?.args.personaId, undefined);
+  assert.equal(scheduledCalls[0]?.args.includeReasoning, true);
+});
+
+test("enqueueStep ignores empty knowledge-base hydration results", async () => {
+  const { ctx, mutationCalls, actionCalls } = buildCtx();
+  ctx.runAction = (async (ref: unknown, args: Record<string, unknown>) => {
+    actionCalls.push({ ref, args });
+    return [];
+  }) as any;
+
+  await enqueueStep(ctx, {
+    jobId: "job_1" as any,
+    chatId: "chat_1" as any,
+    userId: "user_1",
+    executionId: "exec_1",
+    step: {
+      prompt: "Plain prompt",
+      modelId: "openai/gpt-5",
+      knowledgeBaseFileIds: ["kb_missing" as any],
+      searchMode: "basic",
+    },
+    stepIndex: 0,
+  });
+
+  assert.equal(actionCalls.length, 1);
+  assert.equal(mutationCalls[0]?.args.content, "Plain prompt");
+});

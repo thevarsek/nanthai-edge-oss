@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  getFileAttachmentByStorageInternal,
   getFileAttachmentInternal,
   getKnowledgeBaseFilesByStorageIdsHandler,
   listKnowledgeBaseFilesHandler,
@@ -125,6 +126,62 @@ test("KB listing applies source and search filters without document hydration su
   assert.deepEqual(uploads.map((file) => file.storageId), ["storage_upload"]);
 });
 
+test("KB listing hydrates document metadata, filters filed rows from unfiled view, and dedupes storage IDs", async () => {
+  const rows: Record<string, any[]> = {
+    generatedFiles: [
+      { _id: "gf_1", userId: "user_1", storageId: "storage_doc", filename: "contract.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: 50 },
+      { _id: "gf_dup", userId: "user_1", storageId: "storage_doc", filename: "contract-copy.docx", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", createdAt: 40 },
+      { _id: "gf_filed", userId: "user_1", storageId: "storage_filed", filename: "filed.pdf", mimeType: "application/pdf", chatId: "chat_filed", createdAt: 60 },
+    ],
+    generatedMedia: [],
+    fileAttachments: [
+      { _id: "fa_1", userId: "user_1", storageId: "storage_upload", filename: "notes.txt", mimeType: "text/plain", chatId: "chat_unfiled", createdAt: 30 },
+    ],
+    chats: [
+      { _id: "chat_filed", userId: "user_1", folderId: "folder_1" },
+      { _id: "chat_unfiled", userId: "user_1", folderId: undefined },
+    ],
+    documents: [
+      {
+        _id: "doc_1",
+        sourceStorageId: "storage_doc",
+        currentVersionId: "version_1",
+        externalSyncedVersionId: "version_external",
+        status: "ready",
+        syncState: "synced",
+      },
+      {
+        _id: "doc_filed",
+        sourceStorageId: "storage_filed",
+        currentVersionId: "version_filed",
+        folderId: "folder_1",
+        status: "ready",
+      },
+    ],
+    documentVersions: [
+      { _id: "version_1", extractionStatus: "ready", versionNumber: 2 },
+      { _id: "version_external", storageId: "storage_external", versionNumber: 7 },
+      { _id: "version_filed", extractionStatus: "ready", versionNumber: 1 },
+    ],
+  };
+
+  const result = await listKnowledgeBaseFilesHandler({
+    auth: buildAuth(),
+    db: buildDb(rows),
+    storage: { getUrl: async (id: string) => `https://cdn.example/${id}` },
+  } as any, { folderFilter: "unfiled", source: "all", limit: 0 });
+
+  assert.deepEqual(result.map((file) => file.storageId), ["storage_doc"]);
+  assert.equal(result[0].documentId, "doc_1");
+  assert.equal(result[0].documentVersionId, "version_1");
+  assert.equal(result[0].documentVersionNumber, 2);
+  assert.equal(result[0].documentExternalSyncedVersionId, "version_external");
+  assert.equal(result[0].documentExternalSyncedVersionNumber, 7);
+  assert.equal(result[0].documentExternalSyncedDownloadUrl, "https://cdn.example/storage_external");
+  assert.equal(result[0].isReadableDocument, true);
+  assert.equal(result[0].downloadUrl, "https://cdn.example/storage_doc");
+});
+
 test("storage-id KB lookup preserves request order, dedupes, and ignores foreign or missing rows", async () => {
   const rows: Record<string, any[]> = {
     generatedFiles: [
@@ -202,5 +259,30 @@ test("KB query auth guards and attachment metadata lookup protect private storag
   const missing = await (getFileAttachmentInternal as any)._handler({
     db: buildDb(rows),
   }, { fileAttachmentId: "missing" });
+  assert.equal(missing, null);
+});
+
+test("KB lookup guards unauthenticated storage requests and resolves attachment by storage id", async () => {
+  const rows: Record<string, any[]> = {
+    fileAttachments: [
+      { _id: "fa_1", userId: "user_1", storageId: "storage_1", driveFileId: "drive_1" },
+    ],
+  };
+
+  const unauthenticated = await getKnowledgeBaseFilesByStorageIdsHandler({
+    auth: buildAuth(null),
+    db: buildDb(rows),
+    storage: { getUrl: async () => "unused" },
+  } as any, { storageIds: ["storage_1"] as any });
+  assert.deepEqual(unauthenticated, []);
+
+  const attachment = await (getFileAttachmentByStorageInternal as any)._handler({
+    db: buildDb(rows),
+  }, { storageId: "storage_1" });
+  assert.deepEqual(attachment, { _id: "fa_1", driveFileId: "drive_1" });
+
+  const missing = await (getFileAttachmentByStorageInternal as any)._handler({
+    db: buildDb(rows),
+  }, { storageId: "missing" });
   assert.equal(missing, null);
 });
