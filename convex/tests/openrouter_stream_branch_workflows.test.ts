@@ -173,3 +173,59 @@ test("streaming transport preserves structured ConvexError failures for non-retr
     },
   );
 });
+
+test("streaming transport returns the final empty result after configured retries are exhausted", async () => {
+  const sleeps: number[] = [];
+  const requestBodies: Array<Record<string, unknown>> = [];
+  let processCount = 0;
+  const emptyResult = {
+    content: "",
+    reasoning: "",
+    usage: null,
+    finishReason: null,
+    imageUrls: [],
+    audioBase64: "",
+    audioTranscript: "",
+    toolCalls: [],
+    annotations: [],
+    generationId: null,
+  };
+  const deps = createOpenRouterStreamingDepsForTest({
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+    },
+    fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)));
+      return response(200, "data: empty", null);
+    },
+    processSSETextStream: async () => {
+      processCount += 1;
+      return emptyResult;
+    },
+  });
+
+  const result = await callOpenRouterStreaming(
+    "key",
+    "empty/model",
+    [{ role: "user", content: "hello" }],
+    {
+      provider: { only: ["openai"] },
+      tools: [{
+        type: "function",
+        function: {
+          name: "search",
+          description: "Search",
+          parameters: { type: "object", properties: {} },
+        },
+      }],
+    },
+    {},
+    { emptyStreamRetries: 1, emptyStreamBackoffs: [25] },
+    deps,
+  );
+
+  assert.equal(processCount, 2);
+  assert.deepEqual(sleeps, [25]);
+  assert.equal(requestBodies.length, 2);
+  assert.deepEqual(result, emptyResult);
+});
