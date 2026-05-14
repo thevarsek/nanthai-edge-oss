@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useClerk } from "@clerk/clerk-react";
+import { useClerk } from "@clerk/react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { useOpenRouterStatus, useSharedData } from "@/hooks/useSharedData";
 import { OpenRouter } from "@/lib/constants";

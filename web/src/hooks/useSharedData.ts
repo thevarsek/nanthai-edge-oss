@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { useQuery, useAction, useConvexAuth } from "convex/react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/react";
 import { api } from "@convex/_generated/api";
 
 export type ShellData = {

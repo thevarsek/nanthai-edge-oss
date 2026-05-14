@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";

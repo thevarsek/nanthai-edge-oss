@@ -2,7 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { ChevronLeft, MessageSquare, Clock, Drama, Wand2, ClipboardList, Brain, Camera, Mail, Link as LinkIcon, RotateCcw } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 

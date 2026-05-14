@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/react";
 import { useConvexAuth, useMutation } from "convex/react";
 import { Navigate, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";

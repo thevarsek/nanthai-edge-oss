@@ -1,4 +1,4 @@
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import { ChevronRight } from "lucide-react";
 
