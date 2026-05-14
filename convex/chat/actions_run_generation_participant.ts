@@ -12,6 +12,7 @@ import {
 } from "../lib/openrouter";
 import { ttftLog } from "../lib/generation_log";
 import { buildCurrentDatePrompt, buildRequestMessages } from "./helpers";
+import { assembleRequestContextForGeneration } from "./actions_context_assembly_integration";
 import { promoteLatestUserVideoUrls } from "./helpers_video_url_utils";
 import {
   GenerationCancelledError,
@@ -54,6 +55,7 @@ import {
 import { hasGoogleIntegrations, isGoogleDataAllowedProvider } from "../models/google_data_providers";
 import { MODEL_IDS } from "../lib/model_constants";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
+import { captureToolRoundArtifacts } from "../tools/artifact_writer";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
 import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_helpers";
 import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
@@ -542,7 +544,7 @@ export async function generateForParticipant(
       activeProfiles: params.restoredActiveProfiles,
       loadedSkills: params.restoredLoadedSkills,
     });
-    const baseRequestMessages = requestMessagesOverride ?? buildRequestMessages({
+    const legacyRequestMessages = requestMessagesOverride ?? buildRequestMessages({
       messages: allMessages,
       excludeMessageId: participant.messageId,
       systemPrompt: skillAugmentedPrompt ?? undefined,
@@ -552,6 +554,20 @@ export async function generateForParticipant(
       maxContextTokens:
         modelCapabilities.get(participant.modelId)?.contextLength ?? 75_000,
     });
+    let baseRequestMessages = legacyRequestMessages;
+    if (!requestMessagesOverride) {
+      baseRequestMessages = await assembleRequestContextForGeneration({
+        ctx,
+        chatId: args.chatId,
+        userId: args.userId,
+        assistantMessageId: participant.messageId,
+        jobId: participant.jobId,
+        participantId: participant.personaId ?? participant.modelId,
+        legacyMessages: legacyRequestMessages,
+        allMessages,
+        providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,
+      });
+    }
 
     const promotedRequest = promoteLatestUserVideoUrls(baseRequestMessages, {
       modelId: participant.modelId,
@@ -872,6 +888,34 @@ export async function generateForParticipant(
           },
         );
       },
+      onToolArtifacts: async (round, toolCalls, results) => {
+        const runtimeKind = (args as { subagentBatchId?: Id<"subagentBatches"> }).subagentBatchId
+          ? "subagent_parent_resume"
+          : "chat_generation";
+        await captureToolRoundArtifacts({
+          ctx,
+          metadata: {
+            userId: args.userId,
+            chatId: args.chatId,
+            messageId: participant.messageId,
+            jobId: participant.jobId,
+            sourceUserMessageId: args.userMessageId,
+            runtimeKind,
+            subagentBatchId: (args as { subagentBatchId?: Id<"subagentBatches"> }).subagentBatchId,
+            parentMessageId: runtimeKind === "subagent_parent_resume" ? participant.messageId : undefined,
+            parentJobId: runtimeKind === "subagent_parent_resume" ? participant.jobId : undefined,
+            promotionDecision: runtimeKind === "subagent_parent_resume" ? "parent_resume" : undefined,
+            ownerParticipantId: participant.personaId ?? participant.modelId,
+            ownerModelRunId: String(participant.jobId),
+            provider: caps?.provider,
+            runtime: runtimeProfile,
+            activeProfiles: Array.from(activeProfiles),
+          },
+          round,
+          toolCalls,
+          results,
+        });
+      },
       onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {
         if (!progressiveTools) return;
 
@@ -1074,6 +1118,16 @@ export async function generateForParticipant(
           personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides as any,
           skillDefaults: preResolvedOverrides?.skillDefaults as any,
           integrationDefaults: args.integrationDefaults as any,
+        },
+        checkpointVersion: "v2",
+        assembledCheckpoint: {
+          policyVersion: "m38.policy.v1",
+          assemblerVersion: "m38.assembler.v1",
+          artifactRefs: [],
+          memoryRefs: [],
+          rehydrationDirectives: [],
+          activeProfiles: Array.from(activeProfiles),
+          loadedSkills,
         },
         messages: continuationMessages,
         usage: genResult.totalUsage ?? undefined,

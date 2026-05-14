@@ -8,12 +8,14 @@ import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
 import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
 import { generateForParticipant } from "../chat/actions_run_generation_participant";
+import type { GenerationContinuationCheckpoint } from "../chat/generation_continuation_shared";
 import {
   buildParentContinuationPayload,
   isSubagentLeaseStale,
   SUBAGENT_RECOVERY_LEASE_MS,
 } from "./shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import { estimatePromptTokens } from "../chat/runtime_graph";
 
 // PRE-3: Check "cancelled" before "completed" so that a cancelled generation
 // is not accidentally treated as completed when the message was already
@@ -242,12 +244,99 @@ export async function continueParentAfterSubagentsHandler(
     }
     return message;
   });
+  const rawResumeRefs = await ctx.runQuery(internal.tools.artifacts.listSubagentRuntimeRefsForResume, {
+    userId: batch.userId,
+    batchId: batch._id,
+    limit: 200,
+  }) as Partial<{
+    artifactRefs: string[];
+    memoryRefs: string[];
+    childPrivateArtifactCount: number;
+    promotedArtifactCount: number;
+    childPrivateMemoryCount: number;
+    promotedMemoryCount: number;
+  }> | null;
+  const resumeRefs = {
+    artifactRefs: rawResumeRefs?.artifactRefs ?? [],
+    memoryRefs: rawResumeRefs?.memoryRefs ?? [],
+    childPrivateArtifactCount: rawResumeRefs?.childPrivateArtifactCount ?? 0,
+    promotedArtifactCount: rawResumeRefs?.promotedArtifactCount ?? 0,
+    childPrivateMemoryCount: rawResumeRefs?.childPrivateMemoryCount ?? 0,
+    promotedMemoryCount: rawResumeRefs?.promotedMemoryCount ?? 0,
+  };
+  const resumeMetadata = {
+    policyVersion: "m38.policy.v1",
+    assemblerVersion: "m38.assembler.v1",
+    artifactRefs: resumeRefs.artifactRefs,
+    memoryRefs: resumeRefs.memoryRefs,
+    mode: "subagent_parent_resume",
+    runtimeKind: "subagent_parent_resume",
+    subagentBatchId: batch._id,
+    parentMessageId: batch.parentMessageId,
+    parentJobId: batch.parentJobId,
+    parentToolCallId: batch.toolCallId,
+    promotionDecision: "parent_resume",
+    childPrivateArtifactCount: resumeRefs.childPrivateArtifactCount,
+    promotedArtifactCount: resumeRefs.promotedArtifactCount,
+    childPrivateMemoryCount: resumeRefs.childPrivateMemoryCount,
+    promotedMemoryCount: resumeRefs.promotedMemoryCount,
+  };
+  await ctx.runMutation(internal.subagents.mutations.setBatchM38ResumeMetadata, {
+    batchId: batch._id,
+    m38ResumeMetadata: resumeMetadata,
+  });
+  const resumeTokenEstimate = estimatePromptTokens(requestMessages as any);
+  await ctx.runMutation(internal.chat.context_assembly_logs.insertContextAssemblyLog, {
+    userId: batch.userId,
+    chatId: batch.chatId,
+    messageId: batch.parentMessageId,
+    jobId: batch.parentJobId,
+    visibilityScope: "participant",
+    ownerParticipantId: String(participantSnapshot.participant?.personaId ?? participantSnapshot.participant?.modelId ?? "parent"),
+    ownerModelRunId: String(batch.parentJobId),
+    runtimeKind: "subagent_parent_resume",
+    subagentBatchId: batch._id,
+    parentMessageId: batch.parentMessageId,
+    parentJobId: batch.parentJobId,
+    parentToolCallId: batch.toolCallId,
+    promotionDecision: "parent_resume",
+    mode: "subagent_parent_resume",
+    legacyMessageCount: requestMessages.length,
+    assembledMessageCount: requestMessages.length,
+    legacyEstimatedTokens: resumeTokenEstimate,
+    assembledEstimatedTokens: resumeTokenEstimate,
+    rawArtifactCount: resumeRefs.artifactRefs.length,
+    memoryCount: resumeRefs.memoryRefs.length,
+    rehydratedArtifactCount: 0,
+    rehydratedArtifactBytes: 0,
+    storageRehydrationMs: 0,
+    provenanceRepairMs: 0,
+    provenanceRepairAttempts: 0,
+    safetyMismatches: [],
+    toolSelectionDrift: false,
+    retryDivergence: false,
+    branchDivergence: false,
+    memoryInclusionDivergence: false,
+    providerRoutingDivergence: false,
+    resolvedPolicyVersion: "m38.policy.v1",
+    resolvedPolicySummary: "subagent parent resume receives summarized child results and runtime refs only",
+    excludedReasonCounts: {
+      childPrivateArtifactCount: resumeRefs.childPrivateArtifactCount,
+      childPrivateMemoryCount: resumeRefs.childPrivateMemoryCount,
+    },
+    graphCandidateCount: resumeRefs.artifactRefs.length + resumeRefs.memoryRefs.length,
+    graphSelectedCount: 0,
+    graphQueryMs: 0,
+    policyEvaluationMs: 0,
+    serializationMs: 0,
+    decisionSummary: "parent resume preserved child runtime refs without injecting private child raw artifacts into the request",
+  });
 
   const accountCapabilities = await ctx.runQuery(
     internal.capabilities.queries.getAccountCapabilitiesInternal,
     { userId: participantSnapshot.userId },
   );
-  const isProUser = accountCapabilities.isPro;
+  const isProUser = accountCapabilities?.isPro ?? false;
   const toolRegistry = buildProgressiveToolRegistry({
     enabledIntegrations: paramsSnapshot.enabledIntegrations,
     isPro: isProUser,
@@ -300,6 +389,32 @@ export async function continueParentAfterSubagentsHandler(
               message: "Parent continuation exceeded the tool round limit.",
             });
           }
+          const resumeCheckpoint: GenerationContinuationCheckpoint = {
+            ...checkpoint,
+            assembledCheckpoint: {
+              ...(checkpoint.assembledCheckpoint ?? {
+                policyVersion: "m38.policy.v1",
+                assemblerVersion: "m38.assembler.v1",
+                artifactRefs: [],
+                memoryRefs: [],
+                rehydrationDirectives: [],
+                activeProfiles: checkpoint.activeProfiles,
+                loadedSkills: checkpoint.loadedSkills,
+              }),
+              policyVersion: "m38.policy.v1",
+              assemblerVersion: "m38.assembler.v1",
+              artifactRefs: resumeRefs.artifactRefs,
+              memoryRefs: resumeRefs.memoryRefs,
+              mode: "subagent_parent_resume",
+              runtimeKind: "subagent_parent_resume",
+              subagentBatchId: batch._id,
+              parentMessageId: batch.parentMessageId,
+              parentJobId: batch.parentJobId,
+              parentToolCallId: batch.toolCallId,
+              promotionDecision: "parent_resume",
+              decisionSummary: "parent resume continuation preserved child runtime refs without private raw promotion",
+            },
+          };
           await scheduleGenerationContinuation(ctx, {
             chatId: participantSnapshot.chatId,
             userMessageId: batch.sourceUserMessageId,
@@ -315,7 +430,7 @@ export async function continueParentAfterSubagentsHandler(
             allowSubagents: false,
             subagentBatchId: batch._id,
             resumeExpected: true,
-          }, checkpoint);
+          }, resumeCheckpoint);
         },
       },
     });

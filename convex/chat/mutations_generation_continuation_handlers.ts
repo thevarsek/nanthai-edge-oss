@@ -41,6 +41,8 @@ export async function saveGenerationContinuationHandler(
     status: "waiting" as const,
     participantSnapshot: args.checkpoint.participant,
     groupSnapshot: args.checkpoint.group,
+    checkpointVersion: args.checkpoint.checkpointVersion ?? "v2" as const,
+    assembledCheckpoint: args.checkpoint.assembledCheckpoint,
     requestMessages: args.checkpoint.messages,
     usage: args.checkpoint.usage ?? undefined,
     toolCalls: args.checkpoint.toolCalls.length > 0
@@ -121,6 +123,8 @@ export async function claimGenerationContinuationHandler(
   return {
     participant: continuation.participantSnapshot as GenerationContinuationState["participant"],
     group: continuation.groupSnapshot as GenerationContinuationState["group"],
+    checkpointVersion: (continuation.checkpointVersion ?? "v1") as GenerationContinuationState["checkpointVersion"],
+    assembledCheckpoint: continuation.assembledCheckpoint as GenerationContinuationState["assembledCheckpoint"],
     messages: continuation.requestMessages as GenerationContinuationState["messages"],
     usage: (continuation.usage ?? null) as GenerationContinuationState["usage"],
     toolCalls: (continuation.toolCalls ?? []) as GenerationContinuationState["toolCalls"],

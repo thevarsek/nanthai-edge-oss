@@ -56,6 +56,9 @@ const PURGE_ORDER = [
   "integrationRequestGates",
   "userCapabilities",
   "generatedCharts",
+  "contextAssemblyLogs",
+  "toolMemories",
+  "toolExecutionArtifacts",
   "documentVersions",
   // User-scoped skills (scope="user", ownerUserId)
   "skills",

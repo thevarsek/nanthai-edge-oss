@@ -96,12 +96,12 @@ Light borders use black at 6-12% opacity. Dark borders use white at 10-16% opaci
 - Editable table cell: 8px radius, clear focus border, compact status badge, inline retry/error affordance.
 - Progress/error/retry banner: semantic status fill, concise copy, one primary retry/action.
 
-### M38/M39 Handoff Rules
+### M39/M40 Handoff Rules
 
-- M38 tracked-change cards should reuse the review-card contract rather than inventing a second accept/reject card language. The backend edit status remains the source of truth; UI cards and review workspace surfaces only render that state.
-- M38 document preview sidebars may defer perfect highlight positioning in v1, but source/edit cards must still show document metadata, concise reason text, and current accept/reject status with semantic tokens.
-- M39 review grids should reuse the editable-table-cell contract: compact cells, stable row/column dimensions, inline status chips, and citation/source cards that open from the cell without changing the cell layout.
-- Chat-created M39 tabular reviews stay draft-only until the workspace action starts generation. This keeps chat skill output aligned with the explicit-generation rule in the M39 milestone.
+- M39 tracked-change cards should reuse the review-card contract rather than inventing a second accept/reject card language. The backend edit status remains the source of truth; UI cards and review workspace surfaces only render that state.
+- M39 document preview sidebars may defer perfect highlight positioning in v1, but source/edit cards must still show document metadata, concise reason text, and current accept/reject status with semantic tokens.
+- M40 review grids should reuse the editable-table-cell contract: compact cells, stable row/column dimensions, inline status chips, and citation/source cards that open from the cell without changing the cell layout.
+- Chat-created M40 tabular reviews stay draft-only until the workspace action starts generation. This keeps chat skill output aligned with the explicit-generation rule in the M40 milestone.
 - Android and iOS mobile workspaces should use full-screen drill-in for dense review surfaces; tablet and desktop layouts can split when width allows.
 
 ## Skill Catalog Audit Snapshot
@@ -159,7 +159,7 @@ Each screenshot or recording entry should use this format in the milestone, a PR
   - `[label]` concise finding with component/state and intended follow-up
 - Platform-acceptable differences:
   - concise note, or `None`
-- Follow-up owner: M36 / M38 / M39 / backlog
+- Follow-up owner: M36 / M39 / M40 / backlog
 ```
 
 ## Implementation Notes
@@ -185,7 +185,7 @@ Closeout implementation targets:
 
 ### Web Polish Targets
 
-Web changes should focus on M38/M39 readiness rather than broad visual redesign:
+Web changes should focus on M39/M40 readiness rather than broad visual redesign:
 
 - Tokens and shared controls: `web/src/lib/uiTokens.ts` and `web/src/components/shared/`
 - Chat/workspace primitives: `web/src/components/chat/`
@@ -198,7 +198,7 @@ Closeout implementation targets:
 
 - Generated artifact and citation cards should share semantic panel classes and avoid height jumps between loading, unavailable, and ready states.
 - Chat list and sidebar controls should keep stable hit targets and avoid decorative floating chrome that would conflict with workspace density.
-- Workspace-ready web surfaces should document sticky-toolbar and split-pane assumptions instead of adding incomplete M38/M39 routes during M36.
+- Workspace-ready web surfaces should document sticky-toolbar and split-pane assumptions instead of adding incomplete M39/M40 routes during M36.
 
 ### iOS Reference Targets
 
@@ -215,7 +215,7 @@ Keep iOS changes narrow and covered by focused tests when they touch helpers, pr
 
 Use this table for Phase 6. Classification should improve assistant behavior, not merely reduce catalog size.
 
-| Skill Slug | Domain | Current Visibility | Classification | Reason | Action | M38/M39 Impact |
+| Skill Slug | Domain | Current Visibility | Classification | Reason | Action | M39/M40 Impact |
 |------------|--------|--------------------|----------------|--------|--------|----------------|
 | `adr` | PM/Engineering | Visible | Keep | Narrow decision-record output with clear trigger. | Preserve. | None direct. |
 | `ai-pricing` | GTM | Visible | Keep | Distinct pricing strategy workflow. | Preserve; watch overlap with GTM positioning only at summary level. | None direct. |
@@ -226,67 +226,67 @@ Use this table for Phase 6. Classification should improve assistant behavior, no
 | `cloze` | Integration | Integration-managed | Keep | Narrow CRM integration path. | Preserve. | None direct. |
 | `code-workspace` | Runtime | Visible | Keep | Temporary workspace workflow is distinct from persistent runtime. | Preserve. | None direct. |
 | `ai-cold-outreach` | GTM | Visible | Keep | Distinct outbound sequence workflow. | Preserve. | None direct. |
-| `clause-extraction` | Legal/Documents | Visible | Keep | Narrow extraction workflow with citations. | Preserve; may become a redline-review helper. | Supports M38 issue extraction. |
+| `clause-extraction` | Legal/Documents | Visible | Keep | Narrow extraction workflow with citations. | Preserve; may become a redline-review helper. | Supports M39 issue extraction. |
 | `competitive-analysis` | PM/GTM | Visible | Keep | Distinct market comparison output. | Preserve. | None direct. |
-| `conditions-precedent-checklist` | Legal/Documents | Removed from seed | Template | Mainly a repeatable checklist/document preset. | Remove standalone skill; preserve source behavior in `contract-review` and M39 template handoff. | Pattern for M39 tabular checklist reviews. |
+| `conditions-precedent-checklist` | Legal/Documents | Removed from seed | Template | Mainly a repeatable checklist/document preset. | Remove standalone skill; preserve source behavior in `contract-review` and M40 template handoff. | Pattern for M40 tabular checklist reviews. |
 | `content-to-pipeline` | GTM | Visible | Keep | Distinct content-led growth workflow. | Preserve. | None direct. |
-| `contract-review` | Legal/Documents | Visible | Keep | Broad legal review entry point with clear risk-review trigger. | Preserve; ensure M38 tracked-change trigger does not compete. | Adjacent to M38 redline review. |
+| `contract-review` | Legal/Documents | Visible | Keep | Broad legal review entry point with clear risk-review trigger. | Preserve; ensure M39 tracked-change trigger does not compete. | Adjacent to M39 redline review. |
 | `contract-drafting` | Legal/Documents | Visible | Keep | Drafting is distinct from review. | Preserve. | None direct. |
 | `create-skill` | Skills | Visible | Keep | Only catalog-management skill. | Preserve. | Needed for future skill edits. |
-| `credit-agreement-summary` | Legal/Documents | Removed from seed | Template | Repeatable legal summary preset. | Remove standalone skill; preserve source behavior in `contract-review` and M39 template handoff. | Required M39 legal summary preset. |
-| `dashboard-builder` | Data/Analytics | Visible | Keep | Multi-chart/dashboard output is distinct from generic data analysis. | Preserve. | M39 may reuse chart/table output discipline. |
-| `data-analyzer` | Data/Analytics | Visible | Keep | General sandbox analysis router; already tightened. | Preserve; keep summary narrower than dashboard/statistical/SQL skills. | Useful for M39 data review. |
-| `data-validation` | Data/Analytics | Visible | Keep | Dataset quality audit is distinct. | Preserve. | Supports M39 validation workflows. |
+| `credit-agreement-summary` | Legal/Documents | Removed from seed | Template | Repeatable legal summary preset. | Remove standalone skill; preserve source behavior in `contract-review` and M40 template handoff. | Required M40 legal summary preset. |
+| `dashboard-builder` | Data/Analytics | Visible | Keep | Multi-chart/dashboard output is distinct from generic data analysis. | Preserve. | M40 may reuse chart/table output discipline. |
+| `data-analyzer` | Data/Analytics | Visible | Keep | General sandbox analysis router; already tightened. | Preserve; keep summary narrower than dashboard/statistical/SQL skills. | Useful for M40 data review. |
+| `data-validation` | Data/Analytics | Visible | Keep | Dataset quality audit is distinct. | Preserve. | Supports M40 validation workflows. |
 | `design-critique` | Design | Visible | Keep | Distinct UI review workflow. | Preserve. | Supports M36 visual audit follow-up. |
 | `doc-coauthoring` | Documents | Visible | Keep | Guided collaborative writing workflow, not just file generation. | Preserve; keep summary distinct from `document-drafting`. | None direct. |
-| `document-drafting` | Documents | Visible | Keep | General polished document drafting. | Preserve; avoid competing with format-specific `docx` trigger. | Adjacent to M38 document generation. |
-| `document-review` | Documents | Visible | Keep | General quote-backed document review. | Preserve; M38 tracked-change review should extend, not replace. | Direct precursor for M38 review UX. |
-| `documents` | Documents | Visible | Keep | Broad file-work entry point when no format-specific skill is obvious. | Preserve; keep summary routing-oriented. | Foundation for M38/M39 file handling. |
-| `docx` | Documents | Visible | Keep | Narrow Word format skill with concrete tool expectations. | Preserve; add redline/tracked-change guidance if backend tools support it. | Needed for M38 tracked changes. |
+| `document-drafting` | Documents | Visible | Keep | General polished document drafting. | Preserve; avoid competing with format-specific `docx` trigger. | Adjacent to M39 document generation. |
+| `document-review` | Documents | Visible | Keep | General quote-backed document review. | Preserve; M39 tracked-change review should extend, not replace. | Direct precursor for M39 review UX. |
+| `documents` | Documents | Visible | Keep | Broad file-work entry point when no format-specific skill is obvious. | Preserve; keep summary routing-oriented. | Foundation for M39/M40 file handling. |
+| `docx` | Documents | Visible | Keep | Narrow Word format skill with concrete tool expectations. | Preserve; add redline/tracked-change guidance if backend tools support it. | Needed for M39 tracked changes. |
 | `email-drafter` | Productivity | Visible | Keep | General one-off email drafting is distinct from sequences/campaigns. | Preserve. | None direct. |
 | `email-sequence` | Marketing | Visible | Keep | Multi-step marketing email workflow. | Preserve; keep distinct from cold outreach and email drafter. | None direct. |
 | `expansion-retention` | GTM | Visible | Keep | Customer retention/expansion strategy is distinct. | Preserve. | None direct. |
 | `experiment-design` | PM/Data | Visible | Keep | Experiment design and metrics planning is distinct. | Preserve. | None direct. |
-| `financial-statements` | Finance/Data | Visible | Keep | Finance statement analysis/reporting has specific outputs. | Preserve. | M39 may reuse tabular review patterns. |
+| `financial-statements` | Finance/Data | Visible | Keep | Finance statement analysis/reporting has specific outputs. | Preserve. | M40 may reuse tabular review patterns. |
 | `gmail` | Integration | Integration-managed | Keep | Narrow Gmail integration path. | Preserve. | None direct. |
 | `google-calendar` | Integration | Integration-managed, archived | Archive | Standalone Google Calendar path is intentionally archived in favor of Google Workspace. | Keep archived. | None direct. |
-| `google-drive` | Integration | Integration-managed | Keep | Narrow Drive file path with picker constraints. | Preserve. | Supports file inputs for M38/M39. |
+| `google-drive` | Integration | Integration-managed | Keep | Narrow Drive file path with picker constraints. | Preserve. | Supports file inputs for M39/M40. |
 | `google-workspace` | Integration | Integration-managed | Keep | Cross-Google workflow router. | Preserve. | Supports workspace file/email/calendar context. |
 | `incident-response` | Engineering | Visible | Keep | Incident workflow has clear trigger and document output. | Preserve. | None direct. |
 | `internal-comms` | Productivity | Visible | Keep | Internal/stakeholder communication formats are distinct and now include release notes/changelogs. | Preserve; merged `release-notes` trigger here. | None direct. |
 | `launch-checklist` | PM/GTM | Visible | Keep | Cross-functional launch readiness checklist. | Preserve; watch overlap with product launch. | None direct. |
 | `legal-memo` | Legal/Documents | Visible | Keep | Specific legal memo output. | Preserve. | None direct. |
-| `marketing-performance-report` | Marketing/Data | Visible | Keep | Metrics/reporting workflow needs analytics profile. | Preserve. | M39 may reuse report grid patterns. |
+| `marketing-performance-report` | Marketing/Data | Visible | Keep | Metrics/reporting workflow needs analytics profile. | Preserve. | M40 may reuse report grid patterns. |
 | `meeting-notes` | Productivity/Documents | Visible | Keep | Transcript/notes transformation has clear trigger. | Preserve. | None direct. |
 | `microsoft-365` | Integration | Integration-managed | Keep | Cross-Microsoft workflow router. | Preserve. | Supports workspace file/email/calendar context. |
 | `multi-platform-launch` | GTM | Visible | Keep | Product launch execution across channels. | Preserve; summary should stay distinct from `campaign-planning` and `launch-checklist`. | None direct. |
 | `notion-workspace` | Integration | Integration-managed | Keep | Narrow Notion integration path. | Preserve. | None direct. |
-| `pdf` | Documents | Visible | Keep | Narrow PDF rendering/extraction/regeneration skill. | Preserve. | Supports M38 preview/source checks. |
+| `pdf` | Documents | Visible | Keep | Narrow PDF rendering/extraction/regeneration skill. | Preserve. | Supports M39 preview/source checks. |
 | `parallel-subagents` | Runtime | Visible | Keep | Distinct parallel-work orchestration skill. | Preserve. | Could help large review workflows. |
 | `persona-manager` | NanthAI Product | Visible | Keep | Product-specific persona management skill. | Preserve. | None direct. |
 | `persona` | PM/GTM | Visible | Keep | User/marketing persona generation is distinct from NanthAI persona management. | Preserve; keep summary wording distinct from `persona-manager`. | None direct. |
-| `persistent-runtime` | Runtime | Visible | Keep | Durable runtime workflow is distinct from temporary workspace. | Preserve. | Useful for long-running M38/M39 artifacts. |
+| `persistent-runtime` | Runtime | Visible | Keep | Durable runtime workflow is distinct from temporary workspace. | Preserve. | Useful for long-running M39/M40 artifacts. |
 | `positioning-icp` | GTM | Visible | Keep | ICP and positioning strategy are distinct. | Preserve. | None direct. |
-| `policy-review` | Legal/Documents | Visible | Keep | Policy review is distinct from contract review. | Preserve. | May reuse M38 review-card pattern. |
+| `policy-review` | Legal/Documents | Visible | Keep | Policy review is distinct from contract review. | Preserve. | May reuse M39 review-card pattern. |
 | `pptx` | Presentations | Visible | Keep | Narrow presentation format skill. | Preserve; ensure validators do not over-match browser/screenshot language. | None direct. |
 | `prd` | PM | Visible | Keep | PRD output has clear trigger. | Preserve. | None direct. |
 | `problem-statement` | PM | Visible | Keep | Problem-framing output is distinct from PRD. | Preserve. | None direct. |
 | `process-documentation` | Ops/Documents | Visible | Keep | SOP/runbook/process workflow is distinct. | Preserve. | None direct. |
-| `reconciliation` | Finance/Data | Visible | Keep | Transaction matching workflow is distinct. | Preserve. | M39 may reuse exception-grid patterns. |
+| `reconciliation` | Finance/Data | Visible | Keep | Transaction matching workflow is distinct. | Preserve. | M40 may reuse exception-grid patterns. |
 | `release-notes` | PM/Product | Removed from seed | Consolidate | Release notes are a communication format, not a separate capability. | Remove standalone skill; preserve guidance in `internal-comms`. | None direct. |
 | `retrospective` | PM/Productivity | Visible | Keep | Structured reflection workflow is distinct beyond developer/team retros. | Preserve with broader non-dev reflection wording. | None direct. |
 | `scheduled-jobs` | NanthAI Product | Visible | Keep | Product-specific automation management skill. | Preserve. | None direct. |
 | `ai-seo` | GTM | Visible | Keep | SEO strategy has clear trigger. | Preserve. | None direct. |
-| `shareholder-agreement-summary` | Legal/Documents | Removed from seed | Template | Repeatable legal summary preset. | Remove standalone skill; preserve source behavior in `contract-review` and M39 template handoff. | Required M39 legal summary preset. |
+| `shareholder-agreement-summary` | Legal/Documents | Removed from seed | Template | Repeatable legal summary preset. | Remove standalone skill; preserve source behavior in `contract-review` and M40 template handoff. | Required M40 legal summary preset. |
 | `slack` | Integration | Integration-managed | Keep | Narrow Slack integration path. | Preserve. | None direct. |
 | `solo-founder-gtm` | GTM | Removed from seed | Consolidate | Resource-constrained GTM is useful but belongs under campaign/GTM planning. | Remove standalone skill; preserve guidance in `campaign-planning`. | None direct. |
 | `sprint-planning` | PM | Visible | Keep | Sprint decomposition workflow is distinct. | Preserve. | None direct. |
-| `sql-data-query` | Data/Analytics | Visible | Keep | SQL-over-uploaded-data workflow is distinct from pandas analysis. | Preserve. | Supports M39 table investigation. |
-| `statistical-analysis` | Data/Analytics | Visible | Keep | Formal hypothesis testing is distinct. | Preserve. | Supports M39 analysis cases. |
-| `testing-strategy` | Engineering | Visible | Keep | Test strategy workflow has clear trigger. | Preserve. | Supports M38/M39 test planning. |
+| `sql-data-query` | Data/Analytics | Visible | Keep | SQL-over-uploaded-data workflow is distinct from pandas analysis. | Preserve. | Supports M40 table investigation. |
+| `statistical-analysis` | Data/Analytics | Visible | Keep | Formal hypothesis testing is distinct. | Preserve. | Supports M40 analysis cases. |
+| `testing-strategy` | Engineering | Visible | Keep | Test strategy workflow has clear trigger. | Preserve. | Supports M39/M40 test planning. |
 | `user-stories` | PM | Visible | Keep | Story-writing output has clear trigger. | Preserve. | None direct. |
-| `ux-copy` | Design/Product | Visible | Keep | UI copy audit/writing is distinct. | Preserve. | Supports M38/M39 copy polish. |
-| `xlsx` | Spreadsheets | Visible | Keep | Narrow spreadsheet format skill with analytics support. | Preserve; align tabular-review trigger wording if needed. | Useful for M39 exports. |
+| `ux-copy` | Design/Product | Visible | Keep | UI copy audit/writing is distinct. | Preserve. | Supports M39/M40 copy polish. |
+| `xlsx` | Spreadsheets | Visible | Keep | Narrow spreadsheet format skill with analytics support. | Preserve; align tabular-review trigger wording if needed. | Useful for M40 exports. |
 | `nanthai-mobile-runtime` | Runtime Guard | Hidden | Keep | Hidden environment guard, not catalog-facing. | Preserve hidden; validators must not treat it as visible skill drift. | None direct. |
 
 ### Classification Values

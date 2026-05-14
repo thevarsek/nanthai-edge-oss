@@ -125,6 +125,7 @@ test("saveGenerationContinuationHandler inserts new checkpoints and patches exis
   assert.equal(inserted.length, 1);
   assert.equal(inserted[0]?.table, "generationContinuations");
   assert.equal(inserted[0]?.value.status, "waiting");
+  assert.equal(inserted[0]?.value.checkpointVersion, "v2");
   assert.deepEqual(inserted[0]?.value.toolCalls, [{ id: "call_1" }]);
   assert.equal(patches.length, 1);
   assert.equal(patches[0]?.id, "cont_existing");
@@ -188,6 +189,8 @@ test("claimGenerationContinuationHandler covers missing, terminal, active-lease,
     status: "waiting",
     participantSnapshot: { jobId: "job_1" },
     groupSnapshot: { userId: "user_1" },
+    checkpointVersion: "v2",
+    assembledCheckpoint: { policyVersion: "m38.policy.v1" },
     requestMessages: [{ role: "user" }],
     usage: { totalTokens: 7 },
     toolCalls: [{ id: "call_1" }],
@@ -204,6 +207,8 @@ test("claimGenerationContinuationHandler covers missing, terminal, active-lease,
   const claimed = await claimGenerationContinuationHandler(ctx, { jobId: "job_1" as any });
 
   assert.equal(claimed?.continuationCount, 3);
+  assert.equal(claimed?.checkpointVersion, "v2");
+  assert.deepEqual(claimed?.assembledCheckpoint, { policyVersion: "m38.policy.v1" });
   assert.deepEqual(claimed?.toolCalls, [{ id: "call_1" }]);
   assert.ok(patches.some((entry) =>
     entry.id === "cont_waiting"

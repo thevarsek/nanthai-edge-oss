@@ -142,6 +142,15 @@ export interface ToolCallLoopOptions {
     results: Array<{ toolCallId: string; result: ToolResult }>,
   ) => Promise<void>;
   /**
+   * Optional durable artifact sink. Receives full raw tool args/results before
+   * message-level truncation so audit and context assembly can recover them.
+   */
+  onToolArtifacts?: (
+    round: number,
+    toolCalls: ToolCall[],
+    results: Array<{ toolCallId: string; result: ToolResult }>,
+  ) => Promise<void>;
+  /**
    * Optional callback invoked after a tool round completes but before the
    * next model call is made. Allows callers to expand the active registry and
    * rebuild the next-turn params (for progressive skill/tool loading).
@@ -263,6 +272,10 @@ export async function runToolCallLoop(
       currentResult.toolCalls,
       options.toolCtx,
     );
+
+    if (options.onToolArtifacts) {
+      await options.onToolArtifacts(round, currentResult.toolCalls, results);
+    }
 
     // Append assistant tool-call message + tool results to conversation.
     const baseConversationMessages = conversationMessages;

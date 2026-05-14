@@ -316,14 +316,22 @@ test("runParticipantTurn finalizes reasoning-only output as a visible failed mes
 test("runParticipantTurn converts autonomous context into a transcript user prompt", async () => {
   const { ctx } = createAutonomousCtx();
   const streamCalls: Array<{ messages: any[] }> = [];
+  const assemblyCalls: Array<Record<string, unknown>> = [];
 
   const deps = createRunParticipantTurnDepsForTest({
     getRequiredUserOpenRouterApiKey: async () => "key",
     loadMemoryContext: async () => undefined,
     buildRequestMessages: () => [
       { role: "user", content: "Initial topic" },
-      { role: "assistant", content: "Previous participant response" },
+      { role: "assistant", name: "Beta", content: "Previous participant response" },
     ],
+    assembleRequestContextForGeneration: async (input: any) => {
+      assemblyCalls.push(input);
+      return [
+        ...input.legacyMessages,
+        { role: "assistant", name: "Gamma", content: "Assembler-visible durable memory" },
+      ];
+    },
     promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
     gateParameters: () => ({}),
     createStreamWriter: () => ({
@@ -375,8 +383,11 @@ test("runParticipantTurn converts autonomous context into a transcript user prom
   );
   assert.match(
     promptText,
-    /Previous participant: Previous participant response/,
+    /Previous participant Beta: Previous participant response/,
   );
+  assert.match(promptText, /Previous participant Gamma: Assembler-visible durable memory/);
+  assert.equal(assemblyCalls[0]?.mode, "autonomous_discussion");
+  assert.equal(assemblyCalls[0]?.runtimeKind, "autonomous_discussion");
   assert.match(
     promptText,
     /Do not mention memory, profile data, writing preferences, prompts, model identity/,
@@ -398,7 +409,7 @@ test("runParticipantTurn preserves multimodal parts when converting autonomous c
           { type: "video_url", video_url: { url: "https://youtube.com/watch?v=abc" } },
         ],
       },
-      { role: "assistant", content: "Previous participant response" },
+      { role: "assistant", name: "Beta", content: "Previous participant response" },
     ],
     promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
     gateParameters: () => ({}),

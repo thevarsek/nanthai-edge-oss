@@ -18,8 +18,11 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `chatParticipants` | Models/personas in a chat | chatId, modelId, personaId, sortOrder, personaName, personaEmoji, personaAvatarImageUrl, createdAt |
 | `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed), terminalErrorCode (PR #78 — canonical failure code on failed jobs) |
 | `generationContinuations` | Durable generation checkpoints | chatId, messageId, jobId, userId, status (`waiting`/`running`/`completed`/`cancelled`), participantSnapshot, groupSnapshot, requestMessages, usage, toolCalls, toolResults, activeProfiles, compactionCount, continuationCount, partialContent, partialReasoning, scheduledAt, scheduledFunctionId, claimedAt, leaseExpiresAt. Indexes: `by_job`, `by_status`, `by_chat`. |
+| `toolExecutionArtifacts` | Durable M38 tool-call artifact ledger | userId, chatId, messageId, jobId, toolCallId, toolName, round, arguments/result hashes and byte counts, optional `argumentsStorageId` and `resultStorageId` for oversized raw payloads, visibilityScope, ownerParticipantId, runtimeIsolationPolicy, runtimeKind, subagentBatchId/subagentRunId, parent message/job/tool refs, promotionDecision, privacyClassification, contextClass. Used by normal chat, autonomous discussion audit, subagent child runs, and parent resume tracing. |
+| `toolMemories` | Compact durable M38 memories extracted from artifacts | userId, chatId, messageId, kind, summary, structuredPayload, sourceArtifactIds, sourceToolNames, confidence/freshness/provenance fields, lastResolutionStatus, repairAttempts, visibilityScope, ownerParticipantId, runtimeIsolationPolicy, runtimeKind, subagent refs, promotionDecision, supersession/contradiction metadata. Selected by the context assembler instead of replaying all raw tool outputs. |
+| `contextAssemblyLogs` | M38/M38.5 assembly audit trail | userId, chatId, messageId, jobId, mode (`shadow`, `read_path`, `autonomous_discussion`, `subagent_child`, `subagent_parent_resume`), runtimeKind, owner metadata, branch/provenance/storage telemetry, token estimates, selected/excluded counts, policy version/summary, decisionSummary. |
 | `autonomousSessions` | Group chat orchestration | chatId, status, cycleCount, maxCycles |
-| `subagentBatches` | Parent delegation batches | parentMessageId, parentJobId, status, tool-call round metadata, child counters, params snapshot |
+| `subagentBatches` | Parent delegation batches | parentMessageId, parentJobId, status, tool-call round metadata, child counters, params snapshot, resumeConversationSeed, m38ResumeMetadata |
 | `subagentRuns` | Child delegated runs | batchId, childIndex, title, taskPrompt, status, streamed content/reasoning, continuation snapshot |
 | `searchSessions` | Web search / research paper sessions | chatId, status, complexity, searchCallCount, perplexityModelTier, participantCount |
 | `searchContexts` | Search run context snapshots | messageId, phase metadata, retrieval context |
@@ -382,7 +385,7 @@ The seed action now treats removed system skill IDs as real data cleanup, not on
 - `scheduledJobs.turnSkillOverrides`
 - `scheduledJobs.steps[].turnSkillOverrides`
 
-This cleanup covers the M36 removed standalone skills: `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. The corresponding workflows remain represented by broader document/legal, internal-communications, GTM, and M39 tabular-review requirements rather than separate active catalog rows.
+This cleanup covers the M36 removed standalone skills: `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. The corresponding workflows remain represented by broader document/legal, internal-communications, GTM, and M40 tabular-review requirements rather than separate active catalog rows.
 
 ### `messages` table — Integration Tracking (PR #30)
 
@@ -523,3 +526,18 @@ Two new shared validators added:
 | **Backend tests** | 1303 → 1310. New tests: `kb_source_parity_contract.test.ts`, `shared_queries_contract.test.ts` (Drive refresh routing + per-id error isolation). |
 
 *Last updated: 2026-04-26 — M24 Phase 6 Drive-in-KB: `googleDriveFileGrants` and `drivePickerBatches` tables added, `fileAttachments` extended with `driveFileId` + `lastRefreshedAt` + 2 new indexes, KB module relocated to `convex/knowledge_base/`, lazy-refresh chokepoint in `getKBFileContents`. Table count corrected: 46.*
+
+---
+
+## M38/M38.5 Schema Changes (2026-05-15 — Durable Tool Artifacts + Context Assembly)
+
+| Change | Details |
+|--------|---------|
+| **Added `toolExecutionArtifacts` table** | Durable tool-call artifact ledger for raw arguments/results, call IDs, runtime ownership, privacy classification, context class, branch/source refs, subagent refs, parent resume refs, and retry/recovery metadata. Oversized arguments and results are stored separately in Convex storage as `argumentsStorageId` and `resultStorageId`; the M38-local ambiguous `storageId` alias was removed before go-live. |
+| **Added `toolMemories` table** | Compact tool-derived memory records separate from user memories. Stores summary, structured payload, source artifact IDs/tool names, confidence provenance, freshness/staleness fields, revalidation tool names, provenance locators/resolution status, contradiction/supersession fields, runtime ownership, and promotion policy. |
+| **Added `contextAssemblyLogs` table** | Sampled audit/telemetry records for context assembly decisions. Stores mode, runtime kind, selected graph counts, token estimates, rehydration and provenance timings, drift booleans, policy version/summary, exclusion counts, and automated judgement payloads. |
+| **Extended `generationContinuations` and subagent runtime rows** | Continuation and parent-resume paths can carry M38 artifact/memory refs and resume metadata without replacing deterministic resume seeds or exposing child-private raw payloads. |
+| **Account cleanup extended** | Account deletion drains M38 artifact rows, memories, assembly logs, and both raw artifact storage blobs. |
+| **Table count: 46 → 49** | 3 new M38 tables: `toolExecutionArtifacts`, `toolMemories`, and `contextAssemblyLogs`. |
+
+*Last updated: 2026-05-15 — M38/M38.5 durable tool artifact and context assembly closeout. Table count: 49.*

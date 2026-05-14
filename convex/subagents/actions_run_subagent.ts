@@ -39,6 +39,8 @@ import { ToolResult } from "../tools/registry";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "../chat/loaded_skill_prompt";
+import { captureToolRoundArtifacts } from "../tools/artifact_writer";
+import { estimatePromptTokens } from "../chat/runtime_graph";
 
 interface SubagentConversationSnapshot {
   messages: OpenRouterMessage[];
@@ -235,6 +237,51 @@ export async function runSubagentRunHandler(
   };
 
   try {
+    const requestTokenEstimate = estimatePromptTokens(normalizedMessages);
+    await ctx.runMutation(internal.chat.context_assembly_logs.insertContextAssemblyLog, {
+      userId: batch.userId,
+      chatId: batch.chatId,
+      messageId: batch.parentMessageId,
+      jobId: batch.parentJobId,
+      visibilityScope: "participant",
+      ownerParticipantId: `${modelId}:subagent:${run._id}`,
+      ownerModelRunId: String(run._id),
+      runtimeKind: "subagent_child",
+      subagentBatchId: batch._id,
+      subagentRunId: run._id,
+      parentMessageId: batch.parentMessageId,
+      parentJobId: batch.parentJobId,
+      parentToolCallId: batch.toolCallId,
+      promotionDecision: "child_private",
+      mode: "subagent_child",
+      legacyMessageCount: normalizedMessages.length,
+      assembledMessageCount: normalizedMessages.length,
+      legacyEstimatedTokens: requestTokenEstimate,
+      assembledEstimatedTokens: requestTokenEstimate,
+      rawArtifactCount: 0,
+      memoryCount: 0,
+      rehydratedArtifactCount: 0,
+      rehydratedArtifactBytes: 0,
+      storageRehydrationMs: 0,
+      provenanceRepairMs: 0,
+      provenanceRepairAttempts: 0,
+      safetyMismatches: [],
+      toolSelectionDrift: false,
+      retryDivergence: false,
+      branchDivergence: false,
+      memoryInclusionDivergence: false,
+      providerRoutingDivergence: false,
+      resolvedPolicyVersion: "m38.policy.v1",
+      resolvedPolicySummary: "subagent child private request boundary",
+      excludedReasonCounts: {},
+      graphCandidateCount: 0,
+      graphSelectedCount: 0,
+      graphQueryMs: 0,
+      policyEvaluationMs: 0,
+      serializationMs: 0,
+      decisionSummary: "subagent child request assembled from child seed; private tool artifacts captured under child runtime owner",
+    });
+
     const callbacks: { onDelta: OnDelta; onReasoningDelta: OnReasoningDelta } = {
       onDelta: async (delta) => {
         await writer.handleContentDeltaBoundary(delta.length);
@@ -287,6 +334,34 @@ export async function runSubagentRunHandler(
           toolResults: liveToolResults,
           generatedFiles: extractGeneratedFiles(liveToolResults),
           generatedCharts: extractGeneratedCharts(liveToolResults),
+        });
+      },
+      onToolArtifacts: async (round, toolCalls, results) => {
+        await captureToolRoundArtifacts({
+          ctx,
+          metadata: {
+            userId: batch.userId,
+            chatId: batch.chatId,
+            messageId: batch.parentMessageId,
+            jobId: batch.parentJobId,
+            sourceUserMessageId: batch.sourceUserMessageId,
+            runtimeKind: "subagent_child",
+            subagentBatchId: batch._id,
+            subagentRunId: run._id,
+            parentMessageId: batch.parentMessageId,
+            parentJobId: batch.parentJobId,
+            parentToolCallId: batch.toolCallId,
+            promotionDecision: "child_private",
+            ownerParticipantId: `${modelId}:subagent:${run._id}`,
+            ownerModelRunId: String(run._id),
+            runtime: "subagent",
+            visibilityScope: "participant",
+            runtimeIsolationPolicy: "isolated",
+            activeProfiles: Array.from(activeProfiles),
+          },
+          round,
+          toolCalls,
+          results,
         });
       },
       onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {

@@ -495,6 +495,167 @@ export const retryContract = v.object({
   videoConfig: v.optional(retryVideoConfig),
 });
 
+// M38 — Durable tool artifacts and context assembly v2.
+export const runtimeVisibilityScope = v.union(
+  v.literal("participant"),
+  v.literal("shared_participants"),
+  v.literal("branch"),
+  v.literal("conversation"),
+  v.literal("audit_only"),
+);
+
+export const runtimeIsolationPolicy = v.union(
+  v.literal("isolated"),
+  v.literal("shared_readonly"),
+  v.literal("shared_mutable"),
+  v.literal("audit_only"),
+);
+
+export const contextClass = v.union(
+  v.literal("conversational"),
+  v.literal("operational"),
+  v.literal("epistemic"),
+  v.literal("provenance"),
+  v.literal("policy"),
+  v.literal("recovery"),
+  v.literal("planning"),
+);
+
+export const privacyClassification = v.union(
+  v.literal("normal"),
+  v.literal("oauth_data"),
+  v.literal("google_data"),
+  v.literal("document_data"),
+  v.literal("runtime_file_data"),
+  v.literal("secret_adjacent"),
+);
+
+export const toolArtifactStatus = v.union(
+  v.literal("pending"),
+  v.literal("completed"),
+  v.literal("failed"),
+  v.literal("deferred"),
+  v.literal("cancelled"),
+);
+
+export const deferredToolKind = v.union(
+  v.literal("spawn_subagents"),
+  v.literal("drive_picker"),
+);
+
+export const toolMemoryBranchScope = v.union(
+  v.literal("chat"),
+  v.literal("branch"),
+  v.literal("message"),
+);
+
+export const toolMemoryKind = v.union(
+  v.literal("retrieval"),
+  v.literal("file_generated"),
+  v.literal("document_read"),
+  v.literal("workspace_state"),
+  v.literal("connected_app_state"),
+  v.literal("decision"),
+  v.literal("error_summary"),
+);
+
+export const promotionPolicy = v.union(
+  v.literal("transient"),
+  v.literal("candidate"),
+  v.literal("durable"),
+  v.literal("audit_only"),
+);
+
+export const confidenceSource = v.union(
+  v.literal("tool"),
+  v.literal("model"),
+  v.literal("deterministic"),
+  v.literal("inferred"),
+  v.literal("user_asserted"),
+  v.literal("composite"),
+);
+
+export const freshnessClass = v.union(
+  v.literal("volatile"),
+  v.literal("session"),
+  v.literal("bounded"),
+  v.literal("durable"),
+  v.literal("permanent"),
+);
+
+export const confidenceDecayCurve = v.union(
+  v.literal("none"),
+  v.literal("linear"),
+  v.literal("step"),
+  v.literal("exponential"),
+);
+
+export const provenanceResolutionStatus = v.union(
+  v.literal("valid"),
+  v.literal("missing"),
+  v.literal("repaired"),
+  v.literal("unavailable"),
+  v.literal("forbidden"),
+);
+
+export const contextAssemblyMode = v.union(
+  v.literal("shadow"),
+  v.literal("read_path"),
+  v.literal("autonomous_discussion"),
+  v.literal("subagent_child"),
+  v.literal("subagent_parent_resume"),
+);
+
+export const runtimeKind = v.union(
+  v.literal("chat_generation"),
+  v.literal("autonomous_discussion"),
+  v.literal("subagent_child"),
+  v.literal("subagent_parent_resume"),
+  v.literal("scheduled_job"),
+);
+
+export const promotionDecision = v.union(
+  v.literal("child_private"),
+  v.literal("parent_resume"),
+  v.literal("parent_visible"),
+  v.literal("audit_only"),
+);
+
+export const lineageEdge = v.object({
+  edgeType: v.union(
+    v.literal("causedBy"),
+    v.literal("influencedBy"),
+    v.literal("mergedFrom"),
+    v.literal("validatedBy"),
+  ),
+  targetKind: v.union(
+    v.literal("toolArtifact"),
+    v.literal("toolMemory"),
+    v.literal("modelRun"),
+    v.literal("branch"),
+    v.literal("message"),
+    v.literal("documentVersion"),
+    v.literal("contextAssembly"),
+  ),
+  targetId: v.string(),
+  weight: v.optional(v.number()),
+  rationale: v.optional(v.string()),
+});
+
+export const assemblyPriority = v.union(
+  v.literal("critical"),
+  v.literal("high"),
+  v.literal("normal"),
+  v.literal("low"),
+  v.literal("audit"),
+);
+
+export const assemblyCostPolicy = v.object({
+  costWeight: v.optional(v.number()),
+  compressionBudget: v.optional(v.number()),
+  rehydrationCost: v.optional(v.number()),
+});
+
 /** Skill lock state — locked (system) vs editable (user). */
 export const skillLockState = v.union(
   v.literal("locked"),

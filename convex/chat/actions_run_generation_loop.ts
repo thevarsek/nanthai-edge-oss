@@ -94,6 +94,7 @@ export interface GenerationLoopOptions {
     round: number,
     results: Array<{ toolCallId: string; result: ToolResult }>,
   ) => Promise<void>;
+  onToolArtifacts?: ToolCallLoopOptions["onToolArtifacts"];
   onPrepareNextTurn?: ToolCallLoopOptions["onPrepareNextTurn"];
   // Compaction-specific
   modelContextLimit: number;
@@ -328,6 +329,7 @@ export async function runGenerationWithCompaction(
       toolCtx,
       onToolRoundStart,
       onToolRoundComplete,
+      onToolArtifacts: options.onToolArtifacts,
       onPrepareNextTurn: options.onPrepareNextTurn,
       maxRoundsPerInvocation: options.maxToolRoundsPerInvocation,
       shouldExitLoop: async (_round, roundResult) => {

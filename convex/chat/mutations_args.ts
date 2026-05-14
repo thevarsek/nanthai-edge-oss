@@ -297,6 +297,8 @@ export const saveGenerationContinuationArgs = {
       skillDefaults: v.optional(v.array(skillOverrideEntry)),
       integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
     }),
+    checkpointVersion: v.optional(v.union(v.literal("v1"), v.literal("v2"))),
+    assembledCheckpoint: v.optional(v.any()),
     messages: v.any(),
     usage: v.optional(
       v.object({

@@ -9,6 +9,7 @@ import {
   OpenRouterMessage,
 } from "../lib/openrouter";
 import { buildRequestMessages } from "../chat/helpers";
+import { assembleRequestContextForGeneration } from "../chat/actions_context_assembly_integration";
 import { promoteLatestUserVideoUrls } from "../chat/helpers_video_url_utils";
 import { StreamWriter } from "../chat/stream_writer";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
@@ -29,6 +30,7 @@ const defaultRunParticipantTurnDeps = {
   getRequiredUserOpenRouterApiKey,
   generateModeratorDirective,
   buildRequestMessages,
+  assembleRequestContextForGeneration,
   promoteLatestUserVideoUrls,
   createStreamWriter: (options: ConstructorParameters<typeof StreamWriter>[0]) =>
     new StreamWriter(options),
@@ -42,7 +44,10 @@ export type RunParticipantTurnDeps = typeof defaultRunParticipantTurnDeps;
 export function createRunParticipantTurnDepsForTest(
   overrides: DeepPartial<RunParticipantTurnDeps> = {},
 ): RunParticipantTurnDeps {
-  return mergeTestDeps(defaultRunParticipantTurnDeps, overrides);
+  return mergeTestDeps({
+    ...defaultRunParticipantTurnDeps,
+    assembleRequestContextForGeneration: async ({ legacyMessages }) => legacyMessages,
+  }, overrides);
 }
 
 function isCancelledTurnError(error: unknown): boolean {
@@ -63,6 +68,15 @@ function messageContentToParts(content: OpenRouterMessage["content"]): ContentPa
   return content?.filter((part) => part.type !== "text") ?? [];
 }
 
+function autonomousTranscriptSpeaker(message: OpenRouterMessage): string {
+  if (message.role === "user") return "User";
+  if (message.role === "tool") return "Tool";
+  if (message.role !== "assistant") return "Participant";
+
+  const name = message.name?.trim();
+  return name ? `Previous participant ${name}` : "Previous participant";
+}
+
 function buildAutonomousTranscriptMessages(
   messages: OpenRouterMessage[],
   participantName: string,
@@ -75,12 +89,7 @@ function buildAutonomousTranscriptMessages(
   for (const message of discussionMessages) {
     const text = messageContentToText(message.content);
     if (!text) continue;
-    const speaker = message.role === "user"
-      ? "User"
-      : message.role === "assistant"
-        ? "Previous participant"
-        : "Tool";
-    transcriptLines.push(`${speaker}: ${text}`);
+    transcriptLines.push(`${autonomousTranscriptSpeaker(message)}: ${text}`);
     nonTextParts.push(...messageContentToParts(message.content));
   }
 
@@ -286,7 +295,21 @@ export async function runParticipantTurn(
     });
 
     const caps = modelCapabilities.get(participant.modelId);
-    const promotedRequest = deps.promoteLatestUserVideoUrls(baseRequestMessages, {
+    const assembledRequestMessages = await deps.assembleRequestContextForGeneration({
+      ctx,
+      chatId,
+      userId,
+      assistantMessageId: messageId,
+      jobId,
+      participantId: participant.participantId,
+      legacyMessages: baseRequestMessages,
+      allMessages: currentMessages,
+      providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,
+      mode: "autonomous_discussion",
+      runtimeKind: "autonomous_discussion",
+    });
+
+    const promotedRequest = deps.promoteLatestUserVideoUrls(assembledRequestMessages, {
       modelId: participant.modelId,
       provider: caps?.provider,
       hasVideoInput: caps?.hasVideoInput,

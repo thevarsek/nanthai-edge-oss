@@ -214,7 +214,7 @@ The built-in system skill catalog is consolidated to 66 seeded skills. `skills/a
 - `scheduledJobs.turnSkillOverrides`
 - `scheduledJobs.steps[].turnSkillOverrides`
 
-The removed standalone skills are `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. Their workflows are represented by broader active skills and by M38/M39 workspace requirements rather than by separate catalog rows.
+The removed standalone skills are `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. Their workflows are represented by broader active skills and by M39/M40 workspace requirements rather than by separate catalog rows.
 
 ---
 
@@ -535,6 +535,8 @@ Internet search expanded from 2 tiers (Web / Research Paper) to 3:
 | Research Paper | `"paper"` | Path D — Multi-phase research pipeline | Complexity 1-3, full tool support |
 
 **M37 research hardening:** Research Paper remains the same client-visible mode and status contract (`planning`, `searching`, `analyzing`, `deepening`, `synthesizing`, `writing`, terminal states). Internally, Convex now asks planning for an inferred research question, scope, source strategy, and structured query rationales; synthesis produces source notes, a literature matrix, claim bank, contradictions, limitations, and research gaps; an internal `paper_architecture` phase runs while the session remains `synthesizing` and stores the title, section outline, evidence map, thesis, claim-evidence-reasoning chains, and drafting notes. Final paper generation consumes those artifacts and preserves the existing `runGeneration` handoff for tools, skills, memory, continuations, and cancellation behavior.
+
+**M38/M38.5 context assembly:** Model-facing context is now assembled from runtime graph records rather than blindly replaying every transcript/tool payload. Tool rounds dual-write durable raw artifacts and compact tool memories, then `assembleRequestContextForGeneration` selects model-visible context by branch lineage, participant ownership, privacy policy, freshness, provenance status, and recovery needs. The visible transcript remains the client contract; context assembly is a backend/runtime concern used by normal generation, autonomous discussion mode, subagent child runs, and parent-resume metadata. Oversized raw arguments and results use separate storage refs, and selected exact/recovery artifacts are rehydrated only after policy selection.
 
 **Globe tap behavior**: Single tap toggles the user's default search mode (from Settings) on/off. Long-press opens the full 3-tab `SearchPanelView` for overrides.
 

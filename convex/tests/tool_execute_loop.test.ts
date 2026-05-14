@@ -101,6 +101,7 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   });
 
   const rounds: string[] = [];
+  const artifactRounds: Array<{ round: number; callCount: number; resultCount: number }> = [];
   const result = await runToolCallLoop(
     makeStreamResult({
       finishReason: "tool_calls",
@@ -119,6 +120,9 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
       },
       onToolRoundComplete: async (round) => {
         rounds.push(`end:${round}`);
+      },
+      onToolArtifacts: async (round, toolCalls, results) => {
+        artifactRounds.push({ round, callCount: toolCalls.length, resultCount: results.length });
       },
       onPrepareNextTurn: async (
         round,
@@ -141,6 +145,10 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   );
 
   assert.deepEqual(rounds, ["start:1", "end:1", "start:2", "end:2"]);
+  assert.deepEqual(artifactRounds, [
+    { round: 1, callCount: 1, resultCount: 1 },
+    { round: 2, callCount: 1, resultCount: 1 },
+  ]);
   assert.equal(streamCalls, 2);
   assert.equal(result.streamResult.content, "done");
   assert.equal(result.allToolCalls.length, 2);

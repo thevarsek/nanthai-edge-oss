@@ -423,6 +423,28 @@ export const deleteUserTableBatch = internalMutation({
       return { deleted };
     }
 
+    if (tableName === "toolExecutionArtifacts") {
+      const rows = await ctx.db
+        .query("toolExecutionArtifacts")
+        .withIndex("by_user_status", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        const storageIds = [row.argumentsStorageId, row.resultStorageId].filter(
+          (id): id is NonNullable<typeof id> => !!id,
+        );
+        for (const storageId of storageIds) {
+          try {
+            await ctx.storage.delete(storageId);
+          } catch {
+            // Already deleted or shared storage cleanup handled elsewhere.
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
     // ---------------------------------------------------------------
     // Generic: tables with a standard by_user index
     // ---------------------------------------------------------------

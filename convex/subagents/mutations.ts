@@ -131,6 +131,19 @@ export const updateRunStreaming = internalMutation({
   },
 });
 
+export const setBatchM38ResumeMetadata = internalMutation({
+  args: {
+    batchId: v.id("subagentBatches"),
+    m38ResumeMetadata: v.any(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.batchId, {
+      m38ResumeMetadata: args.m38ResumeMetadata,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const claimRunForExecution = internalMutation({
   args: {
     runId: v.id("subagentRuns"),

@@ -70,6 +70,25 @@ export interface GenerationContinuationGroupSnapshot {
 export interface GenerationContinuationCheckpoint {
   participant: ParticipantConfig;
   group: GenerationContinuationGroupSnapshot;
+  checkpointVersion?: "v1" | "v2";
+  assembledCheckpoint?: {
+    policyVersion: string;
+    assemblerVersion: string;
+    artifactRefs: string[];
+    memoryRefs: string[];
+    rehydrationDirectives: Array<Record<string, unknown>>;
+    activeProfiles: SkillToolProfileId[];
+    loadedSkills: LoadedSkillState[];
+    mode?: "read_path" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume";
+    runtimeKind?: "chat_generation" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume" | "scheduled_job";
+    subagentBatchId?: Id<"subagentBatches">;
+    subagentRunId?: Id<"subagentRuns">;
+    parentMessageId?: Id<"messages">;
+    parentJobId?: Id<"generationJobs">;
+    parentToolCallId?: string;
+    promotionDecision?: "child_private" | "parent_resume" | "parent_visible" | "audit_only";
+    decisionSummary?: string;
+  };
   messages: OpenRouterMessage[];
   usage?: OpenRouterUsage;
   toolCalls: RecordedToolCall[];
@@ -85,6 +104,8 @@ export interface GenerationContinuationCheckpoint {
 export interface GenerationContinuationState {
   participant: ParticipantConfig;
   group: GenerationContinuationGroupSnapshot;
+  checkpointVersion: "v1" | "v2";
+  assembledCheckpoint?: GenerationContinuationCheckpoint["assembledCheckpoint"];
   messages: OpenRouterMessage[];
   usage: OpenRouterUsage | null;
   toolCalls: RecordedToolCall[];
