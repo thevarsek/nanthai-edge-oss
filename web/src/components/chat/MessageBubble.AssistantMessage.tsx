@@ -2,7 +2,7 @@
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
 import { memo, useState, useCallback, useMemo } from "react";
-import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader } from "lucide-react";
+import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
@@ -72,6 +72,18 @@ function WaitingIndicator() {
         />
       ))}
     </span>
+  );
+}
+
+function GeneratingVideoPlaceholder() {
+  return (
+    <div className="relative mt-2 flex h-40 w-60 overflow-hidden rounded-xl border border-border/20 bg-surface-2/50">
+      <div className="absolute inset-y-0 -left-24 w-24 animate-[edgeShimmer_1.8s_ease-in-out_infinite] bg-gradient-to-r from-transparent via-foreground/10 to-transparent" />
+      <div className="m-auto flex flex-col items-center gap-2 text-muted">
+        <Video size={24} className="animate-pulse" />
+        <span className="text-xs">Generating video...</span>
+      </div>
+    </div>
   );
 }
 
@@ -220,10 +232,16 @@ export const AssistantMessage = memo(function AssistantMessage({
   const hasVideoUrls = !!message.videoUrls?.length;
   const isImagePlaceholder = hasImageUrls && message.content === "[Generated image]";
   const isVideoPlaceholder = hasVideoUrls && message.content === "[Generated video]";
-  const contentToStream = (isImagePlaceholder || isVideoPlaceholder) ? "" : message.content;
-  const { displayed } = useStreaming(contentToStream, isStreaming && message.status === "streaming");
+  const mediaCopyText = [...(message.imageUrls ?? []), ...(message.videoUrls ?? [])].join("\n");
+  const visibleContent = isImagePlaceholder || isVideoPlaceholder ? "" : message.content;
+  const copyText = (!visibleContent.trim())
+    ? mediaCopyText
+    : visibleContent;
+  const { displayed } = useStreaming(visibleContent, isStreaming && message.status === "streaming");
   const isPending = message.status === "pending";
-  const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder;
+  const isAwaitingVideo = !hasVideoUrls && (isPending || isStreaming) && message.modelId != null &&
+    modelSummaries?.some((model) => model.modelId === message.modelId && model.supportsVideo === true);
+  const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder && !isAwaitingVideo;
   const [copied, setCopied] = useState(false);
   const [selectedDocumentCitation, setSelectedDocumentCitation] = useState<DocumentCitation | null>(null);
   const searchCtx = useChatSearchContext();
@@ -244,10 +262,10 @@ export const AssistantMessage = memo(function AssistantMessage({
   const hasFocusedMatch = messageMatches.some((m) => m.globalIndex === searchCtx.focusedGlobalIndex);
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(message.content);
+    await navigator.clipboard.writeText(copyText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  }, [message.content]);
+  }, [copyText]);
 
   const hasAudio = !!message.audioStorageId || !!message.audioGenerating;
   const handlePlayAudio = useCallback(
@@ -335,7 +353,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         )}
 
         {/* Subagent work */}
-        {message.subagentBatchId && <SubagentBatchPanel messageId={message._id} />}
+        {message.subagentBatchId && <SubagentBatchPanel messageId={message._id} batchId={message.subagentBatchId} />}
 
         {/* Content */}
         {(renderedContent || showWaitingPlaceholder) && (
@@ -370,6 +388,8 @@ export const AssistantMessage = memo(function AssistantMessage({
         {!hasVideoUrls && !isCompleted && (
           <VideoGenerationProgress messageId={message._id} />
         )}
+
+        {isAwaitingVideo && <GeneratingVideoPlaceholder />}
 
         {/* Inline generated videos (from videoUrls — video generation models) */}
         {hasVideoUrls && (
@@ -465,9 +485,11 @@ export const AssistantMessage = memo(function AssistantMessage({
         {/* iOS order: Copy, Retry, Retry-different-model, Fork, Listen */}
         {showActions && (
           <div className="flex items-center gap-0.5 mt-2">
-            <IconButton label="Copy" variant="ghost" size="xs" onClick={handleCopy}>
-              {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
-            </IconButton>
+            {copyText.trim() && (
+              <IconButton label="Copy" variant="ghost" size="xs" onClick={handleCopy}>
+                {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
+              </IconButton>
+            )}
             <IconButton label="Retry" variant="ghost" size="xs" onClick={onRetry}>
               <RefreshCw size={13} />
             </IconButton>

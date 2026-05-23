@@ -21,6 +21,7 @@ import {
   ScatterChartRenderer,
   PieChartRenderer,
   BoxChartRenderer,
+  type ChartHeight,
 } from "./GeneratedChartsCard.renderers";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -62,7 +63,7 @@ function chartSubtitle(c: GeneratedChart): string | null {
 
 // ─── Chart renderer dispatch ──────────────────────────────────────────────────
 
-function ChartRenderer({ chart }: { chart: GeneratedChart }) {
+function ChartRenderer({ chart, height }: { chart: GeneratedChart; height?: ChartHeight }) {
   const { t } = useTranslation();
   const elements = chart.elements ?? [];
   if (elements.length === 0 && chart.chartType !== "png_image") {
@@ -71,15 +72,15 @@ function ChartRenderer({ chart }: { chart: GeneratedChart }) {
 
   switch (chart.chartType) {
     case "line":
-      return <LineChartRenderer points={parsePoints(elements)} xLabel={chart.xLabel} yLabel={chart.yLabel} />;
+      return <LineChartRenderer points={parsePoints(elements)} xLabel={chart.xLabel} yLabel={chart.yLabel} height={height} />;
     case "bar":
-      return <BarChartRenderer bars={parseBars(elements)} xLabel={chart.xLabel} yLabel={chart.yLabel} />;
+      return <BarChartRenderer bars={parseBars(elements)} xLabel={chart.xLabel} yLabel={chart.yLabel} height={height} />;
     case "scatter":
-      return <ScatterChartRenderer points={parsePoints(elements)} xLabel={chart.xLabel} yLabel={chart.yLabel} />;
+      return <ScatterChartRenderer points={parsePoints(elements)} xLabel={chart.xLabel} yLabel={chart.yLabel} height={height} />;
     case "pie":
-      return <PieChartRenderer slices={parseSlices(elements)} />;
+      return <PieChartRenderer slices={parseSlices(elements)} height={height} />;
     case "box":
-      return <BoxChartRenderer boxes={parseBoxes(elements)} />;
+      return <BoxChartRenderer boxes={parseBoxes(elements)} height={height} />;
     case "png_image":
       return chart.pngBase64
         ? <img src={`data:image/png;base64,${chart.pngBase64}`} alt={chart.title ?? "Chart"} className="w-full h-auto rounded" />
@@ -148,7 +149,7 @@ function ChartExpandedModal({ chart, onClose }: { chart: GeneratedChart; onClose
 
         {/* Expanded chart */}
         <div className="p-4" style={{ height: 400 }}>
-          <ChartRenderer chart={chart} />
+          <ChartRenderer chart={chart} height="100%" />
         </div>
       </div>
     </div>

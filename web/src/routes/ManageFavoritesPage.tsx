@@ -19,6 +19,32 @@ import { FavoriteEditorModal, type FavoriteDoc } from "./ManageFavoritesHelpers"
 // ─── Multi-model avatar (iOS-style stacked logos) ───────────────────────────
 
 function FavoriteAvatar({ favorite }: { favorite: FavoriteDoc }) {
+  const participants = favorite.participants;
+  if (participants && participants.length > 1) {
+    return (
+      <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center flex-shrink-0 overflow-hidden relative">
+        {participants.slice(0, 3).map((participant, idx) => (
+          <div
+            key={`${participant.personaId ?? participant.modelId}-${idx}`}
+            className="absolute"
+            style={{
+              left: idx * 8 + 2,
+              top: idx * 2 + 4,
+              zIndex: 3 - idx,
+            }}
+          >
+            {participant.personaId ? (
+              <div className="h-5 w-5 rounded-full bg-muted flex items-center justify-center text-xs">
+                {participant.personaEmoji ?? participant.personaName?.[0] ?? "?"}
+              </div>
+            ) : (
+              <ProviderLogo modelId={participant.modelId} size={participants.length >= 3 ? 16 : 20} />
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
   if (favorite.personaEmoji) {
     return (
       <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center text-lg flex-shrink-0">
@@ -68,7 +94,9 @@ function FavoriteRow({
 }) {
   const { t } = useTranslation();
   const subtitle =
-    favorite.personaName
+    favorite.participants && favorite.participants.length > 1
+      ? `${favorite.participants.length} participants · ${favorite.participants.map((participant) => participant.personaName ?? participant.modelId.split("/").pop()).join(", ")}`
+      : favorite.personaName
       ? `${favorite.personaName} · ${favorite.modelIds[0]?.split("/").pop() ?? ""}`
       : favorite.modelIds.length > 1
         ? `${favorite.modelIds.length} models · ${favorite.modelIds.map((id) => id.split("/").pop()).join(", ")}`

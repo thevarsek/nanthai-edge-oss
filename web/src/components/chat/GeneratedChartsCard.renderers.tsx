@@ -10,7 +10,7 @@ import {
   PieChart, Pie, Cell,
   ComposedChart, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend,
-  ReferenceLine, Rectangle,
+  Rectangle,
 } from "recharts";
 import type { ChartBar, ChartBox, ChartPoint, ChartSlice } from "./GeneratedChartsCard.data";
 
@@ -27,13 +27,19 @@ function pickColor(i: number): string {
 
 const AXIS_STYLE = { fontSize: 11, fill: "var(--nanth-muted)" } as const;
 const GRID_STROKE = "rgba(255,255,255,0.06)";
+const UNGROUPED_SERIES_LABEL = "Ungrouped";
+export type ChartHeight = number | `${number}%`;
+
+function chartGroupName(group: string | undefined): string {
+  return group?.trim() || UNGROUPED_SERIES_LABEL;
+}
 
 // ─── Line chart ───────────────────────────────────────────────────────────────
 
-export function LineChartRenderer({ points, xLabel, yLabel }: {
-  points: ChartPoint[]; xLabel?: string; yLabel?: string;
+export function LineChartRenderer({ points, xLabel, yLabel, height = 220 }: {
+  points: ChartPoint[]; xLabel?: string; yLabel?: string; height?: ChartHeight;
 }) {
-  const groups = [...new Set(points.map((p) => p.group).filter(Boolean))] as string[];
+  const groups = [...new Set(points.map((p) => chartGroupName(p.group)))];
   const hasGroups = groups.length > 1;
 
   if (hasGroups) {
@@ -41,11 +47,11 @@ export function LineChartRenderer({ points, xLabel, yLabel }: {
     const xVals = [...new Set(points.map((p) => p.x))];
     const data = xVals.map((x) => {
       const row: Record<string, unknown> = { x };
-      for (const g of groups) row[g] = points.find((p) => p.x === x && p.group === g)?.y ?? null;
+      for (const g of groups) row[g] = points.find((p) => p.x === x && chartGroupName(p.group) === g)?.y ?? null;
       return row;
     });
     return (
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data}>
           <CartesianGrid stroke={GRID_STROKE} />
           <XAxis dataKey="x" tick={AXIS_STYLE} label={xLabel ? { value: xLabel, position: "insideBottom", offset: -4, style: AXIS_STYLE } : undefined} />
@@ -59,7 +65,7 @@ export function LineChartRenderer({ points, xLabel, yLabel }: {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <LineChart data={points}>
         <CartesianGrid stroke={GRID_STROKE} />
         <XAxis dataKey="x" tick={AXIS_STYLE} label={xLabel ? { value: xLabel, position: "insideBottom", offset: -4, style: AXIS_STYLE } : undefined} />
@@ -73,21 +79,21 @@ export function LineChartRenderer({ points, xLabel, yLabel }: {
 
 // ─── Bar chart ────────────────────────────────────────────────────────────────
 
-export function BarChartRenderer({ bars, xLabel, yLabel }: {
-  bars: ChartBar[]; xLabel?: string; yLabel?: string;
+export function BarChartRenderer({ bars, xLabel, yLabel, height = 220 }: {
+  bars: ChartBar[]; xLabel?: string; yLabel?: string; height?: ChartHeight;
 }) {
-  const groups = [...new Set(bars.map((b) => b.group).filter(Boolean))] as string[];
+  const groups = [...new Set(bars.map((b) => chartGroupName(b.group)))];
   const hasGroups = groups.length > 1;
 
   if (hasGroups) {
     const labels = [...new Set(bars.map((b) => b.label))];
     const data = labels.map((l) => {
       const row: Record<string, unknown> = { label: l };
-      for (const g of groups) row[g] = bars.find((b) => b.label === l && b.group === g)?.value ?? 0;
+      for (const g of groups) row[g] = bars.find((b) => b.label === l && chartGroupName(b.group) === g)?.value ?? 0;
       return row;
     });
     return (
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data}>
           <CartesianGrid stroke={GRID_STROKE} />
           <XAxis dataKey="label" tick={AXIS_STYLE} label={xLabel ? { value: xLabel, position: "insideBottom", offset: -4, style: AXIS_STYLE } : undefined} />
@@ -101,7 +107,7 @@ export function BarChartRenderer({ bars, xLabel, yLabel }: {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <BarChart data={bars}>
         <CartesianGrid stroke={GRID_STROKE} />
         <XAxis dataKey="label" tick={AXIS_STYLE} label={xLabel ? { value: xLabel, position: "insideBottom", offset: -4, style: AXIS_STYLE } : undefined} />
@@ -115,16 +121,16 @@ export function BarChartRenderer({ bars, xLabel, yLabel }: {
 
 // ─── Scatter chart ────────────────────────────────────────────────────────────
 
-export function ScatterChartRenderer({ points, xLabel, yLabel }: {
-  points: ChartPoint[]; xLabel?: string; yLabel?: string;
+export function ScatterChartRenderer({ points, xLabel, yLabel, height = 220 }: {
+  points: ChartPoint[]; xLabel?: string; yLabel?: string; height?: ChartHeight;
 }) {
-  const groups = [...new Set(points.map((p) => p.group).filter(Boolean))] as string[];
+  const groups = [...new Set(points.map((p) => chartGroupName(p.group)))];
   const hasGroups = groups.length > 1;
   const isNumericX = points.every((p) => typeof p.x === "number");
 
   if (hasGroups) {
     return (
-      <ResponsiveContainer width="100%" height={220}>
+      <ResponsiveContainer width="100%" height={height}>
         <ScatterChart>
           <CartesianGrid stroke={GRID_STROKE} />
           <XAxis dataKey="x" type={isNumericX ? "number" : "category"} tick={AXIS_STYLE} name={xLabel ?? "x"} />
@@ -132,7 +138,7 @@ export function ScatterChartRenderer({ points, xLabel, yLabel }: {
           <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
           {groups.map((g, i) => (
-            <Scatter key={g} name={g} data={points.filter((p) => p.group === g)} fill={pickColor(i)} />
+            <Scatter key={g} name={g} data={points.filter((p) => chartGroupName(p.group) === g)} fill={pickColor(i)} />
           ))}
         </ScatterChart>
       </ResponsiveContainer>
@@ -140,7 +146,7 @@ export function ScatterChartRenderer({ points, xLabel, yLabel }: {
   }
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <ScatterChart>
         <CartesianGrid stroke={GRID_STROKE} />
         <XAxis dataKey="x" type={isNumericX ? "number" : "category"} tick={AXIS_STYLE} name={xLabel ?? "x"} />
@@ -154,9 +160,9 @@ export function ScatterChartRenderer({ points, xLabel, yLabel }: {
 
 // ─── Pie chart ────────────────────────────────────────────────────────────────
 
-export function PieChartRenderer({ slices }: { slices: ChartSlice[] }) {
+export function PieChartRenderer({ slices, height = 220 }: { slices: ChartSlice[]; height?: ChartHeight }) {
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <PieChart>
         <Pie data={slices} dataKey="value" nameKey="label" cx="50%" cy="50%" outerRadius={80} label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ""} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false} fontSize={11}>
           {slices.map((_, i) => <Cell key={i} fill={pickColor(i)} />)}
@@ -172,31 +178,63 @@ export function PieChartRenderer({ slices }: { slices: ChartSlice[] }) {
 
 // Custom shape for the IQR box
 function BoxShape(props: Record<string, unknown>) {
-  const { x, y, width, height } = props as { x: number; y: number; width: number; height: number };
-  return <Rectangle x={x} y={y} width={width} height={height} fill={pickColor(0)} fillOpacity={0.3} stroke={pickColor(0)} />;
+  const { x, y, width, height, payload } = props as {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    payload?: { q1: number; median: number; q3: number };
+  };
+  const medianRatio = payload && payload.q3 !== payload.q1
+    ? (payload.q3 - payload.median) / (payload.q3 - payload.q1)
+    : 0.5;
+  const medianY = y + height * medianRatio;
+  return (
+    <g>
+      <Rectangle x={x} y={y} width={width} height={height} fill={pickColor(0)} fillOpacity={0.3} stroke={pickColor(0)} />
+      <line x1={x} x2={x + width} y1={medianY} y2={medianY} stroke={pickColor(0)} strokeWidth={2} />
+    </g>
+  );
 }
 
-export function BoxChartRenderer({ boxes }: { boxes: ChartBox[] }) {
+function WhiskerShape(props: Record<string, unknown>) {
+  const { x, y, width, height } = props as { x: number; y: number; width: number; height: number };
+  const centerX = x + width / 2;
+  const cap = Math.max(10, width * 0.45);
+  return (
+    <g>
+      <line x1={centerX} x2={centerX} y1={y} y2={y + height} stroke={pickColor(0)} strokeWidth={1.5} />
+      <line x1={centerX - cap / 2} x2={centerX + cap / 2} y1={y} y2={y} stroke={pickColor(0)} strokeWidth={1.5} />
+      <line x1={centerX - cap / 2} x2={centerX + cap / 2} y1={y + height} y2={y + height} stroke={pickColor(0)} strokeWidth={1.5} />
+    </g>
+  );
+}
+
+export function BoxChartRenderer({ boxes, height = 220 }: { boxes: ChartBox[]; height?: ChartHeight }) {
   // Transform for ComposedChart: each box becomes a data row
   const data = boxes.map((b) => ({
     label: b.label, min: b.min, q1: b.q1, median: b.median,
-    q3: b.q3, max: b.max, iqr: b.q3 - b.q1, base: b.q1,
+    q3: b.q3, max: b.max, iqr: b.q3 - b.q1, base: b.q1, range: b.max - b.min,
   }));
+  const outliers = boxes.flatMap((box) => (box.outliers ?? []).map((value) => ({
+    label: box.label,
+    y: value,
+  })));
 
   return (
-    <ResponsiveContainer width="100%" height={220}>
+    <ResponsiveContainer width="100%" height={height}>
       <ComposedChart data={data}>
         <CartesianGrid stroke={GRID_STROKE} />
         <XAxis dataKey="label" tick={AXIS_STYLE} />
         <YAxis tick={AXIS_STYLE} />
         <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
-        {/* IQR box: stack base (invisible) + iqr range */}
+        {/* Min/max whisker: stack min (invisible) + full range. */}
+        <Bar dataKey="min" stackId="whisker" fill="transparent" barSize={28} />
+        <Bar dataKey="range" stackId="whisker" shape={<WhiskerShape />} barSize={28} />
+        {/* IQR box: stack base (invisible) + iqr range. */}
         <Bar dataKey="base" stackId="box" fill="transparent" />
         <Bar dataKey="iqr" stackId="box" shape={<BoxShape />} />
-        {/* Median line */}
-        {data.map((d, i) => (
-          <ReferenceLine key={i} y={d.median} stroke={pickColor(0)} strokeWidth={2} segment={[{ x: d.label, y: d.median }, { x: d.label, y: d.median }]} ifOverflow="extendDomain" />
-        ))}
+        {outliers.length > 0 && <Scatter data={outliers} dataKey="y" fill={pickColor(0)} />}
       </ComposedChart>
     </ResponsiveContainer>
   );

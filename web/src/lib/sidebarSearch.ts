@@ -9,7 +9,7 @@ export function sidebarChatMatchesSearch(chat: SidebarSearchChat, query: string)
   if (!normalized) return true;
 
   return (
-    (chat.title ?? "New Chat").toLowerCase().includes(normalized) ||
+    (chat.title ?? "New conversation").toLowerCase().includes(normalized) ||
     (chat.lastMessagePreview ?? "").toLowerCase().includes(normalized) ||
     (chat.folderName ?? "").toLowerCase().includes(normalized)
   );

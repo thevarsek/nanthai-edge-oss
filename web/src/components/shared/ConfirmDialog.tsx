@@ -10,11 +10,12 @@ interface ConfirmDialogProps {
   description: string;
   confirmLabel?: string;
   confirmVariant?: "destructive" | "default";
+  errorMessage?: string | null;
 }
 
 /**
- * A modal confirmation dialog with keyboard support (Escape to close, Enter to
- * confirm) and a semi-transparent backdrop.
+ * A modal confirmation dialog with keyboard support and a semi-transparent
+ * backdrop.
  */
 export function ConfirmDialog({
   isOpen,
@@ -24,6 +25,7 @@ export function ConfirmDialog({
   description,
   confirmLabel,
   confirmVariant = "destructive",
+  errorMessage,
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
   const resolvedConfirmLabel = confirmLabel ?? t("delete");
@@ -35,9 +37,6 @@ export function ConfirmDialog({
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        onConfirm();
       }
     }
 
@@ -47,13 +46,11 @@ export function ConfirmDialog({
 
   // Prevent body scroll while open
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
+    if (!isOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousOverflow;
     };
   }, [isOpen]);
 
@@ -85,6 +82,12 @@ export function ConfirmDialog({
         <p className="text-sm text-muted leading-relaxed">
           {description}
         </p>
+
+        {errorMessage && (
+          <p className="text-sm text-red-400 leading-relaxed">
+            {errorMessage}
+          </p>
+        )}
 
         <div className="flex justify-end gap-2 pt-1">
           <button

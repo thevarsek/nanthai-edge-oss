@@ -22,6 +22,14 @@ interface StreamingState {
   isAnimating: boolean;
 }
 
+export function streamingCharacterLength(text: string): number {
+  return Array.from(text).length;
+}
+
+export function sliceStreamingText(text: string, count: number): string {
+  return Array.from(text).slice(0, count).join("");
+}
+
 /**
  * Given a `liveContent` string that grows as the backend streams characters,
  * returns a `displayed` string that smoothly reveals characters at a natural
@@ -48,8 +56,8 @@ export function useStreaming(
   const isStreamingRef = useRef(isStreaming);
 
   // Track state — mirrors iOS Track struct
-  const displayedCountRef = useRef(liveContent.length); // chars currently shown
-  const targetCountRef = useRef(liveContent.length);
+  const displayedCountRef = useRef(streamingCharacterLength(liveContent)); // chars currently shown
+  const targetCountRef = useRef(streamingCharacterLength(liveContent));
   const targetTextRef = useRef(liveContent);
   const hasTrackRef = useRef(false); // whether we've started tracking
 
@@ -61,7 +69,7 @@ export function useStreaming(
   // Mirrors iOS ingest(): first content shows immediately, subsequent content
   // updates the target and lets advance() catch up.
   const ingest = useCallback((text: string) => {
-    const targetLen = text.length;
+    const targetLen = streamingCharacterLength(text);
 
     if (!hasTrackRef.current) {
       // First ingest: show everything immediately (same as iOS new-track path)
@@ -80,7 +88,7 @@ export function useStreaming(
       // If content was replaced/truncated, clamp displayed
       if (displayedCountRef.current > targetLen) {
         displayedCountRef.current = targetLen;
-        setDisplayed(text.slice(0, targetLen));
+        setDisplayed(sliceStreamingText(text, targetLen));
       }
     }
   }, []);
@@ -119,7 +127,7 @@ export function useStreaming(
     if (nextCount !== displayedCountRef.current) {
       displayedCountRef.current = nextCount;
       lastFrameRef.current = nowMs;
-      setDisplayed(targetTextRef.current.slice(0, nextCount));
+      setDisplayed(sliceStreamingText(targetTextRef.current, nextCount));
       return true;
     }
 
@@ -166,8 +174,8 @@ export function useStreaming(
         rafRef.current = null;
       }
       hasTrackRef.current = false;
-      displayedCountRef.current = liveContent.length;
-      targetCountRef.current = liveContent.length;
+      displayedCountRef.current = streamingCharacterLength(liveContent);
+      targetCountRef.current = streamingCharacterLength(liveContent);
       targetTextRef.current = liveContent;
       setDisplayed(liveContent);
     }

@@ -20,8 +20,8 @@ const variantClasses: Record<IconButtonVariant, string> = {
 const sizeClasses: Record<IconButtonSize, string> = {
   xs: "h-8 w-8 rounded-lg",
   sm: "h-10 w-10 rounded-xl",
-  md: "h-10 w-10 rounded-xl",
-  lg: "h-10 w-10 rounded-xl",
+  md: "h-11 w-11 rounded-xl",
+  lg: "h-12 w-12 rounded-2xl",
 };
 
 // ── Component ───────────────────────────────────────────────────────
@@ -61,6 +61,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         "inline-flex shrink-0 items-center justify-center",
         "transition-colors duration-150",
         "active:scale-[0.96] active:transition-transform active:duration-75",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:pointer-events-none disabled:opacity-50",
         // Variant + size
         sizeClasses[size],

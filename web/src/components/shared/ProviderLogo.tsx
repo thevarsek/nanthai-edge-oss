@@ -55,6 +55,14 @@ const slugToAsset: Record<string, string> = {
   switchpoint: "provider_switchpoint",
   sourceful: "provider_sourceful",
   "black-forest-labs": "provider_black_forest_labs",
+  poolside: "provider_poolside",
+  liquid: "provider_liquid",
+  liquidai: "provider_liquid",
+  microsoft: "provider_microsoft",
+  kwaivgi: "provider_kwaipilot",
+  recraft: "provider_recraftai",
+  "recraft-ai": "provider_recraftai",
+  recraftai: "provider_recraftai",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────
@@ -112,12 +120,12 @@ interface ProviderLogoProps {
 
 export function ProviderLogo({ slug, modelId, size = 28, className }: ProviderLogoProps) {
   const provider = slug ?? (modelId ? extractProvider(modelId) : "unknown");
-  const [imgFailed, setImgFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   const asset = assetName(provider);
   const src = `/providers/${asset}.png`;
 
-  if (imgFailed) {
+  if (failedSrc === src) {
     const hue = slugHue(provider);
     return (
       <div
@@ -150,7 +158,7 @@ export function ProviderLogo({ slug, modelId, size = 28, className }: ProviderLo
       height={size}
       className={className}
       style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }}
-      onError={() => setImgFailed(true)}
+      onError={() => setFailedSrc(src)}
     />
   );
 }

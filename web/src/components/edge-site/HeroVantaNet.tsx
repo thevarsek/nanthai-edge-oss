@@ -1,30 +1,14 @@
 import { useEffect, useRef } from "react";
+import * as THREE from "three";
+import VANTA_NET from "vanta/dist/vanta.net.min";
 
 /**
  * Vanta.js NET effect scoped to a container (not full-page).
- * Loads Three.js + Vanta from CDN on first mount, destroys on unmount.
+ * Starts the bundled Three.js + Vanta effect on mount, destroys on unmount.
  * Very low opacity — acts as subliminal texture behind hero text.
  *
  * Respects prefers-reduced-motion by not initializing at all.
  */
-
-let threeJsLoaded: Promise<void> | null = null;
-let vantaLoaded: Promise<void> | null = null;
-
-function loadScriptOnce(src: string): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) {
-      resolve();
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error(`Failed to load ${src}`));
-    document.head.appendChild(script);
-  });
-}
 
 export function HeroVantaNet({
   color = 0x00e0d0, // teal
@@ -41,33 +25,18 @@ export function HeroVantaNet({
   className?: string;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const vantaRef = useRef<unknown>(null);
+  const vantaRef = useRef<{ destroy: () => void } | null>(null);
 
   useEffect(() => {
     // Bail on reduced motion
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (mq.matches) return;
+    let cancelled = false;
 
-    if (!threeJsLoaded) {
-      threeJsLoaded = loadScriptOnce(
-        "https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js",
-      );
-    }
-    if (!vantaLoaded) {
-      vantaLoaded = threeJsLoaded.then(() =>
-        loadScriptOnce(
-          "https://cdnjs.cloudflare.com/ajax/libs/vanta/0.5.24/vanta.net.min.js",
-        ),
-      );
-    }
-
-    vantaLoaded
-      .then(() => {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const w = window as any;
-        if (!w.VANTA || vantaRef.current || !containerRef.current) return;
-
-        vantaRef.current = w.VANTA.NET({
+    try {
+      if (!cancelled && !vantaRef.current && containerRef.current) {
+        vantaRef.current = VANTA_NET({
+          THREE,
           el: containerRef.current,
           mouseControls: true,
           touchControls: true,
@@ -84,16 +53,16 @@ export function HeroVantaNet({
           showDots: true,
           points: 7,
         });
-      })
-      .catch((err) => {
-        console.error("Vanta hero background failed to initialize", err);
-      });
+      }
+    } catch (err) {
+      console.error("Vanta hero background failed to initialize", err);
+    }
 
     return () => {
+      cancelled = true;
       if (vantaRef.current) {
         try {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          (vantaRef.current as any).destroy();
+          vantaRef.current.destroy();
         } catch {
           /* noop */
         }

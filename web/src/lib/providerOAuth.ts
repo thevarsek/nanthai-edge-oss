@@ -17,6 +17,7 @@ export type OAuthPopupMessage = {
 };
 
 const STORAGE_PREFIX = "nanthai.oauth";
+const OAUTH_CONTEXT_MAX_AGE_MS = 10 * 60 * 1000;
 const RANDOM_CHARS = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~";
 const GOOGLE_BASE_SCOPES = [
   "openid",
@@ -76,7 +77,12 @@ export function readOAuthContext(provider: OAuthProvider): OAuthContext | null {
   const raw = localStorage.getItem(storageKey(provider));
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as OAuthContext;
+    const context = JSON.parse(raw) as OAuthContext;
+    if (!context.createdAt || Date.now() - context.createdAt > OAUTH_CONTEXT_MAX_AGE_MS) {
+      localStorage.removeItem(storageKey(provider));
+      return null;
+    }
+    return context;
   } catch {
     localStorage.removeItem(storageKey(provider));
     return null;
@@ -221,6 +227,7 @@ export async function connectProviderWithPopup(
 
     const timeout = window.setTimeout(() => {
       cleanup();
+      clearOAuthContext(provider);
       reject(new Error(`${providerLabel(provider)} sign-in timed out.`));
     }, 5 * 60 * 1000);
 

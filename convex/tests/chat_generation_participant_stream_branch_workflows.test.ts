@@ -230,6 +230,6 @@ test("generateForParticipant stores inline image-only streams as generated media
     && entry.args.mimeType === "image/png"
   ));
   const finalize = mutations.find((entry) => entry.args.status === "completed")?.args;
-  assert.equal(finalize?.content, "[Generated image]");
+  assert.equal(finalize?.content, "");
   assert.deepEqual(finalize?.imageUrls, ["https://files.example/stored_image_1.png"]);
 });

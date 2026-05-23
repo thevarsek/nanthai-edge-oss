@@ -24,7 +24,7 @@ export function HeroSpotlight({
   const containerRef = useRef<HTMLDivElement>(null);
   const spotRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
-  const posRef = useRef({ x: 0.5, y: 0.5 }); // normalized 0-1
+  const posRef = useRef({ x: 0, y: 0 });
 
   const handleMove = useCallback(
     (e: MouseEvent) => {
@@ -32,14 +32,14 @@ export function HeroSpotlight({
       if (!el) return;
       const rect = el.getBoundingClientRect();
       posRef.current = {
-        x: (e.clientX - rect.left) / rect.width,
-        y: (e.clientY - rect.top) / rect.height,
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top,
       };
 
       if (!rafRef.current) {
         rafRef.current = requestAnimationFrame(() => {
           if (spotRef.current) {
-            spotRef.current.style.transform = `translate(${posRef.current.x * 100}%, ${posRef.current.y * 100}%)`;
+            spotRef.current.style.transform = `translate3d(${posRef.current.x}px, ${posRef.current.y}px, 0) translate(-50%, -50%)`;
           }
           rafRef.current = 0;
         });
@@ -78,9 +78,9 @@ export function HeroSpotlight({
         style={{
           width: size,
           height: size,
-          top: -(size / 2),
-          left: -(size / 2),
-          transform: "translate(50%, 50%)",
+          top: 0,
+          left: 0,
+          transform: "translate3d(50%, 50%, 0) translate(-50%, -50%)",
           background: `radial-gradient(circle, rgba(${color}, ${opacity}) 0%, rgba(${color}, ${opacity * 0.4}) 35%, transparent 70%)`,
           willChange: "transform",
         }}

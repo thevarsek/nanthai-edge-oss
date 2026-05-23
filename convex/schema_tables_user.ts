@@ -12,6 +12,7 @@ import {
   pushProvider,
   skillOverrideEntry,
   integrationOverrideEntry,
+  favoriteParticipant,
 } from "./schema_validators";
 
 export const userSchemaTables = {
@@ -26,6 +27,8 @@ export const userSchemaTables = {
     personaName: v.optional(v.string()),
     personaEmoji: v.optional(v.string()),
     personaAvatarImageUrl: v.optional(v.string()),
+    /** Canonical per-participant favorite contract. */
+    participants: v.optional(v.array(favoriteParticipant)),
     /** User-defined display order (lower = first). */
     sortOrder: v.number(),
     createdAt: v.number(),
@@ -116,6 +119,7 @@ export const userSchemaTables = {
     skillDefaults: v.optional(v.array(skillOverrideEntry)),
     // M30: Global integration defaults (sparse — absence means disabled for new connections)
     integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
+    preferenceWriteEpoch: v.optional(v.number()),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
 

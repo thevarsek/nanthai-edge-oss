@@ -3,7 +3,10 @@ import { internalQuery, query } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
 
 export const getBatchView = query({
-  args: { messageId: v.id("messages") },
+  args: {
+    messageId: v.id("messages"),
+    batchId: v.optional(v.id("subagentBatches")),
+  },
   handler: async (ctx, args) => {
     const auth = await optionalAuth(ctx);
     if (!auth) return null;
@@ -13,7 +16,11 @@ export const getBatchView = query({
       return null;
     }
 
-    const batch = await ctx.db.get(message.subagentBatchId);
+    if (args.batchId && args.batchId !== message.subagentBatchId) {
+      return null;
+    }
+
+    const batch = await ctx.db.get(args.batchId ?? message.subagentBatchId);
     if (!batch || batch.userId !== auth.userId) return null;
 
     const runs = await ctx.db

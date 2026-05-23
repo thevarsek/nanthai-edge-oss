@@ -19,21 +19,22 @@ const navItems = [
 
 export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const { isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const { t } = useTranslation();
 
-  const appHref = isSignedIn ? "/app" : "/sign-in";
-  const appLabel = isSignedIn ? t("edge_go_to_app") : t("sign_in");
+  const appHref = isLoaded && isSignedIn ? "/app" : isLoaded ? "/sign-in" : undefined;
+  const appLabel = isLoaded && isSignedIn ? t("edge_go_to_app") : isLoaded ? t("sign_in") : t("loading");
 
   return (
     <header className="sticky top-0 z-50 eborder-04 border-b backdrop-blur-2xl" style={{ backgroundColor: `rgba(var(--edge-fg), 0) `, background: `color-mix(in srgb, var(--edge-bg) 70%, transparent)` }}>
       <div className="container edge-sans flex h-16 items-center justify-between gap-6">
         {/* Logo — minimal, typographic */}
-        <Link to="/" className="group flex items-center gap-3" aria-label={t("edge_home_aria")}>
+        <Link to="/" className="group flex items-center gap-3" aria-label={t("edge_home_aria")} onClick={() => setIsMenuOpen(false)}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg eborder-06 border ebg-glass-02 transition-all group-hover:eborder-12 group-hover:ebg-glass-04">
             <img
               src="/edge-brand/nanthai_edge_monogram_v2_transp.png"
-              alt={t("edge_monogram_alt")}
+              alt=""
+              aria-hidden="true"
               className="h-6 w-6 object-contain"
             />
           </div>
@@ -62,13 +63,19 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
         {/* Desktop actions */}
         <div className="hidden items-center gap-2 md:flex">
           <LanguageSwitcher variant="header" />
-          <Link
-            to={appHref}
-            className="group/btn inline-flex items-center gap-1 rounded-full px-4 py-2 text-[0.8rem] efg-40 transition-colors hover:efg-80"
-          >
-            {appLabel}
-            <ArrowUpRight className="h-3 w-3 transition-transform group-hover/btn:-translate-y-0.5 group-hover/btn:translate-x-0.5" />
-          </Link>
+          {appHref ? (
+            <Link
+              to={appHref}
+              className="group/btn inline-flex items-center gap-1 rounded-full px-4 py-2 text-[0.8rem] efg-40 transition-colors hover:efg-80"
+            >
+              {appLabel}
+              <ArrowUpRight className="h-3 w-3 transition-transform group-hover/btn:-translate-y-0.5 group-hover/btn:translate-x-0.5" />
+            </Link>
+          ) : (
+            <span className="inline-flex items-center gap-1 rounded-full px-4 py-2 text-[0.8rem] efg-25" aria-busy="true">
+              {appLabel}
+            </span>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -101,13 +108,19 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
               </Link>
             ))}
             <div className="my-2 h-px eborder-04" style={{ borderTopWidth: 0, height: 1, background: `rgba(var(--edge-fg), 0.04)` }} />
-            <Link
-              to={appHref}
-              className="rounded-lg px-4 py-3 text-[0.9rem] efg-60 transition-colors"
-              onClick={() => setIsMenuOpen(false)}
-            >
-              {appLabel}
-            </Link>
+            {appHref ? (
+              <Link
+                to={appHref}
+                className="rounded-lg px-4 py-3 text-[0.9rem] efg-60 transition-colors"
+                onClick={() => setIsMenuOpen(false)}
+              >
+                {appLabel}
+              </Link>
+            ) : (
+              <span className="rounded-lg px-4 py-3 text-[0.9rem] efg-35" aria-busy="true">
+                {appLabel}
+              </span>
+            )}
             <div className="px-4 py-2">
               <LanguageSwitcher variant="header" />
             </div>

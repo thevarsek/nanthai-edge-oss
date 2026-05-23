@@ -127,8 +127,12 @@ export function useWebPush() {
       const registration = await getActiveServiceWorkerRegistration();
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
-        await removeToken({ token: subscription.endpoint });
-        await subscription.unsubscribe();
+        const token = subscription.endpoint;
+        await removeToken({ token });
+        const didUnsubscribe = await subscription.unsubscribe();
+        if (!didUnsubscribe) {
+          throw new Error("Browser push subscription could not be removed.");
+        }
       }
       setIsRegistered(false);
       setErrorMessage(null);

@@ -2,7 +2,7 @@
 // Three-option radio picker for per-chat subagent override.
 // Mirrors iOS ChatSubagentsSheet: inherit / enabled / disabled.
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, type KeyboardEvent } from "react";
 import { X, Bot, CircleCheck, Circle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
@@ -37,13 +37,65 @@ export function ChatSubagentsDrawer({
     [onSelect, onClose],
   );
 
-  const options: Array<{ value: SubagentOverride; title: string; subtitle: string }> = [
-    { value: "inherit", title: t("use_chat_defaults"), subtitle: t("use_chat_defaults_subtitle") },
-    { value: "enabled", title: t("always_on_in_this_chat"), subtitle: t("always_on_subagents_subtitle") },
-    { value: "disabled", title: t("always_off_in_this_chat"), subtitle: t("always_off_subagents_subtitle") },
-  ];
+  const options: Array<{ value: SubagentOverride; title: string; subtitle: string }> = useMemo(
+    () => [
+      { value: "inherit", title: t("use_chat_defaults"), subtitle: t("use_chat_defaults_subtitle") },
+      { value: "enabled", title: t("always_on_in_this_chat"), subtitle: t("always_on_subagents_subtitle") },
+      { value: "disabled", title: t("always_off_in_this_chat"), subtitle: t("always_off_subagents_subtitle") },
+    ],
+    [t],
+  );
 
   const title = isEffectivelyEnabled ? t("subagents_on") : t("subagents");
+  const titleId = "chat-subagents-drawer-title";
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  useEffect(() => {
+    dialogRef.current?.focus();
+  }, []);
+
+  const focusOption = useCallback(
+    (currentValue: SubagentOverride, direction: 1 | -1) => {
+      const currentIndex = options.findIndex((option) => option.value === currentValue);
+      const orderedIndexes = options.map((_, index) => index);
+      for (let step = 1; step <= orderedIndexes.length; step += 1) {
+        const nextIndex = (currentIndex + direction * step + orderedIndexes.length) % orderedIndexes.length;
+        const nextOption = options[nextIndex];
+        if (nextOption.value === "enabled" && !isPro) continue;
+        optionRefs.current[nextIndex]?.focus();
+        return;
+      }
+    },
+    [isPro, options],
+  );
+
+  const trapDialogFocus = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      onClose();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not(:disabled), [href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && document.activeElement === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }, [onClose]);
 
   return (
     <div
@@ -53,6 +105,12 @@ export function ChatSubagentsDrawer({
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={trapDialogFocus}
         className="w-full max-w-lg bg-surface-1 rounded-t-2xl sm:rounded-2xl overflow-hidden"
         style={{ maxHeight: "85vh" }}
       >
@@ -60,7 +118,7 @@ export function ChatSubagentsDrawer({
         <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
           <div className="flex items-center gap-2">
             <Bot size={18} className="text-primary" />
-            <h2 className="text-base font-semibold">{title}</h2>
+            <h2 id={titleId} className="text-base font-semibold">{title}</h2>
             {isEffectivelyEnabled && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
                 {t("active")}
@@ -69,21 +127,38 @@ export function ChatSubagentsDrawer({
           </div>
           <button
             onClick={onClose}
+            aria-label={t("close")}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
         {/* Options */}
-        <div className="px-5 py-4 space-y-1">
-          {options.map((option) => {
+        <div className="px-5 py-4 space-y-1" role="radiogroup" aria-labelledby={titleId}>
+          {options.map((option, index) => {
             const isSelected = selectedOverride === option.value;
             const isProRequired = option.value === "enabled" && !isPro;
 
             return (
               <button
                 key={option.value}
+                ref={(element) => {
+                  optionRefs.current[index] = element;
+                }}
+                type="button"
+                role="radio"
+                aria-checked={isSelected}
+                tabIndex={isSelected ? 0 : -1}
+                onKeyDown={(event) => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+                    event.preventDefault();
+                    focusOption(option.value, 1);
+                  } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+                    event.preventDefault();
+                    focusOption(option.value, -1);
+                  }
+                }}
                 onClick={() => {
                   if (isProRequired) return;
                   handleSelect(option.value);

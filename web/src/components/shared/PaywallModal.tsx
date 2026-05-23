@@ -4,7 +4,7 @@
 // Displays the 8-feature Pro grid and redirects to Stripe Checkout.
 // =============================================================================
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -39,6 +39,7 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
   const createCheckoutSession = useAction(api.stripe.actions.createCheckoutSession);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isLaunchingCheckout = useRef(false);
 
   const PRO_FEATURES = [
     { icon: PRO_FEATURE_ICONS[0], title: t("personas"), description: t("paywall_personas_description") },
@@ -52,12 +53,15 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
   ];
 
   async function handleUpgrade() {
+    if (isLaunchingCheckout.current) return;
+    isLaunchingCheckout.current = true;
     setIsLoading(true);
     setError(null);
     try {
       const { url } = await createCheckoutSession({});
       window.location.href = url;
     } catch (err) {
+      isLaunchingCheckout.current = false;
       setError(err instanceof Error ? err.message : t("something_went_wrong"));
       setIsLoading(false);
     }

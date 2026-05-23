@@ -24,6 +24,7 @@ import {
   getStreamingContentArgs,
   getUserMemoriesArgs,
   getUserPreferencesArgs,
+  getVideoOutputUploadByTokenArgs,
   getVideoJobInternalArgs,
   getVideoJobStatusArgs,
   listAllMessagesArgs,
@@ -51,6 +52,7 @@ import {
   getStreamingContentHandler,
   getUserMemoriesHandler,
   getUserPreferencesHandler,
+  getVideoOutputUploadByTokenHandler,
   getVideoJobInternalHandler,
   getVideoJobStatusHandler,
   listAllMessagesHandler,
@@ -217,6 +219,11 @@ export const isJobCancelled = internalQuery({
 export const getVideoJobInternal = internalQuery({
   args: getVideoJobInternalArgs,
   handler: getVideoJobInternalHandler,
+});
+
+export const getVideoOutputUploadByToken = internalQuery({
+  args: getVideoOutputUploadByTokenArgs,
+  handler: getVideoOutputUploadByTokenHandler,
 });
 
 export const getVideoJobStatus = query({

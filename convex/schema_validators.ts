@@ -78,6 +78,15 @@ export const documentEvent = v.object({
 /** Chat mode. */
 export const chatMode = v.union(v.literal("chat"), v.literal("ideascape"));
 
+/** Explicit participant stored on favorites. */
+export const favoriteParticipant = v.object({
+  modelId: v.string(),
+  personaId: v.optional(v.id("personas")),
+  personaName: v.optional(v.string()),
+  personaEmoji: v.optional(v.string()),
+  personaAvatarImageUrl: v.optional(v.string()),
+});
+
 /** Per-chat subagent override. */
 export const subagentOverride = v.union(
   v.literal("enabled"),

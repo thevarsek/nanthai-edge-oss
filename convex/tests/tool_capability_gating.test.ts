@@ -9,7 +9,11 @@ import {
 import { createPersonaInternal } from "../personas/mutations";
 import { createJobInternal, updateJob } from "../scheduledJobs/mutations";
 
-function buildCtx(models: Record<string, { supportsTools?: boolean } | null>) {
+function buildCtx(models: Record<string, {
+  supportsTools?: boolean;
+  hasZdrEndpoint?: boolean;
+  provider?: string;
+} | null>) {
   return {
     db: {
       query: (table: string) => {
@@ -200,6 +204,40 @@ test("createJobInternal strips integrations for non-tool model", async () => {
   assert.deepEqual(jobInsert.value.enabledIntegrations, []);
 });
 
+test("createJobInternal rejects Google scheduled integrations on non-ZDR or disallowed provider model", async () => {
+  const ctx = {
+    db: {
+      ...buildCtx({
+        "meta-llama/llama-4": {
+          supportsTools: true,
+          hasZdrEndpoint: true,
+          provider: "meta-llama",
+        },
+      }).db,
+      get: async () => null,
+      insert: async () => "job_1",
+      patch: async () => undefined,
+    },
+    scheduler: {
+      runAt: async () => "scheduled_1",
+    },
+  } as any;
+
+  await assert.rejects(
+    (createJobInternal as any)._handler(ctx, {
+      userId: "user_1",
+      name: "Drive summary",
+      prompt: "Summarize Drive",
+      modelId: "meta-llama/llama-4",
+      recurrence: { type: "manual" },
+      enabledIntegrations: ["drive"],
+    }),
+    (error: unknown) =>
+      error instanceof Error
+      && /OpenAI, Anthropic, or Google model with ZDR/.test(error.message),
+  );
+});
+
 // ── updateJob tests ────────────────────────────────────────────────────
 
 test("updateJob clears persona when personaId is explicitly null", async () => {
@@ -254,7 +292,9 @@ test("updateJob clears persona when personaId is explicitly null", async () => {
                 },
               });
               return {
-                first: async () => (selectedModelId === "openai/gpt-5" ? { supportsTools: true } : null),
+                first: async () => (selectedModelId === "openai/gpt-5"
+                  ? { supportsTools: true, hasZdrEndpoint: true, provider: "openai" }
+                  : null),
               };
             },
           };

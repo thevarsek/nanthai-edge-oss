@@ -38,15 +38,16 @@ interface BatchView {
 
 interface Props {
   messageId: Id<"messages">;
+  batchId: Id<"subagentBatches">;
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function SubagentBatchPanel({ messageId }: Props) {
+export function SubagentBatchPanel({ messageId, batchId }: Props) {
   const { t } = useTranslation();
-  const batchView = useQuery(api.subagents.queries.getBatchView, { messageId }) as BatchView | null | undefined;
+  const batchView = useQuery(api.subagents.queries.getBatchView, { messageId, batchId }) as BatchView | null | undefined;
   const [isExpanded, setIsExpanded] = useState(true);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
@@ -66,6 +67,7 @@ export function SubagentBatchPanel({ messageId }: Props) {
     switch (status) {
       case "queued": return t("queued");
       case "streaming": return t("running");
+      case "waiting_continuation": return t("waiting_to_resume");
       case "completed": return t("completed");
       case "failed": return t("failed");
       case "cancelled": return t("cancelled");
@@ -105,7 +107,10 @@ export function SubagentBatchPanel({ messageId }: Props) {
           )}
         </div>
         <button
+          type="button"
           onClick={() => setIsExpanded(!isExpanded)}
+          aria-label={isExpanded ? "Collapse subagent details" : "Expand subagent details"}
+          aria-expanded={isExpanded}
           className="p-1 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
         >
           {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}

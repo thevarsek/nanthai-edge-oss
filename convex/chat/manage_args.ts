@@ -7,6 +7,8 @@ export const updateChatArgs = {
   isPinned: v.optional(v.boolean()),
   mode: v.optional(v.union(v.literal("chat"), v.literal("ideascape"))),
   activeBranchLeafId: v.optional(v.id("messages")),
+  activeBranchLeafExpectedCurrentId: v.optional(v.union(v.id("messages"), v.null())),
+  activeBranchLeafFocusOrder: v.optional(v.number()),
   subagentOverride: v.optional(v.union(
     v.literal("enabled"),
     v.literal("disabled"),

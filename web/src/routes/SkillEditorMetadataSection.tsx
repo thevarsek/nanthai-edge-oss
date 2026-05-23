@@ -60,11 +60,7 @@ export function SkillEditorMetadataSection({ selection, onChange }: Props) {
           <ToggleRow
             label="Uses Data Analysis"
             selected={selection.usesDataAnalysis}
-            onClick={() => onChange({
-              ...selection,
-              usesDataAnalysis: !selection.usesDataAnalysis,
-              usesCodingWorkspace: selection.usesDataAnalysis ? selection.usesCodingWorkspace : false,
-            })}
+            onClick={() => onChange({ ...selection, usesDataAnalysis: !selection.usesDataAnalysis })}
           />
           <ToggleRow
             label="Uses Coding Workspace"

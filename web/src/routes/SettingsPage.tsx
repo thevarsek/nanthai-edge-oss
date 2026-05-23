@@ -79,35 +79,35 @@ function SettingsMain({ onNavigate }: { onNavigate: (page: SubPage) => void }) {
 
       {/* Scheduled Jobs */}
       <SettingsSection header={t("scheduled_jobs_section_header")}>
-        <ProGateWrapper feature="Scheduled Jobs">
+        <ProGateWrapper featureId="scheduledJobs">
           <NavRow icon={<Clock size={16} />} label={t("scheduled_jobs_nav")} href="/app/settings/jobs" />
         </ProGateWrapper>
       </SettingsSection>
 
       {/* AI Personas */}
       <SettingsSection header={t("ai_personas_section_header")}>
-        <ProGateWrapper feature="AI Personas">
+        <ProGateWrapper featureId="aiPersonas">
           <NavRow icon={<Drama size={16} />} label={t("manage_personas")} href="/app/personas" />
         </ProGateWrapper>
       </SettingsSection>
 
       {/* AI Skills */}
       <SettingsSection header={t("ai_skills_section_header")}>
-        <ProGateWrapper feature="AI Skills">
+        <ProGateWrapper featureId="aiSkills">
           <NavRow icon={<Wand2 size={16} />} label={t("manage_skills")} href="/app/settings/skills" />
         </ProGateWrapper>
       </SettingsSection>
 
       {/* Knowledge Base */}
       <SettingsSection header={t("knowledge_base_section_header")}>
-        <ProGateWrapper feature="Knowledge Base">
+        <ProGateWrapper featureId="knowledgeBase">
           <NavRow icon={<ClipboardList size={16} />} label={t("files_and_documents")} href="/app/settings/knowledge" />
         </ProGateWrapper>
       </SettingsSection>
 
       {/* Memory */}
       <SettingsSection header={t("memory_section_header")}>
-        <ProGateWrapper feature="Memory">
+        <ProGateWrapper featureId="memory">
           <NavRow icon={<Brain size={16} />} label={t("memory_settings")} href="/app/settings/memory" />
         </ProGateWrapper>
       </SettingsSection>

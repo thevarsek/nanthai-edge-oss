@@ -9,7 +9,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
-import { sortMetric, type SortKey } from "@/components/shared/ModelPickerShared";
+import { isProviderAllowedForGoogle, sortMetric, type SortKey } from "@/components/shared/ModelPickerShared";
 import { type ModelSummary } from "@/components/shared/ModelPickerHelpers";
 import { listRowPriceLabel } from "@/components/shared/ModelPickerHelpers.utils";
 import type { ParticipantEntry } from "@/hooks/useParticipants";
@@ -18,7 +18,6 @@ import { getModelDisplayName } from "@/lib/modelDisplay";
 
 // ─── Persona type (matches shape from useSharedData) ─────────────────────────
 
-const GOOGLE_ALLOWED_PROVIDERS = new Set(["openai", "anthropic", "google"]);
 export interface PersonaItem {
   _id: Id<"personas">;
   displayName: string;
@@ -144,6 +143,7 @@ export function PersonaRow({
   modelZdrMap,
   googleIntegrationsActive,
   modelProviderMap,
+  fallbackModelId,
 }: {
   persona: PersonaItem;
   isSelected: boolean;
@@ -155,12 +155,17 @@ export function PersonaRow({
   modelZdrMap?: Map<string, boolean>;
   googleIntegrationsActive?: boolean;
   modelProviderMap?: Map<string, string>;
+  fallbackModelId?: string;
 }) {
   const { t } = useTranslation();
-  const modelShort = persona.modelId ? getModelDisplayName(persona.modelId, modelNameMap) : "";
-  const isZdrBlocked = zdrEnforced === true && persona.modelId != null && modelZdrMap != null && !modelZdrMap.get(persona.modelId);
-  const personaProvider = persona.modelId && modelProviderMap ? modelProviderMap.get(persona.modelId) : undefined;
-  const isGoogleBlocked = googleIntegrationsActive === true && persona.modelId != null && (!modelZdrMap?.get(persona.modelId) || !GOOGLE_ALLOWED_PROVIDERS.has((personaProvider ?? "").toLowerCase()));
+  const effectiveModelId = persona.modelId ?? fallbackModelId;
+  const modelShort = effectiveModelId ? getModelDisplayName(effectiveModelId, modelNameMap) : "";
+  const isZdrBlocked = zdrEnforced === true && effectiveModelId != null && modelZdrMap != null && !modelZdrMap.get(effectiveModelId);
+  const personaProvider = effectiveModelId && modelProviderMap ? modelProviderMap.get(effectiveModelId) : undefined;
+  const isGoogleBlocked = googleIntegrationsActive === true && effectiveModelId != null && (
+    !modelZdrMap?.get(effectiveModelId) ||
+    !isProviderAllowedForGoogle(effectiveModelId, personaProvider)
+  );
   const isDisabled = disabled || isZdrBlocked || isGoogleBlocked;
   const disabledReason = isZdrBlocked ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
   return (
@@ -270,7 +275,10 @@ export function ParticipantModelRow({
   const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
   const primaryLabel = model.derivedGuidance?.primaryLabel;
   const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
-  const isGoogleBlocked = googleIntegrationsActive === true && (!model.hasZdrEndpoint || !GOOGLE_ALLOWED_PROVIDERS.has((model.provider ?? "").toLowerCase()));
+  const isGoogleBlocked = googleIntegrationsActive === true && (
+    !model.hasZdrEndpoint ||
+    !isProviderAllowedForGoogle(model.modelId, model.provider)
+  );
   const isDisabled = disabled || isZdrDisabled || isGoogleBlocked;
   const disabledReason = isZdrDisabled ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
   // Always-on price label — parity with iOS / Android and with ModelPicker row.

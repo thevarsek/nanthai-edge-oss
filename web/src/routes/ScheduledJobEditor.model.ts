@@ -1,4 +1,5 @@
 import { SCHEDULED_JOB_DEFAULT_MODEL_ID } from "../lib/modelDefaults";
+import { isProviderAllowedForGoogle } from "@/components/shared/ModelPickerShared";
 
 export type SearchMode = "none" | "basic" | "web" | "research";
 export type RecurrenceType = "manual" | "interval" | "daily" | "weekly" | "cron";
@@ -27,6 +28,44 @@ export interface DraftStep {
 }
 
 export const SCHEDULED_JOB_DEFAULT_MODEL = SCHEDULED_JOB_DEFAULT_MODEL_ID;
+export const SCHEDULED_JOB_GOOGLE_MODEL_MESSAGE_KEY = "google_integration_blocked_by_model";
+const SCHEDULED_JOB_INTEGRATION_IDS = [
+  "gmail",
+  "drive",
+  "calendar",
+  "outlook",
+  "onedrive",
+  "ms_calendar",
+  "apple_calendar",
+  "notion",
+  "cloze",
+  "slack",
+] as const;
+
+export interface ScheduledJobIntegrationOverride {
+  integrationId: string;
+  enabled: boolean;
+}
+
+export interface ScheduledJobEditorJobDoc {
+  prompt?: string;
+  modelId?: string;
+  personaId?: string;
+  enabledIntegrations?: string[];
+  steps?: Array<Record<string, unknown>>;
+  searchMode?: string;
+  searchComplexity?: number;
+  webSearchEnabled?: boolean;
+  includeReasoning?: boolean;
+  reasoningEffort?: string;
+  knowledgeBaseFileIds?: string[];
+}
+
+export interface ScheduledJobModelCompatibilitySummary {
+  modelId: string;
+  provider?: string | null;
+  hasZdrEndpoint?: boolean | null;
+}
 
 export function createDraftStep(): DraftStep {
   return {
@@ -68,6 +107,38 @@ export function buildIntegrations(step: DraftStep): string[] {
   return integrations;
 }
 
+export function integrationsFromOverrides(
+  enabledIntegrations?: readonly string[],
+  turnIntegrationOverrides?: readonly ScheduledJobIntegrationOverride[],
+): string[] {
+  if (turnIntegrationOverrides && turnIntegrationOverrides.length > 0) {
+    return turnIntegrationOverrides
+      .filter((entry) => entry.enabled)
+      .map((entry) => entry.integrationId);
+  }
+  return [...(enabledIntegrations ?? [])];
+}
+
+export function hasScheduledJobGoogleIntegrations(step: DraftStep): boolean {
+  return step.gmailEnabled || step.driveEnabled || step.calendarEnabled;
+}
+
+export function scheduledJobModelSupportsGoogleIntegrations(
+  modelId: string,
+  summary?: ScheduledJobModelCompatibilitySummary | null,
+): boolean {
+  return summary?.hasZdrEndpoint === true
+    && isProviderAllowedForGoogle(modelId, summary.provider);
+}
+
+export function buildIntegrationOverrides(step: DraftStep): Array<{ integrationId: string; enabled: boolean }> {
+  const enabled = new Set(buildIntegrations(step));
+  return SCHEDULED_JOB_INTEGRATION_IDS.map((integrationId) => ({
+    integrationId,
+    enabled: enabled.has(integrationId),
+  }));
+}
+
 export function buildStepsPayload(steps: DraftStep[]) {
   return steps.map((step) => {
     const payload: Record<string, unknown> = {
@@ -81,12 +152,13 @@ export function buildStepsPayload(steps: DraftStep[]) {
     if (trimmedTitle) payload.title = trimmedTitle;
     if (step.selectedPersonaId) payload.personaId = step.selectedPersonaId;
     const integrations = buildIntegrations(step);
-    if (integrations.length > 0) payload.enabledIntegrations = integrations;
+    payload.enabledIntegrations = integrations;
+    payload.turnIntegrationOverrides = buildIntegrationOverrides(step);
     if (step.searchMode === "web" || step.searchMode === "research") {
       payload.searchComplexity = Math.max(1, Math.min(3, step.searchComplexity));
     }
+    payload.includeReasoning = step.includeReasoning;
     if (step.includeReasoning) {
-      payload.includeReasoning = true;
       payload.reasoningEffort = step.reasoningEffort;
     }
     return payload;
@@ -95,4 +167,44 @@ export function buildStepsPayload(steps: DraftStep[]) {
 
 export function shortModelName(modelId: string): string {
   return modelId.split("/").pop() ?? modelId;
+}
+
+function normalizeSearchComplexity(v?: number): number {
+  return Math.max(1, Math.min(3, Math.round(v ?? 1)));
+}
+
+function draftStepFromRaw(raw: Record<string, unknown>): DraftStep {
+  const integrations = integrationsFromOverrides(
+    raw.enabledIntegrations as string[] | undefined,
+    raw.turnIntegrationOverrides as ScheduledJobIntegrationOverride[] | undefined,
+  );
+  return {
+    ...createDraftStep(),
+    title: (raw.title as string) ?? "",
+    prompt: (raw.prompt as string) ?? "",
+    modelId: (raw.modelId as string) ?? SCHEDULED_JOB_DEFAULT_MODEL,
+    selectedPersonaId: (raw.personaId as string) ?? null,
+    searchMode: ((raw.searchMode as string) ?? (raw.webSearchEnabled ? "basic" : "none")) as SearchMode,
+    searchComplexity: normalizeSearchComplexity(raw.searchComplexity as number | undefined),
+    includeReasoning: (raw.includeReasoning as boolean) ?? false,
+    reasoningEffort: (raw.reasoningEffort as string) ?? "medium",
+    gmailEnabled: integrations.includes("gmail"),
+    driveEnabled: integrations.includes("drive"),
+    calendarEnabled: integrations.includes("calendar"),
+    outlookEnabled: integrations.includes("outlook"),
+    onedriveEnabled: integrations.includes("onedrive"),
+    msCalendarEnabled: integrations.includes("ms_calendar"),
+    appleCalendarEnabled: integrations.includes("apple_calendar"),
+    notionEnabled: integrations.includes("notion"),
+    clozeEnabled: integrations.includes("cloze"),
+    slackEnabled: integrations.includes("slack"),
+    knowledgeBaseFileIds: (raw.knowledgeBaseFileIds as string[] | undefined) ?? [],
+  };
+}
+
+export function jobToSteps(job: ScheduledJobEditorJobDoc): DraftStep[] {
+  if (job.steps && job.steps.length > 0) {
+    return job.steps.map(draftStepFromRaw);
+  }
+  return [draftStepFromRaw(job as Record<string, unknown>)];
 }

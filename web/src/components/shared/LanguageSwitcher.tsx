@@ -43,6 +43,7 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
           return (
             <button
               key={code}
+              type="button"
               onClick={() => handleSelect(code)}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
             >
@@ -81,6 +82,7 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
             return (
               <button
                 key={code}
+                type="button"
                 onClick={() => handleSelect(code)}
                 className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-[0.82rem] efg-50 hover:efg-80 hover:ebg-glass-04 transition-colors text-left"
               >

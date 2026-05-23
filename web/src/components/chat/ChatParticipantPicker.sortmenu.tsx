@@ -25,12 +25,23 @@ export function SortMenuPortal({ sortKey, onChange, sortIcons }: SortMenuProps) 
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
+    const viewportPadding = 8;
     const menuHeight = Math.min(SORT_KEYS.length * 36 + 8, 280);
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const fitsBelow = spaceBelow >= menuHeight;
+    const unclampedTop = fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4;
+    const top = Math.max(
+      viewportPadding,
+      Math.min(unclampedTop, window.innerHeight - menuHeight - viewportPadding),
+    );
+    const menuWidth = Math.max(rect.width, 160);
+    const left = Math.max(
+      viewportPadding,
+      Math.min(rect.left, window.innerWidth - menuWidth - viewportPadding),
+    );
     setPos({
-      top: fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4,
-      left: rect.left,
+      top,
+      left,
     });
   }, [open]);
 

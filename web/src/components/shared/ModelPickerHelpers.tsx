@@ -10,8 +10,16 @@ import {
   GraduationCap, MessageSquare, PenTool, Languages, Star, Bolt,
   ArrowLeft, ExternalLink,
 } from "lucide-react";
-import { formatPrice, formatVideoPrice, formatImagePrice } from "@/components/shared/ModelPickerHelpers.utils";
+import {
+  formatPrice,
+  formatVideoPrice,
+  formatImagePrice,
+  wizardScore,
+  type WizardTask,
+  type WizardPriority,
+} from "@/components/shared/ModelPickerHelpers.utils";
 import { ModelSettingsEditor } from "@/components/shared/ModelSettingsEditor";
+import { isProviderAllowedForGoogle } from "@/components/shared/ModelPickerShared";
 
 // ─── Types (shared with ModelPicker.tsx) ─────────────────────────────────────
 
@@ -141,6 +149,7 @@ export function ModelInfoSheet({
   const hasVision = inputModality.includes("image");
   const hasVideoInput = inputModality.includes("video");
   const hasFrameSupport = (model.supportedFrameImages?.length ?? 0) > 0;
+  const imageMegapixelPrice = model.imagePricing?.perImageOutput ?? model.imagePricing?.perImageToken;
 
   const SCORE_KEYS: { key: string; label: string; icon: React.ReactNode }[] = [
     { key: "recommended", label: t("guidance_score_recommended"), icon: <Star size={12} /> },
@@ -243,7 +252,12 @@ export function ModelInfoSheet({
               <Gift size={14} />
               <span className="font-medium">{t("guidance_free")}</span>
             </div>
-          ) : model.videoPricing && (model.videoPricing.perVideoToken != null || model.videoPricing.perVideoSecond != null) ? (
+          ) : model.videoPricing && (
+            model.videoPricing.perVideoToken != null ||
+            model.videoPricing.perVideoTokenNoAudio != null ||
+            model.videoPricing.perVideoSecond != null ||
+            model.videoPricing.perVideoSecond1080p != null
+          ) ? (
             <div className="rounded-xl bg-surface-2 divide-y divide-border/50">
               {model.videoPricing.perVideoSecond != null && (
                 <div className="flex items-center justify-between px-3 py-2">
@@ -272,14 +286,12 @@ export function ModelInfoSheet({
             </div>
           ) : model.supportsVideo ? (
             <p className="text-xs text-muted italic">Pricing not yet published by provider</p>
-          ) : model.imagePricing && (model.imagePricing.perImageOutput != null || model.imagePricing.perImageToken != null) ? (
+          ) : model.imagePricing && imageMegapixelPrice != null ? (
             <div className="rounded-xl bg-surface-2 divide-y divide-border/50">
-              {model.imagePricing.perImageOutput != null && (
-                <div className="flex items-center justify-between px-3 py-2">
-                  <span className="text-xs text-muted">Per megapixel</span>
-                  <span className="text-xs font-mono">{formatImagePrice(model.imagePricing.perImageOutput)}</span>
-                </div>
-              )}
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-xs text-muted">Per megapixel</span>
+                <span className="text-xs font-mono">{formatImagePrice(imageMegapixelPrice)}</span>
+              </div>
               {(model.inputPricePer1M ?? 0) > 0 && (
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-xs text-muted">{t("guidance_input_price")}</span>
@@ -352,9 +364,6 @@ export function ModelInfoSheet({
 
 // ─── "Help Me Choose" Wizard ─────────────────────────────────────────────────
 
-type WizardTask = "everyday" | "coding" | "research" | "writing" | "translation";
-type WizardPriority = "quality" | "fastest" | "value";
-
 const TASKS: { value: WizardTask; labelKey: string; icon: React.ReactNode; orCategory: string }[] = [
   { value: "everyday", labelKey: "guidance_task_everyday", icon: <MessageSquare size={16} />, orCategory: "trivia" },
   { value: "coding", labelKey: "guidance_task_coding", icon: <Code2 size={16} />, orCategory: "programming" },
@@ -369,17 +378,17 @@ const PRIORITIES: { value: WizardPriority; labelKey: string; subtitleKey: string
   { value: "value", labelKey: "guidance_priority_value", subtitleKey: "guidance_priority_value_sub", icon: <DollarSign size={16} /> },
 ];
 
-function wizardScore(model: ModelSummary, task: WizardTask, priority: WizardPriority): number {
-  const scores = model.derivedGuidance?.scores;
-  if (!scores) return 0;
-
-  const domainKey = task === "coding" ? "coding" : task === "research" ? "research" : "recommended";
-  const priorityKey = priority === "fastest" ? "fast" : priority === "value" ? "value" : domainKey;
-
-  if ((task === "coding" || task === "research") && priority !== "quality") {
-    return (scores[domainKey] ?? 0) * 0.6 + (scores[priorityKey] ?? 0) * 0.4;
-  }
-  return scores[priorityKey] ?? 0;
+function isWizardModelDisabled(
+  model: ModelSummary,
+  zdrEnforced?: boolean,
+  googleIntegrationsActive?: boolean,
+): boolean {
+  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
+  const isGoogleBlocked = googleIntegrationsActive === true && (
+    !model.hasZdrEndpoint ||
+    !isProviderAllowedForGoogle(model.modelId, model.provider)
+  );
+  return isZdrDisabled || isGoogleBlocked;
 }
 
 export function ModelWizard({
@@ -401,9 +410,10 @@ export function ModelWizard({
     return [...models]
       .map((m) => ({ ...m, score: wizardScore(m, task, priority) }))
       .filter((m) => m.score > 0)
+      .filter((m) => !isWizardModelDisabled(m, zdrEnforced, googleIntegrationsActive))
       .sort((a, b) => b.score - a.score)
       .slice(0, 3);
-  }, [models, task, priority]);
+  }, [googleIntegrationsActive, models, priority, task, zdrEnforced]);
 
   const progressPct = step === 1 ? 33 : step === 2 ? 66 : 100;
 
@@ -507,8 +517,7 @@ export function ModelWizard({
                   const taskObj = TASKS.find((taskOption) => taskOption.value === task);
                   const orMatch = m.openRouterUseCases?.find((uc) => uc.category === taskObj?.orCategory);
                   const isZdrDisabled = zdrEnforced === true && !m.hasZdrEndpoint;
-                  const googleAllowed = new Set(["openai", "anthropic", "google"]);
-                  const isGoogleBlocked = googleIntegrationsActive === true && (!m.hasZdrEndpoint || !googleAllowed.has((m.provider ?? "").toLowerCase()));
+                  const isGoogleBlocked = isWizardModelDisabled(m, false, googleIntegrationsActive);
                   const isDisabled = isZdrDisabled || isGoogleBlocked;
                   return (
                     <button

@@ -161,6 +161,9 @@ export function splitTextByMatches(
   let cursor = 0;
 
   for (const match of sorted) {
+    if (match.startOffset < cursor) {
+      continue;
+    }
     if (match.startOffset > cursor) {
       segments.push({ text: content.slice(cursor, match.startOffset), isMatch: false });
     }

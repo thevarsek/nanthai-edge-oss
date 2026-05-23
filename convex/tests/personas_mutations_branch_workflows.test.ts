@@ -109,6 +109,38 @@ test("create persona enforces pro auth and unsets previous defaults", async () =
   assert.equal(state.inserts[0].value.isDefault, true);
 });
 
+test("create and update persona persist override arrays atomically with persona fields", async () => {
+  const skillOverrides = [{ skillId: "skill_1", state: "always" }];
+  const integrationOverrides = [{ integrationId: "gmail", enabled: true }];
+  const created = buildCtx({ tableRows: proRows });
+
+  await (create as any)._handler(created.ctx, {
+    displayName: "Researcher",
+    systemPrompt: "Research carefully.",
+    skillOverrides,
+    integrationOverrides,
+  });
+
+  assert.deepEqual(created.inserts[0].value.skillOverrides, skillOverrides);
+  assert.deepEqual(created.inserts[0].value.integrationOverrides, integrationOverrides);
+
+  const updated = buildCtx({
+    records: {
+      persona_1: { _id: "persona_1", userId: "user_1" },
+    },
+    tableRows: proRows,
+  });
+  await (update as any)._handler(updated.ctx, {
+    personaId: "persona_1",
+    displayName: "Updated",
+    skillOverrides: [],
+    integrationOverrides: [],
+  });
+
+  assert.deepEqual(updated.patches[0].value.skillOverrides, []);
+  assert.deepEqual(updated.patches[0].value.integrationOverrides, []);
+});
+
 test("update persona handles ownership, default swaps, avatar replacement, and nullable clears", async () => {
   await assert.rejects(
     (update as any)._handler(buildCtx({ tableRows: proRows }).ctx, {
@@ -146,6 +178,41 @@ test("update persona handles ownership, default swaps, avatar replacement, and n
   assert.equal(state.patches[1].id, "persona_1");
   assert.equal(state.patches[1].value.avatarImageStorageId, undefined);
   assert.deepEqual(state.storageDeletes, ["old_avatar"]);
+});
+
+test("update persona clears nullable persona fields when explicit null is sent", async () => {
+  const state = buildCtx({
+    records: {
+      persona_1: {
+        _id: "persona_1",
+        userId: "user_1",
+        personaDescription: "Old description",
+        avatarEmoji: "🧠",
+        temperature: 0.9,
+        maxTokens: 2048.0,
+        includeReasoning: true,
+        reasoningEffort: "high",
+      },
+    },
+    tableRows: proRows,
+  });
+
+  await (update as any)._handler(state.ctx, {
+    personaId: "persona_1",
+    personaDescription: null,
+    avatarEmoji: null,
+    temperature: null,
+    maxTokens: null,
+    includeReasoning: null,
+    reasoningEffort: null,
+  });
+
+  assert.equal(state.patches[0].value.personaDescription, undefined);
+  assert.equal(state.patches[0].value.avatarEmoji, undefined);
+  assert.equal(state.patches[0].value.temperature, undefined);
+  assert.equal(state.patches[0].value.maxTokens, undefined);
+  assert.equal(state.patches[0].value.includeReasoning, undefined);
+  assert.equal(state.patches[0].value.reasoningEffort, undefined);
 });
 
 test("remove persona and internal persona mutations delete avatar blobs and protect ownership", async () => {

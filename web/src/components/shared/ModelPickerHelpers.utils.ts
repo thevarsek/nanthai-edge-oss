@@ -80,3 +80,55 @@ export function listRowPriceLabel(model: {
   const combined = (model.inputPricePer1M ?? 0) + (model.outputPricePer1M ?? 0);
   return combined > 0 ? formatPrice(combined) : null;
 }
+
+export type WizardTask = "everyday" | "coding" | "research" | "writing" | "translation";
+export type WizardPriority = "quality" | "fastest" | "value";
+
+const wizardTaskCategories: Record<WizardTask, string> = {
+  everyday: "trivia",
+  coding: "programming",
+  research: "academia",
+  writing: "marketing",
+  translation: "translation",
+};
+
+export function wizardScore(
+  model: {
+    derivedGuidance?: { scores?: Record<string, number> };
+    openRouterUseCases?: { category: string; returnedRank?: number }[];
+  },
+  task: WizardTask,
+  priority: WizardPriority,
+): number {
+  const scores = model.derivedGuidance?.scores;
+  if (!scores) return 0;
+
+  const useCaseRank = model.openRouterUseCases?.find(
+    (useCase) => useCase.category === wizardTaskCategories[task],
+  )?.returnedRank;
+  const useCaseScore = useCaseRank != null && useCaseRank > 0
+    ? Math.max(0, 1 - ((useCaseRank - 1) / 100))
+    : undefined;
+  const domainKey = task === "coding" ? "coding" : task === "research" ? "research" : "recommended";
+  const priorityKey = priority === "fastest" ? "fast" : priority === "value" ? "value" : domainKey;
+
+  if (task !== "coding" && task !== "research" && useCaseScore != null) {
+    if (priority === "quality") {
+      return useCaseScore * 0.7 + (scores.recommended ?? 0) * 0.3;
+    }
+    return useCaseScore * 0.5 + (scores[priorityKey] ?? 0) * 0.3 + (scores.recommended ?? 0) * 0.2;
+  }
+
+  if ((task === "coding" || task === "research") && priority !== "quality") {
+    return (
+      (scores[priorityKey] ?? 0) * 0.6 +
+      (scores[domainKey] ?? scores.recommended ?? 0) * 0.3 +
+      (useCaseScore ?? 0) * 0.1
+    );
+  }
+
+  if (useCaseScore != null) {
+    return useCaseScore * 0.4 + (scores[domainKey] ?? scores.recommended ?? 0) * 0.6;
+  }
+  return scores[priorityKey] ?? scores.recommended ?? 0;
+}

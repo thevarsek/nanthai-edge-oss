@@ -25,6 +25,7 @@ export function AccountSection({ onShowProfile }: AccountSectionProps) {
   return (
     <div className="rounded-2xl bg-surface-2 overflow-hidden">
       <button
+        type="button"
         onClick={onShowProfile}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
       >

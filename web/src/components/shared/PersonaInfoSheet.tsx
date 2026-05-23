@@ -14,6 +14,7 @@ export function PersonaInfoSheet({
   const { t } = useTranslation();
   const modelSummaries = useModelSummaries();
   const model = modelSummaries?.find((item) => item.modelId === persona.modelId);
+  const isFreeModel = model ? (model.isFree ?? model.modelId.endsWith(":free")) : false;
   const hasOverrides =
     persona.temperature != null ||
     persona.maxTokens != null ||
@@ -24,7 +25,12 @@ export function PersonaInfoSheet({
     <div className="flex flex-col max-h-[85vh] bg-background">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <h2 className="text-base font-semibold">{t("persona_info")}</h2>
-        <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 text-muted hover:text-foreground transition-colors">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label={t("close")}
+          className="p-1 rounded hover:bg-surface-2 text-muted hover:text-foreground transition-colors"
+        >
           <X size={18} />
         </button>
       </div>
@@ -84,7 +90,7 @@ export function PersonaInfoSheet({
                 {model.hasReasoning && (
                   <span className="inline-flex items-center gap-1"><Brain size={12} /> Reasoning</span>
                 )}
-                {(model.inputPricePer1M ?? 0) === 0 && (model.outputPricePer1M ?? 0) === 0 && (
+                {isFreeModel && (
                   <span className="inline-flex items-center gap-1"><Gift size={12} /> Free</span>
                 )}
               </div>

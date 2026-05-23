@@ -11,19 +11,20 @@ import { v, ConvexError } from "convex/values";
 import { mutation, internalMutation } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
+import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
 
 /** Create a new persona. */
 export const create = mutation({
   args: {
     displayName: v.string(),
-    personaDescription: v.optional(v.string()),
+    personaDescription: v.optional(v.union(v.string(), v.null())),
     systemPrompt: v.string(),
     modelId: v.optional(v.string()),
-    temperature: v.optional(v.number()),
-    maxTokens: v.optional(v.number()),
-    includeReasoning: v.optional(v.boolean()),
-    reasoningEffort: v.optional(v.string()),
-    avatarEmoji: v.optional(v.string()),
+    temperature: v.optional(v.union(v.number(), v.null())),
+    maxTokens: v.optional(v.union(v.number(), v.null())),
+    includeReasoning: v.optional(v.union(v.boolean(), v.null())),
+    reasoningEffort: v.optional(v.union(v.string(), v.null())),
+    avatarEmoji: v.optional(v.union(v.string(), v.null())),
     avatarImageStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     avatarSFSymbol: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
@@ -31,6 +32,8 @@ export const create = mutation({
     // Legacy compatibility only. Persona integration state now lives in
     // `integrationOverrides` via `skills/mutations:setPersonaIntegrationOverrides`.
     enabledIntegrations: v.optional(v.array(v.string())),
+    skillOverrides: v.optional(v.array(skillOverrideEntry)),
+    integrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   },
   returns: v.id("personas"),
   handler: async (ctx, args) => {
@@ -54,17 +57,19 @@ export const create = mutation({
     return await ctx.db.insert("personas", {
       userId,
       displayName: args.displayName,
-      personaDescription: args.personaDescription,
+      personaDescription: args.personaDescription ?? undefined,
       systemPrompt: args.systemPrompt,
       modelId: args.modelId,
-      temperature: args.temperature,
-      maxTokens: args.maxTokens,
-      includeReasoning: args.includeReasoning,
-      reasoningEffort: args.reasoningEffort,
-      avatarEmoji: args.avatarEmoji,
+      temperature: args.temperature ?? undefined,
+      maxTokens: args.maxTokens ?? undefined,
+      includeReasoning: args.includeReasoning ?? undefined,
+      reasoningEffort: args.reasoningEffort ?? undefined,
+      avatarEmoji: args.avatarEmoji ?? undefined,
       avatarImageStorageId: args.avatarImageStorageId ?? undefined,
       avatarSFSymbol: args.avatarSFSymbol,
       avatarColor: args.avatarColor,
+      skillOverrides: args.skillOverrides,
+      integrationOverrides: args.integrationOverrides,
       isDefault: args.isDefault ?? false,
       createdAt: now,
       updatedAt: now,
@@ -77,14 +82,14 @@ export const update = mutation({
   args: {
     personaId: v.id("personas"),
     displayName: v.optional(v.string()),
-    personaDescription: v.optional(v.string()),
+    personaDescription: v.optional(v.union(v.string(), v.null())),
     systemPrompt: v.optional(v.string()),
     modelId: v.optional(v.string()),
-    temperature: v.optional(v.number()),
-    maxTokens: v.optional(v.number()),
-    includeReasoning: v.optional(v.boolean()),
-    reasoningEffort: v.optional(v.string()),
-    avatarEmoji: v.optional(v.string()),
+    temperature: v.optional(v.union(v.number(), v.null())),
+    maxTokens: v.optional(v.union(v.number(), v.null())),
+    includeReasoning: v.optional(v.union(v.boolean(), v.null())),
+    reasoningEffort: v.optional(v.union(v.string(), v.null())),
+    avatarEmoji: v.optional(v.union(v.string(), v.null())),
     avatarImageStorageId: v.optional(v.union(v.id("_storage"), v.null())),
     avatarSFSymbol: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
@@ -92,6 +97,8 @@ export const update = mutation({
     // Legacy compatibility only. Persona integration state now lives in
     // `integrationOverrides` via `skills/mutations:setPersonaIntegrationOverrides`.
     enabledIntegrations: v.optional(v.array(v.string())),
+    skillOverrides: v.optional(v.array(skillOverrideEntry)),
+    integrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -117,13 +124,29 @@ export const update = mutation({
       }
     }
 
-    const { personaId, avatarImageStorageId, ...updates } = args;
+    const {
+      personaId,
+      avatarImageStorageId,
+      personaDescription,
+      temperature,
+      maxTokens,
+      includeReasoning,
+      reasoningEffort,
+      avatarEmoji,
+      ...updates
+    } = args;
     const previousAvatarStorageId = persona.avatarImageStorageId as Id<"_storage"> | undefined;
     const nextAvatarStorageId =
       avatarImageStorageId === null ? undefined : (avatarImageStorageId ?? previousAvatarStorageId);
 
     await ctx.db.patch(personaId, {
       ...updates,
+      ...(personaDescription !== undefined ? { personaDescription: personaDescription ?? undefined } : {}),
+      ...(temperature !== undefined ? { temperature: temperature ?? undefined } : {}),
+      ...(maxTokens !== undefined ? { maxTokens: maxTokens ?? undefined } : {}),
+      ...(includeReasoning !== undefined ? { includeReasoning: includeReasoning ?? undefined } : {}),
+      ...(reasoningEffort !== undefined ? { reasoningEffort: reasoningEffort ?? undefined } : {}),
+      ...(avatarEmoji !== undefined ? { avatarEmoji: avatarEmoji ?? undefined } : {}),
       avatarImageStorageId: nextAvatarStorageId,
       updatedAt: now,
     });

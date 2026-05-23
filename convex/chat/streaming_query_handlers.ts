@@ -4,6 +4,7 @@ import { optionalAuth } from "../lib/auth";
 import { getAuthorizedChat, getAuthorizedMessage } from "./query_helpers";
 import {
   getStreamingMessageByMessageId,
+  isTerminalMessageStatus,
   mergeStreamingMessageRecords,
 } from "./streaming_state";
 
@@ -46,16 +47,28 @@ export async function listStreamingMessagesHandler(
     dedupedByMessageId.set(key, existing);
   }
 
-  return [...dedupedByMessageId.values()]
+  const merged = [...dedupedByMessageId.values()]
     .map((group) => mergeStreamingMessageRecords(group))
-    .filter((record): record is NonNullable<typeof record> => record !== null)
-    .map((record) => ({
-      messageId: record.messageId,
-      content: record.content,
-      reasoning: record.reasoning,
-      status: record.status,
-      toolCalls: record.toolCalls,
-    }));
+    .filter((record): record is NonNullable<typeof record> => record !== null);
+
+  const activeRecords = [];
+  for (const record of merged) {
+    const message = await ctx.db.get(record.messageId);
+    const isStaleActiveOverlay =
+      message && isTerminalMessageStatus(message.status) && !isTerminalMessageStatus(record.status);
+    if (!message || message.chatId !== args.chatId || isStaleActiveOverlay) {
+      continue;
+    }
+    activeRecords.push(record);
+  }
+
+  return activeRecords.map((record) => ({
+    messageId: record.messageId,
+    content: record.content,
+    reasoning: record.reasoning,
+    status: record.status,
+    toolCalls: record.toolCalls,
+  }));
 }
 
 export interface GetStreamingContentArgs extends Record<string, unknown> {
@@ -88,7 +101,9 @@ export async function getStreamingContentHandler(
   if (!msg) return null;
 
   const streaming = await getStreamingMessageByMessageId(ctx, args.messageId);
-  if (streaming) {
+  const isStaleActiveOverlay =
+    streaming && isTerminalMessageStatus(msg.status) && !isTerminalMessageStatus(streaming.status);
+  if (streaming && !isStaleActiveOverlay) {
     return {
       content: streaming.content,
       reasoning: streaming.reasoning,

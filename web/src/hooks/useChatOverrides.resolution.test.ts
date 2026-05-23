@@ -120,4 +120,21 @@ describe("useChatOverrides resolution", () => {
       knowledgeBase: 1,
     });
   });
+
+  test("counts auto-audio response as a parameter override", () => {
+    expect(buildOverrideBadges({
+      paramOverrides: {
+        temperatureMode: "default",
+        temperature: 1,
+        maxTokensMode: "default",
+        maxTokens: undefined,
+        reasoningMode: "default",
+        reasoningEffort: "medium",
+        autoAudioResponseMode: "on",
+      },
+      enabledIntegrations: new Set(),
+      enabledSkillIds: new Set(),
+      selectedKBFileIds: new Set(),
+    }).parameters).toBe(1);
+  });
 });

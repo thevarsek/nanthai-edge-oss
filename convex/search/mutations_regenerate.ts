@@ -224,6 +224,7 @@ export async function regeneratePaperHandler(
         updatedAt: now,
         lastMessageDate: now,
         activeBranchLeafId: assistantMessageId,
+        activeBranchLeafFocusOrder: undefined,
         messageCount: (chat.messageCount ?? 0) + 1,
       });
     }

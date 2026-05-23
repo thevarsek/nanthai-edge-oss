@@ -108,9 +108,10 @@ export function ChatDefaultsSection() {
       audio.addEventListener("ended", () => { setPreviewPlaying(null); audioRef.current = null; });
       audio.addEventListener("error", () => { setPreviewPlaying(null); audioRef.current = null; });
       setPreviewPlaying(voice);
-      setPreviewLoading(null);
       await audio.play();
-    } catch { setPreviewLoading(null); }
+    } finally {
+      setPreviewLoading(null);
+    }
   }, [previewVoice, previewPlaying, stopPreview]);
 
   useEffect(() => () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } }, []);

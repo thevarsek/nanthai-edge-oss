@@ -23,10 +23,11 @@ export function MentionAutocompletePopover({
   onDismiss,
 }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
-  const visibleActiveIndex = suggestions[activeIndex] ? activeIndex : 0;
+  const visibleActiveIndex = suggestions.length === 0 ? 0 : Math.min(activeIndex, suggestions.length - 1);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
+      if (suggestions.length === 0) return;
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
@@ -51,9 +52,10 @@ export function MentionAutocompletePopover({
   );
 
   useEffect(() => {
+    if (suggestions.length === 0) return;
     document.addEventListener("keydown", handleKeyDown, true);
     return () => document.removeEventListener("keydown", handleKeyDown, true);
-  }, [handleKeyDown]);
+  }, [handleKeyDown, suggestions.length]);
 
   if (suggestions.length === 0) return null;
 

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useSharedData } from "@/hooks/useSharedData";
+import { nextWalkthroughSelection } from "./MainWalkthrough.utils";
 import {
   PenSquare,
   Star,
@@ -116,7 +117,7 @@ export function MainWalkthrough() {
             onClick={() =>
               selection === CARDS.length - 1
                 ? dismiss()
-                : setSelection((s) => s + 1)
+                : setSelection((s) => nextWalkthroughSelection(s, CARDS.length))
             }
             className="text-xs font-semibold text-[--nanth-primary] hover:opacity-80"
           >

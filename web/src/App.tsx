@@ -7,6 +7,7 @@ import { AuthGuard } from "./routes/AuthGuard";
 import { RootLayout } from "./routes/RootLayout";
 import { AppEmptyState } from "./components/shared/AppEmptyState";
 import { LoadingSpinner } from "./components/shared/LoadingSpinner";
+import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import { ProviderOAuthCallbackPage } from "./routes/ProviderOAuthCallbackPage";
 import { MobileDrivePickerPage } from "./routes/MobileDrivePickerPage";
 
@@ -141,15 +142,17 @@ const VideoGenerationPage = lazy(() =>
 
 function AppSuspense({ children }: { children: React.ReactNode }) {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <LoadingSpinner size="lg" />
-        </div>
-      }
-    >
-      {children}
-    </Suspense>
+    <ErrorBoundary level="route">
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center bg-background">
+            <LoadingSpinner size="lg" />
+          </div>
+        }
+      >
+        {children}
+      </Suspense>
+    </ErrorBoundary>
   );
 }
 
@@ -366,7 +369,7 @@ export function App() {
 
       {/* Auth-protected app routes */}
       <Route
-        path="/app/*"
+        path="/app"
         element={
           <AuthGuard>
             <AppSuspense>

@@ -51,10 +51,7 @@ export function matchesFilter(m: ModelSummary, f: CapFilter): boolean {
     case "free": return isFree;
     case "excludeFree": return !isFree;
     case "vision": {
-      // Vision = input modality contains "image" (model accepts images)
-      const modality = m.architecture?.modality ?? "";
-      const inputSide = modality.split("->")[0] ?? "";
-      return inputSide.includes("image");
+      return modelSupportsVisionInput(m);
     }
     case "imageGen": return m.supportsImages ?? false;
     case "videoGen": return m.supportsVideo ?? false;
@@ -62,11 +59,36 @@ export function matchesFilter(m: ModelSummary, f: CapFilter): boolean {
   }
 }
 
+export function modelSupportsVisionInput(m: ModelSummary): boolean {
+  if (m.supportsVideo) {
+    return (m.supportedFrameImages?.length ?? 0) > 0;
+  }
+  const modality = m.architecture?.modality ?? "";
+  const inputSide = modality.split("->")[0] ?? "";
+  return inputSide.includes("image");
+}
+
+export function modelProviderIdentifiers(modelId: string, provider?: string | null): Set<string> {
+  const identifiers = new Set<string>();
+  if (provider) identifiers.add(provider.toLowerCase());
+  const slug = modelId.split("/")[0];
+  if (slug) identifiers.add(slug.toLowerCase());
+  return identifiers;
+}
+
+export function isProviderAllowedForGoogle(modelId: string, provider?: string | null): boolean {
+  const allowed = new Set(["openai", "anthropic", "google"]);
+  for (const identifier of modelProviderIdentifiers(modelId, provider)) {
+    if (allowed.has(identifier)) return true;
+  }
+  return false;
+}
+
 // ─── Sort metric ─────────────────────────────────────────────────────────────
 
 export function sortMetric(m: ModelSummary, key: SortKey): number | null {
   switch (key) {
-    case "price": return (m.inputPricePer1M ?? 0) + (m.outputPricePer1M ?? 0) || null;
+    case "price": return priceSortMetric(m);
     case "context": return m.contextLength ?? null;
     case "topThisWeek": {
       const ranks = m.openRouterUseCases?.map((uc) => uc.returnedRank);
@@ -74,6 +96,24 @@ export function sortMetric(m: ModelSummary, key: SortKey): number | null {
     }
     default: return m.derivedGuidance?.scores?.[key] ?? null;
   }
+}
+
+const IMAGE_TOKENS_PER_MEGAPIXEL = 4096;
+
+function priceSortMetric(m: ModelSummary): number | null {
+  if (m.isFree ?? m.modelId.endsWith(":free")) return 0;
+  if (m.supportsVideo && m.videoPricing) {
+    if (m.videoPricing.perVideoSecond != null && m.videoPricing.perVideoSecond > 0) {
+      return m.videoPricing.perVideoSecond;
+    }
+    if (m.videoPricing.perVideoToken != null && m.videoPricing.perVideoToken > 0) {
+      return m.videoPricing.perVideoToken * 1_000_000;
+    }
+  }
+  if (m.supportsImages && m.imagePricing?.perImageOutput != null && m.imagePricing.perImageOutput > 0) {
+    return m.imagePricing.perImageOutput * IMAGE_TOKENS_PER_MEGAPIXEL;
+  }
+  return (m.inputPricePer1M ?? 0) + (m.outputPricePer1M ?? 0) || null;
 }
 
 /** Default direction: price & topThisWeek ascending (lower=better), rest descending. */

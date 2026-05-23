@@ -144,6 +144,7 @@ function ToolbarButton({ label, icon, color, onClick }: {
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${COLOR_MAP[color] ?? COLOR_MAP.muted}`}
     >

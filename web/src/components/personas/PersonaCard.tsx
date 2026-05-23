@@ -21,6 +21,7 @@ interface PersonaCardProps {
   onEdit: (id: Id<"personas">) => void;
   onDelete: (id: Id<"personas">) => void;
   onNewChat: (id: Id<"personas">) => void;
+  isNewChatPending?: boolean;
 }
 
 // ── Avatar ─────────────────────────────────────────────────────────────────
@@ -75,7 +76,7 @@ function Subtitle({ persona }: { persona: PersonaCardData }) {
 
 // ── Card ──────────────────────────────────────────────────────────────────
 
-export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat }: PersonaCardProps) {
+export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewChatPending = false }: PersonaCardProps) {
   if (view === "list") {
     return (
       <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface-2 transition-colors group">
@@ -93,10 +94,12 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat }: Pers
             <p className="text-xs text-secondary truncate mt-0.5">{persona.personaDescription}</p>
           )}
         </div>
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex items-center gap-0.5 opacity-100 transition-opacity">
           <button
             onClick={() => onNewChat(persona._id)}
-            className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-primary transition-colors"
+            disabled={isNewChatPending}
+            aria-busy={isNewChatPending}
+            className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-primary transition-colors disabled:pointer-events-none disabled:opacity-60"
             title="New chat"
           >
             <MessageSquare size={14} />
@@ -143,7 +146,9 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat }: Pers
       <div className="flex items-center gap-1.5 px-3.5 pb-3 pt-0">
         <button
           onClick={() => onNewChat(persona._id)}
-          className="flex-1 text-xs py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors font-medium"
+          disabled={isNewChatPending}
+          aria-busy={isNewChatPending}
+          className="flex-1 text-xs py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors font-medium disabled:pointer-events-none disabled:opacity-60"
         >
           New Chat
         </button>

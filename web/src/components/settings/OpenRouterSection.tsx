@@ -18,6 +18,11 @@ function creditColorClass(balance: number): string {
 
 // ─── Component ─────────────────────────────────────────────────────────────
 
+type PendingPreference = {
+  baseline: boolean;
+  value: boolean;
+};
+
 /**
  * OpenRouter connection section — reads connection status from Convex
  * (hasApiKey query), fetches credit balance from shared useCreditBalance hook,
@@ -37,10 +42,46 @@ export function OpenRouterSection() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [pendingBalanceInChat, setPendingBalanceInChat] = useState<PendingPreference | null>(null);
+  const [pendingAdvancedStats, setPendingAdvancedStats] = useState<PendingPreference | null>(null);
 
   // Derive connected status from Convex (undefined = loading, true/false = known)
   const connected = hasApiKey === true;
   const isLoading = hasApiKey === undefined;
+  const effectiveShowBalanceInChat =
+    pendingBalanceInChat !== null &&
+    pendingBalanceInChat.baseline === showBalanceInChat &&
+    pendingBalanceInChat.value !== showBalanceInChat
+      ? pendingBalanceInChat.value
+      : showBalanceInChat;
+  const effectiveShowAdvancedStats =
+    pendingAdvancedStats !== null &&
+    pendingAdvancedStats.baseline === showAdvancedStats &&
+    pendingAdvancedStats.value !== showAdvancedStats
+      ? pendingAdvancedStats.value
+      : showAdvancedStats;
+
+  const savePreferenceToggle = useCallback(async (
+    key: "showBalanceInChat" | "showAdvancedStats",
+    nextValue: boolean,
+    ) => {
+    setErrorMessage(null);
+    if (key === "showBalanceInChat") {
+      setPendingBalanceInChat({ baseline: showBalanceInChat, value: nextValue });
+    } else {
+      setPendingAdvancedStats({ baseline: showAdvancedStats, value: nextValue });
+    }
+    try {
+      await upsertPreferences({ [key]: nextValue });
+    } catch (error) {
+      if (key === "showBalanceInChat") {
+        setPendingBalanceInChat(null);
+      } else {
+        setPendingAdvancedStats(null);
+      }
+      setErrorMessage(error instanceof Error ? error.message : t("something_went_wrong"));
+    }
+  }, [showAdvancedStats, showBalanceInChat, t, upsertPreferences]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -149,11 +190,11 @@ export function OpenRouterSection() {
               </div>
               <button
                 role="switch"
-                aria-checked={showBalanceInChat}
-                onClick={() => void upsertPreferences({ showBalanceInChat: !showBalanceInChat })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showBalanceInChat ? "bg-accent" : "bg-surface-3"}`}
+                aria-checked={effectiveShowBalanceInChat}
+                onClick={() => void savePreferenceToggle("showBalanceInChat", !effectiveShowBalanceInChat)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${effectiveShowBalanceInChat ? "bg-accent" : "bg-surface-3"}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showBalanceInChat ? "translate-x-6" : "translate-x-1"}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${effectiveShowBalanceInChat ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
 
@@ -165,11 +206,11 @@ export function OpenRouterSection() {
               </div>
               <button
                 role="switch"
-                aria-checked={showAdvancedStats}
-                onClick={() => void upsertPreferences({ showAdvancedStats: !showAdvancedStats })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${showAdvancedStats ? "bg-accent" : "bg-surface-3"}`}
+                aria-checked={effectiveShowAdvancedStats}
+                onClick={() => void savePreferenceToggle("showAdvancedStats", !effectiveShowAdvancedStats)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${effectiveShowAdvancedStats ? "bg-accent" : "bg-surface-3"}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${showAdvancedStats ? "translate-x-6" : "translate-x-1"}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${effectiveShowAdvancedStats ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
 

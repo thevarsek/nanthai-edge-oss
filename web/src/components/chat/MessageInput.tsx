@@ -28,7 +28,7 @@ interface Props {
   chatId: Id<"chats">;
   participants: Participant[];
   isGenerating: boolean;
-  onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => void | Promise<void>;
+  onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
   onCreateUploadUrl: () => Promise<string>;
   onPlusMenuSelect?: (item: PlusMenuItem) => void;
@@ -93,6 +93,7 @@ export function MessageInput({
     const draft = getChatDraft(chatId);
     setText(draft.text);
     setAttachments(draft.attachments);
+    setDismissedSuggestionStorageIds(new Set());
   }, [chatId, setAttachments]);
 
   // Write-through: every change to text or attachments is persisted.
@@ -137,7 +138,8 @@ export function MessageInput({
     if (isAutonomousActive && onIntervene && trimmed) {
       onIntervene(trimmed);
     } else {
-      await onSend({ text: trimmed, attachments });
+      const result = await onSend({ text: trimmed, attachments });
+      if (result === false) return;
     }
     setText("");
     clearAttachments();
@@ -146,7 +148,7 @@ export function MessageInput({
   }, [text, attachments, isGenerating, onSend, isAutonomousActive, onIntervene, clearAttachments, mention]);
 
   const {
-    queuedFollowUp,
+    queuedFollowUps,
     queuedActionState,
     canQueueMessage,
     queueFollowUp,
@@ -275,16 +277,17 @@ export function MessageInput({
 
   return (
     <div className="border-t border-border/30 bg-background px-4 py-3">
-      {queuedFollowUp && (
+      {queuedFollowUps.map((queuedFollowUp) => (
         <PendingFollowUpCard
-          text={queuedFollowUp}
+          key={queuedFollowUp.id}
+          text={queuedFollowUp.text}
           isSendingNow={queuedActionState === "interrupting"}
           actionsDisabled={disabled}
-          onEdit={editQueuedFollowUp}
-          onSendNow={() => { void sendQueuedNow(); }}
-          onRemove={removeQueuedFollowUp}
+          onEdit={() => editQueuedFollowUp(queuedFollowUp.id)}
+          onSendNow={() => { void sendQueuedNow(queuedFollowUp.id); }}
+          onRemove={() => removeQueuedFollowUp(queuedFollowUp.id)}
         />
-      )}
+      ))}
 
       {/* Video mode hint banner */}
       {isVideoMode && (

@@ -5,7 +5,7 @@
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useNavigate } from "react-router-dom";
-import { useCallback } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SquarePen } from "lucide-react";
 import { BrandWordmark } from "@/components/shared/BrandWordmark";
@@ -20,8 +20,13 @@ export function AppEmptyState() {
   const { toast } = useToast();
   const createChat = useMutation(api.chat.mutations.createChat);
   const { prefs, personas } = useSharedData();
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const isCreatingChatRef = useRef(false);
 
   const handleNewChat = useCallback(async () => {
+    if (isCreatingChatRef.current) return;
+    isCreatingChatRef.current = true;
+    setIsCreatingChat(true);
     try {
       const participants = buildDefaultParticipants({
         prefs: prefs as { defaultModelId?: string; defaultPersonaId?: string } | undefined,
@@ -35,6 +40,9 @@ export function AppEmptyState() {
         message: error instanceof Error ? error.message : t("something_went_wrong"),
         variant: "error",
       });
+    } finally {
+      isCreatingChatRef.current = false;
+      setIsCreatingChat(false);
     }
   }, [createChat, navigate, personas, prefs, t, toast]);
 
@@ -50,7 +58,9 @@ export function AppEmptyState() {
       {/* New chat button */}
       <button
         onClick={() => void handleNewChat()}
-        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary/12 text-primary text-sm font-semibold hover:bg-primary/20 transition-colors"
+        disabled={isCreatingChat}
+        aria-busy={isCreatingChat}
+        className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary/12 text-primary text-sm font-semibold hover:bg-primary/20 transition-colors disabled:pointer-events-none disabled:opacity-60"
       >
         <SquarePen size={16} />
         {t("new_chat")}

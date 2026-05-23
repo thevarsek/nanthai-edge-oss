@@ -86,7 +86,7 @@ export function VideoGenerationProgress({ messageId }: VideoGenerationProgressPr
 
       {/* Error detail */}
       {isFailed && videoJob.error && (
-        <p className="text-xs text-destructive italic">{videoJob.error}</p>
+        <p className="text-xs text-destructive italic">{t("generation_failed")}</p>
       )}
     </div>
   );

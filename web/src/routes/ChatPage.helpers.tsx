@@ -230,7 +230,7 @@ export function useSubagentOverride({
       if (!chatId) return;
       await updateChat({
         chatId,
-        subagentOverride: override === "inherit" ? undefined : override,
+        subagentOverride: override === "inherit" ? null : override,
       } as Parameters<typeof updateChat>[0]);
     },
     [chatId, updateChat],

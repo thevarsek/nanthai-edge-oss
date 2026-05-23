@@ -38,6 +38,7 @@ type DefaultUserPreferencesInsert = Pick<
   | "defaultAudioSpeed"
   | "isMemoryEnabled"
   | "memoryGatingMode"
+  | "preferenceWriteEpoch"
   | "updatedAt"
 >;
 
@@ -65,6 +66,7 @@ function buildDefaultUserPreferencesInsert(
     defaultAudioSpeed: 1,
     isMemoryEnabled: true,
     memoryGatingMode: "automatic",
+    preferenceWriteEpoch: 0,
     updatedAt: now,
   };
 }
@@ -123,6 +125,7 @@ export const ensureUserPreferencesInternal = internalMutation({
 /** Upsert user preferences. Creates if missing, patches if existing. */
 export const upsertPreferences = mutation({
   args: {
+    expectedPreferenceWriteEpoch: v.optional(v.number()),
     defaultModelId: v.optional(v.string()),
     defaultPersonaId: v.optional(v.union(v.id("personas"), v.null())),
     clearDefaultPersona: v.optional(v.boolean()),
@@ -214,6 +217,16 @@ export const upsertPreferences = mutation({
       .query("userPreferences")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
+    const currentPreferenceWriteEpoch = existing?.preferenceWriteEpoch ?? 0;
+    if (
+      args.expectedPreferenceWriteEpoch !== undefined
+      && args.expectedPreferenceWriteEpoch !== currentPreferenceWriteEpoch
+    ) {
+      throw new ConvexError({
+        code: "STALE_PREFERENCE_WRITE",
+        message: "Preference write was created for an older session.",
+      });
+    }
 
     // Build patch object — only include args that were explicitly provided.
     // For optional schema fields, `null` from the client means "clear field".
@@ -221,6 +234,7 @@ export const upsertPreferences = mutation({
     const patch: Record<string, unknown> = { updatedAt: now };
     for (const [key, value] of Object.entries(args)) {
       if (key === "clearDefaultPersona") continue;
+      if (key === "expectedPreferenceWriteEpoch") continue;
       if (value === undefined) continue;
       patch[key] = value === null ? undefined : value;
     }
@@ -282,8 +296,60 @@ export const upsertPreferences = mutation({
       defaultVideoDuration: args.defaultVideoDuration ?? undefined,
       defaultVideoResolution: args.defaultVideoResolution ?? undefined,
       defaultVideoGenerateAudio: args.defaultVideoGenerateAudio ?? undefined,
+      preferenceWriteEpoch: currentPreferenceWriteEpoch,
       updatedAt: now,
     });
+  },
+});
+
+export const beginPreferenceWriteSession = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const { userId } = await requireAuth(ctx);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+
+    if (existing) {
+      return existing.preferenceWriteEpoch ?? 0;
+    }
+
+    await ctx.db.insert(
+      "userPreferences",
+      buildDefaultUserPreferencesInsert(userId, now),
+    );
+    return 0;
+  },
+});
+
+export const invalidatePreferenceWriteSession = mutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const { userId } = await requireAuth(ctx);
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first();
+    const nextEpoch = (existing?.preferenceWriteEpoch ?? 0) + 1;
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        preferenceWriteEpoch: nextEpoch,
+        updatedAt: now,
+      });
+    } else {
+      await ctx.db.insert("userPreferences", {
+        ...buildDefaultUserPreferencesInsert(userId, now),
+        preferenceWriteEpoch: nextEpoch,
+      });
+    }
+
+    return nextEpoch;
   },
 });
 

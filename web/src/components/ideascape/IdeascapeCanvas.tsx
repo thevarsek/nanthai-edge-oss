@@ -14,6 +14,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { Message } from "@/hooks/useChat";
 import { computeTreeLayout, TREE_NODE_W, TREE_NODE_H } from "./treeLayout";
 import { MessageNode, Connectors, type NodeVisualState } from "./IdeascapeNodes";
+import { computeIdeascapeDisplayGeometry } from "./IdeascapeCanvasGeometry";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,8 @@ export function IdeascapeCanvas({
   const containerRef = useRef<HTMLDivElement>(null);
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
+  const panPointerStart = useRef({ x: 0, y: 0 });
+  const panMoved = useRef(false);
   const dragState = useRef<{
     messageId: Id<"messages">; startNodeX: number; startNodeY: number;
     startPointerX: number; startPointerY: number;
@@ -113,36 +116,7 @@ export function IdeascapeCanvas({
   }, [sizeMap, resizePreview]);
 
   const displayGeometry = useMemo(() => {
-    const entries = Array.from(logicalPosMap.values());
-    if (entries.length === 0) {
-      return {
-        posMap: new Map<string, { x: number; y: number }>(),
-        width: 1600,
-        height: 1200,
-        offsetX: 240,
-        offsetY: 120,
-      };
-    }
-
-    const minX = Math.min(...Array.from(logicalPosMap.entries()).map(([, p]) => p.x));
-    const maxX = Math.max(...Array.from(logicalPosMap.entries()).map(([id, p]) => p.x + (effectiveSizeMap.get(id)?.width ?? TREE_NODE_W)));
-    const minY = Math.min(...Array.from(logicalPosMap.entries()).map(([, p]) => p.y));
-    const maxY = Math.max(...Array.from(logicalPosMap.entries()).map(([id, p]) => p.y + (effectiveSizeMap.get(id)?.height ?? TREE_NODE_H)));
-    const offsetX = minX < 0 ? Math.abs(minX) + 180 : 180;
-    const offsetY = minY < 0 ? Math.abs(minY) + 80 : 80;
-    const posMap = new Map<string, { x: number; y: number }>();
-
-    for (const [id, pos] of logicalPosMap) {
-      posMap.set(id, { x: pos.x + offsetX, y: pos.y + offsetY });
-    }
-
-    return {
-      posMap,
-      width: Math.max(1600, maxX - minX + 360),
-      height: Math.max(1200, maxY - minY + 220),
-      offsetX,
-      offsetY,
-    };
+    return computeIdeascapeDisplayGeometry(logicalPosMap, effectiveSizeMap);
   }, [logicalPosMap, effectiveSizeMap]);
 
   // ── Zoom ──────────────────────────────────────────────────────────────────
@@ -178,7 +152,9 @@ export function IdeascapeCanvas({
   const onCanvasPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("[data-node]")) return;
     isPanning.current = true;
+    panMoved.current = false;
     panStart.current = { x: e.clientX - viewport.x, y: e.clientY - viewport.y };
+    panPointerStart.current = { x: e.clientX, y: e.clientY };
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
   };
 
@@ -211,6 +187,11 @@ export function IdeascapeCanvas({
       return;
     }
     if (!isPanning.current) return;
+    const movedX = Math.abs(e.clientX - panPointerStart.current.x);
+    const movedY = Math.abs(e.clientY - panPointerStart.current.y);
+    if (movedX > 2 || movedY > 2) {
+      panMoved.current = true;
+    }
     onViewportChange({
       x: e.clientX - panStart.current.x,
       y: e.clientY - panStart.current.y,
@@ -253,6 +234,30 @@ export function IdeascapeCanvas({
     }
     isPanning.current = false;
   };
+
+  const cancelPointerInteraction = useCallback(() => {
+    if (dragState.current) {
+      const nodeEl = containerRef.current?.querySelector(
+        `[data-message-id="${dragState.current.messageId}"] [data-node-shell]`,
+      ) as HTMLElement | null;
+      if (nodeEl) {
+        nodeEl.style.transform = "";
+      }
+      dragState.current = null;
+    }
+    if (resizeState.current) {
+      resizeState.current = null;
+      setResizePreview(null);
+    }
+    isPanning.current = false;
+    panMoved.current = false;
+  }, []);
+
+  const handleLostPointerCapture = useCallback(() => {
+    if (dragState.current || resizeState.current || isPanning.current) {
+      cancelPointerInteraction();
+    }
+  }, [cancelPointerInteraction]);
 
   // ── Node drag start ───────────────────────────────────────────────────────
 
@@ -312,8 +317,12 @@ export function IdeascapeCanvas({
       onPointerDown={onCanvasPointerDown}
       onPointerMove={onCanvasPointerMove}
       onPointerUp={onCanvasPointerUp}
+      onPointerCancel={cancelPointerInteraction}
+      onLostPointerCapture={handleLostPointerCapture}
       onClick={(e) => {
-        if ((e.target as HTMLElement) === containerRef.current) onClearSelection();
+        if (!(e.target as HTMLElement).closest("[data-node]") && !panMoved.current) {
+          onClearSelection();
+        }
       }}
     >
       {/* Dot-grid background */}

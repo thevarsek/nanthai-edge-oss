@@ -164,6 +164,7 @@ export interface UpdateArgs extends Record<string, unknown> {
   scopeType?: "allPersonas" | "selectedPersonas";
   personaIds?: string[];
   tags?: string[];
+  isPinned?: boolean;
 }
 
 export async function updateHandler(
@@ -190,6 +191,7 @@ export async function updateHandler(
     scopeType,
     personaIds,
     tags,
+    ...(args.isPinned !== undefined ? { isPinned: args.isPinned } : {}),
     updatedAt: Date.now(),
   });
 

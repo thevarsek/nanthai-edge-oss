@@ -44,14 +44,6 @@ function renderFileIcon(mimeType?: string | null) {
   if (normalized.startsWith("audio/")) return <FileAudio2 size={18} />;
   if (normalized.startsWith("video/")) return <FileVideo2 size={18} />;
   if (
-    normalized.includes("pdf") ||
-    normalized.includes("text") ||
-    normalized.includes("word") ||
-    normalized.includes("document")
-  ) {
-    return <FileText size={18} />;
-  }
-  if (
     normalized.includes("sheet") ||
     normalized.includes("excel") ||
     normalized.includes("csv")
@@ -63,6 +55,14 @@ function renderFileIcon(mimeType?: string | null) {
     normalized.includes("powerpoint")
   ) {
     return <Presentation size={18} />;
+  }
+  if (
+    normalized.includes("pdf") ||
+    normalized.includes("text") ||
+    normalized.includes("word") ||
+    normalized.includes("document")
+  ) {
+    return <FileText size={18} />;
   }
   if (
     normalized.includes("zip") ||
@@ -77,7 +77,7 @@ function renderFileIcon(mimeType?: string | null) {
 function useResolvedAttachmentUrl(attachment: MessageAttachment, messageId: Id<"messages">) {
   return useQuery(
     api.chat.queries.getAttachmentUrl,
-    attachment.storageId && !attachment.url
+    attachment.storageId
       ? { storageId: attachment.storageId, messageId }
       : "skip",
   );

@@ -96,7 +96,7 @@ export function computeTreeLayout(
 
   // Phase 1-2: Build trees and calculate subtree widths
   const trees = roots.map((r) =>
-    buildTree(r, childrenByParent, multiModelFirstIDs, 0),
+    buildTree(r, childrenByParent, multiModelFirstIDs, 0, new Set()),
   );
   for (const tree of trees) {
     calculateSubtreeWidth(tree);
@@ -138,22 +138,28 @@ function buildTree(
   childrenByParent: Map<string, Message[]>,
   multiModelFirstIDs: Set<string>,
   depth: number,
+  path: Set<string>,
 ): TreeNode {
-  const rawChildren = childrenByParent.get(message._id as string) ?? [];
+  const messageId = message._id as string;
+  const childPath = new Set(path);
+  childPath.add(messageId);
+  const rawChildren = childrenByParent.get(messageId) ?? [];
 
   // Filter: skip multi-model non-first members unless they have descendants
   const filteredChildren = rawChildren.filter((child) => {
+    const childId = child._id as string;
+    if (childPath.has(childId)) return false;
     if (!child.multiModelGroupId) return true;
-    if (multiModelFirstIDs.has(child._id as string)) return true;
+    if (multiModelFirstIDs.has(childId)) return true;
     // Promote non-first siblings that have children (user branched from them)
-    return childrenByParent.has(child._id as string);
+    return childrenByParent.has(childId);
   });
 
   const children = filteredChildren.map((c) =>
-    buildTree(c, childrenByParent, multiModelFirstIDs, depth + 1),
+    buildTree(c, childrenByParent, multiModelFirstIDs, depth + 1, childPath),
   );
 
-  return { messageId: message._id as string, children, depth, subtreeWidth: 1 };
+  return { messageId, children, depth, subtreeWidth: 1 };
 }
 
 function calculateSubtreeWidth(node: TreeNode): void {

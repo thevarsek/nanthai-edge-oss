@@ -52,7 +52,7 @@ test("updateChatHandler persists chat parameter overrides", async () => {
     },
   } as any;
 
-  await updateChatHandler(ctx, {
+  const result = await updateChatHandler(ctx, {
     chatId: "chat_1",
     temperatureOverride: 1.3,
     maxTokensOverride: 2048,
@@ -60,6 +60,7 @@ test("updateChatHandler persists chat parameter overrides", async () => {
     reasoningEffortOverride: "high",
   } as any);
 
+  assert.equal(result, null);
   assert.equal(patches.length, 1);
   assert.equal(patches[0].temperatureOverride, 1.3);
   assert.equal(patches[0].maxTokensOverride, 2048);
@@ -207,6 +208,225 @@ test("updateChatHandler rejects missing activeBranchLeafId", async () => {
   );
 
   assert.equal(patches.length, 0);
+});
+
+test("updateChatHandler ignores stale active branch compare-and-set writes", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") {
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+            activeBranchLeafId: "newer_leaf",
+          };
+        }
+        if (id === "older_leaf") {
+          return {
+            _id: "older_leaf",
+            chatId: "chat_1",
+          };
+        }
+        return null;
+      },
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
+      },
+    },
+  } as any;
+
+  const result = await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    activeBranchLeafId: "older_leaf",
+    activeBranchLeafExpectedCurrentId: "previous_leaf",
+  } as any);
+
+  assert.equal(patches.length, 0);
+  assert.ok(result);
+  assert.equal(result.activeBranchLeafApplied, false);
+  assert.equal(result.activeBranchLeafId, "newer_leaf");
+});
+
+test("updateChatHandler applies active branch write when expected leaf matches", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") {
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+            activeBranchLeafId: "previous_leaf",
+          };
+        }
+        if (id === "newer_leaf") {
+          return {
+            _id: "newer_leaf",
+            chatId: "chat_1",
+          };
+        }
+        return null;
+      },
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
+      },
+    },
+  } as any;
+
+  const result = await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    activeBranchLeafId: "newer_leaf",
+    activeBranchLeafExpectedCurrentId: "previous_leaf",
+  } as any);
+
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].activeBranchLeafId, "newer_leaf");
+  assert.ok(result);
+  assert.equal(result.activeBranchLeafApplied, true);
+});
+
+test("updateChatHandler ignores older ordered focus write after newer focus write", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") {
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+            activeBranchLeafId: "newer_leaf",
+            activeBranchLeafFocusOrder: 2,
+          };
+        }
+        if (id === "older_leaf") {
+          return {
+            _id: "older_leaf",
+            chatId: "chat_1",
+          };
+        }
+        return null;
+      },
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
+      },
+    },
+  } as any;
+
+  const result = await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    activeBranchLeafId: "older_leaf",
+    activeBranchLeafExpectedCurrentId: "previous_leaf",
+    activeBranchLeafFocusOrder: 1,
+  } as any);
+
+  assert.equal(patches.length, 0);
+  assert.ok(result);
+  assert.equal(result.activeBranchLeafApplied, false);
+  assert.equal(result.activeBranchLeafId, "newer_leaf");
+  assert.equal(result.activeBranchLeafFocusOrder, 2);
+});
+
+test("updateChatHandler applies newer ordered focus write after older focus write", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") {
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+            activeBranchLeafId: "older_leaf",
+            activeBranchLeafFocusOrder: 1,
+          };
+        }
+        if (id === "newer_leaf") {
+          return {
+            _id: "newer_leaf",
+            chatId: "chat_1",
+          };
+        }
+        return null;
+      },
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
+      },
+    },
+  } as any;
+
+  const result = await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    activeBranchLeafId: "newer_leaf",
+    activeBranchLeafExpectedCurrentId: "previous_leaf",
+    activeBranchLeafFocusOrder: 2,
+  } as any);
+
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].activeBranchLeafId, "newer_leaf");
+  assert.equal(patches[0].activeBranchLeafFocusOrder, 2);
+  assert.ok(result);
+  assert.equal(result.activeBranchLeafApplied, true);
+});
+
+test("updateChatHandler ignores ordered focus write after structural branch change", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const ctx = {
+    auth: {
+      getUserIdentity: async () => ({ subject: "user_1" }),
+    },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") {
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+            activeBranchLeafId: "structural_leaf",
+            activeBranchLeafFocusOrder: undefined,
+          };
+        }
+        if (id === "late_focus_leaf") {
+          return {
+            _id: "late_focus_leaf",
+            chatId: "chat_1",
+          };
+        }
+        return null;
+      },
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
+      },
+    },
+  } as any;
+
+  const result = await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    activeBranchLeafId: "late_focus_leaf",
+    activeBranchLeafExpectedCurrentId: "previous_leaf",
+    activeBranchLeafFocusOrder: 2,
+  } as any);
+
+  assert.equal(patches.length, 0);
+  assert.ok(result);
+  assert.equal(result.activeBranchLeafApplied, false);
+  assert.equal(result.activeBranchLeafId, "structural_leaf");
+  assert.equal(result.activeBranchLeafFocusOrder, null);
 });
 
 test("updateChatHandler rejects folder IDs that are not owned by the user", async () => {

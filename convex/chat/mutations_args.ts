@@ -497,6 +497,7 @@ export const createVideoJobArgs = {
   userId: v.string(),
   openRouterJobId: v.string(),
   pollingUrl: v.string(),
+  outputUploadToken: v.optional(v.string()),
   model: v.string(),
   prompt: v.string(),
   videoConfig: v.optional(v.object({
@@ -513,6 +514,7 @@ export type CreateVideoJobArgs = {
   userId: string;
   openRouterJobId: string;
   pollingUrl: string;
+  outputUploadToken?: string;
   model: string;
   prompt: string;
   videoConfig?: {
@@ -521,6 +523,34 @@ export type CreateVideoJobArgs = {
     duration?: number;
     generateAudio?: boolean;
   };
+};
+
+export const createVideoOutputUploadSessionArgs = {
+  token: v.string(),
+  messageId: v.id("messages"),
+  chatId: v.id("chats"),
+  userId: v.string(),
+} satisfies PropertyValidators;
+
+export type CreateVideoOutputUploadSessionArgs = {
+  token: string;
+  messageId: Id<"messages">;
+  chatId: Id<"chats">;
+  userId: string;
+};
+
+export const completeVideoOutputUploadArgs = {
+  token: v.string(),
+  storageId: v.id("_storage"),
+  mimeType: v.string(),
+  sizeBytes: v.number(),
+} satisfies PropertyValidators;
+
+export type CompleteVideoOutputUploadArgs = {
+  token: string;
+  storageId: Id<"_storage">;
+  mimeType: string;
+  sizeBytes: number;
 };
 
 export const updateVideoJobStatusArgs = {

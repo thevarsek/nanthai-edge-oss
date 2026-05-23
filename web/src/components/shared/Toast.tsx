@@ -31,6 +31,7 @@ const EXIT_ANIMATION_MS = 200;
 export function ToastProvider({ children }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastState[]>([]);
   const timers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const exitTimers = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   const remove = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
@@ -38,6 +39,11 @@ export function ToastProvider({ children }: ToastProviderProps) {
     if (timer !== undefined) {
       clearTimeout(timer);
       timers.current.delete(id);
+    }
+    const exitTimer = exitTimers.current.get(id);
+    if (exitTimer !== undefined) {
+      clearTimeout(exitTimer);
+      exitTimers.current.delete(id);
     }
   }, []);
 
@@ -47,7 +53,10 @@ export function ToastProvider({ children }: ToastProviderProps) {
       setToasts((prev) =>
         prev.map((t) => (t.id === id ? { ...t, exiting: true } : t)),
       );
-      setTimeout(() => remove(id), EXIT_ANIMATION_MS);
+      const existing = exitTimers.current.get(id);
+      if (existing !== undefined) clearTimeout(existing);
+      const timer = setTimeout(() => remove(id), EXIT_ANIMATION_MS);
+      exitTimers.current.set(id, timer);
     },
     [remove],
   );
@@ -86,9 +95,12 @@ export function ToastProvider({ children }: ToastProviderProps) {
   // Clean up all timers on unmount
   useEffect(() => {
     const map = timers.current;
+    const exits = exitTimers.current;
     return () => {
       map.forEach((t) => clearTimeout(t));
       map.clear();
+      exits.forEach((t) => clearTimeout(t));
+      exits.clear();
     };
   }, []);
 

@@ -24,6 +24,9 @@ export const listFavorites = query({
     const personaIds = new Set<string>();
     for (const f of favorites) {
       if (f.personaId) personaIds.add(f.personaId as string);
+      for (const participant of f.participants ?? []) {
+        if (participant.personaId) personaIds.add(participant.personaId as string);
+      }
     }
 
     const personaAvatarUrls = new Map<string, string>();
@@ -44,13 +47,48 @@ export const listFavorites = query({
     }
 
     return favorites.map((f) => {
+      const participants = (f.participants ?? fallbackParticipants(f)).map((participant) => {
+        if (participant.personaId && personaAvatarUrls.has(participant.personaId as string)) {
+          return {
+            ...participant,
+            personaAvatarImageUrl: personaAvatarUrls.get(participant.personaId as string),
+          };
+        }
+        return participant;
+      });
+
       if (f.personaId && personaAvatarUrls.has(f.personaId as string)) {
         return {
           ...f,
+          participants,
           personaAvatarImageUrl: personaAvatarUrls.get(f.personaId as string),
         };
       }
-      return f;
+      return {
+        ...f,
+        participants,
+      };
     });
   },
 });
+
+function fallbackParticipants(favorite: {
+  modelIds?: string[];
+  personaId?: Id<"personas">;
+  personaName?: string;
+  personaEmoji?: string;
+  personaAvatarImageUrl?: string;
+}) {
+  return (favorite.modelIds ?? []).map((modelId, index) => {
+    if (index === 0 && favorite.personaId) {
+      return {
+        modelId,
+        personaId: favorite.personaId,
+        personaName: favorite.personaName,
+        personaEmoji: favorite.personaEmoji,
+        personaAvatarImageUrl: favorite.personaAvatarImageUrl,
+      };
+    }
+    return { modelId };
+  });
+}

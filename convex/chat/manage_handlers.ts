@@ -24,6 +24,8 @@ export interface UpdateChatArgs extends Record<string, unknown> {
   isPinned?: boolean;
   mode?: "chat" | "ideascape";
   activeBranchLeafId?: Id<"messages">;
+  activeBranchLeafExpectedCurrentId?: Id<"messages"> | null;
+  activeBranchLeafFocusOrder?: number;
   subagentOverride?: "enabled" | "disabled" | null;
   temperatureOverride?: number | null;
   maxTokensOverride?: number | null;
@@ -34,6 +36,12 @@ export interface UpdateChatArgs extends Record<string, unknown> {
   searchModeOverride?: string | null;
   searchComplexityOverride?: number | null;
 }
+
+type UpdateChatResult = {
+  activeBranchLeafApplied: boolean | null;
+  activeBranchLeafId?: Id<"messages"> | null;
+  activeBranchLeafFocusOrder?: number | null;
+} | null;
 
 async function isSingleParticipantChat(
   ctx: MutationCtx,
@@ -118,6 +126,8 @@ export function isPinOnlyUpdate(args: UpdateChatArgs): boolean {
     args.folderId === undefined &&
     args.mode === undefined &&
     args.activeBranchLeafId === undefined &&
+    args.activeBranchLeafExpectedCurrentId === undefined &&
+    args.activeBranchLeafFocusOrder === undefined &&
     args.subagentOverride === undefined &&
     args.temperatureOverride === undefined &&
     args.maxTokensOverride === undefined &&
@@ -138,6 +148,8 @@ export function isFolderOnlyUpdate(args: UpdateChatArgs): boolean {
     args.isPinned === undefined &&
     args.mode === undefined &&
     args.activeBranchLeafId === undefined &&
+    args.activeBranchLeafExpectedCurrentId === undefined &&
+    args.activeBranchLeafFocusOrder === undefined &&
     args.subagentOverride === undefined &&
     args.temperatureOverride === undefined &&
     args.maxTokensOverride === undefined &&
@@ -153,7 +165,7 @@ export function isFolderOnlyUpdate(args: UpdateChatArgs): boolean {
 export async function updateChatHandler(
   ctx: MutationCtx,
   args: UpdateChatArgs,
-): Promise<void> {
+): Promise<UpdateChatResult> {
   const { userId } = await requireAuth(ctx);
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
@@ -168,6 +180,11 @@ export async function updateChatHandler(
   const isPinOnly = isPinOnlyUpdate(args);
   const isFolderOnly = isFolderOnlyUpdate(args);
   const skipTimestamp = isPinOnly || isFolderOnly;
+  const currentActiveBranchResult = () => ({
+    activeBranchLeafApplied: false,
+    activeBranchLeafId: chat.activeBranchLeafId ?? null,
+    activeBranchLeafFocusOrder: chat.activeBranchLeafFocusOrder ?? null,
+  });
 
   const patch: Record<string, unknown> = skipTimestamp
     ? {}
@@ -223,13 +240,48 @@ export async function updateChatHandler(
     if (!leaf || leaf.chatId !== args.chatId) {
       throw new ConvexError({ code: "VALIDATION" as const, message: "Active branch leaf must belong to the chat." });
     }
+    const incomingFocusOrder = args.activeBranchLeafFocusOrder;
+    const currentFocusOrder = typeof chat.activeBranchLeafFocusOrder === "number"
+      ? chat.activeBranchLeafFocusOrder
+      : 0;
+    const currentLeafMatchesExpected = args.activeBranchLeafExpectedCurrentId === undefined ||
+      (chat.activeBranchLeafId ?? null) === args.activeBranchLeafExpectedCurrentId;
+    const currentLeafWasSetByOlderFocusWrite =
+      incomingFocusOrder !== undefined &&
+      currentFocusOrder > 0 &&
+      incomingFocusOrder > currentFocusOrder;
+
+    if (
+      incomingFocusOrder !== undefined &&
+      incomingFocusOrder <= currentFocusOrder
+    ) {
+      return currentActiveBranchResult();
+    }
+    if (
+      incomingFocusOrder === undefined &&
+      args.activeBranchLeafExpectedCurrentId !== undefined &&
+      (chat.activeBranchLeafId ?? null) !== args.activeBranchLeafExpectedCurrentId
+    ) {
+      return currentActiveBranchResult();
+    }
+    if (
+      incomingFocusOrder !== undefined &&
+      !currentLeafMatchesExpected &&
+      !currentLeafWasSetByOlderFocusWrite
+    ) {
+      return currentActiveBranchResult();
+    }
     patch.activeBranchLeafId = args.activeBranchLeafId;
+    patch.activeBranchLeafFocusOrder = incomingFocusOrder ?? undefined;
   }
 
   await ctx.db.patch(args.chatId, patch);
   if (args.folderId !== undefined) {
     await syncDocumentFoldersForChat(ctx, userId, args.chatId, args.folderId || undefined);
   }
+  return args.activeBranchLeafId !== undefined
+    ? { activeBranchLeafApplied: true }
+    : null;
 }
 
 export interface SwitchBranchAtForkArgs extends Record<string, unknown> {
@@ -274,6 +326,7 @@ export async function switchBranchAtForkHandler(
 
   await ctx.db.patch(args.chatId, {
     activeBranchLeafId: nextLeafId as Id<"messages">,
+    activeBranchLeafFocusOrder: undefined,
     updatedAt: Date.now(),
   });
 
@@ -459,6 +512,7 @@ export async function forkChatHandler(
     title: chat.title ? `${chat.title} (fork)` : "Forked conversation",
     mode: chat.mode,
     folderId: chat.folderId,
+    source: "user",
     subagentOverride: await resolveCopiedSubagentOverride(ctx, args.chatId, chat.subagentOverride),
     temperatureOverride: chat.temperatureOverride,
     maxTokensOverride: chat.maxTokensOverride,
@@ -521,6 +575,7 @@ export async function duplicateChatHandler(
     title: chat.title ? `${chat.title} (copy)` : "Copied conversation",
     mode: chat.mode,
     folderId: chat.folderId,
+    source: "user",
     subagentOverride: await resolveCopiedSubagentOverride(ctx, args.chatId, chat.subagentOverride),
     temperatureOverride: chat.temperatureOverride,
     maxTokensOverride: chat.maxTokensOverride,

@@ -411,8 +411,52 @@ function stripCalloutMarker(children: React.ReactNode): React.ReactNode {
   return strip(children, "callout");
 }
 
+function extractMarkdownTableSources(content: string): Array<{ startLine: number; source: string }> {
+  const lines = content.split(/\r?\n/);
+  const tables: Array<{ startLine: number; source: string }> = [];
+  let i = 0;
+  const isTableRow = (line: string) => /^\s*\|?.+\|.+\|?\s*$/.test(line);
+  const isDivider = (line: string) => /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+\|?\s*$/.test(line);
+
+  while (i < lines.length) {
+    if (isTableRow(lines[i] ?? "") && isDivider(lines[i + 1] ?? "")) {
+      const start = i;
+      i += 2;
+      while (i < lines.length && isTableRow(lines[i] ?? "")) i++;
+      tables.push({ startLine: start + 1, source: lines.slice(start, i).join("\n") });
+      continue;
+    }
+    i++;
+  }
+  return tables;
+}
+
+function sourceForRenderedTable(
+  tableSources: Array<{ startLine: number; source: string }>,
+  node: unknown,
+  children: React.ReactNode,
+  fallback: string,
+): string {
+  const startLine =
+    typeof node === "object" && node !== null && "position" in node
+      ? (node as { position?: { start?: { line?: number } } }).position?.start?.line
+      : undefined;
+  const byPosition = tableSources.find((table) => table.startLine === startLine)?.source;
+  if (byPosition) return byPosition;
+
+  const renderedTokens = textFromNode(children)
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const byContent = tableSources.find((table) =>
+    renderedTokens.every((token) => table.source.includes(token)),
+  )?.source;
+  return byContent ?? fallback;
+}
+
 function buildComponents(content: string, documentCitationLinks?: MarkdownDocumentCitationLink[]): Components {
   const citationByRef = new Map((documentCitationLinks ?? []).map((citation) => [citation.ref, citation]));
+  const tableSources = extractMarkdownTableSources(content);
   return {
     // Code — inline vs block differentiated by the `inline` prop
     code({ className, children }) {
@@ -439,9 +483,10 @@ function buildComponents(content: string, documentCitationLinks?: MarkdownDocume
     },
 
     // Table with copy
-    table({ children }) {
+    table({ children, node }) {
+      const tableSource = sourceForRenderedTable(tableSources, node, children, content);
       return (
-        <MarkdownTable content={content}>{children}</MarkdownTable>
+        <MarkdownTable content={tableSource}>{children}</MarkdownTable>
       );
     },
 
@@ -556,7 +601,10 @@ function buildComponents(content: string, documentCitationLinks?: MarkdownDocume
     },
 
     img({ src, alt }) {
-      return <MarkdownImage src={src} alt={alt ?? undefined} />;
+      if (src && isConvexImageUrl(src)) {
+        return <MarkdownImage src={src} alt={alt ?? undefined} />;
+      }
+      return alt ? <span>{alt}</span> : null;
     },
 
     // Strong / em

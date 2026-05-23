@@ -1,8 +1,11 @@
 import { v, type PropertyValidators } from "convex/values";
+import { chatSource } from "../schema_validators";
 
 export const listChatsArgs = {
   folderId: v.optional(v.string()),
   limit: v.optional(v.number()),
+  searchQuery: v.optional(v.string()),
+  source: v.optional(chatSource),
 } satisfies PropertyValidators;
 
 export const getChatArgs = {
@@ -117,6 +120,10 @@ export const getChatCostSummaryArgs = {
 
 export const getVideoJobInternalArgs = {
   videoJobId: v.id("videoJobs"),
+} satisfies PropertyValidators;
+
+export const getVideoOutputUploadByTokenArgs = {
+  token: v.string(),
 } satisfies PropertyValidators;
 
 export const getVideoJobStatusArgs = {

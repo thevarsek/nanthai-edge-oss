@@ -19,7 +19,12 @@ const LS_KEY_COLLAPSED = "nanth-sidebar-collapsed";
 function readStoredWidth(): number {
   try {
     const v = localStorage.getItem(LS_KEY_WIDTH);
-    if (v) return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, Number(v)));
+    if (v) {
+      const parsed = Number(v);
+      if (Number.isFinite(parsed)) {
+        return Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, parsed));
+      }
+    }
   } catch { /* */ }
   return SIDEBAR_DEFAULT;
 }
@@ -47,6 +52,12 @@ export function RootLayout() {
   const isDragging = useRef(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
+  const stopResizing = useCallback(() => {
+    isDragging.current = false;
+    setIsResizing(false);
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }, []);
 
   // Persist width
   useEffect(() => {
@@ -117,18 +128,18 @@ export function RootLayout() {
     }
     function onMouseUp() {
       if (!isDragging.current) return;
-      isDragging.current = false;
-      setIsResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
+      stopResizing();
     }
     window.addEventListener("mousemove", onMouseMove);
     window.addEventListener("mouseup", onMouseUp);
     return () => {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
+      if (isDragging.current) {
+        stopResizing();
+      }
     };
-  }, []);
+  }, [stopResizing]);
 
   // ── Keyboard shortcuts ──────────────────────────────────────────────────
   const handleNewChat = useCallback(() => void navigate("/app/chat"), [navigate]);

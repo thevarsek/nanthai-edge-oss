@@ -9,6 +9,7 @@ import { internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { filterToolIncompatibleOptions } from "../lib/tool_capability";
+import { isGoogleDataAllowedModel } from "../models/google_data_providers";
 import {
   integrationOverrideEntry,
   scheduledJobRecurrence,
@@ -30,6 +31,10 @@ import {
   createScheduledTriggerToken,
   sha256Hex,
 } from "./trigger_auth";
+
+const GOOGLE_SCHEDULED_JOB_INTEGRATION_IDS = new Set(["gmail", "drive", "calendar"]);
+const GOOGLE_SCHEDULED_JOB_MODEL_MESSAGE =
+  "Choose an OpenAI, Anthropic, or Google model with ZDR support to keep Google integrations enabled.";
 
 function recurrenceEquals(left: Recurrence, right: Recurrence): boolean {
   if (left.type !== right.type) return false;
@@ -92,6 +97,41 @@ function buildStepsFromInput(args: {
     includeReasoning: args.includeReasoning,
     reasoningEffort: args.reasoningEffort,
   }];
+}
+
+function hasEnabledGoogleScheduledJobIntegration(step: {
+  enabledIntegrations?: string[];
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+}): boolean {
+  if (step.turnIntegrationOverrides && step.turnIntegrationOverrides.length > 0) {
+    return step.turnIntegrationOverrides.some(
+      (entry) => entry.enabled && GOOGLE_SCHEDULED_JOB_INTEGRATION_IDS.has(entry.integrationId),
+    );
+  }
+  return step.enabledIntegrations?.some((id) => GOOGLE_SCHEDULED_JOB_INTEGRATION_IDS.has(id)) ?? false;
+}
+
+async function assertGoogleScheduledJobModelAllowed(
+  ctx: MutationCtx,
+  stepNumber: number,
+  modelId: string,
+  step: ScheduledJobStepConfig,
+): Promise<void> {
+  if (!hasEnabledGoogleScheduledJobIntegration(step)) return;
+
+  const model = await ctx.db
+    .query("cachedModels")
+    .withIndex("by_modelId", (q) => q.eq("modelId", modelId))
+    .first();
+  if (
+    !model?.hasZdrEndpoint
+    || !isGoogleDataAllowedModel(modelId, model.provider)
+  ) {
+    throw new ConvexError({
+      code: "VALIDATION" as const,
+      message: `Step ${stepNumber}: ${GOOGLE_SCHEDULED_JOB_MODEL_MESSAGE}`,
+    });
+  }
 }
 
 async function validateKnowledgeBaseFileIds(
@@ -170,6 +210,12 @@ async function validateScheduledSteps(
       turnSkillOverrides: step.turnSkillOverrides,
       turnIntegrationOverrides: step.turnIntegrationOverrides,
       modelIds: [resolvedModelId],
+    });
+
+    await assertGoogleScheduledJobModelAllowed(ctx, index + 1, resolvedModelId, {
+      ...step,
+      enabledIntegrations: filtered.enabledIntegrations,
+      turnIntegrationOverrides: filtered.turnIntegrationOverrides,
     });
 
     result.push({

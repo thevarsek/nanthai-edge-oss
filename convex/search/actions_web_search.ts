@@ -116,6 +116,7 @@ async function runWebSearchHandler(
       expandMultiModelGroups: args.expandMultiModelGroups,
       webSearchEnabled: false, // Perplexity already searched; no need for OpenRouter web search
       enabledIntegrations: args.enabledIntegrations,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
       subagentsEnabled: args.subagentsEnabled,
       searchSessionId: args.sessionId,
     });

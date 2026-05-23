@@ -49,6 +49,7 @@ export async function createAutonomousMessageHandler(
     updatedAt: now,
     messageCount: (chat?.messageCount ?? 0) + 1,
     activeBranchLeafId: messageId,
+    activeBranchLeafFocusOrder: undefined,
   });
 
   return messageId;
@@ -79,6 +80,7 @@ export const setChatActiveLeaf = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.chatId, {
       activeBranchLeafId: args.messageId,
+      activeBranchLeafFocusOrder: undefined,
       updatedAt: Date.now(),
     });
   },
@@ -123,6 +125,7 @@ export const deleteMessage = internalMutation({
         };
         if (chat.activeBranchLeafId === msg._id) {
           patch.activeBranchLeafId = msg.parentMessageIds[0];
+          patch.activeBranchLeafFocusOrder = undefined;
         }
         await ctx.db.patch(chat._id, patch);
       }

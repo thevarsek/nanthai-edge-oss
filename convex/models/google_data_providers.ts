@@ -22,12 +22,38 @@ export const GOOGLE_INTEGRATION_IDS = new Set([
   "calendar",
 ]);
 
+/** Return provider identifiers derived from both provider metadata and model slug. */
+export function googleDataProviderIdentifiers(
+  modelId: string | undefined | null,
+  provider: string | undefined | null,
+): Set<string> {
+  const identifiers = new Set<string>();
+  const normalizedProvider = provider?.trim().toLowerCase();
+  if (normalizedProvider) identifiers.add(normalizedProvider);
+
+  const slug = modelId?.split("/")[0]?.trim().toLowerCase();
+  if (slug) identifiers.add(slug);
+
+  return identifiers;
+}
+
 /** Check if a model's provider is allowed for Google Workspace data. */
 export function isGoogleDataAllowedProvider(
   provider: string | undefined | null,
 ): boolean {
   if (!provider) return false;
   return GOOGLE_DATA_ALLOWED_PROVIDERS.has(provider.trim().toLowerCase());
+}
+
+/** Check if a model's provider metadata or OpenRouter slug is allowed for Google Workspace data. */
+export function isGoogleDataAllowedModel(
+  modelId: string | undefined | null,
+  provider: string | undefined | null,
+): boolean {
+  for (const identifier of googleDataProviderIdentifiers(modelId, provider)) {
+    if (GOOGLE_DATA_ALLOWED_PROVIDERS.has(identifier)) return true;
+  }
+  return false;
 }
 
 /** Check if any enabled integrations require Google data protection. */

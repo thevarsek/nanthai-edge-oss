@@ -1,5 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
+
+interface QueuedFollowUp {
+  id: string;
+  chatId: string;
+  text: string;
+}
 
 interface Args {
   chatId: string;
@@ -9,7 +15,7 @@ interface Args {
   attachmentCount: number;
   isUploading: boolean;
   disabled: boolean;
-  onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => void | Promise<void>;
+  onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
   onQueueCommitted: () => void;
   onEditCommitted: (queuedText: string) => void;
@@ -28,17 +34,30 @@ export function useQueuedFollowUp({
   onQueueCommitted,
   onEditCommitted,
 }: Args) {
-  const [queuedFollowUp, setQueuedFollowUp] = useState<{ chatId: string; text: string } | null>(null);
+  const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [queuedActionState, setQueuedActionState] = useState<"idle" | "draining" | "interrupting">("idle");
   const isGeneratingRef = useRef(isGenerating);
-  const activeQueuedFollowUp = queuedFollowUp?.chatId === chatId ? queuedFollowUp.text : null;
+  const chatIdRef = useRef(chatId);
+  const didDrainForCurrentIdleRef = useRef(false);
+  const activeQueuedFollowUps = useMemo(
+    () => queuedFollowUps.filter((queued) => queued.chatId === chatId),
+    [chatId, queuedFollowUps],
+  );
+  const activeQueuedFollowUp = activeQueuedFollowUps[0]?.text ?? null;
 
   useEffect(() => {
     isGeneratingRef.current = isGenerating;
+    if (isGenerating) {
+      didDrainForCurrentIdleRef.current = false;
+    }
   }, [isGenerating]);
 
   useEffect(() => {
-    setQueuedFollowUp((current) => current?.chatId === chatId ? current : null);
+    chatIdRef.current = chatId;
+  }, [chatId]);
+
+  useEffect(() => {
+    setQueuedFollowUps((current) => current.filter((queued) => queued.chatId === chatId));
     setQueuedActionState("idle");
   }, [chatId]);
 
@@ -54,15 +73,19 @@ export function useQueuedFollowUp({
   const queueFollowUp = useCallback(() => {
     const trimmed = text.trim();
     if (!trimmed || disabled || attachmentCount > 0 || isUploading) return;
-    setQueuedFollowUp({ chatId, text: trimmed });
+    setQueuedFollowUps((current) => [
+      ...current,
+      { id: crypto.randomUUID(), chatId, text: trimmed },
+    ]);
     onQueueCommitted();
   }, [attachmentCount, chatId, disabled, isUploading, onQueueCommitted, text]);
 
-  const editQueuedFollowUp = useCallback(() => {
-    if (!activeQueuedFollowUp || disabled) return;
-    onEditCommitted(activeQueuedFollowUp);
-    setQueuedFollowUp(null);
-  }, [activeQueuedFollowUp, disabled, onEditCommitted]);
+  const editQueuedFollowUp = useCallback((id?: string) => {
+    const queued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];
+    if (!queued || disabled) return;
+    onEditCommitted(queued.text);
+    setQueuedFollowUps((current) => current.filter((item) => item.id !== queued.id));
+  }, [activeQueuedFollowUps, disabled, onEditCommitted]);
 
   const waitForGenerationToStop = useCallback(async () => {
     const deadline = Date.now() + 3_000;
@@ -72,55 +95,73 @@ export function useQueuedFollowUp({
     return !isGeneratingRef.current;
   }, []);
 
-  const sendQueuedFollowUp = useCallback(async (queuedText: string) => {
-    await onSend({ text: queuedText, attachments: [] });
+  const sendQueuedFollowUp = useCallback(async (queued: QueuedFollowUp) => {
+    if (chatIdRef.current !== queued.chatId) return false;
+    const result = await onSend({ text: queued.text, attachments: [] });
+    return result !== false;
   }, [onSend]);
 
-  const sendQueuedNow = useCallback(async () => {
-    if (!activeQueuedFollowUp || disabled || queuedActionState !== "idle") return;
-    const nextQueued = { chatId, text: activeQueuedFollowUp };
-    setQueuedFollowUp(null);
+  const sendQueuedNow = useCallback(async (id?: string) => {
+    const nextQueued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];
+    if (!nextQueued || disabled || queuedActionState !== "idle") return;
+    setQueuedFollowUps((current) => current.filter((item) => item.id !== nextQueued.id));
     setQueuedActionState("interrupting");
     try {
       await onCancel();
       const didStop = await waitForGenerationToStop();
       if (!didStop) {
-        setQueuedFollowUp(nextQueued);
+        setQueuedFollowUps((current) => [nextQueued, ...current]);
         return;
       }
-      await sendQueuedFollowUp(nextQueued.text);
+      const didSend = await sendQueuedFollowUp(nextQueued);
+      if (!didSend) {
+        setQueuedFollowUps((current) => [nextQueued, ...current]);
+      }
     } catch {
-      setQueuedFollowUp(nextQueued);
+      if (chatIdRef.current === nextQueued.chatId) {
+        setQueuedFollowUps((current) => [nextQueued, ...current]);
+      }
     } finally {
       setQueuedActionState("idle");
     }
-  }, [activeQueuedFollowUp, chatId, disabled, onCancel, queuedActionState, sendQueuedFollowUp, waitForGenerationToStop]);
+  }, [activeQueuedFollowUps, disabled, onCancel, queuedActionState, sendQueuedFollowUp, waitForGenerationToStop]);
 
   useEffect(() => {
-    if (disabled || isGenerating || !activeQueuedFollowUp || queuedActionState !== "idle") return;
-    const nextQueued = { chatId, text: activeQueuedFollowUp };
-    setQueuedFollowUp(null);
+    const nextQueued = activeQueuedFollowUps[0];
+    if (disabled || isGenerating || !nextQueued || queuedActionState !== "idle") return;
+    if (didDrainForCurrentIdleRef.current) return;
+    didDrainForCurrentIdleRef.current = true;
+    setQueuedFollowUps((current) => current.filter((item) => item.id !== nextQueued.id));
     setQueuedActionState("draining");
     void (async () => {
       try {
-        await sendQueuedFollowUp(nextQueued.text);
+        const didSend = await sendQueuedFollowUp(nextQueued);
+        if (!didSend && chatIdRef.current === nextQueued.chatId) {
+          setQueuedFollowUps((current) => [nextQueued, ...current]);
+        }
       } catch {
-        setQueuedFollowUp((current) => current ?? nextQueued);
+        if (chatIdRef.current === nextQueued.chatId) {
+          setQueuedFollowUps((current) => [nextQueued, ...current]);
+        }
       } finally {
         setQueuedActionState("idle");
       }
     })();
-  }, [activeQueuedFollowUp, chatId, disabled, isGenerating, queuedActionState, sendQueuedFollowUp]);
+  }, [activeQueuedFollowUps, disabled, isGenerating, queuedActionState, sendQueuedFollowUp]);
 
   return {
     queuedFollowUp: activeQueuedFollowUp,
+    queuedFollowUps: activeQueuedFollowUps,
     queuedActionState,
     canQueueMessage,
     queueFollowUp,
     editQueuedFollowUp,
     sendQueuedNow,
-    removeQueuedFollowUp: () => {
-      setQueuedFollowUp((current) => current?.chatId === chatId ? null : current);
+    removeQueuedFollowUp: (id?: string) => {
+      setQueuedFollowUps((current) => current.filter((queued) => {
+        if (queued.chatId !== chatId) return true;
+        return id != null ? queued.id !== id : false;
+      }));
     },
   };
 }

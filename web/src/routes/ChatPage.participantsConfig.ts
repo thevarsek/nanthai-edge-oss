@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Participant } from "@/hooks/useChat";
 import type { ParticipantEntry } from "@/hooks/useParticipants";
 import { Defaults } from "@/lib/constants";
+import { isProviderAllowedForGoogle } from "@/components/shared/ModelPickerShared";
 import {
   DEFAULT_PARAMETER_OVERRIDES,
   buildBaseParticipants,
@@ -45,8 +46,6 @@ interface ChatParticipantsConfigSnapshot {
   googleIntegrationsBlocked: boolean;
   isMultiModel: boolean;
 }
-
-const GOOGLE_ALLOWED_PROVIDERS = new Set(["openai", "anthropic", "google"]);
 
 export function chatParticipantsConfigSnapshot({
   convexParticipants,
@@ -141,7 +140,7 @@ export function googleIntegrationsBlockedForParticipants(
   return participants.some((participant) => {
     const summary = modelSummaries.find((item) => item.modelId === participant.modelId);
     if (!summary) return false;
-    return !summary.hasZdrEndpoint || !GOOGLE_ALLOWED_PROVIDERS.has((summary.provider ?? "").toLowerCase());
+    return !summary.hasZdrEndpoint || !isProviderAllowedForGoogle(summary.modelId, summary.provider);
   });
 }
 

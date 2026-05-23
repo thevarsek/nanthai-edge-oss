@@ -1,4 +1,4 @@
-import { useRef, useMemo, useCallback } from "react";
+import { useRef, useMemo, useCallback, useEffect } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 
@@ -43,6 +43,27 @@ export function usePreferenceBuffer() {
     },
     [upsert],
   );
+
+  useEffect(() => {
+    const flushPending = () => {
+      clearTimeout(timer.current);
+      flush();
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        flushPending();
+      }
+    };
+
+    window.addEventListener("pagehide", flushPending);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", flushPending);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      flushPending();
+    };
+  }, [flush]);
 
   return { updatePreference, updatePreferenceImmediate };
 }

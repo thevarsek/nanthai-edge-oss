@@ -26,7 +26,8 @@ export function EdgeSiteFooter() {
               <div className="flex h-9 w-9 items-center justify-center rounded-lg eborder-06 border ebg-glass-02">
                 <img
                   src="/edge-brand/nanthai_edge_monogram_v2_transp.png"
-                  alt={t("edge_monogram_alt")}
+                  alt=""
+                  aria-hidden="true"
                   className="h-6 w-6 object-contain"
                 />
               </div>

@@ -96,6 +96,7 @@ export function AudioMessageBubble({
               onClick={handleDownload}
               className="p-0.5 rounded hover:opacity-80 text-muted"
               title="Download MP3"
+              aria-label="Download MP3"
             >
               <Download size={13} />
             </button>
@@ -127,6 +128,7 @@ export function AudioMessageBubble({
         {/* Waveform / progress bar */}
         <div className="flex-1 flex flex-col gap-1 min-w-0">
           <div
+            data-testid="audio-progress-bar"
             className="relative h-6 flex items-center cursor-pointer"
             onClick={handleBarClick}
           >

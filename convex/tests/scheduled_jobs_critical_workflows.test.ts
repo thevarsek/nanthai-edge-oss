@@ -299,7 +299,16 @@ test("updateJobInternal validates folders, personas, KB ownership, and reschedul
         if (table === "generatedFiles") return queryChain({ first: { _id: "file_1", userId: "user_1", storageId: "storage_1" } });
         if (table === "fileAttachments") return queryChain({ first: null });
         if (table === "generatedMedia") return queryChain({ first: null });
-        if (table === "cachedModels") return queryChain({ first: { _id: "model_1", supportsTools: true } });
+        if (table === "cachedModels") {
+          return queryChain({
+            first: {
+              _id: "model_1",
+              supportsTools: true,
+              hasZdrEndpoint: true,
+              provider: "openai",
+            },
+          });
+        }
         return queryChain({});
       },
       patch: async (id: string, patch: Record<string, unknown>) => {

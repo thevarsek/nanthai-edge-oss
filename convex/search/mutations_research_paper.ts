@@ -165,6 +165,7 @@ export const startResearchPaper = mutation({
       lastMessagePreview: previewText,
       messageCount: (chat.messageCount ?? 0) + 2,
       activeBranchLeafId: assistantMessageId,
+      activeBranchLeafFocusOrder: undefined,
     });
 
     await ctx.scheduler.runAfter(

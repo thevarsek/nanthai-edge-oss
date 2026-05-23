@@ -267,7 +267,7 @@ function SkillEditorPageContent() {
 
 export function SkillEditorPage() {
   return (
-    <ProGateWrapper feature="Skills">
+    <ProGateWrapper featureId="aiSkills" presentation="page">
       <SkillEditorPageContent />
     </ProGateWrapper>
   );

@@ -63,6 +63,7 @@ export const coreSchemaTables = {
     isPinned: v.optional(v.boolean()),
     pinnedAt: v.optional(v.number()),
     activeBranchLeafId: v.optional(v.id("messages")),
+    activeBranchLeafFocusOrder: v.optional(v.number()),
     lastMessagePreview: v.optional(v.string()),
     lastMessageDate: v.optional(v.number()),
     messageCount: v.optional(v.number()),
@@ -93,8 +94,20 @@ export const coreSchemaTables = {
     .index("by_user", ["userId", "updatedAt"])
     .index("by_user_folder", ["userId", "folderId", "updatedAt"])
     .index("by_user_pinned", ["userId", "isPinned", "pinnedAt"])
+    .index("by_user_source", ["userId", "source", "updatedAt"])
+    .index("by_user_folder_source", ["userId", "folderId", "source", "updatedAt"])
+    .index("by_user_source_pinned", ["userId", "source", "isPinned", "pinnedAt"])
+    .index("by_user_folder_source_pinned", ["userId", "folderId", "source", "isPinned", "pinnedAt"])
     .index("by_user_subagent_override", ["userId", "subagentOverride"])
-    .index("by_source_job", ["sourceJobId"]),
+    .index("by_source_job", ["sourceJobId"])
+    .searchIndex("search_title", {
+      searchField: "title",
+      filterFields: ["userId", "folderId", "source"],
+    })
+    .searchIndex("search_preview", {
+      searchField: "lastMessagePreview",
+      filterFields: ["userId", "folderId", "source"],
+    }),
 
   chatParticipants: defineTable({
     chatId: v.id("chats"),
@@ -794,6 +807,7 @@ export const coreSchemaTables = {
     userId: v.string(),
     openRouterJobId: v.string(),
     pollingUrl: v.string(),
+    outputUploadToken: v.optional(v.string()),
     status: videoJobStatus,
     model: v.string(),
     prompt: v.string(),
@@ -810,6 +824,22 @@ export const coreSchemaTables = {
   })
     .index("by_messageId", ["messageId"])
     .index("by_status_createdAt", ["status", "createdAt"]),
+
+  /** Tracks provider uploads for ZDR video models that cannot return hosted output URLs. */
+  videoOutputUploads: defineTable({
+    token: v.string(),
+    messageId: v.id("messages"),
+    chatId: v.id("chats"),
+    userId: v.string(),
+    status: v.union(v.literal("pending"), v.literal("uploaded")),
+    storageId: v.optional(v.id("_storage")),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    createdAt: v.number(),
+    uploadedAt: v.optional(v.number()),
+  })
+    .index("by_token", ["token"])
+    .index("by_messageId", ["messageId"]),
 
   /** Surfaces generated images and videos in Knowledge Base. */
   generatedMedia: defineTable({

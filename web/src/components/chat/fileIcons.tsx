@@ -15,14 +15,6 @@ export function getFileIconComponent(mimeType?: string | null) {
   if (normalized.startsWith("audio/")) return FileAudio2;
   if (normalized.startsWith("video/")) return FileVideo2;
   if (
-    normalized.includes("pdf") ||
-    normalized.includes("text") ||
-    normalized.includes("word") ||
-    normalized.includes("document")
-  ) {
-    return FileText;
-  }
-  if (
     normalized.includes("sheet") ||
     normalized.includes("excel") ||
     normalized.includes("csv")
@@ -34,6 +26,14 @@ export function getFileIconComponent(mimeType?: string | null) {
     normalized.includes("powerpoint")
   ) {
     return Presentation;
+  }
+  if (
+    normalized.includes("pdf") ||
+    normalized.includes("text") ||
+    normalized.includes("word") ||
+    normalized.includes("document")
+  ) {
+    return FileText;
   }
   if (
     normalized.includes("zip") ||

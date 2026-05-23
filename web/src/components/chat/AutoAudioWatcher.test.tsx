@@ -52,6 +52,7 @@ function renderWatcher(args: {
   );
 
   return {
+    audio,
     play,
     ...render(<AutoAudioWatcher messages={args.messages} isLoading={args.isLoading} />, { wrapper: Wrapper }),
   };
@@ -98,6 +99,38 @@ describe("AutoAudioWatcher", () => {
       isLoading: false,
     });
 
+    rerender(<AutoAudioWatcher messages={[userAudio, assistantWithAudio]} isLoading={false} />);
+
+    expect(play).toHaveBeenCalledWith("a1", "storage_assistant");
+  });
+
+  test("retries autoplay when audio was busy at arrival", () => {
+    const userAudio = message({
+      _id: "u1" as Id<"messages">,
+      role: "user",
+      audioStorageId: "storage_user" as Id<"_storage">,
+    });
+    const assistantPendingAudio = message({
+      _id: "a1" as Id<"messages">,
+      role: "assistant",
+    });
+    const assistantWithAudio = {
+      ...assistantPendingAudio,
+      audioStorageId: "storage_assistant" as Id<"_storage">,
+    };
+    const play = vi.fn(async () => undefined);
+    const { audio, rerender } = renderWatcher({
+      messages: [userAudio, assistantPendingAudio],
+      isLoading: false,
+      play,
+    });
+
+    audio.state.isPlaying = true;
+    rerender(<AutoAudioWatcher messages={[userAudio, assistantWithAudio]} isLoading={false} />);
+
+    expect(play).not.toHaveBeenCalled();
+
+    audio.state.isPlaying = false;
     rerender(<AutoAudioWatcher messages={[userAudio, assistantWithAudio]} isLoading={false} />);
 
     expect(play).toHaveBeenCalledWith("a1", "storage_assistant");

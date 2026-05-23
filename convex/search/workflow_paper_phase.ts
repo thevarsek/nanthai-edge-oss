@@ -78,6 +78,7 @@ export async function runPaperGenerationPhase(
     expandMultiModelGroups: args.expandMultiModelGroups,
     webSearchEnabled: false, // Perplexity already searched
     enabledIntegrations: args.enabledIntegrations,
+    turnIntegrationOverrides: args.turnIntegrationOverrides,
     subagentsEnabled: args.subagentsEnabled,
     disableTools: true,
     searchSessionId: args.sessionId,

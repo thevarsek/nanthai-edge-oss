@@ -52,7 +52,7 @@ import {
   ScopedDocument,
   stripCitationBlock,
 } from "../documents/shared";
-import { hasGoogleIntegrations, isGoogleDataAllowedProvider } from "../models/google_data_providers";
+import { hasGoogleIntegrations, isGoogleDataAllowedModel } from "../models/google_data_providers";
 import { MODEL_IDS } from "../lib/model_constants";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { captureToolRoundArtifacts } from "../tools/artifact_writer";
@@ -683,7 +683,7 @@ export async function generateForParticipant(
       }
       effectiveParams.provider = { zdr: true };
     }
-    if (googleActive && !isGoogleDataAllowedProvider(caps?.provider)) {
+    if (googleActive && !isGoogleDataAllowedModel(participant.modelId, caps?.provider)) {
       throw new ConvexError(
         "This model isn't available for conversations using Google Workspace data. Please select a compatible model.",
       );
@@ -1172,9 +1172,7 @@ export async function generateForParticipant(
     let finalContent = rawFinalContent;
     if (!finalContent && (result.reasoning || writer.totalReasoning)) {
       finalContent = "Model returned reasoning only.";
-    } else if (!finalContent && normalizedImageCandidates.length > 0) {
-      finalContent = "[Generated image]";
-    } else if (!finalContent) {
+    } else if (!finalContent && normalizedImageCandidates.length === 0) {
       finalContent = "[No response received from model]";
     }
 

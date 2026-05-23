@@ -15,6 +15,8 @@ import {
   createChatArgs,
   createMemoryArgs,
   createVideoJobArgs,
+  createVideoOutputUploadSessionArgs,
+  completeVideoOutputUploadArgs,
   finalizeGenerationArgs,
   insertGeneratedMediaArgs,
   markChatCompletionNotifiedArgs,
@@ -58,6 +60,8 @@ import { retryMessageHandler } from "./mutations_retry_handler";
 import {
   createMemoryHandler,
   createVideoJobHandler,
+  createVideoOutputUploadSessionHandler,
+  completeVideoOutputUploadHandler,
   finalizeGenerationHandler,
   insertGeneratedMediaHandler,
   markChatCompletionNotifiedHandler,
@@ -256,6 +260,16 @@ export const createVideoJob = internalMutation({
   args: createVideoJobArgs,
   returns: v.id("videoJobs"),
   handler: createVideoJobHandler,
+});
+
+export const createVideoOutputUploadSession = internalMutation({
+  args: createVideoOutputUploadSessionArgs,
+  handler: createVideoOutputUploadSessionHandler,
+});
+
+export const completeVideoOutputUpload = internalMutation({
+  args: completeVideoOutputUploadArgs,
+  handler: completeVideoOutputUploadHandler,
 });
 
 export const updateVideoJobStatus = internalMutation({

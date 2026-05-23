@@ -7,6 +7,7 @@ import { normalizeMemoryRecord } from "../memory/shared";
 import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
 import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
+import { VIDEO_OUTPUT_UPLOAD_TTL_MS } from "./video_output_upload_policy";
 import {
   deleteStreamingMessageById,
   deleteStreamingMessage,
@@ -1228,6 +1229,7 @@ export interface CreateVideoJobArgs extends Record<string, unknown> {
   userId: string;
   openRouterJobId: string;
   pollingUrl: string;
+  outputUploadToken?: string;
   model: string;
   prompt: string;
   videoConfig?: {
@@ -1242,6 +1244,20 @@ export interface UpdateVideoJobStatusArgs extends Record<string, unknown> {
   videoJobId: Id<"videoJobs">;
   status: "pending" | "in_progress" | "completed" | "failed";
   error?: string;
+}
+
+export interface CreateVideoOutputUploadSessionArgs extends Record<string, unknown> {
+  token: string;
+  messageId: Id<"messages">;
+  chatId: Id<"chats">;
+  userId: string;
+}
+
+export interface CompleteVideoOutputUploadArgs extends Record<string, unknown> {
+  token: string;
+  storageId: Id<"_storage">;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 export interface UpdateVideoJobPollArgs extends Record<string, unknown> {
@@ -1276,12 +1292,47 @@ export async function createVideoJobHandler(
     userId: args.userId,
     openRouterJobId: args.openRouterJobId,
     pollingUrl: args.pollingUrl,
+    outputUploadToken: args.outputUploadToken,
     status: "pending",
     model: args.model,
     prompt: args.prompt,
     videoConfig: args.videoConfig,
     pollCount: 0,
     createdAt: Date.now(),
+  });
+}
+
+export async function createVideoOutputUploadSessionHandler(
+  ctx: MutationCtx,
+  args: CreateVideoOutputUploadSessionArgs,
+): Promise<void> {
+  await ctx.db.insert("videoOutputUploads", {
+    token: args.token,
+    messageId: args.messageId,
+    chatId: args.chatId,
+    userId: args.userId,
+    status: "pending",
+    createdAt: Date.now(),
+  });
+}
+
+export async function completeVideoOutputUploadHandler(
+  ctx: MutationCtx,
+  args: CompleteVideoOutputUploadArgs,
+): Promise<void> {
+  const session = await ctx.db
+    .query("videoOutputUploads")
+    .withIndex("by_token", (q) => q.eq("token", args.token))
+    .first();
+  if (!session) return;
+  if (session.status !== "pending") return;
+  if (Date.now() - session.createdAt > VIDEO_OUTPUT_UPLOAD_TTL_MS) return;
+  await ctx.db.patch(session._id, {
+    status: "uploaded",
+    storageId: args.storageId,
+    mimeType: args.mimeType,
+    sizeBytes: args.sizeBytes,
+    uploadedAt: Date.now(),
   });
 }
 

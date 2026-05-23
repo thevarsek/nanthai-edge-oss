@@ -7,6 +7,8 @@ interface ToggleProps {
   onChange: (value: boolean) => void;
   disabled?: boolean;
   size?: "default" | "small";
+  ariaLabel?: string;
+  ariaLabelledBy?: string;
 }
 
 export function Toggle({
@@ -14,6 +16,8 @@ export function Toggle({
   onChange,
   disabled = false,
   size = "default",
+  ariaLabel,
+  ariaLabelledBy,
 }: ToggleProps) {
   const isSmall = size === "small";
   const trackW = isSmall ? "w-9" : "w-11";
@@ -27,6 +31,8 @@ export function Toggle({
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
+      aria-labelledby={ariaLabelledBy}
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       className={[

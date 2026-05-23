@@ -1,7 +1,7 @@
 // components/chat/MessageBubble.UserMessage.tsx
 // User message bubble — matches iOS MessageBubble.swift + UserMessageActionBar.
 
-import { memo, useState, useCallback } from "react";
+import { memo, useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Copy, CheckCircle, Volume2 } from "lucide-react";
 import type { Message } from "@/hooks/useChat";
@@ -27,19 +27,30 @@ function formatTimestamp(ts: number): string {
 export const UserMessage = memo(function UserMessage({ message }: UserMessageProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
+  const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const audio = useAudioPlaybackContext();
 
   const hasAudio = !!message.audioStorageId;
+  const hasCopyableContent = message.content.trim().length > 0;
   const handlePlayAudio = useCallback(
     () => void audio.play(message._id, message.audioStorageId),
     [audio, message._id, message.audioStorageId],
   );
 
   const handleCopy = useCallback(async () => {
+    if (!hasCopyableContent) return;
     await navigator.clipboard.writeText(message.content);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }, [message.content]);
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    copyResetTimer.current = setTimeout(() => {
+      setCopied(false);
+      copyResetTimer.current = null;
+    }, 2000);
+  }, [hasCopyableContent, message.content]);
+
+  useEffect(() => () => {
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+  }, []);
 
   return (
     <div className="flex flex-col items-end gap-1">
@@ -77,10 +88,11 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
             <Volume2 size={13} />
           </IconButton>
         )}
-        {/* Copy */}
-        <IconButton label={t("copy")} variant="ghost" size="xs" onClick={handleCopy}>
-          {copied ? <CheckCircle size={13} /> : <Copy size={13} />}
-        </IconButton>
+        {hasCopyableContent && (
+          <IconButton label={t("copy")} variant="ghost" size="xs" onClick={handleCopy}>
+            {copied ? <CheckCircle data-testid="copy-success-icon" size={13} /> : <Copy data-testid="copy-icon" size={13} />}
+          </IconButton>
+        )}
       </div>
 
       {/* Timestamp */}

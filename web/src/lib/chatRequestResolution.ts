@@ -160,8 +160,9 @@ export function buildBaseParticipants(args: {
     }));
   }
   if (defaultPersona) {
+    const personaModelId = defaultPersona.modelId?.trim();
     return [{
-      modelId: defaultPersona.modelId ?? selectedModelId,
+      modelId: personaModelId || selectedModelId,
       personaId: defaultPersona._id as Id<"personas">,
       personaName: defaultPersona.displayName ?? null,
       personaEmoji: defaultPersona.avatarEmoji ?? null,

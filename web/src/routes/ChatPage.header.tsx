@@ -4,7 +4,7 @@
 
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Globe, MessageSquare, MessageCircle } from "lucide-react";
+import { ArrowLeft, ChartNetwork, Globe, MessageSquare } from "lucide-react";
 import type { Participant } from "@/hooks/useChat";
 import type { SubagentOverride } from "@/components/chat/ChatSubagentsDrawer";
 import type { Id } from "@convex/_generated/dataModel";
@@ -63,7 +63,7 @@ export function ChatHeader({
   onRename?: () => void;
   searchMode: SearchModeState;
   globeColor: "muted" | "green" | "blue" | "orange";
-  onSetSearchMode: (state: SearchModeState) => void;
+  onSetSearchMode: (state: SearchModeState) => void | Promise<void>;
   isPro?: boolean;
   isMultiModel?: boolean;
   onToggleIdeascape?: () => void;
@@ -196,7 +196,7 @@ export function ChatHeader({
           className="p-1.5 rounded-lg text-[--nanth-muted] hover:text-[--nanth-foreground] hover:bg-white/10 transition-colors"
           title={t("switch_to_ideascape_title")}
         >
-          <MessageCircle size={18} />
+          <ChartNetwork size={18} />
         </button>
       )}
 
@@ -204,7 +204,7 @@ export function ChatHeader({
       {showPanel && (
         <SearchModePanel
           current={searchMode}
-          onSelect={(s) => { onSetSearchMode(s); setShowPanel(false); }}
+          onSelect={onSetSearchMode}
           onClose={() => setShowPanel(false)}
           isPro={!!isPro}
           isMultiModel={!!isMultiModel}

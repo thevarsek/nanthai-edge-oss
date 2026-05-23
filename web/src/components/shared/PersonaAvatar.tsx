@@ -36,7 +36,7 @@ export function PersonaAvatar({
   iconSize = 16,
 }: PersonaAvatarProps) {
   const sharedData = useContext(SharedDataContext);
-  const [didImageFail, setDidImageFail] = useState(false);
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
   const resolvedPersona = !personaId || !sharedData?.personas
     ? null
     : sharedData.personas.find((persona) => persona._id === personaId) ?? null;
@@ -46,13 +46,13 @@ export function PersonaAvatar({
   const resolvedImageUrl = resolvedPersona?.avatarImageUrl ?? personaAvatarImageUrl;
 
   // Tier 1: Avatar image
-  if (resolvedImageUrl && !didImageFail) {
+  if (resolvedImageUrl && failedImageUrl !== resolvedImageUrl) {
     return (
       <img
         src={resolvedImageUrl}
         alt={resolvedName ?? ""}
         className={cn("rounded-full object-cover flex-shrink-0", className)}
-        onError={() => setDidImageFail(true)}
+        onError={() => setFailedImageUrl(resolvedImageUrl)}
       />
     );
   }

@@ -3,8 +3,10 @@ import test from "node:test";
 
 import { ConvexError } from "convex/values";
 import {
+  beginPreferenceWriteSession,
   deleteModelSettings,
   ensureUserPreferences,
+  invalidatePreferenceWriteSession,
   upsertModelSettings,
   upsertPreferences,
 } from "../preferences/mutations";
@@ -106,6 +108,49 @@ test("upsertPreferences stores chat completion notification preference", async (
       chatCompletionNotificationsEnabled: true,
     },
   });
+});
+
+test("preference write epoch rejects stale buffered writes after invalidation", async () => {
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  let prefs: Record<string, unknown> | null = {
+    _id: "prefs_1",
+    userId: "user_1",
+    preferenceWriteEpoch: 0,
+  };
+
+  const ctx = {
+    auth: buildAuth(),
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => (table === "userPreferences" ? prefs : null),
+        }),
+      }),
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        patches.push({ id, patch });
+        prefs = { ...prefs, ...patch };
+      },
+      insert: async () => "prefs_1",
+    },
+  };
+
+  assert.equal(await (beginPreferenceWriteSession as any)._handler(ctx, {}), 0);
+  assert.equal(await (invalidatePreferenceWriteSession as any)._handler(ctx, {}), 1);
+  await assert.rejects(
+    (upsertPreferences as any)._handler(ctx, {
+      expectedPreferenceWriteEpoch: 0,
+      appearanceMode: "dark",
+    }),
+    (error: unknown) =>
+      error instanceof ConvexError && error.data?.code === "STALE_PREFERENCE_WRITE",
+  );
+  await (upsertPreferences as any)._handler(ctx, {
+    expectedPreferenceWriteEpoch: 1,
+    appearanceMode: "dark",
+  });
+
+  assert.equal(patches[0]?.patch.preferenceWriteEpoch, 1);
+  assert.equal(patches[1]?.patch.appearanceMode, "dark");
 });
 
 test("upsertPreferences rejects enabling default subagents for non-Pro users", async () => {

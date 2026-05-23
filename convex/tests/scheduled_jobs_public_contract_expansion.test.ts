@@ -79,6 +79,109 @@ test("createJob stores normalized first step, strips integrations, and schedules
   });
 });
 
+test("createJob rejects Gmail scheduled jobs on models outside Google data allowlist", async () => {
+  await assert.rejects(
+    (createJob as any)._handler({
+      auth: buildAuth(),
+      db: {
+        get: async () => null,
+        query: (table: string) => ({
+          withIndex: () => ({
+            first: async () => {
+              if (table === "purchaseEntitlements") return { _id: "ent_1", status: "active" };
+              if (table === "cachedModels") {
+                return {
+                  _id: "model_1",
+                  modelId: "mistral/mistral-large",
+                  provider: "mistral",
+                  supportsTools: true,
+                  hasZdrEndpoint: true,
+                };
+              }
+              return null;
+            },
+          }),
+        }),
+      },
+      scheduler: {},
+    }, {
+      name: "Gmail Digest",
+      prompt: "Summarize inbox",
+      modelId: "mistral/mistral-large",
+      enabledIntegrations: ["gmail"],
+      recurrence: { type: "manual" },
+    }),
+    (error: unknown) =>
+      error instanceof ConvexError &&
+      typeof error.data === "object" &&
+      error.data !== null &&
+      "message" in error.data &&
+      String(error.data.message).includes("Google integrations"),
+  );
+});
+
+test("createJob uses structured integration overrides as the effective scheduled job integration state", async () => {
+  const inserted: Array<Record<string, unknown>> = [];
+  const ctx = {
+    auth: buildAuth(),
+    db: {
+      get: async () => null,
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => {
+            if (table === "purchaseEntitlements") return { _id: "ent_1", status: "active" };
+            if (table === "cachedModels") {
+              return {
+                _id: "model_1",
+                modelId: "mistral/mistral-large",
+                provider: "mistral",
+                supportsTools: true,
+                hasZdrEndpoint: true,
+              };
+            }
+            return null;
+          },
+        }),
+      }),
+      insert: async (_table: string, value: Record<string, unknown>) => {
+        inserted.push(value);
+        return "job_1";
+      },
+      patch: async () => undefined,
+    },
+    scheduler: {},
+  } as any;
+
+  await (createJob as any)._handler(ctx, {
+    name: "Gmail disabled",
+    prompt: "Summarize inbox",
+    modelId: "mistral/mistral-large",
+    enabledIntegrations: ["gmail"],
+    turnIntegrationOverrides: [{ integrationId: "gmail", enabled: false }],
+    recurrence: { type: "manual" },
+  });
+
+  assert.deepEqual(inserted[0]?.enabledIntegrations, ["gmail"]);
+  assert.deepEqual(inserted[0]?.turnIntegrationOverrides, [{ integrationId: "gmail", enabled: false }]);
+
+  await assert.rejects(
+    (createJob as any)._handler(ctx, {
+      name: "Gmail enabled",
+      prompt: "Summarize inbox",
+      modelId: "mistral/mistral-large",
+      enabledIntegrations: ["gmail"],
+      turnIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
+      recurrence: { type: "manual" },
+    }),
+    (error: unknown) =>
+      error instanceof ConvexError &&
+      typeof error.data === "object" &&
+      error.data !== null &&
+      "message" in error.data &&
+      String(error.data.message).includes("Google integrations"),
+  );
+});
+
 test("updateJob reschedules on timezone-only change and clears explicit null persona", async () => {
   const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
   const cancelled: string[] = [];

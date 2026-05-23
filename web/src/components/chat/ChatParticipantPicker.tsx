@@ -220,11 +220,21 @@ export function ChatParticipantPicker({
   const handleWizardSelect = useCallback(
     (modelId: string) => {
       if (!atLimit && !selectedModelIds.has(modelId)) {
+        if (lockedModality) {
+          const model = models.find((entry) => entry.modelId === modelId);
+          if (model) {
+            const newModality = getModelOutputModality(model);
+            if (newModality !== lockedModality) {
+              setPendingSwitch({ kind: "model", modelId, newModality });
+              return;
+            }
+          }
+        }
         void onAdd({ chatId, modelId });
       }
       setShowWizard(false);
     },
-    [chatId, atLimit, onAdd, selectedModelIds],
+    [chatId, atLimit, lockedModality, models, onAdd, selectedModelIds],
   );
 
   const handleRemove = useCallback(
@@ -279,6 +289,7 @@ export function ChatParticipantPicker({
         }
       }
     }
+    setShowWizard(false);
     setPendingSwitch(null);
   }, [pendingSwitch, participants, models, onRemove, onAdd, onSetParticipants, chatId]);
 
@@ -371,6 +382,7 @@ export function ChatParticipantPicker({
                   modelZdrMap={modelZdrMap}
                   googleIntegrationsActive={googleIntegrationsActive}
                   modelProviderMap={modelProviderMap}
+                  fallbackModelId={Defaults.model}
                 />
               ))}
             </div>

@@ -36,6 +36,7 @@ const FAST_POLL_INTERVAL_MS = 15_000; // 15s for first 4 polls
 const SLOW_POLL_INTERVAL_MS = 30_000; // 30s after
 const FAST_POLL_COUNT = 4;
 const MAX_POLL_COUNT = 40; // ~18 min total
+const VIDEO_OUTPUT_UPLOAD_PATH = "/video-output-upload";
 
 // -- Helpers ------------------------------------------------------------------
 
@@ -90,6 +91,30 @@ export function snapToSupportedResolution(
   if (supported.length === 0) return requested;
   if (supported.includes(requested)) return requested;
   return supported[0]; // fallback to first supported
+}
+
+export function modelRequiresOutputUploadUrl(modelId: string): boolean {
+  const normalized = modelId.toLowerCase();
+  return normalized.startsWith("x-ai/grok-imagine-video");
+}
+
+export function siteUrlForVideoOutputUploads(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit = env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
+  if (explicit) return explicit;
+
+  const convexUrl = env.CONVEX_URL?.trim().replace(/\/$/, "");
+  if (convexUrl?.endsWith(".convex.cloud")) {
+    return convexUrl.replace(".convex.cloud", ".convex.site");
+  }
+
+  throw new Error("CONVEX_SITE_URL must be set to use Grok Imagine video output uploads.");
+}
+
+export function buildVideoOutputUploadUrl(token: string, env: NodeJS.ProcessEnv = process.env): string {
+  const siteUrl = siteUrlForVideoOutputUploads(env);
+  const url = new URL(VIDEO_OUTPUT_UPLOAD_PATH, `${siteUrl}/`);
+  url.searchParams.set("token", token);
+  return url.toString();
 }
 
 // -- Types --------------------------------------------------------------------
@@ -243,6 +268,19 @@ export async function submitVideoGenerationHandler(
       aspect_ratio: finalAspectRatio,
       generate_audio: vc?.generateAudio ?? true,
     };
+    let outputUploadToken: string | undefined;
+    if (modelRequiresOutputUploadUrl(participant.modelId)) {
+      outputUploadToken = crypto.randomUUID();
+      await ctx.runMutation(internal.chat.mutations.createVideoOutputUploadSession, {
+        token: outputUploadToken,
+        messageId: participant.messageId,
+        chatId,
+        userId,
+      });
+      request.output = {
+        upload_url: buildVideoOutputUploadUrl(outputUploadToken),
+      };
+    }
     // Only send resolution if explicitly provided; snap to supported if needed
     if (vc?.resolution) {
       const finalResolution = videoCaps?.supportedResolutions?.length
@@ -282,6 +320,7 @@ export async function submitVideoGenerationHandler(
         userId,
         openRouterJobId: submission.id,
         pollingUrl: submission.polling_url,
+        outputUploadToken,
         model: participant.modelId,
         prompt: userMessage.content,
         videoConfig: vc ? {
@@ -409,7 +448,10 @@ export async function pollVideoGenerationHandler(
 
     // 5. Handle terminal states
     if (pollResult.status === "completed") {
-      await handleVideoCompleted(ctx, args, pollResult, apiKey);
+      await handleVideoCompleted(ctx, args, pollResult, apiKey, {
+        outputUploadToken: videoJob.outputUploadToken,
+        pollCount: newPollCount,
+      });
       return;
     }
 
@@ -526,12 +568,43 @@ async function handleVideoCompleted(
   args: PollVideoGenerationArgs,
   pollResult: { unsigned_urls?: string[]; usage?: { cost?: number; is_byok?: boolean }; generation_id?: string },
   apiKey: string,
+  videoJob: { outputUploadToken?: string; pollCount: number },
 ): Promise<void> {
   const { chatId, messageId, jobId, userId } = args;
 
   const contentUrl = pollResult.unsigned_urls?.[0];
-  if (!contentUrl) {
-    const errorMsg = "Video completed but no content URL returned";
+  let storageId: Id<"_storage"> | undefined;
+  let storedMimeType = "video/mp4";
+  let storedSizeBytes: number | undefined;
+
+  if (contentUrl) {
+    const videoData = await downloadVideoContent(apiKey, contentUrl);
+    const blob = new Blob([videoData], { type: storedMimeType });
+    storageId = await ctx.storage.store(blob);
+    storedSizeBytes = videoData.byteLength;
+  } else if (videoJob.outputUploadToken) {
+    const upload = await ctx.runQuery(
+      internal.chat.queries.getVideoOutputUploadByToken,
+      { token: videoJob.outputUploadToken },
+    );
+    if (upload?.storageId) {
+      storageId = upload.storageId;
+      storedMimeType = upload.mimeType ?? storedMimeType;
+      storedSizeBytes = upload.sizeBytes;
+    } else if (videoJob.pollCount < MAX_POLL_COUNT) {
+      await ctx.scheduler.runAfter(
+        SLOW_POLL_INTERVAL_MS,
+        internal.chat.actions.pollVideoGeneration,
+        args,
+      );
+      return;
+    }
+  }
+
+  if (!storageId) {
+    const errorMsg = videoJob.outputUploadToken
+      ? "Video completed but provider upload did not arrive"
+      : "Video completed but no content URL returned";
     // Mark the videoJob as failed — OpenRouter said "completed" but gave no URL
     await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
       videoJobId: args.videoJobId,
@@ -561,14 +634,6 @@ async function handleVideoCompleted(
     return;
   }
 
-  // 1. Download the video
-  const videoData = await downloadVideoContent(apiKey, contentUrl);
-
-  // 2. Store in Convex _storage
-  const blob = new Blob([videoData], { type: "video/mp4" });
-  const storageId = await ctx.storage.store(blob);
-
-  // 3. Get a serving URL for the video
   const videoUrl = await ctx.storage.getUrl(storageId);
   if (!videoUrl) {
     const errorMsg = "Failed to get storage URL for video";
@@ -637,8 +702,8 @@ async function handleVideoCompleted(
     messageId,
     storageId,
     type: "video",
-    mimeType: "video/mp4",
-    sizeBytes: videoData.byteLength,
+    mimeType: storedMimeType,
+    sizeBytes: storedSizeBytes,
   });
 
   // 8. Finalize the generation group

@@ -38,6 +38,7 @@ export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
   const audio = useAudioPlaybackContext();
   // Track which audioStorageIds we've already seen to detect new arrivals.
   const seenAudioRef = useRef<Set<string>>(new Set());
+  const pendingAudioRef = useRef<Set<string>>(new Set());
   // Skip auto-play on initial mount to avoid replaying old audio.
   const mountedRef = useRef(false);
 
@@ -63,18 +64,23 @@ export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
         isLyriaMusic(m)
       ) continue;
 
-      // Mark as seen regardless of whether we auto-play.
-      seenAudioRef.current.add(m._id);
-
       // Check if the preceding user message was audio-based.
       const idx = messages.indexOf(m);
       const prevUser = messages.slice(0, idx).reverse().find((pm) => pm.role === "user");
-      if (!prevUser || !isAudioUserMessage(prevUser)) continue;
+      if (!prevUser || !isAudioUserMessage(prevUser)) {
+        seenAudioRef.current.add(m._id);
+        continue;
+      }
 
       // Don't interrupt an already-playing message.
-      if (audio.state.isPlaying || audio.state.isLoading) continue;
+      if (audio.state.isPlaying || audio.state.isLoading) {
+        pendingAudioRef.current.add(m._id);
+        continue;
+      }
 
       // Auto-play this newly-generated TTS audio.
+      seenAudioRef.current.add(m._id);
+      pendingAudioRef.current.delete(m._id);
       void audio.play(m._id, m.audioStorageId as Id<"_storage">);
       break; // Only auto-play one at a time.
     }

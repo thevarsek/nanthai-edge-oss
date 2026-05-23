@@ -21,6 +21,7 @@ export interface PipelineArgs extends Record<string, unknown> {
   includeReasoning?: boolean;
   reasoningEffort?: string;
   enabledIntegrations?: string[];
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
 }
 

@@ -26,11 +26,18 @@ function googlePickerAppId(): string {
   return import.meta.env.VITE_GOOGLE_PICKER_APP_ID ?? import.meta.env.VITE_GOOGLE_PROJECT_NUMBER ?? "";
 }
 
-function redirectToCallback(callbackScheme: string, fileIds: string[], state?: string | null) {
+function sanitizedMobilePickerUrl(pathname: string, search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete("access_token");
+  const nextSearch = params.toString();
+  return `${pathname}${nextSearch ? `?${nextSearch}` : ""}`;
+}
+
+function redirectToCallback(callbackScheme: string, fileIds: string[], state?: string | null, code?: string | null) {
   const isAndroid = /Android/i.test(window.navigator.userAgent);
   window.location.href = isAndroid
-    ? androidIntentCallbackUrl(callbackScheme, fileIds, state)
-    : callbackUrl(callbackScheme, fileIds, state);
+    ? androidIntentCallbackUrl(callbackScheme, fileIds, state, code)
+    : callbackUrl(callbackScheme, fileIds, state, code);
 }
 
 export function MobileDrivePickerPage() {
@@ -41,19 +48,39 @@ export function MobileDrivePickerPage() {
     const callbackScheme = safeCallbackScheme(query.get("callback_scheme") ?? params.get("callback_scheme"));
     const queryFileIds = pickedFileIds(query);
     const selectedFileIds = queryFileIds.length > 0 ? queryFileIds : pickedFileIds(params);
+    const accessToken = params.get("access_token") ?? "";
+    if (accessToken && window.location.hash) {
+      window.history.replaceState(
+        null,
+        "",
+        sanitizedMobilePickerUrl(window.location.pathname, window.location.search),
+      );
+    }
     return {
-      accessToken: params.get("access_token") ?? query.get("access_token") ?? "",
+      accessToken,
       appId: params.get("app_id") ?? query.get("app_id") ?? googlePickerAppId(),
       developerKey: params.get("developer_key") ?? query.get("developer_key") ?? googlePickerDeveloperKey(),
       callbackScheme,
       selectedFileIds,
       state: query.get("state") ?? params.get("state"),
+      code: query.get("code") ?? params.get("code"),
       error: query.get("error"),
     };
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    const timeoutIds = new Set<number>();
+    const scheduleFallbackRedirect = () => {
+      const timeoutId = window.setTimeout(() => {
+        timeoutIds.delete(timeoutId);
+        if (!cancelled) {
+          redirectToCallback(config.callbackScheme, [], config.state);
+        }
+      }, 500);
+      timeoutIds.add(timeoutId);
+    };
+
     void (async () => {
       if (config.error) {
         redirectToCallback(config.callbackScheme, [], config.state);
@@ -64,12 +91,13 @@ export function MobileDrivePickerPage() {
           config.callbackScheme,
           config.selectedFileIds,
           config.state,
+          config.code,
         );
         return;
       }
       if (!config.accessToken || !config.appId || !config.developerKey) {
         setMessage("Google Drive Picker is not configured.");
-        window.setTimeout(() => redirectToCallback(config.callbackScheme, [], config.state), 500);
+        scheduleFallbackRedirect();
         return;
       }
       try {
@@ -84,12 +112,14 @@ export function MobileDrivePickerPage() {
       } catch {
         if (!cancelled) {
           setMessage("Failed to open Google Drive Picker.");
-          window.setTimeout(() => redirectToCallback(config.callbackScheme, [], config.state), 500);
+          scheduleFallbackRedirect();
         }
       }
     })();
     return () => {
       cancelled = true;
+      timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+      timeoutIds.clear();
     };
   }, [config]);
 

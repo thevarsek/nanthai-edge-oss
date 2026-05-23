@@ -93,6 +93,7 @@ export function toneForStatus(status: string | undefined | null): SemanticTone {
       return "locked";
     case "planning":
     case "waiting_to_resume":
+    case "waiting_continuation":
       return "info";
     default:
       return "locked";

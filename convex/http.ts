@@ -7,10 +7,77 @@
 import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
+import {
+  isAllowedVideoUploadMimeType,
+  MAX_VIDEO_OUTPUT_UPLOAD_BYTES,
+  VIDEO_OUTPUT_UPLOAD_TTL_MS,
+} from "./chat/video_output_upload_policy";
 import { stripeWebhook } from "./stripe/webhook";
 import { triggerScheduledJob } from "./scheduledJobs/http";
 
 const http = httpRouter();
+
+async function handleVideoOutputUpload(ctx: any, request: Request): Promise<Response> {
+  const url = new URL(request.url);
+  const token = url.searchParams.get("token");
+  if (!token) {
+    return new Response("Missing token parameter", { status: 400 });
+  }
+
+  const session = await ctx.runQuery(
+    internal.chat.queries.getVideoOutputUploadByToken,
+    { token },
+  );
+  if (!session) {
+    return new Response("Invalid upload token", { status: 404 });
+  }
+  if (session.status !== "pending") {
+    return new Response("Upload token already used", { status: 409 });
+  }
+  if (Date.now() - session.createdAt > VIDEO_OUTPUT_UPLOAD_TTL_MS) {
+    return new Response("Upload token expired", { status: 410 });
+  }
+
+  const contentLength = request.headers.get("Content-Length");
+  if (contentLength && Number(contentLength) > MAX_VIDEO_OUTPUT_UPLOAD_BYTES) {
+    return new Response("Upload too large", { status: 413 });
+  }
+
+  const mimeType = request.headers.get("Content-Type") ?? "video/mp4";
+  if (!isAllowedVideoUploadMimeType(mimeType)) {
+    return new Response("Unsupported media type", { status: 415 });
+  }
+  const blob = await request.blob();
+  if (blob.size === 0) {
+    return new Response("Empty upload", { status: 400 });
+  }
+  if (blob.size > MAX_VIDEO_OUTPUT_UPLOAD_BYTES) {
+    return new Response("Upload too large", { status: 413 });
+  }
+
+  const storageId = await ctx.storage.store(new Blob([blob], { type: mimeType }));
+  await ctx.runMutation(internal.chat.mutations.completeVideoOutputUpload, {
+    token,
+    storageId,
+    mimeType,
+    sizeBytes: blob.size,
+  });
+
+  return Response.json({ storageId });
+}
+
+http.route({
+  path: "/video-output-upload",
+  method: "POST",
+  handler: httpAction(handleVideoOutputUpload),
+});
+
+http.route({
+  path: "/video-output-upload",
+  method: "PUT",
+  handler: httpAction(handleVideoOutputUpload),
+});
 
 // ---------------------------------------------------------------------------
 // GET /download?storageId=...&filename=...

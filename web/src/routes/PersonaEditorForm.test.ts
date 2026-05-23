@@ -1,11 +1,33 @@
-import { describe, expect, it } from "vitest";
-import { cycleSkillOverride } from "./PersonaEditorForm";
+import { expect, test } from "vitest";
 
-describe("PersonaEditorForm helpers", () => {
-  it("cycles skill overrides through always, available, blocked, inherited", () => {
-    expect(cycleSkillOverride(undefined)).toBe("always");
-    expect(cycleSkillOverride("always")).toBe("available");
-    expect(cycleSkillOverride("available")).toBe("never");
-    expect(cycleSkillOverride("never")).toBeUndefined();
+import { buildPersonaMutationPayload, defaultForm } from "./PersonaEditorForm";
+
+test("persona update payload sends explicit nulls for cleared optional fields", () => {
+  const form = {
+    ...defaultForm(),
+    displayName: " Researcher ",
+    systemPrompt: " Be precise ",
+    modelId: "openai/gpt-5",
+    personaDescription: "",
+    avatarEmoji: "",
+    temperatureEnabled: false,
+    temperature: "0.4",
+    maxTokensEnabled: false,
+    maxTokens: "4096",
+    includeReasoningEnabled: false,
+    includeReasoning: true,
+    reasoningEffortEnabled: true,
+    reasoningEffort: "high" as const,
+  };
+
+  expect(buildPersonaMutationPayload(form, undefined, false)).toMatchObject({
+    displayName: "Researcher",
+    systemPrompt: "Be precise",
+    personaDescription: null,
+    avatarEmoji: null,
+    temperature: null,
+    maxTokens: null,
+    includeReasoning: null,
+    reasoningEffort: null,
   });
 });

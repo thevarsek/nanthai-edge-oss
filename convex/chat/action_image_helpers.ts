@@ -241,7 +241,7 @@ export async function persistGeneratedImageUrlsWithTracking(
       const storageId = await ctx.storage.store(blob);
       const storageUrl = await ctx.storage.getUrl(storageId);
       if (storageUrl) {
-        persisted.push(storageUrl);
+        persisted.push(mimeType === "image/svg+xml" && parsedDataUrl ? trimmed : storageUrl);
         stored.push({ storageId, mimeType, sizeBytes: inlineBytes.length });
       }
     } catch {

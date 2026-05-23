@@ -11,6 +11,7 @@ import {
   markConnectionExpired as markGoogleConnectionExpired,
   upsertConnection as upsertGoogleConnection,
 } from "../oauth/google";
+import { exchangeGoogleOnePickCode } from "../oauth/google_onepick";
 import {
   disconnectMicrosoft,
   exchangeMicrosoftCode,
@@ -89,6 +90,64 @@ test("exchangeGoogleCode uses the web client config and stores profile metadata"
     assert.equal(mutations[0]?.displayName, "User Example");
     assert.deepEqual(mutations[0]?.scopes, [
       "https://www.googleapis.com/auth/drive.file",
+      "openid",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
+});
+
+test("exchangeGoogleOnePickCode uses web client secret without PKCE verifier", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const requests: Array<{ url: string; init: RequestInit | undefined }> = [];
+  const mutations: Record<string, unknown>[] = [];
+
+  try {
+    process.env.GOOGLE_CLIENT_ID = "native_client";
+    process.env.GOOGLE_WEB_CLIENT_ID = "web_client";
+    process.env.GOOGLE_WEB_CLIENT_SECRET = "web_secret";
+
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      requests.push({ url: String(url), init });
+      if (String(url).includes("/token")) {
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: "access_onepick",
+            expires_in: 3600,
+            scope: "https://www.googleapis.com/auth/drive.file",
+          }),
+        } as Response;
+      }
+      return {
+        ok: true,
+        json: async () => ({ email: "user@example.com", name: "User Example" }),
+      } as Response;
+    }) as typeof fetch;
+
+    const result = await (exchangeGoogleOnePickCode as any)._handler({
+      auth: buildAuth(),
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {
+      code: "code_1",
+      redirectUri: "https://nanthai.tech/mobile-drive-picker",
+    });
+
+    const tokenBody = new URLSearchParams(String(requests[0]?.init?.body ?? ""));
+    assert.deepEqual(result, { success: true, email: "user@example.com" });
+    assert.equal(tokenBody.get("client_id"), "web_client");
+    assert.equal(tokenBody.get("client_secret"), "web_secret");
+    assert.equal(tokenBody.get("code_verifier"), null);
+    assert.equal(mutations[0]?.accessToken, "access_onepick");
+    assert.equal(mutations[0]?.refreshToken, "");
+    assert.deepEqual(mutations[0]?.scopes, [
+      "https://www.googleapis.com/auth/drive.file",
+      "https://www.googleapis.com/auth/userinfo.email",
+      "https://www.googleapis.com/auth/userinfo.profile",
       "openid",
     ]);
   } finally {

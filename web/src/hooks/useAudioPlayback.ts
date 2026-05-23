@@ -28,13 +28,18 @@ export function useAudioPlayback(defaultSpeed = 1) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [speed, setSpeed] = useState(defaultSpeed);
+  const [speedOverride, setSpeedOverride] = useState<number | null>(null);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const speed = speedOverride ?? defaultSpeed;
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const pollCountRef = useRef(0);
+
+  useEffect(() => {
+    if (speedOverride == null && audioRef.current) audioRef.current.playbackRate = defaultSpeed;
+  }, [defaultSpeed, speedOverride]);
 
   const requestAudioGeneration = useMutation(api.chat.mutations.requestAudioGeneration);
   // Reactive query — re-runs when the message's audioStorageId changes on the backend.
@@ -155,13 +160,14 @@ export function useAudioPlayback(defaultSpeed = 1) {
   }, [cleanup]);
 
   const cycleSpeed = useCallback(() => {
-    setSpeed((prev) => {
-      const idx = SPEEDS.indexOf(prev as typeof SPEEDS[number]);
+    setSpeedOverride((prev) => {
+      const current = prev ?? defaultSpeed;
+      const idx = SPEEDS.indexOf(current as typeof SPEEDS[number]);
       const next = SPEEDS[(idx + 1) % SPEEDS.length];
       if (audioRef.current) audioRef.current.playbackRate = next;
       return next;
     });
-  }, []);
+  }, [defaultSpeed]);
 
   const seek = useCallback((fraction: number) => {
     const a = audioRef.current;

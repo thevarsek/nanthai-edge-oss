@@ -129,6 +129,7 @@ test("updateHandler normalizes fields and refreshes embeddings", async () => {
     scopeType: "allPersonas",
     personaIds: ["persona_new"],
     tags: [" alpha ", " ", "beta"],
+    isPinned: true,
   });
 
   assert.deepEqual(deleted, ["embedding_1"]);
@@ -137,6 +138,7 @@ test("updateHandler normalizes fields and refreshes embeddings", async () => {
   assert.equal(patches[0]?.patch.scopeType, "allPersonas");
   assert.deepEqual(patches[0]?.patch.personaIds, []);
   assert.deepEqual(patches[0]?.patch.tags, ["alpha", "beta"]);
+  assert.equal(patches[0]?.patch.isPinned, true);
   assert.deepEqual(scheduled, [{
     memoryId: "memory_1",
     content: "User prefers concise bullet points.",

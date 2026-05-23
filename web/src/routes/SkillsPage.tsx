@@ -218,7 +218,7 @@ function SkillsPageContent() {
 
 export function SkillsPage() {
   return (
-    <ProGateWrapper feature="Skills">
+    <ProGateWrapper featureId="aiSkills" presentation="page">
       <SkillsPageContent />
     </ProGateWrapper>
   );

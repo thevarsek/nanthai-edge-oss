@@ -19,6 +19,7 @@ import {
 } from "./PersonaEditorHelpers";
 import {
   cycleSkillOverride,
+  buildPersonaMutationPayload,
   defaultForm,
   integrationSetToArray,
   type FormState,
@@ -41,8 +42,6 @@ export function PersonaEditorPage() {
 
   const createPersona = useMutation(api.personas.mutations.create);
   const updatePersona = useMutation(api.personas.mutations.update);
-  const setPersonaSkillOverrides = useMutation(api.skills.mutations.setPersonaSkillOverrides);
-  const setPersonaIntegrationOverrides = useMutation(api.skills.mutations.setPersonaIntegrationOverrides);
   const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
 
   const [form, setForm] = useState<FormState>(defaultForm);
@@ -53,6 +52,7 @@ export function PersonaEditorPage() {
   const [didLoad, setDidLoad] = useState(false);
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarImageRemoved, setAvatarImageRemoved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelSummaries = useModelSummaries();
 
@@ -115,6 +115,7 @@ export function PersonaEditorPage() {
       integrationOverrides,
     });
     if (existingPersona.avatarImageUrl) setAvatarPreview(existingPersona.avatarImageUrl);
+    setAvatarImageRemoved(false);
     setDidLoad(true);
   }, [existingPersona, didLoad, isNew, navigate]);
 
@@ -195,6 +196,7 @@ export function PersonaEditorPage() {
     if (!file) return;
     setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
+    setAvatarImageRemoved(false);
   }, []);
 
   // ── Save ───────────────────────────────────────────────────────────────
@@ -218,21 +220,7 @@ export function PersonaEditorPage() {
         avatarImageStorageId = storageId;
       }
 
-      const payload = {
-        displayName: form.displayName.trim(),
-        personaDescription: form.personaDescription.trim() || undefined,
-        systemPrompt: form.systemPrompt.trim(),
-        modelId: form.modelId || undefined,
-        temperature: form.temperatureEnabled && form.temperature ? parseFloat(form.temperature) : undefined,
-        maxTokens: form.maxTokensEnabled && form.maxTokens ? parseInt(form.maxTokens, 10) : undefined,
-        includeReasoning: form.includeReasoningEnabled ? form.includeReasoning : undefined,
-        reasoningEffort: form.includeReasoningEnabled && form.includeReasoning && form.reasoningEffortEnabled
-          ? form.reasoningEffort : undefined,
-        avatarEmoji: form.avatarEmoji || undefined,
-        avatarColor: form.avatarColor || undefined,
-        isDefault: form.isDefault,
-        ...(avatarImageStorageId !== undefined ? { avatarImageStorageId } : {}),
-      };
+      const payload = buildPersonaMutationPayload(form, avatarImageStorageId, avatarImageRemoved);
 
       let savedPersonaId: Id<"personas">;
       if (isNew) {
@@ -242,27 +230,13 @@ export function PersonaEditorPage() {
         await updatePersona({ personaId: savedPersonaId, ...payload });
       }
 
-      await setPersonaSkillOverrides({
-        personaId: savedPersonaId,
-        skillOverrides: Array.from(form.skillOverrides.entries()).map(([skillId, state]) => ({
-          skillId: skillId as Id<"skills">,
-          state,
-        })),
-      });
-      await setPersonaIntegrationOverrides({
-        personaId: savedPersonaId,
-        integrationOverrides: Array.from(form.integrationOverrides.entries()).map(([integrationId, enabled]) => ({
-          integrationId,
-          enabled,
-        })),
-      });
       navigate("/app/personas");
     } catch (err) {
       setError(convexErrorMessage(err, t("persona_save_failed")));
     } finally {
       setIsSaving(false);
     }
-  }, [form, avatarFile, isNew, personaId, createPersona, updatePersona, setPersonaSkillOverrides, setPersonaIntegrationOverrides, createUploadUrl, navigate, t, toolCapabilityError]);
+  }, [form, avatarFile, avatarImageRemoved, isNew, personaId, createPersona, updatePersona, createUploadUrl, navigate, t, toolCapabilityError]);
 
   // ── Loading state ──────────────────────────────────────────────────────
   if (!isNew && existingPersona === undefined) {
@@ -375,6 +349,7 @@ export function PersonaEditorPage() {
                   setField("avatarEmoji", e);
                   setAvatarPreview(null);
                   setAvatarFile(null);
+                  setAvatarImageRemoved(!!existingPersona?.avatarImageUrl);
                 }}
                 onClose={() => setShowEmojiPicker(false)}
               />
@@ -399,6 +374,7 @@ export function PersonaEditorPage() {
                 setField("avatarEmoji", "");
                 setAvatarFile(null);
                 setAvatarPreview(null);
+                setAvatarImageRemoved(!!existingPersona?.avatarImageUrl);
               }}
               className="w-full px-4 py-3 hover:bg-surface-3 transition-colors text-left text-sm text-red-400"
             >

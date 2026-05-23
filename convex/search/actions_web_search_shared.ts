@@ -2,6 +2,7 @@ import { v, type PropertyValidators } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
+import { integrationOverrideEntry } from "../schema_validators";
 
 export const runWebSearchArgs = {
   sessionId: v.id("searchSessions"),
@@ -25,6 +26,7 @@ export const runWebSearchArgs = {
   cachedSearchContext: v.optional(v.any()),
   // M10: Tool/integration config so post-search synthesis can use tools
   enabledIntegrations: v.optional(v.array(v.string())),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
 } satisfies PropertyValidators;
 
@@ -47,6 +49,7 @@ export interface WebSearchActionArgs extends Record<string, unknown> {
   reasoningEffort?: string;
   cachedSearchContext?: unknown;
   enabledIntegrations?: string[];
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
 }
 

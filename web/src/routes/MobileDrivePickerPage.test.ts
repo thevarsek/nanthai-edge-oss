@@ -19,8 +19,8 @@ test("pickedFileIds accepts all callback key variants and trims blanks", () => {
 
 test("callbackUrl preserves state for success and cancel callbacks", () => {
   expect(
-    callbackUrl("nanthai-edge", ["file_1", "file_2"], "state_1"),
-  ).toBe("nanthai-edge://drive-picker?fileIds=file_1%2Cfile_2&state=state_1");
+    callbackUrl("nanthai-edge", ["file_1", "file_2"], "state_1", "code_1"),
+  ).toBe("nanthai-edge://drive-picker?fileIds=file_1%2Cfile_2&state=state_1&code=code_1");
   expect(
     callbackUrl("nanthai-edge", [], "state_1"),
   ).toBe("nanthai-edge://drive-picker?fileIds=&state=state_1");
@@ -34,6 +34,6 @@ test("safeCallbackScheme allowlists the native callback scheme", () => {
 
 test("androidIntentCallbackUrl targets the native Android package", () => {
   expect(
-    androidIntentCallbackUrl("nanthai-edge", ["file_1"], "state_1"),
-  ).toBe("intent://drive-picker?fileIds=file_1&state=state_1#Intent;scheme=nanthai-edge;package=com.nanthai.edge;end");
+    androidIntentCallbackUrl("nanthai-edge", ["file_1"], "state_1", "code_1"),
+  ).toBe("intent://drive-picker?fileIds=file_1&state=state_1&code=code_1#Intent;scheme=nanthai-edge;package=com.nanthai.edge;end");
 });

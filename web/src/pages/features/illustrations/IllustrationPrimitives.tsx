@@ -323,7 +323,7 @@ export function MockProviderAvatar({
       style={{
         width: size,
         height: size,
-        backgroundColor: `${color}22`,
+        backgroundColor: `color-mix(in srgb, ${color} 13%, transparent)`,
         color: color,
         fontSize: size * 0.38,
       }}

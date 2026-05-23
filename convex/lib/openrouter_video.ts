@@ -34,6 +34,9 @@ export interface SubmitVideoJobRequest {
   duration?: number;
   generate_audio?: boolean;
   seed?: number;
+  output?: {
+    upload_url?: string;
+  };
   frame_images?: VideoFrameImage[];
   input_references?: VideoInputReference[];
 }

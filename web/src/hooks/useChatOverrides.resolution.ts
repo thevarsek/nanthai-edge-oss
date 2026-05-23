@@ -120,7 +120,8 @@ export function buildOverrideBadges(args: {
   const hasParamOverride =
     args.paramOverrides.temperatureMode === "override" ||
     args.paramOverrides.maxTokensMode === "override" ||
-    args.paramOverrides.reasoningMode !== "default";
+    args.paramOverrides.reasoningMode !== "default" ||
+    args.paramOverrides.autoAudioResponseMode !== "default";
   return {
     parameters: hasParamOverride ? 1 : 0,
     integrations: args.enabledIntegrations.size,

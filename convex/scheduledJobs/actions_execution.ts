@@ -156,6 +156,7 @@ async function routeScheduledStep(
       includeReasoning: args.participant.includeReasoning,
       reasoningEffort: args.participant.reasoningEffort ?? undefined,
       enabledIntegrations: args.step.enabledIntegrations,
+      turnIntegrationOverrides: args.step.turnIntegrationOverrides,
       subagentsEnabled: undefined,
     });
     return;
@@ -191,6 +192,7 @@ async function routeScheduledStep(
     includeReasoning: args.participant.includeReasoning,
     reasoningEffort: args.participant.reasoningEffort ?? undefined,
     enabledIntegrations: args.step.enabledIntegrations,
+    turnIntegrationOverrides: args.step.turnIntegrationOverrides,
     subagentsEnabled: undefined,
   });
 }

@@ -102,7 +102,7 @@ export function IdeascapePage() {
         </button>
         <span className="text-xs text-muted">{t("back_to_chat_label")}</span>
       </div>
-      <CanvasView chatId={activeChatId} />
+      <CanvasView key={activeChatId} chatId={activeChatId} />
     </div>
   );
 }

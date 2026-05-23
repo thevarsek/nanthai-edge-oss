@@ -37,6 +37,7 @@ export const updateArgs = {
   scopeType: v.optional(memoryScopeType),
   personaIds: personaIdsValidator,
   tags: tagsValidator,
+  isPinned: v.optional(v.boolean()),
 } satisfies PropertyValidators;
 
 export const createManualArgs = {

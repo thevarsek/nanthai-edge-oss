@@ -48,6 +48,48 @@ test("createFavorite trims name and appends to end of existing sort order", asyn
   assert.equal(inserts[0]?.value.sortOrder, 4);
 });
 
+test("createFavorite stores explicit persona and model participants", async () => {
+  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+
+  await (createFavorite as any)._handler({
+    auth: buildAuth(),
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          collect: async () => table === "favorites" ? [] : [],
+          first: async () => null,
+        }),
+      }),
+      insert: async (table: string, value: Record<string, unknown>) => {
+        inserts.push({ table, value });
+        return "fav_new";
+      },
+    },
+  }, {
+    name: "Mixed participants",
+    participants: [
+      {
+        modelId: "model_a",
+        personaId: "persona_1",
+        personaName: "Researcher",
+      },
+      {
+        modelId: "model_b",
+        personaId: "persona_2",
+        personaName: "Editor",
+      },
+      { modelId: "model_c" },
+    ],
+  });
+
+  assert.deepEqual(inserts[0]?.value.modelIds, ["model_a", "model_b", "model_c"]);
+  const participants = inserts[0]?.value.participants as Array<Record<string, unknown>>;
+  assert.equal(participants[0]?.personaName, "Researcher");
+  assert.equal(participants[1]?.personaId, "persona_2");
+  assert.equal(participants[2]?.modelId, "model_c");
+  assert.equal(inserts[0]?.value.personaId, "persona_1");
+});
+
 test("reorderFavorites rejects partial ordered lists", async () => {
   await assert.rejects(
     (reorderFavorites as any)._handler({

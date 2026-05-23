@@ -249,10 +249,9 @@ export function FilterMenu({
   }, [open]);
 
   const hasActiveFilter = selectedFolderId !== null || showScheduledOnly;
-  const userFolders = folders.filter((folder) => folder.name.localeCompare("Scheduled", undefined, { sensitivity: "base" }) !== 0);
   const visibleFolders = folderQuery.trim()
-    ? userFolders.filter((folder) => folder.name.toLowerCase().includes(folderQuery.trim().toLowerCase()))
-    : userFolders;
+    ? folders.filter((folder) => folder.name.toLowerCase().includes(folderQuery.trim().toLowerCase()))
+    : folders;
 
   return (
     <div ref={ref} className="relative">
@@ -308,9 +307,9 @@ export function FilterMenu({
             </button>
 
             {/* Divider if folders exist */}
-            {userFolders.length > 0 && <div className="h-px bg-foreground/8 my-1" />}
+            {folders.length > 0 && <div className="h-px bg-foreground/8 my-1" />}
 
-            {userFolders.length > 8 && (
+            {folders.length > 8 && (
               <div className="px-2 py-1.5">
                 <div className="flex items-center gap-1.5 rounded-lg bg-background/60 px-2 py-1.5">
                   <Search size={12} className="text-foreground/40" />

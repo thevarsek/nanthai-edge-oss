@@ -2,7 +2,7 @@
 // Dropdown menu triggered by the + button in the message input.
 // Mirrors iOS MessageInput.swift plus-menu order exactly.
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
   SlidersHorizontal,
@@ -36,7 +36,7 @@ export type PlusMenuItem =
 interface MenuItemDef {
   id: PlusMenuItem;
   label: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   badge?: number;
   requiresPro?: boolean;
   dividerBefore?: boolean;

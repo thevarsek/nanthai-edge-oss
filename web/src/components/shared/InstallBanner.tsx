@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { Download, Share, X } from "lucide-react";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { usePWAInstall } from "@/hooks/usePWAInstall";
 
 export function InstallBanner() {
@@ -33,12 +33,13 @@ export function InstallBanner() {
         </p>
         {isIOS ? (
           <p className="text-xs text-foreground/60 mt-0.5 leading-snug">
-            Tap{" "}
-            <Share
-              className="inline w-3.5 h-3.5 -mt-0.5 text-primary"
-              aria-label="Share"
-            />{" "}
-            then <strong>{t("add_to_home_screen_ios")}</strong>
+            <Trans
+              i18nKey="install_ios_instruction"
+              components={{
+                shareIcon: <Share className="inline w-3.5 h-3.5 -mt-0.5 text-primary" aria-hidden="true" />,
+                strong: <strong />,
+              }}
+            />
           </p>
         ) : (
           <p className="text-xs text-foreground/60 mt-0.5 leading-snug">

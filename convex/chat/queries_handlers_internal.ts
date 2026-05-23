@@ -287,3 +287,17 @@ export async function getVideoJobInternalHandler(
 ): Promise<any> {
   return await ctx.db.get(args.videoJobId);
 }
+
+export interface GetVideoOutputUploadByTokenArgs extends Record<string, unknown> {
+  token: string;
+}
+
+export async function getVideoOutputUploadByTokenHandler(
+  ctx: QueryCtx,
+  args: GetVideoOutputUploadByTokenArgs,
+): Promise<any> {
+  return await ctx.db
+    .query("videoOutputUploads")
+    .withIndex("by_token", (q) => q.eq("token", args.token))
+    .first();
+}

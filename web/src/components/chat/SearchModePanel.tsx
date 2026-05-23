@@ -20,7 +20,7 @@ export interface SearchModeState {
 
 interface Props {
   current: SearchModeState;
-  onSelect: (state: SearchModeState) => void;
+  onSelect: (state: SearchModeState) => void | Promise<void>;
   onClose: () => void;
   isPro: boolean;
   isMultiModel: boolean;
@@ -52,7 +52,9 @@ export function SearchModePanel({ current, onSelect, onClose, isPro, isMultiMode
   const { t } = useTranslation();
   const initialTab: SearchModeTab = current.mode === "none" || current.mode === "basic" ? "basic" : current.mode;
   const [tab, setTab] = useState<SearchModeTab>(initialTab);
-  const [complexity, setComplexity] = useState<SearchComplexity>(current.complexity);
+  const [complexity, setComplexity] = useState<SearchComplexity>(normalizeComplexity(current.complexity));
+  const [error, setError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   const complexityOptions: { value: SearchComplexity; label: string }[] = [
     { value: 1, label: t("quick") },
@@ -72,16 +74,30 @@ export function SearchModePanel({ current, onSelect, onClose, isPro, isMultiMode
   const canApply = !paperDisabled || tab !== "paper";
   const costInfo = COST_INFO[tab][showComplexity ? complexity : 1];
 
-  function handleApply() {
+  async function handleApply() {
     if (needsPro && !isPro) return;
     if (tab === "paper" && paperDisabled) return;
-    onSelect({ mode: tab, complexity: showComplexity ? complexity : 1 });
-    onClose();
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onSelect({ mode: tab, complexity: showComplexity ? complexity : 1 });
+      onClose();
+    } catch {
+      setError(t("error_failed_to_update_search_mode"));
+      setIsSaving(false);
+    }
   }
 
-  function handleClear() {
-    onSelect({ mode: "none", complexity: 1 });
-    onClose();
+  async function handleClear() {
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onSelect({ mode: "none", complexity: 1 });
+      onClose();
+    } catch {
+      setError(t("error_failed_to_update_search_mode"));
+      setIsSaving(false);
+    }
   }
 
   return (
@@ -161,15 +177,16 @@ export function SearchModePanel({ current, onSelect, onClose, isPro, isMultiMode
           </section>
 
           {/* Actions */}
+          {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex gap-2 pt-1">
             {current.mode !== "none" && (
-              <button onClick={handleClear} className="flex-1 py-2.5 rounded-xl text-sm border border-border/50 text-muted hover:text-foreground hover:bg-surface-3 transition-colors">
+              <button onClick={handleClear} disabled={isSaving} className="flex-1 py-2.5 rounded-xl text-sm border border-border/50 text-muted hover:text-foreground hover:bg-surface-3 disabled:opacity-50 transition-colors">
                 {t("clear_search")}
               </button>
             )}
             <button
               onClick={handleApply}
-              disabled={!canApply || (needsPro && !isPro)}
+              disabled={isSaving || !canApply || (needsPro && !isPro)}
               className="flex-1 py-2.5 rounded-xl text-sm bg-primary text-white font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"
             >
               {t("apply")}
@@ -179,4 +196,8 @@ export function SearchModePanel({ current, onSelect, onClose, isPro, isMultiMode
       </div>
     </div>
   );
+}
+
+function normalizeComplexity(value: number): SearchComplexity {
+  return value === 1 || value === 2 || value === 3 ? value : 1;
 }

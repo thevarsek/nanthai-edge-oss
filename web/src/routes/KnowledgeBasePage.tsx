@@ -639,7 +639,7 @@ function KnowledgeBasePageContent() {
 
 export function KnowledgeBasePage() {
   return (
-    <ProGateWrapper feature="Knowledge Base">
+    <ProGateWrapper featureId="knowledgeBase" presentation="page">
       <KnowledgeBasePageContent />
     </ProGateWrapper>
   );

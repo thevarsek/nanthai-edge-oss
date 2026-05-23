@@ -1,7 +1,7 @@
 // components/chat/ReasoningBlock.tsx
 // Collapsible "thinking" block for reasoning-capable models.
 
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Brain } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -37,28 +37,32 @@ export function ReasoningBlock({ reasoning, isStreaming }: Props) {
   const [expanded, setExpanded] = useState(false);
 
   const normalized = useMemo(() => normalizeReasoning(reasoning), [reasoning]);
+  const panelId = useId();
 
   if (!normalized) return null;
 
   return (
     <div className="mb-2 rounded-xl border border-primary/20 bg-primary/5 overflow-hidden text-sm">
       <button
+        type="button"
         onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+        aria-controls={panelId}
         className="w-full flex items-center gap-2 px-4 py-2.5 text-left hover:bg-primary/10 transition-colors"
       >
-        <Brain size={14} className="text-primary shrink-0" />
+        <Brain size={14} className="text-primary shrink-0" aria-hidden="true" />
         <span className="text-primary font-medium flex-1 text-xs uppercase tracking-wider">
           {isStreaming ? t("thinking") : t("reasoning")}
         </span>
         {expanded ? (
-          <ChevronDown size={14} className="text-primary shrink-0" />
+          <ChevronDown size={14} className="text-primary shrink-0" aria-hidden="true" />
         ) : (
-          <ChevronRight size={14} className="text-primary shrink-0" />
+          <ChevronRight size={14} className="text-primary shrink-0" aria-hidden="true" />
         )}
       </button>
 
       {expanded && (
-        <div className="border-t border-primary/20 px-4 py-3">
+        <div id={panelId} className="border-t border-primary/20 px-4 py-3">
           <MarkdownRenderer
             content={normalized}
             streaming={isStreaming}

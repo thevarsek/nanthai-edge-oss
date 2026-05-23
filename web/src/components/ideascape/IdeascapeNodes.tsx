@@ -170,8 +170,7 @@ export function MessageNode({
           data-node-scroll
           className="px-3 pb-7 overflow-y-auto overflow-x-hidden"
           style={{ height: Math.max(56, height - 42) }}
-        onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
           <div className="space-y-2">

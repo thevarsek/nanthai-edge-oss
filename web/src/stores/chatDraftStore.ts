@@ -17,8 +17,6 @@ export interface ChatDraft {
   attachments: AttachmentPreview[];
 }
 
-const EMPTY: ChatDraft = { text: "", attachments: [] };
-
 const drafts = new Map<string, ChatDraft>();
 
 function isEmpty(draft: ChatDraft): boolean {
@@ -26,17 +24,25 @@ function isEmpty(draft: ChatDraft): boolean {
 }
 
 export function getChatDraft(chatId: string): ChatDraft {
-  return drafts.get(chatId) ?? EMPTY;
+  const draft = drafts.get(chatId);
+  return draft ? cloneDraft(draft) : { text: "", attachments: [] };
 }
 
 export function setChatDraft(chatId: string, draft: ChatDraft): void {
   if (isEmpty(draft)) {
     drafts.delete(chatId);
   } else {
-    drafts.set(chatId, draft);
+    drafts.set(chatId, cloneDraft(draft));
   }
 }
 
 export function clearChatDraft(chatId: string): void {
   drafts.delete(chatId);
+}
+
+function cloneDraft(draft: ChatDraft): ChatDraft {
+  return {
+    text: draft.text,
+    attachments: [...draft.attachments],
+  };
 }

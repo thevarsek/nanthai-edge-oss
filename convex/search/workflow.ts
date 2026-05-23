@@ -23,6 +23,7 @@ import {
   updateSession,
 } from "./workflow_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import { integrationOverrideEntry } from "../schema_validators";
 
 const researchPaperPipelineArgs = {
   sessionId: v.id("searchSessions"),
@@ -42,6 +43,7 @@ const researchPaperPipelineArgs = {
   includeReasoning: v.optional(v.boolean()),
   reasoningEffort: v.optional(v.string()),
   enabledIntegrations: v.optional(v.array(v.string())),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
 } satisfies PropertyValidators;
 

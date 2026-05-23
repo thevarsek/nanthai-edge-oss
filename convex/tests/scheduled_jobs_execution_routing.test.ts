@@ -113,7 +113,10 @@ test("enqueueStep routes basic search via runGeneration with normalized params",
       webSearchEnabled: true,
       searchComplexity: 1.6,
       turnSkillOverrides: [{ skillId: "skill_1" as any, state: "available" }],
-      turnIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
+      turnIntegrationOverrides: [
+        { integrationId: "gmail", enabled: true },
+        { integrationId: "drive", enabled: false },
+      ],
     },
     stepIndex: 0,
   });
@@ -126,6 +129,7 @@ test("enqueueStep routes basic search via runGeneration with normalized params",
   ]);
   assert.deepEqual(scheduledCalls[0]?.args.turnIntegrationOverrides, [
     { integrationId: "gmail", enabled: true },
+    { integrationId: "drive", enabled: false },
   ]);
   assert.equal(
     (scheduledCalls[0]?.args.participants as Array<{ modelId: string }>)[0]?.modelId,
@@ -150,6 +154,7 @@ test("enqueueStep resolves persona and knowledge-base context before routing web
       searchMode: "web",
       searchComplexity: 2.4,
       enabledIntegrations: ["gmail"],
+      turnIntegrationOverrides: [{ integrationId: "gmail", enabled: false }],
     },
     stepIndex: 0,
     previousAssistantContent: "Prior answer",
@@ -162,6 +167,9 @@ test("enqueueStep resolves persona and knowledge-base context before routing web
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.complexity, 2);
   assert.equal(scheduledCalls[0]?.args.personaId, "persona_1");
+  assert.deepEqual(scheduledCalls[0]?.args.turnIntegrationOverrides, [
+    { integrationId: "gmail", enabled: false },
+  ]);
 });
 
 test("enqueueStep routes research mode through the paper pipeline", async () => {
@@ -177,12 +185,17 @@ test("enqueueStep routes research mode through the paper pipeline", async () => 
       modelId: "openai/gpt-5",
       searchMode: "research",
       searchComplexity: 3,
+      enabledIntegrations: ["gmail"],
+      turnIntegrationOverrides: [{ integrationId: "gmail", enabled: false }],
     },
     stepIndex: 1,
   });
 
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.complexity, 3);
+  assert.deepEqual(scheduledCalls[0]?.args.turnIntegrationOverrides, [
+    { integrationId: "gmail", enabled: false },
+  ]);
 });
 
 test("enqueueStep preserves explicit reasoning flags on direct generation steps", async () => {

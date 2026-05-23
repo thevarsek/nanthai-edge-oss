@@ -351,6 +351,7 @@ export function ConnectedAccountsSection() {
   const disconnectCloze = useAction(api.oauth.cloze.disconnectCloze);
 
   const openOAuthPopup = async (provider: OAuthProvider) => {
+    if (pendingProvider !== null) return;
     setProviderError(null);
 
     if (!getOAuthClientId(provider)) {
@@ -372,7 +373,7 @@ export function ConnectedAccountsSection() {
     }
   };
 
-  const isBusy = (provider: OAuthProvider) => pendingProvider === provider;
+  const isOAuthLocked = pendingProvider !== null;
   const isActionBusy = (action: string) => busyAction === action;
   const runAccountAction = async (action: string, fn: () => Promise<unknown>) => {
     setProviderError(null);
@@ -402,7 +403,7 @@ export function ConnectedAccountsSection() {
           isConnected={googleConnection?.hasDrive === true && googleConnection?.hasCalendar === true}
           onConnect={() => void openOAuthPopup("google")}
           onDisconnect={() => setShowGoogleDisconnectConfirm(true)}
-          disabled={isBusy("google") || isActionBusy("disconnect-google")}
+          disabled={isOAuthLocked || isActionBusy("disconnect-google")}
         />
         <ConnectionRow
           label={t("gmail")}
@@ -420,7 +421,7 @@ export function ConnectedAccountsSection() {
           isConnected={!!microsoftConnection}
           onConnect={() => void openOAuthPopup("microsoft")}
           onDisconnect={() => { void runAccountAction("disconnect-microsoft", () => disconnectMicrosoft({})); }}
-          disabled={isBusy("microsoft") || isActionBusy("disconnect-microsoft")}
+          disabled={isOAuthLocked || isActionBusy("disconnect-microsoft")}
         />
         <ConnectionRow
           label="Notion"
@@ -429,7 +430,7 @@ export function ConnectedAccountsSection() {
           isConnected={!!notionConnection}
           onConnect={() => void openOAuthPopup("notion")}
           onDisconnect={() => { void runAccountAction("disconnect-notion", () => disconnectNotion({})); }}
-          disabled={isBusy("notion") || isActionBusy("disconnect-notion")}
+          disabled={isOAuthLocked || isActionBusy("disconnect-notion")}
         />
         <ConnectionRow
           label={t("integration_slack")}
@@ -438,7 +439,7 @@ export function ConnectedAccountsSection() {
           isConnected={!!slackConnection}
           onConnect={() => void openOAuthPopup("slack")}
           onDisconnect={() => { void runAccountAction("disconnect-slack", () => disconnectSlack({})); }}
-          disabled={isBusy("slack") || isActionBusy("disconnect-slack")}
+          disabled={isOAuthLocked || isActionBusy("disconnect-slack")}
         />
         <ConnectionRow
           label="Apple Calendar"

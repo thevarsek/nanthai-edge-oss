@@ -5,7 +5,7 @@ import { ConvexError } from "convex/values";
 import { getIsProUnlocked, requireAuth, requirePro } from "../lib/auth";
 import { MODEL_IDS } from "../lib/model_constants";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
-import { hasGoogleIntegrations, isGoogleDataAllowedProvider } from "../models/google_data_providers";
+import { hasGoogleIntegrations, isGoogleDataAllowedModel } from "../models/google_data_providers";
 import {
   cancelGenerationJobsForMessage,
   createAssistantMessagesAndJobs,
@@ -223,7 +223,7 @@ async function assertExplicitRetryParticipantsCompatible(
     }
 
     if (needsGoogleCompatibility) {
-      if (model?.hasZdrEndpoint !== true || !isGoogleDataAllowedProvider(model?.provider)) {
+      if (model?.hasZdrEndpoint !== true || !isGoogleDataAllowedModel(participant.modelId, model?.provider)) {
         throw new ConvexError({
           code: "RETRY_GOOGLE_COMPATIBLE_MODEL_REQUIRED" as const,
           message:
@@ -370,6 +370,7 @@ export async function retryMessageHandler(
   await ctx.db.patch(chat._id, {
     updatedAt: now,
     activeBranchLeafId: assistantMessageIds[0],
+    activeBranchLeafFocusOrder: undefined,
   });
 
   const effectiveSearchMode =
@@ -481,6 +482,7 @@ export async function retryMessageHandler(
           reasoningEffort: participant.reasoningEffort ?? undefined,
           cachedSearchContext: cachedSearchContext ?? undefined,
           enabledIntegrations: effectiveRetryContract.enabledIntegrations,
+          turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
           subagentsEnabled: effectiveSubagentsEnabled,
         },
       );

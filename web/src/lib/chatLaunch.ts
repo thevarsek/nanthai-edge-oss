@@ -11,6 +11,13 @@ export interface PersonaLike {
 export interface FavoriteLike {
   _id: Id<"favorites">;
   modelIds: string[];
+  participants?: Array<{
+    modelId: string;
+    personaId?: Id<"personas"> | string | null;
+    personaName?: string | null;
+    personaEmoji?: string | null;
+    personaAvatarImageUrl?: string | null;
+  }> | null;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;
   personaEmoji?: string | null;
@@ -45,6 +52,16 @@ export function buildDefaultParticipants(args: {
 }
 
 export function buildFavoriteParticipants(favorite: FavoriteLike) {
+  if (favorite.participants && favorite.participants.length > 0) {
+    return favorite.participants.slice(0, 3).map((participant) => ({
+      modelId: participant.modelId,
+      personaId: (participant.personaId as Id<"personas"> | null | undefined) ?? null,
+      personaName: participant.personaName ?? null,
+      personaEmoji: participant.personaEmoji ?? null,
+      personaAvatarImageUrl: participant.personaAvatarImageUrl ?? null,
+    }));
+  }
+
   if (favorite.personaId) {
     return [{
       modelId: favorite.modelIds[0] ?? "",

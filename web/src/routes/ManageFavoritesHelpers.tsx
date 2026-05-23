@@ -29,6 +29,7 @@ import {
 } from "@/components/chat/ChatParticipantPicker.helpers";
 import { SortMenuPortal } from "@/components/chat/ChatParticipantPicker.sortmenu";
 import { buildModelNameMap } from "@/lib/modelDisplay";
+import { Defaults } from "@/lib/constants";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,13 @@ export interface FavoriteDoc {
   _id: Id<"favorites">;
   name: string;
   modelIds: string[];
+  participants?: Array<{
+    modelId: string;
+    personaId?: string | null;
+    personaName?: string | null;
+    personaEmoji?: string | null;
+    personaAvatarImageUrl?: string | null;
+  }>;
   personaId?: string;
   personaName?: string;
   personaEmoji?: string;
@@ -124,7 +132,7 @@ export function FavoriteEditorModal({
   onSaved: () => void;
 }) {
   const { t } = useTranslation();
-  const { personas } = useSharedData();
+  const { personas, prefs } = useSharedData();
   const modelSummaries = useModelSummaries();
   const createFavorite = useMutation(api.favorites.mutations.createFavorite);
   const updateFavorite = useMutation(api.favorites.mutations.updateFavorite);
@@ -132,6 +140,21 @@ export function FavoriteEditorModal({
   // Build initial selections from existing favorite
   const buildInitialSelections = (): Selection[] => {
     if (!editing) return [];
+    if (editing.participants && editing.participants.length > 0) {
+      return editing.participants.map((participant) => {
+        if (participant.personaId) {
+          return {
+            type: "persona",
+            personaId: participant.personaId,
+            modelId: participant.modelId,
+            name: participant.personaName ?? "Persona",
+            emoji: participant.personaEmoji ?? undefined,
+            avatarImageUrl: participant.personaAvatarImageUrl ?? undefined,
+          };
+        }
+        return { type: "model", modelId: participant.modelId };
+      });
+    }
     const sels: Selection[] = [];
     if (editing.personaId) {
       const persona = personas?.find((p) => (p._id as string) === editing.personaId);
@@ -189,21 +212,26 @@ export function FavoriteEditorModal({
       // Collect modelIds — include persona's model
       const modelIds: string[] = [];
       let personaSel: Selection & { type: "persona" } | undefined;
+      const fallbackModelId = prefs?.defaultModelId ?? Defaults.model;
       for (const sel of selections) {
         if (sel.type === "persona") {
           personaSel = sel;
-          if (sel.modelId) modelIds.push(sel.modelId);
+          modelIds.push(sel.modelId || fallbackModelId);
         } else {
           modelIds.push(sel.modelId);
         }
       }
       if (modelIds.length === 0) { setError(t("favorite_model_required")); setSaving(false); return; }
+      const participants = selections.map((selection) =>
+        selectionToFavoriteParticipant(selection, fallbackModelId),
+      );
 
       if (editing) {
         await updateFavorite({
           favoriteId: editing._id,
           name: resolvedName,
           modelIds,
+          participants,
           personaId: personaSel ? (personaSel.personaId as Id<"personas">) : null,
           personaName: personaSel ? personaSel.name : null,
           personaEmoji: personaSel?.emoji ?? null,
@@ -213,6 +241,7 @@ export function FavoriteEditorModal({
         await createFavorite({
           name: resolvedName,
           modelIds,
+          participants,
           ...(personaSel ? {
             personaId: personaSel.personaId as Id<"personas">,
             personaName: personaSel.name,
@@ -447,6 +476,19 @@ export function FavoriteEditorModal({
       />
     </div>
   );
+}
+
+function selectionToFavoriteParticipant(sel: Selection, fallbackModelId: string) {
+  if (sel.type === "persona") {
+    return {
+      modelId: sel.modelId || fallbackModelId,
+      personaId: sel.personaId as Id<"personas">,
+      personaName: sel.name,
+      personaEmoji: sel.emoji,
+      personaAvatarImageUrl: sel.avatarImageUrl,
+    };
+  }
+  return { modelId: sel.modelId };
 }
 
 // ─── Unified participant picker for favorites ───────────────────────────────

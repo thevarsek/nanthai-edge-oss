@@ -117,17 +117,9 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
       )}
 
       {/* Non-image file download links */}
-      {others.map((f) => (
-        <a
-          key={f._id}
-          href={f.downloadUrl ?? "#"}
-          target="_blank"
-          rel="noopener noreferrer"
-          download={f.filename}
-          className={workspaceSurfaceClass(
-            "flex min-h-[64px] items-center gap-3 px-3 py-2.5 text-foreground transition-colors hover:bg-surface-3/50",
-          )}
-        >
+      {others.map((f) => {
+        const content = (
+          <>
           <div className={workspaceIconBlockClass()}>
             {(() => {
               const Icon = getFileIconComponent(f.mimeType);
@@ -139,8 +131,36 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
             <p className="text-xs text-muted">{fileMetadata(f, t)}</p>
           </div>
           <Download size={16} className="text-muted" />
-        </a>
-      ))}
+          </>
+        );
+        if (!f.downloadUrl) {
+          return (
+            <div
+              key={f._id}
+              aria-disabled="true"
+              className={workspaceSurfaceClass(
+                "flex min-h-[64px] items-center gap-3 px-3 py-2.5 text-muted opacity-70",
+              )}
+            >
+              {content}
+            </div>
+          );
+        }
+        return (
+          <a
+            key={f._id}
+            href={f.downloadUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            download={f.filename}
+            className={workspaceSurfaceClass(
+              "flex min-h-[64px] items-center gap-3 px-3 py-2.5 text-foreground transition-colors hover:bg-surface-3/50",
+            )}
+          >
+            {content}
+          </a>
+        );
+      })}
     </div>
   );
 }

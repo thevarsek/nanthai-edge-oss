@@ -82,9 +82,14 @@ function removeGooglePickerArtifacts() {
 function loadScript(src: string): Promise<void> {
   const existing = document.querySelector<HTMLScriptElement>(`script[src="${src}"]`);
   if (existing) {
+    if (window.gapi?.load || existing.dataset.loaded === "true") {
+      return Promise.resolve();
+    }
     return new Promise((resolve, reject) => {
-      if (existing.dataset.loaded === "true") resolve();
-      existing.addEventListener("load", () => resolve(), { once: true });
+      existing.addEventListener("load", () => {
+        existing.dataset.loaded = "true";
+        resolve();
+      }, { once: true });
       existing.addEventListener("error", () => reject(new Error("Failed to load Google Picker.")), { once: true });
     });
   }

@@ -408,13 +408,13 @@ export function ChatPage() {
 
   const handleSend = useCallback(
     async ({ text, attachments }: { text: string; attachments?: ChatAttachment[] }) => {
+      const mergedAttachments: ChatAttachment[] = [...(attachments ?? []), ...kbAttachmentsForDisplay];
+      if (!validateSendState(mergedAttachments.length)) return false;
       const cid = await ensureChatId();
       await overrides.flushPendingState(cid);
-      const mergedAttachments: ChatAttachment[] = [...(attachments ?? []), ...kbAttachmentsForDisplay];
-      if (!validateSendState(mergedAttachments.length)) return;
       if (isResearchPaper) {
         const participant = participants[0];
-        if (!participant) return;
+        if (!participant) return false;
         // Research Paper uses a separate mutation with single participant
         await startResearchPaper(buildResearchPaperArgs({
           chatId: cid,
@@ -442,6 +442,7 @@ export function ChatPage() {
       }
       overrides.clearKBFiles();
       overrides.clearTurnOverrides();
+      return true;
     },
     [ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );
@@ -457,14 +458,14 @@ export function ChatPage() {
 
   const handleSendRecording = useCallback(
     async (result: RecordingResult) => {
+      const mergedAttachments: ChatAttachment[] = [...kbAttachmentsForDisplay];
+      if (!validateSendState(mergedAttachments.length)) return;
       const cid = await ensureChatId();
       await overrides.flushPendingState(cid);
       const uploadUrl = await createUploadUrl({});
       const res = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": result.mimeType }, body: result.blob });
       if (!res.ok) return;
       const { storageId } = (await res.json()) as { storageId: string };
-      const mergedAttachments: ChatAttachment[] = [...kbAttachmentsForDisplay];
-      if (!validateSendState(mergedAttachments.length)) return;
       if (isResearchPaper) {
         const participant = participants[0];
         if (!participant) return;
@@ -495,6 +496,7 @@ export function ChatPage() {
         }));
       }
       overrides.clearKBFiles();
+      overrides.clearTurnOverrides();
     },
     [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs],
   );
@@ -583,7 +585,7 @@ export function ChatPage() {
         title={chat?.title ?? ""} onBack={() => navigate("/app")} participants={participants}
         isPro={isPro} onRename={() => setShowRename(true)} searchMode={searchMode}
         globeColor={globeColor}
-        onSetSearchMode={(s) => void setSearchModeOverride(s)}
+        onSetSearchMode={setSearchModeOverride}
         isMultiModel={isMultiModel} onToggleIdeascape={handleToggleIdeascape}
         totalCost={totalCost} showAdvancedStats={showAdvancedStats} breakdown={breakdown}
       />}

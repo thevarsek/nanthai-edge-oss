@@ -12,12 +12,13 @@ import {
   readOAuthContext,
   type OAuthProvider,
 } from "@/lib/providerOAuth";
+import {
+  isMobileOAuthRelayRequest,
+  nativeOAuthCallbackUrl,
+} from "./ProviderOAuthCallbackPage.helpers";
 
 type Status = "loading" | "success" | "error";
 const AUTH_TIMEOUT_MS = 12000;
-
-/** Custom-scheme base URL for mobile apps (iOS / Android). */
-const MOBILE_SCHEME = "tech.nanthai.NanthAi-Edge";
 
 type GoogleExchangeAction = (args: {
   code: string;
@@ -62,13 +63,12 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
     const context = readOAuthContext(provider);
     if (context) return; // Web flow — has localStorage context, proceed normally.
     if (window.opener && !window.opener.closed) return; // Web popup — show error, don't redirect.
+    if (!isMobileOAuthRelayRequest()) return;
 
     // No context + no opener → mobile app flow. Forward all query params to the
     // custom-scheme URL so ASWebAuthenticationSession / Custom Tabs picks it up.
-    const params = searchParams.toString();
-    const nativeURL = `${MOBILE_SCHEME}://oauth/${provider}/callback${params ? `?${params}` : ""}`;
     didRedirectToMobile.current = true;
-    window.location.href = nativeURL;
+    window.location.href = nativeOAuthCallbackUrl(provider, searchParams);
   }, [provider, searchParams]);
 
   useEffect(() => {

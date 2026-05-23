@@ -20,6 +20,13 @@ vi.mock("convex/react", () => ({
       sizeBytes: 42_000,
       downloadUrl: "https://example.test/download/chart.png",
     },
+    {
+      _id: "generatedFiles_pending" as Id<"generatedFiles">,
+      filename: "pending.csv",
+      mimeType: "text/csv",
+      sizeBytes: 24,
+      downloadUrl: null,
+    },
   ],
 }));
 
@@ -34,5 +41,7 @@ describe("GeneratedFilesCard", () => {
       "href",
       "https://example.test/download/agreement.docx",
     );
+    expect(screen.getByText("pending.csv").closest("a")).toBeNull();
+    expect(screen.getByText("pending.csv").closest("[aria-disabled='true']")).toBeInTheDocument();
   });
 });

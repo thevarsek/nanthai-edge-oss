@@ -2,7 +2,7 @@
 // CanvasView, Toolbar, and ContextPanel extracted from IdeascapePage
 // to stay under the 300-line limit.
 
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
@@ -37,6 +37,11 @@ import {
 } from "@/lib/chatRequestResolution";
 import { serializeResearchParticipant } from "@/routes/ChatPage.sendFlow";
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
+import {
+  collectIdeascapeBranchIds,
+  nextActiveBranchFocusOrder,
+  resolveIdeascapeBranchLeafId,
+} from "@/routes/IdeascapePage.branchFocus";
 
 // ─── Viewport persistence ───────────────────────────────────────────────────
 
@@ -188,7 +193,7 @@ function Toolbar({ chatTitle, viewport, onResetView, onZoomIn, onZoomOut, showCo
   chatTitle: string; viewport: CanvasViewport; onResetView: () => void;
   onZoomIn: () => void; onZoomOut: () => void; showContext: boolean; onToggleContext: () => void; onToggleHelp: () => void;
   searchMode: SearchModeState; globeColor: "muted" | "green" | "blue" | "orange";
-  onSetSearchMode: (state: SearchModeState) => void; isPro: boolean; participantCount: number;
+  onSetSearchMode: (state: SearchModeState) => void | Promise<void>; isPro: boolean; participantCount: number;
 }) {
   const { t } = useTranslation();
   const [showSearchPanel, setShowSearchPanel] = useState(false);
@@ -217,7 +222,7 @@ function Toolbar({ chatTitle, viewport, onResetView, onZoomIn, onZoomOut, showCo
         {showSearchPanel && (
           <SearchModePanel
             current={searchMode}
-            onSelect={(state: SearchModeState) => { onSetSearchMode(state); setShowSearchPanel(false); }}
+            onSelect={onSetSearchMode}
             onClose={() => setShowSearchPanel(false)}
             isPro={isPro}
             isMultiModel={participantCount > 1}
@@ -276,9 +281,12 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const [viewport, setViewport] = useState<CanvasViewport>(() => loadViewport(chatId as string));
   const [selectedIds, setSelectedIds] = useState<Set<Id<"messages">>>(new Set());
   const [focusedId, setFocusedId] = useState<Id<"messages"> | null>(null);
+  const [localBranchLeafId, setLocalBranchLeafId] = useState<Id<"messages"> | null>(null);
   const [showContext, setShowContext] = useState(true);
   const [showHelp, setShowHelp] = useState(false);
   const [contextExpanded, setContextExpanded] = useState(false);
+  const activeBranchFocusOrderRef = useRef(0);
+  const activeBranchSyncGenerationRef = useRef(0);
 
   const typedPrefs = prefs as SharedPreferences | undefined;
   const defaultPersona = useMemo(
@@ -347,12 +355,27 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
 
   useEffect(() => {
     if (focusedId || messages.length === 0) return;
-    const latest = [...messages].sort((a, b) => b.createdAt - a.createdAt)[0];
+    const serverLeaf = chat?.activeBranchLeafId;
+    const serverFocused = serverLeaf ? messages.find((message) => message._id === serverLeaf) : undefined;
+    const latest = serverFocused ?? [...messages].sort((a, b) => b.createdAt - a.createdAt)[0];
     if (latest) {
       const timer = window.setTimeout(() => setFocusedId(latest._id), 0);
       return () => window.clearTimeout(timer);
     }
-  }, [focusedId, messages]);
+  }, [chat?.activeBranchLeafId, focusedId, messages]);
+
+  useEffect(() => {
+    if (localBranchLeafId && localBranchLeafId === chat?.activeBranchLeafId) {
+      setLocalBranchLeafId(null);
+    } else if (
+      localBranchLeafId &&
+      chat?.activeBranchLeafFocusOrder !== undefined &&
+      chat.activeBranchLeafFocusOrder >= activeBranchFocusOrderRef.current
+    ) {
+      setLocalBranchLeafId(null);
+      setFocusedId(chat.activeBranchLeafId ?? null);
+    }
+  }, [chat?.activeBranchLeafFocusOrder, chat?.activeBranchLeafId, localBranchLeafId]);
 
   useEffect(() => {
     if (typedPrefs === undefined) return;
@@ -446,25 +469,21 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const autonomous = useAutonomous({ chatId, participants, hasMessages: messages.length > 0, isPro });
   const isAutonomousActive = autonomous.state.status === "active" || autonomous.state.status === "paused";
 
-  // Compute active branch: full DAG ancestry from root(s) → focused node
+  const activeBranchLeafId = localBranchLeafId ?? chat?.activeBranchLeafId ?? focusedId;
+
+  // Compute active branch: full DAG ancestry from root(s) to the active branch leaf.
   const activeBranchIds = useMemo(() => {
-    if (!focusedId) return new Set<string>();
-    const branch = new Set<string>();
-    const stack: string[] = [focusedId as string];
-    const byId = new Map(messages.map((m) => [m._id as string, m]));
-    while (stack.length > 0) {
-      const cur = stack.pop()!;
-      if (branch.has(cur)) continue;
-      branch.add(cur);
-      const msg = byId.get(cur);
-      if (!msg?.parentMessageIds) continue;
-      for (const pid of msg.parentMessageIds) {
-        const pidStr = pid as string;
-        if (pidStr !== cur && !branch.has(pidStr)) stack.push(pidStr);
-      }
-    }
-    return branch;
-  }, [focusedId, messages]);
+    if (!activeBranchLeafId) return new Set<string>();
+    return collectIdeascapeBranchIds(
+      messages.map((message) => ({
+        _id: message._id as string,
+        createdAt: message.createdAt,
+        parentMessageIds: message.parentMessageIds?.map((parentId) => parentId as string),
+        multiModelGroupId: message.multiModelGroupId,
+      })),
+      [activeBranchLeafId as string],
+    );
+  }, [activeBranchLeafId, messages]);
 
   const contextBranchIds = useMemo(() => {
     const byId = new Map(messages.map((m) => [m._id as string, m]));
@@ -561,8 +580,44 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
 
   const handleClearSelection = useCallback(() => { setSelectedIds(new Set()); }, []);
   const handleFocusNode = useCallback((id: Id<"messages">) => {
-    setFocusedId((prev) => prev === id ? null : id);
-  }, []);
+    const expectedCurrentLeafId = chat?.activeBranchLeafId ?? null;
+    const branchLeafId = resolveIdeascapeBranchLeafId(
+      messages.map((message) => ({
+        _id: message._id as string,
+        createdAt: message.createdAt,
+        parentMessageIds: message.parentMessageIds?.map((parentId) => parentId as string),
+        multiModelGroupId: message.multiModelGroupId,
+      })),
+      id as string,
+      expectedCurrentLeafId as string | null,
+    ) as Id<"messages">;
+    const focusOrder = nextActiveBranchFocusOrder(
+      activeBranchFocusOrderRef.current,
+      chat?.activeBranchLeafFocusOrder,
+    );
+    activeBranchSyncGenerationRef.current += 1;
+    const generation = activeBranchSyncGenerationRef.current;
+    activeBranchFocusOrderRef.current = focusOrder;
+    setFocusedId(id);
+    setLocalBranchLeafId(branchLeafId);
+
+    void updateChat({
+      chatId,
+      activeBranchLeafId: branchLeafId,
+      activeBranchLeafExpectedCurrentId: expectedCurrentLeafId,
+      activeBranchLeafFocusOrder: focusOrder,
+    }).then((result) => {
+      if (activeBranchSyncGenerationRef.current !== generation) return;
+      if (result?.activeBranchLeafApplied === false) {
+        setLocalBranchLeafId(null);
+        setFocusedId(result.activeBranchLeafId ?? null);
+      }
+    }).catch(() => {
+      if (activeBranchSyncGenerationRef.current !== generation) return;
+      setLocalBranchLeafId(null);
+      setFocusedId(chat?.activeBranchLeafId ?? null);
+    });
+  }, [chat?.activeBranchLeafFocusOrder, chat?.activeBranchLeafId, chatId, messages, updateChat]);
 
   const handleSendComposer = useCallback(
     async ({ text, attachments, recordedAudio }: {
@@ -591,8 +646,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           ? [focusedId]
           : [];
       const mergedAttachments = [...(attachments ?? []), ...kbAttachmentsForDisplay];
-      if (explicitParentIds.length === 0 || participants.length === 0) return;
-      await overrides.flushPendingState(chatId);
+      if (explicitParentIds.length === 0 || participants.length === 0) return false;
       const validationError = validateChatSendState({
         participantCount: participants.length,
         isResearchPaper,
@@ -601,8 +655,9 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       });
       if (validationError) {
         toast({ message: validationError, variant: "error" });
-        return;
+        return false;
       }
+      await overrides.flushPendingState(chatId);
       if (isResearchPaper) {
         await startResearchPaper({
           chatId, text,
@@ -637,6 +692,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         });
       }
       overrides.clearKBFiles();
+      overrides.clearTurnOverrides();
+      return true;
     },
     [chatId, selectedIds, focusedId, participants, kbAttachmentsForDisplay, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast],
   );
@@ -682,7 +739,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         showContext={showContext} onToggleContext={() => setShowContext((v) => !v)}
         onToggleHelp={() => setShowHelp((v) => !v)}
         searchMode={searchMode} globeColor={globeColor}
-        onSetSearchMode={(s) => void setSearchModeOverride(s)}
+        onSetSearchMode={setSearchModeOverride}
         isPro={isPro} participantCount={participants.length}
       />
       <IdeascapeCanvas messages={messages} positions={positions} viewport={viewport}
@@ -715,6 +772,16 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           onCancel={() => void cancelGeneration({ chatId })}
           onCreateUploadUrl={() => createUploadUrl({})}
           onSendRecording={async (result: RecordingResult) => {
+            const validationError = validateChatSendState({
+              participantCount: participants.length,
+              isResearchPaper,
+              attachmentCount: kbAttachmentsForDisplay.length,
+              complexity: convexComplexity,
+            });
+            if (validationError) {
+              toast({ message: validationError, variant: "error" });
+              return;
+            }
             const uploadUrl = await createUploadUrl({});
             const res = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": result.mimeType }, body: result.blob });
             if (!res.ok) return;

@@ -5,6 +5,7 @@
   "description": "NanthAI Edge — source-available web client and Convex backend",
   "scripts": {
     "dev": "convex dev",
+    "test": "npm run convex:test",
     "lint": "npm run convex:lint && npm --prefix web run lint",
     "convex:test": "tsx --test convex/tests/*.test.ts",
     "convex:test:coverage": "c8 --all --include='convex/**/*.ts' --exclude='convex/_generated/**' --exclude='convex/tests/**' --exclude='convex/skills/catalog/**' --exclude='convex/**/*_types.ts' --exclude='convex/auth.config.ts' --exclude='convex/convex.config.ts' --reporter=text --reporter=lcov npx tsx --test convex/tests/*.test.ts",
@@ -12,7 +13,7 @@
     "convex:lint": "eslint convex --ext .ts",
     "convex:typecheck": "tsc --noEmit --project convex/tsconfig.json",
     "deploy": "convex deploy",
-    "deploy:prod": "convex deploy --prod"
+    "deploy:prod": "convex deploy --yes --typecheck disable"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.63",

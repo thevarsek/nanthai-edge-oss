@@ -257,7 +257,7 @@ export function ParticipantPicker({
           )}
         </div>
 
-        {filteredPersonas.length === 0 && filteredModels.length === 0 && (
+        {filteredPersonas.length === 0 && filteredModels.length === 0 && models.length > 0 && (
           <div className="flex items-center justify-center h-32 text-sm text-muted">
             {t("no_results")}
           </div>
@@ -266,9 +266,15 @@ export function ParticipantPicker({
 
       {/* Footer */}
       <div className="px-4 py-2 border-t border-border/50 text-[10px] text-muted text-center">
-        {filteredPersonas.length} {t("personas").toLowerCase().replace(/s$/, "")}
-        {filteredPersonas.length !== 1 ? "s" : ""} · {filteredModels.length} {t("model")}
-        {filteredModels.length !== 1 ? "s" : ""}
+        {t("personas_count", {
+          count: filteredPersonas.length,
+          defaultValue_one: "{{count}} persona",
+          defaultValue_other: "{{count}} personas",
+        })} · {t("models_count", {
+          count: filteredModels.length,
+          defaultValue_one: "{{count}} model",
+          defaultValue_other: "{{count}} models",
+        })}
       </div>
 
       {/* Info sheet modal */}

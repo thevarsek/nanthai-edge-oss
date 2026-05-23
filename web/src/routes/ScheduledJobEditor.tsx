@@ -20,11 +20,13 @@ import {
 import {
   type DraftStep,
   type RecurrenceType,
-  type SearchMode,
-  SCHEDULED_JOB_DEFAULT_MODEL,
+  SCHEDULED_JOB_GOOGLE_MODEL_MESSAGE_KEY,
   createDraftStep,
   buildStepsPayload,
   buildIntegrations,
+  hasScheduledJobGoogleIntegrations,
+  jobToSteps,
+  scheduledJobModelSupportsGoogleIntegrations,
 } from "./ScheduledJobEditor.model";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -53,64 +55,7 @@ interface FolderRow {
   name: string;
 }
 
-function normalizeSearchComplexity(v?: number): number {
-  return Math.max(1, Math.min(3, Math.round(v ?? 1)));
-}
-
 // ─── Load existing job into draft state ─────────────────────────────────────
-
-function jobToSteps(job: JobDoc): DraftStep[] {
-  if (job.steps && job.steps.length > 0) {
-    return job.steps.map((raw) => {
-      const integrations = (raw.enabledIntegrations as string[] | undefined) ?? [];
-      return {
-        ...createDraftStep(),
-        title: (raw.title as string) ?? "",
-        prompt: (raw.prompt as string) ?? "",
-        modelId: (raw.modelId as string) ?? SCHEDULED_JOB_DEFAULT_MODEL,
-        selectedPersonaId: (raw.personaId as string) ?? null,
-        searchMode: ((raw.searchMode as string) ?? (raw.webSearchEnabled ? "basic" : "none")) as SearchMode,
-        searchComplexity: normalizeSearchComplexity(raw.searchComplexity as number | undefined),
-        includeReasoning: (raw.includeReasoning as boolean) ?? false,
-        reasoningEffort: (raw.reasoningEffort as string) ?? "medium",
-        gmailEnabled: integrations.includes("gmail"),
-        driveEnabled: integrations.includes("drive"),
-        calendarEnabled: integrations.includes("calendar"),
-        outlookEnabled: integrations.includes("outlook"),
-        onedriveEnabled: integrations.includes("onedrive"),
-        msCalendarEnabled: integrations.includes("ms_calendar"),
-        appleCalendarEnabled: integrations.includes("apple_calendar"),
-        notionEnabled: integrations.includes("notion"),
-        clozeEnabled: integrations.includes("cloze"),
-        slackEnabled: integrations.includes("slack"),
-        knowledgeBaseFileIds: (raw.knowledgeBaseFileIds as string[] | undefined) ?? [],
-      };
-    });
-  }
-  // Legacy single-step job
-  const integrations = job.enabledIntegrations ?? [];
-  return [{
-    ...createDraftStep(),
-    prompt: job.prompt ?? "",
-    modelId: job.modelId ?? SCHEDULED_JOB_DEFAULT_MODEL,
-    selectedPersonaId: job.personaId ?? null,
-    searchMode: ((job.searchMode ?? (job.webSearchEnabled ? "basic" : "none")) as SearchMode),
-    searchComplexity: normalizeSearchComplexity(job.searchComplexity),
-    includeReasoning: job.includeReasoning ?? false,
-    reasoningEffort: job.reasoningEffort ?? "medium",
-    gmailEnabled: integrations.includes("gmail"),
-    driveEnabled: integrations.includes("drive"),
-    calendarEnabled: integrations.includes("calendar"),
-    outlookEnabled: integrations.includes("outlook"),
-    onedriveEnabled: integrations.includes("onedrive"),
-    msCalendarEnabled: integrations.includes("ms_calendar"),
-    appleCalendarEnabled: integrations.includes("apple_calendar"),
-    notionEnabled: integrations.includes("notion"),
-    clozeEnabled: integrations.includes("cloze"),
-    slackEnabled: integrations.includes("slack"),
-    knowledgeBaseFileIds: job.knowledgeBaseFileIds ?? [],
-  }];
-}
 
 function jobToRecurrence(job: JobDoc): {
   type: RecurrenceType; intervalMinutes: number; dailyHour: number;
@@ -197,6 +142,12 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
     const summary = (modelSummaries ?? []).find((m) => m.modelId === resolvedModelId);
     if (!summary) return t("this_model_cannot_be_verified_for_tool_use_right_now_choose");
     if (!summary.supportsTools) return t("choose_a_model_with_tool_use_to_keep_integrations_enabled");
+    if (
+      hasScheduledJobGoogleIntegrations(currentStep)
+      && !scheduledJobModelSupportsGoogleIntegrations(resolvedModelId, summary)
+    ) {
+      return t(SCHEDULED_JOB_GOOGLE_MODEL_MESSAGE_KEY);
+    }
 
     return null;
   }, [currentStep, modelSummaries, personas, t]);
@@ -215,7 +166,9 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
       if (!resolvedModelId) return true;
       const summary = (modelSummaries ?? []).find((m) => m.modelId === resolvedModelId);
       if (!summary) return true;
-      return !summary.supportsTools;
+      if (!summary.supportsTools) return true;
+      return hasScheduledJobGoogleIntegrations(step)
+        && !scheduledJobModelSupportsGoogleIntegrations(resolvedModelId, summary);
     });
 
     if (invalidIdx < 0) return null;

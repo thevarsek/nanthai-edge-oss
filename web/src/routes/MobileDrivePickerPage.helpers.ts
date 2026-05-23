@@ -2,10 +2,11 @@ export function safeCallbackScheme(value: string | null): string {
   return value === "nanthai-edge" ? value : "nanthai-edge";
 }
 
-export function callbackUrl(callbackScheme: string, fileIds: string[], state?: string | null): string {
+export function callbackUrl(callbackScheme: string, fileIds: string[], state?: string | null, code?: string | null): string {
   const params = new URLSearchParams();
   params.set("fileIds", fileIds.join(","));
   if (state) params.set("state", state);
+  if (code) params.set("code", code);
   return `${callbackScheme}://drive-picker?${params.toString()}`;
 }
 
@@ -13,11 +14,13 @@ export function androidIntentCallbackUrl(
   callbackScheme: string,
   fileIds: string[],
   state?: string | null,
+  code?: string | null,
   packageName = "com.nanthai.edge",
 ): string {
   const params = new URLSearchParams();
   params.set("fileIds", fileIds.join(","));
   if (state) params.set("state", state);
+  if (code) params.set("code", code);
   return `intent://drive-picker?${params.toString()}#Intent;scheme=${callbackScheme};package=${packageName};end`;
 }
 

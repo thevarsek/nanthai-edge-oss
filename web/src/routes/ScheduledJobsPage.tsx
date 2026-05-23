@@ -17,6 +17,7 @@ import { convexErrorMessage } from "@/lib/convexErrors";
 import { convexSiteUrl } from "@/lib/constants";
 import { statusBadgeClass, statusDotClass, statusTextClass, tonePanelClass } from "@/lib/uiTokens";
 import { ScheduledJobEditor } from "./ScheduledJobEditor";
+import { integrationsFromOverrides } from "./ScheduledJobEditor.model";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,7 @@ interface JobDoc {
   modelId?: string;
   personaId?: string;
   enabledIntegrations?: string[];
+  turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   searchMode?: string;
   searchComplexity?: number;
   webSearchEnabled?: boolean;
@@ -95,7 +97,13 @@ function shortModelName(modelId: string): string {
 
 function getEffectiveSteps(job: JobDoc): Array<Record<string, unknown>> {
   if (job.steps && job.steps.length > 0) return job.steps;
-  return [{ prompt: job.prompt, modelId: job.modelId, personaId: job.personaId, enabledIntegrations: job.enabledIntegrations }];
+  return [{
+    prompt: job.prompt,
+    modelId: job.modelId,
+    personaId: job.personaId,
+    enabledIntegrations: job.enabledIntegrations,
+    turnIntegrationOverrides: job.turnIntegrationOverrides,
+  }];
 }
 
 function templateVariablesForJob(job: JobDoc): string[] {
@@ -129,6 +137,7 @@ function JobDetailPanel({
   const steps = getEffectiveSteps(job);
   const [nowMs, setNowMs] = useState<number>(() => Date.now());
   const [latestTriggerSecret, setLatestTriggerSecret] = useState<TriggerSecret | null>(null);
+  const [triggerTokenMutationInFlight, setTriggerTokenMutationInFlight] = useState(false);
   const templateVariables = templateVariablesForJob(job);
 
   useEffect(() => {
@@ -152,6 +161,23 @@ function JobDetailPanel({
     if (diff < 3600_000) return t("minutes_ago", { count: Math.floor(diff / 60_000) });
     if (diff < 86400_000) return t("hours_ago", { count: Math.floor(diff / 3600_000) });
     return t("days_ago", { count: Math.floor(diff / 86400_000) });
+  }
+
+  function formatNextRun(ts?: number) {
+    if (!ts) return "—";
+    const diff = ts - nowMs;
+    if (diff <= 0) return formatRelative(ts);
+    if (diff < 60_000) return "in less than 1 min";
+    if (diff < 3600_000) {
+      const count = Math.ceil(diff / 60_000);
+      return `in ${count} min`;
+    }
+    if (diff < 86400_000) {
+      const count = Math.ceil(diff / 3600_000);
+      return `in ${count} hr`;
+    }
+    const count = Math.ceil(diff / 86400_000);
+    return `in ${count} day${count === 1 ? "" : "s"}`;
   }
 
   async function copyText(value: string, successMessage: string) {
@@ -179,26 +205,36 @@ function JobDetailPanel({
   }
 
   async function handleCreateTriggerToken() {
+    if (triggerTokenMutationInFlight) return;
+    setTriggerTokenMutationInFlight(true);
     try {
       const secret = await createTriggerToken({ jobId: job._id });
       setLatestTriggerSecret(secret as TriggerSecret);
       toast({ message: t("api_key_generated_copy_now"), variant: "success" });
     } catch (error) {
       toast({ message: convexErrorMessage(error, t("failed_to_generate_api_key")), variant: "error" });
+    } finally {
+      setTriggerTokenMutationInFlight(false);
     }
   }
 
   async function handleRotateTriggerToken() {
+    if (triggerTokenMutationInFlight) return;
+    setTriggerTokenMutationInFlight(true);
     try {
       const secret = await rotateTriggerToken({ jobId: job._id });
       setLatestTriggerSecret(secret as TriggerSecret);
       toast({ message: t("api_key_rotated_copy_now"), variant: "success" });
     } catch (error) {
       toast({ message: convexErrorMessage(error, t("failed_to_rotate_api_key")), variant: "error" });
+    } finally {
+      setTriggerTokenMutationInFlight(false);
     }
   }
 
   async function handleRevokeTriggerToken(tokenId: string) {
+    if (triggerTokenMutationInFlight) return;
+    setTriggerTokenMutationInFlight(true);
     try {
       await revokeTriggerToken({ tokenId: tokenId as Id<"scheduledJobTriggerTokens"> });
       if (latestTriggerSecret?.tokenId === tokenId) {
@@ -207,6 +243,8 @@ function JobDetailPanel({
       toast({ message: t("api_key_revoked"), variant: "success" });
     } catch (error) {
       toast({ message: convexErrorMessage(error, t("failed_to_revoke_api_key")), variant: "error" });
+    } finally {
+      setTriggerTokenMutationInFlight(false);
     }
   }
 
@@ -245,7 +283,7 @@ function JobDetailPanel({
           {job.nextRunAt && isActive && (
             <div className="flex items-center justify-between px-4 py-3">
               <span className="text-sm text-foreground/50">{t("next_run_label")}</span>
-              <span className="text-sm text-muted">{formatRelative(job.nextRunAt)}</span>
+              <span className="text-sm text-muted">{formatNextRun(job.nextRunAt)}</span>
             </div>
           )}
           {job.lastRunAt && (
@@ -289,9 +327,15 @@ function JobDetailPanel({
                 <span className="text-xs text-muted">{shortModelName((step.modelId as string) ?? "")}</span>
               </div>
               <p className="text-xs text-muted line-clamp-2">{(step.prompt as string) ?? ""}</p>
-              {(step.enabledIntegrations as string[] | undefined)?.length ? (
+              {integrationsFromOverrides(
+                step.enabledIntegrations as string[] | undefined,
+                step.turnIntegrationOverrides as Array<{ integrationId: string; enabled: boolean }> | undefined,
+              ).length ? (
                 <p className="text-[11px] text-muted">
-                  {(step.enabledIntegrations as string[]).join(", ")}
+                  {integrationsFromOverrides(
+                    step.enabledIntegrations as string[] | undefined,
+                    step.turnIntegrationOverrides as Array<{ integrationId: string; enabled: boolean }> | undefined,
+                  ).join(", ")}
                 </p>
               ) : null}
             </div>
@@ -362,10 +406,12 @@ function JobDetailPanel({
             </div>
           )}
 
-          {!triggerTokens || triggerTokens.length === 0 ? (
+          {triggerTokens === undefined ? (
+            <div className="flex justify-center py-4"><LoadingSpinner /></div>
+          ) : triggerTokens.length === 0 ? (
             <div className="px-4 py-3 space-y-3">
               <p className="text-xs text-muted">{t("no_active_api_trigger_key")}</p>
-              <button onClick={() => void handleCreateTriggerToken()} className="px-3 py-2 rounded-xl bg-accent text-black text-sm font-medium hover:opacity-90 transition-opacity">
+              <button onClick={() => void handleCreateTriggerToken()} disabled={triggerTokenMutationInFlight} className="px-3 py-2 rounded-xl bg-accent text-black text-sm font-medium hover:opacity-90 transition-opacity disabled:cursor-not-allowed disabled:opacity-50">
                 {t("generate_api_key")}
               </button>
             </div>
@@ -378,12 +424,12 @@ function JobDetailPanel({
                     <p className="text-xs text-muted font-mono mt-0.5">{token.tokenPrefix}…</p>
                     <p className="text-[11px] text-foreground/50 mt-1">{t("created_with_date", { var1: formatDate(token.createdAt) })}</p>
                   </div>
-                  <button onClick={() => void handleRevokeTriggerToken(token._id)} className="text-xs text-destructive hover:text-destructive/80 transition-colors">
+                  <button onClick={() => void handleRevokeTriggerToken(token._id)} disabled={triggerTokenMutationInFlight} className="text-xs text-destructive hover:text-destructive/80 transition-colors disabled:cursor-not-allowed disabled:opacity-50">
                     {t("revoke")}
                   </button>
                 </div>
               ))}
-              <button onClick={() => void handleRotateTriggerToken()} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
+              <button onClick={() => void handleRotateTriggerToken()} disabled={triggerTokenMutationInFlight} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:cursor-not-allowed disabled:opacity-50">
                 <Pencil size={16} className="text-primary flex-shrink-0" />
                 <span className="text-sm">{t("rotate_api_key")}</span>
               </button>
@@ -659,7 +705,7 @@ function ScheduledJobsPageContent() {
 
 export function ScheduledJobsPage() {
   return (
-    <ProGateWrapper feature="Scheduled Jobs">
+    <ProGateWrapper featureId="scheduledJobs" presentation="page">
       <ScheduledJobsPageContent />
     </ProGateWrapper>
   );

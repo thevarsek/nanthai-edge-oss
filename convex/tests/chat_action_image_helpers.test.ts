@@ -81,6 +81,29 @@ test("persistGeneratedImageUrls stores inline payloads, dedupes URLs, and skips 
   ]);
 });
 
+test("persistGeneratedImageUrls keeps SVG data URLs renderable while still storing metadata", async () => {
+  const storedBlobs: Blob[] = [];
+  const svg = "data:image/svg+xml;base64,PHN2Zy8+";
+
+  const result = await persistGeneratedImageUrls(
+    {
+      storage: {
+        store: async (blob: Blob) => {
+          storedBlobs.push(blob);
+          return "storage_svg" as any;
+        },
+        get: async () => null,
+        getUrl: async () => "https://cdn.example/storage_svg",
+      },
+    } as any,
+    [svg],
+  );
+
+  assert.equal(storedBlobs.length, 1);
+  assert.equal(storedBlobs[0].type, "image/svg+xml");
+  assert.deepEqual(result, [svg]);
+});
+
 test("hydrateAttachmentsForRequest refreshes image URLs and inlines document blobs as data URLs", async () => {
   const result = await hydrateAttachmentsForRequest(
     {

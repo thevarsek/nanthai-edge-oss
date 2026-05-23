@@ -9,7 +9,6 @@ import type { Id } from "@convex/_generated/dataModel";
 import {
   createChatMergeCache,
   reconcileStreamingMessages,
-  type ChatMergeCache,
 } from "@/hooks/useChat.streaming";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -141,22 +140,12 @@ export interface StreamingMessage {
   toolCalls?: ToolCall[];
 }
 
-const mergeCacheByChatId = new Map<string, ChatMergeCache>();
-
-function getMergeCache(chatId: Id<"chats"> | null | undefined): ChatMergeCache {
-  const key = (chatId ?? "__none__") as string;
-  const existing = mergeCacheByChatId.get(key);
-  if (existing) return existing;
-  const created = createChatMergeCache();
-  mergeCacheByChatId.set(key, created);
-  return created;
-}
-
 export interface Chat {
   _id: Id<"chats">;
   title?: string;
   mode: "chat" | "ideascape";
   activeBranchLeafId?: Id<"messages">;
+  activeBranchLeafFocusOrder?: number;
   folderId?: string;
   isPinned?: boolean;
   pinnedAt?: number;
@@ -176,6 +165,18 @@ export interface Chat {
   createdAt: number;
   updatedAt?: number;
 }
+
+interface UpdateChatResult {
+  activeBranchLeafApplied: boolean | null;
+  activeBranchLeafId?: Id<"messages"> | null;
+  activeBranchLeafFocusOrder?: number | null;
+}
+
+export type UpdateChatArgs = Partial<Chat> & {
+  chatId: Id<"chats">;
+  activeBranchLeafExpectedCurrentId?: Id<"messages"> | null;
+  activeBranchLeafFocusOrder?: number;
+};
 
 export interface ActiveJob {
   _id: Id<"generationJobs">;
@@ -266,7 +267,7 @@ export interface UseChatReturn {
     };
   }) => Promise<{ assistantMessageIds: Id<"messages">[] }>;
   deleteMessage: (args: { messageId: Id<"messages"> }) => Promise<null>;
-  updateChat: (args: Partial<Chat> & { chatId: Id<"chats"> }) => Promise<null>;
+  updateChat: (args: UpdateChatArgs) => Promise<UpdateChatResult | null>;
   switchBranchAtFork: (args: {
     chatId: Id<"chats">;
     currentSiblingMessageId: Id<"messages">;
@@ -275,6 +276,10 @@ export interface UseChatReturn {
 }
 
 export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
+  const mergeCache = useMemo(() => {
+    void chatId;
+    return createChatMergeCache();
+  }, [chatId]);
   // ── Subscriptions ──────────────────────────────────────────────────────────
   const chat = useQuery(
     api.chat.queries.getChat,
@@ -299,11 +304,10 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
   // ── Derived state ──────────────────────────────────────────────────────────
   const messages = useMemo<Message[]>(
     () => {
-      const mergeCache = getMergeCache(chatId);
       const base = (rawMessages as Message[] | undefined) ?? [];
       return reconcileStreamingMessages(mergeCache, base, streamingMessages);
     },
-    [rawMessages, streamingMessages, chatId],
+    [rawMessages, streamingMessages, mergeCache],
   );
 
   const isLoading = chat === undefined || rawMessages === undefined;
@@ -365,7 +369,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
   );
 
   const updateChat = useCallback(
-    (args: Partial<Chat> & { chatId: Id<"chats"> }) =>
+    (args: UpdateChatArgs) =>
       updateChatMutation(args as Parameters<typeof updateChatMutation>[0]),
     [updateChatMutation],
   );

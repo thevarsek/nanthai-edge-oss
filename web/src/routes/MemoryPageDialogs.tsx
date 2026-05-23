@@ -62,7 +62,11 @@ function draftFromCandidate(candidate: ImportedMemoryCandidate): MemoryDraft {
   };
 }
 
-function candidateFromDraft(draft: MemoryDraft, sourceFileName?: string | null): ImportedMemoryCandidate {
+function candidateFromDraft(
+  draft: MemoryDraft,
+  sourceFileName?: string | null,
+  sourceCandidate?: ImportedMemoryCandidate,
+): ImportedMemoryCandidate {
   return {
     content: draft.content.trim(),
     category: draft.category || undefined,
@@ -72,6 +76,8 @@ function candidateFromDraft(draft: MemoryDraft, sourceFileName?: string | null):
     tags: draft.tagsText.split(",").map((tag) => tag.trim()).filter(Boolean),
     isPinned: draft.isPinned,
     sourceFileName,
+    importanceScore: sourceCandidate?.importanceScore,
+    confidenceScore: sourceCandidate?.confidenceScore,
   };
 }
 
@@ -280,7 +286,11 @@ export function ImportReviewDialog({
     setError(null);
     try {
       await onSave(
-        drafts.map((draft, index) => candidateFromDraft(draft, candidates[index]?.sourceFileName)),
+        drafts.map((draft, index) => candidateFromDraft(
+          draft,
+          candidates[index]?.sourceFileName,
+          candidates[index],
+        )),
       );
     } catch {
       setError(t("memory_save_error"));

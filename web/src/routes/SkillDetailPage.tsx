@@ -325,7 +325,7 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
 
 export function SkillDetailPage() {
   return (
-    <ProGateWrapper feature="Skills">
+    <ProGateWrapper featureId="aiSkills" presentation="page">
       <SkillDetailContent />
     </ProGateWrapper>
   );

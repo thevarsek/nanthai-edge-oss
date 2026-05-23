@@ -82,7 +82,8 @@ export function requiredToolProfilesForSkill(selection: SkillMetadataSelection):
   if (selection.usesDocuments) profiles.add("docs");
   if (selection.usesDataAnalysis) {
     profiles.add("analytics");
-  } else if (selection.usesCodingWorkspace) {
+  }
+  if (selection.usesCodingWorkspace) {
     profiles.add("workspace");
   }
   if (Array.from(selection.selectedIntegrationIds).some((id) => ["gmail", "drive", "calendar"].includes(id))) {

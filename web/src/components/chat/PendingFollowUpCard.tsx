@@ -49,7 +49,8 @@ export function PendingFollowUpCard({
       <button
         type="button"
         onClick={onRemove}
-        className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-foreground"
+        disabled={areActionsDisabled}
+        className="shrink-0 rounded-full p-1.5 text-muted transition-colors hover:bg-surface-3 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
         aria-label={t("dismiss_queued_message")}
         title={t("dismiss_queued_message")}
       >

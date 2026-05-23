@@ -26,12 +26,14 @@ function IntegrationDefaultsCard() {
   const prefs = useQuery(api.preferences.queries.getPreferences, {});
   const setIntegrationDefault = useMutation(api.preferences.mutations.setIntegrationDefault);
   const removeIntegrationDefault = useMutation(api.preferences.mutations.removeIntegrationDefault);
+  const isLoading = prefs === undefined;
   const defaults = new Map<string, boolean>(
     (((prefs as { integrationDefaults?: Array<{ integrationId: string; enabled: boolean }> } | null)?.integrationDefaults) ?? [])
       .map((entry) => [entry.integrationId, entry.enabled]),
   );
 
   async function cycleIntegrationDefault(integrationId: string) {
+    if (isLoading) return;
     const current = defaults.get(integrationId);
     try {
       if (current === undefined) {
@@ -64,6 +66,7 @@ function IntegrationDefaultsCard() {
           <button
             key={integration.id}
             onClick={() => void cycleIntegrationDefault(integration.id)}
+            disabled={isLoading}
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
           >
             <div className="flex-1">
@@ -86,7 +89,7 @@ function IntegrationsSubPage() {
   const { t } = useTranslation();
   return (
     <div className="space-y-6">
-      <ProGateWrapper feature="Integrations">
+      <ProGateWrapper featureId="integrations">
         <ConnectedAccountsSection />
       </ProGateWrapper>
 
@@ -139,4 +142,4 @@ export function IntegrationsSection({ onNavigate }: IntegrationsSectionProps) {
   );
 }
 
-export { IntegrationsSubPage };
+export { IntegrationDefaultsCard, IntegrationsSubPage };

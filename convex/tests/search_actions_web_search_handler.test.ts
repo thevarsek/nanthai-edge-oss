@@ -97,6 +97,7 @@ test("runWebSearch reuses cached search context and schedules synthesis only", a
       }],
     },
     systemPrompt: "Stay concise.",
+    turnIntegrationOverrides: [{ integrationId: "gmail", enabled: false }],
   });
 
   const sessionStatuses = ctxState.mutations
@@ -109,6 +110,7 @@ test("runWebSearch reuses cached search context and schedules synthesis only", a
 
   const generation = ctxState.scheduled.find((entry) => Array.isArray(entry.assistantMessageIds));
   assert.equal(generation?.webSearchEnabled, false);
+  assert.deepEqual(generation?.turnIntegrationOverrides, [{ integrationId: "gmail", enabled: false }]);
   assert.equal(String((generation?.participants as any[])[0].systemPrompt).includes("https://example.com/swift-6"), true);
 });
 

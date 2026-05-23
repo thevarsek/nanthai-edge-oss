@@ -17,10 +17,19 @@ function withoutSearchContext<T extends { searchContext?: unknown }>(
 export interface ListChatsArgs extends Record<string, unknown> {
   folderId?: string;
   limit?: number;
+  searchQuery?: string;
+  source?: "user" | "scheduled_job";
 }
 
 export const DEFAULT_LIST_CHATS_LIMIT = 50;
 const MAX_LIST_CHATS_LIMIT = 500;
+const MAX_LIST_CHATS_SEARCH_RESULTS = 500;
+const LEGACY_USER_SOURCE_SCAN_MULTIPLIER = 10;
+const CHAT_FALLBACK_TITLE = "New conversation";
+
+function legacyUserSourceScanLimit(limit: number): number {
+  return Math.min(MAX_LIST_CHATS_LIMIT, Math.max(limit, limit * LEGACY_USER_SOURCE_SCAN_MULTIPLIER));
+}
 
 export function buildChatListPage<T extends { _id: string; isPinned?: boolean }>(
   pinnedChats: T[],
@@ -35,6 +44,105 @@ export function buildChatListPage<T extends { _id: string; isPinned?: boolean }>
   return [...pinnedChats, ...unpinnedChats];
 }
 
+export function chatMatchesSearch(
+  chat: { title?: string; lastMessagePreview?: string; folderId?: string },
+  query: string,
+  folderNamesById: Map<string, string>,
+): boolean {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return true;
+  return (
+    (chat.title ?? CHAT_FALLBACK_TITLE).toLowerCase().includes(normalized) ||
+    (chat.lastMessagePreview ?? "").toLowerCase().includes(normalized) ||
+    (chat.folderId ? (folderNamesById.get(chat.folderId) ?? "").toLowerCase().includes(normalized) : false)
+  );
+}
+
+export function chatMatchesSource(
+  chat: { source?: string },
+  source?: ListChatsArgs["source"],
+): boolean {
+  if (!source) return true;
+  const normalizedSource = chat.source ?? "user";
+  return normalizedSource === source;
+}
+
+export function mergeUserSourceRecentChats<T extends { _id: string; updatedAt: number }>(
+  explicitUserChats: T[],
+  legacyUserChats: T[],
+): T[] {
+  return [...explicitUserChats, ...legacyUserChats]
+    .filter((chat, index, allChats) =>
+      allChats.findIndex((candidate) => candidate._id === chat._id) === index
+    )
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+async function searchChatsByText(
+  ctx: QueryCtx,
+  userId: string,
+  query: string,
+  folderId: string | undefined,
+  source: ListChatsArgs["source"],
+  limit: number,
+  folderNamesById: Map<string, string>,
+): Promise<Array<any>> {
+  const searchLimit = Math.max(limit, Math.min(MAX_LIST_CHATS_SEARCH_RESULTS, limit * 10));
+  const applyFilters = <Q extends { eq: (field: "userId" | "folderId" | "source", value: string) => Q }>(q: Q): Q => {
+    const scoped = q.eq("userId", userId);
+    const folderScoped = folderId ? scoped.eq("folderId", folderId) : scoped;
+    return source && source !== "user" ? folderScoped.eq("source", source) : folderScoped;
+  };
+
+  const [titleMatches, previewMatches] = await Promise.all([
+    ctx.db
+      .query("chats")
+      .withSearchIndex("search_title", (q) => applyFilters(q.search("title", query)))
+      .take(searchLimit),
+    ctx.db
+      .query("chats")
+      .withSearchIndex("search_preview", (q) => applyFilters(q.search("lastMessagePreview", query)))
+      .take(searchLimit),
+  ]);
+
+  const byId = new Map<string, any>();
+  for (const chat of [...titleMatches, ...previewMatches]) {
+    if (chat.isDeleting !== true && chatMatchesSource(chat, source) && chatMatchesSearch(chat, query, folderNamesById)) {
+      byId.set(chat._id as string, chat);
+    }
+  }
+
+  const matchingFolderIds = Array.from(folderNamesById.entries())
+    .filter(([id, name]) => (!folderId || id === folderId) && name.toLowerCase().includes(query.toLowerCase()))
+    .map(([id]) => id);
+
+  for (const matchingFolderId of matchingFolderIds) {
+    const folderChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder", (q) => q.eq("userId", userId).eq("folderId", matchingFolderId))
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .take(searchLimit);
+    for (const chat of folderChats) {
+      if (chatMatchesSource(chat, source)) {
+        byId.set(chat._id as string, chat);
+      }
+    }
+  }
+
+  const matches = Array.from(byId.values()).sort((a, b) => {
+    if ((a.isPinned === true) !== (b.isPinned === true)) return a.isPinned === true ? -1 : 1;
+    if (a.isPinned === true && b.isPinned === true) return (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0);
+    return (b.updatedAt ?? 0) - (a.updatedAt ?? 0);
+  });
+
+  return buildChatListPage(
+    matches.filter((chat) => chat.isPinned === true),
+    matches,
+    limit,
+  );
+}
+
 export async function listChatsHandler(
   ctx: QueryCtx,
   args: ListChatsArgs,
@@ -46,9 +154,81 @@ export async function listChatsHandler(
     Math.max(Math.floor(args.limit ?? DEFAULT_LIST_CHATS_LIMIT), 1),
     MAX_LIST_CHATS_LIMIT,
   );
+  const searchQuery = args.searchQuery?.trim() ?? "";
+
+  const folderNamesById = new Map<string, string>();
+  if (searchQuery) {
+    const folders = await ctx.db
+      .query("folders")
+      .withIndex("by_user", (q) => q.eq("userId", auth.userId))
+      .collect();
+    for (const folder of folders) {
+      folderNamesById.set(folder._id as string, folder.name);
+    }
+  }
 
   let chats;
-  if (args.folderId) {
+  if (args.folderId && searchQuery) {
+    chats = await searchChatsByText(ctx, auth.userId, searchQuery, args.folderId, args.source, limit, folderNamesById);
+  } else if (searchQuery) {
+    chats = await searchChatsByText(ctx, auth.userId, searchQuery, undefined, args.source, limit, folderNamesById);
+  } else if (args.folderId && args.source && args.source !== "user") {
+    const folderPinned = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder_source_pinned", (q) =>
+        q
+          .eq("userId", auth.userId)
+          .eq("folderId", args.folderId!)
+          .eq("source", args.source!)
+          .eq("isPinned", true),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .collect();
+    const folderRecent = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder_source", (q) =>
+        q.eq("userId", auth.userId).eq("folderId", args.folderId!).eq("source", args.source!),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .take(limit + folderPinned.length);
+    chats = buildChatListPage(folderPinned, folderRecent, limit);
+  } else if (args.folderId && args.source === "user") {
+    const folderPinned = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder", (q) =>
+        q.eq("userId", auth.userId).eq("folderId", args.folderId!),
+      )
+      .order("desc")
+      .filter((q) => q.and(
+        q.eq(q.field("isPinned"), true),
+        q.neq(q.field("isDeleting"), true),
+      ))
+      .collect();
+    const explicitUserChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder_source", (q) =>
+        q.eq("userId", auth.userId).eq("folderId", args.folderId!).eq("source", "user"),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .take(limit + folderPinned.length);
+    const legacyUserChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_folder", (q) =>
+        q.eq("userId", auth.userId).eq("folderId", args.folderId!),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .take(legacyUserSourceScanLimit(limit + folderPinned.length));
+    const folderRecent = mergeUserSourceRecentChats(explicitUserChats, legacyUserChats);
+    chats = buildChatListPage(
+      folderPinned.filter((chat) => chatMatchesSource(chat, args.source)),
+      folderRecent.filter((chat) => chatMatchesSource(chat, args.source)),
+      limit,
+    );
+  } else if (args.folderId) {
     // Pinned chats in this folder (usually few)
     const folderPinned = await ctx.db
       .query("chats")
@@ -61,7 +241,6 @@ export async function listChatsHandler(
         q.neq(q.field("isDeleting"), true),
       ))
       .collect();
-    // Recent chats in this folder (bounded by limit)
     const folderRecent = await ctx.db
       .query("chats")
       .withIndex("by_user_folder", (q) =>
@@ -71,6 +250,50 @@ export async function listChatsHandler(
       .filter((q) => q.neq(q.field("isDeleting"), true))
       .take(limit + folderPinned.length);
     chats = buildChatListPage(folderPinned, folderRecent, limit);
+  } else if (args.source && args.source !== "user") {
+    const pinnedChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_source_pinned", (q) =>
+        q.eq("userId", auth.userId).eq("source", args.source!).eq("isPinned", true),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .collect();
+    const recentChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_source", (q) =>
+        q.eq("userId", auth.userId).eq("source", args.source!),
+      )
+      .order("desc")
+      .filter((q) => q.neq(q.field("isDeleting"), true))
+      .take(limit + pinnedChats.length);
+    chats = buildChatListPage(pinnedChats, recentChats, limit);
+  } else if (args.source === "user") {
+    const pinnedChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_pinned", (q) =>
+        q.eq("userId", auth.userId).eq("isPinned", true),
+      )
+      .order("desc")
+      .collect();
+    const explicitUserChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user_source", (q) =>
+        q.eq("userId", auth.userId).eq("source", "user"),
+      )
+      .order("desc")
+      .take(limit + pinnedChats.length);
+    const legacyUserChats = await ctx.db
+      .query("chats")
+      .withIndex("by_user", (q) => q.eq("userId", auth.userId))
+      .order("desc")
+      .take(legacyUserSourceScanLimit(limit + pinnedChats.length));
+    const recentChats = mergeUserSourceRecentChats(explicitUserChats, legacyUserChats);
+    chats = buildChatListPage(
+      pinnedChats.filter((chat) => chat.isDeleting !== true && chatMatchesSource(chat, args.source)),
+      recentChats.filter((chat) => chat.isDeleting !== true && chatMatchesSource(chat, args.source)),
+      limit,
+    );
   } else {
     const pinnedChats = await ctx.db
       .query("chats")

@@ -58,10 +58,10 @@ interface IntegrationLogoProps {
 }
 
 export function IntegrationLogo({ slug, size = 28, className }: IntegrationLogoProps) {
-  const [imgFailed, setImgFailed] = useState(false);
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
   const src = assetSrc(slug);
 
-  if (imgFailed) {
+  if (failedSrc === src) {
     const hue = slugHue(slug);
     return (
       <div
@@ -94,7 +94,7 @@ export function IntegrationLogo({ slug, size = 28, className }: IntegrationLogoP
       height={size}
       className={className}
       style={{ borderRadius: 6, objectFit: "cover", flexShrink: 0 }}
-      onError={() => setImgFailed(true)}
+      onError={() => setFailedSrc(src)}
     />
   );
 }

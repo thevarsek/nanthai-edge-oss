@@ -12,6 +12,7 @@ import { v, type PropertyValidators } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
+import { integrationOverrideEntry } from "../schema_validators";
 import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
@@ -53,6 +54,7 @@ const phaseActionArgs = {
   includeReasoning: v.optional(v.boolean()),
   reasoningEffort: v.optional(v.string()),
   enabledIntegrations: v.optional(v.array(v.string())),
+  turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
   // Phase-specific: tracks where we are in the pipeline
   phaseOrder: v.number(),

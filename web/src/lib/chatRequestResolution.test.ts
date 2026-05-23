@@ -137,6 +137,21 @@ test("buildBaseParticipants uses default persona model when creating a new chat"
   expect(participants[0]?.personaEmoji).toBe("🔎");
 });
 
+test("buildBaseParticipants falls back when default persona model is blank", () => {
+  const participants = buildBaseParticipants({
+    convexParticipants: [],
+    defaultPersona: {
+      _id: personaId,
+      modelId: "  ",
+      displayName: "Research Analyst",
+    },
+    selectedModelId: "openai/gpt-4.1",
+  });
+
+  expect(participants[0]?.modelId).toBe("openai/gpt-4.1");
+});
+
+
 test("validateSendState blocks invalid research paper sends", () => {
   expect(validateSendState({
     participantCount: 2,

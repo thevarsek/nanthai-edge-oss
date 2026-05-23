@@ -28,12 +28,23 @@ export function MenuSelect({ value, options, onChange }: MenuSelectProps) {
   useLayoutEffect(() => {
     if (!open || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
+    const viewportPadding = 8;
     const menuHeight = Math.min(options.length * 36 + 8, 280);
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const fitsBelow = spaceBelow >= menuHeight;
+    const unclampedTop = fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4;
+    const top = Math.max(
+      viewportPadding,
+      Math.min(unclampedTop, window.innerHeight - menuHeight - viewportPadding),
+    );
+    const menuWidth = Math.max(rect.width, 160);
+    const left = Math.max(
+      viewportPadding,
+      Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - viewportPadding),
+    );
     setPos({
-      top: fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4,
-      left: rect.right,
+      top,
+      left,
     });
   }, [open, options.length]);
 
@@ -78,7 +89,7 @@ export function MenuSelect({ value, options, onChange }: MenuSelectProps) {
           <div
             ref={menuRef}
             className="fixed z-[9999] min-w-[10rem] max-h-[min(280px,calc(100vh-2rem))] overflow-y-auto py-1 rounded-xl bg-surface-1 border border-border/50 shadow-lg"
-            style={{ top: pos.top, right: window.innerWidth - pos.left }}
+            style={{ top: pos.top, left: pos.left }}
           >
             {options.map((opt) => (
               <button

@@ -181,8 +181,9 @@ function SkillOverrideRow({
 }) {
   const { t } = useTranslation();
   return (
-    <div
-      className="flex items-center gap-3 px-5 py-3 hover:bg-surface-2 cursor-pointer transition-colors"
+    <button
+      type="button"
+      className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-colors"
       onClick={onCycle}
     >
       <div className="flex-1 min-w-0">
@@ -198,7 +199,7 @@ function SkillOverrideRow({
           {t("skill_state_inherit")}
         </span>
       )}
-    </div>
+    </button>
   );
 }
 

@@ -17,24 +17,24 @@ import {
 /* ------------------------------------------------------------------ */
 
 function IdeaNode({
-  x,
+  left,
   y,
   label,
   color,
   lines,
-  width,
+  widthPercent,
 }: {
-  x: number;
+  left: number;
   y: number;
   label: string;
   color: string;
   lines: number;
-  width: number;
+  widthPercent: number;
 }) {
   return (
     <div
       className="absolute rounded-xl border border-[rgba(var(--edge-fg),0.08)] bg-[rgba(var(--edge-fg),0.04)] p-3 backdrop-blur-sm"
-      style={{ left: x, top: y, width }}
+      style={{ left: `${left}%`, top: y, width: `${widthPercent}%`, maxWidth: 140 }}
     >
       <div className="flex items-center gap-2 mb-2">
         <MockProviderAvatar label={label} color={color} size={20} />
@@ -80,13 +80,13 @@ export function IdeascapesIllustration() {
         {/* Connection lines (SVG) */}
         <svg className="absolute inset-0 w-full h-full" style={{ zIndex: 0 }}>
           <line
-            x1="125" y1="50" x2="270" y2="120"
+            x1="34%" y1="50" x2="61%" y2="120"
             stroke="rgba(var(--edge-fg),0.08)"
             strokeWidth="1.5"
             strokeDasharray="4 4"
           />
           <line
-            x1="125" y1="50" x2="60" y2="170"
+            x1="38%" y1="50" x2="24%" y2="170"
             stroke="rgba(var(--edge-fg),0.08)"
             strokeWidth="1.5"
             strokeDasharray="4 4"
@@ -94,9 +94,9 @@ export function IdeascapesIllustration() {
         </svg>
 
         {/* Idea nodes */}
-        <IdeaNode x={40} y={15} label="G" color="var(--edge-cyan)" lines={2} width={150} />
-        <IdeaNode x={220} y={85} label="C" color="var(--edge-coral)" lines={3} width={160} />
-        <IdeaNode x={20} y={145} label="M" color="var(--edge-amber)" lines={2} width={140} />
+        <IdeaNode left={8} y={15} label="G" color="var(--edge-cyan)" lines={2} widthPercent={42} />
+        <IdeaNode left={50} y={85} label="C" color="var(--edge-coral)" lines={3} widthPercent={42} />
+        <IdeaNode left={6} y={145} label="M" color="var(--edge-amber)" lines={2} widthPercent={42} />
 
         {/* Zoom indicator */}
         <div className="absolute bottom-2 right-2 rounded-full bg-[rgba(var(--edge-fg),0.05)] px-2 py-0.5">

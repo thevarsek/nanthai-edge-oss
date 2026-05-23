@@ -278,14 +278,13 @@ export function StepIntegrationsSection({
   const { toast } = useToast();
   const { googleConnection, gmailManualConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection } = useConnectedAccounts();
   const hasGmail = gmailManualConnection?.status === "active";
-  const hasGoogleDrive = googleConnection?.hasDrive === true;
-  const hasGoogleCalendar = googleConnection?.hasCalendar === true;
+  const hasGoogleConnection = !!googleConnection;
   const hasMicrosoft = !!microsoftConnection;
   const hasApple = !!appleCalendarConnection;
   const hasNotion = !!notionConnection;
   const hasCloze = clozeConnection?.status === "active";
   const hasSlack = !!slackConnection;
-  const hasAny = hasGmail || hasGoogleDrive || hasGoogleCalendar || hasMicrosoft || hasApple || hasNotion || hasCloze || hasSlack;
+  const hasAny = hasGmail || hasGoogleConnection || hasMicrosoft || hasApple || hasNotion || hasCloze || hasSlack;
   const handleGoogleToggle = async (
     checked: boolean,
     integrationId: "gmail" | "drive" | "calendar",
@@ -334,10 +333,10 @@ export function StepIntegrationsSection({
         {hasGmail && (
           <ToggleRow label={t("integration_gmail")} checked={step.gmailEnabled} onChange={(v) => { void handleGoogleToggle(v, "gmail", { gmailEnabled: v }); }} />
         )}
-        {hasGoogleDrive && (
+        {hasGoogleConnection && (
           <ToggleRow label={t("integration_google_drive")} checked={step.driveEnabled} onChange={(v) => { void handleGoogleToggle(v, "drive", { driveEnabled: v }); }} />
         )}
-        {hasGoogleCalendar && (
+        {hasGoogleConnection && (
           <ToggleRow label={t("integration_google_calendar")} checked={step.calendarEnabled} onChange={(v) => { void handleGoogleToggle(v, "calendar", { calendarEnabled: v }); }} />
         )}
         {hasMicrosoft && (

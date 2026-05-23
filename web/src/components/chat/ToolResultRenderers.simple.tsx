@@ -5,6 +5,7 @@
 import { FileText, Download, FolderPlus, RefreshCw, Upload } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Badge } from "./ToolResultRenderers";
+import { safeHttpUrl } from "./ToolResultRenderers.simple.utils";
 import { formatBytes } from "./ToolResultRenderers.utils";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +52,7 @@ export function WorkspaceExportFileResult({ data }: { data: Record<string, unkno
   const mimeType = d.mimeType ? String(d.mimeType) : null;
   const sizeBytes = d.sizeBytes as number | undefined;
   const downloadUrl = d.downloadUrl ? String(d.downloadUrl) : null;
+  const safeDownloadUrl = safeHttpUrl(downloadUrl);
   return (
     <div className="space-y-1">
       <div className="flex items-center gap-2 flex-wrap text-[11px]">
@@ -59,9 +61,9 @@ export function WorkspaceExportFileResult({ data }: { data: Record<string, unkno
         {mimeType && <Badge>{mimeType}</Badge>}
         {sizeBytes !== undefined && <Badge>{formatBytes(sizeBytes)}</Badge>}
       </div>
-      {downloadUrl && (
+      {safeDownloadUrl && (
         <a
-          href={downloadUrl}
+          href={safeDownloadUrl}
           target="_blank"
           rel="noopener noreferrer"
           className="text-[11px] text-primary hover:underline truncate block"
@@ -72,6 +74,7 @@ export function WorkspaceExportFileResult({ data }: { data: Record<string, unkno
     </div>
   );
 }
+
 
 // ---------------------------------------------------------------------------
 // workspace_import_file

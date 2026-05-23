@@ -18,9 +18,8 @@ import { FavoritesStrip } from "@/components/chat-list/FavoritesStrip";
 import { BrandWordmark } from "@/components/shared/BrandWordmark";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { useToast } from "@/components/shared/Toast.context";
-import { getTimeGroup, debounce } from "@/lib/utils";
+import { getTimeGroup } from "@/lib/utils";
 import { buildDefaultParticipants, launchChat, type PersonaLike } from "@/lib/chatLaunch";
-import { sidebarChatMatchesSearch } from "@/lib/sidebarSearch";
 import { Defaults } from "@/lib/constants";
 import type { TimeGroup } from "@/lib/utils";
 import type { Id } from "@convex/_generated/dataModel";
@@ -57,6 +56,8 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
   const [renamingTitle, setRenamingTitle] = useState("");
   const [isPinnedReorderMode, setIsPinnedReorderMode] = useState(false);
   const [chatLimit, setChatLimit] = useState(CHAT_PAGE_SIZE);
+  const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const isCreatingChatRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -75,9 +76,18 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   // ── Queries ──────────────────────────────────────────────────────────────
   const activeFolderId = selectedFolderId ?? undefined;
-  const chatsQuery = useQuery(api.chat.queries.listChats,
-    activeFolderId ? { folderId: activeFolderId, limit: chatLimit } : { limit: chatLimit },
-  );
+  const chatsQueryArgs = {
+    ...(activeFolderId ? { folderId: activeFolderId } : {}),
+    limit: chatLimit,
+    ...(debouncedSearch.trim() ? { searchQuery: debouncedSearch.trim() } : {}),
+    ...(showScheduledOnly ? { source: "scheduled_job" as const } : {}),
+  };
+  const chatsQueryKey = JSON.stringify({
+    folderId: activeFolderId ?? null,
+    searchQuery: debouncedSearch.trim(),
+    showScheduledOnly,
+  });
+  const chatsQuery = useQuery(api.chat.queries.listChats, chatsQueryArgs);
   const foldersQuery = useQuery(api.folders.queries.list);
   const folders = useMemo(
     () => ((foldersQuery ?? []) as FolderRow[])
@@ -88,17 +98,28 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   // Keep the previous chat data visible while loading more (prevents scroll reset).
   // Only show skeleton on true initial load (prevChatsRef is still null).
-  const prevChatsRef = useRef<typeof chatsQuery>(null);
-  if (chatsQuery !== undefined) prevChatsRef.current = chatsQuery;
-  const chatsRaw = chatsQuery ?? prevChatsRef.current;
-  const isInitialLoad = chatsQuery === undefined && prevChatsRef.current === null;
-
-  const debouncedSetSearch = useMemo(() => debounce((v: string) => setDebouncedSearch(v), 300), []);
+  const prevChatsRef = useRef<{ key: string; value: typeof chatsQuery } | null>(null);
+  if (chatsQuery !== undefined) {
+    prevChatsRef.current = { key: chatsQueryKey, value: chatsQuery };
+  }
+  const cachedChats = prevChatsRef.current?.key === chatsQueryKey ? prevChatsRef.current.value : null;
+  const chatsRaw = chatsQuery ?? cachedChats;
+  const isInitialLoad = chatsQuery === undefined && cachedChats === null;
 
   function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
     setSearchQuery(e.target.value);
-    debouncedSetSearch(e.target.value);
   }
+
+  useEffect(() => {
+    if (!searchQuery) {
+      setDebouncedSearch("");
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [searchQuery]);
 
   // ── Derived data ─────────────────────────────────────────────────────────
   const chats: ChatRow[] = useMemo(() => {
@@ -108,12 +129,8 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
       ...chat,
       folderName: chat.folderId ? folderNamesById.get(chat.folderId) : undefined,
     }));
-    if (showScheduledOnly) {
-      all = all.filter((c) => c.source === "scheduled_job");
-    }
-    if (!debouncedSearch.trim()) return all;
-    return all.filter((c) => sidebarChatMatchesSearch(c, debouncedSearch));
-  }, [chatsRaw, debouncedSearch, folders, showScheduledOnly]);
+    return all;
+  }, [chatsRaw, folders]);
 
   const pinnedChats = useMemo(
     () => chats.filter((c) => c.isPinned).sort((a, b) => (b.pinnedAt ?? 0) - (a.pinnedAt ?? 0)),
@@ -136,7 +153,7 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
   // Reset chatLimit when filter changes so we don't over-fetch for a new filter
   useEffect(() => {
     setChatLimit(CHAT_PAGE_SIZE);
-  }, [showScheduledOnly, activeFolderId]);
+  }, [showScheduledOnly, activeFolderId, debouncedSearch]);
 
   // IntersectionObserver — auto-load more when sentinel at bottom enters viewport
   useEffect(() => {
@@ -158,6 +175,9 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   // ── Callbacks ────────────────────────────────────────────────────────────
   const handleNewChat = useCallback(async () => {
+    if (isCreatingChatRef.current) return;
+    isCreatingChatRef.current = true;
+    setIsCreatingChat(true);
     try {
       const participants = buildDefaultParticipants({
         prefs: prefs as { defaultModelId?: string; defaultPersonaId?: string } | undefined,
@@ -175,6 +195,9 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
         message: error instanceof Error ? error.message : t("something_went_wrong"),
         variant: "error",
       });
+    } finally {
+      isCreatingChatRef.current = false;
+      setIsCreatingChat(false);
     }
   }, [activeFolderId, createChat, navigate, personas, prefs, t, toast]);
 
@@ -381,8 +404,14 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
                 setSelectedFolderId(null);
                 setShowScheduledOnly(false);
               }}
-              onToggleScheduled={() => setShowScheduledOnly((prev) => !prev)}
-              onSelectFolder={setSelectedFolderId}
+              onToggleScheduled={() => {
+                setSelectedFolderId(null);
+                setShowScheduledOnly((prev) => !prev);
+              }}
+              onSelectFolder={(folderId) => {
+                setSelectedFolderId(folderId);
+                setShowScheduledOnly(false);
+              }}
               onManageFolders={() => setShowFolderManager(true)}
             />
             <div className="relative flex-1">
@@ -397,7 +426,9 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
               />
               {searchQuery && (
                 <button
-                  onClick={() => { setSearchQuery(""); setDebouncedSearch(""); }}
+                  type="button"
+                  aria-label={t("clear_search")}
+                  onClick={() => setSearchQuery("")}
                   className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-foreground transition-colors"
                 >
                   <X size={13} />
@@ -406,7 +437,10 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
             </div>
             <button
               onClick={() => void handleNewChat()}
-              className="p-2 rounded-xl hover:bg-primary/12 text-primary active:scale-95 transition-all flex-shrink-0"
+              disabled={isCreatingChat}
+              aria-busy={isCreatingChat}
+              aria-label={t("new_chat_shortcut")}
+              className="p-2 rounded-xl hover:bg-primary/12 text-primary active:scale-95 transition-all flex-shrink-0 disabled:pointer-events-none disabled:opacity-60"
               title={t("new_chat_shortcut")}
             >
             <SquarePen size={18} />

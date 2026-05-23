@@ -40,6 +40,7 @@ export function ChatSearchBar({
       onClose();
     } else if (e.key === "Enter") {
       e.preventDefault();
+      if (!hasMatches) return;
       if (e.shiftKey) onPrev();
       else onNext();
     }

@@ -12,7 +12,7 @@ import type { Message } from "./useChat";
 
 export interface BranchNode {
   messageId: Id<"messages">;
-  /** All sibling messages at this branch point (same parentMessageIds set). */
+  /** All sibling messages at this branch point (sharing any direct parent). */
   siblings: Id<"messages">[];
   /** Index of the currently-selected sibling. */
   activeIndex: number;
@@ -49,7 +49,6 @@ function sharesAnyDirectParent(left: Message, right: Message): boolean {
   const leftParents = directParentIds(left);
   const rightParents = directParentIds(right);
   if (leftParents.size === 0 || rightParents.size === 0) return false;
-
   for (const parentId of leftParents) {
     if (rightParents.has(parentId)) return true;
   }

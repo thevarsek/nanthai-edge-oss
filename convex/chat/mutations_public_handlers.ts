@@ -46,6 +46,7 @@ export async function createChatHandler(
     userId,
     title: args.title ?? "New conversation",
     mode: args.mode,
+    source: "user",
     folderId: args.folderId,
     createdAt: now,
     updatedAt: now,
@@ -336,6 +337,7 @@ export async function sendMessageHandler(
     // document. The seed title + messageCount updates are sufficient.
     messageCount: (chat.messageCount ?? 0) + 1 + assistantMessageIds.length,
     activeBranchLeafId: assistantMessageIds[0],
+    activeBranchLeafFocusOrder: undefined,
   };
   if (seededTitle) {
     chatPatch.title = seededTitle;
@@ -449,6 +451,7 @@ export async function sendMessageHandler(
           reasoningEffort: participant.reasoningEffort ?? undefined,
           // M10: Pass tool/integration config so post-search synthesis can use tools
           enabledIntegrations: effectiveIntegrations,
+          turnIntegrationOverrides: args.turnIntegrationOverrides,
           subagentsEnabled: effectiveSubagents,
         },
       );

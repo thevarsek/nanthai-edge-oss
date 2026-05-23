@@ -69,6 +69,49 @@ export function integrationSetToArray(s: Set<IntegrationKey>): string[] {
   return Array.from(s);
 }
 
+export function resolveAvatarImageStorageIdPatch(
+  uploadedStorageId: Id<"_storage"> | null | undefined,
+  imageWasRemoved: boolean,
+): { avatarImageStorageId?: Id<"_storage"> | null } {
+  if (uploadedStorageId !== undefined) {
+    return { avatarImageStorageId: uploadedStorageId };
+  }
+  if (imageWasRemoved) {
+    return { avatarImageStorageId: null };
+  }
+  return {};
+}
+
+export function buildPersonaMutationPayload(
+  form: FormState,
+  avatarImageStorageId: Id<"_storage"> | null | undefined,
+  avatarImageRemoved: boolean,
+) {
+  return {
+    displayName: form.displayName.trim(),
+    personaDescription: form.personaDescription.trim() || null,
+    systemPrompt: form.systemPrompt.trim(),
+    modelId: form.modelId || undefined,
+    temperature: form.temperatureEnabled && form.temperature ? parseFloat(form.temperature) : null,
+    maxTokens: form.maxTokensEnabled && form.maxTokens ? parseInt(form.maxTokens, 10) : null,
+    includeReasoning: form.includeReasoningEnabled ? form.includeReasoning : null,
+    reasoningEffort: form.includeReasoningEnabled && form.includeReasoning && form.reasoningEffortEnabled
+      ? form.reasoningEffort : null,
+    avatarEmoji: form.avatarEmoji || null,
+    avatarColor: form.avatarColor || undefined,
+    isDefault: form.isDefault,
+    skillOverrides: Array.from(form.skillOverrides.entries()).map(([skillId, state]) => ({
+      skillId: skillId as Id<"skills">,
+      state,
+    })),
+    integrationOverrides: Array.from(form.integrationOverrides.entries()).map(([integrationId, enabled]) => ({
+      integrationId,
+      enabled,
+    })),
+    ...resolveAvatarImageStorageIdPatch(avatarImageStorageId, avatarImageRemoved),
+  };
+}
+
 /** Cycle tri-state: inherit → always → available → never → inherit */
 export function cycleSkillOverride(
   current: SkillOverrideState | undefined,

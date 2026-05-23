@@ -25,7 +25,8 @@ export function BrandWordmark({ size = "md", className = "" }: BrandWordmarkProp
     <div className={`flex items-center gap-2 min-w-0 ${className}`.trim()}>
       <img
         src="/edge-brand/nanthai_edge_monogram_v2_transp.png"
-        alt="NanthAi Edge logo"
+        alt=""
+        aria-hidden="true"
         className={`${classes.image} shrink-0 object-contain`}
       />
       <span className={`${classes.text} font-bold tracking-tight text-foreground truncate`}>

@@ -103,11 +103,13 @@ export function HeroOutlineText({
       return line;
     }
     // Legacy { text, accentSuffix? }
-    const segs: Segment[] = [{ text: line.text }];
     if (line.accentSuffix) {
-      segs.push({ text: line.accentSuffix, accent: true });
+      const baseText = line.text.endsWith(line.accentSuffix)
+        ? line.text.slice(0, -line.accentSuffix.length)
+        : line.text;
+      return [{ text: baseText }, { text: line.accentSuffix, accent: true }];
     }
-    return segs;
+    return [{ text: line.text }];
   });
 
   const ariaLabel = normalizedLines

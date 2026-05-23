@@ -43,6 +43,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   cloze: "Cloze",
   slack: "Slack",
 };
+const GOOGLE_DATA_INTEGRATION_KEYS = new Set<IntegrationKey>(["gmail", "drive", "calendar"]);
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -112,10 +113,12 @@ export function ChatIntegrationsPicker({
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label={t("close")}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
           >
-            <X size={18} />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
 
@@ -140,24 +143,27 @@ export function ChatIntegrationsPicker({
                   </div>
                   <div className="divide-y divide-border/30">
                     {grouped[provider].map((integration) => {
-                      const isGoogleBlocked = googleIntegrationsBlocked === true && integration.provider === "google" && !enabledIntegrations.has(integration.key);
-                      return (
-                        <div key={integration.key}>
-                          <div
-                            className={`flex items-center gap-3 px-5 py-3 transition-colors ${isGoogleBlocked ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-2 cursor-pointer"}`}
-                            onClick={() => !isGoogleBlocked && onToggle(integration.key)}
-                          >
-                            <IntegrationLogo slug={integration.logoSlug} size={28} className="flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm">{integration.label}</p>
-                              <p className="text-xs text-muted">{integration.subtitle}</p>
-                            </div>
-                            <div onClick={(event) => event.stopPropagation()}>
-                              <Toggle
+                      const isGoogleBlocked = googleIntegrationsBlocked === true
+                        && GOOGLE_DATA_INTEGRATION_KEYS.has(integration.key)
+                        && !enabledIntegrations.has(integration.key);
+	                      return (
+	                        <div key={integration.key}>
+	                          <div
+	                            onClick={() => !isGoogleBlocked && onToggle(integration.key)}
+	                            className={`flex w-full items-center gap-3 px-5 py-3 text-left transition-colors ${isGoogleBlocked ? "opacity-40" : "cursor-pointer hover:bg-surface-2"}`}
+	                          >
+	                            <IntegrationLogo slug={integration.logoSlug} size={28} className="flex-shrink-0" />
+	                            <div className="flex-1 min-w-0">
+	                              <p id={`chat-integration-${integration.key}`} className="text-sm">{integration.label}</p>
+	                              <p className="text-xs text-muted">{integration.subtitle}</p>
+	                            </div>
+	                            <div onClick={(event) => event.stopPropagation()}>
+	                              <Toggle
                                 checked={enabledIntegrations.has(integration.key)}
                                 onChange={() => !isGoogleBlocked && onToggle(integration.key)}
                                 size="small"
                                 disabled={isGoogleBlocked}
+                                ariaLabelledBy={`chat-integration-${integration.key}`}
                               />
                             </div>
                           </div>

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -38,6 +38,56 @@ describe("MarkdownRenderer", () => {
     expect(screen.getByRole("cell", { name: "3" })).toHaveClass("text-right");
   });
 
+  test("copies only the clicked table markdown", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <MarkdownRenderer
+        content={[
+          "Before table.",
+          "",
+          "| Feature | Status |",
+          "|:--|:--|",
+          "| Tables | Done |",
+          "",
+          "After table.",
+        ].join("\n")}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy table" }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      ["| Feature | Status |", "|:--|:--|", "| Tables | Done |"].join("\n"),
+    );
+  });
+
+  test("copies GFM table markdown without edge pipes", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(
+      <MarkdownRenderer
+        content={[
+          "Before table.",
+          "",
+          "Feature | Status",
+          "--- | ---",
+          "Tables | Done",
+          "",
+          "After table.",
+        ].join("\n")}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy table" }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      ["Feature | Status", "--- | ---", "Tables | Done"].join("\n"),
+    );
+  });
+
   test("renders definition list syntax as a structured table", () => {
     render(<MarkdownRenderer content={"BYOK\n: Bring your own key.\n\nAgent\n: A system that can plan."} />);
 
@@ -49,11 +99,18 @@ describe("MarkdownRenderer", () => {
     expect(within(table).getByRole("cell", { name: "Agent" })).toBeInTheDocument();
   });
 
-  test("shows alt text when a markdown image fails", () => {
-    render(<MarkdownRenderer content={"![Example placeholder image](https://example.invalid/image.png)"} />);
+  test("shows alt text when a Convex markdown image fails", () => {
+    render(<MarkdownRenderer content={"![Example placeholder image](https://example.convex.site/download?storageId=abc&filename=image.png)"} />);
 
     fireEvent.error(screen.getByRole("img", { name: "Example placeholder image" }));
 
     expect(screen.getByText("Failed to load image: Example placeholder image")).toBeInTheDocument();
+  });
+
+  test("does not render external markdown images", () => {
+    render(<MarkdownRenderer content={"![External tracker](https://example.com/tracker.png)"} />);
+
+    expect(screen.queryByRole("img", { name: "External tracker" })).not.toBeInTheDocument();
+    expect(screen.getByText("External tracker")).toBeInTheDocument();
   });
 });

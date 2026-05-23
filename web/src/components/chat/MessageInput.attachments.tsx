@@ -33,6 +33,7 @@ export function AttachmentPreviews({ attachments, onRemove, isVideoMode, onChang
           <span className="max-w-32 truncate">{att.name}</span>
           {isVideoMode && att.type === "image" && (
             <button
+              type="button"
               onClick={() => setOpenDropdown(openDropdown === i ? null : i)}
               className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-accent/10 text-accent text-[10px] font-medium hover:bg-accent/20 transition-colors"
             >
@@ -49,6 +50,7 @@ export function AttachmentPreviews({ attachments, onRemove, isVideoMode, onChang
             />
           )}
           <button
+            type="button"
             onClick={() => onRemove(i)}
             className="text-muted hover:text-foreground transition-colors ml-0.5"
           >
@@ -107,6 +109,7 @@ function RoleDropdown({
         {VIDEO_ROLES.map((role) => (
           <button
             key={role}
+            type="button"
             onClick={() => onPick(role)}
             className={`w-full text-left px-3 py-1.5 text-xs hover:bg-surface-2 transition-colors ${currentRole === role ? "text-accent font-medium" : "text-foreground"}`}
             role="menuitem"

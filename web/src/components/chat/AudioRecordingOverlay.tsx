@@ -36,6 +36,7 @@ export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, on
           onClick={onCancel}
           className="p-2.5 rounded-xl text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
           title={t("audio_cancel_recording")}
+          aria-label={t("audio_cancel_recording")}
         >
           <X size={18} />
         </button>
@@ -68,7 +69,8 @@ export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, on
         <button
           onClick={onStop}
           className="p-2.5 rounded-xl bg-primary text-white hover:opacity-90 transition-opacity shrink-0"
-          title={t("audio_record_voice")}
+          title={t("audio_stop_recording")}
+          aria-label={t("audio_stop_recording")}
         >
           <Send size={18} />
         </button>

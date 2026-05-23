@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Bell } from "lucide-react";
 import { useMutation } from "convex/react";
@@ -30,7 +30,11 @@ function loadNotifPrefs(): NotifPrefs {
 }
 
 function saveNotifPrefs(prefs: NotifPrefs) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
+  } catch {
+    // Keep the in-memory toggle responsive when browser storage is unavailable.
+  }
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -42,7 +46,14 @@ export function NotificationsSection() {
     "idle" | "requesting"
   >("idle");
   const [prefs, setPrefs] = useState<NotifPrefs>(() => loadNotifPrefs());
-  const [pendingChatCompletionEnabled, setPendingChatCompletionEnabled] = useState<boolean | null>(null);
+  const [pendingChatCompletionRequest, setPendingChatCompletionRequest] = useState<{
+    id: number;
+    value: boolean;
+    serverVersion: number;
+  } | null>(null);
+  const chatCompletionRequestSeq = useRef(0);
+  const chatCompletionServerVersion = useRef(0);
+  const lastServerChatCompletionEnabled = useRef<boolean | null>(null);
   const { isPro } = useProGate();
   const upsertPreferences = useMutation(api.preferences.mutations.upsertPreferences);
   const webPush = useWebPush();
@@ -53,20 +64,32 @@ export function NotificationsSection() {
   const isEnabled = webPush.isRegistered;
   const serverChatCompletionEnabled = sharedPrefs?.chatCompletionNotificationsEnabled ?? false;
   const chatCompletionNotificationsEnabled =
-    pendingChatCompletionEnabled ?? serverChatCompletionEnabled;
+    pendingChatCompletionRequest?.value ?? serverChatCompletionEnabled;
 
   useEffect(() => {
-    if (pendingChatCompletionEnabled === serverChatCompletionEnabled) {
-      // Clear optimistic state once the reactive server preference catches up.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setPendingChatCompletionEnabled(null);
+    if (lastServerChatCompletionEnabled.current !== serverChatCompletionEnabled) {
+      lastServerChatCompletionEnabled.current = serverChatCompletionEnabled;
+      chatCompletionServerVersion.current += 1;
     }
-  }, [pendingChatCompletionEnabled, serverChatCompletionEnabled]);
+    setPendingChatCompletionRequest((pending) => {
+      if (!pending) return pending;
+      const serverCaughtUp =
+        pending.value === serverChatCompletionEnabled &&
+        chatCompletionServerVersion.current > pending.serverVersion;
+      return serverCaughtUp ? null : pending;
+    });
+  }, [serverChatCompletionEnabled]);
 
   const handleEnablePush = async () => {
     setPushStatus("requesting");
-    await webPush.enable();
-    setPushStatus("idle");
+    try {
+      await webPush.enable();
+    } catch {
+      // useWebPush owns the user-visible error state; this local state only
+      // controls the temporary disabled button state.
+    } finally {
+      setPushStatus("idle");
+    }
   };
 
   const handleDisablePush = async () => {
@@ -83,14 +106,20 @@ export function NotificationsSection() {
   }, []);
 
   const handleChatCompletionToggle = useCallback((nextValue: boolean) => {
-    setPendingChatCompletionEnabled(nextValue);
+    const requestId = chatCompletionRequestSeq.current + 1;
+    chatCompletionRequestSeq.current = requestId;
+    setPendingChatCompletionRequest({
+      id: requestId,
+      value: nextValue,
+      serverVersion: chatCompletionServerVersion.current,
+    });
     void (async () => {
       try {
         await upsertPreferences({
           chatCompletionNotificationsEnabled: nextValue,
         });
       } catch {
-        setPendingChatCompletionEnabled(null);
+        setPendingChatCompletionRequest((pending) => pending?.id === requestId ? null : pending);
       }
     })();
   }, [upsertPreferences]);
@@ -129,10 +158,10 @@ export function NotificationsSection() {
               >
                 <Bell size={16} className="flex-shrink-0" />
                 <span className="text-sm">
-                  {!webPush.isSupported
+                      {!webPush.isSupported
                     ? t("push_not_supported")
                     : !webPush.isConfigured
-                      ? "Push notifications are not configured"
+                      ? t("push_notifications_not_configured")
                       : pushStatus === "requesting"
                         ? t("requesting")
                         : webPush.status === "error"

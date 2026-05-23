@@ -2,7 +2,7 @@
 // Slide-over panel for per-chat parameter overrides.
 // Mirrors iOS ChatParametersView: temperature, max tokens, reasoning, reasoning effort.
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { X, SlidersHorizontal } from "lucide-react";
@@ -48,19 +48,40 @@ function tempLabel(t: TFunction, temp: number): string {
 
 export function ChatParametersDrawer({ overrides, onChange, onClose, defaults }: Props) {
   const { t } = useTranslation();
-  const [local, setLocal] = useState(overrides);
-
-  // Sync in when prop changes (e.g. parent state updates)
-  useEffect(() => { setLocal(overrides); }, [overrides]);
+  const overridesKey = [
+    overrides.temperatureMode,
+    overrides.temperature,
+    overrides.maxTokensMode,
+    overrides.maxTokens ?? "",
+    overrides.reasoningMode,
+    overrides.reasoningEffort,
+    overrides.autoAudioResponseMode,
+  ].join("|");
+  const resetDraft = {
+    key: overridesKey,
+    local: overrides,
+    maxTokensText: overrides.maxTokens != null ? String(overrides.maxTokens) : "",
+  };
+  const [draft, setDraft] = useState(resetDraft);
+  if (draft.key !== overridesKey) {
+    setDraft(resetDraft);
+  }
+  const activeDraft = draft.key === overridesKey ? draft : resetDraft;
+  const local = activeDraft.local;
+  const maxTokensText = activeDraft.maxTokensText;
 
   const update = useCallback(
     (patch: Partial<ChatParameterOverrides>) => {
       const next = { ...local, ...patch };
-      setLocal(next);
+      setDraft((current) => ({ ...current, local: next }));
       onChange(next);
     },
     [local, onChange],
   );
+
+  const updateMaxTokensText = useCallback((value: string) => {
+    setDraft((current) => ({ ...current, maxTokensText: value }));
+  }, []);
 
   // Resolved effective values
   const effectiveTemp = local.temperatureMode === "override" ? local.temperature : defaults.temperature;
@@ -79,11 +100,6 @@ export function ChatParametersDrawer({ overrides, onChange, onClose, defaults }:
     local.maxTokensMode === "override" ||
     local.reasoningMode !== "default" ||
     local.autoAudioResponseMode !== "default";
-
-  // Local text for max tokens input (allows empty field)
-  const [maxTokensText, setMaxTokensText] = useState(
-    local.maxTokens != null ? String(local.maxTokens) : "",
-  );
 
   return (
     <div
@@ -161,7 +177,7 @@ export function ChatParametersDrawer({ overrides, onChange, onClose, defaults }:
                 ]}
                 onChange={(v) => {
                   update({ maxTokensMode: v });
-                  if (v === "default") setMaxTokensText("");
+                  if (v === "default") updateMaxTokensText("");
                 }}
               />
             </div>
@@ -174,7 +190,7 @@ export function ChatParametersDrawer({ overrides, onChange, onClose, defaults }:
                   value={maxTokensText}
                   onChange={(e) => {
                     const raw = e.target.value.replace(/[^0-9]/g, "");
-                    setMaxTokensText(raw);
+                    updateMaxTokensText(raw);
                     const parsed = raw ? parseInt(raw, 10) : undefined;
                     update({ maxTokens: parsed });
                   }}
@@ -201,19 +217,17 @@ export function ChatParametersDrawer({ overrides, onChange, onClose, defaults }:
                 onChange={(v) => update({ reasoningMode: v })}
               />
             </div>
-            {(local.reasoningMode === "on" || (local.reasoningMode === "default" && defaults.includeReasoning)) && (
+            {local.reasoningMode === "on" && (
               <div className="flex items-center justify-between pl-1">
                 <span className="text-sm text-muted">{t("reasoning_effort")}</span>
                 <MenuSelect
-                  value={local.reasoningMode === "default" ? defaults.reasoningEffort : local.reasoningEffort}
+                  value={local.reasoningEffort}
                   options={[
                     { value: "low", label: t("low") },
                     { value: "medium", label: t("medium") },
                     { value: "high", label: t("high") },
                   ]}
-                  onChange={(v) =>
-                    update({ reasoningEffort: v as "low" | "medium" | "high" })
-                  }
+                  onChange={(v) => update({ reasoningEffort: v as "low" | "medium" | "high" })}
                 />
               </div>
             )}

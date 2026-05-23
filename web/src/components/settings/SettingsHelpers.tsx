@@ -153,33 +153,41 @@ export function SignOutSection() {
   const { t } = useTranslation();
   const { signOut } = useClerk();
   const [signingOut, setSigningOut] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const navigate = useNavigate();
 
   const handleSignOut = async () => {
     setSigningOut(true);
+    setErrorMessage(null);
     try {
       await signOut();
       navigate("/");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t("something_went_wrong");
+      setErrorMessage(t("sign_out_failed_arg", { var1: message }));
     } finally {
       setSigningOut(false);
     }
   };
 
   return (
-    <div className="rounded-2xl bg-surface-2 overflow-hidden">
-      <button
-        onClick={handleSignOut}
-        disabled={signingOut}
-        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-50"
-      >
-        <LogOut size={16} className="text-red-400 flex-shrink-0" />
-        <span className="flex-1 text-sm text-red-400">
-          {signingOut ? t("signing_out") : t("sign_out")}
-        </span>
-        {signingOut && (
-          <Loader2 className="animate-spin w-4 h-4 text-muted flex-shrink-0" />
-        )}
-      </button>
+    <div className="space-y-2">
+      <div className="rounded-2xl bg-surface-2 overflow-hidden">
+        <button
+          onClick={handleSignOut}
+          disabled={signingOut}
+          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-50"
+        >
+          <LogOut size={16} className="text-red-400 flex-shrink-0" />
+          <span className="flex-1 text-sm text-red-400">
+            {signingOut ? t("signing_out") : t("sign_out")}
+          </span>
+          {signingOut && (
+            <Loader2 className="animate-spin w-4 h-4 text-muted flex-shrink-0" />
+          )}
+        </button>
+      </div>
+      {errorMessage && <p className="text-xs text-red-400 px-1">{errorMessage}</p>}
     </div>
   );
 }
@@ -190,19 +198,30 @@ export function DeleteAccountSection() {
   const { t } = useTranslation();
   const [showConfirm, setShowConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const deleteAccount = useAction(api.account.actions.deleteAccount);
   const { signOut } = useClerk();
   const navigate = useNavigate();
 
   const handleDelete = async () => {
+    if (deleting) return;
     setDeleting(true);
+    setErrorMessage(null);
     try {
       await deleteAccount({});
-      await signOut();
+      try {
+        await signOut();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : t("something_went_wrong");
+        setErrorMessage(t("sign_out_failed_arg", { var1: message }));
+        return;
+      }
       navigate("/");
+      setShowConfirm(false);
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : t("something_went_wrong"));
     } finally {
       setDeleting(false);
-      setShowConfirm(false);
     }
   };
 
@@ -222,14 +241,18 @@ export function DeleteAccountSection() {
       <p className="text-xs text-muted px-1">
         {t("delete_account_footer")}
       </p>
+      {errorMessage && <p className="text-xs text-red-400 px-1">{errorMessage}</p>}
       <ConfirmDialog
         isOpen={showConfirm}
-        onClose={() => setShowConfirm(false)}
+        onClose={() => {
+          if (!deleting) setShowConfirm(false);
+        }}
         onConfirm={handleDelete}
         title={t("delete_account_confirm_title")}
         description={t("delete_account_description")}
         confirmLabel={deleting ? t("deleting") : t("delete_my_account")}
         confirmVariant="destructive"
+        errorMessage={errorMessage}
       />
     </div>
   );

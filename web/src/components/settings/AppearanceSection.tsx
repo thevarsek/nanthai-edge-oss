@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSharedData } from "@/hooks/useSharedData";
@@ -43,6 +43,7 @@ export function AppearanceSection() {
   const { t } = useTranslation();
   const { prefs } = useSharedData();
   const { updatePreference } = usePreferenceBuffer();
+  const transitionTimeoutRef = useRef<number | null>(null);
 
   const currentMode: AppearanceMode =
     (prefs?.appearanceMode as AppearanceMode | undefined) ?? "system";
@@ -53,6 +54,9 @@ export function AppearanceSection() {
   const applyTheme = useCallback((mode: AppearanceMode) => {
     const root = document.documentElement;
     // Enable smooth color transition
+    if (transitionTimeoutRef.current != null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+    }
     root.classList.add("theme-transition");
     if (mode === "dark") {
       root.setAttribute("data-theme", "dark");
@@ -66,7 +70,10 @@ export function AppearanceSection() {
       localStorage.removeItem("nanth_theme");
     }
     // Remove the transition class after the transition completes
-    setTimeout(() => root.classList.remove("theme-transition"), 350);
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      root.classList.remove("theme-transition");
+      transitionTimeoutRef.current = null;
+    }, 350);
   }, []);
 
   const applyColorTheme = (theme: ColorTheme) => {
@@ -87,6 +94,26 @@ export function AppearanceSection() {
   useEffect(() => {
     applyColorTheme(currentColorTheme);
   }, [currentColorTheme]);
+
+  useEffect(() => {
+    if (currentMode !== "system") return undefined;
+
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleSystemThemeChange = () => applyTheme("system");
+    media.addEventListener("change", handleSystemThemeChange);
+
+    return () => {
+      media.removeEventListener("change", handleSystemThemeChange);
+    };
+  }, [applyTheme, currentMode]);
+
+  useEffect(() => () => {
+    if (transitionTimeoutRef.current != null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+    document.documentElement.classList.remove("theme-transition");
+  }, []);
 
   const handleModeChange = (mode: AppearanceMode) => {
     updatePreference({ appearanceMode: mode });

@@ -1,8 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
 import { useSharedData } from "@/hooks/useSharedData";
+
+interface ModelSettingsDraftSnapshot {
+  hasCustomSettings: boolean;
+  temperature: number;
+  maxTokensText: string;
+  includeReasoning: boolean;
+  reasoningEffort: string;
+}
 
 export function ModelSettingsEditor({ modelId }: { modelId: string }) {
   const { t } = useTranslation();
@@ -21,15 +29,33 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
   const [reasoningEffort, setReasoningEffort] = useState("medium");
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState(false);
+  const lastModelId = useRef(modelId);
+  const pendingSavedDraft = useRef<ModelSettingsDraftSnapshot | null>(null);
 
   useEffect(() => {
-    setHasCustomSettings(existing != null);
-    setTemperature(existing?.temperature ?? 0.7);
-    setMaxTokensText(existing?.maxTokens != null ? String(existing.maxTokens) : "");
-    setIncludeReasoning(existing?.includeReasoning ?? true);
-    setReasoningEffort(existing?.reasoningEffort ?? "medium");
+    const modelChanged = lastModelId.current !== modelId;
+    if (modelChanged) {
+      pendingSavedDraft.current = null;
+    } else if (pendingSavedDraft.current) {
+      if (draftMatchesExisting(pendingSavedDraft.current, existing)) {
+        pendingSavedDraft.current = null;
+      } else {
+        return;
+      }
+    } else if (isDirty) {
+      return;
+    }
+    lastModelId.current = modelId;
+    const nextDraft = draftFromExisting(existing);
+    setHasCustomSettings(nextDraft.hasCustomSettings);
+    setTemperature(nextDraft.temperature);
+    setMaxTokensText(nextDraft.maxTokensText);
+    setIncludeReasoning(nextDraft.includeReasoning);
+    setReasoningEffort(nextDraft.reasoningEffort);
     setError(null);
-  }, [existing, modelId]);
+    setIsDirty(false);
+  }, [existing, isDirty, modelId]);
 
   async function handleSave() {
     if (isSaving) return;
@@ -45,6 +71,13 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
         if (existing) {
           await deleteModelSettings({ openRouterId: modelId });
         }
+        pendingSavedDraft.current = currentDraftSnapshot({
+          hasCustomSettings,
+          temperature,
+          maxTokensText,
+          includeReasoning,
+          reasoningEffort,
+        });
         return;
       }
 
@@ -55,6 +88,14 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
         includeReasoning,
         reasoningEffort,
       });
+      pendingSavedDraft.current = currentDraftSnapshot({
+        hasCustomSettings,
+        temperature,
+        maxTokensText,
+        includeReasoning,
+        reasoningEffort,
+      });
+      setIsDirty(true);
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : t("something_went_wrong"));
     } finally {
@@ -69,6 +110,7 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
     setIncludeReasoning(existing?.includeReasoning ?? true);
     setReasoningEffort(existing?.reasoningEffort ?? "medium");
     setError(null);
+    setIsDirty(false);
   }
 
   return (
@@ -86,7 +128,10 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
           <input
             type="checkbox"
             checked={hasCustomSettings}
-            onChange={(event) => setHasCustomSettings(event.target.checked)}
+            onChange={(event) => {
+              setHasCustomSettings(event.target.checked);
+              setIsDirty(true);
+            }}
             className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
           />
           <span>Custom</span>
@@ -106,7 +151,10 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
               max="2"
               step="0.1"
               value={temperature}
-              onChange={(event) => setTemperature(parseFloat(event.target.value))}
+              onChange={(event) => {
+                setTemperature(parseFloat(event.target.value));
+                setIsDirty(true);
+              }}
               className="w-full h-2 cursor-pointer accent-accent"
             />
           </div>
@@ -121,7 +169,10 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
               inputMode="numeric"
               placeholder={t("default_label")}
               value={maxTokensText}
-              onChange={(event) => setMaxTokensText(event.target.value.replace(/[^0-9]/g, ""))}
+              onChange={(event) => {
+                setMaxTokensText(event.target.value.replace(/[^0-9]/g, ""));
+                setIsDirty(true);
+              }}
               className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-sm text-right font-mono tabular-nums focus:outline-none focus:border-accent"
             />
           </div>
@@ -131,7 +182,10 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
             <input
               type="checkbox"
               checked={includeReasoning}
-              onChange={(event) => setIncludeReasoning(event.target.checked)}
+              onChange={(event) => {
+                setIncludeReasoning(event.target.checked);
+                setIsDirty(true);
+              }}
               className="h-4 w-4 rounded border-border text-accent focus:ring-accent"
             />
           </label>
@@ -144,7 +198,10 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
               <select
                 id={`reasoning-effort-${modelId}`}
                 value={reasoningEffort}
-                onChange={(event) => setReasoningEffort(event.target.value)}
+                onChange={(event) => {
+                  setReasoningEffort(event.target.value);
+                  setIsDirty(true);
+                }}
                 className="w-full px-3 py-2 rounded-lg bg-background border border-border/50 text-sm focus:outline-none focus:border-accent"
               >
                 <option value="low">{t("low")}</option>
@@ -177,4 +234,42 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
       </div>
     </div>
   );
+}
+
+function draftFromExisting(
+  existing: {
+    temperature?: number;
+    maxTokens?: number;
+    includeReasoning?: boolean;
+    reasoningEffort?: string;
+  } | null,
+): ModelSettingsDraftSnapshot {
+  return {
+    hasCustomSettings: existing != null,
+    temperature: existing?.temperature ?? 0.7,
+    maxTokensText: existing?.maxTokens != null ? String(existing.maxTokens) : "",
+    includeReasoning: existing?.includeReasoning ?? true,
+    reasoningEffort: existing?.reasoningEffort ?? "medium",
+  };
+}
+
+function currentDraftSnapshot(draft: ModelSettingsDraftSnapshot): ModelSettingsDraftSnapshot {
+  return { ...draft };
+}
+
+function draftMatchesExisting(
+  draft: ModelSettingsDraftSnapshot,
+  existing: {
+    temperature?: number;
+    maxTokens?: number;
+    includeReasoning?: boolean;
+    reasoningEffort?: string;
+  } | null,
+): boolean {
+  const existingDraft = draftFromExisting(existing);
+  return draft.hasCustomSettings === existingDraft.hasCustomSettings &&
+    draft.temperature === existingDraft.temperature &&
+    draft.maxTokensText === existingDraft.maxTokensText &&
+    draft.includeReasoning === existingDraft.includeReasoning &&
+    draft.reasoningEffort === existingDraft.reasoningEffort;
 }

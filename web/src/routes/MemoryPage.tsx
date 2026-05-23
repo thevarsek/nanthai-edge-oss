@@ -670,7 +670,7 @@ function MemoryPageContent() {
 
 export function MemoryPage() {
   return (
-    <ProGateWrapper feature="Memory">
+    <ProGateWrapper featureId="memory" presentation="page">
       <MemoryPageContent />
     </ProGateWrapper>
   );

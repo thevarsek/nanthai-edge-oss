@@ -32,8 +32,13 @@ export function IdeascapeHelpDeck({ onDismiss }: { onDismiss: () => void }) {
       <div className="flex items-center gap-2 mb-4">
         <Info size={16} className="text-[--nanth-primary]" />
         <h2 className="text-sm font-semibold flex-1">How Ideascapes Work</h2>
-        <button onClick={onDismiss} className="p-1 rounded-lg text-muted hover:text-foreground hover:bg-surface-2">
-          <X size={16} />
+        <button
+          type="button"
+          onClick={onDismiss}
+          className="p-1 rounded-lg text-muted hover:text-foreground hover:bg-surface-2"
+          aria-label="Dismiss Ideascape help"
+        >
+          <X size={16} aria-hidden="true" />
         </button>
       </div>
 

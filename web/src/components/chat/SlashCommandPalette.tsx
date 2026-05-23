@@ -3,6 +3,7 @@
 // Appears when user types `/` at the start of an empty composer.
 
 import { useMemo, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Search, Sparkles, PuzzleIcon } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
@@ -106,12 +107,19 @@ export function SlashCommandPalette({
   }, [integrationItems, turnIntegrationOverrides, query]);
 
   const isEmpty = filteredSkills.length === 0 && filteredIntegrations.length === 0;
+  const handleEscape = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      event.stopPropagation();
+      onDismiss();
+    }
+  };
 
   return (
     <div className="absolute bottom-full left-0 right-0 mb-1 z-40">
       <div
         className="mx-4 bg-surface-1 border border-border/50 rounded-xl shadow-xl overflow-hidden"
         style={{ maxHeight: "280px" }}
+        onKeyDown={handleEscape}
       >
         {/* Search */}
         <div className="px-3 pt-3 pb-2">
@@ -122,7 +130,6 @@ export function SlashCommandPalette({
               placeholder={t("search_skills_integrations")}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Escape") onDismiss(); }}
               autoFocus
               className="w-full pl-9 pr-4 py-1.5 rounded-lg text-sm bg-surface-2 border border-border/50 text-foreground placeholder-muted focus:outline-none focus:border-primary/50"
             />

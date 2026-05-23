@@ -16,14 +16,57 @@ import { buildFavoriteParticipants, launchChat } from "@/lib/chatLaunch";
 interface FavoriteAvatarProps {
   personaId?: string;
   modelIds: string[];
+  participants?: Array<{
+    modelId: string;
+    personaId?: string | null;
+    personaName?: string | null;
+    personaEmoji?: string | null;
+    personaAvatarImageUrl?: string | null;
+  }>;
   personaEmoji?: string;
   personaAvatarImageUrl?: string;
   personaName?: string;
 }
 
-function FavoriteAvatar({ personaId, modelIds, personaEmoji, personaAvatarImageUrl, personaName }: FavoriteAvatarProps) {
+function FavoriteAvatar({ personaId, modelIds, participants, personaEmoji, personaAvatarImageUrl, personaName }: FavoriteAvatarProps) {
+  const displayParticipants = participants && participants.length > 0 ? participants : null;
+  if (displayParticipants && displayParticipants.length > 1) {
+    return (
+      <div className="w-12 h-12 rounded-full relative overflow-hidden bg-muted">
+        {displayParticipants.slice(0, 3).map((participant, idx) => {
+          const count = Math.min(displayParticipants.length, 3);
+          const offsets = count === 3
+            ? [{ left: 12, top: 0 }, { left: 0, top: 16 }, { left: 22, top: 16 }]
+            : [{ left: 4, top: 4 }, { left: 18, top: 18 }];
+          return (
+            <div
+              key={`${participant.personaId ?? participant.modelId}-${idx}`}
+              className="absolute"
+              style={{ left: offsets[idx].left, top: offsets[idx].top, zIndex: count - idx }}
+            >
+              {participant.personaId ? (
+                <PersonaAvatar
+                  personaId={participant.personaId}
+                  personaName={participant.personaName ?? undefined}
+                  personaEmoji={participant.personaEmoji ?? undefined}
+                  personaAvatarImageUrl={participant.personaAvatarImageUrl ?? undefined}
+                  className="w-[22px] h-[22px]"
+                  emojiClass="text-xs"
+                  initialClass="text-[10px]"
+                  iconSize={12}
+                />
+              ) : (
+                <ProviderLogo modelId={participant.modelId} size={count >= 3 ? 22 : 26} />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   // Persona favorite — use 4-tier fallback
-  if (personaAvatarImageUrl || personaEmoji || personaName) {
+  if (personaId || personaAvatarImageUrl || personaEmoji || personaName) {
     return (
       <PersonaAvatar
         personaId={personaId}
@@ -96,6 +139,8 @@ export function FavoritesStrip() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
+  const [pendingFavoriteId, setPendingFavoriteId] = useState<string | null>(null);
+  const pendingFavoriteIdRef = useRef<string | null>(null);
 
   const sorted = (favorites ?? []).slice().sort((a, b) => a.sortOrder - b.sortOrder);
 
@@ -126,6 +171,10 @@ export function FavoritesStrip() {
   if (sorted.length === 0) return null;
 
   async function handleTap(fav: (typeof sorted)[0]) {
+    const favoriteId = fav._id as string;
+    if (pendingFavoriteIdRef.current) return;
+    pendingFavoriteIdRef.current = favoriteId;
+    setPendingFavoriteId(favoriteId);
     try {
       const participants = buildFavoriteParticipants(fav);
       const chatId = await launchChat({ createChat, participants });
@@ -135,6 +184,9 @@ export function FavoritesStrip() {
         message: error instanceof Error ? error.message : t("something_went_wrong"),
         variant: "error",
       });
+    } finally {
+      pendingFavoriteIdRef.current = null;
+      setPendingFavoriteId(null);
     }
   }
 
@@ -144,7 +196,7 @@ export function FavoritesStrip() {
       {canScrollLeft && (
         <button
           onClick={() => scroll("left")}
-          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-surface-2/90 border border-border/50 flex items-center justify-center opacity-0 group-hover/fav:opacity-100 transition-opacity shadow-sm hover:bg-surface-3"
+          className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-surface-2/90 border border-border/50 flex items-center justify-center opacity-0 group-hover/fav:opacity-100 focus-visible:opacity-100 transition-opacity shadow-sm hover:bg-surface-3"
           aria-label={t("scroll_left")}
         >
           <ChevronLeft size={14} />
@@ -160,14 +212,17 @@ export function FavoritesStrip() {
           <button
             key={fav._id as string}
             onClick={() => handleTap(fav)}
+            disabled={pendingFavoriteId !== null}
+            aria-busy={pendingFavoriteId === (fav._id as string)}
             className={cn(
               "flex flex-col items-center gap-1.5 flex-shrink-0 w-16",
-              "hover:opacity-80 active:scale-95 transition-all",
+              "hover:opacity-80 active:scale-95 transition-all disabled:pointer-events-none disabled:opacity-60",
             )}
           >
               <FavoriteAvatar
                 personaId={fav.personaId as string | undefined}
                 modelIds={fav.modelIds}
+                participants={fav.participants}
                 personaEmoji={fav.personaEmoji ?? undefined}
                 personaAvatarImageUrl={fav.personaAvatarImageUrl ?? undefined}
               personaName={fav.personaName ?? undefined}
@@ -183,7 +238,7 @@ export function FavoritesStrip() {
       {canScrollRight && (
         <button
           onClick={() => scroll("right")}
-          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-surface-2/90 border border-border/50 flex items-center justify-center opacity-0 group-hover/fav:opacity-100 transition-opacity shadow-sm hover:bg-surface-3"
+          className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 rounded-full bg-surface-2/90 border border-border/50 flex items-center justify-center opacity-0 group-hover/fav:opacity-100 focus-visible:opacity-100 transition-opacity shadow-sm hover:bg-surface-3"
           aria-label={t("scroll_right")}
         >
           <ChevronRight size={14} />
