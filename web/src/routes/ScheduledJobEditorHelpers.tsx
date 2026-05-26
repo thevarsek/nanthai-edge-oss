@@ -545,6 +545,14 @@ export function RecurrencePicker({
   onRecurrenceType: (v: RecurrenceType) => void; onIntervalMinutes: (v: number) => void; onDailyHour: (v: number) => void; onDailyMinute: (v: number) => void; onWeeklyDay: (v: number) => void; onCronExpression: (v: string) => void;
 }) {
   const { t } = useTranslation();
+  const localTime = useMemo(() => {
+    const date = new Date();
+    date.setUTCHours(dailyHour, dailyMinute, 0, 0);
+    return {
+      hour: date.getHours(),
+      minute: date.getMinutes(),
+    };
+  }, [dailyHour, dailyMinute]);
   return (
     <div className="space-y-2">
       <SH>{t("schedule_section")}</SH>
@@ -615,7 +623,7 @@ export function RecurrencePicker({
               <span className="text-sm">{t("time_local_label")}</span>
               <input
                 type="time"
-                value={`${String(dailyHour).padStart(2, "0")}:${String(dailyMinute).padStart(2, "0")}`}
+                value={`${String(localTime.hour).padStart(2, "0")}:${String(localTime.minute).padStart(2, "0")}`}
                 onChange={(e) => {
                   const [h, m] = e.target.value.split(":").map(Number);
                   // Convert local → UTC

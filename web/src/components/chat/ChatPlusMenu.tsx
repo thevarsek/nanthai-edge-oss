@@ -188,6 +188,7 @@ export function ChatPlusMenu({
               <div className="mx-3 my-1 border-t border-border/30" />
             )}
             <button
+              type="button"
               onClick={() => { if (!item.disabled) { onSelect(item.id); onClose(); } }}
               disabled={item.disabled}
               className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left ${item.disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-2"}`}

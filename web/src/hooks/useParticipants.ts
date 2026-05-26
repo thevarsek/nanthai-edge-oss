@@ -22,6 +22,10 @@ export interface ChatParticipantDoc {
   personaName?: string;
   personaEmoji?: string;
   personaAvatarImageUrl?: string;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  includeReasoning?: boolean | null;
+  reasoningEffort?: string | null;
   sortOrder: number;
   createdAt: number;
 }
@@ -34,6 +38,10 @@ export interface ParticipantEntry {
   personaName?: string | null;
   personaEmoji?: string | null;
   personaAvatarImageUrl?: string | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  includeReasoning?: boolean | null;
+  reasoningEffort?: string | null;
   sortOrder: number;
 }
 
@@ -45,6 +53,10 @@ export interface AddParticipantArgs {
   personaName?: string;
   personaEmoji?: string | null;
   personaAvatarImageUrl?: string | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  includeReasoning?: boolean | null;
+  reasoningEffort?: string | null;
   sortOrder?: number;
 }
 
@@ -55,6 +67,10 @@ export interface SetParticipantEntry {
   personaName?: string;
   personaEmoji?: string | null;
   personaAvatarImageUrl?: string | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  includeReasoning?: boolean | null;
+  reasoningEffort?: string | null;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -105,6 +121,10 @@ export function useParticipants(
         personaName: d.personaName ?? null,
         personaEmoji: d.personaEmoji ?? null,
         personaAvatarImageUrl: d.personaAvatarImageUrl ?? null,
+        temperature: d.temperature ?? null,
+        maxTokens: d.maxTokens ?? null,
+        includeReasoning: d.includeReasoning ?? null,
+        reasoningEffort: d.reasoningEffort ?? null,
         sortOrder: d.sortOrder,
       })),
     [rawDocs],
@@ -120,6 +140,10 @@ export function useParticipants(
         personaName: p.personaName,
         personaEmoji: p.personaEmoji,
         personaAvatarImageUrl: p.personaAvatarImageUrl,
+        temperature: p.temperature ?? undefined,
+        maxTokens: p.maxTokens ?? undefined,
+        includeReasoning: p.includeReasoning ?? undefined,
+        reasoningEffort: p.reasoningEffort ?? undefined,
       })),
     [participants],
   );

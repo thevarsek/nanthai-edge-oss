@@ -25,7 +25,7 @@ describe("useWebPush", () => {
     });
   });
 
-  it("removes the backend token before unsubscribing the browser subscription", async () => {
+  it("unsubscribes the browser subscription before removing the backend token", async () => {
     const subscription = {
       endpoint: "https://push.example/token",
       unsubscribe: vi.fn(async () => {
@@ -51,15 +51,14 @@ describe("useWebPush", () => {
       await expect(result.current.disable()).resolves.toBe(true);
     });
 
-    expect(mutationCalls).toEqual(["removeToken", "unsubscribe"]);
+    expect(mutationCalls).toEqual(["unsubscribe", "removeToken"]);
     expect(removeToken).toHaveBeenCalledWith({ token: "https://push.example/token" });
   });
 
-  it("keeps the browser subscription when backend token removal fails", async () => {
-    removeToken.mockRejectedValueOnce(new Error("network unavailable"));
+  it("keeps the backend token when browser unsubscribe fails", async () => {
     const subscription = {
       endpoint: "https://push.example/token",
-      unsubscribe: vi.fn(async () => true),
+      unsubscribe: vi.fn(async () => false),
     };
     Object.defineProperty(navigator, "serviceWorker", {
       configurable: true,
@@ -79,6 +78,7 @@ describe("useWebPush", () => {
       await expect(result.current.disable()).resolves.toBe(false);
     });
 
-    expect(subscription.unsubscribe).not.toHaveBeenCalled();
+    expect(subscription.unsubscribe).toHaveBeenCalled();
+    expect(removeToken).not.toHaveBeenCalled();
   });
 });

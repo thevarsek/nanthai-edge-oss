@@ -86,6 +86,58 @@ test("resolveParticipants uses per-model defaults when persona is absent", () =>
   expect(participants[0]?.reasoningEffort).toBe("high");
 });
 
+test("resolveParticipants preserves denormalized participant parameters when persona is missing", () => {
+  const participants = resolveParticipants({
+    baseParticipants: [{
+      modelId: "anthropic/claude-sonnet-4",
+      personaId,
+      personaName: "Legacy Persona",
+      temperature: 0.3,
+      maxTokens: 1234,
+      includeReasoning: true,
+      reasoningEffort: "high",
+    }],
+    personas: [],
+    prefs: {
+      defaultTemperature: 0.7,
+      defaultMaxTokens: 2048,
+      includeReasoning: false,
+      reasoningEffort: "low",
+    },
+    modelSettings: [],
+    overrides: defaultOverrides,
+  });
+
+  expect(participants[0]?.temperature).toBe(0.3);
+  expect(participants[0]?.maxTokens).toBe(1234);
+  expect(participants[0]?.includeReasoning).toBe(true);
+  expect(participants[0]?.reasoningEffort).toBe("high");
+});
+
+test("buildBaseParticipants preserves stored participant parameter fields", () => {
+  const participants = buildBaseParticipants({
+    convexParticipants: [{
+      id: "participant_1",
+      modelId: "anthropic/claude-sonnet-4",
+      personaId,
+      temperature: 0.4,
+      maxTokens: 2048,
+      includeReasoning: false,
+      reasoningEffort: null,
+    }],
+    defaultPersona: null,
+    selectedModelId: "openai/gpt-4.1",
+  });
+
+  expect(participants[0]).toMatchObject({
+    id: "participant_1",
+    temperature: 0.4,
+    maxTokens: 2048,
+    includeReasoning: false,
+    reasoningEffort: null,
+  });
+});
+
 test("resolveParticipants applies explicit chat overrides and clears reasoning effort when disabled", () => {
   const participants = resolveParticipants({
     baseParticipants: [{ modelId: "openai/gpt-4.1", personaId: null }],

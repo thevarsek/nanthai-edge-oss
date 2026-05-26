@@ -191,6 +191,14 @@ type SkillIntegrationMigrationCounts = {
   chatsLegacyCleared: number;
 };
 
+type ParticipantPersonaParameterSnapshotCounts = {
+  scanned: number;
+  missingPersona: number;
+  personasWithoutParameters: number;
+  patched: number;
+  alreadyCurrent: number;
+};
+
 /**
  * One-time migration: convert legacy skill/integration fields to the new
  * layered override format introduced in M30.
@@ -313,6 +321,82 @@ export const migrateSkillIntegrationOverrides = internalMutation({
 
       // Chat integration overrides: chats didn't have persisted integration overrides
       // in the legacy model (they were ephemeral per-message), so nothing to migrate.
+    }
+
+    return counts;
+  },
+});
+
+/**
+ * One-time migration: snapshot persona parameter overrides onto existing
+ * chatParticipants rows. New writers already populate these fields; this
+ * backfills older rows so chat retries/config resolution no longer depends on
+ * a separately-loaded persona document.
+ */
+export const backfillChatParticipantPersonaParameters = internalMutation({
+  args: {
+    dryRun: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { dryRun }): Promise<ParticipantPersonaParameterSnapshotCounts> => {
+    const isDry = dryRun ?? false;
+    const counts: ParticipantPersonaParameterSnapshotCounts = {
+      scanned: 0,
+      missingPersona: 0,
+      personasWithoutParameters: 0,
+      patched: 0,
+      alreadyCurrent: 0,
+    };
+
+    const participants = await ctx.db.query("chatParticipants").collect();
+    for (const participant of participants) {
+      if (!participant.personaId) continue;
+      counts.scanned += 1;
+
+      const persona = await ctx.db.get(participant.personaId);
+      if (!persona) {
+        counts.missingPersona += 1;
+        continue;
+      }
+
+      const patch: {
+        temperature?: number | undefined;
+        maxTokens?: number | undefined;
+        includeReasoning?: boolean | undefined;
+        reasoningEffort?: string | undefined;
+      } = {};
+
+      if (typeof persona.temperature === "number" && participant.temperature !== persona.temperature) {
+        patch.temperature = persona.temperature;
+      }
+      if (typeof persona.maxTokens === "number" && participant.maxTokens !== persona.maxTokens) {
+        patch.maxTokens = persona.maxTokens;
+      }
+      if (typeof persona.includeReasoning === "boolean" && participant.includeReasoning !== persona.includeReasoning) {
+        patch.includeReasoning = persona.includeReasoning;
+      }
+      if (typeof persona.reasoningEffort === "string" && participant.reasoningEffort !== persona.reasoningEffort) {
+        patch.reasoningEffort = persona.reasoningEffort;
+      }
+
+      const personaHasParameters =
+        typeof persona.temperature === "number" ||
+        typeof persona.maxTokens === "number" ||
+        typeof persona.includeReasoning === "boolean" ||
+        typeof persona.reasoningEffort === "string";
+      if (!personaHasParameters) {
+        counts.personasWithoutParameters += 1;
+        continue;
+      }
+
+      if (Object.keys(patch).length === 0) {
+        counts.alreadyCurrent += 1;
+        continue;
+      }
+
+      if (!isDry) {
+        await ctx.db.patch(participant._id, patch);
+      }
+      counts.patched += 1;
     }
 
     return counts;

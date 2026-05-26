@@ -91,10 +91,12 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   const fullTranscriptRef = useRef("");
   const mimeTypeRef = useRef("");
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const startingRef = useRef(false);
   // Resolve the stop() promise when mediaRecorder fires onstop.
   const stopResolveRef = useRef<((r: RecordingResult | null) => void) | null>(null);
 
   const cleanup = useCallback(() => {
+    startingRef.current = false;
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (levelTimerRef.current) { clearInterval(levelTimerRef.current); levelTimerRef.current = null; }
     if (maxTimerRef.current) { clearTimeout(maxTimerRef.current); maxTimerRef.current = null; }
@@ -120,6 +122,8 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   useEffect(() => () => cleanup(), [cleanup]);
 
   const start = useCallback(async () => {
+    if (startingRef.current || mediaRecorderRef.current || streamRef.current) return;
+    startingRef.current = true;
     setError(null);
     setIsPreparing(true);
     try {
@@ -190,6 +194,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       // Start recording
       recorder.start(250); // collect chunks every 250ms
       startTimeRef.current = Date.now();
+      startingRef.current = false;
       setIsRecording(true);
       setIsPreparing(false);
 

@@ -117,6 +117,10 @@ export const coreSchemaTables = {
     personaName: v.optional(v.string()),
     personaEmoji: v.optional(v.string()),
     personaAvatarImageUrl: v.optional(v.string()),
+    temperature: v.optional(v.number()),
+    maxTokens: v.optional(v.number()),
+    includeReasoning: v.optional(v.boolean()),
+    reasoningEffort: v.optional(v.string()),
     sortOrder: v.number(),
     createdAt: v.number(),
   })

@@ -108,7 +108,7 @@ export function MobileDrivePickerPage() {
           multiselect: true,
         });
         if (cancelled) return;
-        redirectToCallback(config.callbackScheme, picked.map((file) => file.id), config.state);
+        redirectToCallback(config.callbackScheme, picked.map((file) => file.id), config.state, config.code);
       } catch {
         if (!cancelled) {
           setMessage("Failed to open Google Drive Picker.");

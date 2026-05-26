@@ -52,6 +52,7 @@ export function MessageNode({
   scale,
   onPointerDown,
   onResizePointerDown,
+  shouldSuppressClick,
   onSelect,
   onFocus,
 }: {
@@ -64,6 +65,7 @@ export function MessageNode({
   scale: number;
   onPointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   onResizePointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
+  shouldSuppressClick?: (id: Id<"messages">) => boolean;
   onSelect: (id: Id<"messages">, multi: boolean) => void;
   onFocus: (id: Id<"messages">) => void;
 }) {
@@ -112,6 +114,11 @@ export function MessageNode({
       className={`rounded-2xl border-solid shadow-sm transition-shadow ${roleColor} ${borderClass}`}
       onPointerDown={(e) => onPointerDown(e, message._id)}
       onClick={(e) => {
+        if (shouldSuppressClick?.(message._id)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
         // Click on the node body → set focus; Shift/Meta/Ctrl → toggle selection
         if (e.shiftKey || e.metaKey || e.ctrlKey) {
           onSelect(message._id, true);

@@ -14,9 +14,11 @@ const generatedDocument: AttachmentPreview = {
 function renderMessageInput({
   chatId = "chat_1" as Id<"chats">,
   onSend = vi.fn(),
+  extraAttachments = [],
 }: {
   chatId?: Id<"chats">;
   onSend?: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
+  extraAttachments?: AttachmentPreview[];
 } = {}) {
   return render(
     <MessageInput
@@ -27,6 +29,7 @@ function renderMessageInput({
       onCancel={vi.fn()}
       onCreateUploadUrl={vi.fn()}
       generatedDocumentSuggestion={generatedDocument}
+      extraAttachments={extraAttachments}
     />,
   );
 }
@@ -62,5 +65,42 @@ describe("MessageInput", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("textbox")).toHaveValue("");
     expect(screen.queryByText("Research notes.pdf")).not.toBeInTheDocument();
+  });
+
+  it("sends displayed extra attachments with the message payload", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderMessageInput({
+      chatId: "chat_extra" as Id<"chats">,
+      onSend,
+      extraAttachments: [generatedDocument],
+    });
+
+    await user.type(screen.getByRole("textbox"), "include context");
+    await user.click(screen.getByTitle("Send (Enter)"));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend).toHaveBeenCalledWith({
+      text: "include context",
+      attachments: [expect.objectContaining({ storageId: "storage_1" })],
+    });
+  });
+
+  it("enables send when an extra attachment is the only content", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    renderMessageInput({
+      chatId: "chat_extra_only" as Id<"chats">,
+      onSend,
+      extraAttachments: [generatedDocument],
+    });
+
+    await user.click(screen.getByTitle("Send (Enter)"));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend).toHaveBeenCalledWith({
+      text: "",
+      attachments: [expect.objectContaining({ storageId: "storage_1" })],
+    });
   });
 });

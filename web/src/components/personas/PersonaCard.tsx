@@ -96,6 +96,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
         </div>
         <div className="flex items-center gap-0.5 opacity-100 transition-opacity">
           <button
+            type="button"
             onClick={() => onNewChat(persona._id)}
             disabled={isNewChatPending}
             aria-busy={isNewChatPending}
@@ -105,6 +106,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             <MessageSquare size={14} />
           </button>
           <button
+            type="button"
             onClick={() => onEdit(persona._id)}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-primary transition-colors"
             title="Edit"
@@ -112,6 +114,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             <Pencil size={14} />
           </button>
           <button
+            type="button"
             onClick={() => onDelete(persona._id)}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-red-400 transition-colors"
             title="Delete"
@@ -145,6 +148,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
       {/* Actions row */}
       <div className="flex items-center gap-1.5 px-3.5 pb-3 pt-0">
         <button
+          type="button"
           onClick={() => onNewChat(persona._id)}
           disabled={isNewChatPending}
           aria-busy={isNewChatPending}
@@ -153,6 +157,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
           New Chat
         </button>
         <button
+          type="button"
           onClick={() => onEdit(persona._id)}
           className="p-1.5 rounded-lg hover:bg-surface-1 text-muted hover:text-primary transition-colors"
           title="Edit"
@@ -160,6 +165,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
           <Pencil size={14} />
         </button>
         <button
+          type="button"
           onClick={() => onDelete(persona._id)}
           className="p-1.5 rounded-lg hover:bg-surface-1 text-muted hover:text-red-400 transition-colors"
           title="Delete"

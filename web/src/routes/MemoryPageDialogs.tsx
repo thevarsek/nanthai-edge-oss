@@ -286,11 +286,13 @@ export function ImportReviewDialog({
     setError(null);
     try {
       await onSave(
-        drafts.map((draft, index) => candidateFromDraft(
-          draft,
-          candidates[index]?.sourceFileName,
-          candidates[index],
-        )),
+        drafts
+          .map((draft, index) => candidateFromDraft(
+            draft,
+            candidates[index]?.sourceFileName,
+            candidates[index],
+          ))
+          .filter((candidate) => candidate.content.length > 0),
       );
     } catch {
       setError(t("memory_save_error"));

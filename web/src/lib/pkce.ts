@@ -65,8 +65,7 @@ export async function exchangeCodeForKey(
   });
 
   if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`OpenRouter key exchange failed: ${response.status} ${text}`);
+    throw new Error(`OpenRouter key exchange failed with status ${response.status}. Please try connecting again.`);
   }
 
   const data = (await response.json()) as { key: string };

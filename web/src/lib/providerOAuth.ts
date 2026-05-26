@@ -205,7 +205,6 @@ export async function connectProviderWithPopup(
   let url: string;
   try {
     url = await buildProviderAuthorizationUrl(provider, options);
-    popup.location.href = url;
   } catch (error) {
     popup.close();
     clearOAuthContext(provider);
@@ -242,6 +241,7 @@ export async function connectProviderWithPopup(
     };
 
     window.addEventListener("message", onMessage);
+    popup.location.href = url;
   });
 }
 

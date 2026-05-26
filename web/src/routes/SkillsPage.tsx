@@ -4,6 +4,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Link, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { useUser } from "@clerk/react";
 import { ChevronLeft, Search, Sparkles, Plus } from "lucide-react";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -26,6 +27,7 @@ function SkillsPageContent() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const skills = useVisibleSkills();
+  const { user } = useUser();
   const prefs = useQuery(api.preferences.queries.getPreferences, {});
   const [search, setSearch] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Id<"skills"> | null>(null);
@@ -153,7 +155,7 @@ function SkillsPageContent() {
                         skill={skill}
                         onDelete={(id) => setDeleteTarget(id)}
                         onDuplicate={(id) => void handleDuplicate(id)}
-                        currentUserId={skill.ownerUserId}
+                        currentUserId={user?.id}
                       />
                     ))}
                   </div>
@@ -171,7 +173,7 @@ function SkillsPageContent() {
                         skill={skill}
                         onDelete={(id) => setDeleteTarget(id)}
                         onDuplicate={(id) => void handleDuplicate(id)}
-                        currentUserId={skill.ownerUserId}
+                        currentUserId={user?.id}
                       />
                     ))}
                   </div>

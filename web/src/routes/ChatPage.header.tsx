@@ -248,7 +248,18 @@ export interface ChatModalPanelsProps {
   skillOverrides: Map<string, SkillOverrideState>; cycleSkill: (id: Id<"skills">) => void;
   selectedKBFileIds: Set<string>; toggleKBFile: (id: string) => void;
   chatId: Id<"chats"> | undefined; convexParticipants: ParticipantEntry[];
-  addParticipant: (args: { chatId: Id<"chats">; modelId: string; personaId?: Id<"personas">; personaName?: string; personaEmoji?: string | null; personaAvatarImageUrl?: string | null }) => Promise<unknown>;
+  addParticipant: (args: {
+    chatId: Id<"chats">;
+    modelId: string;
+    personaId?: Id<"personas">;
+    personaName?: string;
+    personaEmoji?: string | null;
+    personaAvatarImageUrl?: string | null;
+    temperature?: number | null;
+    maxTokens?: number | null;
+    includeReasoning?: boolean | null;
+    reasoningEffort?: string | null;
+  }) => Promise<unknown>;
   removeParticipant: (participantId: Id<"chatParticipants">) => Promise<void>;
   setParticipants: (chatId: Id<"chats">, entries: SetParticipantEntry[]) => Promise<void>;
   subagentOverride: SubagentOverride; effectiveSubagentsEnabled: boolean;

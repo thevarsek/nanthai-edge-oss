@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation } from "convex/react";
 import { useTranslation } from "react-i18next";
+import { useUser } from "@clerk/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -94,6 +95,7 @@ function SkillDetailContent() {
   const skills = useVisibleSkills();
   const [showDelete, setShowDelete] = useState(false);
   const { toast } = useToast();
+  const { user } = useUser();
 
   const deleteSkill = useMutation(api.skills.mutations.deleteSkill);
   const duplicateSkill = useMutation(api.skills.mutations.duplicateSystemSkill);
@@ -134,6 +136,7 @@ function SkillDetailContent() {
 
   const isSystem = skill.scope === "system";
   const isUser = skill.scope === "user";
+  const isOwned = isUser && skill.ownerUserId === user?.id;
   const isEditable = skill.lockState === "editable";
   const requiredCapabilities = skill.requiredCapabilities ?? [];
   const requiredProfiles = skill.requiredToolProfiles ?? [];
@@ -183,7 +186,7 @@ function SkillDetailContent() {
               <span className="hidden sm:inline">{t("duplicate")}</span>
             </button>
           )}
-          {isUser && isEditable && (
+          {isOwned && isEditable && (
             <Link
               to={`/app/settings/skills/${skill._id}/edit`}
               className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-sm text-accent hover:bg-accent/10 transition-colors"
@@ -288,7 +291,7 @@ function SkillDetailContent() {
             </>
           )}
 
-          {isUser && (
+          {isOwned && (
             <div className="rounded-2xl bg-surface-2 overflow-hidden">
               <button
                 onClick={() => setShowDelete(true)}

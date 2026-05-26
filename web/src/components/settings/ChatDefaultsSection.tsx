@@ -89,8 +89,10 @@ export function ChatDefaultsSection() {
   const [previewLoading, setPreviewLoading] = useState<string | null>(null);
   const [previewPlaying, setPreviewPlaying] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const previewRequestIdRef = useRef(0);
 
   const stopPreview = useCallback(() => {
+    previewRequestIdRef.current += 1;
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; audioRef.current = null; }
     setPreviewPlaying(null);
     setPreviewLoading(null);
@@ -99,9 +101,11 @@ export function ChatDefaultsSection() {
   const handlePreviewVoice = useCallback(async (voice: string) => {
     if (previewPlaying === voice) { stopPreview(); return; }
     stopPreview();
+    const requestId = previewRequestIdRef.current;
     setPreviewLoading(voice);
     try {
       const result = await previewVoice({ voice });
+      if (requestId !== previewRequestIdRef.current) return;
       if (!result?.audioBase64) return;
       const audio = new Audio(`data:${result.mimeType ?? "audio/wav"};base64,${result.audioBase64}`);
       audioRef.current = audio;

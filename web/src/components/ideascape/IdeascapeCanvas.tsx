@@ -70,6 +70,7 @@ export function IdeascapeCanvas({
     startPointerX: number; startPointerY: number;
     moved: boolean;
   } | null>(null);
+  const suppressNextNodeClickId = useRef<Id<"messages"> | null>(null);
   const resizeState = useRef<{
     messageId: Id<"messages">; startWidth: number; startHeight: number;
     startPointerX: number; startPointerY: number;
@@ -204,6 +205,7 @@ export function IdeascapeCanvas({
       const dx = (e.clientX - dragState.current.startPointerX) / viewport.scale;
       const dy = (e.clientY - dragState.current.startPointerY) / viewport.scale;
       if (dragState.current.moved) {
+        suppressNextNodeClickId.current = dragState.current.messageId;
         onNodeDragEnd(
           dragState.current.messageId,
           dragState.current.startNodeX + dx - displayGeometry.offsetX,
@@ -308,6 +310,11 @@ export function IdeascapeCanvas({
     },
     [selectedIds, focusedId, activeBranchIds],
   );
+  const shouldSuppressNodeClick = useCallback((id: Id<"messages">) => {
+    if (suppressNextNodeClickId.current !== id) return false;
+    suppressNextNodeClickId.current = null;
+    return true;
+  }, []);
 
   return (
     <div
@@ -378,6 +385,7 @@ export function IdeascapeCanvas({
                 scale={viewport.scale}
                 onPointerDown={onNodePointerDown}
                 onResizePointerDown={onNodeResizePointerDown}
+                shouldSuppressClick={shouldSuppressNodeClick}
                 onSelect={onSelectNode}
                 onFocus={onFocusNode}
               />

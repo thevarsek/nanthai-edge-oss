@@ -59,9 +59,14 @@ export function listRowPriceLabel(model: {
   isFree?: boolean;
   modelId: string;
   supportsVideo?: boolean;
-  videoPricing?: { perVideoSecond?: number; perVideoToken?: number };
+  videoPricing?: {
+    perVideoSecond?: number;
+    perVideoSecond1080p?: number;
+    perVideoToken?: number;
+    perVideoTokenNoAudio?: number;
+  };
   supportsImages?: boolean;
-  imagePricing?: { perImageOutput?: number };
+  imagePricing?: { perImageOutput?: number; perImageToken?: number };
   inputPricePer1M?: number;
   outputPricePer1M?: number;
 }): string | null {
@@ -70,12 +75,19 @@ export function listRowPriceLabel(model: {
     if (model.videoPricing.perVideoSecond != null && model.videoPricing.perVideoSecond > 0) {
       return formatVideoPrice(model.videoPricing.perVideoSecond, "sec");
     }
+    if (model.videoPricing.perVideoSecond1080p != null && model.videoPricing.perVideoSecond1080p > 0) {
+      return formatVideoPrice(model.videoPricing.perVideoSecond1080p, "sec");
+    }
     if (model.videoPricing.perVideoToken != null && model.videoPricing.perVideoToken > 0) {
       return formatVideoPrice(model.videoPricing.perVideoToken, "tok");
     }
+    if (model.videoPricing.perVideoTokenNoAudio != null && model.videoPricing.perVideoTokenNoAudio > 0) {
+      return formatVideoPrice(model.videoPricing.perVideoTokenNoAudio, "tok");
+    }
   }
-  if (model.supportsImages && model.imagePricing?.perImageOutput != null && model.imagePricing.perImageOutput > 0) {
-    return formatImagePrice(model.imagePricing.perImageOutput);
+  const imageTokenPrice = model.imagePricing?.perImageOutput ?? model.imagePricing?.perImageToken;
+  if (model.supportsImages && imageTokenPrice != null && imageTokenPrice > 0) {
+    return formatImagePrice(imageTokenPrice);
   }
   const combined = (model.inputPricePer1M ?? 0) + (model.outputPricePer1M ?? 0);
   return combined > 0 ? formatPrice(combined) : null;

@@ -151,6 +151,7 @@ export function SlashCommandPalette({
                   </div>
                   {filteredSkills.map((skill) => (
                     <button
+                      type="button"
                       key={skill._id}
                       onClick={() => { onSelectSkill(skill._id, skill.name); }}
                       className="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-2 transition-colors text-left"
@@ -171,6 +172,7 @@ export function SlashCommandPalette({
                   </div>
                   {filteredIntegrations.map((item) => (
                     <button
+                      type="button"
                       key={item.key}
                       onClick={() => { onSelectIntegration(item.key, item.label); }}
                       className="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-2 transition-colors text-left"
@@ -219,6 +221,7 @@ export function TurnOverrideChips({
           {skillNames.get(skillId) ?? "Skill"}
           <span className="text-[9px] opacity-70">({state})</span>
           <button
+            type="button"
             onClick={() => onRemoveSkill(skillId)}
             className="ml-0.5 hover:text-primary/70"
           >
@@ -234,6 +237,7 @@ export function TurnOverrideChips({
           <PuzzleIcon size={10} />
           {key}
           <button
+            type="button"
             onClick={() => onRemoveIntegration(key)}
             className="ml-0.5 hover:opacity-70"
           >

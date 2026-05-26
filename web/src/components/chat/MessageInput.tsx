@@ -133,19 +133,20 @@ export function MessageInput({
 
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
-    if (!trimmed && attachments.length === 0) return;
+    const outgoingAttachments = [...attachments, ...extraAttachments];
+    if (!trimmed && outgoingAttachments.length === 0) return;
     if (isGenerating) return;
     if (isAutonomousActive && onIntervene && trimmed) {
       onIntervene(trimmed);
     } else {
-      const result = await onSend({ text: trimmed, attachments });
+      const result = await onSend({ text: trimmed, attachments: outgoingAttachments });
       if (result === false) return;
     }
     setText("");
     clearAttachments();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, isGenerating, onSend, isAutonomousActive, onIntervene, clearAttachments, mention]);
+  }, [text, attachments, extraAttachments, isGenerating, onSend, isAutonomousActive, onIntervene, clearAttachments, mention]);
 
   const {
     queuedFollowUps,
@@ -250,7 +251,7 @@ export function MessageInput({
     [onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef, handlePasteFiles],
   );
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0) && !isGenerating && !isUploading;
+  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0) && !isGenerating && !isUploading;
   const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled;
   const suggestionStorageId = generatedDocumentSuggestion?.storageId;
   const isSuggestionAlreadyAttached = !!suggestionStorageId && (
@@ -345,6 +346,7 @@ export function MessageInput({
         {/* Plus button — iOS: circular glass effect */}
         <div className="relative shrink-0">
           <button
+            type="button"
             onClick={() => {
               setShowPlusMenu((v) => {
                 if (!v) {
@@ -415,19 +417,19 @@ export function MessageInput({
             <Plus size={17} strokeWidth={2.4} />
           </button>
         ) : isGenerating ? (
-          <button onClick={() => { void onCancel(); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10" title={t("stop_generation")}>
+          <button type="button" onClick={() => { void onCancel(); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10" title={t("stop_generation")}>
             <Square size={15} fill="currentColor" />
           </button>
         ) : canSend ? (
-          <button onClick={() => void handleSend()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title="Send (Enter)">
+          <button type="button" onClick={() => void handleSend()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title="Send (Enter)">
             <ArrowUp size={19} strokeWidth={2.6} />
           </button>
         ) : canRecord ? (
-          <button onClick={() => void recorder.start()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title={t("record_voice")}>
+          <button type="button" onClick={() => void recorder.start()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title={t("record_voice")}>
             <Mic size={17} />
           </button>
         ) : (
-          <button disabled className="flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-full text-muted opacity-40" title="Send (Enter)">
+          <button type="button" disabled className="flex h-9 w-9 shrink-0 cursor-not-allowed items-center justify-center rounded-full text-muted opacity-40" title="Send (Enter)">
             <ArrowUp size={19} strokeWidth={2.6} />
           </button>
         )}

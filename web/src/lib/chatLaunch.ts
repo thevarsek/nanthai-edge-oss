@@ -6,6 +6,10 @@ export interface PersonaLike {
   displayName?: string | null;
   avatarEmoji?: string | null;
   avatarImageUrl?: string | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  includeReasoning?: boolean | null;
+  reasoningEffort?: string | null;
 }
 
 export interface FavoriteLike {
@@ -17,6 +21,10 @@ export interface FavoriteLike {
     personaName?: string | null;
     personaEmoji?: string | null;
     personaAvatarImageUrl?: string | null;
+    temperature?: number | null;
+    maxTokens?: number | null;
+    includeReasoning?: boolean | null;
+    reasoningEffort?: string | null;
   }> | null;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;
@@ -24,11 +32,23 @@ export interface FavoriteLike {
   personaAvatarImageUrl?: string | null;
 }
 
+interface LaunchParticipant {
+  modelId: string;
+  personaId?: Id<"personas"> | null;
+  personaName?: string | null;
+  personaEmoji?: string | null;
+  personaAvatarImageUrl?: string | null;
+  temperature?: number;
+  maxTokens?: number;
+  includeReasoning?: boolean;
+  reasoningEffort?: string | null;
+}
+
 export function buildDefaultParticipants(args: {
   prefs?: { defaultModelId?: string; defaultPersonaId?: string | Id<"personas"> } | null;
   personas?: PersonaLike[];
   fallbackModelId: string;
-}) {
+}): LaunchParticipant[] {
   const { prefs, personas, fallbackModelId } = args;
   const defaultPersonaId = prefs?.defaultPersonaId;
   const defaultPersona = defaultPersonaId
@@ -42,6 +62,10 @@ export function buildDefaultParticipants(args: {
       personaName: defaultPersona.displayName ?? null,
       personaEmoji: defaultPersona.avatarEmoji ?? null,
       personaAvatarImageUrl: defaultPersona.avatarImageUrl ?? null,
+      temperature: defaultPersona.temperature ?? undefined,
+      maxTokens: defaultPersona.maxTokens ?? undefined,
+      includeReasoning: defaultPersona.includeReasoning ?? undefined,
+      reasoningEffort: defaultPersona.reasoningEffort ?? undefined,
     }];
   }
 
@@ -51,7 +75,7 @@ export function buildDefaultParticipants(args: {
   }];
 }
 
-export function buildFavoriteParticipants(favorite: FavoriteLike) {
+export function buildFavoriteParticipants(favorite: FavoriteLike): LaunchParticipant[] {
   if (favorite.participants && favorite.participants.length > 0) {
     return favorite.participants.slice(0, 3).map((participant) => ({
       modelId: participant.modelId,
@@ -59,6 +83,10 @@ export function buildFavoriteParticipants(favorite: FavoriteLike) {
       personaName: participant.personaName ?? null,
       personaEmoji: participant.personaEmoji ?? null,
       personaAvatarImageUrl: participant.personaAvatarImageUrl ?? null,
+      temperature: participant.temperature ?? undefined,
+      maxTokens: participant.maxTokens ?? undefined,
+      includeReasoning: participant.includeReasoning ?? undefined,
+      reasoningEffort: participant.reasoningEffort ?? undefined,
     }));
   }
 
@@ -78,13 +106,17 @@ export function buildFavoriteParticipants(favorite: FavoriteLike) {
   }));
 }
 
-export function buildPersonaParticipants(persona: PersonaLike, fallbackModelId: string) {
+export function buildPersonaParticipants(persona: PersonaLike, fallbackModelId: string): LaunchParticipant[] {
   return [{
     modelId: persona.modelId?.trim() || fallbackModelId,
     personaId: persona._id,
     personaName: persona.displayName ?? null,
     personaEmoji: persona.avatarEmoji ?? null,
     personaAvatarImageUrl: persona.avatarImageUrl ?? null,
+    temperature: persona.temperature ?? undefined,
+    maxTokens: persona.maxTokens ?? undefined,
+    includeReasoning: persona.includeReasoning ?? undefined,
+    reasoningEffort: persona.reasoningEffort ?? undefined,
   }];
 }
 
@@ -92,21 +124,9 @@ export async function launchChat(args: {
   createChat: (args: {
     mode: "chat";
     folderId?: string;
-    participants: Array<{
-      modelId: string;
-      personaId?: Id<"personas"> | null;
-      personaName?: string | null;
-      personaEmoji?: string | null;
-      personaAvatarImageUrl?: string | null;
-    }>;
+    participants: LaunchParticipant[];
   }) => Promise<Id<"chats">>;
-  participants: Array<{
-    modelId: string;
-    personaId?: Id<"personas"> | null;
-    personaName?: string | null;
-    personaEmoji?: string | null;
-    personaAvatarImageUrl?: string | null;
-  }>;
+  participants: LaunchParticipant[];
   folderId?: string;
 }) {
   return await args.createChat({

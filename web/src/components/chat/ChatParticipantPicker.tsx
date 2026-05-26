@@ -41,6 +41,10 @@ interface Props {
     personaName?: string;
     personaEmoji?: string | null;
     personaAvatarImageUrl?: string | null;
+    temperature?: number | null;
+    maxTokens?: number | null;
+    includeReasoning?: boolean | null;
+    reasoningEffort?: string | null;
   }) => Promise<unknown>;
   onRemove: (participantId: Id<"chatParticipants">) => Promise<void>;
   /** Atomically replace all participants — used for modality switches. */
@@ -191,6 +195,10 @@ export function ChatParticipantPicker({
           personaName: p.displayName,
           personaEmoji: p.avatarEmoji ?? null,
           personaAvatarImageUrl: p.avatarImageUrl ?? null,
+          temperature: p.temperature ?? null,
+          maxTokens: p.maxTokens ?? null,
+          includeReasoning: p.includeReasoning ?? null,
+          reasoningEffort: p.reasoningEffort ?? null,
         });
       }
     },
@@ -259,6 +267,10 @@ export function ChatParticipantPicker({
         personaName: persona.displayName,
         personaEmoji: persona.avatarEmoji ?? null,
         personaAvatarImageUrl: persona.avatarImageUrl ?? null,
+        temperature: persona.temperature ?? null,
+        maxTokens: persona.maxTokens ?? null,
+        includeReasoning: persona.includeReasoning ?? null,
+        reasoningEffort: persona.reasoningEffort ?? null,
       };
     }
     // Atomic swap: replace all participants with just the new one.
@@ -278,6 +290,10 @@ export function ChatParticipantPicker({
           personaName: persona.displayName,
           personaEmoji: persona.avatarEmoji ?? null,
           personaAvatarImageUrl: persona.avatarImageUrl ?? null,
+          temperature: persona.temperature ?? null,
+          maxTokens: persona.maxTokens ?? null,
+          includeReasoning: persona.includeReasoning ?? null,
+          reasoningEffort: persona.reasoningEffort ?? null,
         });
       }
       const newModality = pendingSwitch.newModality;

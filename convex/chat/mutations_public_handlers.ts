@@ -70,6 +70,10 @@ export async function createChatHandler(
         personaName: participant.personaName ?? undefined,
         personaEmoji: participant.personaEmoji ?? undefined,
         personaAvatarImageUrl: participant.personaAvatarImageUrl ?? undefined,
+        temperature: participant.temperature ?? undefined,
+        maxTokens: participant.maxTokens ?? undefined,
+        includeReasoning: participant.includeReasoning ?? undefined,
+        reasoningEffort: participant.reasoningEffort ?? undefined,
         sortOrder: index,
         createdAt: now,
       });

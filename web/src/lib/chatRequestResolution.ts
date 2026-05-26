@@ -54,6 +54,10 @@ export interface BaseParticipant {
   personaName?: string | null;
   personaEmoji?: string | null;
   personaAvatarImageUrl?: string | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
+  includeReasoning?: boolean | null;
+  reasoningEffort?: string | null;
 }
 
 export interface ParameterOverrides {
@@ -123,20 +127,20 @@ export function resolveParticipants(args: {
       ? true
       : overrides.reasoningMode === "off"
         ? false
-        : persona?.includeReasoning ?? defaults.includeReasoning;
+        : persona?.includeReasoning ?? participant.includeReasoning ?? defaults.includeReasoning;
     const reasoningEffort = includeReasoning
       ? overrides.reasoningMode === "on"
         ? overrides.reasoningEffort
-        : persona?.reasoningEffort ?? defaults.reasoningEffort
+        : persona?.reasoningEffort ?? participant.reasoningEffort ?? defaults.reasoningEffort
       : null;
     return {
       ...participant,
       temperature: overrides.temperatureMode === "override"
         ? overrides.temperature
-        : persona?.temperature ?? defaults.temperature,
+        : persona?.temperature ?? participant.temperature ?? defaults.temperature,
       maxTokens: overrides.maxTokensMode === "override"
         ? overrides.maxTokens
-        : persona?.maxTokens ?? defaults.maxTokens,
+        : persona?.maxTokens ?? participant.maxTokens ?? defaults.maxTokens,
       includeReasoning,
       reasoningEffort,
     };
@@ -157,6 +161,10 @@ export function buildBaseParticipants(args: {
       personaName: participant.personaName,
       personaEmoji: participant.personaEmoji,
       personaAvatarImageUrl: participant.personaAvatarImageUrl,
+      temperature: participant.temperature,
+      maxTokens: participant.maxTokens,
+      includeReasoning: participant.includeReasoning,
+      reasoningEffort: participant.reasoningEffort,
     }));
   }
   if (defaultPersona) {

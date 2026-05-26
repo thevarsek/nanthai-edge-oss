@@ -47,6 +47,10 @@ export const addParticipant = mutation({
     personaName: v.optional(v.string()),
     personaEmoji: v.optional(v.union(v.string(), v.null())),
     personaAvatarImageUrl: v.optional(v.union(v.string(), v.null())),
+    temperature: v.optional(v.union(v.number(), v.null())),
+    maxTokens: v.optional(v.union(v.number(), v.null())),
+    includeReasoning: v.optional(v.union(v.boolean(), v.null())),
+    reasoningEffort: v.optional(v.union(v.string(), v.null())),
     sortOrder: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -83,6 +87,10 @@ export const addParticipant = mutation({
       personaName: args.personaName,
       personaEmoji: args.personaEmoji ?? undefined,
       personaAvatarImageUrl: args.personaAvatarImageUrl ?? undefined,
+      temperature: args.temperature ?? undefined,
+      maxTokens: args.maxTokens ?? undefined,
+      includeReasoning: args.includeReasoning ?? undefined,
+      reasoningEffort: args.reasoningEffort ?? undefined,
       sortOrder,
       createdAt: Date.now(),
     });
@@ -145,6 +153,10 @@ export const updateParticipant = mutation({
     personaName: v.optional(v.string()),
     personaEmoji: v.optional(v.union(v.string(), v.null())),
     personaAvatarImageUrl: v.optional(v.union(v.string(), v.null())),
+    temperature: v.optional(v.union(v.number(), v.null())),
+    maxTokens: v.optional(v.union(v.number(), v.null())),
+    includeReasoning: v.optional(v.union(v.boolean(), v.null())),
+    reasoningEffort: v.optional(v.union(v.string(), v.null())),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -161,6 +173,10 @@ export const updateParticipant = mutation({
     if (args.personaName !== undefined) patch.personaName = args.personaName;
     if (args.personaEmoji !== undefined) patch.personaEmoji = args.personaEmoji ?? undefined;
     if (args.personaAvatarImageUrl !== undefined) patch.personaAvatarImageUrl = args.personaAvatarImageUrl ?? undefined;
+    if (args.temperature !== undefined) patch.temperature = args.temperature ?? undefined;
+    if (args.maxTokens !== undefined) patch.maxTokens = args.maxTokens ?? undefined;
+    if (args.includeReasoning !== undefined) patch.includeReasoning = args.includeReasoning ?? undefined;
+    if (args.reasoningEffort !== undefined) patch.reasoningEffort = args.reasoningEffort ?? undefined;
 
     if (Object.keys(patch).length > 0) {
       await ctx.db.patch(args.participantId, patch);
@@ -187,6 +203,10 @@ export const setParticipants = mutation({
         personaName: v.optional(v.string()),
         personaEmoji: v.optional(v.union(v.string(), v.null())),
         personaAvatarImageUrl: v.optional(v.union(v.string(), v.null())),
+        temperature: v.optional(v.union(v.number(), v.null())),
+        maxTokens: v.optional(v.union(v.number(), v.null())),
+        includeReasoning: v.optional(v.union(v.boolean(), v.null())),
+        reasoningEffort: v.optional(v.union(v.string(), v.null())),
       })
     ),
   },
@@ -226,6 +246,10 @@ export const setParticipants = mutation({
         personaName: p.personaName,
         personaEmoji: p.personaEmoji ?? undefined,
         personaAvatarImageUrl: p.personaAvatarImageUrl ?? undefined,
+        temperature: p.temperature ?? undefined,
+        maxTokens: p.maxTokens ?? undefined,
+        includeReasoning: p.includeReasoning ?? undefined,
+        reasoningEffort: p.reasoningEffort ?? undefined,
         sortOrder: i,
         createdAt: Date.now(),
       });

@@ -217,6 +217,9 @@ export function PersonaEditorPage() {
           body: avatarFile,
         });
         const { storageId } = (await resp.json()) as { storageId: Id<"_storage"> };
+        if (!resp.ok || !storageId) {
+          throw new Error(t("persona_avatar_upload_failed", "Avatar upload failed."));
+        }
         avatarImageStorageId = storageId;
       }
 

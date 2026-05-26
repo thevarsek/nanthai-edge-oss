@@ -106,12 +106,19 @@ function priceSortMetric(m: ModelSummary): number | null {
     if (m.videoPricing.perVideoSecond != null && m.videoPricing.perVideoSecond > 0) {
       return m.videoPricing.perVideoSecond;
     }
+    if (m.videoPricing.perVideoSecond1080p != null && m.videoPricing.perVideoSecond1080p > 0) {
+      return m.videoPricing.perVideoSecond1080p;
+    }
     if (m.videoPricing.perVideoToken != null && m.videoPricing.perVideoToken > 0) {
       return m.videoPricing.perVideoToken * 1_000_000;
     }
+    if (m.videoPricing.perVideoTokenNoAudio != null && m.videoPricing.perVideoTokenNoAudio > 0) {
+      return m.videoPricing.perVideoTokenNoAudio * 1_000_000;
+    }
   }
-  if (m.supportsImages && m.imagePricing?.perImageOutput != null && m.imagePricing.perImageOutput > 0) {
-    return m.imagePricing.perImageOutput * IMAGE_TOKENS_PER_MEGAPIXEL;
+  const imageTokenPrice = m.imagePricing?.perImageOutput ?? m.imagePricing?.perImageToken;
+  if (m.supportsImages && imageTokenPrice != null && imageTokenPrice > 0) {
+    return imageTokenPrice * IMAGE_TOKENS_PER_MEGAPIXEL;
   }
   return (m.inputPricePer1M ?? 0) + (m.outputPricePer1M ?? 0) || null;
 }

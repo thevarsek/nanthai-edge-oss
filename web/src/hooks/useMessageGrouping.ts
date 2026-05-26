@@ -34,20 +34,21 @@ export function useMessageGrouping(visibleMessages: Message[]): MessageGroup[] {
 
 export function groupMessages(messages: Message[]): MessageGroup[] {
   const groups: MessageGroup[] = [];
-  const seenGroupIds = new Set<string>();
 
-  for (const message of messages) {
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
     const groupId = message.multiModelGroupId;
 
     if (groupId && message.isMultiModelResponse) {
-      // Already processed this multi-model group
-      if (seenGroupIds.has(groupId)) continue;
-      seenGroupIds.add(groupId);
-
-      // Collect all messages in this group from the visible list
-      const grouped = messages.filter(
-        (m) => m.multiModelGroupId === groupId && m.isMultiModelResponse,
-      );
+      const grouped: Message[] = [message];
+      while (
+        index + 1 < messages.length &&
+        messages[index + 1].multiModelGroupId === groupId &&
+        messages[index + 1].isMultiModelResponse
+      ) {
+        index += 1;
+        grouped.push(messages[index]);
+      }
       groups.push({ type: "multi", groupId, messages: grouped });
     } else {
       groups.push({ type: "single", message });
