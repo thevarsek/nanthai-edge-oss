@@ -25,6 +25,7 @@ export function HeroSpotlight({
   const spotRef = useRef<HTMLDivElement>(null);
   const rafRef = useRef<number>(0);
   const posRef = useRef({ x: 0, y: 0 });
+  const listeningParentRef = useRef<HTMLElement | null>(null);
 
   const handleMove = useCallback(
     (e: MouseEvent) => {
@@ -49,20 +50,28 @@ export function HeroSpotlight({
   );
 
   useEffect(() => {
-    // Respect prefers-reduced-motion
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (mq.matches) return;
+    const removeMoveListener = () => {
+      listeningParentRef.current?.removeEventListener("mousemove", handleMove);
+      listeningParentRef.current = null;
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      rafRef.current = 0;
+    };
+    const updateMotionListener = () => {
+      removeMoveListener();
+      if (mq.matches) return;
+      const parent = containerRef.current?.parentElement;
+      if (!parent) return;
+      parent.addEventListener("mousemove", handleMove, { passive: true });
+      listeningParentRef.current = parent;
+    };
 
-    // Listen on the parent element so pointer-events-none on our children
-    // doesn't block the mousemove from firing.
-    const parent = containerRef.current?.parentElement;
-    if (!parent) return;
-
-    parent.addEventListener("mousemove", handleMove, { passive: true });
+    updateMotionListener();
+    mq.addEventListener("change", updateMotionListener);
 
     return () => {
-      parent.removeEventListener("mousemove", handleMove);
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      mq.removeEventListener("change", updateMotionListener);
+      removeMoveListener();
     };
   }, [handleMove]);
 

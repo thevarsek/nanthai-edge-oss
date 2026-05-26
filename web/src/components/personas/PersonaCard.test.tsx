@@ -44,7 +44,7 @@ describe("PersonaCard", () => {
   test("prefers avatar image over emoji and disables pending new-chat action", () => {
     render(
       <PersonaCard
-        persona={{ ...persona, avatarImageUrl: "https://example.test/avatar.png" }}
+        persona={{ ...persona, avatarImageUrl: "https://files.convex.site/download?filename=avatar.png" }}
         view="grid"
         onNewChat={vi.fn()}
         onEdit={vi.fn()}
@@ -55,8 +55,27 @@ describe("PersonaCard", () => {
 
     expect(screen.getByRole("img", { name: "Research Lead" })).toHaveAttribute(
       "src",
-      "https://example.test/avatar.png",
+      "https://files.convex.site/download?filename=avatar.png",
+    );
+    expect(screen.getByRole("img", { name: "Research Lead" })).toHaveAttribute(
+      "referrerpolicy",
+      "no-referrer",
     );
     expect(screen.getByRole("button", { name: /new chat/i })).toBeDisabled();
+  });
+
+  test("falls back when avatar image URL uses an untrusted source", () => {
+    render(
+      <PersonaCard
+        persona={{ ...persona, avatarImageUrl: "https://example.test/avatar.png", avatarEmoji: "R" }}
+        view="grid"
+        onNewChat={vi.fn()}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("img", { name: "Research Lead" })).not.toBeInTheDocument();
+    expect(screen.getByText("R")).toBeInTheDocument();
   });
 });

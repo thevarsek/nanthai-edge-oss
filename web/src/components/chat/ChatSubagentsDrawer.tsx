@@ -149,6 +149,7 @@ export function ChatSubagentsDrawer({
                 type="button"
                 role="radio"
                 aria-checked={isSelected}
+                aria-disabled={isProRequired}
                 tabIndex={isSelected ? 0 : -1}
                 onKeyDown={(event) => {
                   if (event.key === "ArrowDown" || event.key === "ArrowRight") {
@@ -163,7 +164,6 @@ export function ChatSubagentsDrawer({
                   if (isProRequired) return;
                   handleSelect(option.value);
                 }}
-                disabled={isProRequired}
                 className={`w-full flex items-start gap-3 px-3 py-3 rounded-xl text-left transition-colors ${
                   isProRequired
                     ? "opacity-40 cursor-not-allowed"

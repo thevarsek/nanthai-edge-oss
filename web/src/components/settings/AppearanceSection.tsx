@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from "react";
+import { useEffect, useCallback, useRef, useState } from "react";
 import { Check } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSharedData } from "@/hooks/useSharedData";
@@ -45,11 +45,35 @@ export function AppearanceSection() {
   const { updatePreference } = usePreferenceBuffer();
   const transitionTimeoutRef = useRef<number | null>(null);
 
-  const currentMode: AppearanceMode =
+  const serverMode: AppearanceMode =
     (prefs?.appearanceMode as AppearanceMode | undefined) ?? "system";
 
-  const currentColorTheme: ColorTheme =
+  const serverColorTheme: ColorTheme =
     (prefs?.colorTheme as ColorTheme | undefined) ?? "vibrant";
+  const [localMode, setLocalMode] = useState(serverMode);
+  const [localColorTheme, setLocalColorTheme] = useState(serverColorTheme);
+  const pendingModeRef = useRef(false);
+  const pendingColorThemeRef = useRef(false);
+  const currentMode = localMode;
+  const currentColorTheme = localColorTheme;
+
+  useEffect(() => {
+    if (pendingModeRef.current) {
+      if (serverMode === localMode) pendingModeRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => setLocalMode(serverMode), 0);
+    return () => window.clearTimeout(timer);
+  }, [serverMode, localMode]);
+
+  useEffect(() => {
+    if (pendingColorThemeRef.current) {
+      if (serverColorTheme === localColorTheme) pendingColorThemeRef.current = false;
+      return;
+    }
+    const timer = window.setTimeout(() => setLocalColorTheme(serverColorTheme), 0);
+    return () => window.clearTimeout(timer);
+  }, [serverColorTheme, localColorTheme]);
 
   const applyTheme = useCallback((mode: AppearanceMode) => {
     const root = document.documentElement;
@@ -87,9 +111,8 @@ export function AppearanceSection() {
 
   // Sync document theme + color theme on prefs load
   useEffect(() => {
-    if (!prefs?.appearanceMode) return;
-    applyTheme(prefs.appearanceMode as AppearanceMode);
-  }, [applyTheme, prefs?.appearanceMode]);
+    applyTheme(currentMode);
+  }, [applyTheme, currentMode]);
 
   useEffect(() => {
     applyColorTheme(currentColorTheme);
@@ -116,11 +139,15 @@ export function AppearanceSection() {
   }, []);
 
   const handleModeChange = (mode: AppearanceMode) => {
+    pendingModeRef.current = true;
+    setLocalMode(mode);
     updatePreference({ appearanceMode: mode });
     applyTheme(mode);
   };
 
   const handleColorThemeChange = (theme: ColorTheme) => {
+    pendingColorThemeRef.current = true;
+    setLocalColorTheme(theme);
     updatePreference({ colorTheme: theme });
     applyColorTheme(theme);
   };
@@ -138,6 +165,7 @@ export function AppearanceSection() {
             return (
               <button
                 key={value}
+                type="button"
                 onClick={() => handleModeChange(value)}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
               >
@@ -160,6 +188,7 @@ export function AppearanceSection() {
             return (
               <button
                 key={value}
+                type="button"
                 onClick={() => handleColorThemeChange(value)}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
               >

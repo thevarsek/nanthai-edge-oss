@@ -1,7 +1,7 @@
 // SegmentedControl — iOS-style segmented picker.
 // Extracted from ChatDefaultsSection for reuse across chat panels.
 
-import type { KeyboardEvent } from "react";
+import { useRef, type KeyboardEvent } from "react";
 
 export function SegmentedControl<T extends string | number>({
   value,
@@ -14,7 +14,10 @@ export function SegmentedControl<T extends string | number>({
   onChange: (v: T) => void;
   "aria-label"?: string;
 }) {
-  const selectedIndex = Math.max(0, options.findIndex((opt) => opt.value === value));
+  const buttonRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const rawSelectedIndex = options.findIndex((opt) => opt.value === value);
+  const selectedIndex = rawSelectedIndex >= 0 ? rawSelectedIndex : 0;
+  const selectedValue = options[selectedIndex]?.value;
   const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let nextIndex: number | null = null;
     if (event.key === "ArrowRight" || event.key === "ArrowDown") {
@@ -29,6 +32,7 @@ export function SegmentedControl<T extends string | number>({
     if (nextIndex == null) return;
     event.preventDefault();
     onChange(options[nextIndex].value);
+    buttonRefs.current[nextIndex]?.focus();
   };
 
   return (
@@ -40,15 +44,18 @@ export function SegmentedControl<T extends string | number>({
       {options.map((opt, index) => (
         <button
           key={String(opt.value)}
+          ref={(element) => {
+            buttonRefs.current[index] = element;
+          }}
           type="button"
           role="radio"
-          aria-checked={value === opt.value}
+          aria-checked={selectedValue === opt.value}
           tabIndex={index === selectedIndex ? 0 : -1}
           onClick={() => onChange(opt.value)}
           onKeyDown={(event) => handleKeyDown(event, index)}
           className={[
             "flex-1 px-3 py-1.5 text-xs font-medium rounded-[10px] transition-all text-center",
-            value === opt.value
+            selectedValue === opt.value
               ? "bg-primary text-white shadow-sm"
               : "text-muted hover:text-foreground",
           ].join(" ")}

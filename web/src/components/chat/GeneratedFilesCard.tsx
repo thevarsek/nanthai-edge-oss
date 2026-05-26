@@ -52,6 +52,7 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
   return (
     <>
       <button
+        type="button"
         onClick={() => setExpanded(true)}
         className={workspaceSurfaceClass("block overflow-hidden transition-colors hover:border-border/40 cursor-zoom-in")}
       >

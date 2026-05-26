@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -30,6 +30,7 @@ export function MainWalkthrough() {
   const upsertPreferences = useMutation(api.preferences.mutations.upsertPreferences);
   const [selection, setSelection] = useState(0);
   const [visible, setVisible] = useState(false);
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const CARDS = [
     { title: t("walkthrough_card1_title"), body: t("walkthrough_card1_body"), tint: CARD_TINTS[0], icon: CARD_ICONS[0] },
@@ -56,13 +57,48 @@ export function MainWalkthrough() {
     void upsertPreferences({ hasSeenMainWalkthrough: true });
   }, [upsertPreferences]);
 
+  useEffect(() => {
+    if (!visible) return;
+    cardRef.current?.querySelector<HTMLElement>("button")?.focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dismiss();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = cardRef.current?.querySelectorAll<HTMLElement>(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusable || focusable.length === 0) return;
+      const first = focusable[0]!;
+      const last = focusable[focusable.length - 1]!;
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [dismiss, visible]);
+
   if (!visible) return null;
 
   const card = CARDS[selection];
   const Icon = card.icon;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center pb-8 md:items-center md:pb-0 pointer-events-none">
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center pb-8 md:items-center md:pb-0 pointer-events-none"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="main-walkthrough-title"
+    >
       {/* Scrim */}
       <div
         className="absolute inset-0 bg-black/20 pointer-events-auto"
@@ -70,12 +106,14 @@ export function MainWalkthrough() {
       />
 
       {/* Card */}
-      <div className="relative w-[420px] max-w-[calc(100vw-2rem)] rounded-3xl border border-white/10 bg-surface-1/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.28)] p-5 pointer-events-auto animate-fade-in">
+      <div ref={cardRef} className="relative w-[420px] max-w-[calc(100vw-2rem)] rounded-3xl border border-white/10 bg-surface-1/95 backdrop-blur-xl shadow-[0_20px_50px_rgba(0,0,0,0.28)] p-5 pointer-events-auto animate-fade-in">
         {/* Header */}
         <div className="flex items-center gap-2 mb-4">
-          <h2 className="text-sm font-semibold flex-1">{t("walkthrough_header")}</h2>
+          <h2 id="main-walkthrough-title" className="text-sm font-semibold flex-1">{t("walkthrough_header")}</h2>
           <button
+            type="button"
             onClick={dismiss}
+            aria-label={t("dismiss")}
             className="p-1 rounded-lg text-muted hover:text-foreground hover:bg-surface-2"
           >
             <X size={16} />
@@ -103,6 +141,7 @@ export function MainWalkthrough() {
             {CARDS.map((_, index) => (
               <button
                 key={index}
+                type="button"
                 onClick={() => setSelection(index)}
                 className={`h-2 rounded-full transition-all ${
                   index === selection
@@ -114,6 +153,7 @@ export function MainWalkthrough() {
             ))}
           </div>
           <button
+            type="button"
             onClick={() =>
               selection === CARDS.length - 1
                 ? dismiss()

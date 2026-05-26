@@ -107,12 +107,12 @@ export function useChatSearch(messages: MessageLike[]): ChatSearchState & ChatSe
 
   const next = useCallback(() => {
     if (matches.length === 0) return;
-    setCurrentIndex((i) => (i + 1) % matches.length);
+    setCurrentIndex((i) => (Math.min(i, matches.length - 1) + 1) % matches.length);
   }, [matches.length]);
 
   const prev = useCallback(() => {
     if (matches.length === 0) return;
-    setCurrentIndex((i) => (i - 1 + matches.length) % matches.length);
+    setCurrentIndex((i) => (Math.min(i, matches.length - 1) - 1 + matches.length) % matches.length);
   }, [matches.length]);
 
   return {

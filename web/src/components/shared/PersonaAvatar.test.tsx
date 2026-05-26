@@ -20,7 +20,7 @@ describe("PersonaAvatar", () => {
 
   it("retries rendering an image when the avatar URL changes after a failed URL", () => {
     const { rerender } = render(
-      <PersonaAvatar personaName="Ada" personaAvatarImageUrl="https://example.com/old.png" />,
+      <PersonaAvatar personaName="Ada" personaAvatarImageUrl="https://files.convex.site/download?filename=old.png" />,
     );
 
     fireEvent.error(screen.getByRole("img", { name: "Ada" }));
@@ -28,12 +28,12 @@ describe("PersonaAvatar", () => {
     expect(screen.getByText("A")).toBeInTheDocument();
 
     rerender(
-      <PersonaAvatar personaName="Ada" personaAvatarImageUrl="https://example.com/new.png" />,
+      <PersonaAvatar personaName="Ada" personaAvatarImageUrl="https://files.convex.site/download?filename=new.png" />,
     );
 
     expect(screen.getByRole("img", { name: "Ada" })).toHaveAttribute(
       "src",
-      "https://example.com/new.png",
+      "https://files.convex.site/download?filename=new.png",
     );
   });
 
@@ -44,7 +44,7 @@ describe("PersonaAvatar", () => {
           _id: "persona_1",
           displayName: "Context Persona",
           avatarEmoji: "C",
-          avatarImageUrl: "https://example.com/context.png",
+          avatarImageUrl: "https://files.convex.site/download?filename=context.png",
         },
       ],
     } as unknown as SharedDataContextValue;
@@ -55,14 +55,31 @@ describe("PersonaAvatar", () => {
           personaId="persona_1"
           personaName="Fallback Persona"
           personaEmoji="F"
-          personaAvatarImageUrl="https://example.com/fallback.png"
+          personaAvatarImageUrl="https://files.convex.site/download?filename=fallback.png"
         />
       </SharedDataContext.Provider>,
     );
 
     expect(screen.getByRole("img", { name: "Context Persona" })).toHaveAttribute(
       "src",
-      "https://example.com/context.png",
+      "https://files.convex.site/download?filename=context.png",
     );
+    expect(screen.getByRole("img", { name: "Context Persona" })).toHaveAttribute(
+      "referrerpolicy",
+      "no-referrer",
+    );
+  });
+
+  it("rejects untrusted avatar image URLs", () => {
+    render(
+      <PersonaAvatar
+        personaName="Ada"
+        personaEmoji="A"
+        personaAvatarImageUrl="https://example.test/tracker.png"
+      />,
+    );
+
+    expect(screen.queryByRole("img", { name: "Ada" })).not.toBeInTheDocument();
+    expect(screen.getByText("A")).toBeInTheDocument();
   });
 });

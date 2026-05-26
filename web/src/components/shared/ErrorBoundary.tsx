@@ -54,12 +54,14 @@ export class ErrorBoundary extends Component<Props, State> {
           </p>
           <div className="flex items-center justify-center gap-3">
             <button
+              type="button"
               onClick={this.handleRetry}
               className="px-4 py-2 rounded-lg border border-border text-sm text-secondary hover:text-foreground transition-colors"
             >
               Try again
             </button>
             <button
+              type="button"
               onClick={this.handleReload}
               className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm hover:bg-primary/90 transition-colors"
             >

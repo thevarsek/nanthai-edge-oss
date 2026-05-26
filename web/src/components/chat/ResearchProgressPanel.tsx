@@ -45,6 +45,7 @@ export function ResearchProgressPanel({ session, onCancel }: ResearchProgressPan
   const dotColor = isPaper ? "bg-orange-400" : "bg-blue-400";
   const textColor = isPaper ? "text-orange-400" : "text-blue-400";
   const barColor = isPaper ? "bg-orange-400" : "bg-blue-400";
+  const clampedProgress = Math.min(100, Math.max(0, session.progress));
 
   return (
     <div className="rounded-xl border border-border/20 bg-surface-2/50 backdrop-blur-sm p-3 mt-2 space-y-2.5 animate-in fade-in slide-in-from-bottom-2 duration-300">
@@ -70,11 +71,11 @@ export function ResearchProgressPanel({ session, onCancel }: ResearchProgressPan
         <div className="h-1.5 w-full rounded-full bg-surface-3/50 overflow-hidden">
           <div
             className={`h-full rounded-full ${barColor} transition-all duration-500 ease-out`}
-            style={{ width: `${Math.min(100, Math.max(0, session.progress))}%` }}
+            style={{ width: `${clampedProgress}%` }}
           />
         </div>
         <p className="text-[11px] text-muted tabular-nums">
-          {t("percent_complete", { var1: session.progress })}
+          {t("percent_complete", { var1: clampedProgress })}
         </p>
       </div>
 
@@ -86,6 +87,7 @@ export function ResearchProgressPanel({ session, onCancel }: ResearchProgressPan
 
         {active && (
           <button
+            type="button"
             onClick={onCancel}
             className="flex items-center gap-1 text-xs font-medium text-red-400/85 hover:text-red-400 transition-colors"
           >

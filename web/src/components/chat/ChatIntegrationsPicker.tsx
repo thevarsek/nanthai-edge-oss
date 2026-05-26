@@ -76,6 +76,11 @@ export function ChatIntegrationsPicker({
 }: Props) {
   const { t } = useTranslation();
   const ALL_INTEGRATIONS = buildIntegrations(t);
+  const isBlockedIntegration = (key: IntegrationKey) =>
+    googleIntegrationsBlocked === true && GOOGLE_DATA_INTEGRATION_KEYS.has(key);
+  const enabledCount = ALL_INTEGRATIONS.filter(
+    (integration) => enabledIntegrations.has(integration.key) && !isBlockedIntegration(integration.key),
+  ).length;
   // Filter to only connected integrations
   const available = ALL_INTEGRATIONS.filter(
     (i) => connectedProviders[i.provider],
@@ -106,9 +111,9 @@ export function ChatIntegrationsPicker({
           <div className="flex items-center gap-2">
             <PuzzleIcon size={18} className="text-primary" />
             <h2 className="text-base font-semibold">{t("integrations")}</h2>
-            {enabledIntegrations.size > 0 && (
+            {enabledCount > 0 && (
               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
-                {enabledIntegrations.size}
+                {enabledCount}
               </span>
             )}
           </div>
@@ -143,9 +148,8 @@ export function ChatIntegrationsPicker({
                   </div>
                   <div className="divide-y divide-border/30">
                     {grouped[provider].map((integration) => {
-                      const isGoogleBlocked = googleIntegrationsBlocked === true
-                        && GOOGLE_DATA_INTEGRATION_KEYS.has(integration.key)
-                        && !enabledIntegrations.has(integration.key);
+                      const isGoogleBlocked = isBlockedIntegration(integration.key);
+                      const isEnabled = enabledIntegrations.has(integration.key) && !isGoogleBlocked;
 	                      return (
 	                        <div key={integration.key}>
 	                          <div
@@ -159,7 +163,7 @@ export function ChatIntegrationsPicker({
 	                            </div>
 	                            <div onClick={(event) => event.stopPropagation()}>
 	                              <Toggle
-                                checked={enabledIntegrations.has(integration.key)}
+                                checked={isEnabled}
                                 onChange={() => !isGoogleBlocked && onToggle(integration.key)}
                                 size="small"
                                 disabled={isGoogleBlocked}

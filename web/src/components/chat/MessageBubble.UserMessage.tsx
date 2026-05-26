@@ -55,7 +55,7 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
   return (
     <div className="flex flex-col items-end gap-1">
       {/* Bubble — iOS: RoundedRectangle(cornerRadius: 12), horizontal(14), vertical(10) */}
-      {(message.content || hasAudio) && (
+      {(hasCopyableContent || hasAudio) && (
         <div className="max-w-[75%] rounded-xl bg-primary px-3.5 py-2.5">
         {hasAudio && (
           <div className="mb-2">
@@ -67,9 +67,11 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
           </div>
         )}
         {/* iOS renders user text as plain Text() — no markdown */}
-        <p className="text-white text-sm leading-relaxed whitespace-pre-wrap break-words">
-          {message.content}
-        </p>
+        {hasCopyableContent && (
+          <p className="text-white text-sm leading-relaxed whitespace-pre-wrap break-words">
+            {message.content}
+          </p>
+        )}
         </div>
       )}
 

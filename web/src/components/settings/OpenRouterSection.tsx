@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -19,7 +19,6 @@ function creditColorClass(balance: number): string {
 // ─── Component ─────────────────────────────────────────────────────────────
 
 type PendingPreference = {
-  baseline: boolean;
   value: boolean;
 };
 
@@ -48,18 +47,22 @@ export function OpenRouterSection() {
   // Derive connected status from Convex (undefined = loading, true/false = known)
   const connected = hasApiKey === true;
   const isLoading = hasApiKey === undefined;
-  const effectiveShowBalanceInChat =
-    pendingBalanceInChat !== null &&
-    pendingBalanceInChat.baseline === showBalanceInChat &&
-    pendingBalanceInChat.value !== showBalanceInChat
-      ? pendingBalanceInChat.value
-      : showBalanceInChat;
-  const effectiveShowAdvancedStats =
-    pendingAdvancedStats !== null &&
-    pendingAdvancedStats.baseline === showAdvancedStats &&
-    pendingAdvancedStats.value !== showAdvancedStats
-      ? pendingAdvancedStats.value
-      : showAdvancedStats;
+  const effectiveShowBalanceInChat = pendingBalanceInChat?.value ?? showBalanceInChat;
+  const effectiveShowAdvancedStats = pendingAdvancedStats?.value ?? showAdvancedStats;
+
+  useEffect(() => {
+    if (pendingBalanceInChat !== null && pendingBalanceInChat.value === showBalanceInChat) {
+      const timer = window.setTimeout(() => setPendingBalanceInChat(null), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [pendingBalanceInChat, showBalanceInChat]);
+
+  useEffect(() => {
+    if (pendingAdvancedStats !== null && pendingAdvancedStats.value === showAdvancedStats) {
+      const timer = window.setTimeout(() => setPendingAdvancedStats(null), 0);
+      return () => window.clearTimeout(timer);
+    }
+  }, [pendingAdvancedStats, showAdvancedStats]);
 
   const savePreferenceToggle = useCallback(async (
     key: "showBalanceInChat" | "showAdvancedStats",
@@ -67,9 +70,9 @@ export function OpenRouterSection() {
     ) => {
     setErrorMessage(null);
     if (key === "showBalanceInChat") {
-      setPendingBalanceInChat({ baseline: showBalanceInChat, value: nextValue });
+      setPendingBalanceInChat({ value: nextValue });
     } else {
-      setPendingAdvancedStats({ baseline: showAdvancedStats, value: nextValue });
+      setPendingAdvancedStats({ value: nextValue });
     }
     try {
       await upsertPreferences({ [key]: nextValue });
@@ -81,7 +84,7 @@ export function OpenRouterSection() {
       }
       setErrorMessage(error instanceof Error ? error.message : t("something_went_wrong"));
     }
-  }, [showAdvancedStats, showBalanceInChat, t, upsertPreferences]);
+  }, [t, upsertPreferences]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -162,6 +165,7 @@ export function OpenRouterSection() {
                   <span className="text-sm text-muted">{t("unavailable")}</span>
                 )}
                 <button
+                  type="button"
                   onClick={() => void refreshCredits()}
                   className="p-1 rounded hover:bg-surface-3 transition-colors"
                   title={t("refresh_credits")}
@@ -189,6 +193,7 @@ export function OpenRouterSection() {
                 <span className="text-xs text-muted">{t("show_balance_in_chat_description")}</span>
               </div>
               <button
+                type="button"
                 role="switch"
                 aria-checked={effectiveShowBalanceInChat}
                 onClick={() => void savePreferenceToggle("showBalanceInChat", !effectiveShowBalanceInChat)}
@@ -205,6 +210,7 @@ export function OpenRouterSection() {
                 <span className="text-xs text-muted">{t("display_cost_per_message")}</span>
               </div>
               <button
+                type="button"
                 role="switch"
                 aria-checked={effectiveShowAdvancedStats}
                 onClick={() => void savePreferenceToggle("showAdvancedStats", !effectiveShowAdvancedStats)}
@@ -216,6 +222,7 @@ export function OpenRouterSection() {
 
             {/* Disconnect */}
             <button
+              type="button"
               onClick={() => setShowDisconnectConfirm(true)}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
             >
@@ -226,6 +233,7 @@ export function OpenRouterSection() {
         ) : (
           /* Connect */
           <button
+            type="button"
             onClick={handleConnect}
             disabled={isConnecting || isLoading}
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-50"
@@ -252,12 +260,14 @@ export function OpenRouterSection() {
             </p>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={() => setShowDisconnectConfirm(false)}
                 className="flex-1 py-2 rounded-lg bg-surface-2 text-sm hover:bg-surface-3 transition-colors"
               >
                 {t("cancel")}
               </button>
               <button
+                type="button"
                 onClick={() => void handleDisconnect()}
                 className="flex-1 py-2 rounded-lg bg-red-500 text-white text-sm font-medium hover:bg-red-600 transition-colors"
               >

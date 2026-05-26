@@ -130,4 +130,36 @@ describe("AudioMessageBubble", () => {
     expect(screen.getByText("generated transcript")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Download MP3" })).toBeInTheDocument();
   });
+
+  it("audio controls do not submit an enclosing form", async () => {
+    const convexReact = await import("convex/react");
+    vi.mocked(convexReact.useQuery).mockReturnValue("https://example.test/audio.mp3");
+    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault());
+
+    render(
+      <form onSubmit={onSubmit}>
+        <AudioMessageBubble
+          messageId={"msg_audio_abcdef" as never}
+          role="assistant"
+          modelId="google/lyria-3-pro-preview"
+          playbackState={{
+            ...basePlayback,
+            activeMessageId: "msg_audio_abcdef" as never,
+            isPlaying: true,
+            speed: 1.5,
+          }}
+          onPlay={vi.fn()}
+          onPause={vi.fn()}
+          onSeek={vi.fn()}
+          onCycleSpeed={vi.fn()}
+        />
+      </form>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download MP3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Pause" }));
+    fireEvent.click(screen.getByRole("button", { name: "1.5x" }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

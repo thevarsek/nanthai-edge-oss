@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -46,6 +46,7 @@ function ConnectionRow({
       </div>
       {isConnected ? (
         <button
+          type="button"
           onClick={onDisconnect}
           disabled={disabled}
           className="px-3 py-1.5 rounded-lg bg-surface-3 text-sm text-muted hover:text-red-400 transition-colors disabled:opacity-50"
@@ -58,6 +59,7 @@ function ConnectionRow({
         </span>
       ) : (
         <button
+          type="button"
           onClick={onConnect}
           disabled={disabled}
           className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
@@ -80,11 +82,13 @@ function AppleCalendarModal({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const connectAppleCalendar = useAction(api.oauth.apple_calendar.connectAppleCalendar);
 
   const handleConnect = async () => {
-    if (!email || !password) return;
+    if (loadingRef.current || !email || !password) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -93,6 +97,7 @@ function AppleCalendarModal({
     } catch (connectionError) {
       setError(convexErrorMessage(connectionError, t("connection_failed")));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
@@ -125,12 +130,14 @@ function AppleCalendarModal({
         )}
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-2 rounded-lg bg-surface-2 text-sm hover:bg-surface-3 transition-colors"
           >
             {t("cancel")}
           </button>
           <button
+            type="button"
             onClick={handleConnect}
             disabled={loading || !email || !password}
             className="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
@@ -154,11 +161,13 @@ function GmailManualModal({
   const [email, setEmail] = useState("");
   const [appPassword, setAppPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const connectGmailManual = useAction(api.oauth.gmail_manual_actions.connectGmailManual);
 
   const handleConnect = async () => {
-    if (!email || !appPassword) return;
+    if (loadingRef.current || !email || !appPassword) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -167,6 +176,7 @@ function GmailManualModal({
     } catch (connectionError) {
       setError(convexErrorMessage(connectionError, t("connection_failed")));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
@@ -223,12 +233,14 @@ function GmailManualModal({
         )}
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-2 rounded-lg bg-surface-2 text-sm hover:bg-surface-3 transition-colors"
           >
             {t("cancel")}
           </button>
           <button
+            type="button"
             onClick={handleConnect}
             disabled={loading || !email || !appPassword}
             className="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
@@ -252,11 +264,13 @@ function ClozeModal({
   const [apiKey, setApiKey] = useState("");
   const [label, setLabel] = useState("");
   const [loading, setLoading] = useState(false);
+  const loadingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const connectCloze = useAction(api.oauth.cloze.connectCloze);
 
   const handleConnect = async () => {
-    if (!apiKey) return;
+    if (loadingRef.current || !apiKey) return;
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     try {
@@ -265,6 +279,7 @@ function ClozeModal({
     } catch (connectionError) {
       setError(convexErrorMessage(connectionError, t("connection_failed")));
     } finally {
+      loadingRef.current = false;
       setLoading(false);
     }
   };
@@ -310,12 +325,14 @@ function ClozeModal({
         )}
         <div className="flex gap-2">
           <button
+            type="button"
             onClick={onClose}
             className="flex-1 py-2 rounded-lg bg-surface-2 text-sm hover:bg-surface-3 transition-colors"
           >
             {t("cancel")}
           </button>
           <button
+            type="button"
             onClick={handleConnect}
             disabled={loading || !apiKey}
             className="flex-1 py-2 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
@@ -341,6 +358,8 @@ export function ConnectedAccountsSection() {
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const [providerError, setProviderError] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const pendingProviderRef = useRef<OAuthProvider | null>(null);
+  const busyActionRef = useRef<string | null>(null);
 
   const disconnectGoogle = useAction(api.oauth.google.disconnectGoogle);
   const disconnectGmailManual = useAction(api.oauth.gmail_manual_actions.disconnectGmailManual);
@@ -351,7 +370,7 @@ export function ConnectedAccountsSection() {
   const disconnectCloze = useAction(api.oauth.cloze.disconnectCloze);
 
   const openOAuthPopup = async (provider: OAuthProvider) => {
-    if (pendingProvider !== null) return;
+    if (pendingProviderRef.current !== null) return;
     setProviderError(null);
 
     if (!getOAuthClientId(provider)) {
@@ -359,6 +378,7 @@ export function ConnectedAccountsSection() {
       return;
     }
 
+    pendingProviderRef.current = provider;
     setPendingProvider(provider);
     try {
       await connectProviderWithPopup(
@@ -369,6 +389,7 @@ export function ConnectedAccountsSection() {
       clearOAuthContext(provider);
       setProviderError(convexErrorMessage(error, t("sign_in_cancelled_arg", { var1: labelForProvider(provider) })));
     } finally {
+      pendingProviderRef.current = null;
       setPendingProvider(null);
     }
   };
@@ -376,7 +397,9 @@ export function ConnectedAccountsSection() {
   const isOAuthLocked = pendingProvider !== null;
   const isActionBusy = (action: string) => busyAction === action;
   const runAccountAction = async (action: string, fn: () => Promise<unknown>) => {
+    if (busyActionRef.current !== null) return false;
     setProviderError(null);
+    busyActionRef.current = action;
     setBusyAction(action);
     try {
       await fn();
@@ -385,6 +408,7 @@ export function ConnectedAccountsSection() {
       setProviderError(convexErrorMessage(error, t("connection_failed")));
       return false;
     } finally {
+      busyActionRef.current = null;
       setBusyAction(null);
     }
   };

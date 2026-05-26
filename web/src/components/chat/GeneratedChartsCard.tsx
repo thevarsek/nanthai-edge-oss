@@ -110,9 +110,11 @@ function ChartCard({ chart, onExpand }: { chart: GeneratedChart; onExpand: () =>
         </div>
         <ChartTypeBadge type={chart.chartType} />
         <button
+          type="button"
           onClick={onExpand}
           className="p-1 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
           title="Expand chart"
+          aria-label="Expand chart"
         >
           <Maximize2 size={13} />
         </button>
@@ -142,7 +144,12 @@ function ChartExpandedModal({ chart, onClose }: { chart: GeneratedChart; onClose
             {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
           </div>
           <ChartTypeBadge type={chart.chartType} />
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
+            aria-label="Close chart"
+          >
             <X size={18} />
           </button>
         </div>

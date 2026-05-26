@@ -46,4 +46,45 @@ describe("SegmentedControl", () => {
     expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("radio", { name: "Override" })).toHaveAttribute("aria-checked", "false");
   });
+
+  it("moves focus with arrow-key selection", () => {
+    const onChange = vi.fn();
+    render(
+      <SegmentedControl
+        aria-label="Mode"
+        value="default"
+        options={[
+          { value: "default", label: "Default" },
+          { value: "override", label: "Override" },
+        ]}
+        onChange={onChange}
+      />,
+    );
+
+    const defaultOption = screen.getByRole("radio", { name: "Default" });
+    const overrideOption = screen.getByRole("radio", { name: "Override" });
+
+    defaultOption.focus();
+    fireEvent.keyDown(defaultOption, { key: "ArrowRight" });
+
+    expect(onChange).toHaveBeenCalledWith("override");
+    expect(overrideOption).toHaveFocus();
+  });
+
+  it("falls back to the first option when value is out of range", () => {
+    render(
+      <SegmentedControl
+        aria-label="Mode"
+        value="missing"
+        options={[
+          { value: "default", label: "Default" },
+          { value: "override", label: "Override" },
+        ]}
+        onChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Default" })).toHaveAttribute("tabindex", "0");
+  });
 });

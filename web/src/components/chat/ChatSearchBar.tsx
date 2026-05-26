@@ -78,6 +78,7 @@ export function ChatSearchBar({
         {/* Navigation arrows */}
         <div className="flex items-center shrink-0">
           <button
+            type="button"
             onClick={onPrev}
             disabled={!hasMatches}
             className="p-1 rounded hover:bg-surface-3 text-muted hover:text-foreground disabled:opacity-30 disabled:cursor-default transition-colors"
@@ -86,6 +87,7 @@ export function ChatSearchBar({
             <ChevronUp size={16} />
           </button>
           <button
+            type="button"
             onClick={onNext}
             disabled={!hasMatches}
             className="p-1 rounded hover:bg-surface-3 text-muted hover:text-foreground disabled:opacity-30 disabled:cursor-default transition-colors"
@@ -97,6 +99,7 @@ export function ChatSearchBar({
 
         {/* Close button */}
         <button
+          type="button"
           onClick={onClose}
           className="p-1 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
             title={t("close_escape")}

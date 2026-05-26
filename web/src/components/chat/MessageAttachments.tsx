@@ -38,6 +38,19 @@ function getAttachmentName(attachment: MessageAttachment): string {
   return attachment.name?.trim() || "attachment";
 }
 
+function safeAttachmentUrl(rawUrl?: string | null): string | undefined {
+  if (!rawUrl) return undefined;
+  try {
+    const url = new URL(rawUrl, window.location.origin);
+    if (url.protocol === "http:" || url.protocol === "https:" || url.protocol === "blob:") {
+      return url.href;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 function renderFileIcon(mimeType?: string | null) {
   const normalized = mimeType?.toLowerCase() ?? "";
   if (normalized.startsWith("image/")) return <FileImage size={18} />;
@@ -92,7 +105,7 @@ function AttachmentImage({
 }) {
   const [expanded, setExpanded] = useState(false);
   const resolvedUrl = useResolvedAttachmentUrl(attachment, messageId);
-  const url = attachment.url ?? resolvedUrl ?? undefined;
+  const url = safeAttachmentUrl(attachment.url ?? resolvedUrl);
   const name = getAttachmentName(attachment);
 
   if (!url) return null;
@@ -100,6 +113,7 @@ function AttachmentImage({
   return (
     <>
       <button
+        type="button"
         onClick={() => setExpanded(true)}
         className="block overflow-hidden rounded-xl border border-border/20 bg-surface-2/40 transition-colors hover:border-border/40"
       >
@@ -137,7 +151,7 @@ function AttachmentFileCard({
   isUser: boolean;
 }) {
   const resolvedUrl = useResolvedAttachmentUrl(attachment, messageId);
-  const url = attachment.url ?? resolvedUrl ?? undefined;
+  const url = safeAttachmentUrl(attachment.url ?? resolvedUrl);
   const name = getAttachmentName(attachment);
   const sizeLabel = formatSize(attachment.sizeBytes);
   const cardClass = isUser

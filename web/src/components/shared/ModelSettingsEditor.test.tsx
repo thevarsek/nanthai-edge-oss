@@ -88,4 +88,35 @@ describe("ModelSettingsEditor", () => {
 
     expect(screen.getByLabelText("Max Tokens")).toHaveValue("2048");
   });
+
+  it("does not pin an in-flight save draft after switching models", async () => {
+    let resolveSave: () => void = () => {};
+    upsertModelSettings.mockReturnValueOnce(new Promise<void>((resolve) => {
+      resolveSave = resolve;
+    }));
+    modelSettings = [{
+      openRouterId: "openai/model",
+      temperature: 0.7,
+      maxTokens: 1024,
+      includeReasoning: true,
+      reasoningEffort: "medium",
+    }, {
+      openRouterId: "anthropic/model",
+      temperature: 0.4,
+      maxTokens: 4096,
+      includeReasoning: false,
+      reasoningEffort: "low",
+    }];
+    const { rerender } = render(<ModelSettingsEditor modelId="openai/model" />);
+
+    fireEvent.change(screen.getByLabelText("Max Tokens"), { target: { value: "2048" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    rerender(<ModelSettingsEditor modelId="anthropic/model" />);
+
+    resolveSave();
+    await waitFor(() => expect(upsertModelSettings).toHaveBeenCalled());
+    rerender(<ModelSettingsEditor modelId="anthropic/model" />);
+
+    expect(screen.getByLabelText("Max Tokens")).toHaveValue("4096");
+  });
 });

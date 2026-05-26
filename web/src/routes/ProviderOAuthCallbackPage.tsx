@@ -41,6 +41,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
   const [searchParams] = useSearchParams();
   const { t } = useTranslation();
   const didRun = useRef(false);
+  const closeTimer = useRef<number | null>(null);
   const exchangeGoogleCode = useAction(api.oauth.google.exchangeGoogleCode) as GoogleExchangeAction;
   const exchangeMicrosoftCode = useAction(api.oauth.microsoft.exchangeMicrosoftCode) as MicrosoftExchangeAction;
   const exchangeNotionCode = useAction(api.oauth.notion.exchangeNotionCode) as NotionExchangeAction;
@@ -88,17 +89,32 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
   }, [isAuthLoading, isAuthenticated, status]);
 
   useEffect(() => {
-    // Wait until Convex is authenticated before exchanging the code.
-    // ConvexProviderWithClerk may still be syncing the Clerk session token.
-    if (isAuthLoading || !isAuthenticated || status !== "loading") return;
+    if (status !== "loading") return;
     if (didRun.current || didRedirectToMobile.current) return;
-    didRun.current = true;
 
     async function complete() {
       const context = readOAuthContext(provider);
       const error = searchParams.get("error");
       const errorDescription = searchParams.get("error_description");
+      const returnedState = searchParams.get("state");
+
       if (error) {
+        if (!context) {
+          const message = `${label} sign-in has expired. Start the connection again.`;
+          postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+          setErrorMessage(message);
+          setStatus("error");
+          return;
+        }
+        if (returnedState !== context.state) {
+          clearOAuthContext(provider);
+          const message = `${label} sign-in state mismatch. Please try again.`;
+          postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+          setErrorMessage(message);
+          setStatus("error");
+          return;
+        }
+
         const message = errorDescription
           ? `${label} sign-in failed: ${errorDescription.replace(/\+/g, " ")}`
           : `${label} sign-in failed. Please try again.`;
@@ -118,7 +134,6 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
       }
 
       const code = searchParams.get("code");
-      const returnedState = searchParams.get("state");
       if (!code || !returnedState) {
         clearOAuthContext(provider);
         const message = `${label} sign-in failed. Missing callback parameters.`;
@@ -136,6 +151,11 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
         setStatus("error");
         return;
       }
+
+      // Wait until Convex is authenticated before exchanging the code.
+      // ConvexProviderWithClerk may still be syncing the Clerk session token.
+      if (isAuthLoading || !isAuthenticated) return;
+      didRun.current = true;
 
       try {
         if (provider === "notion") {
@@ -165,7 +185,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
         clearOAuthContext(provider);
         postOAuthResult({ type: "nanthai-oauth-result", provider, success: true });
         setStatus("success");
-        window.setTimeout(() => window.close(), 800);
+        closeTimer.current = window.setTimeout(() => window.close(), 800);
       } catch (errorValue) {
         clearOAuthContext(provider);
         const message = errorValue instanceof Error ? errorValue.message : `${label} sign-in failed.`;
@@ -177,6 +197,14 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
 
     void complete();
   }, [exchangeGoogleCode, exchangeMicrosoftCode, exchangeNotionCode, exchangeSlackCode, isAuthLoading, isAuthenticated, label, provider, searchParams, status]);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimer.current !== null) {
+        window.clearTimeout(closeTimer.current);
+      }
+    };
+  }, []);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-6">

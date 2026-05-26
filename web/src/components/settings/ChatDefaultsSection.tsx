@@ -112,9 +112,16 @@ export function ChatDefaultsSection() {
       audio.addEventListener("ended", () => { setPreviewPlaying(null); audioRef.current = null; });
       audio.addEventListener("error", () => { setPreviewPlaying(null); audioRef.current = null; });
       setPreviewPlaying(voice);
-      await audio.play();
+      try {
+        await audio.play();
+      } catch {
+        if (requestId === previewRequestIdRef.current) {
+          setPreviewPlaying(null);
+          audioRef.current = null;
+        }
+      }
     } finally {
-      setPreviewLoading(null);
+      if (requestId === previewRequestIdRef.current) setPreviewLoading(null);
     }
   }, [previewVoice, previewPlaying, stopPreview]);
 
@@ -155,7 +162,7 @@ export function ChatDefaultsSection() {
       {/* ── Participant ── */}
       <SectionHeader>{t("default_participant")}</SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden">
-        <button onClick={() => setShowParticipantPicker(true)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
+        <button type="button" onClick={() => setShowParticipantPicker(true)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
           {defaultPersona ? (
             <PersonaAvatar
               personaId={defaultPersonaId ?? undefined}
@@ -191,7 +198,7 @@ export function ChatDefaultsSection() {
       {/* ── Title Model ── */}
       <SectionHeader>{t("title_model")}</SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden">
-        <button onClick={() => setShowTitleModelPicker(true)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
+        <button type="button" onClick={() => setShowTitleModelPicker(true)} className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left">
           <Type size={16} className="flex-shrink-0 text-muted" /><span className="flex-1 text-sm">{t("title_model")}</span><span className="text-xs text-muted truncate max-w-32">{titleModelLabel}</span><ChevronRight size={14} className="text-muted flex-shrink-0" />
         </button>
       </div>
@@ -286,7 +293,7 @@ export function ChatDefaultsSection() {
         </div>
         <div className="flex items-center justify-between px-4 py-3">
           <label className="text-sm">{t("preview")}</label>
-          <button onClick={() => void handlePreviewVoice(localVoice)} disabled={previewLoading !== null} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-accent hover:bg-accent/10 disabled:opacity-50 transition-colors">
+          <button type="button" onClick={() => void handlePreviewVoice(localVoice)} disabled={previewLoading !== null} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm text-accent hover:bg-accent/10 disabled:opacity-50 transition-colors">
             {previewLoading === localVoice ? (<><Loader2 size={14} className="animate-spin" />{t("audio_loading")}&hellip;</>) : previewPlaying === localVoice ? (<><Square size={14} />{t("audio_stop_preview")}</>) : (<><Play size={14} />{t("audio_preview_voice")}</>)}
           </button>
         </div>

@@ -8,6 +8,7 @@ import { Pin, Folder, Trash2, FolderInput, PencilLine, Copy, CheckSquare, Clock 
 import { cn, formatTimestamp, truncate } from "@/lib/utils";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
+import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,14 +54,16 @@ interface ChatListItemProps {
 
 function SidebarAvatarImage({ src, alt }: { src: string; alt?: string }) {
   const [didFail, setDidFail] = useState(false);
+  const safeSrc = safeAvatarImageUrl(src);
 
-  if (didFail) return null;
+  if (didFail || !safeSrc) return null;
 
   return (
     <img
-      src={src}
+      src={safeSrc}
       className="w-full h-full object-cover"
       alt={alt ?? ""}
+      referrerPolicy="no-referrer"
       onError={() => setDidFail(true)}
     />
   );

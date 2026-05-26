@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 import {
   EmojiPicker,
   SkillOverrideRow,
@@ -67,6 +68,7 @@ export function PersonaEditorPage() {
     if (!summary.supportsTools) return t("persona_model_no_tools");
     return null;
   }, [form.enabledIntegrations, form.selectedSkillIds, form.modelId, modelSummaries, t]);
+  const safeAvatarPreview = useMemo(() => safeAvatarImageUrl(avatarPreview), [avatarPreview]);
 
   // ── Load existing persona into form ────────────────────────────────────
   useEffect(() => {
@@ -313,11 +315,11 @@ export function PersonaEditorPage() {
               {/* Avatar preview */}
               <div
                 className="w-12 h-12 rounded-full flex items-center justify-center overflow-hidden cursor-pointer flex-shrink-0"
-                style={{ backgroundColor: avatarPreview ? undefined : form.avatarColor }}
+                style={{ backgroundColor: safeAvatarPreview ? undefined : form.avatarColor }}
                 onClick={() => fileInputRef.current?.click()}
               >
-                {avatarPreview ? (
-                  <img src={avatarPreview} alt="avatar" className="w-full h-full object-cover" />
+                {safeAvatarPreview ? (
+                  <img src={safeAvatarPreview} alt="avatar" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                 ) : form.avatarEmoji ? (
                   <span className="text-2xl">{form.avatarEmoji}</span>
                 ) : (
@@ -328,9 +330,9 @@ export function PersonaEditorPage() {
                 )}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm">{avatarPreview ? t("change_avatar") : form.avatarEmoji ? t("change_avatar") : t("choose_avatar")}</p>
+                <p className="text-sm">{safeAvatarPreview ? t("change_avatar") : form.avatarEmoji ? t("change_avatar") : t("choose_avatar")}</p>
                 <p className="text-xs text-muted mt-0.5">
-                  {avatarPreview ? t("image_avatar_label") : form.avatarEmoji ? t("emoji_avatar_label") : t("emoji_or_image_label")}
+                  {safeAvatarPreview ? t("image_avatar_label") : form.avatarEmoji ? t("emoji_avatar_label") : t("emoji_or_image_label")}
                 </p>
               </div>
             </div>
@@ -368,10 +370,10 @@ export function PersonaEditorPage() {
               <circle cx="8.5" cy="8.5" r="1.5" />
               <path d="m21 15-5-5L5 21" />
             </svg>
-            <span>{avatarPreview ? t("change_image") : t("choose_image")}</span>
+            <span>{safeAvatarPreview ? t("change_image") : t("choose_image")}</span>
           </button>
           {/* Remove Avatar */}
-          {(avatarPreview || form.avatarEmoji) && (
+          {(safeAvatarPreview || form.avatarEmoji) && (
             <button
               onClick={() => {
                 setField("avatarEmoji", "");

@@ -1,4 +1,5 @@
 import { Puzzle, ChevronRight, Mail } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useTranslation } from "react-i18next";
@@ -27,14 +28,38 @@ function IntegrationDefaultsCard() {
   const setIntegrationDefault = useMutation(api.preferences.mutations.setIntegrationDefault);
   const removeIntegrationDefault = useMutation(api.preferences.mutations.removeIntegrationDefault);
   const isLoading = prefs === undefined;
-  const defaults = new Map<string, boolean>(
-    (((prefs as { integrationDefaults?: Array<{ integrationId: string; enabled: boolean }> } | null)?.integrationDefaults) ?? [])
-      .map((entry) => [entry.integrationId, entry.enabled]),
+  const serverDefaults = useMemo(
+    () => new Map<string, boolean>(
+      (((prefs as { integrationDefaults?: Array<{ integrationId: string; enabled: boolean }> } | null)?.integrationDefaults) ?? [])
+        .map((entry) => [entry.integrationId, entry.enabled]),
+    ),
+    [prefs],
   );
+  const [localDefaults, setLocalDefaults] = useState<Map<string, boolean> | null>(null);
+  const defaults = localDefaults ?? serverDefaults;
+
+  useEffect(() => {
+    if (localDefaults == null) return;
+    const localEntries = [...localDefaults.entries()];
+    const serverMatches = localEntries.length === serverDefaults.size &&
+      localEntries.every(([key, value]) => serverDefaults.get(key) === value);
+    if (!serverMatches) return;
+    const timer = window.setTimeout(() => setLocalDefaults(null), 0);
+    return () => window.clearTimeout(timer);
+  }, [localDefaults, serverDefaults]);
 
   async function cycleIntegrationDefault(integrationId: string) {
     if (isLoading) return;
     const current = defaults.get(integrationId);
+    const nextDefaults = new Map(defaults);
+    if (current === undefined) {
+      nextDefaults.set(integrationId, true);
+    } else if (current === true) {
+      nextDefaults.set(integrationId, false);
+    } else {
+      nextDefaults.delete(integrationId);
+    }
+    setLocalDefaults(nextDefaults);
     try {
       if (current === undefined) {
         await setIntegrationDefault({ integrationId, enabled: true });
@@ -44,6 +69,7 @@ function IntegrationDefaultsCard() {
         await removeIntegrationDefault({ integrationId });
       }
     } catch (error) {
+      setLocalDefaults(new Map(defaults));
       toast({ message: convexErrorMessage(error, t("integration_default_update_failed")), variant: "error" });
     }
   }
@@ -65,6 +91,7 @@ function IntegrationDefaultsCard() {
         return (
           <button
             key={integration.id}
+            type="button"
             onClick={() => void cycleIntegrationDefault(integration.id)}
             disabled={isLoading}
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
@@ -129,6 +156,7 @@ export function IntegrationsSection({ onNavigate }: IntegrationsSectionProps) {
   return (
     <div className="rounded-2xl bg-surface-2 overflow-hidden">
       <button
+        type="button"
         onClick={() => onNavigate("integrations")}
         className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
       >

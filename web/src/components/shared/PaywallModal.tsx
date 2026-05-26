@@ -4,7 +4,7 @@
 // Displays the 8-feature Pro grid and redirects to Stripe Checkout.
 // =============================================================================
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -19,6 +19,7 @@ import {
   BookOpen,
   Zap,
 } from "lucide-react";
+import { lockBodyScroll, unlockBodyScroll } from "@/lib/bodyScrollLock";
 
 // ─── Pro feature list (same 8 features as iOS) ──────────────────────────────
 
@@ -41,6 +42,11 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
   const [error, setError] = useState<string | null>(null);
   const isLaunchingCheckout = useRef(false);
 
+  useEffect(() => {
+    lockBodyScroll();
+    return unlockBodyScroll;
+  }, []);
+
   const PRO_FEATURES = [
     { icon: PRO_FEATURE_ICONS[0], title: t("personas"), description: t("paywall_personas_description") },
     { icon: PRO_FEATURE_ICONS[1], title: t("memory"), description: t("paywall_memory_description") },
@@ -60,9 +66,9 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
     try {
       const { url } = await createCheckoutSession({});
       window.location.href = url;
-    } catch (err) {
+    } catch {
       isLaunchingCheckout.current = false;
-      setError(err instanceof Error ? err.message : t("something_went_wrong"));
+      setError(t("checkout_failed_try_again", "Checkout could not be started. Please try again."));
       setIsLoading(false);
     }
   }

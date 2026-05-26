@@ -1,5 +1,6 @@
 import { type Id } from "@convex/_generated/dataModel";
 import { MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -35,12 +36,14 @@ function AvatarDisplay({
 }) {
   const dim = size === "md" ? "w-11 h-11 text-xl" : "w-9 h-9 text-lg";
   const bg = persona.avatarColor ?? "#6366f1";
+  const avatarImageUrl = safeAvatarImageUrl(persona.avatarImageUrl);
 
-  if (persona.avatarImageUrl) {
+  if (avatarImageUrl) {
     return (
       <img
-        src={persona.avatarImageUrl}
+        src={avatarImageUrl}
         alt={persona.displayName}
+        referrerPolicy="no-referrer"
         className={`${dim} rounded-xl object-cover flex-shrink-0`}
       />
     );

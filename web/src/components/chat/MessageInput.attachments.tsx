@@ -31,7 +31,7 @@ export function AttachmentPreviews({ attachments, onRemove, isVideoMode, onChang
         >
           <span>{att.type === "image" ? "\u{1F5BC}" : "\u{1F4CE}"}</span>
           <span className="max-w-32 truncate">{att.name}</span>
-          {isVideoMode && att.type === "image" && (
+          {isVideoMode && onChangeRole && att.type === "image" && (
             <button
               type="button"
               onClick={() => setOpenDropdown(openDropdown === i ? null : i)}
@@ -51,7 +51,11 @@ export function AttachmentPreviews({ attachments, onRemove, isVideoMode, onChang
           )}
           <button
             type="button"
-            onClick={() => onRemove(i)}
+            aria-label={t("remove_attachment", { name: att.name, var1: att.name })}
+            onClick={() => {
+              setOpenDropdown(null);
+              onRemove(i);
+            }}
             className="text-muted hover:text-foreground transition-colors ml-0.5"
           >
             <X size={12} />

@@ -33,6 +33,7 @@ export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, on
       <div className="flex items-center gap-3">
         {/* Cancel button */}
         <button
+          type="button"
           onClick={onCancel}
           className="p-2.5 rounded-xl text-muted hover:text-red-400 hover:bg-red-500/10 transition-colors shrink-0"
           title={t("audio_cancel_recording")}
@@ -67,6 +68,7 @@ export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, on
 
         {/* Send (stop) button */}
         <button
+          type="button"
           onClick={onStop}
           className="p-2.5 rounded-xl bg-primary text-white hover:opacity-90 transition-opacity shrink-0"
           title={t("audio_stop_recording")}

@@ -14,10 +14,14 @@ export interface ChartBox {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+function numberOrZero(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
 export function parsePoints(elements: any[]): ChartPoint[] {
   return elements.map((e: any) => ({
     x: e.x ?? e.xString ?? e.xNumber ?? "",
-    y: typeof e.y === "number" ? e.y : 0,
+    y: numberOrZero(e.y),
     group: e.group,
   }));
 }
@@ -25,7 +29,7 @@ export function parsePoints(elements: any[]): ChartPoint[] {
 export function parseBars(elements: any[]): ChartBar[] {
   return elements.map((e: any) => ({
     label: String(e.label ?? ""),
-    value: typeof e.value === "number" ? e.value : 0,
+    value: numberOrZero(e.value),
     group: e.group,
   }));
 }
@@ -33,19 +37,19 @@ export function parseBars(elements: any[]): ChartBar[] {
 export function parseSlices(elements: any[]): ChartSlice[] {
   return elements.map((e: any) => ({
     label: String(e.label ?? ""),
-    value: typeof e.value === "number" ? e.value : 0,
+    value: numberOrZero(e.value),
   }));
 }
 
 export function parseBoxes(elements: any[]): ChartBox[] {
   return elements.map((e: any) => ({
     label: String(e.label ?? ""),
-    min: e.min ?? 0,
-    q1: e.q1 ?? 0,
-    median: e.median ?? 0,
-    q3: e.q3 ?? 0,
-    max: e.max ?? 0,
-    outliers: e.outliers,
+    min: numberOrZero(e.min),
+    q1: numberOrZero(e.q1),
+    median: numberOrZero(e.median),
+    q3: numberOrZero(e.q3),
+    max: numberOrZero(e.max),
+    outliers: Array.isArray(e.outliers) ? e.outliers.map(numberOrZero) : undefined,
   }));
 }
 /* eslint-enable @typescript-eslint/no-explicit-any */

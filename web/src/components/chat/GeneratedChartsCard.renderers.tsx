@@ -34,6 +34,17 @@ function chartGroupName(group: string | undefined): string {
   return group?.trim() || UNGROUPED_SERIES_LABEL;
 }
 
+function seriesKey(index: number): string {
+  return `series_${index}`;
+}
+
+function occurrenceKey(value: string | number, group: string, seen: Map<string, number>): string {
+  const key = `${String(value)}\u0000${group}`;
+  const occurrence = seen.get(key) ?? 0;
+  seen.set(key, occurrence + 1);
+  return `${String(value)}\u0000${occurrence}`;
+}
+
 // ─── Line chart ───────────────────────────────────────────────────────────────
 
 export function LineChartRenderer({ points, xLabel, yLabel, height = 220 }: {
@@ -43,13 +54,16 @@ export function LineChartRenderer({ points, xLabel, yLabel, height = 220 }: {
   const hasGroups = groups.length > 1;
 
   if (hasGroups) {
-    // Pivot: rows keyed by x, columns per group
-    const xVals = [...new Set(points.map((p) => p.x))];
-    const data = xVals.map((x) => {
-      const row: Record<string, unknown> = { x };
-      for (const g of groups) row[g] = points.find((p) => p.x === x && chartGroupName(p.group) === g)?.y ?? null;
-      return row;
+    const seen = new Map<string, number>();
+    const rows = new Map<string, Record<string, unknown>>();
+    points.forEach((point) => {
+      const group = chartGroupName(point.group);
+      const key = occurrenceKey(point.x, group, seen);
+      const row = rows.get(key) ?? { x: point.x };
+      row[seriesKey(groups.indexOf(group))] = point.y;
+      rows.set(key, row);
     });
+    const data = [...rows.values()];
     return (
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={data}>
@@ -58,7 +72,7 @@ export function LineChartRenderer({ points, xLabel, yLabel, height = 220 }: {
           <YAxis tick={AXIS_STYLE} label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft", style: AXIS_STYLE } : undefined} />
           <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          {groups.map((g, i) => <Line key={g} dataKey={g} stroke={pickColor(i)} dot={false} strokeWidth={2} />)}
+          {groups.map((g, i) => <Line key={g} name={g} dataKey={seriesKey(i)} stroke={pickColor(i)} dot={false} strokeWidth={2} />)}
         </LineChart>
       </ResponsiveContainer>
     );
@@ -86,12 +100,16 @@ export function BarChartRenderer({ bars, xLabel, yLabel, height = 220 }: {
   const hasGroups = groups.length > 1;
 
   if (hasGroups) {
-    const labels = [...new Set(bars.map((b) => b.label))];
-    const data = labels.map((l) => {
-      const row: Record<string, unknown> = { label: l };
-      for (const g of groups) row[g] = bars.find((b) => b.label === l && chartGroupName(b.group) === g)?.value ?? 0;
-      return row;
+    const seen = new Map<string, number>();
+    const rows = new Map<string, Record<string, unknown>>();
+    bars.forEach((bar) => {
+      const group = chartGroupName(bar.group);
+      const key = occurrenceKey(bar.label, group, seen);
+      const row = rows.get(key) ?? { label: bar.label };
+      row[seriesKey(groups.indexOf(group))] = bar.value;
+      rows.set(key, row);
     });
+    const data = [...rows.values()];
     return (
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={data}>
@@ -100,7 +118,7 @@ export function BarChartRenderer({ bars, xLabel, yLabel, height = 220 }: {
           <YAxis tick={AXIS_STYLE} label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft", style: AXIS_STYLE } : undefined} />
           <Tooltip contentStyle={{ background: "#1a1a2e", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, fontSize: 12 }} />
           <Legend wrapperStyle={{ fontSize: 11 }} />
-          {groups.map((g, i) => <Bar key={g} dataKey={g} fill={pickColor(i)} radius={[4, 4, 0, 0]} />)}
+          {groups.map((g, i) => <Bar key={g} name={g} dataKey={seriesKey(i)} fill={pickColor(i)} radius={[4, 4, 0, 0]} />)}
         </BarChart>
       </ResponsiveContainer>
     );

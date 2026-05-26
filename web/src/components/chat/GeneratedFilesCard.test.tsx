@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { GeneratedFilesCard } from "./GeneratedFilesCard";
 import type { Id } from "@convex/_generated/dataModel";
@@ -43,5 +43,18 @@ describe("GeneratedFilesCard", () => {
     );
     expect(screen.getByText("pending.csv").closest("a")).toBeNull();
     expect(screen.getByText("pending.csv").closest("[aria-disabled='true']")).toBeInTheDocument();
+  });
+
+  test("image preview button does not submit an enclosing form", () => {
+    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <GeneratedFilesCard messageId={"messages_1" as Id<"messages">} />
+      </form>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /chart.png/i }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

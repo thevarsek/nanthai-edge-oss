@@ -119,6 +119,7 @@ function SelectedRow({
 
       {/* Remove button */}
       <button
+        type="button"
         onClick={() => canRemove && onRemove(participant.id)}
         disabled={!canRemove}
         className={`p-0.5 rounded-full transition-colors ${canRemove ? "text-red-400 hover:text-red-300" : "text-muted opacity-30"}`}
@@ -173,7 +174,7 @@ export function PersonaRow({
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
         isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
-      onClick={() => !isDisabled && onToggle(persona)}
+      onClick={() => (!isDisabled || isSelected) && onToggle(persona)}
     >
       {/* Avatar */}
       <PersonaAvatar
@@ -202,6 +203,7 @@ export function PersonaRow({
 
       {/* Info button */}
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); onInfo(persona); }}
         className="p-1 rounded-full hover:bg-surface-2 text-muted hover:text-foreground transition-colors shrink-0"
         title={t("persona_info")}
@@ -289,7 +291,7 @@ export function ParticipantModelRow({
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
         isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
-      onClick={() => !isDisabled && onToggle(model.modelId)}
+      onClick={() => (!isDisabled || isSelected) && onToggle(model.modelId)}
     >
       <ProviderLogo modelId={model.modelId} size={36} />
 
@@ -327,6 +329,7 @@ export function ParticipantModelRow({
       )}
 
       <button
+        type="button"
         onClick={(e) => { e.stopPropagation(); onInfo(model); }}
         className="p-1 rounded-full hover:bg-surface-2 text-muted hover:text-foreground transition-colors shrink-0"
         title={t("model_info")}

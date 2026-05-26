@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MessageAttachments } from "./MessageAttachments";
 
@@ -76,5 +76,58 @@ describe("MessageAttachments", () => {
       "href",
       "https://files.example/report.pdf",
     );
+  });
+
+  it("does not render unsafe attachment URLs as clickable or previewable links", () => {
+    resolvedUrl = undefined;
+    render(
+      <MessageAttachments
+        messageId={"msg_1" as never}
+        isUser={false}
+        attachments={[
+          {
+            type: "file",
+            url: "javascript:alert(1)",
+            name: "script.pdf",
+            mimeType: "application/pdf",
+          } as never,
+          {
+            type: "image",
+            url: "data:text/html,<script>alert(1)</script>",
+            name: "inline image",
+            mimeType: "image/png",
+          } as never,
+        ]}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: /script.pdf/i })).toBeNull();
+    expect(screen.getByText("script.pdf").closest("a")).toBeNull();
+    expect(screen.queryByRole("img", { name: "inline image" })).toBeNull();
+  });
+
+  it("image preview button does not submit an enclosing form", () => {
+    resolvedUrl = undefined;
+    const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault());
+    render(
+      <form onSubmit={onSubmit}>
+        <MessageAttachments
+          messageId={"msg_1" as never}
+          isUser={false}
+          attachments={[
+            {
+              type: "image",
+              url: "https://tracker.example/image.png",
+              name: "external image",
+              mimeType: "image/png",
+            } as never,
+          ]}
+        />
+      </form>,
+    );
+
+    fireEvent.click(screen.getByRole("button"));
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

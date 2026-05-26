@@ -106,4 +106,16 @@ describe("AssistantMessage", () => {
 
     expect(screen.getByText("Generating video...")).toBeInTheDocument();
   });
+
+  it("does not render unsafe generated media URLs", () => {
+    renderAssistant({
+      content: "[Generated image]",
+      imageUrls: ["javascript:alert(1)"],
+      videoUrls: ["javascript:alert(2)"],
+    });
+
+    expect(screen.queryByAltText("Generated image")).not.toBeInTheDocument();
+    expect(document.querySelector("video")).not.toBeInTheDocument();
+    expect(document.querySelector('a[href^="javascript:"]')).not.toBeInTheDocument();
+  });
 });

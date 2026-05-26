@@ -99,6 +99,19 @@ describe("MarkdownRenderer", () => {
     expect(within(table).getByRole("cell", { name: "Agent" })).toBeInTheDocument();
   });
 
+  test("copies rendered definition-list table markdown", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(<MarkdownRenderer content={"BYOK\n: Bring your own key."} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy table" }));
+
+    expect(writeText).toHaveBeenCalledWith(
+      ["| Term | Definition |", "|:--|:--|", "| BYOK | Bring your own key. |"].join("\n"),
+    );
+  });
+
   test("shows alt text when a Convex markdown image fails", () => {
     render(<MarkdownRenderer content={"![Example placeholder image](https://example.convex.site/download?storageId=abc&filename=image.png)"} />);
 

@@ -29,6 +29,14 @@ function isLyriaMusic(m: Message): boolean {
   return !!m.audioStorageId && !!m.modelId && LYRIA_MODEL_IDS.has(m.modelId);
 }
 
+function directAudioParent(message: Message, byId: Map<string, Message>): Message | undefined {
+  for (const parentId of message.parentMessageIds ?? []) {
+    const parent = byId.get(parentId as string);
+    if (parent?.role === "user") return parent;
+  }
+  return undefined;
+}
+
 /**
  * Watches for assistant messages whose audioStorageId transitions from
  * absent → present, and auto-plays them if their preceding user message
@@ -54,6 +62,8 @@ export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
       return;
     }
 
+    const byId = new Map(messages.map((message) => [message._id as string, message]));
+
     // Find assistant messages that just got audioStorageId.
     for (const m of messages) {
       if (
@@ -64,9 +74,11 @@ export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
         isLyriaMusic(m)
       ) continue;
 
-      // Check if the preceding user message was audio-based.
+      // Check the actual parent first; fall back for legacy messages that have no parent ids.
       const idx = messages.indexOf(m);
-      const prevUser = messages.slice(0, idx).reverse().find((pm) => pm.role === "user");
+      const prevUser = (m.parentMessageIds?.length ?? 0) > 0
+        ? directAudioParent(m, byId)
+        : messages.slice(0, idx).reverse().find((pm) => pm.role === "user");
       if (!prevUser || !isAudioUserMessage(prevUser)) {
         seenAudioRef.current.add(m._id);
         continue;
@@ -79,9 +91,14 @@ export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
       }
 
       // Auto-play this newly-generated TTS audio.
-      seenAudioRef.current.add(m._id);
       pendingAudioRef.current.delete(m._id);
-      void audio.play(m._id, m.audioStorageId as Id<"_storage">);
+      void audio.play(m._id, m.audioStorageId as Id<"_storage">)
+        .then(() => {
+          seenAudioRef.current.add(m._id);
+        })
+        .catch(() => {
+          pendingAudioRef.current.add(m._id);
+        });
       break; // Only auto-play one at a time.
     }
   }, [messages, audio, isLoading]);

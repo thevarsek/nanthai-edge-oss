@@ -39,6 +39,7 @@ export function useQueuedFollowUp({
   const isGeneratingRef = useRef(isGenerating);
   const chatIdRef = useRef(chatId);
   const didDrainForCurrentIdleRef = useRef(false);
+  chatIdRef.current = chatId;
   const activeQueuedFollowUps = useMemo(
     () => queuedFollowUps.filter((queued) => queued.chatId === chatId),
     [chatId, queuedFollowUps],
@@ -51,10 +52,6 @@ export function useQueuedFollowUp({
       didDrainForCurrentIdleRef.current = false;
     }
   }, [isGenerating]);
-
-  useEffect(() => {
-    chatIdRef.current = chatId;
-  }, [chatId]);
 
   useEffect(() => {
     setQueuedFollowUps((current) => current.filter((queued) => queued.chatId === chatId));

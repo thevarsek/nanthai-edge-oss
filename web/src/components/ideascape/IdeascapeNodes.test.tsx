@@ -23,7 +23,6 @@ describe("MessageNode", () => {
         width={220}
         height={160}
         visualState="default"
-        scale={1}
         onPointerDown={vi.fn()}
         onResizePointerDown={vi.fn()}
         onSelect={vi.fn()}

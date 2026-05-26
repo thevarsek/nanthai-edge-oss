@@ -83,7 +83,7 @@ export function MessageInput({
   const { t } = useTranslation();
 
   const {
-    attachments, setAttachments, isUploading, fileInputRef, imageInputRef, cameraInputRef,
+    attachments, setAttachments, isUploading, uploadError, setUploadError, fileInputRef, imageInputRef, cameraInputRef,
     handleFileSelect, handlePasteFiles, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
   } = useAttachments(onCreateUploadUrl, isVideoMode, supportsFrameImages);
 
@@ -93,8 +93,9 @@ export function MessageInput({
     const draft = getChatDraft(chatId);
     setText(draft.text);
     setAttachments(draft.attachments);
+    setUploadError(null);
     setDismissedSuggestionStorageIds(new Set());
-  }, [chatId, setAttachments]);
+  }, [chatId, setAttachments, setUploadError]);
 
   // Write-through: every change to text or attachments is persisted.
   useEffect(() => {
@@ -135,7 +136,7 @@ export function MessageInput({
     const trimmed = text.trim();
     const outgoingAttachments = [...attachments, ...extraAttachments];
     if (!trimmed && outgoingAttachments.length === 0) return;
-    if (isGenerating) return;
+    if (disabled || isGenerating || isUploading) return;
     if (isAutonomousActive && onIntervene && trimmed) {
       onIntervene(trimmed);
     } else {
@@ -146,7 +147,7 @@ export function MessageInput({
     clearAttachments();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, extraAttachments, isGenerating, onSend, isAutonomousActive, onIntervene, clearAttachments, mention]);
+  }, [text, attachments, extraAttachments, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, mention]);
 
   const {
     queuedFollowUps,
@@ -251,7 +252,7 @@ export function MessageInput({
     [onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef, handlePasteFiles],
   );
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0) && !isGenerating && !isUploading;
+  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0) && !disabled && !isGenerating && !isUploading;
   const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled;
   const suggestionStorageId = generatedDocumentSuggestion?.storageId;
   const isSuggestionAlreadyAttached = !!suggestionStorageId && (
@@ -436,6 +437,7 @@ export function MessageInput({
       </div>
 
       {isUploading && <p className="text-xs text-muted mt-1 ml-12">{t("uploading")}</p>}
+      {uploadError && <p className="text-xs text-destructive mt-1 ml-12">{uploadError}</p>}
       {recorderState.error && <p className="text-xs text-destructive mt-1 ml-12">{recorderState.error}</p>}
     </div>
   );

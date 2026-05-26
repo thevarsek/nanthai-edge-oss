@@ -96,6 +96,10 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   const stopResolveRef = useRef<((r: RecordingResult | null) => void) | null>(null);
 
   const cleanup = useCallback(() => {
+    if (stopResolveRef.current) {
+      stopResolveRef.current(null);
+      stopResolveRef.current = null;
+    }
     startingRef.current = false;
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
     if (levelTimerRef.current) { clearInterval(levelTimerRef.current); levelTimerRef.current = null; }
@@ -241,9 +245,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   }, []);
 
   const cancel = useCallback(() => {
-    stopResolveRef.current = null;
     if (mediaRecorderRef.current?.state === "recording") {
-      // Override onstop to prevent resolving
       mediaRecorderRef.current.onstop = () => cleanup();
       mediaRecorderRef.current.stop();
     } else {

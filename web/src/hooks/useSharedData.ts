@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { createContext, useContext, useEffect, useState, useCallback, useRef } from "react";
 import { useQuery, useAction, useConvexAuth } from "convex/react";
 import { useAuth } from "@clerk/react";
 import { api } from "@convex/_generated/api";
@@ -126,33 +126,44 @@ export function useCreditBalance() {
   const fetchCreditsAction = useAction(api.scheduledJobs.actions.fetchOpenRouterCredits);
   const [balance, setBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const refreshIdRef = useRef(0);
 
   const refresh = useCallback(async () => {
     if (hasApiKey !== true) return;
+    const requestId = ++refreshIdRef.current;
     setLoading(true);
     try {
       const result = await fetchCreditsAction({});
-      setBalance(result.balance);
+      if (requestId === refreshIdRef.current) {
+        setBalance(result.balance);
+      }
     } catch {
       // Fail silently — keep previous balance
     } finally {
-      setLoading(false);
+      if (requestId === refreshIdRef.current) {
+        setLoading(false);
+      }
     }
   }, [hasApiKey, fetchCreditsAction]);
 
   // Auto-fetch on connect (hasApiKey becomes true)
   useEffect(() => {
     if (hasApiKey === true) {
+      const requestId = ++refreshIdRef.current;
       void (async () => {
         try {
           const result = await fetchCreditsAction({});
-          setBalance(result.balance);
+          if (requestId === refreshIdRef.current) {
+            setBalance(result.balance);
+          }
         } catch {
           // Fail silently
         }
       })();
     } else if (hasApiKey === false) {
+      refreshIdRef.current += 1;
       setBalance(null);
+      setLoading(false);
     }
   }, [hasApiKey, fetchCreditsAction]);
 

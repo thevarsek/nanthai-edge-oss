@@ -21,7 +21,7 @@ export function LoadingSpinner({
   return (
     <div
       className={cn(
-        "rounded-full border-transparent border-t-primary animate-spin motion-reduce:animate-none motion-reduce:border-t-0 motion-reduce:border-transparent",
+        "rounded-full border-transparent border-t-primary animate-spin motion-reduce:h-auto motion-reduce:w-auto motion-reduce:rounded-none motion-reduce:border-0 motion-reduce:animate-none motion-reduce:border-transparent",
         sizeClass,
         className,
       )}
@@ -29,7 +29,7 @@ export function LoadingSpinner({
       aria-label={label}
     >
       {/* Visible text fallback when prefers-reduced-motion is on */}
-      <span className="sr-only motion-reduce:not-sr-only motion-reduce:text-xs motion-reduce:text-muted">
+      <span className="sr-only motion-reduce:not-sr-only motion-reduce:whitespace-nowrap motion-reduce:text-xs motion-reduce:text-muted">
         {label}...
       </span>
     </div>

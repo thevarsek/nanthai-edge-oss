@@ -1,6 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useId, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
+import { lockBodyScroll, unlockBodyScroll } from "@/lib/bodyScrollLock";
 
 interface ConfirmDialogProps {
   isOpen: boolean;
@@ -29,6 +30,8 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const { t } = useTranslation();
   const resolvedConfirmLabel = confirmLabel ?? t("delete");
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement | null>(null);
   // Keyboard handling
   useEffect(() => {
     if (!isOpen) return;
@@ -37,6 +40,22 @@ export function ConfirmDialog({
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        const focusable = panelRef.current?.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (!focusable || focusable.length === 0) return;
+        const first = focusable[0]!;
+        const last = focusable[focusable.length - 1]!;
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     }
 
@@ -44,14 +63,16 @@ export function ConfirmDialog({
     return () => window.removeEventListener("keydown", handleKey);
   }, [isOpen, onClose, onConfirm]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    panelRef.current?.querySelector<HTMLElement>("button")?.focus();
+  }, [isOpen]);
+
   // Prevent body scroll while open
   useEffect(() => {
     if (!isOpen) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
+    lockBodyScroll();
+    return unlockBodyScroll;
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -61,7 +82,7 @@ export function ConfirmDialog({
       className="fixed inset-0 z-50 flex items-center justify-center"
       aria-modal="true"
       role="dialog"
-      aria-labelledby="confirm-dialog-title"
+      aria-labelledby={titleId}
     >
       {/* Backdrop */}
       <div
@@ -71,9 +92,9 @@ export function ConfirmDialog({
       />
 
       {/* Panel */}
-      <div className="relative z-10 w-full max-w-sm mx-4 rounded-xl bg-surface-1 border border-border/20 shadow-2xl p-6 space-y-4">
+      <div ref={panelRef} className="relative z-10 w-full max-w-sm mx-4 rounded-xl bg-surface-1 border border-border/20 shadow-2xl p-6 space-y-4">
         <h2
-          id="confirm-dialog-title"
+          id={titleId}
           className="text-base font-semibold text-foreground"
         >
           {title}

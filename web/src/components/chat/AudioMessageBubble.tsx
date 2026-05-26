@@ -67,6 +67,7 @@ export function AudioMessageBubble({
   const handleBarClick = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       const rect = e.currentTarget.getBoundingClientRect();
+      if (rect.width <= 0) return;
       const fraction = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
       onSeek(fraction);
     },
@@ -93,6 +94,7 @@ export function AudioMessageBubble({
           <div className="flex-1" />
           {audioUrl && (
             <button
+              type="button"
               onClick={handleDownload}
               className="p-0.5 rounded hover:opacity-80 text-muted"
               title="Download MP3"
@@ -107,6 +109,7 @@ export function AudioMessageBubble({
       <div className="flex items-center gap-2.5">
         {/* Play / Pause / Loading button */}
         <button
+          type="button"
           onClick={isGenerating || isLoading ? undefined : isPlaying ? onPause : onPlay}
           disabled={isGenerating || isLoading}
           className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors ${
@@ -148,6 +151,7 @@ export function AudioMessageBubble({
             </span>
             {isActive && (
               <button
+                type="button"
                 onClick={(e) => { e.stopPropagation(); onCycleSpeed(); }}
                 className="px-1 rounded hover:opacity-80 font-medium"
               >

@@ -138,7 +138,7 @@ export function NotificationsSection() {
               <Check size={16} className="text-green-400 flex-shrink-0" />
               <p className="text-sm text-green-400">{t("notifications_enabled")}</p>
               </div>
-              <button onClick={handleDisablePush} className="text-xs text-foreground/60 hover:text-foreground transition-colors">
+              <button type="button" onClick={handleDisablePush} className="text-xs text-foreground/60 hover:text-foreground transition-colors">
                 {t("disable")}
               </button>
             </div>
@@ -152,6 +152,7 @@ export function NotificationsSection() {
           ) : (
             <div className="space-y-1">
               <button
+                type="button"
                 onClick={handleEnablePush}
                 disabled={pushStatus === "requesting" || !webPush.isSupported || !webPush.isConfigured}
                 className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-50"

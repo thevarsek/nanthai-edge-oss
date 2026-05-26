@@ -25,11 +25,22 @@ interface PWAInstallState {
   dismiss: () => void;
   /** Whether the install banner should be shown */
   showBanner: boolean;
+  /** True while the native prompt is waiting for the browser/user response. */
+  isInstalling: boolean;
 }
 
 const DISMISSED_KEY = "nanth_install_dismissed";
 
+function readDismissedState(): boolean {
+  try {
+    return typeof sessionStorage !== "undefined" && sessionStorage.getItem(DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 function detectIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
   return (
     /iphone|ipad|ipod/i.test(navigator.userAgent) ||
     // iPad on iOS 13+ reports as MacIntel
@@ -38,8 +49,9 @@ function detectIOS(): boolean {
 }
 
 function detectStandalone(): boolean {
+  if (typeof window === "undefined") return false;
   return (
-    window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true ||
     // iOS Safari standalone
     ("standalone" in window.navigator && (window.navigator as { standalone?: boolean }).standalone === true)
   );
@@ -47,15 +59,15 @@ function detectStandalone(): boolean {
 
 export function usePWAInstall(): PWAInstallState {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-  const [dismissed, setDismissed] = useState(() =>
-    sessionStorage.getItem(DISMISSED_KEY) === "1",
-  );
+  const [isPromptPending, setIsPromptPending] = useState(false);
+  const [dismissed, setDismissed] = useState(() => readDismissedState());
 
   const isIOS = detectIOS();
   const isInstalled = detectStandalone();
   const canInstall = deferredPrompt !== null;
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
     function handleBeforeInstallPrompt(e: Event) {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
@@ -75,19 +87,28 @@ export function usePWAInstall(): PWAInstallState {
   }, []);
 
   const install = useCallback(async (): Promise<"accepted" | "dismissed" | "unavailable"> => {
-    if (!deferredPrompt) return "unavailable";
-    await deferredPrompt.prompt();
-    const { outcome } = await deferredPrompt.userChoice;
-    setDeferredPrompt(null);
-    return outcome;
-  }, [deferredPrompt]);
+    if (!deferredPrompt || isPromptPending) return "unavailable";
+    setIsPromptPending(true);
+    try {
+      await deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      setDeferredPrompt(null);
+      return outcome;
+    } finally {
+      setIsPromptPending(false);
+    }
+  }, [deferredPrompt, isPromptPending]);
 
   const dismiss = useCallback(() => {
-    sessionStorage.setItem(DISMISSED_KEY, "1");
+    try {
+      sessionStorage.setItem(DISMISSED_KEY, "1");
+    } catch {
+      // Storage can be unavailable in private or embedded browser contexts.
+    }
     setDismissed(true);
   }, []);
 
   const showBanner = !isInstalled && !dismissed && (canInstall || isIOS);
 
-  return { canInstall, isIOS, isInstalled, install, dismiss, showBanner };
+  return { canInstall, isIOS, isInstalled, install, dismiss, showBanner, isInstalling: isPromptPending };
 }

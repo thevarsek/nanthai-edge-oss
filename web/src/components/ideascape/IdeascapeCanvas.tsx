@@ -382,7 +382,6 @@ export function IdeascapeCanvas({
                 width={size.width}
                 height={size.height}
                 visualState={getVisualState(msg._id)}
-                scale={viewport.scale}
                 onPointerDown={onNodePointerDown}
                 onResizePointerDown={onNodeResizePointerDown}
                 shouldSuppressClick={shouldSuppressNodeClick}

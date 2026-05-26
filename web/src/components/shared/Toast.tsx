@@ -136,7 +136,7 @@ export function ToastContainer({
 
   return (
     <div
-      className="fixed bottom-4 right-4 z-[10000] flex flex-col gap-2 max-w-sm w-full pointer-events-none"
+      className="fixed bottom-4 left-4 right-4 z-[10000] flex w-auto flex-col gap-2 pointer-events-none sm:left-auto sm:max-w-sm"
       aria-live="polite"
       aria-atomic="false"
     >
@@ -169,7 +169,7 @@ function ToastCard({ item, onDismiss, onMouseEnter, onMouseLeave }: ToastCardPro
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       className={cn(
-        "pointer-events-auto flex items-start gap-3 rounded-xl px-4 py-3 shadow-2xl",
+        "pointer-events-auto flex min-w-0 items-start gap-3 rounded-xl px-4 py-3 shadow-2xl",
         "border text-sm font-medium",
         "transition-all duration-200",
         // Enter animation
@@ -185,7 +185,7 @@ function ToastCard({ item, onDismiss, onMouseEnter, onMouseLeave }: ToastCardPro
           "bg-surface-1 border-border text-foreground",
       )}
     >
-      <span className="flex-1 leading-snug">{item.message}</span>
+      <span className="min-w-0 flex-1 break-words leading-snug">{item.message}</span>
       <button
         type="button"
         onClick={() => onDismiss(item.id)}

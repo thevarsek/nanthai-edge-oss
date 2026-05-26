@@ -81,4 +81,23 @@ describe("ChatIntegrationsPicker", () => {
 
     expect(onToggle).not.toHaveBeenCalled();
   });
+
+  it("keeps previously enabled blocked Google integrations disabled", () => {
+    const onToggle = vi.fn();
+    render(
+      <ChatIntegrationsPicker
+        enabledIntegrations={new Set(["drive"])}
+        onToggle={onToggle}
+        onClose={vi.fn()}
+        connectedProviders={connectedProviders}
+        googleIntegrationsBlocked
+      />,
+    );
+
+    expect(screen.getByRole("switch", { name: /Google Drive/i })).toBeDisabled();
+
+    fireEvent.click(screen.getByText("Google Drive"));
+
+    expect(onToggle).not.toHaveBeenCalled();
+  });
 });

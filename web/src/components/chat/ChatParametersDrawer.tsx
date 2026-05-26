@@ -122,6 +122,7 @@ export function ChatParametersDrawer({ overrides, onChange, onClose, defaults }:
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
           >

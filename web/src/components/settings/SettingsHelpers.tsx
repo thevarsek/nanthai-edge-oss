@@ -85,7 +85,7 @@ export function NavRow({
     );
   }
   return (
-    <button onClick={onClick} className="w-full hover:bg-surface-3 transition-colors text-left">
+    <button type="button" onClick={onClick} className="w-full hover:bg-surface-3 transition-colors text-left">
       {inner}
     </button>
   );
@@ -101,17 +101,17 @@ export function SettingsRow({
   children: ReactNode;
   onClick?: () => void;
 }) {
-  const Comp = onClick ? "button" : "div";
-  return (
-    <Comp
-      onClick={onClick}
-      className={`flex items-center gap-3 px-4 py-3 w-full text-left${
-        onClick ? " hover:bg-surface-3 transition-colors cursor-pointer" : ""
-      }`}
-    >
-      {children}
-    </Comp>
-  );
+  const className = `flex items-center gap-3 px-4 py-3 w-full text-left${
+    onClick ? " hover:bg-surface-3 transition-colors cursor-pointer" : ""
+  }`;
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {children}
+      </button>
+    );
+  }
+  return <div className={className}>{children}</div>;
 }
 
 // ─── ValueRow ──────────────────────────────────────────────────────────────
@@ -174,6 +174,7 @@ export function SignOutSection() {
     <div className="space-y-2">
       <div className="rounded-2xl bg-surface-2 overflow-hidden">
         <button
+          type="button"
           onClick={handleSignOut}
           disabled={signingOut}
           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-50"
@@ -211,10 +212,8 @@ export function DeleteAccountSection() {
       await deleteAccount({});
       try {
         await signOut();
-      } catch (error) {
-        const message = error instanceof Error ? error.message : t("something_went_wrong");
-        setErrorMessage(t("sign_out_failed_arg", { var1: message }));
-        return;
+      } catch {
+        // The account is already deleted server-side; leave the app shell even if Clerk cleanup fails locally.
       }
       navigate("/");
       setShowConfirm(false);
@@ -229,6 +228,7 @@ export function DeleteAccountSection() {
     <div className="space-y-2">
       <div className="rounded-2xl bg-surface-2 overflow-hidden">
         <button
+          type="button"
           onClick={() => setShowConfirm(true)}
           className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
         >

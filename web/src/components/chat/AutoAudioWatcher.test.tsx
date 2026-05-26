@@ -89,6 +89,7 @@ describe("AutoAudioWatcher", () => {
     const assistantPendingAudio = message({
       _id: "a1" as Id<"messages">,
       role: "assistant",
+      parentMessageIds: ["u1" as Id<"messages">],
     });
     const assistantWithAudio = {
       ...assistantPendingAudio,
@@ -113,6 +114,7 @@ describe("AutoAudioWatcher", () => {
     const assistantPendingAudio = message({
       _id: "a1" as Id<"messages">,
       role: "assistant",
+      parentMessageIds: ["u1" as Id<"messages">],
     });
     const assistantWithAudio = {
       ...assistantPendingAudio,
@@ -134,5 +136,34 @@ describe("AutoAudioWatcher", () => {
     rerender(<AutoAudioWatcher messages={[userAudio, assistantWithAudio]} isLoading={false} />);
 
     expect(play).toHaveBeenCalledWith("a1", "storage_assistant");
+  });
+
+  test("does not autoplay when explicit parent is not an audio user", () => {
+    const userAudio = message({
+      _id: "u1" as Id<"messages">,
+      role: "user",
+      audioStorageId: "storage_user" as Id<"_storage">,
+    });
+    const intermediateAssistant = message({
+      _id: "a0" as Id<"messages">,
+      role: "assistant",
+    });
+    const assistantPendingAudio = message({
+      _id: "a1" as Id<"messages">,
+      role: "assistant",
+      parentMessageIds: ["a0" as Id<"messages">],
+    });
+    const assistantWithAudio = {
+      ...assistantPendingAudio,
+      audioStorageId: "storage_assistant" as Id<"_storage">,
+    };
+    const { play, rerender } = renderWatcher({
+      messages: [userAudio, intermediateAssistant, assistantPendingAudio],
+      isLoading: false,
+    });
+
+    rerender(<AutoAudioWatcher messages={[userAudio, intermediateAssistant, assistantWithAudio]} isLoading={false} />);
+
+    expect(play).not.toHaveBeenCalled();
   });
 });

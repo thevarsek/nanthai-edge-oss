@@ -28,7 +28,7 @@ describe("ChatSubagentsDrawer", () => {
 
     expect(inherit).toHaveAttribute("aria-checked", "true");
     expect(enabled).toHaveAttribute("aria-checked", "false");
-    expect(enabled).toBeDisabled();
+    expect(enabled).toHaveAttribute("aria-disabled", "true");
     expect(disabled).toHaveAttribute("aria-checked", "false");
 
     await user.keyboard("{Escape}");

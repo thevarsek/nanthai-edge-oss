@@ -21,6 +21,7 @@ export function useAttachments(
 ) {
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -30,31 +31,43 @@ export function useAttachments(
       const files = Array.from(e.target.files ?? []);
       if (files.length === 0) return;
       setIsUploading(true);
+      setUploadError(null);
+      let failedCount = 0;
       try {
         for (const file of files) {
-          const uploadUrl = await onCreateUploadUrl();
-          const res = await fetch(uploadUrl, {
-            method: "POST",
-            headers: { "Content-Type": file.type },
-            body: file,
-          });
-          if (!res.ok) continue;
-          const { storageId } = (await res.json()) as { storageId: string };
-          setAttachments((prev) => [
-            ...prev,
-            {
-              storageId: storageId as Id<"_storage">,
-              name: file.name,
-              type: attachmentTypeForMime(file.type),
-              mimeType: file.type,
-              sizeBytes: file.size,
-            },
-          ]);
+          try {
+            const uploadUrl = await onCreateUploadUrl();
+            const res = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": file.type },
+              body: file,
+            });
+            if (!res.ok) {
+              failedCount += 1;
+              continue;
+            }
+            const { storageId } = (await res.json()) as { storageId: string };
+            setAttachments((prev) => [
+              ...prev,
+              {
+                storageId: storageId as Id<"_storage">,
+                name: file.name,
+                type: attachmentTypeForMime(file.type),
+                mimeType: file.type,
+                sizeBytes: file.size,
+              },
+            ]);
+          } catch {
+            failedCount += 1;
+          }
         }
         // Assign default video roles to all images if we're already in video mode
         // and the model supports frame images (image-to-video models only).
         if (isVideoMode && supportsFrameImages) {
           setAttachments((prev) => assignDefaultVideoRoles(prev));
+        }
+        if (failedCount > 0) {
+          setUploadError(`${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload.`);
         }
       } finally {
         setIsUploading(false);
@@ -82,29 +95,41 @@ export function useAttachments(
     async (files: File[]) => {
       if (files.length === 0) return;
       setIsUploading(true);
+      setUploadError(null);
+      let failedCount = 0;
       try {
         for (const file of files) {
-          const uploadUrl = await onCreateUploadUrl();
-          const res = await fetch(uploadUrl, {
-            method: "POST",
-            headers: { "Content-Type": file.type },
-            body: file,
-          });
-          if (!res.ok) continue;
-          const { storageId } = (await res.json()) as { storageId: string };
-          setAttachments((prev) => [
-            ...prev,
-            {
-              storageId: storageId as Id<"_storage">,
-              name: file.name || `pasted-image.${file.type.split("/")[1] || "png"}`,
-              type: attachmentTypeForMime(file.type),
-              mimeType: file.type,
-              sizeBytes: file.size,
-            },
-          ]);
+          try {
+            const uploadUrl = await onCreateUploadUrl();
+            const res = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": file.type },
+              body: file,
+            });
+            if (!res.ok) {
+              failedCount += 1;
+              continue;
+            }
+            const { storageId } = (await res.json()) as { storageId: string };
+            setAttachments((prev) => [
+              ...prev,
+              {
+                storageId: storageId as Id<"_storage">,
+                name: file.name || `pasted-image.${file.type.split("/")[1] || "png"}`,
+                type: attachmentTypeForMime(file.type),
+                mimeType: file.type,
+                sizeBytes: file.size,
+              },
+            ]);
+          } catch {
+            failedCount += 1;
+          }
         }
         if (isVideoMode && supportsFrameImages) {
           setAttachments((prev) => assignDefaultVideoRoles(prev));
+        }
+        if (failedCount > 0) {
+          setUploadError(`${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload.`);
         }
       } finally {
         setIsUploading(false);
@@ -119,6 +144,8 @@ export function useAttachments(
     attachments,
     setAttachments,
     isUploading,
+    uploadError,
+    setUploadError,
     fileInputRef,
     imageInputRef,
     cameraInputRef,

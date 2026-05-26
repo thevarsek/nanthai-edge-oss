@@ -323,7 +323,7 @@ export function ChatParticipantPicker({
             <span className="text-xs text-muted font-medium">
               {participants.length}/{Defaults.maxParticipants}
             </span>
-            <button onClick={onClose} className="p-1 rounded hover:bg-surface-2 transition-colors">
+            <button type="button" onClick={onClose} className="p-1 rounded hover:bg-surface-2 transition-colors">
               <X size={18} />
             </button>
           </div>
@@ -339,7 +339,7 @@ export function ChatParticipantPicker({
               className="w-full pl-8 pr-4 py-2 text-sm bg-surface-2 border border-border/50 rounded-xl text-foreground placeholder-muted focus:outline-none focus:border-primary/50"
             />
             {search && (
-              <button onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
+              <button type="button" onClick={() => setSearch("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-foreground">
                 <X size={12} />
               </button>
             )}
@@ -349,20 +349,20 @@ export function ChatParticipantPicker({
         {/* Controls bar */}
         <div className="px-4 pt-2 pb-5 overflow-x-auto overflow-y-hidden shrink-0 bg-surface-1 relative z-10">
           <div className="flex gap-1.5 min-w-max">
-          <button onClick={() => setShowWizard(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary/15 text-primary text-xs font-medium shrink-0 hover:bg-primary/25 transition-colors">
+          <button type="button" onClick={() => setShowWizard(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary/15 text-primary text-xs font-medium shrink-0 hover:bg-primary/25 transition-colors">
             <Sparkles size={11} />
             {t("help_me_choose")}
           </button>
           <SortMenuPortal sortKey={sortKey} onChange={setSortKey} sortIcons={SORT_ICONS} />
           {activeFilters.size > 0 && (
-            <button onClick={() => setActiveFilters(new Set())} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-foreground/8 text-muted text-xs font-medium shrink-0 hover:bg-foreground/12 transition-colors">
+            <button type="button" onClick={() => setActiveFilters(new Set())} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-foreground/8 text-muted text-xs font-medium shrink-0 hover:bg-foreground/12 transition-colors">
               <X size={10} /> {t("reset")}
             </button>
           )}
           {CAP_FILTERS.map((f) => {
             const active = activeFilters.has(f.key);
             return (
-              <button key={f.key} onClick={() => toggleFilter(f.key)}
+              <button key={f.key} type="button" onClick={() => toggleFilter(f.key)}
                 className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full text-xs font-medium shrink-0 transition-colors ${active ? "bg-primary/15 text-primary" : "bg-surface-2 text-muted hover:text-foreground hover:bg-surface-3"}`}>
                 {CAP_ICONS[f.key]}
               {t(f.labelKey)}
@@ -411,7 +411,7 @@ export function ChatParticipantPicker({
               <div className="flex flex-col items-center justify-center h-24 text-sm text-muted gap-2">
                 {models.length === 0 ? t("loading_models") : t("no_models_match")}
                 {activeFilters.size > 0 && (
-                  <button onClick={() => setActiveFilters(new Set())} className="text-xs text-primary hover:underline">{t("clear_filters")}</button>
+                  <button type="button" onClick={() => setActiveFilters(new Set())} className="text-xs text-primary hover:underline">{t("clear_filters")}</button>
                 )}
               </div>
             ) : (

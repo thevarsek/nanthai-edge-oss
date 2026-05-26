@@ -31,7 +31,10 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const lastModelId = useRef(modelId);
+  const currentModelId = useRef(modelId);
   const pendingSavedDraft = useRef<ModelSettingsDraftSnapshot | null>(null);
+
+  currentModelId.current = modelId;
 
   useEffect(() => {
     const modelChanged = lastModelId.current !== modelId;
@@ -66,18 +69,22 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
 
     setIsSaving(true);
     setError(null);
+    const savedModelId = modelId;
+    const savedDraft = currentDraftSnapshot({
+      hasCustomSettings,
+      temperature,
+      maxTokensText,
+      includeReasoning,
+      reasoningEffort,
+    });
     try {
       if (!hasCustomSettings) {
         if (existing) {
           await deleteModelSettings({ openRouterId: modelId });
         }
-        pendingSavedDraft.current = currentDraftSnapshot({
-          hasCustomSettings,
-          temperature,
-          maxTokensText,
-          includeReasoning,
-          reasoningEffort,
-        });
+        if (currentModelId.current === savedModelId) {
+          pendingSavedDraft.current = savedDraft;
+        }
         return;
       }
 
@@ -88,16 +95,14 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
         includeReasoning,
         reasoningEffort,
       });
-      pendingSavedDraft.current = currentDraftSnapshot({
-        hasCustomSettings,
-        temperature,
-        maxTokensText,
-        includeReasoning,
-        reasoningEffort,
-      });
-      setIsDirty(true);
+      if (currentModelId.current === savedModelId) {
+        pendingSavedDraft.current = savedDraft;
+        setIsDirty(true);
+      }
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : t("something_went_wrong"));
+      if (currentModelId.current === savedModelId) {
+        setError(nextError instanceof Error ? nextError.message : t("something_went_wrong"));
+      }
     } finally {
       setIsSaving(false);
     }

@@ -59,7 +59,7 @@ export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Prop
 
   const filtered = useMemo(() => {
     if (!search.trim()) return allSkills;
-    const q = search.toLowerCase();
+    const q = search.trim().toLowerCase();
     return allSkills.filter(
       (s) =>
         s.name.toLowerCase().includes(q) ||
@@ -96,7 +96,9 @@ export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Prop
             )}
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label={t("close")}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
           >
             <X size={18} />

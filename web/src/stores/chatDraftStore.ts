@@ -43,6 +43,6 @@ export function clearChatDraft(chatId: string): void {
 function cloneDraft(draft: ChatDraft): ChatDraft {
   return {
     text: draft.text,
-    attachments: [...draft.attachments],
+    attachments: draft.attachments.map((attachment) => ({ ...attachment })),
   };
 }

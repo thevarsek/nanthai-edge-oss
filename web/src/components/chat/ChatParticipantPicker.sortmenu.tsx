@@ -67,6 +67,7 @@ export function SortMenuPortal({ sortKey, onChange, sortIcons }: SortMenuProps) 
     <>
       <button
         ref={triggerRef}
+        type="button"
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-surface-2 text-xs font-medium text-foreground hover:bg-surface-3 transition-colors"
       >
@@ -83,6 +84,7 @@ export function SortMenuPortal({ sortKey, onChange, sortIcons }: SortMenuProps) 
           {SORT_KEYS.map((s) => (
             <button
               key={s.key}
+              type="button"
               onClick={() => { onChange(s.key); setOpen(false); }}
               className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-surface-2 transition-colors ${sortKey === s.key ? "text-primary" : "text-foreground"}`}
             >

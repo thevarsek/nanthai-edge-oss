@@ -46,4 +46,47 @@ describe("MentionAutocompletePopover", () => {
     expect(screen.getByRole("button", { name: /GPT-5/i })).toBeInTheDocument();
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ modelId: "openai/gpt-5" }));
   });
+
+  it("clamps the active keyboard index when suggestions shrink", () => {
+    const onSelect = vi.fn();
+    const { rerender } = render(
+      <MentionAutocompletePopover
+        suggestions={[
+          {
+            modelId: "openai/gpt-5",
+            displayName: "GPT-5",
+            subtitle: "OpenAI",
+            isPersona: false,
+          },
+          {
+            modelId: "anthropic/claude",
+            displayName: "Claude",
+            subtitle: "Anthropic",
+            isPersona: false,
+          },
+        ]}
+        onSelect={onSelect}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(document, { key: "ArrowDown" });
+    rerender(
+      <MentionAutocompletePopover
+        suggestions={[
+          {
+            modelId: "anthropic/claude",
+            displayName: "Claude",
+            subtitle: "Anthropic",
+            isPersona: false,
+          },
+        ]}
+        onSelect={onSelect}
+        onDismiss={vi.fn()}
+      />,
+    );
+    fireEvent.keyDown(document, { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ modelId: "anthropic/claude" }));
+  });
 });

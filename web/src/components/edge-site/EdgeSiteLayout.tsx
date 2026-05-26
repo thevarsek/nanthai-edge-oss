@@ -14,7 +14,7 @@ export function EdgeSiteLayout({
   mainClassName,
 }: EdgeSiteLayoutProps) {
   return (
-    <div className="edge-site-shell min-h-screen overflow-hidden">
+    <div className="edge-site-shell min-h-screen">
       {/* Cinematic light cone — single dramatic top-center wash */}
       <div className="pointer-events-none fixed inset-0" aria-hidden="true">
         {/* Primary light cone — top center, large elliptical wash */}

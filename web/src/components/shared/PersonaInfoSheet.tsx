@@ -14,7 +14,7 @@ export function PersonaInfoSheet({
   const { t } = useTranslation();
   const modelSummaries = useModelSummaries();
   const model = modelSummaries?.find((item) => item.modelId === persona.modelId);
-  const isFreeModel = model ? (model.isFree ?? model.modelId.endsWith(":free")) : false;
+  const isFreeModel = model?.isFree ?? model?.modelId.endsWith(":free") ?? persona.modelId?.endsWith(":free") ?? false;
   const hasOverrides =
     persona.temperature != null ||
     persona.maxTokens != null ||
@@ -57,7 +57,7 @@ export function PersonaInfoSheet({
 
         {persona.systemPrompt && (
           <div className="space-y-1">
-            <h3 className="text-xs font-medium text-muted uppercase tracking-wide">System Prompt</h3>
+            <h3 className="text-xs font-medium text-muted uppercase tracking-wide">{t("system_prompt")}</h3>
             <div className="rounded-xl bg-surface-2 border border-border/40 p-3 text-sm whitespace-pre-wrap leading-relaxed">
               {persona.systemPrompt}
             </div>
@@ -73,25 +73,25 @@ export function PersonaInfoSheet({
                 <p className="text-xs text-muted font-mono mt-0.5">{persona.modelId}</p>
               )}
             </div>
-            {model && (
+            {(model || isFreeModel) && (
               <div className="flex flex-wrap gap-2 text-[11px] text-muted">
-                {(model.architecture?.modality?.split("->")[0] ?? "").includes("image") && (
-                  <span className="inline-flex items-center gap-1"><Eye size={12} /> Vision</span>
+                {(model?.architecture?.modality?.split("->")[0] ?? "").includes("image") && (
+                  <span className="inline-flex items-center gap-1"><Eye size={12} /> {t("vision")}</span>
                 )}
-                {model.supportsImages && (
-                  <span className="inline-flex items-center gap-1"><Paintbrush size={12} /> Image Gen</span>
+                {model?.supportsImages && (
+                  <span className="inline-flex items-center gap-1"><Paintbrush size={12} /> {t("image_gen")}</span>
                 )}
-                {model.supportsVideo && (
-                  <span className="inline-flex items-center gap-1"><Video size={12} /> Video Gen</span>
+                {model?.supportsVideo && (
+                  <span className="inline-flex items-center gap-1"><Video size={12} /> {t("video_gen")}</span>
                 )}
-                {model.supportsTools && (
-                  <span className="inline-flex items-center gap-1"><Wrench size={12} /> Tools</span>
+                {model?.supportsTools && (
+                  <span className="inline-flex items-center gap-1"><Wrench size={12} /> {t("tools")}</span>
                 )}
-                {model.hasReasoning && (
-                  <span className="inline-flex items-center gap-1"><Brain size={12} /> Reasoning</span>
+                {model?.hasReasoning && (
+                  <span className="inline-flex items-center gap-1"><Brain size={12} /> {t("reasoning")}</span>
                 )}
                 {isFreeModel && (
-                  <span className="inline-flex items-center gap-1"><Gift size={12} /> Free</span>
+                  <span className="inline-flex items-center gap-1"><Gift size={12} /> {t("free")}</span>
                 )}
               </div>
             )}
@@ -100,7 +100,7 @@ export function PersonaInfoSheet({
 
         {hasOverrides && (
           <div className="space-y-1">
-            <h3 className="text-xs font-medium text-muted uppercase tracking-wide">Parameter Overrides</h3>
+            <h3 className="text-xs font-medium text-muted uppercase tracking-wide">{t("parameter_overrides")}</h3>
             <div className="rounded-xl bg-surface-2 border border-border/40 divide-y divide-border/30">
               {persona.temperature != null && (
                 <InfoRow label={t("temperature")} value={persona.temperature.toFixed(1)} />
@@ -109,7 +109,7 @@ export function PersonaInfoSheet({
                 <InfoRow label={t("max_tokens")} value={String(persona.maxTokens)} />
               )}
               {persona.includeReasoning != null && (
-                <InfoRow label={t("reasoning")} value={persona.includeReasoning ? "On" : "Off"} />
+                <InfoRow label={t("reasoning")} value={persona.includeReasoning ? t("enabled") : t("disabled")} />
               )}
               {persona.reasoningEffort && (
                 <InfoRow label={t("reasoning_effort")} value={persona.reasoningEffort} />

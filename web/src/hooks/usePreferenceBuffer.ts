@@ -14,13 +14,41 @@ export function usePreferenceBuffer() {
   const upsert = useMutation(api.preferences.mutations.upsertPreferences);
   const pending = useRef<Record<string, unknown>>({});
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const flushRef = useRef<() => void>(() => {});
+  const inFlight = useRef(false);
+  const mounted = useRef(true);
+
+  const scheduleRetry = useCallback(() => {
+    if (!mounted.current) return;
+    clearTimeout(retryTimer.current);
+    retryTimer.current = setTimeout(() => flushRef.current(), 1_000);
+  }, []);
 
   const flush = useCallback(() => {
+    if (inFlight.current) return;
     const patch = pending.current;
     if (Object.keys(patch).length === 0) return;
     pending.current = {};
-    void upsert(patch as Parameters<typeof upsert>[0]);
-  }, [upsert]);
+    inFlight.current = true;
+    void Promise.resolve(upsert(patch as Parameters<typeof upsert>[0]))
+      .then(() => {
+        inFlight.current = false;
+        if (Object.keys(pending.current).length > 0) {
+          flushRef.current();
+        }
+      })
+      .catch(() => {
+        inFlight.current = false;
+        if (!mounted.current) return;
+        pending.current = { ...patch, ...pending.current };
+        scheduleRetry();
+      });
+  }, [scheduleRetry, upsert]);
+
+  useEffect(() => {
+    flushRef.current = flush;
+  }, [flush]);
 
   /** Debounced (500ms) — merges concurrent patches. Best for sliders/text. */
   const updatePreference = useMemo(
@@ -37,14 +65,14 @@ export function usePreferenceBuffer() {
   const updatePreferenceImmediate = useCallback(
     (patch: Record<string, unknown>) => {
       clearTimeout(timer.current);
-      const merged = { ...pending.current, ...patch };
-      pending.current = {};
-      void upsert(merged as Parameters<typeof upsert>[0]);
+      pending.current = { ...pending.current, ...patch };
+      flush();
     },
-    [upsert],
+    [flush],
   );
 
   useEffect(() => {
+    mounted.current = true;
     const flushPending = () => {
       clearTimeout(timer.current);
       flush();
@@ -59,8 +87,10 @@ export function usePreferenceBuffer() {
     window.addEventListener("pagehide", flushPending);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
+      mounted.current = false;
       window.removeEventListener("pagehide", flushPending);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearTimeout(retryTimer.current);
       flushPending();
     };
   }, [flush]);

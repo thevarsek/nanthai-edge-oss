@@ -1,23 +1,25 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConnectedAccountsSection } from "./ConnectedAccountsSection";
 
 const connectProviderWithPopup = vi.fn();
+const disconnectGoogle = vi.fn();
+let connectedAccounts = {
+  googleConnection: null as { hasDrive: boolean; hasCalendar: boolean } | null,
+  gmailManualConnection: null,
+  microsoftConnection: null,
+  notionConnection: null,
+  slackConnection: null,
+  appleCalendarConnection: null,
+  clozeConnection: null,
+};
 
 vi.mock("@/hooks/useSharedData", () => ({
-  useConnectedAccounts: () => ({
-    googleConnection: null,
-    gmailManualConnection: null,
-    microsoftConnection: null,
-    notionConnection: null,
-    slackConnection: null,
-    appleCalendarConnection: null,
-    clozeConnection: null,
-  }),
+  useConnectedAccounts: () => connectedAccounts,
 }));
 
 vi.mock("convex/react", () => ({
-  useAction: () => vi.fn(),
+  useAction: () => disconnectGoogle,
 }));
 
 vi.mock("@/lib/providerOAuth", () => ({
@@ -27,6 +29,20 @@ vi.mock("@/lib/providerOAuth", () => ({
 }));
 
 describe("ConnectedAccountsSection", () => {
+  beforeEach(() => {
+    connectedAccounts = {
+      googleConnection: null,
+      gmailManualConnection: null,
+      microsoftConnection: null,
+      notionConnection: null,
+      slackConnection: null,
+      appleCalendarConnection: null,
+      clozeConnection: null,
+    };
+    connectProviderWithPopup.mockReset();
+    disconnectGoogle.mockReset();
+  });
+
   it("locks other OAuth connect buttons while one provider flow is pending", () => {
     connectProviderWithPopup.mockReturnValue(new Promise(() => undefined));
     render(<ConnectedAccountsSection />);
@@ -40,5 +56,21 @@ describe("ConnectedAccountsSection", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Connect" })[2]!);
     expect(connectProviderWithPopup).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fire disconnect twice before busy state renders", () => {
+    connectedAccounts = {
+      ...connectedAccounts,
+      googleConnection: { hasDrive: true, hasCalendar: true },
+    };
+    disconnectGoogle.mockReturnValue(new Promise(() => undefined));
+    render(<ConnectedAccountsSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect" }));
+    const confirm = screen.getAllByRole("button", { name: "Disconnect" }).at(-1)!;
+    fireEvent.click(confirm);
+    fireEvent.click(confirm);
+
+    expect(disconnectGoogle).toHaveBeenCalledTimes(1);
   });
 });

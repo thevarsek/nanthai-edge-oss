@@ -5,6 +5,7 @@ import { ProviderOAuthCallbackPage } from "./ProviderOAuthCallbackPage";
 import { nativeOAuthCallbackUrl } from "./ProviderOAuthCallbackPage.helpers";
 
 const {
+  authState,
   clearOAuthContext,
   exchangeGoogleCode,
   exchangeMicrosoftCode,
@@ -13,6 +14,10 @@ const {
   postOAuthResult,
   readOAuthContext,
 } = vi.hoisted(() => ({
+  authState: {
+    isAuthenticated: true,
+    isLoading: false,
+  },
   clearOAuthContext: vi.fn(),
   exchangeGoogleCode: vi.fn(async () => null),
   exchangeMicrosoftCode: vi.fn(async () => null),
@@ -29,7 +34,7 @@ vi.mock("convex/react", () => ({
     const actions = [exchangeGoogleCode, exchangeMicrosoftCode, exchangeNotionCode, exchangeSlackCode];
     return actions[actionIndex++ % actions.length];
   },
-  useConvexAuth: () => ({ isAuthenticated: true, isLoading: false }),
+  useConvexAuth: () => authState,
 }));
 
 vi.mock("@/lib/providerOAuth", async (importOriginal) => {
@@ -57,6 +62,8 @@ function renderCallback(path: string, provider: "google" | "microsoft" | "notion
 
 describe("ProviderOAuthCallbackPage", () => {
   beforeEach(() => {
+    authState.isAuthenticated = true;
+    authState.isLoading = false;
     vi.spyOn(window, "close").mockImplementation(() => {});
     readOAuthContext.mockReturnValue({
       state: "expected",
@@ -233,7 +240,7 @@ describe("ProviderOAuthCallbackPage", () => {
   });
 
   it("surfaces provider error callbacks before exchanging a code", async () => {
-    renderCallback("/oauth/google/callback?error=access_denied&error_description=User+cancelled");
+    renderCallback("/oauth/google/callback?error=access_denied&error_description=User+cancelled&state=expected");
 
     expect(await screen.findByText("Google sign-in failed: User cancelled")).toBeInTheDocument();
     expect(exchangeGoogleCode).not.toHaveBeenCalled();
@@ -243,6 +250,41 @@ describe("ProviderOAuthCallbackPage", () => {
       provider: "google",
       success: false,
       error: "Google sign-in failed: User cancelled",
+    });
+  });
+
+  it("reports provider errors before waiting for Convex auth", async () => {
+    authState.isAuthenticated = false;
+    authState.isLoading = false;
+
+    renderCallback(
+      "/oauth/notion/callback?error=access_denied&error_description=User+cancelled&state=expected",
+      "notion",
+    );
+
+    expect(await screen.findByText("Notion sign-in failed: User cancelled")).toBeInTheDocument();
+    expect(exchangeNotionCode).not.toHaveBeenCalled();
+    expect(postOAuthResult).toHaveBeenCalledWith({
+      type: "nanthai-oauth-result",
+      provider: "notion",
+      success: false,
+      error: "Notion sign-in failed: User cancelled",
+    });
+  });
+
+  it("rejects provider error callbacks with mismatched state", async () => {
+    renderCallback(
+      "/oauth/microsoft/callback?error=access_denied&error_description=forced&state=wrong",
+      "microsoft",
+    );
+
+    expect(await screen.findByText("Microsoft sign-in state mismatch. Please try again.")).toBeInTheDocument();
+    expect(exchangeMicrosoftCode).not.toHaveBeenCalled();
+    expect(postOAuthResult).toHaveBeenCalledWith({
+      type: "nanthai-oauth-result",
+      provider: "microsoft",
+      success: false,
+      error: "Microsoft sign-in state mismatch. Please try again.",
     });
   });
 });

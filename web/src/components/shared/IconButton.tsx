@@ -53,6 +53,7 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
     ref,
   ) => (
     <button
+      {...props}
       ref={ref}
       type="button"
       aria-label={label}
@@ -68,7 +69,6 @@ export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
         variantClasses[variant],
         className,
       )}
-      {...props}
     >
       {children}
     </button>

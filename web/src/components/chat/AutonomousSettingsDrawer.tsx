@@ -88,7 +88,9 @@ export function AutonomousSettingsDrawer({
             <h2 className="text-base font-semibold">{t("autonomous_mode")}</h2>
           </div>
           <button
+            type="button"
             onClick={onClose}
+            aria-label={t("close")}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
           >
             <X size={18} />
@@ -134,6 +136,7 @@ export function AutonomousSettingsDrawer({
         {/* Start button */}
         <div className="px-5 py-4 border-t border-border/50 shrink-0">
           <button
+            type="button"
             onClick={handleStart}
             disabled={!canStart}
             className="w-full py-3 rounded-xl bg-primary text-white font-semibold text-sm hover:opacity-90 transition-opacity disabled:opacity-30 disabled:cursor-not-allowed"
@@ -241,6 +244,7 @@ function ModeratorRow({ label, emoji, isSelected, onClick }: {
 }) {
   return (
     <button
+      type="button"
       onClick={onClick}
       className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-surface-2 transition-colors"
     >

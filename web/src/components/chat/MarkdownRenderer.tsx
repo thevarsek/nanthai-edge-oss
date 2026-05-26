@@ -740,11 +740,11 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
   compact = false,
   documentCitationLinks,
 }: MarkdownRendererProps) {
-  const components = useMemo(
-    () => (compact ? buildCompactComponents() : buildComponents(content, documentCitationLinks)),
-    [content, compact, documentCitationLinks],
-  );
   const renderedContent = useMemo(() => preprocessDefinitionLists(content), [content]);
+  const components = useMemo(
+    () => (compact ? buildCompactComponents() : buildComponents(renderedContent, documentCitationLinks)),
+    [compact, documentCitationLinks, renderedContent],
+  );
 
   return (
     <div
@@ -758,6 +758,7 @@ export const MarkdownRenderer = memo(function MarkdownRenderer({
         .join(" ")}
     >
       <ReactMarkdown
+        skipHtml
         remarkPlugins={compact ? REMARK_PLUGINS_COMPACT : REMARK_PLUGINS}
         rehypePlugins={compact ? REHYPE_PLUGINS_COMPACT : REHYPE_PLUGINS}
         components={components}

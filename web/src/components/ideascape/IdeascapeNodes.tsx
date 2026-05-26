@@ -49,7 +49,6 @@ export function MessageNode({
   width,
   height,
   visualState,
-  scale,
   onPointerDown,
   onResizePointerDown,
   shouldSuppressClick,
@@ -62,7 +61,6 @@ export function MessageNode({
   width: number;
   height: number;
   visualState: NodeVisualState;
-  scale: number;
   onPointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   onResizePointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   shouldSuppressClick?: (id: Id<"messages">) => boolean;
@@ -160,6 +158,7 @@ export function MessageNode({
         )}
         {/* Select/deselect button */}
         <button
+          type="button"
           className="ml-auto w-5 h-5 rounded-full flex items-center justify-center text-[10px] border border-border/40 hover:bg-surface-3 transition-colors"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => {
@@ -177,7 +176,6 @@ export function MessageNode({
           data-node-scroll
           className="px-3 pb-7 overflow-y-auto overflow-x-hidden"
           style={{ height: Math.max(56, height - 42) }}
-          onPointerDown={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
           <div className="space-y-2">
@@ -200,7 +198,7 @@ export function MessageNode({
                 ))}
               </div>
             )}
-            <div className="text-foreground/80 break-words" style={{ fontSize: `${Math.max(7, 12 * scale)}px` }}>
+            <div className="text-foreground/80 break-words text-xs">
               {message.content ? (
                 <MarkdownRenderer content={message.content} compact />
               ) : (
@@ -224,6 +222,7 @@ export function MessageNode({
       )}
 
       <button
+        type="button"
         className="absolute right-1.5 bottom-1.5 h-4 w-4 rounded-sm text-muted hover:bg-surface-3/80 transition-colors cursor-se-resize hidden md:flex items-center justify-center"
         onPointerDown={(e) => {
           e.stopPropagation();

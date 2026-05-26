@@ -55,6 +55,19 @@ function formatTimestamp(ts: number): string {
   return new Date(ts).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
 }
 
+function safeMediaUrl(url: string): string | null {
+  try {
+    const base = typeof window === "undefined" ? "https://nanthai.local" : window.location.origin;
+    const parsed = new URL(url, base);
+    if (["http:", "https:"].includes(parsed.protocol)) {
+      return parsed.href;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
 function StreamingCursor() {
   return (
     <span className="inline-block w-0.5 h-4 bg-primary ml-0.5 align-text-bottom animate-pulse" />
@@ -112,14 +125,17 @@ function ModeratorDirectiveBlock({ directive }: { directive: string }) {
 function InlineImagePreview({ url }: { url: string }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const safeUrl = safeMediaUrl(url);
+  if (!safeUrl) return null;
   return (
     <>
       <button
+        type="button"
         onClick={() => setExpanded(true)}
         className="block rounded-lg overflow-hidden border border-border/20 hover:border-border/40 transition-colors cursor-zoom-in"
       >
         <img
-          src={url}
+          src={safeUrl}
           alt="Generated image"
           className="max-w-xs max-h-64 object-contain bg-surface-2/50"
           loading="lazy"
@@ -131,13 +147,13 @@ function InlineImagePreview({ url }: { url: string }) {
           onClick={() => setExpanded(false)}
         >
           <img
-            src={url}
+            src={safeUrl}
             alt="Generated image"
             className="max-w-[90vw] max-h-[85vh] object-contain rounded-lg shadow-2xl"
           />
           <div className="absolute bottom-6 flex items-center gap-3">
             <a
-              href={url}
+              href={safeUrl}
               download
               onClick={(e) => e.stopPropagation()}
               className="text-xs text-primary hover:underline"
@@ -155,11 +171,13 @@ function InlineImagePreview({ url }: { url: string }) {
 function InlineVideoPreview({ url }: { url: string }) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const safeUrl = safeMediaUrl(url);
+  if (!safeUrl) return null;
   return (
     <>
       <div className="rounded-lg overflow-hidden border border-border/20 hover:border-border/40 transition-colors max-w-sm">
         <video
-          src={url}
+          src={safeUrl}
           controls
           preload="metadata"
           className="w-full max-h-64 bg-black cursor-pointer"
@@ -180,7 +198,7 @@ function InlineVideoPreview({ url }: { url: string }) {
           onClick={() => setExpanded(false)}
         >
           <video
-            src={url}
+            src={safeUrl}
             controls
             autoPlay
             className="max-w-[90vw] max-h-[80vh] rounded-lg shadow-2xl"
@@ -188,7 +206,7 @@ function InlineVideoPreview({ url }: { url: string }) {
           />
           <div className="mt-4 flex items-center gap-3">
             <a
-              href={url}
+              href={safeUrl}
               download
               onClick={(e) => e.stopPropagation()}
               className="flex items-center gap-1.5 text-xs text-primary hover:underline"
@@ -453,6 +471,7 @@ export const AssistantMessage = memo(function AssistantMessage({
             <SearchSessionBadge session={session} />
             {session.mode === "paper" && (session.status === "completed" || session.status === "failed") && (
               <button
+                type="button"
                 onClick={() => onRegenerate(session._id)}
                 className="inline-flex items-center gap-1.5 rounded-lg border border-border/40 px-2.5 py-1.5 text-xs font-medium text-muted hover:bg-surface-3 hover:text-foreground transition-colors"
                 title="Regenerate paper"

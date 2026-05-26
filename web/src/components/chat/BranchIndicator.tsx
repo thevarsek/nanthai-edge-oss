@@ -57,6 +57,7 @@ function SwitchableBranchPill({
 
         <div className="flex items-center">
           <button
+            type="button"
             onClick={() => onNavigate(node.messageId, "prev")}
             disabled={!canGoPrev}
             className="p-0.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
@@ -65,6 +66,7 @@ function SwitchableBranchPill({
             <ChevronLeft size={13} strokeWidth={2.5} />
           </button>
           <button
+            type="button"
             onClick={() => onNavigate(node.messageId, "next")}
             disabled={!canGoNext}
             className="p-0.5 rounded hover:bg-surface-3 text-muted hover:text-foreground transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
@@ -110,6 +112,7 @@ function MergedBranchPill({
 
         {nextSiblingId && onJumpToNext && (
           <button
+            type="button"
             onClick={() => onJumpToNext(nextSiblingId)}
             className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full hover:bg-surface-2 text-muted hover:text-foreground transition-colors"
             aria-label="Jump to next branch"

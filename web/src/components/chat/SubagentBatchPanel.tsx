@@ -127,6 +127,7 @@ export function SubagentBatchPanel({ messageId, batchId }: Props) {
                 return (
                   <button
                     key={run._id}
+                    type="button"
                     onClick={() => setSelectedRunId(run._id)}
                     className={`shrink-0 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${
                       active

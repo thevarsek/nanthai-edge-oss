@@ -145,6 +145,7 @@ export function ToolCallAccordion({
   return (
     <div className="mt-2 rounded-xl bg-surface-2/50 border border-border/30 px-2.5 py-2">
       <button
+        type="button"
         onClick={() => setIsExpanded((v) => !v)}
         className="w-full flex items-center gap-2 px-0.5 py-0.5 text-[11px] font-semibold text-muted text-left"
       >
@@ -188,6 +189,7 @@ export function ToolCallAccordion({
           >
             {/* Header */}
             <button
+              type="button"
               onClick={() =>
                 setExpanded((prev) => {
                   const next = new Set(prev);

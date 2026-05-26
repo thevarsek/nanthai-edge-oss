@@ -36,6 +36,7 @@ export function useAudioPlayback(defaultSpeed = 1) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const pollCountRef = useRef(0);
+  const existingAudioRequestRef = useRef<Id<"messages"> | null>(null);
 
   useEffect(() => {
     if (speedOverride == null && audioRef.current) audioRef.current.playbackRate = defaultSpeed;
@@ -62,6 +63,7 @@ export function useAudioPlayback(defaultSpeed = 1) {
     setCurrentTime(0);
     setDuration(0);
     pollCountRef.current = 0;
+    existingAudioRequestRef.current = null;
   }, []);
 
   // Progress animation loop
@@ -96,17 +98,31 @@ export function useAudioPlayback(defaultSpeed = 1) {
       setActiveMessageId(messageId);
       setIsLoading(false);
       setIsPlaying(true);
-      void audio.play().then(startProgressLoop);
+      void audio.play().then(startProgressLoop).catch(() => {
+        if (audioRef.current === audio) {
+          setIsPlaying(false);
+          setIsLoading(false);
+        }
+      });
     },
     [cleanup, speed, startProgressLoop],
   );
 
   // When audioUrl becomes available from the reactive query, play it.
   useEffect(() => {
-    if (!audioUrl || !activeMessageId || !isLoading) return;
+    if (!activeMessageId || !isLoading) return;
+    if (audioUrl === null && existingAudioRequestRef.current === activeMessageId) {
+      const timer = window.setTimeout(() => {
+        cleanup();
+        setActiveMessageId(null);
+        setIsLoading(false);
+      }, 0);
+      return () => window.clearTimeout(timer);
+    }
+    if (!audioUrl) return;
     const timer = window.setTimeout(() => playUrl(audioUrl, activeMessageId), 0);
     return () => window.clearTimeout(timer);
-  }, [audioUrl, activeMessageId, isLoading, playUrl]);
+  }, [audioUrl, activeMessageId, cleanup, isLoading, playUrl]);
 
   /** Start playback for a message. If no audio exists, requests TTS generation. */
   const play = useCallback(
@@ -120,7 +136,13 @@ export function useAudioPlayback(defaultSpeed = 1) {
       }
       // Resume if paused on same message
       if (activeMessageId === messageId && audioRef.current && !isPlaying) {
-        void audioRef.current.play().then(startProgressLoop);
+        const audio = audioRef.current;
+        void audio.play().then(startProgressLoop).catch(() => {
+          if (audioRef.current === audio) {
+            setIsPlaying(false);
+            setIsLoading(false);
+          }
+        });
         setIsPlaying(true);
         return;
       }
@@ -132,9 +154,11 @@ export function useAudioPlayback(defaultSpeed = 1) {
       if (existingAudioStorageId) {
         // Audio already generated — the reactive query will provide the URL.
         // It may already be available if we subscribed.
+        existingAudioRequestRef.current = messageId;
         return;
       }
 
+      existingAudioRequestRef.current = null;
       // Request TTS generation — backend schedules it, then the reactive
       // query on getMessageAudioUrl will fire when audioStorageId is patched.
       try {

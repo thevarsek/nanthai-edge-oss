@@ -119,7 +119,8 @@ interface ProviderLogoProps {
 }
 
 export function ProviderLogo({ slug, modelId, size = 28, className }: ProviderLogoProps) {
-  const provider = slug ?? (modelId ? extractProvider(modelId) : "unknown");
+  const rawProvider = slug ?? (modelId ? extractProvider(modelId) : "unknown");
+  const provider = rawProvider.startsWith("~") ? rawProvider.slice(1) : rawProvider;
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   const asset = assetName(provider);

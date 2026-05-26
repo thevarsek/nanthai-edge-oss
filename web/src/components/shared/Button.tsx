@@ -66,6 +66,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         "inline-flex shrink-0 items-center justify-center font-medium",
         "transition-[color,background-color,border-color,box-shadow,transform] duration-150",
         "active:scale-[0.98] active:duration-75",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         "disabled:pointer-events-none disabled:opacity-50",
         // Variant + size
         sizeClasses[size],

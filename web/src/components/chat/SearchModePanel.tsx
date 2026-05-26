@@ -112,7 +112,12 @@ export function SearchModePanel({ current, onSelect, onClose, isPro, isMultiMode
             <Globe size={18} className="text-primary" />
             <h2 className="text-base font-semibold">{t("search_mode")}</h2>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors">
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
+            aria-label={t("close")}
+          >
             <X size={18} />
           </button>
         </div>
@@ -180,11 +185,12 @@ export function SearchModePanel({ current, onSelect, onClose, isPro, isMultiMode
           {error && <p className="text-xs text-red-400">{error}</p>}
           <div className="flex gap-2 pt-1">
             {current.mode !== "none" && (
-              <button onClick={handleClear} disabled={isSaving} className="flex-1 py-2.5 rounded-xl text-sm border border-border/50 text-muted hover:text-foreground hover:bg-surface-3 disabled:opacity-50 transition-colors">
+              <button type="button" onClick={handleClear} disabled={isSaving} className="flex-1 py-2.5 rounded-xl text-sm border border-border/50 text-muted hover:text-foreground hover:bg-surface-3 disabled:opacity-50 transition-colors">
                 {t("clear_search")}
               </button>
             )}
             <button
+              type="button"
               onClick={handleApply}
               disabled={isSaving || !canApply || (needsPro && !isPro)}
               className="flex-1 py-2.5 rounded-xl text-sm bg-primary text-white font-medium disabled:opacity-40 hover:opacity-90 transition-opacity"

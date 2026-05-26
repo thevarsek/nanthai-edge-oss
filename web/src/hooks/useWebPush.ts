@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 
 const WEB_PUSH_VAPID_PUBLIC_KEY = import.meta.env.VITE_WEB_PUSH_VAPID_PUBLIC_KEY as string | undefined;
+const PENDING_WEB_PUSH_TOKEN_REMOVAL_KEY = "nanthai.pendingWebPushTokenRemoval";
 
 function base64UrlToUint8Array(base64Url: string) {
   const padding = "=".repeat((4 - (base64Url.length % 4)) % 4);
@@ -36,6 +37,23 @@ async function getActiveServiceWorkerRegistration(): Promise<ServiceWorkerRegist
   return registration;
 }
 
+function getPendingTokenRemoval(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(PENDING_WEB_PUSH_TOKEN_REMOVAL_KEY);
+}
+
+function setPendingTokenRemoval(token: string) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(PENDING_WEB_PUSH_TOKEN_REMOVAL_KEY, token);
+}
+
+function clearPendingTokenRemoval(token: string) {
+  if (typeof localStorage === "undefined") return;
+  if (localStorage.getItem(PENDING_WEB_PUSH_TOKEN_REMOVAL_KEY) === token) {
+    localStorage.removeItem(PENDING_WEB_PUSH_TOKEN_REMOVAL_KEY);
+  }
+}
+
 export function useWebPush() {
   const registerToken = useMutation(api.push.mutations.registerDeviceToken);
   const removeToken = useMutation(api.push.mutations.removeDeviceToken);
@@ -44,27 +62,30 @@ export function useWebPush() {
   );
   const [isRegistered, setIsRegistered] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const registrationProbeId = useRef(0);
 
   useEffect(() => {
-    if (status === "unsupported" || typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    if (status === "idle" || status === "unsupported" || typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
       return;
     }
     let cancelled = false;
+    const probeId = registrationProbeId.current + 1;
+    registrationProbeId.current = probeId;
     void (async () => {
       try {
         const registration = await navigator.serviceWorker.getRegistration();
         if (!registration) {
-          if (!cancelled) {
+          if (!cancelled && registrationProbeId.current === probeId) {
             setIsRegistered(false);
           }
           return;
         }
         const subscription = await registration.pushManager.getSubscription();
-        if (!cancelled) {
+        if (!cancelled && registrationProbeId.current === probeId) {
           setIsRegistered(subscription !== null);
         }
       } catch {
-        if (!cancelled) {
+        if (!cancelled && registrationProbeId.current === probeId) {
           setIsRegistered(false);
         }
       }
@@ -73,6 +94,17 @@ export function useWebPush() {
       cancelled = true;
     };
   }, [status]);
+
+  useEffect(() => {
+    const pendingToken = getPendingTokenRemoval();
+    if (!pendingToken) return;
+
+    void removeToken({ token: pendingToken }).then(() => {
+      clearPendingTokenRemoval(pendingToken);
+    }).catch(() => {
+      // Keep the token queued so a later hook mount can retry backend cleanup.
+    });
+  }, [removeToken]);
 
   const enable = useCallback(async () => {
     try {
@@ -132,9 +164,17 @@ export function useWebPush() {
         if (!didUnsubscribe) {
           throw new Error("Browser push subscription could not be removed.");
         }
-        await removeToken({ token });
+        try {
+          await removeToken({ token });
+          clearPendingTokenRemoval(token);
+        } catch (removeError) {
+          setPendingTokenRemoval(token);
+          throw removeError;
+        }
       }
+      registrationProbeId.current += 1;
       setIsRegistered(false);
+      setStatus("idle");
       setErrorMessage(null);
       return true;
     } catch (error) {

@@ -39,4 +39,15 @@ describe("ToastProvider", () => {
 
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it("keeps toast container within narrow mobile viewport gutters", () => {
+    render(
+      <ToastProvider>
+        <TriggerToast />
+      </ToastProvider>,
+    );
+
+    expect(screen.getByRole("alert").parentElement).toHaveClass("left-4", "right-4", "w-auto");
+    expect(screen.getByText("Saved")).toHaveClass("break-words");
+  });
 });

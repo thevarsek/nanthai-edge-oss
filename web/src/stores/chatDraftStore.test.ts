@@ -22,10 +22,22 @@ describe("chatDraftStore", () => {
 
     const firstRead = getChatDraft("chat-1");
     firstRead.text = "changed";
+    firstRead.attachments[0].name = "mutated.pdf";
     firstRead.attachments.pop();
 
     expect(getChatDraft("chat-1")).toEqual({ text: "hello", attachments: [attachment] });
 
     clearChatDraft("chat-1");
+  });
+
+  it("does not retain caller-owned attachment object references", () => {
+    const callerAttachment = { ...attachment };
+    setChatDraft("chat-2", { text: "hello", attachments: [callerAttachment] });
+
+    callerAttachment.name = "changed.pdf";
+
+    expect(getChatDraft("chat-2")).toEqual({ text: "hello", attachments: [attachment] });
+
+    clearChatDraft("chat-2");
   });
 });

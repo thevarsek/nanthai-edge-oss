@@ -9,6 +9,7 @@ import { useContext, useState } from "react";
 import { User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SharedDataContext } from "@/hooks/useSharedData";
+import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 
 interface PersonaAvatarProps {
   personaId?: string;
@@ -43,7 +44,7 @@ export function PersonaAvatar({
 
   const resolvedName = resolvedPersona?.displayName ?? personaName;
   const resolvedEmoji = resolvedPersona?.avatarEmoji ?? personaEmoji;
-  const resolvedImageUrl = resolvedPersona?.avatarImageUrl ?? personaAvatarImageUrl;
+  const resolvedImageUrl = safeAvatarImageUrl(resolvedPersona?.avatarImageUrl ?? personaAvatarImageUrl);
 
   // Tier 1: Avatar image
   if (resolvedImageUrl && failedImageUrl !== resolvedImageUrl) {
@@ -51,6 +52,7 @@ export function PersonaAvatar({
       <img
         src={resolvedImageUrl}
         alt={resolvedName ?? ""}
+        referrerPolicy="no-referrer"
         className={cn("rounded-full object-cover flex-shrink-0", className)}
         onError={() => setFailedImageUrl(resolvedImageUrl)}
       />
