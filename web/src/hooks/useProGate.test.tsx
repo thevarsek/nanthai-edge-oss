@@ -36,6 +36,16 @@ function renderGate(presentation?: "button" | "page") {
   );
 }
 
+function renderButtonGate(featureId?: Parameters<typeof ProGateWrapper>[0]["featureId"], feature?: string) {
+  return render(
+    <MemoryRouter>
+      <ProGateWrapper featureId={featureId} feature={feature}>
+        <div>pro content</div>
+      </ProGateWrapper>
+    </MemoryRouter>,
+  );
+}
+
 describe("ProGateWrapper", () => {
   it("renders children for Pro users", () => {
     mockIsPro = true;
@@ -74,5 +84,26 @@ describe("ProGateWrapper", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /back to settings/i })[1]);
     expect(screen.getByText("settings page")).toBeInTheDocument();
+  });
+
+  it("resolves feature-specific compact gate labels and generic fallback copy", () => {
+    mockIsPro = false;
+
+    const cases: Array<[Parameters<typeof ProGateWrapper>[0]["featureId"], RegExp]> = [
+      ["aiPersonas", /personas/i],
+      ["aiSkills", /skills/i],
+      ["knowledgeBase", /knowledge base/i],
+      ["memory", /memory/i],
+      ["integrations", /integrations/i],
+    ];
+
+    for (const [featureId, label] of cases) {
+      const { unmount } = renderButtonGate(featureId);
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument();
+      unmount();
+    }
+
+    renderButtonGate(undefined, "Custom feature");
+    expect(screen.getByRole("button", { name: /custom feature/i })).toBeInTheDocument();
   });
 });

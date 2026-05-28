@@ -194,6 +194,7 @@ export function ManageFavoritesPage() {
       <div className="flex items-center gap-3 p-4 border-b border-border/50">
         <button
           onClick={() => navigate("/app/settings")}
+          aria-label={t("back_to_settings")}
           className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
         >
           <ChevronLeft size={18} />
@@ -252,6 +253,7 @@ export function ManageFavoritesPage() {
                         <button
                           onClick={() => moveItem(idx, "up")}
                           disabled={idx === 0}
+                          aria-label={t("move_favorite_up")}
                           className="p-0.5 text-foreground/30 hover:text-foreground disabled:opacity-20 transition-colors"
                         >
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 8 6 4 10 8" /></svg>
@@ -259,6 +261,7 @@ export function ManageFavoritesPage() {
                         <button
                           onClick={() => moveItem(idx, "down")}
                           disabled={idx === displayList.length - 1}
+                          aria-label={t("move_favorite_down")}
                           className="p-0.5 text-foreground/30 hover:text-foreground disabled:opacity-20 transition-colors"
                         >
                           <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="2 4 6 8 10 4" /></svg>

@@ -17,6 +17,14 @@ vi.mock("convex/react", () => ({
   ],
 }));
 
+vi.mock("./GeneratedChartsCard.renderers", () => ({
+  BarChartRenderer: () => <div data-testid="mock-bar-chart" />,
+  LineChartRenderer: () => <div data-testid="mock-line-chart" />,
+  ScatterChartRenderer: () => <div data-testid="mock-scatter-chart" />,
+  PieChartRenderer: () => <div data-testid="mock-pie-chart" />,
+  BoxChartRenderer: () => <div data-testid="mock-box-chart" />,
+}));
+
 describe("GeneratedChartsCard", () => {
   test("chart controls do not submit an enclosing form", () => {
     const onSubmit = vi.fn((event: React.FormEvent<HTMLFormElement>) => event.preventDefault());

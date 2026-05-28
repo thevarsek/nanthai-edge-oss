@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, test, vi, beforeEach } from "vitest";
 import { PersonasPage } from "./PersonasPage";
@@ -61,7 +61,9 @@ describe("PersonasPage", () => {
 
     expect(createChat).toHaveBeenCalledTimes(1);
 
-    resolveCreateChat("chat_1");
+    await act(async () => {
+      resolveCreateChat("chat_1");
+    });
 
     await waitFor(() => {
       expect(screen.getByText("chat route")).toBeInTheDocument();

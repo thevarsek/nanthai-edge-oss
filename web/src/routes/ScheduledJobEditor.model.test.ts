@@ -3,12 +3,15 @@ import { expect, test } from "vitest";
 import { APP_DEFAULT_MODEL_ID } from "../lib/modelDefaults";
 import {
   SCHEDULED_JOB_DEFAULT_MODEL,
+  buildIntegrationOverrides,
+  buildIntegrations,
   buildStepsPayload,
   createDraftStep,
   hasScheduledJobGoogleIntegrations,
   integrationsFromOverrides,
   jobToSteps,
   scheduledJobModelSupportsGoogleIntegrations,
+  shortModelName,
 } from "./ScheduledJobEditor.model";
 
 test("scheduled job draft defaults match app model default", () => {
@@ -118,4 +121,103 @@ test("scheduled job Google integrations require allowed ZDR model", () => {
     provider: "google",
     hasZdrEndpoint: false,
   })).toBe(false);
+});
+
+test("scheduled job integration helpers preserve every supported integration flag", () => {
+  const step = {
+    ...createDraftStep(),
+    gmailEnabled: true,
+    driveEnabled: true,
+    calendarEnabled: true,
+    outlookEnabled: true,
+    onedriveEnabled: true,
+    msCalendarEnabled: true,
+    appleCalendarEnabled: true,
+    notionEnabled: true,
+    clozeEnabled: true,
+    slackEnabled: true,
+  };
+
+  expect(buildIntegrations(step)).toEqual([
+    "gmail",
+    "drive",
+    "calendar",
+    "outlook",
+    "onedrive",
+    "ms_calendar",
+    "apple_calendar",
+    "notion",
+    "cloze",
+    "slack",
+  ]);
+  expect(buildIntegrationOverrides(step).filter((entry) => entry.enabled)).toHaveLength(10);
+  expect(hasScheduledJobGoogleIntegrations(createDraftStep())).toBe(false);
+});
+
+test("scheduled job payload trims titles, clamps search complexity, and includes reasoning only when enabled", () => {
+  const [webStep, researchStep] = [
+    {
+      ...createDraftStep(),
+      title: "  Morning brief  ",
+      prompt: "  Run brief  ",
+      selectedPersonaId: "persona_1",
+      searchMode: "web" as const,
+      searchComplexity: 99,
+      includeReasoning: true,
+      reasoningEffort: "high",
+    },
+    {
+      ...createDraftStep(),
+      prompt: "Research",
+      searchMode: "research" as const,
+      searchComplexity: 0,
+    },
+  ];
+
+  expect(buildStepsPayload([webStep, researchStep])).toEqual([
+    expect.objectContaining({
+      title: "Morning brief",
+      prompt: "Run brief",
+      personaId: "persona_1",
+      searchMode: "web",
+      webSearchEnabled: true,
+      searchComplexity: 3,
+      includeReasoning: true,
+      reasoningEffort: "high",
+    }),
+    expect.objectContaining({
+      prompt: "Research",
+      searchMode: "research",
+      webSearchEnabled: true,
+      searchComplexity: 1,
+      includeReasoning: false,
+    }),
+  ]);
+});
+
+test("scheduled job hydration supports legacy single-step fields and fallback model names", () => {
+  const steps = jobToSteps({
+    prompt: "Legacy digest",
+    webSearchEnabled: true,
+    searchComplexity: 2.6,
+    includeReasoning: true,
+    reasoningEffort: "low",
+    enabledIntegrations: ["outlook", "onedrive", "ms_calendar", "apple_calendar", "notion", "cloze"],
+  });
+
+  expect(steps[0]).toMatchObject({
+    prompt: "Legacy digest",
+    searchMode: "basic",
+    searchComplexity: 3,
+    includeReasoning: true,
+    reasoningEffort: "low",
+    outlookEnabled: true,
+    onedriveEnabled: true,
+    msCalendarEnabled: true,
+    appleCalendarEnabled: true,
+    notionEnabled: true,
+    clozeEnabled: true,
+  });
+  expect(shortModelName("openai/gpt-5.2")).toBe("gpt-5.2");
+  expect(shortModelName("custom-model")).toBe("custom-model");
 });

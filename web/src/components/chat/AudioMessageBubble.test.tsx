@@ -18,8 +18,11 @@ const basePlayback: PlaybackState = {
 };
 
 describe("AudioMessageBubble", () => {
+  const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
   beforeEach(() => {
     vi.clearAllMocks();
+    anchorClick.mockClear();
   });
 
   it("dispatches play, pause, speed, and seek interactions", () => {
@@ -160,6 +163,7 @@ describe("AudioMessageBubble", () => {
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     fireEvent.click(screen.getByRole("button", { name: "1.5x" }));
 
+    expect(anchorClick).toHaveBeenCalledTimes(1);
     expect(onSubmit).not.toHaveBeenCalled();
   });
 });

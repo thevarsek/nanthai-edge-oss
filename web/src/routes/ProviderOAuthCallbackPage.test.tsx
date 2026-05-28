@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ProviderOAuthCallbackPage } from "./ProviderOAuthCallbackPage";
@@ -28,6 +28,7 @@ const {
 }));
 
 let actionIndex = 0;
+const originalLocation = window.location;
 
 vi.mock("convex/react", () => ({
   useAction: () => {
@@ -77,9 +78,14 @@ describe("ProviderOAuthCallbackPage", () => {
   afterEach(() => {
     vi.clearAllMocks();
     vi.restoreAllMocks();
+    vi.useRealTimers();
     Object.defineProperty(window, "opener", {
       configurable: true,
       value: null,
+    });
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: originalLocation,
     });
   });
 
@@ -195,6 +201,35 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(window.location.href).not.toContain("tech.nanthai.NanthAi-Edge://");
   });
 
+  it("relays mobile callbacks to the native URL when there is no web popup context", async () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Linux; Android 15; Pixel 7)",
+    });
+    Object.defineProperty(window, "opener", {
+      configurable: true,
+      value: null,
+    });
+    Object.defineProperty(window, "location", {
+      configurable: true,
+      value: {
+        ...originalLocation,
+        href: "http://localhost/oauth/google/callback?code=code_1&state=expected",
+      },
+    });
+    readOAuthContext.mockReturnValue(null);
+
+    renderCallback("/oauth/google/callback?code=code_1&state=expected");
+
+    await waitFor(() => {
+      expect(window.location.href).toBe(
+        "tech.nanthai.NanthAi-Edge://oauth/google/callback?code=code_1&state=expected",
+      );
+    });
+    expect(exchangeGoogleCode).not.toHaveBeenCalled();
+    expect(postOAuthResult).not.toHaveBeenCalled();
+  });
+
   it("builds the native Notion callback URL with provider query parameters", () => {
     const params = new URLSearchParams({
       code: "notion_code",
@@ -272,6 +307,72 @@ describe("ProviderOAuthCallbackPage", () => {
     });
   });
 
+  it("waits for Convex auth and surfaces the delayed-auth message before exchanging", async () => {
+    vi.useFakeTimers();
+    authState.isAuthenticated = false;
+    authState.isLoading = false;
+    renderCallback("/oauth/google/callback?code=code_1&state=expected");
+
+    expect(exchangeGoogleCode).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12_000);
+    });
+
+    expect(screen.getByText(
+      "Authentication is taking longer than expected. This window will keep trying automatically.",
+    )).toBeInTheDocument();
+    expect(exchangeGoogleCode).not.toHaveBeenCalled();
+  });
+
+  it("exchanges once when Convex auth becomes ready after an auth wait", async () => {
+    authState.isAuthenticated = false;
+    authState.isLoading = false;
+    const view = renderCallback("/oauth/google/callback?code=code_1&state=expected");
+
+    expect(exchangeGoogleCode).not.toHaveBeenCalled();
+
+    authState.isAuthenticated = true;
+    view.rerender(
+      <MemoryRouter initialEntries={["/oauth/google/callback?code=code_1&state=expected"]}>
+        <ProviderOAuthCallbackPage provider="google" />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(exchangeGoogleCode).toHaveBeenCalledTimes(1);
+    });
+
+    view.rerender(
+      <MemoryRouter initialEntries={["/oauth/google/callback?code=code_1&state=expected"]}>
+        <ProviderOAuthCallbackPage provider="google" />
+      </MemoryRouter>,
+    );
+    expect(exchangeGoogleCode).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the self-close timer when the callback component unmounts", async () => {
+    vi.useFakeTimers();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+    const view = renderCallback("/oauth/google/callback?code=code_1&state=expected");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(postOAuthResult).toHaveBeenCalledWith({
+      type: "nanthai-oauth-result",
+      provider: "google",
+      success: true,
+    });
+
+    view.unmount();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(closeSpy).not.toHaveBeenCalled();
+  });
+
   it("rejects provider error callbacks with mismatched state", async () => {
     renderCallback(
       "/oauth/microsoft/callback?error=access_denied&error_description=forced&state=wrong",
@@ -286,5 +387,22 @@ describe("ProviderOAuthCallbackPage", () => {
       success: false,
       error: "Microsoft sign-in state mismatch. Please try again.",
     });
+  });
+
+  it("does not schedule a self-close timer on callback errors", async () => {
+    vi.useFakeTimers();
+    const closeSpy = vi.spyOn(window, "close").mockImplementation(() => {});
+
+    renderCallback("/oauth/google/callback?code=code_1&state=wrong");
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("Google sign-in state mismatch. Please try again.")).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(800);
+    });
+
+    expect(closeSpy).not.toHaveBeenCalled();
   });
 });

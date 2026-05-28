@@ -90,4 +90,20 @@ describe("useQueuedFollowUp", () => {
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(screen.getByText("blocked")).toBeInTheDocument();
   });
+
+  it("keeps a queued follow-up once when send throws", async () => {
+    const onSend = vi.fn(async () => {
+      throw new Error("auth unavailable");
+    });
+    const { rerender } = render(<Harness text="retry later" isGenerating onSend={onSend} />);
+
+    act(() => {
+      screen.getByRole("button", { name: "queue" }).click();
+    });
+
+    rerender(<Harness text="" isGenerating={false} onSend={onSend} />);
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(screen.getAllByText("retry later")).toHaveLength(1);
+  });
 });

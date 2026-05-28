@@ -60,6 +60,7 @@ import { useDrivePickerContinuation } from "@/routes/ChatPage.drivePicker";
 import {
   buildResearchPaperArgs,
   buildSendMessageArgs,
+  executeChatSend,
   type ChatAttachment,
   type ChatVideoRole,
 } from "@/routes/ChatPage.sendFlow";
@@ -408,41 +409,32 @@ export function ChatPage() {
 
   const handleSend = useCallback(
     async ({ text, attachments }: { text: string; attachments?: ChatAttachment[] }) => {
-      const mergedAttachments: ChatAttachment[] = [...(attachments ?? []), ...kbAttachmentsForDisplay];
-      if (!validateSendState(mergedAttachments.length)) return false;
-      const cid = await ensureChatId();
-      await overrides.flushPendingState(cid);
-      if (isResearchPaper) {
-        const participant = participants[0];
-        if (!participant) return false;
-        // Research Paper uses a separate mutation with single participant
-        await startResearchPaper(buildResearchPaperArgs({
-          chatId: cid,
-          text,
-          participant,
-          complexity: convexComplexity ?? 1,
-          attachments: mergedAttachments,
-          enabledIntegrations: overrides.enabledIntegrations,
-        }));
-      } else {
-        await sendMessage(buildSendMessageArgs({
-          chatId: cid,
-          text,
+      return executeChatSend({
+        text,
+        state: {
+          selectedAttachments: attachments ?? [],
+          kbAttachmentsForDisplay,
           participants,
-          attachments: mergedAttachments,
           turnOverrideArgs,
           enabledIntegrations: overrides.enabledIntegrations,
           subagentsEnabled: effectiveSubagentsEnabled,
           webSearchEnabled,
           convexSearchMode,
           convexComplexity,
+          isResearchPaper,
           isVideoMode,
           prefs: typedPrefs,
-        }));
-      }
-      overrides.clearKBFiles();
-      overrides.clearTurnOverrides();
-      return true;
+        },
+        deps: {
+          validateAttachmentCount: validateSendState,
+          ensureChatId,
+          flushPendingState: overrides.flushPendingState,
+          sendMessage,
+          startResearchPaper,
+          clearKBFiles: overrides.clearKBFiles,
+          clearTurnOverrides: overrides.clearTurnOverrides,
+        },
+      });
     },
     [ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );

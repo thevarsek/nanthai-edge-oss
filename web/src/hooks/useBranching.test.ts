@@ -37,4 +37,42 @@ describe("useBranching", () => {
 
     expect(result.current.branchNodes.get(active)?.siblings).toEqual([active, otherMergeContext]);
   });
+
+  test("navigates to the equivalent descendant branch when switching siblings", () => {
+    const root = "root" as Id<"messages">;
+    const branchA = "branch_a" as Id<"messages">;
+    const branchB = "branch_b" as Id<"messages">;
+
+    const { result } = renderHook(() => useBranching([
+      message("root", { createdAt: 1 }),
+      message("branch_a", { createdAt: 2, parentMessageIds: [root] }),
+      message("branch_b", { createdAt: 3, parentMessageIds: [root] }),
+      message("branch_a_first", { createdAt: 4, parentMessageIds: [branchA] }),
+      message("branch_a_second", { createdAt: 5, parentMessageIds: [branchA] }),
+      message("branch_b_first", { createdAt: 6, parentMessageIds: [branchB] }),
+      message("branch_b_second", { createdAt: 7, parentMessageIds: [branchB] }),
+    ], { activeLeafId: "branch_a_second" as Id<"messages"> }));
+
+    expect(result.current.navigate(branchA, "next")).toEqual({
+      currentSiblingId: "branch_a",
+      targetSiblingId: "branch_b",
+      optimisticLeafId: "branch_b_second",
+    });
+    expect(result.current.navigate(branchA, "prev")).toBeUndefined();
+  });
+
+  test("prefers the latest non-failed leaf when no active leaf is supplied", () => {
+    const root = "root" as Id<"messages">;
+
+    const { result } = renderHook(() => useBranching([
+      message("root", { createdAt: 1 }),
+      message("successful_leaf", { createdAt: 2, parentMessageIds: [root], status: "completed" }),
+      message("failed_leaf", { createdAt: 3, parentMessageIds: [root], status: "failed" }),
+    ]));
+
+    expect(result.current.activePath).toEqual([
+      "root" as Id<"messages">,
+      "successful_leaf" as Id<"messages">,
+    ]);
+  });
 });

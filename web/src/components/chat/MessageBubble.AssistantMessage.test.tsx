@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Message } from "@/hooks/useChat";
@@ -7,6 +8,40 @@ import { AssistantMessage } from "./MessageBubble.AssistantMessage";
 
 vi.mock("./VideoGenerationProgress", () => ({
   VideoGenerationProgress: () => <div data-testid="video-progress" />,
+}));
+
+vi.mock("./ToolCallAccordion", () => ({
+  ToolCallAccordion: ({ toolCalls, loadedSkillIds, usedIntegrationIds }: {
+    toolCalls: unknown[];
+    loadedSkillIds?: string[];
+    usedIntegrationIds?: string[];
+  }) => (
+    <div data-testid="tool-accordion">
+      tools-{toolCalls.length}-skills-{loadedSkillIds?.length ?? 0}-integrations-{usedIntegrationIds?.length ?? 0}
+    </div>
+  ),
+}));
+
+vi.mock("./SubagentBatchPanel", () => ({
+  SubagentBatchPanel: ({ batchId }: { batchId: string }) => <div data-testid="subagent-batch">{batchId}</div>,
+}));
+
+vi.mock("./GeneratedFilesCard", () => ({
+  GeneratedFilesCard: ({ messageId }: { messageId: string }) => <div data-testid="generated-files">{messageId}</div>,
+}));
+
+vi.mock("./GeneratedChartsCard", () => ({
+  GeneratedChartsCard: ({ messageId }: { messageId: string }) => <div data-testid="generated-charts">{messageId}</div>,
+}));
+
+vi.mock("./MessageAttachments", () => ({
+  MessageAttachments: ({ attachments }: { attachments: unknown[] }) => <div data-testid="attachments">{attachments.length}</div>,
+}));
+
+vi.mock("./AudioMessageBubble", () => ({
+  AudioMessageBubble: ({ onPlay }: { onPlay: () => void }) => (
+    <button type="button" onClick={onPlay}>audio-player</button>
+  ),
 }));
 
 let mockModelSummaries: Array<{ modelId: string; supportsVideo?: boolean }> = [];
@@ -27,7 +62,14 @@ function message(overrides: Partial<Message> = {}): Message {
   };
 }
 
-function renderAssistant(messageOverride: Partial<Message>) {
+function renderAssistant(messageOverride: Partial<Message>, options: {
+  participants?: ComponentProps<typeof AssistantMessage>["participants"];
+  onRetry?: () => void;
+  onRetryWithDifferentModel?: () => void;
+  onFork?: () => void;
+  messageCost?: number;
+  showAdvancedStats?: boolean;
+} = {}) {
   const audio: AudioPlaybackContextValue = {
     state: {
       activeMessageId: null,
@@ -45,17 +87,21 @@ function renderAssistant(messageOverride: Partial<Message>) {
     seek: vi.fn(),
   };
 
-  return render(
+  const view = render(
     <AudioPlaybackContext.Provider value={audio}>
       <AssistantMessage
         message={message(messageOverride)}
         isStreaming={false}
-        participants={[]}
-        onRetry={vi.fn()}
-        onFork={vi.fn()}
+        participants={options.participants ?? []}
+        onRetry={options.onRetry ?? vi.fn()}
+        onRetryWithDifferentModel={options.onRetryWithDifferentModel}
+        onFork={options.onFork ?? vi.fn()}
+        messageCost={options.messageCost}
+        showAdvancedStats={options.showAdvancedStats}
       />
     </AudioPlaybackContext.Provider>,
   );
+  return { ...view, audio };
 }
 
 describe("AssistantMessage", () => {
@@ -117,5 +163,66 @@ describe("AssistantMessage", () => {
     expect(screen.queryByAltText("Generated image")).not.toBeInTheDocument();
     expect(document.querySelector("video")).not.toBeInTheDocument();
     expect(document.querySelector('a[href^="javascript:"]')).not.toBeInTheDocument();
+  });
+
+  it("surfaces failure actions without requiring completed message content", () => {
+    const onRetry = vi.fn();
+    const onRetryWithDifferentModel = vi.fn();
+
+    renderAssistant({ content: "", status: "failed" }, { onRetry, onRetryWithDifferentModel });
+
+    expect(screen.getByText(/Generation failed/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry with different model" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
+    expect(onRetryWithDifferentModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders parent-owned generated artifacts, tools, subagents, attachments, audio, and advanced cost", async () => {
+    const audioStorageId = "audio_storage" as Id<"_storage">;
+    const view = renderAssistant({
+      modelId: "openai/gpt-4.1",
+      toolCalls: [{ id: "tool_1", name: "read_document", arguments: "{}" }],
+      loadedSkillIds: ["skill_1" as Id<"skills">],
+      usedIntegrationIds: ["google"],
+      subagentBatchId: "batch_1" as Id<"subagentBatches">,
+      generatedFileIds: ["file_1" as Id<"generatedFiles">],
+      generatedChartIds: ["chart_1" as Id<"generatedCharts">],
+      attachments: [{ storageId: "storage_1" as Id<"_storage">, name: "notes.pdf", type: "document" }],
+      audioStorageId,
+    }, { messageCost: 0.0123, showAdvancedStats: true });
+
+    expect(screen.getByTestId("tool-accordion")).toHaveTextContent("tools-1-skills-1-integrations-1");
+    expect(screen.getByTestId("subagent-batch")).toHaveTextContent("batch_1");
+    expect(screen.getByTestId("generated-files")).toHaveTextContent("message_1");
+    expect(screen.getByTestId("generated-charts")).toHaveTextContent("message_1");
+    expect(screen.getByTestId("attachments")).toHaveTextContent("1");
+    fireEvent.click(screen.getByRole("button", { name: "audio-player" }));
+    expect(view.audio.play).toHaveBeenCalledWith("message_1", audioStorageId);
+    await waitFor(() => expect(view.container).toHaveTextContent("$0.0123"));
+  });
+
+  it("expands moderator guidance and opens document citation details", () => {
+    renderAssistant({
+      moderatorDirective: "Keep the answer short",
+      documentCitations: [{
+        ref: 1,
+        documentId: "doc_1" as Id<"documents">,
+        versionId: "version_1" as Id<"documentVersions">,
+        filename: "handbook.pdf",
+        quote: "Quote body",
+        page: 4,
+      }],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Moderator Guidance/ }));
+    expect(screen.getByText("Keep the answer short")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /\[1\].*handbook\.pdf/ }));
+    expect(screen.getByText(/source/i)).toBeInTheDocument();
+    expect(screen.getAllByText("handbook.pdf")).toHaveLength(2);
+    expect(screen.getByText(/Quote body/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /done/i }));
+    expect(screen.queryByText(/Quote body/)).not.toBeInTheDocument();
   });
 });

@@ -7,7 +7,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAction } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { useClerk } from "@clerk/react";
+import { useClerk, useUser } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import {
   ChevronRight, UserMinus, LogOut, Loader2,
@@ -202,6 +202,7 @@ export function DeleteAccountSection() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const deleteAccount = useAction(api.account.actions.deleteAccount);
   const { signOut } = useClerk();
+  const { user } = useUser();
   const navigate = useNavigate();
 
   const handleDelete = async () => {
@@ -211,9 +212,15 @@ export function DeleteAccountSection() {
     try {
       await deleteAccount({});
       try {
-        await signOut();
+        if (!user) throw new Error("Not signed in");
+        await user.delete();
       } catch {
         // The account is already deleted server-side; leave the app shell even if Clerk cleanup fails locally.
+        try {
+          await signOut();
+        } catch {
+          // Best-effort local cleanup after Convex has already purged the account data.
+        }
       }
       navigate("/");
       setShowConfirm(false);

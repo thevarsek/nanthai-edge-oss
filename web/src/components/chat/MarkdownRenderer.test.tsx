@@ -126,4 +126,63 @@ describe("MarkdownRenderer", () => {
     expect(screen.queryByRole("img", { name: "External tracker" })).not.toBeInTheDocument();
     expect(screen.getByText("External tracker")).toBeInTheDocument();
   });
+
+  test("renders compact ideascape markdown without interactive links or heavy code chrome", () => {
+    render(
+      <MarkdownRenderer
+        compact
+        streaming
+        className="node-markdown"
+        content={[
+          "# Plan",
+          "A [source](https://example.com) and `inline` code.",
+          "",
+          "```ts",
+          "const answer = 42;",
+          "```",
+          "",
+          "| A | B |",
+          "|:-:|--:|",
+          "| 1 | 2 |",
+          "",
+          "> quoted",
+          "",
+          "- first",
+          "1. second",
+          "",
+          "![Diagram](https://example.convex.site/download?storageId=abc&filename=diagram.png)",
+        ].join("\n")}
+      />,
+    );
+
+    expect(screen.getByText("Plan")).toHaveClass("block");
+    expect(screen.getByText("source").closest("a")).not.toBeInTheDocument();
+    expect(screen.getByText("inline").tagName).toBe("CODE");
+    expect(screen.queryByRole("button", { name: /copy code/i })).not.toBeInTheDocument();
+    expect(screen.getByText("const answer = 42;").tagName).toBe("CODE");
+    expect(screen.getByRole("columnheader", { name: "A" })).toHaveClass("text-center");
+    expect(screen.getByRole("cell", { name: "2" })).toHaveClass("text-right");
+    expect(screen.getByText("quoted")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Diagram" })).toBeInTheDocument();
+    expect(document.querySelector(".markdown-body")).toHaveClass("leading-snug", "will-change-contents", "node-markdown");
+  });
+
+  test("links citation references in inline formatted text", () => {
+    const onClick = vi.fn();
+    render(
+      <MarkdownRenderer
+        content={"## Evidence [12]\n\nStrong **claim [12]** and _detail [99]_."}
+        documentCitationLinks={[{
+          ref: 12,
+          title: "Source quote",
+          onClick,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: "[12]" })[0]);
+
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("detail [99]")).toBeInTheDocument();
+  });
 });

@@ -12,6 +12,7 @@
     "web:test:coverage": "npm --prefix web run test:coverage",
     "android:test:coverage": "cd android && ./gradlew app:debugUnitTestCoverageReport",
     "convex:coverage:audit": "node scripts/convex_coverage_audit.mjs",
+    "ios:coverage:effective": "node scripts/ios_effective_coverage.mjs",
     "convex:lint": "eslint convex --ext .ts",
     "convex:typecheck": "tsc --noEmit --project convex/tsconfig.json",
     "deploy": "convex deploy",

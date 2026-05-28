@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterSection } from "./OpenRouterSection";
 
 let prefs: { showBalanceInChat?: boolean; showAdvancedStats?: boolean } = {};
@@ -36,9 +36,16 @@ vi.mock("convex/react", () => ({
 describe("OpenRouterSection", () => {
   beforeEach(() => {
     prefs = { showBalanceInChat: false, showAdvancedStats: false };
+    upsertPreferences.mockReset();
+    deleteApiKey.mockReset();
+    refreshCredits.mockReset();
     upsertPreferences.mockResolvedValue(undefined);
     deleteApiKey.mockResolvedValue(undefined);
     refreshCredits.mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("keeps an optimistic toggle through stale preference echoes until the matching value arrives", async () => {
@@ -61,5 +68,40 @@ describe("OpenRouterSection", () => {
     await waitFor(() => {
       expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
     });
+  });
+
+  it("rolls back an optimistic preference toggle and shows the save error when Convex rejects it", async () => {
+    upsertPreferences.mockRejectedValueOnce(new Error("network down"));
+    render(<OpenRouterSection />);
+    const [, advancedStatsSwitch] = screen.getAllByRole("switch");
+
+    fireEvent.click(advancedStatsSwitch);
+
+    expect(advancedStatsSwitch).toHaveAttribute("aria-checked", "true");
+    expect(upsertPreferences).toHaveBeenCalledWith({ showAdvancedStats: true });
+
+    expect(await screen.findByText("network down")).toBeInTheDocument();
+    expect(screen.getAllByRole("switch")[1]).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("clears a completed optimistic preference only after the matching server echo is rendered", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<OpenRouterSection />);
+    const [balanceSwitch] = screen.getAllByRole("switch");
+
+    fireEvent.click(balanceSwitch);
+    prefs = { showBalanceInChat: true, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
+
+    await act(async () => {
+      vi.runOnlyPendingTimers();
+    });
+
+    prefs = { showBalanceInChat: false, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
   });
 });

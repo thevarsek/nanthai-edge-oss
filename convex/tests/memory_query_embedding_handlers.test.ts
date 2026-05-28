@@ -380,3 +380,53 @@ test("ensureMessageQueryEmbeddingReady reuses ready row across calls", async (t)
   assert.equal(second?.status, "ready");
   assert.equal(computeCalls, 1);
 });
+
+test("ensureMessageQueryEmbeddingReady grants a lease within the wait timeout", async (t) => {
+  t.after(() => mock.restoreAll());
+
+  mock.method(Date, "now", () => 100_000);
+  mock.method(globalThis, "fetch", async () => new Response(
+    JSON.stringify({
+      id: "embed_1",
+      data: [{ embedding: [0.1, 0.2, 0.3] }],
+      usage: { prompt_tokens: 4, total_tokens: 4 },
+    }),
+    { status: 200 },
+  ));
+
+  const { db } = createTableCtx();
+  let firstLeaseArgs: Record<string, unknown> | undefined;
+  const ctx = {
+    runQuery: async (_fn: unknown, args?: Record<string, unknown>) => {
+      if (args && "messageId" in args && !("userId" in args)) {
+        return await db.query("messageQueryEmbeddings").withIndex("by_message", () => null).first();
+      }
+      if (args && "userId" in args) {
+        return "sk-openrouter";
+      }
+      return null;
+    },
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("leaseOwner" in args) {
+        firstLeaseArgs ??= args;
+        return await claimMessageQueryEmbeddingLeaseHandler({ db } as any, args as any);
+      }
+      if ("status" in args) {
+        return await completeMessageQueryEmbeddingHandler({ db } as any, args as any);
+      }
+      return undefined;
+    },
+    scheduler: { runAfter: async () => undefined },
+  } as any;
+
+  await ensureMessageQueryEmbeddingReady(ctx, {
+    messageId: "msg_1" as any,
+    userId: "user_1",
+    chatId: "chat_1" as any,
+    queryText: "hello there",
+    leaseOwner: "owner_1",
+  });
+
+  assert.equal(firstLeaseArgs?.now, 100_000);
+  assert.equal(firstLeaseArgs?.leaseExpiresAt, 115_000);
+});

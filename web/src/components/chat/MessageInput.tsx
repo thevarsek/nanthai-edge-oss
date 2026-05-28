@@ -140,7 +140,12 @@ export function MessageInput({
     if (isAutonomousActive && onIntervene && trimmed) {
       onIntervene(trimmed);
     } else {
-      const result = await onSend({ text: trimmed, attachments: outgoingAttachments });
+      let result: boolean | void;
+      try {
+        result = await onSend({ text: trimmed, attachments: outgoingAttachments });
+      } catch {
+        return;
+      }
       if (result === false) return;
     }
     setText("");

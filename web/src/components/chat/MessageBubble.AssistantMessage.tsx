@@ -1,7 +1,7 @@
 // components/chat/MessageBubble.AssistantMessage.tsx
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
-import { memo, useState, useCallback, useMemo } from "react";
+import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -262,6 +262,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder && !isAwaitingVideo;
   const [copied, setCopied] = useState(false);
   const [selectedDocumentCitation, setSelectedDocumentCitation] = useState<DocumentCitation | null>(null);
+  const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchCtx = useChatSearchContext();
   const { sessionMap, onCancel, onRegenerate } = useSearchSessionContext();
   const audio = useAudioPlaybackContext();
@@ -282,8 +283,16 @@ export const AssistantMessage = memo(function AssistantMessage({
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(copyText);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+    copyResetTimerRef.current = setTimeout(() => {
+      setCopied(false);
+      copyResetTimerRef.current = null;
+    }, 2000);
   }, [copyText]);
+
+  useEffect(() => () => {
+    if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
+  }, []);
 
   const hasAudio = !!message.audioStorageId || !!message.audioGenerating;
   const handlePlayAudio = useCallback(

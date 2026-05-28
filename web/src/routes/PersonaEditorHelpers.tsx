@@ -143,7 +143,7 @@ export function IntegrationRow({ slug, label, checked, onChange }: IntegrationRo
     <div className="flex items-center gap-3 px-4 py-3">
       <IntegrationLogo slug={slug} size={22} className="flex-shrink-0" />
       <span className="flex-1 text-sm">{label}</span>
-      <Toggle checked={checked} onChange={onChange} />
+      <Toggle checked={checked} onChange={onChange} ariaLabel={label} />
     </div>
   );
 }

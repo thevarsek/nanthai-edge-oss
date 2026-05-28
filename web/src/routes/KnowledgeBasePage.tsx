@@ -459,6 +459,7 @@ function KnowledgeBasePageContent() {
       <div className="flex items-center gap-3 p-4 border-b border-border/50">
         <button
           onClick={() => navigate("/app/settings")}
+          aria-label={t("back_to_settings")}
           className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
         >
           <ChevronLeft size={18} />

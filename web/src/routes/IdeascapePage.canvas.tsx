@@ -35,7 +35,7 @@ import {
   validateSendState as validateChatSendState,
   type SharedPreferences,
 } from "@/lib/chatRequestResolution";
-import { serializeResearchParticipant } from "@/routes/ChatPage.sendFlow";
+import { dedupeChatAttachments, serializeResearchParticipant } from "@/routes/ChatPage.sendFlow";
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 import {
   collectIdeascapeBranchIds,
@@ -645,7 +645,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         : focusedId
           ? [focusedId]
           : [];
-      const mergedAttachments = [...(attachments ?? []), ...kbAttachmentsForDisplay];
+      const mergedAttachments = dedupeChatAttachments([...(attachments ?? []), ...kbAttachmentsForDisplay]);
       if (explicitParentIds.length === 0 || participants.length === 0) return false;
       const validationError = validateChatSendState({
         participantCount: participants.length,

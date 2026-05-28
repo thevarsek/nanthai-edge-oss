@@ -65,6 +65,17 @@ describe("ChatPage retry flow helpers", () => {
     });
   });
 
+  it("omits retry overrides when the current retry turn has no optional state", () => {
+    expect(buildRetryMessageArgs({
+      messageId,
+      targetMessage: message(),
+      enabledIntegrations: new Set(),
+      turnSkillOverrideEntries: [],
+      turnIntegrationOverrideEntries: [],
+      effectiveSubagentsEnabled: undefined,
+    })).toEqual({ messageId });
+  });
+
   it("detects Google integrations from retry contract or legacy message fields", () => {
     expect(retryGoogleIntegrationsAreActive(message({
       retryContract: { participants: [], searchMode: "none", enabledIntegrations: ["calendar"] },
@@ -73,6 +84,7 @@ describe("ChatPage retry flow helpers", () => {
       retryContract: { participants: [], searchMode: "none", enabledIntegrations: ["gmail"] },
     }))).toBe(true);
     expect(retryGoogleIntegrationsAreActive(message({ enabledIntegrations: ["slack"] }))).toBe(false);
+    expect(retryGoogleIntegrationsAreActive(undefined)).toBe(false);
   });
 
   it("builds retry participants for selected model or persona", () => {
@@ -100,6 +112,18 @@ describe("ChatPage retry flow helpers", () => {
       personaName: "Analyst",
       personaEmoji: "A",
       personaAvatarImageUrl: "https://example.com/a.png",
+    });
+
+    expect(retryParticipantWithPersona({
+      baseParticipant: participant,
+      personaId: "missing",
+      personas: undefined,
+    })).toMatchObject({
+      modelId: "openai/gpt-5.2",
+      personaId: "missing",
+      personaName: null,
+      personaEmoji: null,
+      personaAvatarImageUrl: null,
     });
   });
 });

@@ -35,4 +35,25 @@ describe("ChatPage search flow helpers", () => {
       enabledIntegrations: ["gmail", "drive"],
     });
   });
+
+  it("omits optional regenerate paper args when participant metadata is absent", () => {
+    expect(buildRegeneratePaperArgs({
+      sessionId: "session_2",
+      participant: {
+        modelId: "anthropic/claude-sonnet-4",
+        personaId: null,
+        personaName: "",
+        personaEmoji: null,
+        personaAvatarImageUrl: null,
+        temperature: undefined,
+        maxTokens: undefined,
+        includeReasoning: undefined,
+        reasoningEffort: "",
+      },
+      enabledIntegrations: new Set(),
+    })).toEqual({
+      sessionId: "session_2",
+      modelId: "anthropic/claude-sonnet-4",
+    });
+  });
 });

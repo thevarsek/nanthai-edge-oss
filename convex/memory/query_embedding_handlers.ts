@@ -7,9 +7,9 @@ import { ConvexError } from "convex/values";
 import { computeEmbedding } from "./embedding_helpers";
 
 const PRIMARY_PROVIDER = "openrouter" as const;
-const LEASE_DURATION_MS = 15_000;
 const POLL_INTERVAL_MS = 100;
 const ENSURE_READY_TIMEOUT_MS = 20_000;
+const LEASE_DURATION_MS = 15_000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

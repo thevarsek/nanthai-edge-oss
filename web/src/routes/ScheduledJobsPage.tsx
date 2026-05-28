@@ -575,7 +575,11 @@ function ScheduledJobsPageContent() {
   return (
     <div className="flex-1 flex flex-col h-full">
       <div className="flex items-center gap-3 p-4 border-b border-border/50">
-        <button onClick={handleBack} className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors">
+        <button
+          onClick={handleBack}
+          aria-label={view === "list" ? t("back_to_settings") : t("back")}
+          className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
+        >
           <ChevronLeft size={18} />
         </button>
         <h1 className="text-lg font-semibold flex-1">
@@ -584,6 +588,7 @@ function ScheduledJobsPageContent() {
         {view === "list" && (
           <button
             onClick={() => setView("create")}
+            aria-label={t("create_scheduled_job")}
             className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors text-primary"
           >
             <Plus size={18} />

@@ -259,6 +259,7 @@ export function PersonaEditorPage() {
       <div className="flex items-center gap-3 p-4 border-b border-border/50 flex-shrink-0">
         <button
           onClick={() => navigate("/app/personas")}
+          aria-label={t("back_to_personas")}
           className="p-1.5 rounded-lg hover:bg-surface-2 transition-colors"
         >
           <ChevronLeft size={18} />
