@@ -199,6 +199,7 @@ type DocumentEvent = {
   generatedFileId?: Id<"generatedFiles">;
   filename: string;
   mimeType: string;
+  sizeBytes?: number;
   title?: string;
   summary?: string;
 };
@@ -278,6 +279,7 @@ async function createOrUpdateDocumentForGeneratedFile(
         generatedFileId: args.generatedFileId,
         filename: args.file.filename,
         mimeType: args.file.mimeType,
+        sizeBytes: args.file.sizeBytes,
         title: args.file.title ?? sourceDocument.title,
         summary: args.file.summary,
       };
@@ -325,6 +327,7 @@ async function createOrUpdateDocumentForGeneratedFile(
     generatedFileId: args.generatedFileId,
     filename: args.file.filename,
     mimeType: args.file.mimeType,
+    sizeBytes: args.file.sizeBytes,
     title: args.file.title,
     summary: args.file.summary,
   };

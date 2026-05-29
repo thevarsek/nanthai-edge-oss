@@ -12,6 +12,7 @@
 
 import { ConvexError } from "convex/values";
 import JSZip from "jszip";
+import { extractAcceptedDocxParagraphs } from "../documents/docx_tracked_changes";
 
 export interface DocxParagraph {
   style: string; // "Title", "Heading1", "Heading2", "Normal", etc.
@@ -37,6 +38,21 @@ function decodeXmlEntities(s: string): string {
     .replace(/&apos;/g, "'");
 }
 
+function buildMarkdown(paragraphs: DocxParagraph[]): string {
+  let markdown = "";
+  for (const { style, text } of paragraphs) {
+    if (style === "Title") markdown += `# ${text}\n\n`;
+    else if (style === "Heading1") markdown += `## ${text}\n\n`;
+    else if (style === "Heading2") markdown += `### ${text}\n\n`;
+    else if (style === "Heading3") markdown += `#### ${text}\n\n`;
+    else if (style === "Heading4") markdown += `##### ${text}\n\n`;
+    else if (style === "Heading5" || style === "Heading6") markdown += `###### ${text}\n\n`;
+    else if (style.startsWith("ListParagraph") || style === "ListBullet") markdown += `- ${text}\n`;
+    else markdown += `${text}\n\n`;
+  }
+  return markdown.trim();
+}
+
 /**
  * Extract text and structure from a .docx file's raw bytes.
  *
@@ -48,7 +64,7 @@ export async function extractDocxContent(
 ): Promise<DocxExtraction> {
   const zip = await JSZip.loadAsync(data);
 
-  const docFile = zip.file("word/document.xml");
+  const docFile = zip.file("word/document.xml") ?? zip.file("word\\document.xml");
   if (!docFile) {
     throw new ConvexError({
       code: "INVALID_INPUT" as const,
@@ -56,6 +72,7 @@ export async function extractDocxContent(
     });
   }
 
+  const accepted = await extractAcceptedDocxParagraphs(data);
   const xml = await docFile.async("string");
 
   // Match each <w:p> paragraph element (non-greedy within body).
@@ -86,33 +103,16 @@ export async function extractDocxContent(
     paragraphs.push({ style, text });
     textLines.push(text);
 
-    // Build heading-aware markdown.
-    if (style === "Title") {
-      markdown += `# ${text}\n\n`;
-    } else if (style === "Heading1") {
-      markdown += `## ${text}\n\n`;
-    } else if (style === "Heading2") {
-      markdown += `### ${text}\n\n`;
-    } else if (style === "Heading3") {
-      markdown += `#### ${text}\n\n`;
-    } else if (style === "Heading4") {
-      markdown += `##### ${text}\n\n`;
-    } else if (style === "Heading5" || style === "Heading6") {
-      markdown += `###### ${text}\n\n`;
-    } else if (style.startsWith("ListParagraph") || style === "ListBullet") {
-      markdown += `- ${text}\n`;
-    } else {
-      markdown += `${text}\n\n`;
-    }
+    markdown = buildMarkdown(paragraphs);
   }
 
-  const plainText = textLines.join("\n");
-  const wordCount = plainText.split(/\s+/).filter(Boolean).length;
+  const plainText = accepted.text || textLines.join("\n");
+  const wordCount = accepted.wordCount || plainText.split(/\s+/).filter(Boolean).length;
 
   return {
-    paragraphs,
+    paragraphs: accepted.paragraphs.length > 0 ? accepted.paragraphs : paragraphs,
     text: plainText,
-    markdown: markdown.trim(),
+    markdown: accepted.paragraphs.length > 0 ? buildMarkdown(accepted.paragraphs) : markdown.trim(),
     wordCount,
   };
 }

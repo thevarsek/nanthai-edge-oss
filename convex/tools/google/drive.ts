@@ -483,7 +483,7 @@ export const driveRead = createTool({
                 chatId: toolCtx.chatId as import("../../_generated/dataModel").Id<"chats">,
               },
             );
-            const match = docs.find((d) => d.driveFileId === meta.id);
+            const match = docs.find((d: any) => d.driveFileId === meta.id);
             if (match) {
               scopedDocHandle = {
                 doc_id: match.ref,

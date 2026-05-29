@@ -145,6 +145,21 @@ export async function deleteChatGraph(
     .withIndex("by_origin_chat", (q) => q.eq("originChatId", chatId))
     .take(DELETE_BATCH_SIZE);
   for (const document of documents) {
+    const editBatches = await ctx.db
+      .query("documentEditBatches")
+      .withIndex("by_document", (q) => q.eq("documentId", document._id))
+      .collect();
+    for (const batch of editBatches) {
+      const edits = await ctx.db
+        .query("documentEdits")
+        .withIndex("by_batch", (q) => q.eq("batchId", batch._id))
+        .collect();
+      for (const edit of edits) {
+        await ctx.db.delete(edit._id);
+      }
+      await ctx.db.delete(batch._id);
+    }
+
     const versions = await ctx.db
       .query("documentVersions")
       .withIndex("by_document", (q) => q.eq("documentId", document._id))

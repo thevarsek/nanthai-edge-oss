@@ -267,6 +267,9 @@ export async function runParticipantTurn(
         userId,
       },
     );
+    if (!messageId || !jobId) {
+      throw new Error("Failed to create autonomous turn runtime records.");
+    }
 
     await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
       jobId,

@@ -49,6 +49,16 @@ vi.mock("@/hooks/useSharedData", () => ({
   useModelSummaries: () => mockModelSummaries,
 }));
 
+const convexMocks = vi.hoisted(() => ({
+  resolveDocumentEdit: vi.fn(async () => ({ ok: true })),
+  undoDocumentEditResolution: vi.fn(async () => ({ ok: true })),
+}));
+
+vi.mock("convex/react", () => ({
+  useAction: () => convexMocks.resolveDocumentEdit,
+  useMutation: () => convexMocks.undoDocumentEditResolution,
+}));
+
 function message(overrides: Partial<Message> = {}): Message {
   return {
     _id: "message_1" as Id<"messages">,
@@ -62,6 +72,31 @@ function message(overrides: Partial<Message> = {}): Message {
   };
 }
 
+function documentEditAnnotation(
+  displayStatus: NonNullable<Message["documentEditAnnotations"]>[number]["displayStatus"],
+  overrides: Partial<NonNullable<Message["documentEditAnnotations"]>[number]> = {},
+): NonNullable<Message["documentEditAnnotations"]>[number] {
+  return {
+    type: "docx_edit_proposed",
+    editId: `edit_${displayStatus}` as Id<"documentEdits">,
+    editBatchId: "batch_1" as Id<"documentEditBatches">,
+    generationKey: "generation_1",
+    documentId: "doc_1" as Id<"documents">,
+    versionId: "version_2" as Id<"documentVersions">,
+    baseVersionId: "version_1" as Id<"documentVersions">,
+    introducedVersionId: "version_2" as Id<"documentVersions">,
+    filename: "contract.docx",
+    versionNumber: 2,
+    changeId: `change_${displayStatus}`,
+    deletedText: "old clause",
+    insertedText: "new clause",
+    status: displayStatus === "rejected" ? "rejected" : displayStatus === "accepted" ? "accepted" : "pending",
+    displayStatus,
+    canUndo: false,
+    ...overrides,
+  };
+}
+
 function renderAssistant(messageOverride: Partial<Message>, options: {
   participants?: ComponentProps<typeof AssistantMessage>["participants"];
   onRetry?: () => void;
@@ -69,6 +104,7 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
   onFork?: () => void;
   messageCost?: number;
   showAdvancedStats?: boolean;
+  onOpenDocumentEdit?: ComponentProps<typeof AssistantMessage>["onOpenDocumentEdit"];
 } = {}) {
   const audio: AudioPlaybackContextValue = {
     state: {
@@ -98,6 +134,7 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
         onFork={options.onFork ?? vi.fn()}
         messageCost={options.messageCost}
         showAdvancedStats={options.showAdvancedStats}
+        onOpenDocumentEdit={options.onOpenDocumentEdit}
       />
     </AudioPlaybackContext.Provider>,
   );
@@ -107,6 +144,8 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
 describe("AssistantMessage", () => {
   beforeEach(() => {
     mockModelSummaries = [];
+    convexMocks.resolveDocumentEdit.mockClear();
+    convexMocks.undoDocumentEditResolution.mockClear();
   });
 
   it("copies generated image URLs instead of hidden placeholder text", async () => {
@@ -224,5 +263,55 @@ describe("AssistantMessage", () => {
     expect(screen.getByText(/Quote body/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /done/i }));
     expect(screen.queryByText(/Quote body/)).not.toBeInTheDocument();
+  });
+
+  it("renders hydrated DOCX edit card states and wires backend actions", async () => {
+    const onOpenDocumentEdit = vi.fn();
+    renderAssistant({
+      documentEditAnnotations: [
+        documentEditAnnotation("pending"),
+        documentEditAnnotation("accepted", {
+          editId: "edit_accepted" as Id<"documentEdits">,
+          status: "accepted",
+          canUndo: true,
+        }),
+        documentEditAnnotation("superseded", {
+          editId: "edit_superseded" as Id<"documentEdits">,
+        }),
+        documentEditAnnotation("unavailable", {
+          editId: "edit_unavailable" as Id<"documentEdits">,
+          unavailableReason: "Missing version",
+        }),
+      ],
+    }, { onOpenDocumentEdit });
+
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(screen.getByText("Accepted")).toBeInTheDocument();
+    expect(screen.getByText("Superseded")).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Accept" }));
+    await waitFor(() => {
+      expect(convexMocks.resolveDocumentEdit).toHaveBeenCalledWith({
+        documentId: "doc_1",
+        editId: "edit_pending",
+        decision: "accept",
+      });
+    });
+    expect(onOpenDocumentEdit).toHaveBeenCalledWith(
+      expect.objectContaining({ editId: "edit_pending" }),
+      expect.objectContaining({ _id: "message_1" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => {
+      expect(convexMocks.undoDocumentEditResolution).toHaveBeenCalledWith({
+        documentId: "doc_1",
+        editId: "edit_accepted",
+      });
+    });
+
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
   });
 });

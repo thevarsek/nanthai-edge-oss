@@ -2864,5 +2864,22 @@
   "csv": "CSV",
   "image": "图片",
   "add": "添加",
-  "add_newly_created_document_next_message": "将新创建的文档添加到下一条消息"
+  "add_newly_created_document_next_message": "将新创建的文档添加到下一条消息",
+  "accept": "接受",
+  "reject": "拒绝",
+  "undo": "撤销",
+  "pending": "待处理",
+  "accepted": "已接受",
+  "rejected": "已拒绝",
+  "superseded": "已取代",
+  "insert": "插入",
+  "text_file": "文本",
+  "email": "电子邮件",
+  "document_preview_unavailable": "文档预览不可用。",
+  "no_inline_preview_available": "没有可用的内联预览。",
+  "tracked_changes": "修订",
+  "change_number": "更改 {{number}}",
+  "download_filename": "下载 {{filename}}",
+  "close_document_preview": "关闭文档预览",
+  "loading_document": "正在加载文档"
 }

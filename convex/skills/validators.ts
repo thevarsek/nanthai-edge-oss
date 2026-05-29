@@ -124,7 +124,7 @@ const WARNING_PATTERNS: WarningPattern[] = [
 
 const KNOWN_TOOL_IDS = new Set([
   "list_documents", "read_document", "find_in_document",
-  "generate_docx", "read_docx", "edit_docx",
+  "generate_docx", "read_docx", "edit_docx", "propose_docx_edits",
   "generate_pptx", "read_pptx", "edit_pptx",
   "generate_xlsx", "read_xlsx", "edit_xlsx",
   "generate_text_file", "read_text_file",

@@ -3,12 +3,13 @@
 
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video } from "lucide-react";
+import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { ToolCallAccordion } from "./ToolCallAccordion";
 import { SubagentBatchPanel } from "./SubagentBatchPanel";
-import { GeneratedFilesCard } from "./GeneratedFilesCard";
+import { GeneratedFilesCard, type GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 import { GeneratedChartsCard } from "./GeneratedChartsCard";
 import { ResearchProgressPanel } from "./ResearchProgressPanel";
 import { SearchSessionBadge } from "./SearchSessionBadge";
@@ -22,6 +23,8 @@ import { isSessionActive } from "@/hooks/useSearchSessions";
 import { getMatchesForMessage } from "@/hooks/useChatSearch";
 import { useStreaming } from "@/hooks/useStreaming";
 import type { Message, Participant } from "@/hooks/useChat";
+import { useAction, useMutation } from "convex/react";
+import { api } from "@convex/_generated/api";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { IconButton } from "@/components/shared/IconButton";
@@ -33,6 +36,18 @@ import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSur
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 type DocumentCitation = NonNullable<Message["documentCitations"]>[number];
+type DocumentEditAnnotation = NonNullable<Message["documentEditAnnotations"]>[number];
+
+function documentEditStatusLabel(status: string, t: TFunction): string {
+  switch (status) {
+    case "pending": return t("pending");
+    case "accepted": return t("accepted");
+    case "rejected": return t("rejected");
+    case "superseded": return t("superseded");
+    case "unavailable": return t("unavailable");
+    default: return status;
+  }
+}
 
 function stripStreamingCitationBlock(content: string): string {
   return content
@@ -232,13 +247,15 @@ export interface AssistantMessageProps {
   onFork: () => void;
   messageCost?: number;
   showAdvancedStats?: boolean;
+  onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
+  onOpenDocumentEdit?: (annotation: DocumentEditAnnotation, message: Message) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const AssistantMessage = memo(function AssistantMessage({
   message, isStreaming, participants, onRetry, onRetryWithDifferentModel, onFork,
-  messageCost, showAdvancedStats,
+  messageCost, showAdvancedStats, onOpenGeneratedFile, onOpenDocumentEdit,
 }: AssistantMessageProps) {
   const { t } = useTranslation();
   const modelSummaries = useModelSummaries();
@@ -261,11 +278,14 @@ export const AssistantMessage = memo(function AssistantMessage({
     modelSummaries?.some((model) => model.modelId === message.modelId && model.supportsVideo === true);
   const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder && !isAwaitingVideo;
   const [copied, setCopied] = useState(false);
+  const [resolvingEditId, setResolvingEditId] = useState<string | null>(null);
   const [selectedDocumentCitation, setSelectedDocumentCitation] = useState<DocumentCitation | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchCtx = useChatSearchContext();
   const { sessionMap, onCancel, onRegenerate } = useSearchSessionContext();
   const audio = useAudioPlaybackContext();
+  const resolveDocumentEdit = useAction(api.documents.actions.resolveDocumentEdit);
+  const undoDocumentEditResolution = useMutation(api.documents.mutations.undoDocumentEditResolution);
 
   const session = message.searchSessionId ? sessionMap.get(message.searchSessionId) : undefined;
   const sessionActive = session ? isSessionActive(session.status) : false;
@@ -299,6 +319,24 @@ export const AssistantMessage = memo(function AssistantMessage({
     () => void audio.play(message._id, message.audioStorageId),
     [audio, message._id, message.audioStorageId],
   );
+
+  const handleResolveDocumentEdit = useCallback(async (annotation: DocumentEditAnnotation, decision: "accept" | "reject") => {
+    setResolvingEditId(annotation.editId);
+    try {
+      await resolveDocumentEdit({ documentId: annotation.documentId, editId: annotation.editId, decision });
+    } finally {
+      setResolvingEditId(null);
+    }
+  }, [resolveDocumentEdit]);
+
+  const handleUndoDocumentEdit = useCallback(async (annotation: DocumentEditAnnotation) => {
+    setResolvingEditId(annotation.editId);
+    try {
+      await undoDocumentEditResolution({ documentId: annotation.documentId, editId: annotation.editId });
+    } finally {
+      setResolvingEditId(null);
+    }
+  }, [undoDocumentEditResolution]);
 
   const isCompleted = message.status === "completed";
   const showActions = isCompleted && (!!message.content || hasImageUrls || hasVideoUrls);
@@ -441,8 +479,56 @@ export const AssistantMessage = memo(function AssistantMessage({
         )}
 
         {/* Generated files */}
-        {message.generatedFileIds && message.generatedFileIds.length > 0 && <GeneratedFilesCard messageId={message._id} />}
+        {message.generatedFileIds && message.generatedFileIds.length > 0 && (
+          <GeneratedFilesCard
+            messageId={message._id}
+            onOpenFile={onOpenGeneratedFile ? (request) => onOpenGeneratedFile({ ...request, message }) : undefined}
+          />
+        )}
         {message.generatedChartIds && message.generatedChartIds.length > 0 && <GeneratedChartsCard messageId={message._id} />}
+        {message.documentEditAnnotations && message.documentEditAnnotations.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {message.documentEditAnnotations.map((annotation) => (
+              <div
+                key={annotation.editId}
+                role="button"
+                tabIndex={0}
+                onClick={() => onOpenDocumentEdit?.(annotation, message)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    onOpenDocumentEdit?.(annotation, message);
+                  }
+                }}
+                className={workspaceSurfaceClass("p-3 text-sm transition-colors hover:bg-surface-3/50")}
+              >
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <span className="truncate text-xs font-semibold">{annotation.filename}</span>
+                  <span className="text-xs text-muted-foreground">{documentEditStatusLabel(annotation.displayStatus, t)}</span>
+                </div>
+                {annotation.deletedText && (
+                  <div className="mb-1 text-xs"><span className="font-semibold text-destructive">{t("delete")}:</span> {annotation.deletedText}</div>
+                )}
+                {annotation.insertedText && (
+                  <div className="mb-1 text-xs"><span className="font-semibold text-primary">{t("insert")}:</span> {annotation.insertedText}</div>
+                )}
+                {annotation.reason && <div className="mt-2 text-xs text-muted-foreground">{annotation.reason}</div>}
+                <div className="mt-3 flex gap-2">
+                  {annotation.displayStatus === "pending" && (
+                    <>
+                      <button type="button" className="rounded border px-2 py-1 text-xs" disabled={resolvingEditId === annotation.editId} onClick={(event) => { event.stopPropagation(); onOpenDocumentEdit?.(annotation, message); void handleResolveDocumentEdit(annotation, "accept"); }}>{t("accept")}</button>
+                      <button type="button" className="rounded border px-2 py-1 text-xs" disabled={resolvingEditId === annotation.editId} onClick={(event) => { event.stopPropagation(); onOpenDocumentEdit?.(annotation, message); void handleResolveDocumentEdit(annotation, "reject"); }}>{t("reject")}</button>
+                    </>
+                  )}
+                  {annotation.displayStatus !== "pending" && annotation.canUndo && (
+                    <button type="button" className="rounded border px-2 py-1 text-xs" disabled={resolvingEditId === annotation.editId} onClick={(event) => { event.stopPropagation(); onOpenDocumentEdit?.(annotation, message); void handleUndoDocumentEdit(annotation); }}>{t("undo")}</button>
+                  )}
+                  {resolvingEditId === annotation.editId && <Loader size={14} className="animate-spin text-muted-foreground" />}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
         {message.attachments && message.attachments.length > 0 && (
           <div className="mt-2">
             <MessageAttachments

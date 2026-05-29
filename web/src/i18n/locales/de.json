@@ -2864,5 +2864,22 @@
   "csv": "CSV",
   "image": "Bild",
   "add": "Hinzufügen",
-  "add_newly_created_document_next_message": "Neu erstelltes Dokument zur nächsten Nachricht hinzufügen"
+  "add_newly_created_document_next_message": "Neu erstelltes Dokument zur nächsten Nachricht hinzufügen",
+  "accept": "Annehmen",
+  "reject": "Ablehnen",
+  "undo": "Rückgängig",
+  "pending": "Ausstehend",
+  "accepted": "Angenommen",
+  "rejected": "Abgelehnt",
+  "superseded": "Ersetzt",
+  "insert": "Einfügen",
+  "text_file": "Text",
+  "email": "E-Mail",
+  "document_preview_unavailable": "Dokumentvorschau nicht verfügbar.",
+  "no_inline_preview_available": "Keine Inline-Vorschau verfügbar.",
+  "tracked_changes": "Nachverfolgte Änderungen",
+  "change_number": "Änderung {{number}}",
+  "download_filename": "{{filename}} herunterladen",
+  "close_document_preview": "Dokumentvorschau schließen",
+  "loading_document": "Dokument wird geladen"
 }

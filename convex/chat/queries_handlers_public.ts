@@ -6,6 +6,7 @@ import {
   getAuthorizedMessage,
   withRefreshedAttachmentUrls,
 } from "./query_helpers";
+import { hydrateDocumentEditAnnotations } from "../documents/docx_edit_annotations";
 
 function withoutSearchContext<T extends { searchContext?: unknown }>(
   message: T,
@@ -440,7 +441,8 @@ export async function listMessagesHandler(
           }
         : message;
       const refreshed = await withRefreshedAttachmentUrls(ctx, withAvatar);
-      return withoutSearchContext(refreshed);
+      const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
+      return withoutSearchContext(hydrated);
     }),
   );
 }
@@ -459,7 +461,8 @@ export async function getMessageHandler(
   const message = await getAuthorizedMessage(ctx, args.messageId, auth.userId);
   if (!message) return null;
   const refreshed = await withRefreshedAttachmentUrls(ctx, message);
-  return withoutSearchContext(refreshed);
+  const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
+  return withoutSearchContext(hydrated);
 }
 
 export interface GetGenerationStatusArgs extends Record<string, unknown> {

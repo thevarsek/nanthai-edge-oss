@@ -10,6 +10,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { Message, Participant } from "@/hooks/useChat";
 import { MessageBubble } from "./MessageBubble";
 import { formatCost } from "@/hooks/useChatCosts";
+import type { GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,8 @@ interface MultiModelResponseGroupProps {
   onRetryWithDifferentModel?: (messageId: Id<"messages">) => void;
   messageCosts?: Record<string, number>;
   showAdvancedStats?: boolean;
+  onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
+  onOpenDocumentEdit?: (annotation: NonNullable<Message["documentEditAnnotations"]>[number], message: Message) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -36,6 +39,8 @@ export const MultiModelResponseGroup = memo(function MultiModelResponseGroup({
   onRetryWithDifferentModel,
   messageCosts,
   showAdvancedStats,
+  onOpenGeneratedFile,
+  onOpenDocumentEdit,
 }: MultiModelResponseGroupProps) {
   const { t } = useTranslation();
   const groupTotal = showAdvancedStats
@@ -68,6 +73,8 @@ export const MultiModelResponseGroup = memo(function MultiModelResponseGroup({
               onRetryWithDifferentModel={onRetryWithDifferentModel}
               messageCost={messageCosts?.[message._id]}
               showAdvancedStats={showAdvancedStats}
+              onOpenGeneratedFile={onOpenGeneratedFile}
+              onOpenDocumentEdit={onOpenDocumentEdit}
             />
           </div>
         ))}

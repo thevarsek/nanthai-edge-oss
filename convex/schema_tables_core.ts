@@ -19,6 +19,9 @@ import {
   subagentRunStatus,
   drivePickerBatchStatus,
   documentCitation,
+  documentEditAnnotation,
+  documentEditBatchStatus,
+  documentEditStatus,
   documentEvent,
   documentExtractionStatus,
   documentSource,
@@ -209,6 +212,8 @@ export const coreSchemaTables = {
     documentCitations: v.optional(v.array(documentCitation)),
     // M33 — First-class generated/updated document cards.
     documentEvents: v.optional(v.array(documentEvent)),
+    // M39 — Hydrated DOCX tracked-change proposal cards.
+    documentEditAnnotations: v.optional(v.array(documentEditAnnotation)),
     subagentsEnabled: v.optional(v.boolean()),
     subagentBatchId: v.optional(v.id("subagentBatches")),
     drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
@@ -290,6 +295,52 @@ export const coreSchemaTables = {
     .index("by_user", ["userId", "createdAt"])
     .index("by_storage", ["storageId"])
     .index("by_extraction_status", ["extractionStatus"]),
+
+  documentEditBatches: defineTable({
+    userId: v.string(),
+    documentId: v.id("documents"),
+    assistantMessageId: v.optional(v.id("messages")),
+    generatedFileId: v.optional(v.id("generatedFiles")),
+    generationKey: v.string(),
+    baseVersionId: v.id("documentVersions"),
+    currentVersionId: v.id("documentVersions"),
+    status: documentEditBatchStatus,
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_document", ["documentId", "createdAt"])
+    .index("by_generation_document", ["generationKey", "documentId"])
+    .index("by_message", ["assistantMessageId"])
+    .index("by_user", ["userId", "createdAt"]),
+
+  documentEdits: defineTable({
+    userId: v.string(),
+    documentId: v.id("documents"),
+    batchId: v.id("documentEditBatches"),
+    assistantMessageId: v.optional(v.id("messages")),
+    introducedVersionId: v.id("documentVersions"),
+    preResolutionVersionId: v.optional(v.id("documentVersions")),
+    resolvedVersionId: v.optional(v.id("documentVersions")),
+    changeId: v.string(),
+    delWId: v.optional(v.string()),
+    insWId: v.optional(v.string()),
+    deletedText: v.string(),
+    insertedText: v.string(),
+    contextBefore: v.optional(v.string()),
+    contextAfter: v.optional(v.string()),
+    reason: v.optional(v.string()),
+    status: documentEditStatus,
+    createdAt: v.number(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.string()),
+  })
+    .index("by_document", ["documentId", "createdAt"])
+    .index("by_batch", ["batchId", "createdAt"])
+    .index("by_introduced_version", ["introducedVersionId", "createdAt"])
+    .index("by_resolved_version", ["resolvedVersionId", "createdAt"])
+    .index("by_message", ["assistantMessageId"])
+    .index("by_status", ["documentId", "status"])
+    .index("by_user", ["userId", "createdAt"]),
 
   streamingMessages: defineTable({
     messageId: v.id("messages"),

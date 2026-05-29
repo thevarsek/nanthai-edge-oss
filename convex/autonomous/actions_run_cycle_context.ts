@@ -83,10 +83,10 @@ export async function loadMemoryContext(
   const lastUserMessage = rawMessages
     .slice()
     .reverse()
-    .find((message) => message.role === "user");
+    .find((message: any) => message.role === "user");
   if (!lastUserMessage) return undefined;
   return resolveMemoryContextForGeneration(ctx, {
-    messages: rawMessages.map((message) => ({
+    messages: rawMessages.map((message: any) => ({
       _id: message._id,
       role: message.role,
       content: message.content,

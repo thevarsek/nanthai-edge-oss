@@ -8,8 +8,11 @@ import type { Id } from "@convex/_generated/dataModel";
 import { UserMessage } from "./MessageBubble.UserMessage";
 import { AssistantMessage } from "./MessageBubble.AssistantMessage";
 import type { Message, Participant } from "@/hooks/useChat";
+import type { GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
+
+type DocumentEditAnnotation = NonNullable<Message["documentEditAnnotations"]>[number];
 
 interface MessageBubbleProps {
   message: Message;
@@ -20,6 +23,8 @@ interface MessageBubbleProps {
   onRetryWithDifferentModel?: (messageId: Id<"messages">) => void;
   messageCost?: number;
   showAdvancedStats?: boolean;
+  onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
+  onOpenDocumentEdit?: (annotation: DocumentEditAnnotation, message: Message) => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -28,6 +33,7 @@ export const MessageBubble = memo(function MessageBubble({
   message, isStreaming, participants,
   onRetry, onFork, onRetryWithDifferentModel,
   messageCost, showAdvancedStats,
+  onOpenGeneratedFile, onOpenDocumentEdit,
 }: MessageBubbleProps) {
   const handleRetry = useCallback(() => onRetry(message._id), [message._id, onRetry]);
   const handleFork = useCallback(() => onFork(message._id), [message._id, onFork]);
@@ -47,6 +53,8 @@ export const MessageBubble = memo(function MessageBubble({
         onRetry={handleRetry} onFork={handleFork}
         onRetryWithDifferentModel={onRetryWithDifferentModel ? handleRetryDifferent : undefined}
         messageCost={messageCost} showAdvancedStats={showAdvancedStats}
+        onOpenGeneratedFile={onOpenGeneratedFile}
+        onOpenDocumentEdit={onOpenDocumentEdit}
       />
     );
   }

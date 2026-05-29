@@ -457,6 +457,7 @@ test("finalizeGenerationHandler creates document rows and document_created for g
   assert.equal(events[0]?.type, "document_created");
   assert.equal(events[0]?.documentId, "documents_2");
   assert.equal(events[0]?.versionId, "documentVersions_3");
+  assert.equal(events[0]?.sizeBytes, 12000);
   assert.deepEqual(messagePatch?.value.generatedFileIds, ["generatedFiles_1"]);
 });
 
@@ -517,6 +518,7 @@ test("finalizeGenerationHandler creates assistant_edit version and document_upda
   assert.equal(events[0]?.type, "document_updated");
   assert.equal(events[0]?.documentId, "doc_source");
   assert.equal(events[0]?.versionId, "documentVersions_2");
+  assert.equal(events[0]?.sizeBytes, 13000);
 });
 
 test("finalizeGenerationHandler sets 'Generated video' preview for video-only messages", async () => {

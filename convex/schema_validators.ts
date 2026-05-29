@@ -63,6 +63,54 @@ export const documentCitation = v.object({
   locator: v.optional(v.string()),
 });
 
+export const documentEditStatus = v.union(
+  v.literal("pending"),
+  v.literal("accepted"),
+  v.literal("rejected"),
+);
+
+export const documentEditDisplayStatus = v.union(
+  v.literal("pending"),
+  v.literal("accepted"),
+  v.literal("rejected"),
+  v.literal("superseded"),
+  v.literal("unavailable"),
+);
+
+export const documentEditBatchStatus = v.union(
+  v.literal("pending"),
+  v.literal("partially_resolved"),
+  v.literal("resolved"),
+  v.literal("superseded"),
+);
+
+export const documentEditAnnotation = v.object({
+  type: v.literal("docx_edit_proposed"),
+  editId: v.id("documentEdits"),
+  editBatchId: v.id("documentEditBatches"),
+  generationKey: v.string(),
+  documentId: v.id("documents"),
+  versionId: v.id("documentVersions"),
+  baseVersionId: v.id("documentVersions"),
+  introducedVersionId: v.id("documentVersions"),
+  preResolutionVersionId: v.optional(v.id("documentVersions")),
+  resolvedVersionId: v.optional(v.id("documentVersions")),
+  generatedFileId: v.optional(v.id("generatedFiles")),
+  filename: v.string(),
+  versionNumber: v.number(),
+  changeId: v.string(),
+  deletedText: v.string(),
+  insertedText: v.string(),
+  contextBefore: v.optional(v.string()),
+  contextAfter: v.optional(v.string()),
+  reason: v.optional(v.string()),
+  status: documentEditStatus,
+  displayStatus: documentEditDisplayStatus,
+  canUndo: v.boolean(),
+  resolvedAt: v.optional(v.number()),
+  unavailableReason: v.optional(v.string()),
+});
+
 export const documentEvent = v.object({
   type: v.union(v.literal("document_created"), v.literal("document_updated")),
   documentId: v.id("documents"),
@@ -71,6 +119,7 @@ export const documentEvent = v.object({
   generatedFileId: v.optional(v.id("generatedFiles")),
   filename: v.string(),
   mimeType: v.string(),
+  sizeBytes: v.optional(v.number()),
   title: v.optional(v.string()),
   summary: v.optional(v.string()),
 });

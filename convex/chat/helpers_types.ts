@@ -24,6 +24,7 @@ export interface ContextMessage {
     generatedFileId?: string;
     filename: string;
     mimeType: string;
+    sizeBytes?: number;
     title?: string;
     summary?: string;
   }>;

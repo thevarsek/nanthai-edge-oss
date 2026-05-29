@@ -114,7 +114,7 @@ export async function assembleRequestContextForGeneration(
   const toolMemoryQuery = normalizeAssemblyQueryResult(toolMemoryQueryRaw);
   const artifactQuery = normalizeAssemblyQueryResult(artifactQueryRaw);
   const toolMemoriesRaw = toolMemoryQuery.rows;
-  const rawArtifacts = artifactQuery.rows;
+  const rawArtifacts = artifactQuery.rows as AssemblyArtifactCandidate[];
   const branchExcludedCount = toolMemoryQuery.branchExcludedCount + artifactQuery.branchExcludedCount;
   const lineageCappedMessageCount = toolMemoryQuery.lineageCappedMessageCount + artifactQuery.lineageCappedMessageCount;
   const extraExclusionCounts = buildExtraExclusionCounts(branchExcludedCount, lineageCappedMessageCount);
@@ -200,7 +200,7 @@ export async function assembleRequestContextForGeneration(
   const rehydration = rehydrationArtifactIds.size > 0
     ? await rehydrateStoredArtifacts(input.ctx, rawArtifacts, rehydrationArtifactIds)
     : { artifacts: rawArtifacts, bytesRead: 0, durationMs: 0 };
-  const rehydratedArtifacts = rehydration.artifacts;
+  const rehydratedArtifacts = rehydration.artifacts as AssemblyArtifactCandidate[];
   if (rehydratedArtifacts !== rawArtifacts) {
     assembly = assembleContext({
       chatId: input.chatId,

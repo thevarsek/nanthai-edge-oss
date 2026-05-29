@@ -131,8 +131,8 @@ export async function resolveMemoryContextForGeneration(
       content: memory.content,
       isPinned: memory.isPinned ?? false,
       memoryType: memory.memoryType,
-      category: memory.category,
-      retrievalMode: memory.retrievalMode,
+      category: "category" in memory ? memory.category : undefined,
+      retrievalMode: "retrievalMode" in memory ? memory.retrievalMode : undefined,
       importanceScore: memory.importanceScore,
     })),
   ) ?? "";

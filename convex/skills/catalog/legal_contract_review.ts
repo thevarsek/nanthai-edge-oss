@@ -148,7 +148,7 @@ Organize findings into:
 
 ## Redline and Tracked-Change Guidance
 
-If the user asks for true Word tracked changes, use the DOCX tracked-change workflow when it is available. Keep the legal analysis in this contract-review skill, but let the tracked-change workflow own the actual accept/reject-able edit proposals. If tracked-change tooling is unavailable, produce a redline-style table with clause, current text, proposed replacement, reason, risk, and citation instead of claiming to modify the DOCX.
+If the user asks for true Word tracked changes, use read_document or find_in_document first, then call propose_docx_edits for narrow clause-level substitutions with concise legal or commercial reasons. Keep the legal analysis in this contract-review skill, but let the tracked-change workflow own the actual accept/reject-able edit proposals. If tracked-change tooling is unavailable, ambiguous, or the file is not DOCX, produce a redline-style table with clause, current text, proposed replacement, reason, risk, and citation instead of claiming to modify the DOCX.
 
 ## Template and Review-Grid Guidance
 
@@ -175,7 +175,7 @@ Use these template modes when requested, while keeping factual claims tied to do
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["list_documents", "read_document", "find_in_document"],
+  requiredToolIds: ["list_documents", "read_document", "find_in_document", "propose_docx_edits"],
   requiredToolProfiles: ["docs"],
   requiredIntegrationIds: [],
 };

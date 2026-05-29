@@ -76,6 +76,7 @@ describe("ChatPage attachment flow helpers", () => {
       name: "assistant_new.pdf",
       type: "pdf",
       mimeType: "application/pdf",
+      sizeBytes: 2048,
     });
   });
 });
@@ -104,6 +105,7 @@ function message(id: string, storageId: Id<"_storage">, createdAt: number): Mess
       storageId,
       filename: `${id}.pdf`,
       mimeType: "application/pdf",
+      sizeBytes: createdAt * 1024,
     }],
   };
 }

@@ -77,6 +77,7 @@ import { RECONCILIATION_SKILL } from "./finance_reconciliation";
 
 // --- Legal skills ---
 import { CONTRACT_REVIEW_SKILL } from "./legal_contract_review";
+import { LEGAL_REDLINE_SKILL } from "./legal_redline";
 import {
   CLAUSE_EXTRACTION_SKILL,
   CONTRACT_DRAFTING_SKILL,
@@ -153,6 +154,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   INTERNAL_COMMS_SKILL,
   LAUNCH_CHECKLIST_SKILL,
   LEGAL_MEMO_SKILL,
+  LEGAL_REDLINE_SKILL,
   MARKETING_PERFORMANCE_REPORT_SKILL,
   MEETING_NOTES_SKILL,
   MICROSOFT_365_SKILL,

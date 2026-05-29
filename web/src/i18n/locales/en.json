@@ -2864,5 +2864,22 @@
   "csv": "CSV",
   "image": "Image",
   "add": "Add",
-  "add_newly_created_document_next_message": "Add newly created document to the next message"
+  "add_newly_created_document_next_message": "Add newly created document to the next message",
+  "accept": "Accept",
+  "reject": "Reject",
+  "undo": "Undo",
+  "pending": "Pending",
+  "accepted": "Accepted",
+  "rejected": "Rejected",
+  "superseded": "Superseded",
+  "insert": "Insert",
+  "text_file": "Text",
+  "email": "Email",
+  "document_preview_unavailable": "Document preview unavailable.",
+  "no_inline_preview_available": "No inline preview available.",
+  "tracked_changes": "Tracked changes",
+  "change_number": "Change {{number}}",
+  "download_filename": "Download {{filename}}",
+  "close_document_preview": "Close document preview",
+  "loading_document": "Loading document"
 }

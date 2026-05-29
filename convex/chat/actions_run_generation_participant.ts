@@ -370,6 +370,9 @@ export async function generateForParticipant(
     ctx,
     userId: args.userId,
     chatId: String(args.chatId),
+    messageId: String(participant.messageId),
+    jobId: String(participant.jobId),
+    generationKey: String(participant.jobId),
   };
 
   try {

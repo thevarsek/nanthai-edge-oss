@@ -57,6 +57,9 @@ export interface ToolExecutionContext {
   ctx: ActionCtx;
   userId: string;
   chatId?: string;
+  messageId?: string;
+  jobId?: string;
+  generationKey?: string;
   /**
    * The Convex ID of the current sandbox session (if a Vercel sandbox is
    * active for this chat). Set by data_python_sandbox after session upsert
@@ -271,7 +274,8 @@ export class ToolRegistry {
       toolName === "data_python_sandbox" ||
       toolName === "read_pdf" ||
       toolName === "generate_pdf" ||
-      toolName === "edit_pdf";
+      toolName === "edit_pdf" ||
+      toolName === "propose_docx_edits";
 
     await Promise.all(
       toolCalls.map((tc, index) => {

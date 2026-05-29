@@ -2864,5 +2864,22 @@
   "csv": "CSV",
   "image": "画像",
   "add": "追加",
-  "add_newly_created_document_next_message": "新しく作成したドキュメントを次のメッセージに追加"
+  "add_newly_created_document_next_message": "新しく作成したドキュメントを次のメッセージに追加",
+  "accept": "承認",
+  "reject": "却下",
+  "undo": "元に戻す",
+  "pending": "保留中",
+  "accepted": "承認済み",
+  "rejected": "却下済み",
+  "superseded": "置き換え済み",
+  "insert": "挿入",
+  "text_file": "テキスト",
+  "email": "メール",
+  "document_preview_unavailable": "ドキュメントのプレビューは利用できません。",
+  "no_inline_preview_available": "インラインプレビューは利用できません。",
+  "tracked_changes": "変更履歴",
+  "change_number": "変更 {{number}}",
+  "download_filename": "{{filename}} をダウンロード",
+  "close_document_preview": "ドキュメントプレビューを閉じる",
+  "loading_document": "ドキュメントを読み込み中"
 }

@@ -57,10 +57,10 @@ export async function postProcessHandler(
     ),
   );
   const assistantContents = assistantMessages
-    .filter((msg): msg is NonNullable<typeof msg> =>
+    .filter((msg: any): msg is NonNullable<typeof msg> =>
       msg !== null && msg.status === "completed" && msg.content.trim() !== "",
     )
-    .map((msg) => msg.content.trim());
+    .map((msg: any) => msg.content.trim());
   const assistantContent = assistantContents.join(
     "\n\n<assistant_response_separator>\n\n",
   );

@@ -23,6 +23,7 @@ import { spawnSubagents } from "./spawn_subagents";
 import { generateDocx } from "./generate_docx";
 import { readDocx } from "./read_docx";
 import { editDocx } from "./edit_docx";
+import { proposeDocxEdits } from "./propose_docx_edits";
 import { generatePptx } from "./generate_pptx";
 import { readPptx } from "./read_pptx";
 import { editPptx } from "./edit_pptx";
@@ -120,6 +121,7 @@ import type { ProgressiveToolRegistryOptions } from "./progressive_registry";
 const DOC_TOOLS: RegisteredTool[] = [
   listDocuments, readDocument, findInDocument,
   generateDocx, readDocx, editDocx,
+  proposeDocxEdits,
   generatePptx, readPptx, editPptx,
   generateXlsx, readXlsx, editXlsx,
   generateTextFile, readTextFile,

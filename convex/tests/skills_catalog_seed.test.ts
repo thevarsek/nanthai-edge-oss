@@ -18,8 +18,8 @@ import { validateToolProfileIds } from "../skills/tool_profiles";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 66 seeded skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 66);
+test("SYSTEM_SKILL_CATALOG contains 67 seeded skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 67);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -122,11 +122,11 @@ test("SYSTEM_SKILL_CATALOG: integration ids stay aligned with trigger profiles",
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 55 visible + 1 hidden + 10 integration_managed skills", () => {
+test("SYSTEM_SKILL_CATALOG: 56 visible + 1 hidden + 10 integration_managed skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
   const integrationManaged = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "integration_managed");
-  assert.equal(visible.length, 55);
+  assert.equal(visible.length, 56);
   assert.equal(hidden.length, 1);
   assert.equal(integrationManaged.length, 10);
 });
@@ -239,16 +239,26 @@ test("SYSTEM_SKILL_CATALOG: M38/M39 adjacent skills distinguish tracked changes 
   assert.ok(docx);
   assert.match(docx.instructionsRaw, /edit_docx output as true Word tracked changes/);
   assert.match(docx.instructionsRaw, /Tracked-change behavior/);
+  assert.ok(docx.requiredToolIds.includes("propose_docx_edits"));
 
   const documentReview = bySlug.get("document-review");
   assert.ok(documentReview);
   assert.match(documentReview.summary, /redline-style change lists/);
   assert.match(documentReview.instructionsRaw, /DOCX tracked changes/);
+  assert.ok(documentReview.requiredToolIds.includes("propose_docx_edits"));
 
   const contractReview = bySlug.get("contract-review");
   assert.ok(contractReview);
   assert.match(contractReview.instructionsRaw, /Redline and Tracked-Change Guidance/);
   assert.match(contractReview.instructionsRaw, /accept\/reject-able edit proposals/);
+  assert.ok(contractReview.requiredToolIds.includes("propose_docx_edits"));
+
+  const legalRedline = bySlug.get("legal-redline");
+  assert.ok(legalRedline);
+  assert.match(legalRedline.instructionsRaw, /does not constitute legal advice/);
+  assert.match(legalRedline.instructionsRaw, /fallback|redline-style table/i);
+  assert.match(legalRedline.instructionsRaw, /Do not use this skill for generic document summaries/);
+  assert.ok(legalRedline.requiredToolIds.includes("propose_docx_edits"));
 
   const xlsx = bySlug.get("xlsx");
   assert.ok(xlsx);
@@ -319,12 +329,12 @@ test("SYSTEM_SKILL_CATALOG: persistent-runtime requires the vm tool family", () 
   );
 });
 
-test("SYSTEM_SKILL_CATALOG: docx requires generate_docx, read_docx, edit_docx", () => {
+test("SYSTEM_SKILL_CATALOG: docx requires generate_docx, read_docx, edit_docx, propose_docx_edits", () => {
   const docx = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "docx");
   assert.ok(docx);
   assert.deepEqual(
     [...docx.requiredToolIds].sort(),
-    ["edit_docx", "generate_docx", "read_docx"],
+    ["edit_docx", "generate_docx", "propose_docx_edits", "read_docx"],
   );
 });
 

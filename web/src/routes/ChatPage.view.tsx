@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 interface ChatPageViewProps {
   header: ReactNode;
   messageArea: ReactNode;
+  sidePanel?: ReactNode;
   autonomousToolbar: ReactNode;
   balanceIndicator: ReactNode;
   turnOverrideChips: ReactNode;
@@ -16,6 +17,7 @@ interface ChatPageViewProps {
 export function ChatPageView({
   header,
   messageArea,
+  sidePanel,
   autonomousToolbar,
   balanceIndicator,
   turnOverrideChips,
@@ -28,8 +30,11 @@ export function ChatPageView({
   return (
     <div className="flex-1 flex flex-col h-full min-h-0">
       {header}
-      <div className="flex-1 relative min-h-0">
-        {messageArea}
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="relative min-w-0 flex-1">
+          {messageArea}
+        </div>
+        {sidePanel}
       </div>
       {autonomousToolbar}
       {balanceIndicator}

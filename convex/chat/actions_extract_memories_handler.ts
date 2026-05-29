@@ -132,9 +132,9 @@ export async function extractMemoriesHandler(
     existingMemories.length > 0
       ? "\n\nExisting memories (do NOT duplicate these):\n" +
         existingMemories
-          .filter((memory) => isMemoryActive(memory))
+          .filter((memory: any) => isMemoryActive(memory))
           .slice(0, 60)
-          .map((memory) => `- ${memory.content}`)
+          .map((memory: any) => `- ${memory.content}`)
           .join("\n")
       : "";
 
@@ -217,7 +217,7 @@ export async function extractMemoriesHandler(
 
       const now = Date.now();
       const expiresAt = resolveExpiresAt(item, lifecycle.expiresAt, now);
-      const duplicate = findDuplicateMemory(normalizedContent, existingMemories);
+      const duplicate = findDuplicateMemory(normalizedContent, existingMemories) as { _id?: Id<"memories"> } | null;
       if (duplicate && duplicate._id) {
         await ctx.runMutation(internal.chat.mutations.reinforceMemory, {
           memoryId: duplicate._id,
@@ -238,7 +238,7 @@ export async function extractMemoriesHandler(
       const conflicting = findConflictingMemory(
         normalizedContent,
         lifecycle.memoryType,
-        existingMemories.filter((memory) => isMemoryActive(memory)),
+        existingMemories.filter((memory: any) => isMemoryActive(memory)),
       );
       if (conflicting?._id) {
         await ctx.runMutation(internal.chat.mutations.supersedeMemory, {

@@ -79,6 +79,7 @@ export function generatedDocumentSuggestion(messages: Message[]): ChatAttachment
       name: event.filename,
       type: attachmentTypeForMime(event.mimeType),
       mimeType: event.mimeType,
+      sizeBytes: typeof event.sizeBytes === "number" ? event.sizeBytes : undefined,
     };
   }
   return undefined;

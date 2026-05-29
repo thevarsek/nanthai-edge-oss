@@ -162,3 +162,73 @@ export const getDocument = query({
     };
   },
 });
+
+export const getDocumentEditResolutionTarget = internalQuery({
+  args: {
+    userId: v.string(),
+    documentId: v.id("documents"),
+    editId: v.id("documentEdits"),
+  },
+  handler: async (ctx, args) => {
+    const edit = await ctx.db.get(args.editId);
+    const document = await ctx.db.get(args.documentId);
+    if (!edit || !document || edit.userId !== args.userId || document.userId !== args.userId || edit.documentId !== args.documentId) {
+      return null;
+    }
+    const batch = await ctx.db.get(edit.batchId);
+    if (!batch || batch.userId !== args.userId || batch.documentId !== args.documentId) return null;
+    const edits = await ctx.db
+      .query("documentEdits")
+      .withIndex("by_batch", (q) => q.eq("batchId", batch._id))
+      .collect();
+    const remainingPending = edits.filter((batchEdit) => batchEdit.status === "pending").length;
+    if (edit.status !== "pending") {
+      return {
+        alreadyResolved: true,
+        status: edit.status,
+        batchId: batch._id,
+        currentVersionId: batch.currentVersionId,
+        resolvedVersionId: edit.resolvedVersionId,
+        preResolutionVersionId: edit.preResolutionVersionId,
+        generatedFileId: batch.generatedFileId,
+        remainingPending,
+      };
+    }
+    if (document.currentVersionId !== batch.currentVersionId) {
+      return { superseded: true, status: edit.status, batchId: batch._id };
+    }
+    const currentVersion = await ctx.db.get(batch.currentVersionId);
+    if (!currentVersion) return null;
+    return {
+      alreadyResolved: false,
+      status: edit.status,
+      batchId: batch._id,
+      currentVersionId: currentVersion._id,
+      storageId: currentVersion.storageId,
+      filename: currentVersion.filename,
+      mimeType: currentVersion.mimeType,
+      changeIds: [edit.changeId, edit.delWId, edit.insWId].filter((id): id is string => Boolean(id)),
+      remainingPending,
+    };
+  },
+});
+
+export const getDocumentEditBatchUsage = internalQuery({
+  args: {
+    userId: v.string(),
+    generationKey: v.string(),
+    documentId: v.id("documents"),
+  },
+  handler: async (ctx, args) => {
+    const batch = await ctx.db
+      .query("documentEditBatches")
+      .withIndex("by_generation_document", (q) => q.eq("generationKey", args.generationKey).eq("documentId", args.documentId))
+      .first();
+    if (!batch || batch.userId !== args.userId) return { editCount: 0 };
+    const edits = await ctx.db
+      .query("documentEdits")
+      .withIndex("by_batch", (q) => q.eq("batchId", batch._id))
+      .collect();
+    return { editCount: edits.length };
+  },
+});

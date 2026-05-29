@@ -58,7 +58,7 @@ function sliceDocumentContent(
   };
 }
 
-async function scopedDocuments(toolCtx: ToolExecutionContext): Promise<ScopedDocument[]> {
+export async function scopedDocuments(toolCtx: ToolExecutionContext): Promise<ScopedDocument[]> {
   if (!toolCtx.chatId) return [];
   return await toolCtx.ctx.runMutation(
     internal.documents.mutations.ensureDocumentsForChat,
@@ -69,7 +69,7 @@ async function scopedDocuments(toolCtx: ToolExecutionContext): Promise<ScopedDoc
   ) as ScopedDocument[];
 }
 
-function resolveScopedDocument(
+export function resolveScopedDocument(
   docs: ScopedDocument[],
   raw: unknown,
 ): ScopedDocument | null {

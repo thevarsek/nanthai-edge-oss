@@ -12,6 +12,21 @@ import type { Id } from "@convex/_generated/dataModel";
 import { getFileIconComponent } from "./fileIcons";
 import { workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 
+export type GeneratedFileForPreview = {
+  _id: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes?: number | null;
+  downloadUrl?: string | null;
+  documentId?: Id<"documents"> | string;
+  documentVersionId?: Id<"documentVersions"> | string;
+  toolName?: string;
+};
+
+export type GeneratedFileOpenRequest = {
+  file: GeneratedFileForPreview;
+};
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -22,6 +37,20 @@ function isImage(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
+function opensInDocumentPanel(file: GeneratedFileForPreview): boolean {
+  const name = file.filename.toLowerCase();
+  const mimeType = file.mimeType.toLowerCase();
+  if (mimeType.includes("pdf") || name.endsWith(".pdf")) return Boolean(file.downloadUrl);
+  if (!file.documentVersionId) return false;
+  return (
+    mimeType.includes("wordprocessingml") ||
+    mimeType.startsWith("text/") ||
+    name.endsWith(".docx") ||
+    name.endsWith(".txt") ||
+    name.endsWith(".md")
+  );
+}
+
 function fileTypeLabel(mimeType: string, t: TFunction): string {
   if (mimeType.includes("wordprocessingml") || mimeType.includes("msword")) return t("word_document");
   if (mimeType.includes("spreadsheet") || mimeType.includes("excel")) return t("spreadsheet");
@@ -29,6 +58,8 @@ function fileTypeLabel(mimeType: string, t: TFunction): string {
   if (mimeType.includes("pdf")) return t("pdf");
   if (mimeType.includes("csv")) return t("csv");
   if (mimeType.startsWith("image/")) return t("image");
+  if (mimeType.startsWith("text/")) return t("text_file");
+  if (mimeType === "message/rfc822") return t("email");
   return mimeType.split("/").pop() ?? t("file");
 }
 
@@ -92,7 +123,13 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
   );
 }
 
-export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> }) {
+export function GeneratedFilesCard({
+  messageId,
+  onOpenFile,
+}: {
+  messageId: Id<"messages">;
+  onOpenFile?: (request: GeneratedFileOpenRequest) => void;
+}) {
   const { t } = useTranslation();
   const files = useQuery(api.chat.queries.getGeneratedFilesByMessage, { messageId });
   if (!files?.length) return null;
@@ -119,6 +156,7 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
 
       {/* Non-image file download links */}
       {others.map((f) => {
+        const canOpenInPanel = onOpenFile && opensInDocumentPanel(f);
         const content = (
           <>
           <div className={workspaceIconBlockClass()}>
@@ -131,7 +169,6 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
             <p className="truncate text-sm font-medium text-foreground">{f.filename}</p>
             <p className="text-xs text-muted">{fileMetadata(f, t)}</p>
           </div>
-          <Download size={16} className="text-muted" />
           </>
         );
         if (!f.downloadUrl) {
@@ -147,6 +184,36 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
             </div>
           );
         }
+        if (canOpenInPanel) {
+          return (
+            <div
+              key={f._id}
+              className={workspaceSurfaceClass(
+                "flex min-h-[64px] items-center gap-2 px-3 py-2.5 text-foreground transition-colors hover:bg-surface-3/50",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => onOpenFile({ file: f })}
+                className="flex min-w-0 flex-1 items-center gap-3 text-left"
+              >
+                {content}
+              </button>
+              <a
+                href={f.downloadUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                download={f.filename}
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-3 hover:text-foreground"
+                aria-label={t("download_filename", { filename: f.filename })}
+                title={t("download")}
+                onClick={(event) => event.stopPropagation()}
+              >
+                <Download size={16} />
+              </a>
+            </div>
+          );
+        }
         return (
           <a
             key={f._id}
@@ -159,6 +226,7 @@ export function GeneratedFilesCard({ messageId }: { messageId: Id<"messages"> })
             )}
           >
             {content}
+            <Download size={16} className="text-muted" />
           </a>
         );
       })}

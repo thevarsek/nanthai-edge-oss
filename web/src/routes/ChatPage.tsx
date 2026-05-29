@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { useChat } from "@/hooks/useChat";
+import { useChat, type Message } from "@/hooks/useChat";
 import { useBranching } from "@/hooks/useBranching";
 import { useMessageGrouping, messageGroupKey } from "@/hooks/useMessageGrouping";
 import { useConnectedAccounts, useSharedData, useCreditBalance, useModelSummaries } from "@/hooks/useSharedData";
@@ -38,6 +38,8 @@ import { ChatHeader, EmptyChatState, ChatModalPanels } from "@/routes/ChatPage.h
 import { SlashCommandPalette, TurnOverrideChips } from "@/components/chat/SlashCommandPalette";
 import { ChatSearchContext } from "@/components/chat/ChatSearchContext";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
+import { DocumentPreviewPanel, type DocumentPreviewSelection } from "@/components/chat/DocumentPreviewPanel";
+import type { GeneratedFileOpenRequest } from "@/components/chat/GeneratedFilesCard";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import {
   validateSendState as validateChatSendState,
@@ -117,6 +119,7 @@ export function ChatPage() {
     updateChat,
   });
   const [showSlashPalette, setShowSlashPalette] = useState(false);
+  const [documentPreview, setDocumentPreview] = useState<DocumentPreviewSelection | null>(null);
   const handleComposerTextChange = useCallback((text: string) => {
     setShowSlashPalette(text === "/");
   }, []);
@@ -390,6 +393,19 @@ export function ChatPage() {
     () => projectGeneratedDocumentSuggestion(visibleMessages),
     [visibleMessages],
   );
+  const liveDocumentPreview = useMemo(() => {
+    if (!documentPreview) return null;
+    const previewBatchId = documentPreview.annotations?.[0]?.editBatchId;
+    const liveAnnotations = visibleMessages.flatMap((message) => message.documentEditAnnotations ?? []).filter((annotation) => (
+      (previewBatchId && annotation.editBatchId === previewBatchId) ||
+      (documentPreview.generatedFileId && annotation.generatedFileId === documentPreview.generatedFileId)
+    ));
+    if (liveAnnotations.length === 0) return documentPreview;
+    const liveVersionId = liveAnnotations.find((annotation) => annotation.editId === documentPreview.focusEditId)?.versionId
+      ?? liveAnnotations[0]?.versionId
+      ?? documentPreview.versionId;
+    return { ...documentPreview, versionId: liveVersionId, annotations: liveAnnotations };
+  }, [documentPreview, visibleMessages]);
 
   const startResearchPaper = useMutation(api.search.mutations.startResearchPaper);
 
@@ -558,6 +574,37 @@ export function ChatPage() {
     if (!typedChatId) return;
     navigate(`/app/chat/${await forkChat({ chatId: typedChatId, atMessageId: messageId })}`);
   }, [typedChatId, forkChat, navigate]);
+  const handleOpenGeneratedFile = useCallback((request: GeneratedFileOpenRequest & { message: Message }) => {
+    const fileId = request.file._id as Id<"generatedFiles">;
+    const annotations = (request.message.documentEditAnnotations ?? []).filter((annotation) =>
+      !annotation.generatedFileId || annotation.generatedFileId === fileId
+    );
+    setDocumentPreview({
+      messageId: request.message._id,
+      file: request.file,
+      generatedFileId: request.file._id,
+      filename: request.file.filename,
+      mimeType: request.file.mimeType,
+      sizeBytes: request.file.sizeBytes,
+      downloadUrl: request.file.downloadUrl,
+      versionId: request.file.documentVersionId,
+      annotations,
+    });
+  }, []);
+  const handleOpenDocumentEdit = useCallback((annotation: NonNullable<Message["documentEditAnnotations"]>[number], message: Message) => {
+    const batchAnnotations = visibleMessages.flatMap((candidate) => candidate.documentEditAnnotations ?? []).filter((candidate) =>
+      candidate.editBatchId === annotation.editBatchId
+    );
+    setDocumentPreview({
+      messageId: message._id,
+      generatedFileId: annotation.generatedFileId,
+      filename: annotation.filename,
+      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      versionId: annotation.versionId,
+      annotations: batchAnnotations.length > 0 ? batchAnnotations : [annotation],
+      focusEditId: annotation.editId,
+    });
+  }, [visibleMessages]);
   const handleJumpToNext = useCallback((targetMessageId: Id<"messages">) => {
     const el = chatSearchScrollContainerRef.current?.querySelector(
       `[data-message-id="${targetMessageId}"]`,
@@ -601,12 +648,12 @@ export function ChatPage() {
               group.type === "single" ? (
                 <div key={group.message._id} data-message-id={group.message._id}>
                   {branchNodes.has(group.message._id) && <BranchIndicator node={branchNodes.get(group.message._id)!} onNavigate={handleBranchNavigate} onJumpToNext={handleJumpToNext} />}
-                  <MessageBubble message={group.message} isStreaming={isGenerating && group.message.status === "streaming"} participants={participants} onRetry={handleRetry} onFork={handleFork} onRetryWithDifferentModel={handleRetryWithDifferentModel} messageCost={messageCosts[group.message._id]} showAdvancedStats={showAdvancedStats} />
+                  <MessageBubble message={group.message} isStreaming={isGenerating && group.message.status === "streaming"} participants={participants} onRetry={handleRetry} onFork={handleFork} onRetryWithDifferentModel={handleRetryWithDifferentModel} messageCost={messageCosts[group.message._id]} showAdvancedStats={showAdvancedStats} onOpenGeneratedFile={handleOpenGeneratedFile} onOpenDocumentEdit={handleOpenDocumentEdit} />
                 </div>
               ) : (
                 <div key={messageGroupKey(group)} data-message-id={group.messages[0]?._id}>
                   {group.messages[0] && branchNodes.has(group.messages[0]._id) && <BranchIndicator node={branchNodes.get(group.messages[0]._id)!} onNavigate={handleBranchNavigate} onJumpToNext={handleJumpToNext} />}
-                  <MultiModelResponseGroup groupId={group.groupId} messages={group.messages} isStreaming={isGenerating} participants={participants} onRetry={handleRetry} onFork={handleFork} onRetryWithDifferentModel={handleRetryWithDifferentModel} messageCosts={messageCosts} showAdvancedStats={showAdvancedStats} />
+                  <MultiModelResponseGroup groupId={group.groupId} messages={group.messages} isStreaming={isGenerating} participants={participants} onRetry={handleRetry} onFork={handleFork} onRetryWithDifferentModel={handleRetryWithDifferentModel} messageCosts={messageCosts} showAdvancedStats={showAdvancedStats} onOpenGeneratedFile={handleOpenGeneratedFile} onOpenDocumentEdit={handleOpenDocumentEdit} />
                 </div>
               ),
             )}
@@ -618,6 +665,12 @@ export function ChatPage() {
           </SearchSessionContext.Provider>
           </ChatSearchContext.Provider>
         </AudioPlaybackProvider>}
+      sidePanel={liveDocumentPreview ? (
+        <DocumentPreviewPanel
+          selection={liveDocumentPreview}
+          onClose={() => setDocumentPreview(null)}
+        />
+      ) : null}
       autonomousToolbar={<AutonomousToolbar state={autonomous.state} onPause={autonomous.pause} onResume={autonomous.resume} onStop={autonomous.stop} onDismiss={autonomous.dismissEnded} />}
       balanceIndicator={typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}
       turnOverrideChips={<TurnOverrideChips

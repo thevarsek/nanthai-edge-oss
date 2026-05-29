@@ -2864,5 +2864,22 @@
   "csv": "CSV",
   "image": "Immagine",
   "add": "Aggiungi",
-  "add_newly_created_document_next_message": "Aggiungi il documento appena creato al prossimo messaggio"
+  "add_newly_created_document_next_message": "Aggiungi il documento appena creato al prossimo messaggio",
+  "accept": "Accetta",
+  "reject": "Rifiuta",
+  "undo": "Annulla",
+  "pending": "In sospeso",
+  "accepted": "Accettata",
+  "rejected": "Rifiutata",
+  "superseded": "Sostituita",
+  "insert": "Inserisci",
+  "text_file": "Testo",
+  "email": "Email",
+  "document_preview_unavailable": "Anteprima documento non disponibile.",
+  "no_inline_preview_available": "Nessuna anteprima inline disponibile.",
+  "tracked_changes": "Modifiche tracciate",
+  "change_number": "Modifica {{number}}",
+  "download_filename": "Scarica {{filename}}",
+  "close_document_preview": "Chiudi anteprima documento",
+  "loading_document": "Caricamento documento"
 }

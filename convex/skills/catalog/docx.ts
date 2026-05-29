@@ -2,7 +2,7 @@
 // =============================================================================
 // System skill: docx
 // Adapted from .agents/skills/docx/SKILL.md for NanthAI runtime.
-// NanthAI has generate_docx, read_docx, edit_docx tools.
+// NanthAI has generate_docx, read_docx, edit_docx, and propose_docx_edits tools.
 // =============================================================================
 
 import { SystemSkillSeedData } from "../mutations_seed";
@@ -23,6 +23,7 @@ Create, read, and edit Word documents using NanthAI's document tools.
 - **generate_docx** — Create a new .docx from structured sections
 - **read_docx** — Extract text and metadata from an existing .docx
 - **edit_docx** — Replace content in an existing .docx (read → regenerate)
+- **propose_docx_edits** — Add precise Word tracked changes to a scoped DOCX for accept/reject review
 
 ## Quick-Start Recipe
 
@@ -128,9 +129,9 @@ The model must provide the complete document content — this is a full replacem
 When the user asks for a redline, tracked changes, accept/reject edits, or clause-level revisions in an existing DOCX, distinguish the requested workflow from ordinary full-document regeneration:
 
 - **Current edit_docx behavior:** full replacement document generated from supplied sections.
-- **Tracked-change behavior:** proposed edits that preserve the Word document and expose accept/reject state.
+- **Tracked-change behavior:** use read_document or find_in_document first, then call propose_docx_edits with minimal find/replace edits and short source-copied context anchors. The backend preserves the Word document and exposes accept/reject state.
 
-Do not present edit_docx output as true Word tracked changes. If tracked-change tooling is available in the runtime, use that stricter workflow for requested redlines. If it is not available, offer a redline-style review with precise proposed changes, reasons, and citations, or generate a revised DOCX only after the user accepts that it is a replacement draft.
+Do not present edit_docx output as true Word tracked changes. If propose_docx_edits reports ambiguous or missing anchors, re-read the relevant section and retry with longer context. If tracked-change tooling is unavailable or unsupported for the file, offer a redline-style review with precise proposed changes, reasons, and citations, or generate a revised DOCX only after the user accepts that it is a replacement draft.
 
 ## Document Type Recipes
 
@@ -169,7 +170,7 @@ Do not present edit_docx output as true Word tracked changes. If tracked-change 
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["generate_docx", "read_docx", "edit_docx"],
+  requiredToolIds: ["generate_docx", "read_docx", "edit_docx", "propose_docx_edits"],
   requiredToolProfiles: ["docs"],
   requiredIntegrationIds: [],
 };

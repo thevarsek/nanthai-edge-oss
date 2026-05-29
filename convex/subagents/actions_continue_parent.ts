@@ -86,8 +86,8 @@ async function reconcileOrFailStaleResume(
 
   const terminalState = mapParentTerminalState(parentMessage?.status, parentJob?.status);
   if (terminalState === "completed") {
-    const childGeneratedFiles = runs.flatMap((run) => run.generatedFiles ?? []);
-    const childGeneratedCharts = runs.flatMap((run) => run.generatedCharts ?? []);
+    const childGeneratedFiles = runs.flatMap((run: any) => run.generatedFiles ?? []);
+    const childGeneratedCharts = runs.flatMap((run: any) => run.generatedCharts ?? []);
     if (childGeneratedFiles.length > 0) {
       await ctx.runMutation(internal.subagents.mutations.attachGeneratedFilesToMessage, {
         messageId: batch.parentMessageId,
@@ -176,8 +176,8 @@ export async function continueParentAfterSubagentsHandler(
     existingParentJob?.status,
   );
   if (existingTerminalState) {
-    const childGeneratedFiles = runs.flatMap((run) => run.generatedFiles ?? []);
-    const childGeneratedCharts = runs.flatMap((run) => run.generatedCharts ?? []);
+    const childGeneratedFiles = runs.flatMap((run: any) => run.generatedFiles ?? []);
+    const childGeneratedCharts = runs.flatMap((run: any) => run.generatedCharts ?? []);
     if (existingTerminalState === "completed" && childGeneratedFiles.length > 0) {
       await ctx.runMutation(internal.subagents.mutations.attachGeneratedFilesToMessage, {
         messageId: batch.parentMessageId,
@@ -220,7 +220,7 @@ export async function continueParentAfterSubagentsHandler(
     requestParams?: { webSearchEnabled?: boolean };
   };
   const continuationPayload = buildParentContinuationPayload(
-    runs.map((run) => ({
+    runs.map((run: any) => ({
       childIndex: run.childIndex,
       title: run.title,
       status: run.status,
@@ -439,8 +439,8 @@ export async function continueParentAfterSubagentsHandler(
       throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Parent continuation unexpectedly deferred to subagents again." });
     }
 
-    const childGeneratedFiles = runs.flatMap((run) => run.generatedFiles ?? []);
-    const childGeneratedCharts = runs.flatMap((run) => run.generatedCharts ?? []);
+    const childGeneratedFiles = runs.flatMap((run: any) => run.generatedFiles ?? []);
+    const childGeneratedCharts = runs.flatMap((run: any) => run.generatedCharts ?? []);
     if (childGeneratedFiles.length > 0) {
       await ctx.runMutation(internal.subagents.mutations.attachGeneratedFilesToMessage, {
         messageId: batch.parentMessageId,

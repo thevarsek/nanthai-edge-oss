@@ -2,6 +2,7 @@ export type DocumentEventAttachmentPayload = {
   storageId: string;
   filename: string;
   mimeType: string;
+  sizeBytes?: number;
 };
 
 export function hasDocumentAttachmentPayload(
@@ -9,6 +10,7 @@ export function hasDocumentAttachmentPayload(
     storageId?: unknown;
     filename?: unknown;
     mimeType?: unknown;
+    sizeBytes?: unknown;
   },
 ): event is DocumentEventAttachmentPayload {
   return (

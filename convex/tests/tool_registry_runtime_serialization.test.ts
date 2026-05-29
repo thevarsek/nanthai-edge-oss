@@ -25,7 +25,7 @@ test("createTool defaults parameter schemas to strict additionalProperties false
   );
 });
 
-test("workspace and analytics tools are serialized within one tool round", async () => {
+test("workspace, analytics, and DOCX mutation tools are serialized within one tool round", async () => {
   const registry = new ToolRegistry();
   const starts: string[] = [];
   const finishes: string[] = [];
@@ -50,6 +50,7 @@ test("workspace and analytics tools are serialized within one tool round", async
   registry.register(
     makeTool("workspace_import_file", 30),
     makeTool("data_python_exec", 10),
+    makeTool("propose_docx_edits", 5),
     makeTool("fetch_image", 5),
   );
 
@@ -68,6 +69,11 @@ test("workspace and analytics tools are serialized within one tool round", async
     {
       id: "call_3",
       type: "function",
+      function: { name: "propose_docx_edits", arguments: "{}" },
+    },
+    {
+      id: "call_4",
+      type: "function",
       function: { name: "fetch_image", arguments: "{}" },
     },
   ], {
@@ -77,21 +83,27 @@ test("workspace and analytics tools are serialized within one tool round", async
   });
   const elapsedMs = Date.now() - startedAt;
 
-  assert.equal(results.length, 3);
+  assert.equal(results.length, 4);
   assert.deepEqual(
     results.map((entry) => entry.result.success),
-    [true, true, true],
+    [true, true, true, true],
   );
   assert.equal(starts.indexOf("workspace_import_file") >= 0, true);
   assert.equal(starts.indexOf("data_python_exec") >= 0, true);
+  assert.equal(starts.indexOf("propose_docx_edits") >= 0, true);
   assert.equal(finishes.indexOf("workspace_import_file") >= 0, true);
   assert.equal(finishes.indexOf("data_python_exec") >= 0, true);
+  assert.equal(finishes.indexOf("propose_docx_edits") >= 0, true);
   assert.ok(
     finishes.indexOf("workspace_import_file") < starts.indexOf("data_python_exec"),
     "Expected data_python_exec to start only after workspace_import_file finished",
   );
   assert.ok(
-    elapsedMs >= 35,
-    `Expected serialized runtime tools to take at least 35ms, got ${elapsedMs}ms`,
+    finishes.indexOf("data_python_exec") < starts.indexOf("propose_docx_edits"),
+    "Expected propose_docx_edits to start only after data_python_exec finished",
+  );
+  assert.ok(
+    elapsedMs >= 40,
+    `Expected serialized runtime tools to take at least 40ms, got ${elapsedMs}ms`,
   );
 });

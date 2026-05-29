@@ -59,6 +59,8 @@ const PURGE_ORDER = [
   "contextAssemblyLogs",
   "toolMemories",
   "toolExecutionArtifacts",
+  "documentEdits",
+  "documentEditBatches",
   "documentVersions",
   // User-scoped skills (scope="user", ownerUserId)
   "skills",

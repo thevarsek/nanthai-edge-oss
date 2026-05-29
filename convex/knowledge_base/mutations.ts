@@ -87,6 +87,21 @@ async function deleteDocumentForDeletedRecord(
           .first();
   if (!document || document.userId !== userId) return;
 
+  const editBatches = await ctx.db
+    .query("documentEditBatches")
+    .withIndex("by_document", (q) => q.eq("documentId", document._id))
+    .collect();
+  for (const batch of editBatches) {
+    const edits = await ctx.db
+      .query("documentEdits")
+      .withIndex("by_batch", (q) => q.eq("batchId", batch._id))
+      .collect();
+    for (const edit of edits) {
+      await ctx.db.delete(edit._id);
+    }
+    await ctx.db.delete(batch._id);
+  }
+
   const versions = await ctx.db
     .query("documentVersions")
     .withIndex("by_document", (q) => q.eq("documentId", document._id))
