@@ -343,12 +343,15 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const [kbVideoRoles, setKbVideoRoles] = useState<Record<string, "first_frame" | "last_frame" | "reference">>({});
 
   useEffect(() => {
-    setKbVideoRoles((prev) => {
-      const kept = Object.fromEntries(
-        Object.entries(prev).filter(([sid]) => kbAttachments.some((a) => a.storageId === sid)),
-      );
-      return Object.keys(kept).length === Object.keys(prev).length ? prev : kept;
-    });
+    const timer = window.setTimeout(() => {
+      setKbVideoRoles((prev) => {
+        const kept = Object.fromEntries(
+          Object.entries(prev).filter(([sid]) => kbAttachments.some((a) => a.storageId === sid)),
+        );
+        return Object.keys(kept).length === Object.keys(prev).length ? prev : kept;
+      });
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [kbAttachments]);
 
   useEffect(() => { saveViewport(chatId as string, viewport); }, [chatId, viewport]);
@@ -366,14 +369,18 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
 
   useEffect(() => {
     if (localBranchLeafId && localBranchLeafId === chat?.activeBranchLeafId) {
-      setLocalBranchLeafId(null);
+      const timer = window.setTimeout(() => setLocalBranchLeafId(null), 0);
+      return () => window.clearTimeout(timer);
     } else if (
       localBranchLeafId &&
       chat?.activeBranchLeafFocusOrder !== undefined &&
       chat.activeBranchLeafFocusOrder >= activeBranchFocusOrderRef.current
     ) {
-      setLocalBranchLeafId(null);
-      setFocusedId(chat.activeBranchLeafId ?? null);
+      const timer = window.setTimeout(() => {
+        setLocalBranchLeafId(null);
+        setFocusedId(chat.activeBranchLeafId ?? null);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
   }, [chat?.activeBranchLeafFocusOrder, chat?.activeBranchLeafId, localBranchLeafId]);
 

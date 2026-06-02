@@ -79,6 +79,7 @@ export function MessageInput({
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
+  const [dismissedSuggestionStorageIds, setDismissedSuggestionStorageIds] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { t } = useTranslation();
 
@@ -91,6 +92,9 @@ export function MessageInput({
   // Survives in-session navigation (see web/src/stores/chatDraftStore.ts).
   useEffect(() => {
     const draft = getChatDraft(chatId);
+    // Draft hydration must be synchronous with the active chat key; deferring
+    // leaves stale text visible when switching chats.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setText(draft.text);
     setAttachments(draft.attachments);
     setUploadError(null);
@@ -264,7 +268,6 @@ export function MessageInput({
     attachments.some((attachment) => attachment.storageId === suggestionStorageId) ||
     extraAttachments.some((attachment) => attachment.storageId === suggestionStorageId)
   );
-  const [dismissedSuggestionStorageIds, setDismissedSuggestionStorageIds] = useState<Set<string>>(() => new Set());
   const showGeneratedDocumentSuggestion =
     !!generatedDocumentSuggestion &&
     !!suggestionStorageId &&

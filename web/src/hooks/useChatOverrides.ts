@@ -131,14 +131,12 @@ export function useChatOverrides({
   useEffect(() => {
     if (chatId || draftSkillDirtyRef.current) return;
     // New-chat draft state intentionally follows persona defaults until the user edits it.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftSkillOverrides(new Map(personaSkillDefaultsMap));
   }, [chatId, personaSkillDefaultsMap]);
 
   useEffect(() => {
     if (chatId || draftIntegrationDirtyRef.current) return;
     // New-chat draft state intentionally follows persona defaults until the user edits it.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftIntegrationOverrides(new Map(personaIntegrationDefaultsMap));
   }, [chatId, personaIntegrationDefaultsMap]);
 

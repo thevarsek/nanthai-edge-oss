@@ -162,6 +162,8 @@ export function useCreditBalance() {
       })();
     } else if (hasApiKey === false) {
       refreshIdRef.current += 1;
+      // Balance belongs to the current API-key auth state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBalance(null);
       setLoading(false);
     }

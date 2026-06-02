@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 // =============================================================================
@@ -21,6 +21,15 @@ const REPO_ROOT = join(__dirname, "..", "..");
 
 function readRepoFile(relativePath: string): string {
   return readFileSync(join(REPO_ROOT, relativePath), "utf8");
+}
+
+function readRepoFilesMatching(directory: string, pattern: RegExp): string {
+  const directoryPath = join(REPO_ROOT, directory);
+  return readdirSync(directoryPath)
+    .filter((fileName) => pattern.test(fileName))
+    .sort()
+    .map((fileName) => readFileSync(join(directoryPath, fileName), "utf8"))
+    .join("\n");
 }
 
 test("KBFileRecord.source — Convex backend declares upload | generated | drive", () => {
@@ -65,7 +74,10 @@ test("KBFileRecord.source — web KBFile + KBSource declare the canonical triple
 test("KBFileRecord.source — iOS KBFile DTO comment matches canonical triple", () => {
   // iOS uses `String` at runtime (Swift Decodable can't enforce a union),
   // so the doc comment is the only contract surface to lock down.
-  const dto = readRepoFile("NanthAi-Edge/NanthAi-Edge/Models/DTOs/ConvexTypes.swift");
+  const dto = readRepoFilesMatching(
+    "NanthAi-Edge/NanthAi-Edge/Models/DTOs",
+    /^ConvexTypes.*\.swift$/,
+  );
   assert.match(
     dto,
     /let\s+source:\s*String\s*\/\/\s*"upload"\s*\|\s*"generated"\s*\|\s*"drive"/,

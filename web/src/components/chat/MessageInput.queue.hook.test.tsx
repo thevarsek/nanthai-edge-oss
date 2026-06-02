@@ -3,16 +3,18 @@ import { describe, expect, it, vi } from "vitest";
 import { useQueuedFollowUp } from "./MessageInput.queue.hook";
 
 function Harness({
+  chatId = "chat_1",
   text,
   isGenerating = true,
   onSend = vi.fn(),
 }: {
+  chatId?: string;
   text: string;
   isGenerating?: boolean;
   onSend?: (args: { text: string; attachments?: unknown[] }) => boolean | void | Promise<boolean | void>;
 }) {
   const queue = useQueuedFollowUp({
-    chatId: "chat_1",
+    chatId,
     isGenerating,
     isAutonomousActive: false,
     text,
@@ -105,5 +107,22 @@ describe("useQueuedFollowUp", () => {
 
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
     expect(screen.getAllByText("retry later")).toHaveLength(1);
+  });
+
+  it("does not drain a queued follow-up after switching away from its chat", async () => {
+    const onSend = vi.fn();
+    const { rerender } = render(<Harness chatId="chat_1" text="old chat follow-up" isGenerating onSend={onSend} />);
+
+    act(() => {
+      screen.getByRole("button", { name: "queue" }).click();
+    });
+
+    await act(async () => {
+      rerender(<Harness chatId="chat_2" text="" isGenerating={false} onSend={onSend} />);
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.queryByText("old chat follow-up")).not.toBeInTheDocument();
   });
 });

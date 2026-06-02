@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
@@ -34,7 +34,9 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
   const currentModelId = useRef(modelId);
   const pendingSavedDraft = useRef<ModelSettingsDraftSnapshot | null>(null);
 
-  currentModelId.current = modelId;
+  useLayoutEffect(() => {
+    currentModelId.current = modelId;
+  }, [modelId]);
 
   useEffect(() => {
     const modelChanged = lastModelId.current !== modelId;

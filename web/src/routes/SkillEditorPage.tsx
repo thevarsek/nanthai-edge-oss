@@ -64,6 +64,8 @@ function SkillEditorPageContent() {
   // Populate form when editing existing skill
   useEffect(() => {
     if (existingSkill) {
+      // The edit form mirrors the loaded skill record.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm({
         name: existingSkill.name,
         summary: existingSkill.summary ?? "",

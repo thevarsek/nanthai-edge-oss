@@ -57,6 +57,7 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
   const [isPinnedReorderMode, setIsPinnedReorderMode] = useState(false);
   const [chatLimit, setChatLimit] = useState(CHAT_PAGE_SIZE);
   const [isCreatingChat, setIsCreatingChat] = useState(false);
+  const [cachedChatsState, setCachedChatsState] = useState<{ key: string; value: typeof chatsQuery } | null>(null);
   const isCreatingChatRef = useRef(false);
   const sentinelRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -98,11 +99,14 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   // Keep the previous chat data visible while loading more (prevents scroll reset).
   // Only show skeleton on true initial load (prevChatsRef is still null).
-  const prevChatsRef = useRef<{ key: string; value: typeof chatsQuery } | null>(null);
-  if (chatsQuery !== undefined) {
-    prevChatsRef.current = { key: chatsQueryKey, value: chatsQuery };
-  }
-  const cachedChats = prevChatsRef.current?.key === chatsQueryKey ? prevChatsRef.current.value : null;
+  useEffect(() => {
+    if (chatsQuery === undefined) return;
+    // Preserve visible chat rows while the next page/filter request is loading.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCachedChatsState({ key: chatsQueryKey, value: chatsQuery });
+  }, [chatsQuery, chatsQueryKey]);
+
+  const cachedChats = cachedChatsState?.key === chatsQueryKey ? cachedChatsState.value : null;
   const chatsRaw = chatsQuery ?? cachedChats;
   const isInitialLoad = chatsQuery === undefined && cachedChats === null;
 
@@ -112,6 +116,8 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   useEffect(() => {
     if (!searchQuery) {
+      // Clearing search should immediately return to the unfiltered query.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDebouncedSearch("");
       return;
     }
@@ -152,6 +158,8 @@ export function Sidebar({ onToggleCollapse }: SidebarProps) {
 
   // Reset chatLimit when filter changes so we don't over-fetch for a new filter
   useEffect(() => {
+    // Pagination limit is scoped to the current filter tuple.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setChatLimit(CHAT_PAGE_SIZE);
   }, [showScheduledOnly, activeFolderId, debouncedSearch]);
 

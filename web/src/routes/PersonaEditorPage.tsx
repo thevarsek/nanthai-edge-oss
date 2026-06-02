@@ -95,6 +95,8 @@ export function PersonaEditorPage() {
         .filter(([, enabled]) => enabled)
         .map(([integrationId]) => integrationId as IntegrationKey),
     );
+    // The edit form mirrors the loaded persona record.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm({
       displayName: existingPersona.displayName,
       personaDescription: existingPersona.personaDescription ?? "",

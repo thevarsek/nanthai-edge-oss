@@ -43,10 +43,13 @@ export function OpenRouterConnectPage() {
 
   useEffect(() => {
     if (status !== "loading" || isAuthLoading) {
+      // Delay copy is derived from the current callback/auth state.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAuthDelayMessage("");
       return;
     }
     if (isAuthenticated) {
+      // Delay copy is derived from the current callback/auth state.
       setAuthDelayMessage("");
       return;
     }

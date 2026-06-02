@@ -55,13 +55,13 @@ export function AuthGuard({ children, requireOnboarding = true }: AuthGuardProps
       prefs === null &&
       !ensureFiredRef.current
     ) {
-      // Auth bootstrap intentionally creates missing prefs from the guard effect.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       void runEnsurePrefs();
     }
     // Reset the guard if the user signs out and back in
     if (!isConvexAuthenticated) {
       ensureFiredRef.current = false;
+      // Auth bootstrap error is scoped to the current Convex session.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setBootstrapError(null);
     }
   }, [isConvexAuthenticated, prefs, runEnsurePrefs]);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 
 interface QueuedFollowUp {
@@ -39,12 +39,23 @@ export function useQueuedFollowUp({
   const isGeneratingRef = useRef(isGenerating);
   const chatIdRef = useRef(chatId);
   const didDrainForCurrentIdleRef = useRef(false);
-  chatIdRef.current = chatId;
   const activeQueuedFollowUps = useMemo(
     () => queuedFollowUps.filter((queued) => queued.chatId === chatId),
     [chatId, queuedFollowUps],
   );
   const activeQueuedFollowUp = activeQueuedFollowUps[0]?.text ?? null;
+
+  useLayoutEffect(() => {
+    chatIdRef.current = chatId;
+  }, [chatId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setQueuedFollowUps((current) => current.filter((queued) => queued.chatId === chatId));
+      setQueuedActionState("idle");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [chatId]);
 
   useEffect(() => {
     isGeneratingRef.current = isGenerating;
@@ -52,11 +63,6 @@ export function useQueuedFollowUp({
       didDrainForCurrentIdleRef.current = false;
     }
   }, [isGenerating]);
-
-  useEffect(() => {
-    setQueuedFollowUps((current) => current.filter((queued) => queued.chatId === chatId));
-    setQueuedActionState("idle");
-  }, [chatId]);
 
   const canQueueMessage =
     !disabled &&
