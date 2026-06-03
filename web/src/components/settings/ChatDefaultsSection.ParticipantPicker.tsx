@@ -1,9 +1,3 @@
-// ChatDefaultsSection.ParticipantPicker.tsx
-// Single-select participant picker for choosing a default participant.
-// Mirrors ChatParticipantPicker (same filters, sort, wizard, info sheet,
-// provider logos, persona avatars, trend/guidance badges) but allows only
-// one selection instead of up to 3.
-
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -24,8 +18,6 @@ import {
 import { SortMenuPortal } from "@/components/chat/ChatParticipantPicker.sortmenu";
 import { buildModelNameMap } from "@/lib/modelDisplay";
 
-// ─── Props ──────────────────────────────────────────────────────────────────
-
 interface ParticipantPickerProps {
   selectedPersonaId: string | null;
   selectedModelId: string;
@@ -35,8 +27,6 @@ interface ParticipantPickerProps {
   title?: string;
   googleIntegrationsActive?: boolean;
 }
-
-// ─── Icon maps (same as ChatParticipantPicker) ──────────────────────────────
 
 const SORT_ICONS: Record<SortKey, React.ReactNode> = {
   recommended: <Sparkles size={12} />, coding: <Code2 size={12} />,
@@ -51,8 +41,6 @@ const CAP_ICONS: Record<CapFilter, React.ReactNode> = {
   vision: <Eye size={11} />, imageGen: <Paintbrush size={11} />,
   videoGen: <Video size={11} />, tools: <Wrench size={11} />,
 };
-
-// ─── Component ──────────────────────────────────────────────────────────────
 
 export function ParticipantPicker({
   selectedPersonaId,
@@ -92,7 +80,6 @@ export function ParticipantPicker({
     [modelSummaries],
   );
 
-  // ── Selected ID sets (single-select: at most one persona OR one model) ──
   const selectedPersonaIds = useMemo(
     () => selectedPersonaId ? new Set([selectedPersonaId]) : new Set<string>(),
     [selectedPersonaId],
@@ -102,7 +89,6 @@ export function ParticipantPicker({
     [selectedPersonaId, selectedModelId],
   );
 
-  // ── Filtered personas ───────────────────────────────────────────────────
   const filteredPersonas = useMemo<PersonaItem[]>(() => {
     if (!personas) return [];
     const list = (personas as PersonaItem[]).filter((p) =>
@@ -111,13 +97,11 @@ export function ParticipantPicker({
     return list.sort((a, b) => a.displayName.localeCompare(b.displayName));
   }, [personas, query]);
 
-  // ── Filtered & sorted models (reuses shared pipeline) ───────────────────
   const filteredModels = useMemo(
     () => filterAndSortModels(models, search, sortKey, activeFilters),
     [models, search, sortKey, activeFilters],
   );
 
-  // ── Toggle handlers (single-select: pick and close) ─────────────────────
   const toggleFilter = useCallback((f: CapFilter) => {
     setActiveFilters((prev) => toggleCapFilter(prev, f));
   }, []);
@@ -147,10 +131,8 @@ export function ParticipantPicker({
     [onSelectModel, onClose],
   );
 
-  // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full max-h-[80vh]">
-      {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/30">
         <span className="text-base font-semibold">{title ?? t("default_participant")}</span>
         <button
@@ -162,7 +144,6 @@ export function ParticipantPicker({
         </button>
       </div>
 
-      {/* Search */}
       <div className="px-4 pt-3 shrink-0 bg-surface-1">
         <div className="relative">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
@@ -237,7 +218,7 @@ export function ParticipantPicker({
           <PickerSectionHeader title={t("models")} count={filteredModels.length} className="pt-2" />
           {filteredModels.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-24 text-sm text-muted gap-2">
-              {models.length === 0 ? t("loading_models") : t("no_models_match")}
+              {models.length === 0 ? t("loading_models") : filteredPersonas.length === 0 ? t("no_results") : t("no_models_match")}
               {activeFilters.size > 0 && (
                 <button type="button" onClick={() => setActiveFilters(new Set())} className="text-xs text-primary hover:underline">{t("clear_filters")}</button>
               )}
@@ -258,12 +239,6 @@ export function ParticipantPicker({
             ))
           )}
         </div>
-
-        {filteredPersonas.length === 0 && filteredModels.length === 0 && models.length > 0 && (
-          <div className="flex items-center justify-center h-32 text-sm text-muted">
-            {t("no_results")}
-          </div>
-        )}
       </div>
 
       {/* Footer */}

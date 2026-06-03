@@ -118,6 +118,10 @@ export function NotificationsSection() {
         await upsertPreferences({
           chatCompletionNotificationsEnabled: nextValue,
         });
+        setPendingChatCompletionRequest((pending) => {
+          if (pending?.id !== requestId) return pending;
+          return lastServerChatCompletionEnabled.current === nextValue ? null : pending;
+        });
       } catch {
         setPendingChatCompletionRequest((pending) => pending?.id === requestId ? null : pending);
       }

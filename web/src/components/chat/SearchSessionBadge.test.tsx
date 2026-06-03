@@ -8,14 +8,14 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-function session(status: SearchSessionStatus): SearchSession {
+function session(status: SearchSessionStatus, mode: SearchSession["mode"] = "paper"): SearchSession {
   return {
     _id: `session_${status}` as Id<"searchSessions">,
     _creationTime: 1,
     chatId: "chat_1" as Id<"chats">,
     assistantMessageId: "message_1" as Id<"messages">,
     query: "research",
-    mode: "paper",
+    mode,
     complexity: 2,
     status,
     progress: 100,
@@ -38,5 +38,11 @@ describe("SearchSessionBadge", () => {
 
     rerender(<SearchSessionBadge session={session("planning")} />);
     expect(screen.getByText("search_phase_planning")).toBeInTheDocument();
+
+    rerender(<SearchSessionBadge session={session("writing", "paper")} />);
+    expect(screen.getByText("search_phase_writing_paper")).toBeInTheDocument();
+
+    rerender(<SearchSessionBadge session={session("writing", "web")} />);
+    expect(screen.getByText("search_phase_writing")).toBeInTheDocument();
   });
 });

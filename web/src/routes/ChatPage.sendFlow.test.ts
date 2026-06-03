@@ -5,12 +5,15 @@ import {
   buildResearchPaperArgs,
   buildSendMessageArgs,
   buildVideoConfig,
+  composerAttachmentState,
   dedupeChatAttachments,
   executeChatSend,
+  executeRecordedAudioSend,
   serializeChatAttachments,
   type ChatAttachment,
   type ChatSendOrchestrationDeps,
   type ChatSendOrchestrationState,
+  type RecordedAudioOrchestrationDeps,
 } from "./ChatPage.sendFlow";
 
 const chatId = "chat_1" as Id<"chats">;
@@ -61,6 +64,15 @@ function baseDeps(overrides: Partial<ChatSendOrchestrationDeps> = {}): ChatSendO
   };
 }
 
+function baseRecordingDeps(overrides: Partial<RecordedAudioOrchestrationDeps> = {}): RecordedAudioOrchestrationDeps {
+  return {
+    ...baseDeps(),
+    createUploadUrl: vi.fn(async () => "https://uploads.example/voice"),
+    uploadRecording: vi.fn(async () => new Response(JSON.stringify({ storageId: "storage_voice" }), { status: 200 })),
+    ...overrides,
+  };
+}
+
 describe("ChatPage send flow helpers", () => {
   it("serializes normal attachments with video roles and Drive metadata", () => {
     expect(serializeChatAttachments([imageAttachment], { includeVideoRole: true })).toEqual([{
@@ -97,6 +109,32 @@ describe("ChatPage send flow helpers", () => {
       duplicateKbAttachment,
       localAttachment,
     ])).toEqual([imageAttachment, localAttachment]);
+  });
+
+  it("treats explicit composer attachments as the complete turn payload", () => {
+    const laterKbAttachment: ChatAttachment = {
+      type: "document",
+      storageId: "storage_later" as Id<"_storage">,
+      name: "later.pdf",
+      mimeType: "application/pdf",
+    };
+
+    expect(composerAttachmentState({
+      attachments: [imageAttachment],
+      kbAttachmentsForDisplay: [laterKbAttachment],
+    })).toEqual({
+      selectedAttachments: [imageAttachment],
+      kbAttachmentsForDisplay: [],
+    });
+  });
+
+  it("keeps current KB attachments when no explicit composer payload was provided", () => {
+    expect(composerAttachmentState({
+      kbAttachmentsForDisplay: [imageAttachment],
+    })).toEqual({
+      selectedAttachments: [],
+      kbAttachmentsForDisplay: [imageAttachment],
+    });
   });
 
   it("builds video config from preferences with defaults", () => {
@@ -430,5 +468,62 @@ describe("ChatPage send flow helpers", () => {
     expect(deps.sendMessage).not.toHaveBeenCalled();
     expect(deps.clearKBFiles).not.toHaveBeenCalled();
     expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+  });
+
+  it("does not silently drop one-turn state when recorded audio upload fails", async () => {
+    const deps = baseRecordingDeps({
+      uploadRecording: vi.fn(async () => new Response(null, { status: 500 })),
+    });
+
+    await expect(executeRecordedAudioSend({
+      recording: {
+        blob: new Blob(["voice"], { type: "audio/webm" }),
+        mimeType: "audio/webm",
+        durationMs: 1_200,
+        transcript: "voice transcript",
+      },
+      state: baseState({
+        kbAttachmentsForDisplay: [imageAttachment],
+        enabledIntegrations: new Set(["drive"]),
+      }),
+      deps,
+    })).rejects.toThrow("Voice recording upload failed.");
+
+    expect(deps.createUploadUrl).toHaveBeenCalledTimes(1);
+    expect(deps.uploadRecording).toHaveBeenCalledWith("https://uploads.example/voice", expect.objectContaining({
+      method: "POST",
+      headers: { "Content-Type": "audio/webm" },
+    }));
+    expect(deps.sendMessage).not.toHaveBeenCalled();
+    expect(deps.startResearchPaper).not.toHaveBeenCalled();
+    expect(deps.clearKBFiles).not.toHaveBeenCalled();
+    expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+  });
+
+  it("uploads recorded audio and sends the returned storage id", async () => {
+    const deps = baseRecordingDeps();
+
+    await expect(executeRecordedAudioSend({
+      recording: {
+        blob: new Blob(["voice"], { type: "audio/webm" }),
+        mimeType: "audio/webm",
+        durationMs: 1_200,
+        transcript: "voice transcript",
+      },
+      state: baseState(),
+      deps,
+    })).resolves.toBe(true);
+
+    expect(deps.sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      text: "voice transcript",
+      recordedAudio: {
+        storageId: "storage_voice",
+        transcript: "voice transcript",
+        durationMs: 1_200,
+        mimeType: "audio/webm",
+      },
+    }));
+    expect(deps.clearKBFiles).toHaveBeenCalledTimes(1);
+    expect(deps.clearTurnOverrides).toHaveBeenCalledTimes(1);
   });
 });

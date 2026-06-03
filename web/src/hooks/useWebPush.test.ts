@@ -29,6 +29,7 @@ describe("useWebPush", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
     useMutation.mockImplementation((mutation: string) => (
       mutation === "registerDeviceToken" ? registerToken : removeToken
     ));
@@ -42,6 +43,93 @@ describe("useWebPush", () => {
       configurable: true,
       value: { permission: "granted", requestPermission: vi.fn() },
     });
+  });
+
+  it("keeps dismissed notification prompts retryable instead of denied", async () => {
+    vi.stubEnv("VITE_WEB_PUSH_VAPID_PUBLIC_KEY", "AQIDBA");
+    const requestPermission = vi.fn(async () => "default" as NotificationPermission);
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: { permission: "default", requestPermission },
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        getRegistration: vi.fn(async () => ({
+          pushManager: {
+            getSubscription: vi.fn(async () => null),
+            subscribe: vi.fn(),
+          },
+        })),
+      },
+    });
+
+    const { useWebPush } = await import("./useWebPush");
+    const { result } = renderHook(() => useWebPush());
+
+    await act(async () => {
+      await expect(result.current.enable()).resolves.toBe(false);
+    });
+
+    expect(requestPermission).toHaveBeenCalled();
+    expect(result.current.status).toBe("idle");
+    expect(result.current.errorMessage).toBeNull();
+    expect(registerToken).not.toHaveBeenCalled();
+  });
+
+  it("replaces an existing subscription when the VAPID application server key changes", async () => {
+    vi.stubEnv("VITE_WEB_PUSH_VAPID_PUBLIC_KEY", "AQIDBA");
+    const oldSubscription = {
+      endpoint: "https://push.example/old-token",
+      options: { applicationServerKey: new Uint8Array([9, 9, 9]).buffer },
+      unsubscribe: vi.fn(async () => {
+        mutationCalls.push("unsubscribe");
+        return true;
+      }),
+    };
+    const newSubscription = {
+      endpoint: "https://push.example/new-token",
+      options: { applicationServerKey: new Uint8Array([1, 2, 3, 4]).buffer },
+      unsubscribe: vi.fn(),
+    };
+    const subscribe = vi.fn(async (options: PushSubscriptionOptionsInit) => {
+      mutationCalls.push("subscribe");
+      expect(Array.from(options.applicationServerKey as Uint8Array)).toEqual([1, 2, 3, 4]);
+      return newSubscription;
+    });
+    Object.defineProperty(window, "Notification", {
+      configurable: true,
+      value: { permission: "granted", requestPermission: vi.fn(async () => "granted" as NotificationPermission) },
+    });
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: {
+        getRegistration: vi.fn(async () => ({
+          pushManager: {
+            getSubscription: vi.fn(async () => oldSubscription),
+            subscribe,
+          },
+        })),
+      },
+    });
+
+    const { useWebPush } = await import("./useWebPush");
+    const { result } = renderHook(() => useWebPush());
+
+    await act(async () => {
+      await expect(result.current.enable()).resolves.toBe(true);
+    });
+
+    expect(mutationCalls).toEqual(["unsubscribe", "subscribe", "registerToken"]);
+    expect(oldSubscription.unsubscribe).toHaveBeenCalled();
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    expect(registerToken).toHaveBeenCalledWith(expect.objectContaining({
+      token: "https://push.example/new-token",
+      platform: "web",
+      provider: "webpush",
+    }));
+    expect(result.current.status).toBe("granted");
+    expect(result.current.isRegistered).toBe(true);
   });
 
   it("unsubscribes the browser subscription before removing the backend token", async () => {

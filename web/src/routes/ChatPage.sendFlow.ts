@@ -23,6 +23,13 @@ export interface RecordedAudioPayload {
   mimeType?: string;
 }
 
+export interface RecordingResultPayload {
+  blob: Blob;
+  mimeType: string;
+  durationMs: number;
+  transcript: string;
+}
+
 export interface TurnOverrideArgs {
   turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
@@ -51,6 +58,11 @@ export interface ChatSendOrchestrationDeps {
   startResearchPaper: (args: ReturnType<typeof buildResearchPaperArgs>) => Promise<unknown>;
   clearKBFiles: () => void;
   clearTurnOverrides: () => void;
+}
+
+export interface RecordedAudioOrchestrationDeps extends ChatSendOrchestrationDeps {
+  createUploadUrl: () => Promise<string>;
+  uploadRecording: (url: string, init: RequestInit) => Promise<Response>;
 }
 
 export function serializeChatAttachments(
@@ -100,6 +112,16 @@ export function dedupeChatAttachments<T extends DedupeAttachment>(attachments: T
     deduped.push(attachment);
   }
   return deduped;
+}
+
+export function composerAttachmentState(args: {
+  attachments?: ChatAttachment[];
+  kbAttachmentsForDisplay: ChatAttachment[];
+}): Pick<ChatSendOrchestrationState, "selectedAttachments" | "kbAttachmentsForDisplay"> {
+  return {
+    selectedAttachments: args.attachments ?? [],
+    kbAttachmentsForDisplay: args.attachments === undefined ? args.kbAttachmentsForDisplay : [],
+  };
 }
 
 export function buildVideoConfig(
@@ -224,6 +246,81 @@ export async function executeChatSend(
       text,
       participants: state.participants,
       attachments: mergedAttachments,
+      turnOverrideArgs: state.turnOverrideArgs,
+      enabledIntegrations: state.enabledIntegrations,
+      subagentsEnabled: state.subagentsEnabled,
+      webSearchEnabled: state.webSearchEnabled,
+      convexSearchMode: state.convexSearchMode,
+      convexComplexity: state.convexComplexity,
+      isVideoMode: state.isVideoMode,
+      prefs: state.prefs,
+    }));
+  }
+
+  deps.clearKBFiles();
+  deps.clearTurnOverrides();
+  return true;
+}
+
+export async function executeRecordedAudioSend(
+  args: {
+    recording: RecordingResultPayload;
+    state: ChatSendOrchestrationState;
+    deps: RecordedAudioOrchestrationDeps;
+  },
+): Promise<boolean> {
+  const { recording, state, deps } = args;
+  const mergedAttachments = dedupeChatAttachments([
+    ...state.selectedAttachments,
+    ...state.kbAttachmentsForDisplay,
+  ]);
+
+  if (!deps.validateAttachmentCount(mergedAttachments.length)) {
+    return false;
+  }
+
+  const chatId = await deps.ensureChatId();
+  await deps.flushPendingState(chatId);
+  const uploadUrl = await deps.createUploadUrl();
+  const response = await deps.uploadRecording(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": recording.mimeType },
+    body: recording.blob,
+  });
+  if (!response.ok) {
+    throw new Error("Voice recording upload failed.");
+  }
+  const { storageId } = (await response.json()) as { storageId?: string };
+  if (!storageId) {
+    throw new Error("Voice recording upload did not return a storage id.");
+  }
+  const recordedAudio: RecordedAudioPayload = {
+    storageId: storageId as Id<"_storage">,
+    transcript: recording.transcript,
+    durationMs: recording.durationMs,
+    mimeType: recording.mimeType,
+  };
+  const text = recording.transcript || "(voice message)";
+
+  if (state.isResearchPaper) {
+    const participant = state.participants[0];
+    if (!participant) return false;
+    await deps.startResearchPaper(buildResearchPaperArgs({
+      chatId,
+      text,
+      participant,
+      complexity: state.convexComplexity ?? 1,
+      attachments: mergedAttachments,
+      recordedAudio,
+      enabledIntegrations: state.enabledIntegrations,
+    }));
+  } else {
+    await deps.sendMessage(buildSendMessageArgs({
+      chatId,
+      text,
+      participants: state.participants,
+      attachments: mergedAttachments,
+      recordedAudio,
       turnOverrideArgs: state.turnOverrideArgs,
       enabledIntegrations: state.enabledIntegrations,
       subagentsEnabled: state.subagentsEnabled,

@@ -31,7 +31,9 @@ import { IconButton } from "@/components/shared/IconButton";
 import { useModelSummaries } from "@/hooks/useSharedData";
 import { buildModelNameMap, getModelDisplayName } from "@/lib/modelDisplay";
 import { formatCost } from "@/hooks/useChatCosts";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
+import { getAssistantDisplayIdentity } from "./MessageBubble.assistantIdentity";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -279,6 +281,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder && !isAwaitingVideo;
   const [copied, setCopied] = useState(false);
   const [resolvingEditId, setResolvingEditId] = useState<string | null>(null);
+  const [documentEditError, setDocumentEditError] = useState<{ editId: string; message: string } | null>(null);
   const [selectedDocumentCitation, setSelectedDocumentCitation] = useState<DocumentCitation | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchCtx = useChatSearchContext();
@@ -291,7 +294,14 @@ export const AssistantMessage = memo(function AssistantMessage({
   const sessionActive = session ? isSessionActive(session.status) : false;
   const sessionTerminal = session && !sessionActive;
 
-  const matchedParticipant = participants.find((p) => p.modelId === message.modelId);
+  const assistantIdentity = useMemo(
+    () => getAssistantDisplayIdentity({
+      message,
+      participants,
+      modelDisplayName: getModelDisplayName(message.modelId, modelNameMap),
+    }),
+    [message, participants, modelNameMap],
+  );
 
   const messageMatches = useMemo(
     () => getMatchesForMessage(message._id, searchCtx.matches),
@@ -322,21 +332,33 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const handleResolveDocumentEdit = useCallback(async (annotation: DocumentEditAnnotation, decision: "accept" | "reject") => {
     setResolvingEditId(annotation.editId);
+    setDocumentEditError(null);
     try {
       await resolveDocumentEdit({ documentId: annotation.documentId, editId: annotation.editId, decision });
+    } catch (error) {
+      setDocumentEditError({
+        editId: annotation.editId,
+        message: convexErrorMessage(error, t("something_went_wrong")),
+      });
     } finally {
       setResolvingEditId(null);
     }
-  }, [resolveDocumentEdit]);
+  }, [resolveDocumentEdit, t]);
 
   const handleUndoDocumentEdit = useCallback(async (annotation: DocumentEditAnnotation) => {
     setResolvingEditId(annotation.editId);
+    setDocumentEditError(null);
     try {
       await undoDocumentEditResolution({ documentId: annotation.documentId, editId: annotation.editId });
+    } catch (error) {
+      setDocumentEditError({
+        editId: annotation.editId,
+        message: convexErrorMessage(error, t("something_went_wrong")),
+      });
     } finally {
       setResolvingEditId(null);
     }
-  }, [undoDocumentEditResolution]);
+  }, [undoDocumentEditResolution, t]);
 
   const isCompleted = message.status === "completed";
   const showActions = isCompleted && (!!message.content || hasImageUrls || hasVideoUrls);
@@ -364,12 +386,12 @@ export const AssistantMessage = memo(function AssistantMessage({
     <div className={outerClass}>
       {/* Avatar — iOS: 28x28 */}
       <div className="shrink-0 mt-1">
-        {matchedParticipant?.personaName || matchedParticipant?.personaEmoji || matchedParticipant?.personaAvatarImageUrl ? (
+        {assistantIdentity.hasPersonaDisplay ? (
           <PersonaAvatar
-            personaId={matchedParticipant?.personaId ?? undefined}
-            personaName={matchedParticipant?.personaName ?? undefined}
-            personaEmoji={matchedParticipant?.personaEmoji ?? undefined}
-            personaAvatarImageUrl={matchedParticipant?.personaAvatarImageUrl ?? undefined}
+            personaId={assistantIdentity.personaId}
+            personaName={assistantIdentity.personaName}
+            personaEmoji={assistantIdentity.personaEmoji}
+            personaAvatarImageUrl={assistantIdentity.personaAvatarImageUrl}
             className="w-7 h-7"
             emojiClass="text-sm"
             initialClass="text-[10px]"
@@ -379,7 +401,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           <ProviderLogo modelId={message.modelId} size={28} />
         ) : (
           <div className="w-7 h-7 rounded-full bg-surface-2 border border-border/30 flex items-center justify-center text-[10px] font-semibold text-foreground">
-            <span>{getParticipantInitial(matchedParticipant?.personaName, message.modelId)}</span>
+            <span>{getParticipantInitial(assistantIdentity.personaName, message.modelId)}</span>
           </div>
         )}
       </div>
@@ -388,7 +410,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         {/* Model label */}
         <div className="flex items-center gap-2 mb-1">
           <p className="text-xs text-muted">
-            {matchedParticipant?.personaName ?? getModelDisplayName(message.modelId, modelNameMap)}
+            {assistantIdentity.label}
           </p>
           {hasMatches && (
              <span className={statusBadgeClass("running", "px-1.5 py-0.5")}>
@@ -525,6 +547,9 @@ export const AssistantMessage = memo(function AssistantMessage({
                   )}
                   {resolvingEditId === annotation.editId && <Loader size={14} className="animate-spin text-muted-foreground" />}
                 </div>
+                {documentEditError?.editId === annotation.editId && (
+                  <p role="alert" className="mt-2 text-xs text-destructive">{documentEditError.message}</p>
+                )}
               </div>
             ))}
           </div>

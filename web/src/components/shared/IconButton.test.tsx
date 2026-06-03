@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { IconButton } from "./IconButton";
 
 describe("IconButton", () => {
@@ -16,5 +16,23 @@ describe("IconButton", () => {
     expect(screen.getByRole("button", { name: "Medium" })).toHaveClass("h-11", "w-11");
     expect(screen.getByRole("button", { name: "Large" })).toHaveClass("h-12", "w-12");
     expect(screen.getByRole("button", { name: "Small" }).className).toContain("focus-visible:ring-2");
+  });
+
+  it("preserves a caller-provided submit type", () => {
+    const onSubmit = vi.fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <IconButton label="Submit" type="submit">S</IconButton>
+      </form>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit" }));
+
+    expect(onSubmit).toHaveBeenCalledTimes(1);
   });
 });

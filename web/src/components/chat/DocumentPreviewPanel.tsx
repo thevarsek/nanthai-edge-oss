@@ -29,6 +29,7 @@ export type DocumentPreviewSelection = {
   versionId?: string;
   annotations?: DocumentEditAnnotation[];
   focusEditId?: string;
+  focusEditBatchId?: string;
 };
 
 function formatSize(bytes?: number | null): string | undefined {
@@ -92,20 +93,29 @@ export function DocumentPreviewPanel({
     const targetId = selection.generatedFileId ?? selection.file?._id;
     return files?.find((file) => file._id === targetId);
   }, [files, selection.file?._id, selection.generatedFileId]);
-  const filename = generatedFile?.filename ?? selection.file?.filename ?? selection.filename;
-  const mimeType = generatedFile?.mimeType ?? selection.file?.mimeType ?? selection.mimeType;
-  const downloadUrl = generatedFile?.downloadUrl ?? selection.file?.downloadUrl ?? selection.downloadUrl ?? null;
-  const sizeBytes = generatedFile?.sizeBytes ?? selection.file?.sizeBytes ?? selection.sizeBytes;
-  const versionId = generatedFile?.documentVersionId ?? selection.versionId ?? selection.file?.documentVersionId;
+  const liveGeneratedFileTargetId = selection.generatedFileId ?? selection.file?._id;
+  const isGeneratedFileLookupLoading = Boolean(selection.messageId && liveGeneratedFileTargetId && files === undefined);
+  const selectionFile = isGeneratedFileLookupLoading ? undefined : selection.file;
+  const filename = generatedFile?.filename ?? selectionFile?.filename ?? selection.filename;
+  const mimeType = generatedFile?.mimeType ?? selectionFile?.mimeType ?? selection.mimeType;
+  const downloadUrl = isGeneratedFileLookupLoading
+    ? null
+    : generatedFile?.downloadUrl ?? selectionFile?.downloadUrl ?? selection.downloadUrl ?? null;
+  const sizeBytes = generatedFile?.sizeBytes ?? selectionFile?.sizeBytes ?? selection.sizeBytes;
+  const versionId = isGeneratedFileLookupLoading
+    ? undefined
+    : generatedFile?.documentVersionId ?? selection.versionId ?? selectionFile?.documentVersionId;
   const annotations = selection.annotations ?? [];
   const focusedAnnotation = annotations.find((annotation) => annotation.editId === selection.focusEditId);
   const rendersPdf = isPdfPreview(filename, mimeType, downloadUrl);
   const preview = versionId && previewLoad.versionId === versionId ? previewLoad.preview : null;
-  const previewState: "idle" | "loading" | "unavailable" = !versionId
-    ? "unavailable"
-    : previewLoad.versionId === versionId
-      ? previewLoad.status
-      : "loading";
+  const previewState: "idle" | "loading" | "unavailable" = isGeneratedFileLookupLoading
+    ? "loading"
+    : !versionId
+      ? "unavailable"
+      : previewLoad.versionId === versionId
+        ? previewLoad.status
+        : "loading";
 
   useEffect(() => {
     if (rendersPdf) return;

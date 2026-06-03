@@ -46,6 +46,7 @@ describe("MessageInput", () => {
     clearChatDraft("chat_rejected");
     clearChatDraft("chat_upload_failed");
     clearChatDraft("chat_upload_success");
+    clearChatDraft("chat_upload_image_camera");
     clearChatDraft("chat_upload_partial");
     clearChatDraft("chat_restore_a");
     clearChatDraft("chat_restore_b");
@@ -152,10 +153,42 @@ describe("MessageInput", () => {
       attachments: [expect.objectContaining({
         storageId: "storage_uploaded",
         name: "notes.pdf",
+        type: "document",
         mimeType: "application/pdf",
         sizeBytes: file.size,
       })],
     }));
+  });
+
+  it("resets image and camera file inputs after successful upload", async () => {
+    const user = userEvent.setup();
+    const imageFile = new File(["image"], "frame.png", { type: "image/png" });
+    const cameraFile = new File(["camera"], "capture.png", { type: "image/png" });
+    const onCreateUploadUrl = vi
+      .fn()
+      .mockResolvedValueOnce("https://uploads.example/image")
+      .mockResolvedValueOnce("https://uploads.example/camera");
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ storageId: "storage_image" }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ storageId: "storage_camera" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+
+    const { container } = renderMessageInput({
+      chatId: "chat_upload_image_camera" as Id<"chats">,
+      onCreateUploadUrl,
+    });
+    const [imageInput, cameraInput] = Array.from(
+      container.querySelectorAll('input[accept="image/*"]'),
+    ) as HTMLInputElement[];
+
+    await user.upload(imageInput, imageFile);
+    await waitFor(() => expect(screen.getByText("frame.png")).toBeInTheDocument());
+    expect(imageInput.value).toBe("");
+
+    await user.upload(cameraInput, cameraFile);
+    await waitFor(() => expect(screen.getByText("capture.png")).toBeInTheDocument());
+    expect(cameraInput.value).toBe("");
   });
 
   it("keeps successful uploads when another selected file fails", async () => {

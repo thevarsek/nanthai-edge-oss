@@ -2,13 +2,13 @@
 // =============================================================================
 // Slack OAuth token exchange and connection management.
 // Handles the server-side of the OAuth flow:
-//   1. Client sends auth code (no PKCE — Slack uses client secret)
+//   1. Client sends auth code and PKCE verifier
 //   2. This action exchanges the code for a user access token
 //   3. Token is stored in the oauthConnections table
 //
 // Slack user tokens (xoxp-*) do not expire by default (no token rotation).
 // Token endpoint: POST https://slack.com/api/oauth.v2.user.access
-// with form-encoded client_id, client_secret, code, redirect_uri.
+// with form-encoded client_id, client_secret, code, redirect_uri, code_verifier.
 // =============================================================================
 
 import { v, ConvexError } from "convex/values";
@@ -49,6 +49,7 @@ const NON_EXPIRING_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 export const exchangeSlackCode = action({
   args: {
     code: v.string(),
+    codeVerifier: v.optional(v.string()),
     redirectUri: v.string(),
   },
   handler: async (ctx, args) => {
@@ -71,6 +72,9 @@ export const exchangeSlackCode = action({
       code: args.code,
       redirect_uri: args.redirectUri,
     });
+    if (args.codeVerifier) {
+      body.set("code_verifier", args.codeVerifier);
+    }
 
     const tokenResponse = await fetch(SLACK_TOKEN_URL, {
       method: "POST",

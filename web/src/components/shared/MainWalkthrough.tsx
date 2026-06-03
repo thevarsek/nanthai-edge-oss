@@ -16,12 +16,12 @@ import {
 
 const CARD_ICONS = [PenSquare, Star, PlusCircle, GitBranch, Globe, UserCircle];
 const CARD_TINTS = [
-  "text-[--nanth-primary] border-[--nanth-primary]/40 bg-[--nanth-primary]/10",
+  "text-primary border-primary/40 bg-primary/10",
   "text-orange-400 border-orange-400/40 bg-orange-400/10",
-  "text-[--nanth-primary] border-[--nanth-primary]/40 bg-[--nanth-primary]/10",
+  "text-primary border-primary/40 bg-primary/10",
   "text-purple-400 border-purple-400/40 bg-purple-400/10",
   "text-green-400 border-green-400/40 bg-green-400/10",
-  "text-[--nanth-primary] border-[--nanth-primary]/40 bg-[--nanth-primary]/10",
+  "text-primary border-primary/40 bg-primary/10",
 ];
 
 export function MainWalkthrough() {
@@ -121,7 +121,7 @@ export function MainWalkthrough() {
         </div>
 
         {/* Card content */}
-        <div className={`rounded-2xl border p-4 min-h-[240px] ${card.tint}`}>
+        <div data-testid="walkthrough-card" className={`rounded-2xl border p-4 min-h-[240px] ${card.tint}`}>
           {/* Icon illustration */}
           <div className="h-24 rounded-2xl mb-4 flex items-center justify-center bg-gradient-to-br from-white/10 to-black/10 relative overflow-hidden">
             <div className="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.18),transparent_45%)]" />
@@ -145,7 +145,7 @@ export function MainWalkthrough() {
                 onClick={() => setSelection(index)}
                 className={`h-2 rounded-full transition-all ${
                   index === selection
-                    ? "w-5 bg-[--nanth-primary]"
+                    ? "w-5 bg-primary"
                     : "w-2 bg-white/20"
                 }`}
                 aria-label={`Go to card ${index + 1}`}
@@ -159,7 +159,7 @@ export function MainWalkthrough() {
                 ? dismiss()
                 : setSelection((s) => nextWalkthroughSelection(s, CARDS.length))
             }
-            className="text-xs font-semibold text-[--nanth-primary] hover:opacity-80"
+            className="text-xs font-semibold text-primary hover:opacity-80"
           >
             {selection === CARDS.length - 1 ? t("done") : t("next")}
           </button>

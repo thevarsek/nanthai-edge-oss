@@ -5,6 +5,7 @@ interface QueuedFollowUp {
   id: string;
   chatId: string;
   text: string;
+  attachments: AttachmentPreview[];
 }
 
 interface Args {
@@ -13,6 +14,7 @@ interface Args {
   isAutonomousActive: boolean;
   text: string;
   attachmentCount: number;
+  queuedAttachments?: AttachmentPreview[];
   isUploading: boolean;
   disabled: boolean;
   onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
@@ -27,6 +29,7 @@ export function useQueuedFollowUp({
   isAutonomousActive,
   text,
   attachmentCount,
+  queuedAttachments = [],
   isUploading,
   disabled,
   onSend,
@@ -78,10 +81,10 @@ export function useQueuedFollowUp({
     if (!trimmed || disabled || attachmentCount > 0 || isUploading) return;
     setQueuedFollowUps((current) => [
       ...current,
-      { id: crypto.randomUUID(), chatId, text: trimmed },
+      { id: crypto.randomUUID(), chatId, text: trimmed, attachments: queuedAttachments },
     ]);
     onQueueCommitted();
-  }, [attachmentCount, chatId, disabled, isUploading, onQueueCommitted, text]);
+  }, [attachmentCount, chatId, disabled, isUploading, onQueueCommitted, queuedAttachments, text]);
 
   const editQueuedFollowUp = useCallback((id?: string) => {
     const queued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];
@@ -100,7 +103,7 @@ export function useQueuedFollowUp({
 
   const sendQueuedFollowUp = useCallback(async (queued: QueuedFollowUp) => {
     if (chatIdRef.current !== queued.chatId) return false;
-    const result = await onSend({ text: queued.text, attachments: [] });
+    const result = await onSend({ text: queued.text, attachments: queued.attachments });
     return result !== false;
   }, [onSend]);
 

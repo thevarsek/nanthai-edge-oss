@@ -14,6 +14,7 @@ import { useSharedData } from "@/hooks/useSharedData";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { FavoriteEditorModal, type FavoriteDoc } from "./ManageFavoritesHelpers";
 
 // ─── Multi-model avatar (iOS-style stacked logos) ───────────────────────────
@@ -155,6 +156,8 @@ export function ManageFavoritesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Id<"favorites"> | null>(null);
   const [isReordering, setIsReordering] = useState(false);
   const [localOrder, setLocalOrder] = useState<FavoriteDoc[] | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const sortedFavorites = (favorites ?? [])
     .slice()
@@ -163,19 +166,25 @@ export function ManageFavoritesPage() {
   const displayList = localOrder ?? sortedFavorites;
 
   const startReorder = useCallback(() => {
+    setErrorMessage(null);
     setIsReordering(true);
     setLocalOrder([...sortedFavorites]);
   }, [sortedFavorites]);
 
   const endReorder = useCallback(async () => {
-    if (localOrder) {
-      await reorderFavorites({
-        orderedIds: localOrder.map((f) => f._id),
-      });
+    setErrorMessage(null);
+    try {
+      if (localOrder) {
+        await reorderFavorites({
+          orderedIds: localOrder.map((f) => f._id),
+        });
+      }
+      setIsReordering(false);
+      setLocalOrder(null);
+    } catch (error) {
+      setErrorMessage(convexErrorMessage(error, t("something_went_wrong")));
     }
-    setIsReordering(false);
-    setLocalOrder(null);
-  }, [localOrder, reorderFavorites]);
+  }, [localOrder, reorderFavorites, t]);
 
   const moveItem = useCallback((fromIndex: number, direction: "up" | "down") => {
     setLocalOrder((prev) => {
@@ -187,6 +196,17 @@ export function ManageFavoritesPage() {
       return next;
     });
   }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    try {
+      await deleteFavorite({ favoriteId: deleteTarget });
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteError(convexErrorMessage(error, t("something_went_wrong")));
+    }
+  }, [deleteFavorite, deleteTarget, t]);
 
   return (
     <div className="flex-1 flex flex-col h-full">
@@ -223,6 +243,9 @@ export function ManageFavoritesPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-4 space-y-4">
+          {errorMessage && (
+            <p className="text-sm text-red-400">{errorMessage}</p>
+          )}
           {favorites === undefined ? (
             <div className="flex justify-center py-8"><LoadingSpinner /></div>
           ) : displayList.length === 0 ? (
@@ -270,11 +293,14 @@ export function ManageFavoritesPage() {
                     )}
                     <div className="flex-1">
                       <FavoriteRow
-                        favorite={f}
-                        isReordering={isReordering}
-                        onEdit={(fav) => setEditing(fav)}
-                        onDelete={(id) => setDeleteTarget(id)}
-                      />
+                         favorite={f}
+                         isReordering={isReordering}
+                         onEdit={(fav) => setEditing(fav)}
+                         onDelete={(id) => {
+                           setDeleteError(null);
+                           setDeleteTarget(id);
+                         }}
+                       />
                     </div>
                   </div>
                 ))}
@@ -295,12 +321,16 @@ export function ManageFavoritesPage() {
       {/* Delete confirm */}
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => { if (deleteTarget) void deleteFavorite({ favoriteId: deleteTarget }); setDeleteTarget(null); }}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => { void handleDeleteConfirm(); }}
         title={t("delete_favorite_title")}
         description={t("delete_favorite_description")}
         confirmLabel={t("delete")}
         confirmVariant="destructive"
+        errorMessage={deleteError}
       />
     </div>
   );

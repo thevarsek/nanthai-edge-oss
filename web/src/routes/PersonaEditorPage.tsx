@@ -23,6 +23,7 @@ import {
   buildPersonaMutationPayload,
   defaultForm,
   integrationSetToArray,
+  parsePersonaMaxTokens,
   type FormState,
   type IntegrationKey,
   type SkillOverrideState,
@@ -54,6 +55,7 @@ export function PersonaEditorPage() {
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [avatarImageRemoved, setAvatarImageRemoved] = useState(false);
+  const avatarPreviewObjectUrlRef = useRef<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modelSummaries = useModelSummaries();
 
@@ -68,7 +70,16 @@ export function PersonaEditorPage() {
     if (!summary.supportsTools) return t("persona_model_no_tools");
     return null;
   }, [form.enabledIntegrations, form.selectedSkillIds, form.modelId, modelSummaries, t]);
+  const hasManualGmail = gmailManualConnection?.status === "active";
+  const showGoogleIntegrationSection = Boolean(googleConnection) || hasManualGmail;
   const safeAvatarPreview = useMemo(() => safeAvatarImageUrl(avatarPreview), [avatarPreview]);
+  const revokeAvatarPreviewObjectUrl = useCallback(() => {
+    if (avatarPreviewObjectUrlRef.current == null) return;
+    URL.revokeObjectURL(avatarPreviewObjectUrlRef.current);
+    avatarPreviewObjectUrlRef.current = null;
+  }, []);
+
+  useEffect(() => () => revokeAvatarPreviewObjectUrl(), [revokeAvatarPreviewObjectUrl]);
 
   // ── Load existing persona into form ────────────────────────────────────
   useEffect(() => {
@@ -118,10 +129,11 @@ export function PersonaEditorPage() {
       skillOverrides,
       integrationOverrides,
     });
+    revokeAvatarPreviewObjectUrl();
     if (existingPersona.avatarImageUrl) setAvatarPreview(existingPersona.avatarImageUrl);
     setAvatarImageRemoved(false);
     setDidLoad(true);
-  }, [existingPersona, didLoad, isNew, navigate]);
+  }, [existingPersona, didLoad, isNew, navigate, revokeAvatarPreviewObjectUrl]);
 
   // ── Field helpers ──────────────────────────────────────────────────────
   const setField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -198,16 +210,23 @@ export function PersonaEditorPage() {
   const handleAvatarSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const nextPreviewUrl = URL.createObjectURL(file);
+    revokeAvatarPreviewObjectUrl();
+    avatarPreviewObjectUrlRef.current = nextPreviewUrl;
     setAvatarFile(file);
-    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarPreview(nextPreviewUrl);
     setAvatarImageRemoved(false);
-  }, []);
+  }, [revokeAvatarPreviewObjectUrl]);
 
   // ── Save ───────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!form.displayName.trim()) { setError(t("persona_name_required")); return; }
     if (!form.systemPrompt.trim()) { setError(t("persona_prompt_required")); return; }
     if (!form.modelId.trim()) { setError(t("persona_model_required")); return; }
+    if (form.maxTokensEnabled && parsePersonaMaxTokens(form.maxTokens) == null) {
+      setError(t("persona_max_tokens_invalid"));
+      return;
+    }
     if (toolCapabilityError) { setError(toolCapabilityError); return; }
     setIsSaving(true);
     setError(null);
@@ -355,6 +374,7 @@ export function PersonaEditorPage() {
                 value={form.avatarEmoji}
                 onChange={(e) => {
                   setField("avatarEmoji", e);
+                  revokeAvatarPreviewObjectUrl();
                   setAvatarPreview(null);
                   setAvatarFile(null);
                   setAvatarImageRemoved(!!existingPersona?.avatarImageUrl);
@@ -381,6 +401,7 @@ export function PersonaEditorPage() {
               onClick={() => {
                 setField("avatarEmoji", "");
                 setAvatarFile(null);
+                revokeAvatarPreviewObjectUrl();
                 setAvatarPreview(null);
                 setAvatarImageRemoved(!!existingPersona?.avatarImageUrl);
               }}
@@ -529,14 +550,18 @@ export function PersonaEditorPage() {
         </SettingsSection>
 
         {/* 6a. Google Integrations */}
-        {googleConnection && (
+        {showGoogleIntegrationSection && (
         <SettingsSection
           header={t("google_integrations_section")}
           footer={t("google_integrations_footer")}
         >
           <IntegrationRow slug="gmail" label={t("integration_gmail")} checked={form.enabledIntegrations.has("gmail")} onChange={() => toggleIntegration("gmail")} />
+          {googleConnection && (
+            <>
           <IntegrationRow slug="google-drive" label={t("integration_google_drive")} checked={form.enabledIntegrations.has("drive")} onChange={() => toggleIntegration("drive")} />
           <IntegrationRow slug="google-calendar" label={t("integration_google_calendar")} checked={form.enabledIntegrations.has("calendar")} onChange={() => toggleIntegration("calendar")} />
+            </>
+          )}
         </SettingsSection>
         )}
 

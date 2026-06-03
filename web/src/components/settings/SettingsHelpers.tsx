@@ -5,15 +5,14 @@
 
 import { useState, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAction } from "convex/react";
-import { api } from "@convex/_generated/api";
-import { useClerk, useUser } from "@clerk/react";
+import { useClerk } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import {
-  ChevronRight, UserMinus, LogOut, Loader2,
+  ChevronRight, LogOut, Loader2,
   Hand, ExternalLink, FileText,
 } from "lucide-react";
-import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
+
+export { DeleteAccountSection } from "./DeleteAccountSection";
 
 // ─── SettingsSection ───────────────────────────────────────────────────────
 // Mirrors iOS `Section("Header") { rows } footer: { Text(...) }`.
@@ -189,78 +188,6 @@ export function SignOutSection() {
         </button>
       </div>
       {errorMessage && <p className="text-xs text-red-400 px-1">{errorMessage}</p>}
-    </div>
-  );
-}
-
-// ─── DeleteAccountSection ──────────────────────────────────────────────────
-
-export function DeleteAccountSection() {
-  const { t } = useTranslation();
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const deleteAccount = useAction(api.account.actions.deleteAccount);
-  const { signOut } = useClerk();
-  const { user } = useUser();
-  const navigate = useNavigate();
-
-  const handleDelete = async () => {
-    if (deleting) return;
-    setDeleting(true);
-    setErrorMessage(null);
-    try {
-      await deleteAccount({});
-      try {
-        if (!user) throw new Error("Not signed in");
-        await user.delete();
-      } catch {
-        // The account is already deleted server-side; leave the app shell even if Clerk cleanup fails locally.
-        try {
-          await signOut();
-        } catch {
-          // Best-effort local cleanup after Convex has already purged the account data.
-        }
-      }
-      navigate("/");
-      setShowConfirm(false);
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : t("something_went_wrong"));
-    } finally {
-      setDeleting(false);
-    }
-  };
-
-  return (
-    <div className="space-y-2">
-      <div className="rounded-2xl bg-surface-2 overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setShowConfirm(true)}
-          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
-        >
-          <UserMinus size={16} className="text-red-400 flex-shrink-0" />
-          <span className="flex-1 text-sm text-red-400">
-            {deleting ? t("deleting") : t("delete_account")}
-          </span>
-        </button>
-      </div>
-      <p className="text-xs text-muted px-1">
-        {t("delete_account_footer")}
-      </p>
-      {errorMessage && <p className="text-xs text-red-400 px-1">{errorMessage}</p>}
-      <ConfirmDialog
-        isOpen={showConfirm}
-        onClose={() => {
-          if (!deleting) setShowConfirm(false);
-        }}
-        onConfirm={handleDelete}
-        title={t("delete_account_confirm_title")}
-        description={t("delete_account_description")}
-        confirmLabel={deleting ? t("deleting") : t("delete_my_account")}
-        confirmVariant="destructive"
-        errorMessage={errorMessage}
-      />
     </div>
   );
 }

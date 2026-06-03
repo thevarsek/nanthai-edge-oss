@@ -8,7 +8,6 @@ import { Pin, Folder, Trash2, FolderInput, PencilLine, Copy, CheckSquare, Clock 
 import { cn, formatTimestamp, truncate } from "@/lib/utils";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
-import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -52,20 +51,12 @@ interface ChatListItemProps {
 
 // ─── Avatar helpers ───────────────────────────────────────────────────────────
 
-function SidebarAvatarImage({ src, alt }: { src: string; alt?: string }) {
-  const [didFail, setDidFail] = useState(false);
-  const safeSrc = safeAvatarImageUrl(src);
-
-  if (didFail || !safeSrc) return null;
-
-  return (
-    <img
-      src={safeSrc}
-      className="w-full h-full object-cover"
-      alt={alt ?? ""}
-      referrerPolicy="no-referrer"
-      onError={() => setDidFail(true)}
-    />
+function hasPersonaAvatar(participant: ChatParticipantSummary): boolean {
+  return !!(
+    participant.personaId ||
+    participant.personaName ||
+    participant.personaEmoji ||
+    participant.personaAvatarImageUrl
   );
 }
 
@@ -74,7 +65,7 @@ function ParticipantAvatars({ participants }: { participants: ChatParticipantSum
   if (visible.length === 0) return null;
   const isPlainMultiModelGroup =
     visible.length > 1 &&
-    visible.every((participant) => !participant.personaId && !participant.personaEmoji && !participant.personaAvatarImageUrl);
+    visible.every((participant) => !hasPersonaAvatar(participant));
 
   if (visible.length === 1) {
     const p = visible[0];
@@ -139,18 +130,17 @@ function ParticipantAvatars({ participants }: { participants: ChatParticipantSum
             className="absolute rounded-full border-2 border-surface-1 flex items-center justify-center overflow-hidden"
             style={{ width: size, height: size, left: offset, top: offset, zIndex: visible.length - idx }}
           >
-            {p.personaAvatarImageUrl ? (
-              <SidebarAvatarImage src={p.personaAvatarImageUrl} alt={p.personaName} />
-            ) : p.personaEmoji ? (
-              <div className="w-full h-full bg-surface-2 flex items-center justify-center">
-                <span style={{ fontSize: 11 }}>{p.personaEmoji}</span>
-              </div>
-            ) : p.personaId && p.personaName ? (
-              <div className="w-full h-full bg-surface-2 flex items-center justify-center">
-                <span className="text-[9px] font-semibold text-primary">
-                  {p.personaName.charAt(0).toUpperCase()}
-                </span>
-              </div>
+            {hasPersonaAvatar(p) ? (
+              <PersonaAvatar
+                personaId={p.personaId}
+                personaName={p.personaName}
+                personaEmoji={p.personaEmoji}
+                personaAvatarImageUrl={p.personaAvatarImageUrl}
+                className="w-full h-full"
+                emojiClass="text-[11px]"
+                initialClass="text-[9px]"
+                iconSize={12}
+              />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
                 <ProviderLogo modelId={p.modelId} size={size - 4} />
@@ -308,13 +298,26 @@ export function ChatListItem({
     if (!isEditMode) setMenuOpen(true);
   }
 
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.currentTarget !== e.target) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      handleClick();
+    }
+  }
+
+  function handleOptionsButtonOpen(e: React.MouseEvent<HTMLButtonElement> | React.KeyboardEvent<HTMLButtonElement>) {
+    e.stopPropagation();
+    setMenuOpen(true);
+  }
+
   return (
     <div className="relative group">
       <div
         role="button"
         tabIndex={0}
         onClick={handleClick}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleClick(); } }}
+        onKeyDown={handleKeyDown}
         onContextMenu={handleContextMenu}
         className={cn(
           "relative flex min-h-[64px] w-full cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 pr-9 text-left transition-colors",
@@ -381,7 +384,12 @@ export function ChatListItem({
         {/* Ellipsis menu button (hidden in edit mode) */}
         {!isEditMode && (
           <button
-            onClick={(e) => { e.stopPropagation(); setMenuOpen(true); }}
+            onClick={handleOptionsButtonOpen}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter" && e.key !== " ") return;
+              e.preventDefault();
+              handleOptionsButtonOpen(e);
+            }}
             className="absolute right-2 top-1/2 z-10 -translate-y-1/2 rounded-lg border border-border/25 bg-input p-1 opacity-0 shadow-sm transition-opacity hover:bg-surface-3 group-hover:opacity-100 focus:opacity-100"
             aria-label={t("chat_options")}
           >

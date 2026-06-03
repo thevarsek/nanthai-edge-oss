@@ -18,6 +18,12 @@ describe("PersonaAvatar", () => {
     expect(container.querySelector("svg")).toBeInTheDocument();
   });
 
+  it("uses a full leading code point for the initial fallback", () => {
+    render(<PersonaAvatar personaName="😀 Ada" />);
+
+    expect(screen.getByText("😀")).toBeInTheDocument();
+  });
+
   it("retries rendering an image when the avatar URL changes after a failed URL", () => {
     const { rerender } = render(
       <PersonaAvatar personaName="Ada" personaAvatarImageUrl="https://files.convex.site/download?filename=old.png" />,

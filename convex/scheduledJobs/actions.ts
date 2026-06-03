@@ -67,10 +67,17 @@ export const fetchOpenRouterCredits = action({
       throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `OpenRouter credits API returned ${resp.status}` });
     }
     const data = (await resp.json()) as {
-      data?: { total_credits?: number; total_usage?: number };
+      data?: {
+        total_credits?: number;
+        total_usage?: number;
+        remaining_credits?: number;
+        remaining?: number;
+      };
     };
     const totalCredits = data.data?.total_credits ?? 0;
     const totalUsage = data.data?.total_usage ?? 0;
-    return { balance: totalCredits - totalUsage };
+    const remainingCredits = data.data?.remaining_credits ?? data.data?.remaining;
+    const balance = remainingCredits ?? totalCredits - totalUsage;
+    return { balance: Math.max(0, balance) };
   },
 });

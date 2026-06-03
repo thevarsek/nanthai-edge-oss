@@ -4,9 +4,14 @@ import { useAudioRecorder } from "./useAudioRecorder";
 
 class FakeMediaRecorder {
   static isTypeSupported = vi.fn(() => true);
+  static instances: FakeMediaRecorder[] = [];
   state = "recording";
   ondataavailable: ((event: { data: Blob }) => void) | null = null;
   onstop: (() => void) | null = null;
+
+  constructor() {
+    FakeMediaRecorder.instances.push(this);
+  }
 
   start() {
     this.state = "recording";
@@ -40,6 +45,7 @@ class FakeAudioContext {
 describe("useAudioRecorder", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    FakeMediaRecorder.instances = [];
     vi.stubGlobal("MediaRecorder", FakeMediaRecorder);
     vi.stubGlobal("AudioContext", FakeAudioContext);
     Object.defineProperty(navigator, "mediaDevices", {
@@ -83,5 +89,68 @@ describe("useAudioRecorder", () => {
     unmount();
 
     await expect(stopPromise).resolves.toBeNull();
+  });
+
+  it("does not start recording when cancelled before microphone permission resolves", async () => {
+    let resolveStream: (stream: MediaStream) => void = () => {};
+    const trackStop = vi.fn();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => {
+          resolveStream = resolve;
+        })),
+      },
+    });
+    const { result } = renderHook(() => useAudioRecorder());
+
+    let startPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      startPromise = result.current[1].start();
+    });
+    expect(result.current[0].isPreparing).toBe(true);
+
+    act(() => {
+      result.current[1].cancel();
+    });
+
+    await act(async () => {
+      resolveStream({ getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream);
+      await startPromise;
+    });
+
+    expect(trackStop).toHaveBeenCalledTimes(1);
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(result.current[0].isPreparing).toBe(false);
+    expect(result.current[0].isRecording).toBe(false);
+  });
+
+  it("does not start recording when unmounted before microphone permission resolves", async () => {
+    let resolveStream: (stream: MediaStream) => void = () => {};
+    const trackStop = vi.fn();
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: vi.fn(() => new Promise<MediaStream>((resolve) => {
+          resolveStream = resolve;
+        })),
+      },
+    });
+    const { result, unmount } = renderHook(() => useAudioRecorder());
+
+    let startPromise: Promise<void> = Promise.resolve();
+    act(() => {
+      startPromise = result.current[1].start();
+    });
+
+    unmount();
+
+    await act(async () => {
+      resolveStream({ getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream);
+      await startPromise;
+    });
+
+    expect(trackStop).toHaveBeenCalledTimes(1);
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
   });
 });

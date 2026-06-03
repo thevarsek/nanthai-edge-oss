@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatParticipantPicker } from "./ChatParticipantPicker";
+import { Defaults } from "@/lib/constants";
 
 let personas: unknown[] = [];
 let modelSummaries: unknown[] = [
@@ -35,13 +36,13 @@ describe("ChatParticipantPicker", () => {
     ];
   });
 
-  it("closes the model wizard after confirming a modality switch", async () => {
+  it("closes the model wizard after confirming a modality switch at the participant limit", async () => {
     const onSetParticipants = vi.fn(async () => undefined);
 
     render(
       <ChatParticipantPicker
         chatId={"chat_1" as never}
-        participants={[{ id: "participant_1", modelId: "text-model", sortOrder: 0 } as never]}
+        participants={fullTextParticipants()}
         onAdd={vi.fn()}
         onRemove={vi.fn()}
         onSetParticipants={onSetParticipants}
@@ -57,6 +58,30 @@ describe("ChatParticipantPicker", () => {
       expect(onSetParticipants).toHaveBeenCalledWith("chat_1", [{ modelId: "video-model" }]);
     });
     expect(screen.queryByRole("button", { name: "Select video model" })).not.toBeInTheDocument();
+  });
+
+  it("opens modality switch replacement from a model row at the participant limit", async () => {
+    const onAdd = vi.fn();
+    const onSetParticipants = vi.fn(async () => undefined);
+
+    render(
+      <ChatParticipantPicker
+        chatId={"chat_1" as never}
+        participants={fullTextParticipants()}
+        onAdd={onAdd}
+        onRemove={vi.fn()}
+        onSetParticipants={onSetParticipants}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByText("Video Model"));
+    fireEvent.click(screen.getByRole("button", { name: /switch/i }));
+
+    await waitFor(() => {
+      expect(onSetParticipants).toHaveBeenCalledWith("chat_1", [{ modelId: "video-model" }]);
+    });
+    expect(onAdd).not.toHaveBeenCalled();
   });
 
   it("blocks personas without explicit models when the default model is incompatible with Google integrations", () => {
@@ -84,3 +109,11 @@ describe("ChatParticipantPicker", () => {
     expect(screen.getAllByText(/google/i).length).toBeGreaterThan(0);
   });
 });
+
+function fullTextParticipants() {
+  return Array.from({ length: Defaults.maxParticipants }, (_, index) => ({
+    id: `participant_${index + 1}`,
+    modelId: "text-model",
+    sortOrder: index,
+  } as never));
+}

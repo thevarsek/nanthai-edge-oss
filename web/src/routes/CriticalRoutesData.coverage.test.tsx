@@ -2,7 +2,12 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
-import { mockState, renderRoute } from "@/test/criticalRoutesCoverage";
+import {
+  mockMutationEndpoint,
+  mockQueryEndpoint,
+  mockState,
+  renderRoute,
+} from "@/test/criticalRoutesCoverage";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
 import { ManageFavoritesPage } from "./ManageFavoritesPage";
 import { MemoryPage } from "./MemoryPage";
@@ -158,7 +163,9 @@ describe("critical data route coverage", () => {
       isMemoryEnabled: true,
       memoryExtractionModelId: "anthropic/claude-sonnet-4.5",
     };
-    mockState.mutation.mockResolvedValueOnce("https://upload.example").mockResolvedValue(null);
+    mockState.mutation
+      .mockResolvedValueOnce({ uploadUrl: "https://upload.example", uploadSessionId: "session_import" })
+      .mockResolvedValue(null);
     mockState.action.mockResolvedValueOnce([
       {
         content: "Uses short planning docs",
@@ -209,24 +216,30 @@ describe("critical data route coverage", () => {
       configurable: true,
     });
     mockState.page = "scheduled";
-    mockState.queryData.jobs = [
-      {
-        _id: "job_manual",
-        name: "Manual trigger",
-        status: "paused",
-        recurrence: { type: "manual" },
-        prompt: "Draft report for {{Client}}",
-        modelId: "openai/gpt-4.1",
-        createdBy: "user",
-      },
-    ];
-    mockState.queryData.runs = [];
-    mockState.queryData.triggerTokens = [];
-    mockState.mutation.mockResolvedValueOnce({
+    mockState.strictEndpoints = true;
+    const jobs = [{
+      _id: "job_manual",
+      name: "Manual trigger",
+      status: "paused",
+      recurrence: { type: "manual" },
+      prompt: "Draft report for {{Client}}",
+      modelId: "openai/gpt-4.1",
+      createdBy: "user",
+    }];
+    mockQueryEndpoint("scheduledJobs/queries:list", jobs);
+    mockQueryEndpoint("scheduledJobs/queries:listRuns", []);
+    mockQueryEndpoint("scheduledJobs/queries:listJobTriggerTokens", []);
+    const createTriggerToken = mockMutationEndpoint("scheduledJobs/mutations:createJobTriggerToken", async () => ({
       tokenId: "token_new",
       token: "ntp_secret_value",
       tokenPrefix: "ntp_secret",
-    }).mockResolvedValue(null);
+    }));
+    const resumeJob = mockMutationEndpoint("scheduledJobs/mutations:resumeJob");
+    mockMutationEndpoint("scheduledJobs/mutations:rotateJobTriggerToken");
+    mockMutationEndpoint("scheduledJobs/mutations:revokeJobTriggerToken");
+    mockMutationEndpoint("scheduledJobs/mutations:deleteJob");
+    mockMutationEndpoint("scheduledJobs/mutations:pauseJob");
+    mockMutationEndpoint("scheduledJobs/mutations:runJobNow");
 
     renderRoute(<ScheduledJobsPage />);
 
@@ -237,6 +250,7 @@ describe("critical data route coverage", () => {
 
     await user.click(screen.getByText("generate_api_key"));
     await waitFor(() => expect(screen.getByText("ntp_secret_value")).toBeInTheDocument());
+    expect(createTriggerToken).toHaveBeenCalledWith({ jobId: "job_manual" });
 
     await user.click(screen.getByText("copy_api_key"));
     expect(writeText).toHaveBeenCalledWith("ntp_secret_value");
@@ -245,7 +259,7 @@ describe("critical data route coverage", () => {
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('"Client":"<client>"'));
 
     await user.click(screen.getByText("resume_job"));
-    await waitFor(() => expect(mockState.mutation).toHaveBeenCalledWith({ jobId: "job_manual" }));
+    await waitFor(() => expect(resumeJob).toHaveBeenCalledWith({ jobId: "job_manual" }));
   });
 
   it("covers Favorites populated rows, reorder, delete, and editor open states", async () => {

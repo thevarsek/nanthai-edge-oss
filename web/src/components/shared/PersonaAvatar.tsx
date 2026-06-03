@@ -69,11 +69,12 @@ export function PersonaAvatar({
   }
 
   // Tier 3: First letter of persona name
-  if (resolvedName && resolvedName.length > 0) {
+  const initial = resolvedName ? firstPersonaInitial(resolvedName) : "";
+  if (initial) {
     return (
       <div className={cn("rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0", className)}>
         <span className={cn("font-semibold text-primary", initialClass)}>
-          {resolvedName.charAt(0).toUpperCase()}
+          {initial}
         </span>
       </div>
     );
@@ -85,4 +86,8 @@ export function PersonaAvatar({
       <User size={iconSize} className="text-muted" />
     </div>
   );
+}
+
+function firstPersonaInitial(name: string): string {
+  return Array.from(name.trim())[0]?.toLocaleUpperCase() ?? "";
 }

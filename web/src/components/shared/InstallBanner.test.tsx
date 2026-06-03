@@ -47,6 +47,19 @@ describe("InstallBanner", () => {
     expect(installState.dismiss).not.toHaveBeenCalled();
   });
 
+  it("keeps the install banner retryable when the native prompt fails", async () => {
+    installState.install.mockRejectedValueOnce(new Error("prompt failed"));
+
+    render(<InstallBanner />);
+
+    fireEvent.click(screen.getByRole("button", { name: /^install$/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Install prompt failed. Please try again.");
+    expect(installState.install).toHaveBeenCalledTimes(1);
+    expect(installState.dismiss).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: /^install$/i })).toBeEnabled();
+  });
+
   it("shows iOS manual instructions without a native install action", () => {
     installState.canInstall = false;
     installState.isIOS = true;

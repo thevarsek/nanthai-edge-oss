@@ -225,7 +225,7 @@ export function RootLayout() {
 
       {/* Right pane — chat view or empty state */}
       <main className="flex-1 overflow-hidden min-w-0 flex flex-col" id="main-content">
-        <ErrorBoundary level="route">
+        <ErrorBoundary key={location.key} level="route">
           <Outlet />
         </ErrorBoundary>
       </main>

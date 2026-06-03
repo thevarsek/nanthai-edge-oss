@@ -16,6 +16,12 @@ import {
   type SearchMode,
   shortModelName,
 } from "@/routes/ScheduledJobEditor.model";
+import {
+  localWeeklyRecurrenceToUtc,
+  isValidRecurrenceTime,
+  parseLocalTimeInput,
+  utcWeeklyRecurrenceToLocal,
+} from "./ScheduledJobEditorRecurrence";
 
 // ─── Section Header / Footer ────────────────────────────────────────────────
 
@@ -284,7 +290,6 @@ export function StepIntegrationsSection({
   const hasNotion = !!notionConnection;
   const hasCloze = clozeConnection?.status === "active";
   const hasSlack = !!slackConnection;
-  const hasAny = hasGmail || hasGoogleConnection || hasMicrosoft || hasApple || hasNotion || hasCloze || hasSlack;
   const handleGoogleToggle = async (
     checked: boolean,
     integrationId: "gmail" | "drive" | "calendar",
@@ -325,32 +330,84 @@ export function StepIntegrationsSection({
 
     onChange(patch);
   };
+  const integrationRows = [
+    {
+      label: t("integration_gmail"),
+      checked: step.gmailEnabled,
+      available: hasGmail,
+      onChange: (v: boolean) => { void handleGoogleToggle(v, "gmail", { gmailEnabled: v }); },
+    },
+    {
+      label: t("integration_google_drive"),
+      checked: step.driveEnabled,
+      available: hasGoogleConnection,
+      onChange: (v: boolean) => { void handleGoogleToggle(v, "drive", { driveEnabled: v }); },
+    },
+    {
+      label: t("integration_google_calendar"),
+      checked: step.calendarEnabled,
+      available: hasGoogleConnection,
+      onChange: (v: boolean) => { void handleGoogleToggle(v, "calendar", { calendarEnabled: v }); },
+    },
+    {
+      label: t("integration_outlook"),
+      checked: step.outlookEnabled,
+      available: hasMicrosoft,
+      onChange: (v: boolean) => onChange({ outlookEnabled: v }),
+    },
+    {
+      label: t("integration_onedrive"),
+      checked: step.onedriveEnabled,
+      available: hasMicrosoft,
+      onChange: (v: boolean) => onChange({ onedriveEnabled: v }),
+    },
+    {
+      label: t("integration_ms_calendar"),
+      checked: step.msCalendarEnabled,
+      available: hasMicrosoft,
+      onChange: (v: boolean) => onChange({ msCalendarEnabled: v }),
+    },
+    {
+      label: t("integration_apple_calendar"),
+      checked: step.appleCalendarEnabled,
+      available: hasApple,
+      onChange: (v: boolean) => onChange({ appleCalendarEnabled: v }),
+    },
+    {
+      label: t("integration_notion"),
+      checked: step.notionEnabled,
+      available: hasNotion,
+      onChange: (v: boolean) => onChange({ notionEnabled: v }),
+    },
+    {
+      label: t("integration_cloze"),
+      checked: step.clozeEnabled,
+      available: hasCloze,
+      onChange: (v: boolean) => onChange({ clozeEnabled: v }),
+    },
+    {
+      label: t("integration_slack"),
+      checked: step.slackEnabled,
+      available: hasSlack,
+      onChange: (v: boolean) => onChange({ slackEnabled: v }),
+    },
+  ];
+  const visibleRows = integrationRows.filter((row) => row.available || row.checked);
 
   return (
     <div className="space-y-2">
       <SH>{t("integrations_tools_section")}</SH>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-        {hasGmail && (
-          <ToggleRow label={t("integration_gmail")} checked={step.gmailEnabled} onChange={(v) => { void handleGoogleToggle(v, "gmail", { gmailEnabled: v }); }} />
-        )}
-        {hasGoogleConnection && (
-          <ToggleRow label={t("integration_google_drive")} checked={step.driveEnabled} onChange={(v) => { void handleGoogleToggle(v, "drive", { driveEnabled: v }); }} />
-        )}
-        {hasGoogleConnection && (
-          <ToggleRow label={t("integration_google_calendar")} checked={step.calendarEnabled} onChange={(v) => { void handleGoogleToggle(v, "calendar", { calendarEnabled: v }); }} />
-        )}
-        {hasMicrosoft && (
-          <>
-            <ToggleRow label={t("integration_outlook")} checked={step.outlookEnabled} onChange={(v) => onChange({ outlookEnabled: v })} />
-            <ToggleRow label={t("integration_onedrive")} checked={step.onedriveEnabled} onChange={(v) => onChange({ onedriveEnabled: v })} />
-            <ToggleRow label={t("integration_ms_calendar")} checked={step.msCalendarEnabled} onChange={(v) => onChange({ msCalendarEnabled: v })} />
-          </>
-        )}
-        {hasApple && <ToggleRow label={t("integration_apple_calendar")} checked={step.appleCalendarEnabled} onChange={(v) => onChange({ appleCalendarEnabled: v })} />}
-        {hasNotion && <ToggleRow label={t("integration_notion")} checked={step.notionEnabled} onChange={(v) => onChange({ notionEnabled: v })} />}
-        {hasCloze && <ToggleRow label={t("integration_cloze")} checked={step.clozeEnabled} onChange={(v) => onChange({ clozeEnabled: v })} />}
-        {hasSlack && <ToggleRow label={t("integration_slack")} checked={step.slackEnabled} onChange={(v) => onChange({ slackEnabled: v })} />}
-        {!hasAny && (
+        {visibleRows.map((row) => (
+          <ToggleRow
+            key={row.label}
+            label={row.label}
+            checked={row.checked}
+            disconnectedMessage={!row.available && row.checked ? t("connect_accounts_message") : undefined}
+            onChange={row.onChange}
+          />
+        ))}
+        {visibleRows.length === 0 && (
           <div className="px-4 py-3">
             <p className="text-xs text-muted">{t("connect_accounts_message")}</p>
           </div>
@@ -361,10 +418,15 @@ export function StepIntegrationsSection({
   );
 }
 
-function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: (v: boolean) => void }) {
+function ToggleRow({ label, checked, disconnectedMessage, onChange }: { label: string; checked: boolean; disconnectedMessage?: string; onChange: (v: boolean) => void }) {
   return (
     <div className="flex items-center justify-between px-4 py-3">
-      <span className="text-sm">{label}</span>
+      <div>
+        <span className="text-sm">{label}</span>
+        {disconnectedMessage && (
+          <p className="text-xs text-muted mt-0.5">{disconnectedMessage}</p>
+        )}
+      </div>
       <Toggle checked={checked} onChange={onChange} />
     </div>
   );
@@ -553,6 +615,33 @@ export function RecurrencePicker({
       minute: date.getMinutes(),
     };
   }, [dailyHour, dailyMinute]);
+  const localWeeklyTime = useMemo(
+    () => utcWeeklyRecurrenceToLocal(weeklyDay, dailyHour, dailyMinute),
+    [dailyHour, dailyMinute, weeklyDay],
+  );
+  const displayedTime = recurrenceType === "weekly" ? localWeeklyTime : localTime;
+  const safeDisplayedTime = isValidRecurrenceTime(displayedTime.hour, displayedTime.minute)
+    ? displayedTime
+    : { hour: 0, minute: 0 };
+  const handleWeeklyDayChange = (dayOfWeek: number) => {
+    const utc = localWeeklyRecurrenceToUtc(dayOfWeek, localWeeklyTime.hour, localWeeklyTime.minute);
+    onWeeklyDay(utc.dayOfWeek);
+    onDailyHour(utc.hourUTC);
+    onDailyMinute(utc.minuteUTC);
+  };
+  const handleLocalTimeChange = (hour: number, minute: number) => {
+    if (recurrenceType === "weekly") {
+      const utc = localWeeklyRecurrenceToUtc(localWeeklyTime.dayOfWeek, hour, minute);
+      onWeeklyDay(utc.dayOfWeek);
+      onDailyHour(utc.hourUTC);
+      onDailyMinute(utc.minuteUTC);
+      return;
+    }
+    const d = new Date();
+    d.setHours(hour, minute, 0, 0);
+    onDailyHour(d.getUTCHours());
+    onDailyMinute(d.getUTCMinutes());
+  };
   return (
     <div className="space-y-2">
       <SH>{t("schedule_section")}</SH>
@@ -609,8 +698,8 @@ export function RecurrencePicker({
               <div className="flex items-center justify-between">
                 <span className="text-sm">{t("day_of_week_label")}</span>
                 <select
-                  value={weeklyDay}
-                  onChange={(e) => onWeeklyDay(Number(e.target.value))}
+                  value={localWeeklyTime.dayOfWeek}
+                  onChange={(e) => handleWeeklyDayChange(Number(e.target.value))}
                   className="text-sm bg-transparent focus:outline-none cursor-pointer text-right"
                 >
                   {DAY_NAME_KEYS.map((key, i) => (
@@ -623,14 +712,11 @@ export function RecurrencePicker({
               <span className="text-sm">{t("time_local_label")}</span>
               <input
                 type="time"
-                value={`${String(localTime.hour).padStart(2, "0")}:${String(localTime.minute).padStart(2, "0")}`}
+                value={`${String(safeDisplayedTime.hour).padStart(2, "0")}:${String(safeDisplayedTime.minute).padStart(2, "0")}`}
                 onChange={(e) => {
-                  const [h, m] = e.target.value.split(":").map(Number);
-                  // Convert local → UTC
-                  const d = new Date();
-                  d.setHours(h, m, 0, 0);
-                  onDailyHour(d.getUTCHours());
-                  onDailyMinute(d.getUTCMinutes());
+                  const parsed = parseLocalTimeInput(e.target.value);
+                  if (!parsed) return;
+                  handleLocalTimeChange(parsed.hour, parsed.minute);
                 }}
                 className="text-sm bg-transparent focus:outline-none cursor-pointer"
               />

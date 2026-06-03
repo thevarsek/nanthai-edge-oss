@@ -608,7 +608,7 @@ test("fetchOpenRouterCredits returns remaining balance and maps upstream failure
   try {
     globalThis.fetch = (async () => ({
       ok: true,
-      json: async () => ({ data: { total_credits: 20, total_usage: 4.5 } }),
+      json: async () => ({ data: { total_credits: 20, total_usage: 4.5, remaining_credits: 12.25 } }),
     })) as any;
 
     const success = await (fetchOpenRouterCredits as any)._handler({
@@ -616,7 +616,31 @@ test("fetchOpenRouterCredits returns remaining balance and maps upstream failure
       runQuery: async () => "sk-key",
     }, {});
 
-    assert.deepEqual(success, { balance: 15.5 });
+    assert.deepEqual(success, { balance: 12.25 });
+
+    globalThis.fetch = (async () => ({
+      ok: true,
+      json: async () => ({ data: { total_credits: 5, total_usage: 8 } }),
+    })) as any;
+
+    const overspent = await (fetchOpenRouterCredits as any)._handler({
+      auth: buildAuth(),
+      runQuery: async () => "sk-key",
+    }, {});
+
+    assert.deepEqual(overspent, { balance: 0 });
+
+    globalThis.fetch = (async () => ({
+      ok: true,
+      json: async () => ({ data: { remaining_credits: -2 } }),
+    })) as any;
+
+    const negativeRemaining = await (fetchOpenRouterCredits as any)._handler({
+      auth: buildAuth(),
+      runQuery: async () => "sk-key",
+    }, {});
+
+    assert.deepEqual(negativeRemaining, { balance: 0 });
 
     globalThis.fetch = (async () => ({
       ok: false,

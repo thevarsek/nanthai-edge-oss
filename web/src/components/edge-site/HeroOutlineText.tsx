@@ -88,11 +88,11 @@ export function HeroOutlineText({
     const handleResize = () => requestAnimationFrame(measure);
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
-  }, [lines, strokeWidth]);
+  }, [align, lines, strokeWidth]);
 
   const textAnchor = align === "right" ? "end" : "start";
-  // For right-align, place x at a large value; viewBox auto-crops via getBBox
-  const xPos = align === "right" ? 2000 : 0;
+  // Keep the provisional right-aligned render inside the initial viewBox.
+  const xPos = align === "right" ? 1000 : 0;
 
   // Normalize every line into a Segment[]
   const normalizedLines: Segment[][] = lines.map((line) => {

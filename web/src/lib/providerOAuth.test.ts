@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { connectProviderWithPopup, readOAuthContext } from "./providerOAuth";
+import { buildProviderAuthorizationUrl, connectProviderWithPopup, readOAuthContext } from "./providerOAuth";
 
 function stubOAuthCrypto(digest: () => Promise<ArrayBuffer> = async () => new Uint8Array(32).buffer) {
   vi.stubGlobal("crypto", {
@@ -65,13 +65,30 @@ describe("providerOAuth context", () => {
     await vi.waitFor(() => {
       expect(popup.location.href).toContain("https://accounts.google.com/o/oauth2/v2/auth?");
     });
+    const state = readOAuthContext("google")?.state ?? "";
+    expect(state).not.toBe("");
 
     window.dispatchEvent(new MessageEvent("message", {
       origin: window.location.origin,
-      data: { type: "nanthai-oauth-result", provider: "google", success: true },
+      data: { type: "nanthai-oauth-result", provider: "google", state, success: true },
     }));
 
     await expect(connection).resolves.toBeUndefined();
+  });
+
+  it("builds Slack authorization URLs with a stored PKCE verifier", async () => {
+    vi.stubEnv("VITE_SLACK_CLIENT_ID", "slack_client");
+    stubOAuthCrypto();
+
+    const authUrl = await buildProviderAuthorizationUrl("slack");
+    const url = new URL(authUrl);
+    const context = readOAuthContext("slack");
+
+    expect(url.origin + url.pathname).toBe("https://slack.com/oauth/v2_user/authorize");
+    expect(url.searchParams.get("code_challenge")).toBeTruthy();
+    expect(url.searchParams.get("code_challenge_method")).toBe("S256");
+    expect(url.searchParams.get("state")).toBe(context?.state);
+    expect(context?.verifier).toBeTruthy();
   });
 
   it("clears context and rejects when the popup is blocked", async () => {
@@ -111,14 +128,24 @@ describe("providerOAuth context", () => {
     await vi.waitFor(() => {
       expect(localStorage.getItem("nanthai.oauth.google")).not.toBeNull();
     });
+    const state = readOAuthContext("google")?.state ?? "";
+    expect(state).not.toBe("");
 
     window.dispatchEvent(new MessageEvent("message", {
       origin: "https://evil.example",
-      data: { type: "nanthai-oauth-result", provider: "google", success: true },
+      data: { type: "nanthai-oauth-result", provider: "google", state, success: true },
     }));
     window.dispatchEvent(new MessageEvent("message", {
       origin: window.location.origin,
-      data: { type: "nanthai-oauth-result", provider: "microsoft", success: true },
+      data: { type: "nanthai-oauth-result", provider: "microsoft", state, success: true },
+    }));
+    window.dispatchEvent(new MessageEvent("message", {
+      origin: window.location.origin,
+      data: { type: "nanthai-oauth-result", provider: "google", state: "stale_state", success: true },
+    }));
+    window.dispatchEvent(new MessageEvent("message", {
+      origin: window.location.origin,
+      data: { type: "nanthai-oauth-result", provider: "google", success: true },
     }));
 
     const rejection = expect(connection).rejects.toThrow("Google sign-in timed out.");
@@ -137,17 +164,42 @@ describe("providerOAuth context", () => {
     await vi.waitFor(() => {
       expect(localStorage.getItem("nanthai.oauth.google")).not.toBeNull();
     });
+    const state = readOAuthContext("google")?.state ?? "";
+    expect(state).not.toBe("");
 
     window.dispatchEvent(new MessageEvent("message", {
       origin: window.location.origin,
       data: {
         type: "nanthai-oauth-result",
         provider: "google",
+        state,
         success: false,
         error: "Google denied access.",
       },
     }));
 
     await expect(connection).rejects.toThrow("Google denied access.");
+  });
+
+  it("rejects a second popup connection for the same provider while one is active", async () => {
+    vi.stubEnv("VITE_GOOGLE_CLIENT_ID", "google_client");
+    stubOAuthCrypto();
+    vi.spyOn(window, "open").mockReturnValue(popupStub() as unknown as Window);
+
+    const connection = connectProviderWithPopup("google");
+    await vi.waitFor(() => {
+      expect(localStorage.getItem("nanthai.oauth.google")).not.toBeNull();
+    });
+
+    await expect(connectProviderWithPopup("google")).rejects.toThrow("Google sign-in is already in progress.");
+    expect(window.open).toHaveBeenCalledTimes(1);
+
+    const state = readOAuthContext("google")?.state ?? "";
+    window.dispatchEvent(new MessageEvent("message", {
+      origin: window.location.origin,
+      data: { type: "nanthai-oauth-result", provider: "google", state, success: true },
+    }));
+
+    await expect(connection).resolves.toBeUndefined();
   });
 });

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   addUploadToKnowledgeBase,
   bindKnowledgeBaseUploadSession,
+  cleanupUnclaimedUpload,
   createKnowledgeBaseUploadUrl,
   deleteKnowledgeBaseFileHandler,
   updateDriveAttachmentStorage,
@@ -132,6 +133,60 @@ test("Knowledge Base upload rejects files over the Settings KB size cap before c
     /File is too large/,
   );
   assert.equal(rows.kbUploadSessions[0].status, "pending");
+});
+
+test("cleanupUnclaimedUpload deletes unreferenced pending upload storage and cancels the session", async () => {
+  const rows: Record<string, any[]> = {
+    kbUploadSessions: [{ _id: "session_1", userId: "user_1", status: "pending", storageId: "storage_orphan" }],
+    fileAttachments: [],
+    generatedFiles: [],
+    generatedMedia: [],
+    googleDriveFileGrants: [],
+  };
+  const deletes: string[] = [];
+
+  await (cleanupUnclaimedUpload as any)._handler({
+    auth: buildAuth(),
+    db: buildDb(rows),
+    storage: {
+      delete: async (id: string) => {
+        deletes.push(id);
+      },
+    },
+  }, {
+    uploadSessionId: "session_1",
+    storageId: "storage_orphan",
+  });
+
+  assert.deepEqual(deletes, ["storage_orphan"]);
+  assert.equal(rows.kbUploadSessions[0].status, "cancelled");
+});
+
+test("cleanupUnclaimedUpload cancels but does not delete referenced upload storage", async () => {
+  const rows: Record<string, any[]> = {
+    kbUploadSessions: [{ _id: "session_1", userId: "user_1", status: "pending", storageId: "storage_ref" }],
+    fileAttachments: [{ _id: "fa_1", userId: "user_1", storageId: "storage_ref" }],
+    generatedFiles: [],
+    generatedMedia: [],
+    googleDriveFileGrants: [],
+  };
+  const deletes: string[] = [];
+
+  await (cleanupUnclaimedUpload as any)._handler({
+    auth: buildAuth(),
+    db: buildDb(rows),
+    storage: {
+      delete: async (id: string) => {
+        deletes.push(id);
+      },
+    },
+  }, {
+    uploadSessionId: "session_1",
+    storageId: "storage_ref",
+  });
+
+  assert.deepEqual(deletes, []);
+  assert.equal(rows.kbUploadSessions[0].status, "cancelled");
 });
 
 test("deleteKnowledgeBaseFile removes message references but preserves shared storage blobs", async () => {

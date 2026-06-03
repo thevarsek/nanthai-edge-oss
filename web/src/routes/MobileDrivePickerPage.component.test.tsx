@@ -41,6 +41,27 @@ describe("MobileDrivePickerPage", () => {
     expect(window.location.search).toBe("?app_id=app_1&developer_key=dev_1");
   });
 
+  it("uses a query-string access token and strips it from history", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/mobile-drive-picker?access_token=query_token&app_id=app_1&developer_key=dev_1",
+    );
+
+    render(<MobileDrivePickerPage />);
+
+    await waitFor(() => {
+      expect(pickGoogleDriveFiles).toHaveBeenCalledWith({
+        accessToken: "query_token",
+        appId: "app_1",
+        developerKey: "dev_1",
+        multiselect: true,
+      });
+    });
+    expect(window.location.hash).toBe("");
+    expect(window.location.search).toBe("?app_id=app_1&developer_key=dev_1");
+  });
+
   it("cancels delayed fallback redirects when the page unmounts", () => {
     vi.useFakeTimers();
     window.history.replaceState(null, "", "/mobile-drive-picker?callback_scheme=nanthai-edge");

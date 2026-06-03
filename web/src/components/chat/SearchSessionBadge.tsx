@@ -4,7 +4,7 @@
 
 import { useTranslation } from "react-i18next";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
-import type { SearchSession, SearchSessionStatus } from "@/hooks/useSearchSessions";
+import { phaseLabelKey, type SearchSession, type SearchSessionStatus } from "@/hooks/useSearchSessions";
 import { statusBadgeClass, statusTextClass } from "@/lib/uiTokens";
 
 // ─── Badge config per status ──────────────────────────────────────────────────
@@ -28,18 +28,6 @@ interface SearchSessionBadgeProps {
   session: SearchSession;
 }
 
-const PHASE_LABEL_KEYS: Record<SearchSessionStatus, string> = {
-  planning: "search_phase_planning",
-  searching: "search_phase_searching",
-  analyzing: "search_phase_analyzing",
-  deepening: "search_phase_deepening",
-  synthesizing: "search_phase_synthesizing",
-  writing: "search_phase_writing",
-  completed: "search_phase_completed",
-  failed: "search_phase_failed",
-  cancelled: "search_phase_cancelled",
-};
-
 export function SearchSessionBadge({ session }: SearchSessionBadgeProps) {
   const { t } = useTranslation();
   const { Icon } = badgeConfig(session.status);
@@ -48,7 +36,7 @@ export function SearchSessionBadge({ session }: SearchSessionBadgeProps) {
   return (
     <div className={statusBadgeClass(session.status, "mt-2 border-0")}>
       <Icon size={12} className={toneClass} />
-      <span className={`text-[11px] ${toneClass}`}>{t(PHASE_LABEL_KEYS[session.status])}</span>
+      <span className={`text-[11px] ${toneClass}`}>{t(phaseLabelKey(session.status, session.mode))}</span>
     </div>
   );
 }

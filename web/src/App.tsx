@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { Route, Routes, Link } from "react-router-dom";
+import { Route, Routes, Link, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { OpenRouterCallbackPage } from "./pages/OpenRouterCallbackPage";
 import { SignInPage } from "./routes/SignInPage";
@@ -140,9 +140,17 @@ const VideoGenerationPage = lazy(() =>
   import("./pages/features/VideoGenerationPage").then((m) => ({ default: m.VideoGenerationPage })),
 );
 
-function AppSuspense({ children }: { children: React.ReactNode }) {
+function AppSuspense({
+  children,
+  resetOnLocationChange = true,
+}: {
+  children: React.ReactNode;
+  resetOnLocationChange?: boolean;
+}) {
+  const location = useLocation();
+  const boundaryKey = resetOnLocationChange ? location.key : "stable";
   return (
-    <ErrorBoundary level="route">
+    <ErrorBoundary key={boundaryKey} level="route">
       <Suspense
         fallback={
           <div className="min-h-screen flex items-center justify-center bg-background">
@@ -372,7 +380,7 @@ export function App() {
         path="/app"
         element={
           <AuthGuard>
-            <AppSuspense>
+            <AppSuspense resetOnLocationChange={false}>
               <RootLayout />
             </AppSuspense>
           </AuthGuard>
@@ -501,6 +509,7 @@ export function App() {
             </AppSuspense>
           }
         />
+        <Route path="*" element={<NotFound />} />
       </Route>
 
       {/* Onboarding (protected but outside main layout) */}

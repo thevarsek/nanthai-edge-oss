@@ -244,7 +244,11 @@ export function MemoryEditorDialog({ memory, onClose }: { memory?: MemoryDoc; on
     const payload = candidateFromDraft(draft);
     try {
       if (memory) {
-        await updateMemory({ memoryId: memory._id, ...payload } as Parameters<typeof updateMemory>[0]);
+        await updateMemory({
+          memoryId: memory._id,
+          ...payload,
+          category: draft.category || null,
+        } as Parameters<typeof updateMemory>[0]);
       } else {
         await createManual(payload as Parameters<typeof createManual>[0]);
       }

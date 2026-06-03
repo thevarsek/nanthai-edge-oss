@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { mockState, renderRoute } from "@/test/criticalRoutesCoverage";
 import { MemoryPage } from "./MemoryPage";
 
@@ -83,5 +83,66 @@ describe("MemoryPage shell behavior", () => {
     fireEvent.click(screen.getByText("memory_clear_all"));
     fireEvent.click(screen.getByRole("button", { name: "memory_delete_all" }));
     expect(mockState.mutation).toHaveBeenCalledWith({});
+  });
+
+  it("cleans up uploaded storage when memory extraction fails after upload", async () => {
+    mockState.page = "memory";
+    mockState.queryData.memories = [];
+    mockState.mutation
+      .mockResolvedValueOnce({ uploadUrl: "https://upload.example", uploadSessionId: "session_memory" })
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null);
+    mockState.action.mockRejectedValueOnce(new Error("extract failed"));
+    vi.stubGlobal("fetch", vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ storageId: "storage_import" }),
+    })));
+
+    renderRoute(<MemoryPage />);
+
+    const uploadInput = document.querySelector("input[type='file']") as HTMLInputElement;
+    fireEvent.change(uploadInput, { target: { files: [new File(["notes"], "notes.md", { type: "text/markdown" })] } });
+
+    await waitFor(() => expect(screen.getByText(/upload_failed_arg/)).toBeInTheDocument());
+    const mutationCalls = mockState.mutation.mock.calls as unknown as Array<[Record<string, unknown>]>;
+    const sessionCalls = mutationCalls.filter(([args]) =>
+      args &&
+      typeof args === "object" &&
+      "storageId" in args &&
+      args.storageId === "storage_import" &&
+      "uploadSessionId" in args &&
+      args.uploadSessionId === "session_memory",
+    );
+    expect(sessionCalls).toHaveLength(2);
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps delete dialogs open and visible when memory mutations fail", async () => {
+    mockState.page = "memory";
+    mockState.queryData.memories = [{
+      _id: "mem_1",
+      content: "Remember this",
+      retrievalMode: "contextual",
+      scopeType: "allPersonas",
+      tags: [],
+    }];
+    mockState.mutation.mockRejectedValueOnce(new Error("delete failed"));
+
+    renderRoute(<MemoryPage />);
+
+    fireEvent.click(screen.getByText("memory_view_all"));
+    fireEvent.click(screen.getByTitle("delete"));
+    fireEvent.click(screen.getAllByRole("button", { name: "delete" }).at(-1)!);
+
+    expect(await screen.findAllByText("delete failed")).toHaveLength(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    mockState.mutation.mockRejectedValueOnce(new Error("delete all failed"));
+    fireEvent.click(screen.getByText("cancel"));
+    fireEvent.click(screen.getByText("memory_clear_all"));
+    fireEvent.click(screen.getByRole("button", { name: "memory_delete_all" }));
+
+    expect(await screen.findAllByText("delete all failed")).toHaveLength(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });

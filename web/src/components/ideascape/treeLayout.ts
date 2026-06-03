@@ -30,22 +30,31 @@ export interface LayoutPosition {
   y: number;
 }
 
+export interface ExistingLayoutPosition {
+  messageId: string;
+  x: number;
+  y: number;
+}
+
 /**
  * Generate tree-based layout positions for messages.
  * Matches iOS IdeascapeLayoutEngine: root at center, depth layering,
  * sibling spreading, collision avoidance for multi-model siblings.
  *
  * @param messages All messages in the chat
- * @param existingPositionIds Set of message IDs that already have stored positions
- *   (those are skipped in the output — caller preserves them)
+ * @param existingPositions Positions that already have stored coordinates.
  * @returns Map from message ID to { x, y } for ALL messages (including existing,
  *   so the caller can use this as a complete fallback map)
  */
 export function computeTreeLayout(
   messages: Message[],
+  existingPositions: ExistingLayoutPosition[] = [],
 ): Map<string, { x: number; y: number }> {
   const result = new Map<string, { x: number; y: number }>();
   if (messages.length === 0) return result;
+  const existingByMessageId = new Map(
+    existingPositions.map((position) => [position.messageId as string, position]),
+  );
 
   // Build parent → children lookup (using first parentMessageId as the tree parent)
   const childrenByParent = new Map<string, Message[]>();
@@ -117,7 +126,19 @@ export function computeTreeLayout(
   const midX = (minX + maxX) / 2;
 
   for (const pos of positions) {
-    result.set(pos.messageId, { x: pos.x - midX, y: pos.y });
+    const existing = existingByMessageId.get(pos.messageId);
+    result.set(
+      pos.messageId,
+      existing ? { x: existing.x, y: existing.y } : { x: pos.x - midX, y: pos.y },
+    );
+  }
+
+  for (const message of messages) {
+    const messageId = message._id as string;
+    const existing = existingByMessageId.get(messageId);
+    if (existing && !result.has(messageId)) {
+      result.set(messageId, { x: existing.x, y: existing.y });
+    }
   }
 
   // Phase 5: Position multi-model siblings not in the tree

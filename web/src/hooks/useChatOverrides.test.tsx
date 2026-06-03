@@ -142,7 +142,7 @@ describe("useChatOverrides", () => {
       }));
       expect(convexMocks.mutations[0]).toHaveBeenCalledWith({
         chatId,
-        skillOverrides: [],
+        skillOverrides: [{ skillId: "skill_research", state: "never" }],
       });
       expect(convexMocks.mutations[1]).toHaveBeenCalledWith({
         chatId,
@@ -157,5 +157,31 @@ describe("useChatOverrides", () => {
 
     expect(result.current.activePanel).toBeNull();
     expect(result.current.selectedKBFileIds.size).toBe(0);
+  });
+
+  it("persists disabling a persona-default skill on an existing chat", async () => {
+    const updateChat = vi.fn(async (args: unknown) => args);
+    const { result } = renderHook(() => useChatOverrides({
+      chat: chat({ skillOverrides: [] }),
+      chatId,
+      activePersona: {
+        skillOverrides: [{ skillId: "skill_research", state: "available" as const }],
+      },
+      updateChat: updateChat as UseChatReturn["updateChat"],
+    }));
+
+    expect(result.current.enabledSkillIds.has("skill_research")).toBe(true);
+
+    act(() => {
+      result.current.toggleSkill("skill_research" as Id<"skills">);
+    });
+
+    expect(result.current.enabledSkillIds.has("skill_research")).toBe(false);
+    await waitFor(() => {
+      expect(convexMocks.mutations[0]).toHaveBeenCalledWith({
+        chatId,
+        skillOverrides: [{ skillId: "skill_research", state: "never" }],
+      });
+    });
   });
 });

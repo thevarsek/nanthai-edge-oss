@@ -28,7 +28,8 @@ export function useAttachments(
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = Array.from(e.target.files ?? []);
+      const input = e.currentTarget;
+      const files = Array.from(input.files ?? []);
       if (files.length === 0) return;
       setIsUploading(true);
       setUploadError(null);
@@ -71,7 +72,7 @@ export function useAttachments(
         }
       } finally {
         setIsUploading(false);
-        if (fileInputRef.current) fileInputRef.current.value = "";
+        input.value = "";
       }
     },
     [onCreateUploadUrl, isVideoMode, supportsFrameImages],

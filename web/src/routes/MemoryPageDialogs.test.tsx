@@ -127,6 +127,20 @@ describe("MemoryPageDialogs", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("sends an explicit null category when editing clears an existing category", async () => {
+    const onClose = vi.fn();
+    render(<MemoryEditorDialog memory={memory()} onClose={onClose} />);
+
+    fireEvent.change(screen.getByDisplayValue("memory_cat_work"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => expect(updateMemory).toHaveBeenCalledWith(expect.objectContaining({
+      memoryId: "memory_1",
+      category: null,
+    })));
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
   it("reviews imported candidates, preserves scores, filters blank entries, and reports save errors", async () => {
     const onSave = vi.fn().mockRejectedValueOnce(new Error("failed"));
     render(

@@ -38,7 +38,18 @@ describe("groupMessages", () => {
     const multi = { type: "multi" as const, groupId: "group_a", messages: [message("a1", "group_a")] };
 
     expect(messageGroupKey(single)).toBe("single");
-    expect(messageGroupKey(multi)).toBe("group-group_a");
+    expect(messageGroupKey(multi)).toBe("group-group_a-a1");
+  });
+
+  it("creates unique keys for separated multi-message groups with the same group id", () => {
+    const grouped = groupMessages([
+      message("a1", "group_a"),
+      message("single"),
+      message("a2", "group_a"),
+    ]);
+    const keys = grouped.map(messageGroupKey);
+
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it("memoizes grouped output until visible messages change", () => {

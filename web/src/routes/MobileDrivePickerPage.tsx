@@ -48,8 +48,8 @@ export function MobileDrivePickerPage() {
     const callbackScheme = safeCallbackScheme(query.get("callback_scheme") ?? params.get("callback_scheme"));
     const queryFileIds = pickedFileIds(query);
     const selectedFileIds = queryFileIds.length > 0 ? queryFileIds : pickedFileIds(params);
-    const accessToken = params.get("access_token") ?? "";
-    if (accessToken && window.location.hash) {
+    const accessToken = params.get("access_token") ?? query.get("access_token") ?? "";
+    if (params.has("access_token") || query.has("access_token")) {
       window.history.replaceState(
         null,
         "",

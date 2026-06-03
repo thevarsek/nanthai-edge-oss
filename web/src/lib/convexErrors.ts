@@ -1,5 +1,11 @@
 import { ConvexError } from "convex/values";
 
+function isOpaqueServerErrorMessage(message: string): boolean {
+  return message === "Server Error" ||
+    message.startsWith("Server Error [Request ID:") ||
+    /^\[CONVEX [^\]]+\]\s*Server Error\b/.test(message);
+}
+
 /**
  * Extract a user-friendly error message from a Convex mutation/action error.
  *
@@ -28,7 +34,7 @@ export function convexErrorMessage(error: unknown, fallback: string): string {
     // Convex ServerError messages are opaque ("Server Error") — not helpful.
     // Only surface non-opaque messages from other Error types.
     const msg = error.message;
-    if (!msg.includes("[Request ID:") && msg !== "Server Error") {
+    if (!isOpaqueServerErrorMessage(msg)) {
       return msg;
     }
   }

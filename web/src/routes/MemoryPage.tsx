@@ -9,6 +9,7 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Toggle } from "@/components/shared/Toggle";
 import { ModelPicker } from "@/components/shared/ModelPicker";
+import { convexErrorMessage } from "@/lib/convexErrors";
 import { ProGateWrapper } from "@/hooks/useProGate";
 import { useSharedData } from "@/hooks/useSharedData";
 import { usePreferenceBuffer } from "@/hooks/usePreferenceBuffer";
@@ -100,11 +101,14 @@ function MemoryPageContent() {
   const [editingMemory, setEditingMemory] = useState<MemoryDoc | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [importCandidates, setImportCandidates] = useState<ImportedMemoryCandidate[]>([]);
 
   const memories = useQuery(api.memory.operations.list, {});
 
-  const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
+  const createImportUploadSession = useMutation(api.knowledge_base.mutations.createKnowledgeBaseUploadUrl);
+  const bindImportUploadSession = useMutation(api.knowledge_base.mutations.bindKnowledgeBaseUploadSession);
+  const cleanupUnclaimedUpload = useMutation(api.knowledge_base.mutations.cleanupUnclaimedUpload);
   const togglePin = useMutation(api.memory.operations.togglePin);
   const removeMem = useMutation(api.memory.operations.remove);
   const approve = useMutation(api.memory.operations.approve);
@@ -193,9 +197,15 @@ function MemoryPageContent() {
 
     setIsImporting(true);
     setImportError(null);
+    const uploadedFiles: Array<{
+      storageId: Id<"_storage">;
+      uploadSessionId: Id<"kbUploadSessions">;
+      filename: string;
+      mimeType: string;
+    }> = [];
     try {
-      const uploadedFiles = await Promise.all(Array.from(files).map(async (file) => {
-        const uploadUrl = await createUploadUrl({});
+      for (const file of Array.from(files)) {
+        const { uploadUrl, uploadSessionId } = await createImportUploadSession({});
         const response = await fetch(uploadUrl, {
           method: "POST",
           headers: { "Content-Type": file.type || "application/octet-stream" },
@@ -205,20 +215,32 @@ function MemoryPageContent() {
           throw new Error(`Upload failed: ${response.status}`);
         }
         const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
-        return {
+        uploadedFiles.push({
           storageId,
+          uploadSessionId,
           filename: file.name,
           mimeType: file.type || "application/octet-stream",
-        };
-      }));
+        });
+        await bindImportUploadSession({ uploadSessionId, storageId });
+      }
 
       const candidates = await extractImportCandidates({
-        files: uploadedFiles,
+        files: uploadedFiles.map(({ storageId, filename, mimeType }) => ({
+          storageId,
+          filename,
+          mimeType,
+        })),
         extractionModel: memoryExtractionModelId,
       });
+      await Promise.allSettled(uploadedFiles.map(({ storageId, uploadSessionId }) =>
+        cleanupUnclaimedUpload({ storageId, uploadSessionId }),
+      ));
       setImportCandidates(candidates as unknown as ImportedMemoryCandidate[]);
       setShowAllMemories(true);
     } catch (error) {
+      await Promise.allSettled(uploadedFiles.map(({ storageId, uploadSessionId }) =>
+        cleanupUnclaimedUpload({ storageId, uploadSessionId }),
+      ));
       setImportError(
         t("upload_failed_arg", {
           var1: error instanceof Error ? error.message : "Unknown error",
@@ -246,6 +268,27 @@ function MemoryPageContent() {
       })),
     });
     setImportCandidates([]);
+  };
+
+  const handleDeleteMemoryConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    try {
+      await removeMem({ memoryId: deleteTarget });
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteError(convexErrorMessage(error, t("something_went_wrong")));
+    }
+  };
+
+  const handleDeleteAllConfirm = async () => {
+    setDeleteError(null);
+    try {
+      await deleteAllMem({});
+      setDeleteAll(false);
+    } catch (error) {
+      setDeleteError(convexErrorMessage(error, t("something_went_wrong")));
+    }
   };
 
   return (
@@ -525,7 +568,10 @@ function MemoryPageContent() {
                               <MemoryItemRow
                                 key={memory._id}
                                 memory={memory}
-                                onDelete={(id) => setDeleteTarget(id)}
+                                onDelete={(id) => {
+                                  setDeleteError(null);
+                                  setDeleteTarget(id);
+                                }}
                                 onPin={(id) => void togglePin({ memoryId: id })}
                                 onApprove={(id) => void approve({ memoryId: id })}
                                 onReject={(id) => void reject({ memoryId: id })}
@@ -553,7 +599,10 @@ function MemoryPageContent() {
                               <MemoryItemRow
                                 key={memory._id}
                                 memory={memory}
-                                onDelete={(id) => setDeleteTarget(id)}
+                                onDelete={(id) => {
+                                  setDeleteError(null);
+                                  setDeleteTarget(id);
+                                }}
                                 onPin={(id) => void togglePin({ memoryId: id })}
                                 onApprove={(id) => void approve({ memoryId: id })}
                                 onReject={(id) => void reject({ memoryId: id })}
@@ -576,17 +625,20 @@ function MemoryPageContent() {
                             </p>
                             <div className="overflow-hidden rounded-2xl bg-surface-2 divide-y divide-border/50">
                               {section.memories.map((memory) => (
-                              <MemoryItemRow
-                                key={memory._id}
-                                memory={memory}
-                                onDelete={(id) => setDeleteTarget(id)}
-                                onPin={(id) => void togglePin({ memoryId: id })}
-                                onApprove={(id) => void approve({ memoryId: id })}
-                                onReject={(id) => void reject({ memoryId: id })}
-                                onEdit={setEditingMemory}
-                              />
-                            ))}
-                          </div>
+                                <MemoryItemRow
+                                  key={memory._id}
+                                  memory={memory}
+                                  onDelete={(id) => {
+                                    setDeleteError(null);
+                                    setDeleteTarget(id);
+                                  }}
+                                  onPin={(id) => void togglePin({ memoryId: id })}
+                                  onApprove={(id) => void approve({ memoryId: id })}
+                                  onReject={(id) => void reject({ memoryId: id })}
+                                  onEdit={setEditingMemory}
+                                />
+                              ))}
+                            </div>
                           </div>
                         )
                       ))}
@@ -598,7 +650,10 @@ function MemoryPageContent() {
               {/* Section 6: Clear All Memories */}
               <div className="rounded-2xl bg-surface-2 overflow-hidden">
                 <button
-                  onClick={() => setDeleteAll(true)}
+                  onClick={() => {
+                    setDeleteError(null);
+                    setDeleteAll(true);
+                  }}
                   disabled={savedCount === 0 && pendingCount === 0}
                   className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-40"
                 >
@@ -641,21 +696,29 @@ function MemoryPageContent() {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => { if (deleteTarget) void removeMem({ memoryId: deleteTarget }); setDeleteTarget(null); }}
+        onClose={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => { void handleDeleteMemoryConfirm(); }}
         title={t("delete_memory_title")}
         description={t("delete_memory_description")}
         confirmLabel={t("delete")}
         confirmVariant="destructive"
+        errorMessage={deleteError}
       />
       <ConfirmDialog
         isOpen={deleteAll}
-        onClose={() => setDeleteAll(false)}
-        onConfirm={() => { void deleteAllMem({}); setDeleteAll(false); }}
+        onClose={() => {
+          setDeleteAll(false);
+          setDeleteError(null);
+        }}
+        onConfirm={() => { void handleDeleteAllConfirm(); }}
         title={t("memory_clear_all_title")}
         description={t("memory_clear_all_message")}
         confirmLabel={t("memory_delete_all")}
         confirmVariant="destructive"
+        errorMessage={deleteError}
       />
       {isImporting && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40">

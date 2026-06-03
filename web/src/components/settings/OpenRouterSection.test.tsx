@@ -7,6 +7,16 @@ const upsertPreferences = vi.fn();
 const deleteApiKey = vi.fn();
 const refreshCredits = vi.fn();
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, reject, resolve };
+}
+
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
@@ -103,5 +113,67 @@ describe("OpenRouterSection", () => {
     rerender(<OpenRouterSection />);
 
     expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("keeps a rapid no-op optimistic toggle through stale preference echoes", async () => {
+    const firstRequest = deferred();
+    const secondRequest = deferred();
+    upsertPreferences
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise);
+    const { rerender } = render(<OpenRouterSection />);
+
+    fireEvent.click(screen.getAllByRole("switch")[0]);
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(screen.getAllByRole("switch")[0]);
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+
+    prefs = { showBalanceInChat: true, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+    expect(upsertPreferences).toHaveBeenNthCalledWith(1, { showBalanceInChat: true });
+    expect(upsertPreferences).toHaveBeenNthCalledWith(2, { showBalanceInChat: false });
+
+    await act(async () => {
+      firstRequest.resolve();
+      await firstRequest.promise;
+    });
+
+    prefs = { showBalanceInChat: false, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("ignores an older failed preference request after a newer success", async () => {
+    const firstRequest = deferred();
+    const secondRequest = deferred();
+    upsertPreferences
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise);
+    const { rerender } = render(<OpenRouterSection />);
+
+    fireEvent.click(screen.getAllByRole("switch")[0]);
+    fireEvent.click(screen.getAllByRole("switch")[0]);
+
+    expect(upsertPreferences).toHaveBeenNthCalledWith(1, { showBalanceInChat: true });
+    expect(upsertPreferences).toHaveBeenNthCalledWith(2, { showBalanceInChat: false });
+
+    await act(async () => {
+      secondRequest.resolve();
+      await secondRequest.promise;
+    });
+    prefs = { showBalanceInChat: false, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    await act(async () => {
+      firstRequest.reject(new Error("first request failed"));
+      await firstRequest.promise.catch(() => undefined);
+    });
+
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+    expect(screen.queryByText("first request failed")).not.toBeInTheDocument();
   });
 });

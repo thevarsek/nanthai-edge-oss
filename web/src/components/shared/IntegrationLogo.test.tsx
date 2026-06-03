@@ -28,7 +28,7 @@ describe("IntegrationLogo", () => {
 
     fireEvent.error(screen.getByAltText("custom-service logo"));
 
-    const fallback = screen.getByLabelText("custom-service logo");
+    const fallback = screen.getByRole("img", { name: "custom-service logo" });
     expect(fallback).toHaveTextContent("CS");
     expect(fallback).toHaveClass("rounded");
     expect(fallback).toHaveStyle({ width: "40px", height: "40px" });

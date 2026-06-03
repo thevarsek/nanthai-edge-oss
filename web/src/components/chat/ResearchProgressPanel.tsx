@@ -63,7 +63,7 @@ export function ResearchProgressPanel({ session, onCancel }: ResearchProgressPan
 
       {/* Phase label */}
       <p className="text-sm text-foreground">
-        {t(phaseLabelKey(session.status))}
+        {t(phaseLabelKey(session.status, session.mode))}
       </p>
 
       {/* Progress bar */}

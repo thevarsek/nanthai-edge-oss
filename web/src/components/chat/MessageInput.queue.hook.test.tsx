@@ -1,17 +1,20 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useQueuedFollowUp } from "./MessageInput.queue.hook";
+import type { AttachmentPreview } from "./MessageInput.attachments.types";
 
 function Harness({
   chatId = "chat_1",
   text,
   isGenerating = true,
+  queuedAttachments = [],
   onSend = vi.fn(),
 }: {
   chatId?: string;
   text: string;
   isGenerating?: boolean;
-  onSend?: (args: { text: string; attachments?: unknown[] }) => boolean | void | Promise<boolean | void>;
+  queuedAttachments?: AttachmentPreview[];
+  onSend?: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
 }) {
   const queue = useQueuedFollowUp({
     chatId,
@@ -19,6 +22,7 @@ function Harness({
     isAutonomousActive: false,
     text,
     attachmentCount: 0,
+    queuedAttachments,
     isUploading: false,
     disabled: false,
     onSend,
@@ -77,6 +81,31 @@ describe("useQueuedFollowUp", () => {
     rerender(<Harness text="" isGenerating={false} onSend={onSend} />);
     await waitFor(() => expect(onSend).toHaveBeenCalledTimes(2));
     expect(onSend).toHaveBeenLastCalledWith({ text: "second", attachments: [] });
+  });
+
+  it("drains queued follow-ups with the displayed extra attachment snapshot", async () => {
+    const extraAttachment: AttachmentPreview = {
+      storageId: "storage_extra" as never,
+      name: "Research notes.pdf",
+      type: "document",
+      mimeType: "application/pdf",
+    };
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <Harness text="use this context" isGenerating queuedAttachments={[extraAttachment]} onSend={onSend} />,
+    );
+
+    act(() => {
+      screen.getByRole("button", { name: "queue" }).click();
+    });
+
+    rerender(<Harness text="" isGenerating={false} queuedAttachments={[]} onSend={onSend} />);
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend).toHaveBeenLastCalledWith({
+      text: "use this context",
+      attachments: [extraAttachment],
+    });
   });
 
   it("keeps queued follow-up when validation prevents send", async () => {

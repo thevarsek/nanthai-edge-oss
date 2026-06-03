@@ -4,6 +4,21 @@ import type { Id } from "@convex/_generated/dataModel";
 import { DocumentPreviewPanel, type DocumentPreviewSelection } from "./DocumentPreviewPanel";
 
 const convexMocks = vi.hoisted(() => ({
+  generatedFiles: [{
+    _id: "generatedFiles_1",
+    filename: "Agreement.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    sizeBytes: 12_600,
+    downloadUrl: "https://example.test/agreement.docx",
+    documentVersionId: "version_2",
+  }] as Array<{
+    _id: string;
+    filename: string;
+    mimeType: string;
+    sizeBytes: number;
+    downloadUrl: string;
+    documentVersionId: string;
+  }> | undefined,
   getDocumentPreview: vi.fn(async () => ({
     kind: "docx",
     versionId: "version_2",
@@ -24,19 +39,13 @@ const convexMocks = vi.hoisted(() => ({
 
 vi.mock("convex/react", () => ({
   useAction: () => convexMocks.getDocumentPreview,
-  useQuery: () => [{
-    _id: "generatedFiles_1",
-    filename: "Agreement.docx",
-    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    sizeBytes: 12_600,
-    downloadUrl: "https://example.test/agreement.docx",
-    documentVersionId: "version_2",
-  }],
+  useQuery: () => convexMocks.generatedFiles,
 }));
 
 describe("DocumentPreviewPanel", () => {
   beforeEach(() => {
     convexMocks.getDocumentPreview.mockClear();
+    convexMocks.generatedFiles = [generatedFile()];
   });
 
   test("renders generated DOCX metadata, document preview, and tracked-change details", async () => {
@@ -72,6 +81,33 @@ describe("DocumentPreviewPanel", () => {
     await waitFor(() => {
       expect(convexMocks.getDocumentPreview).toHaveBeenCalledWith({ versionId: "version_2" });
     });
+  });
+
+  test("waits for live generated-file metadata before fetching preview", async () => {
+    convexMocks.generatedFiles = undefined;
+    const staleSelection = { ...selection(), versionId: "stale_version" as Id<"documentVersions"> };
+
+    const { rerender } = render(
+      <DocumentPreviewPanel
+        selection={staleSelection}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(convexMocks.getDocumentPreview).not.toHaveBeenCalled();
+
+    convexMocks.generatedFiles = [generatedFile({ documentVersionId: "live_version" })];
+    rerender(
+      <DocumentPreviewPanel
+        selection={staleSelection}
+        onClose={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(convexMocks.getDocumentPreview).toHaveBeenCalledWith({ versionId: "live_version" });
+    });
+    expect(convexMocks.getDocumentPreview).not.toHaveBeenCalledWith({ versionId: "stale_version" });
   });
 
   test("renders PDFs from the download URL without fetching paragraph preview", () => {
@@ -116,5 +152,17 @@ function selection(): DocumentPreviewSelection {
       displayStatus: "pending",
       canUndo: false,
     }],
+  };
+}
+
+function generatedFile(overrides: Partial<NonNullable<typeof convexMocks.generatedFiles>[number]> = {}) {
+  return {
+    _id: "generatedFiles_1",
+    filename: "Agreement.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    sizeBytes: 12_600,
+    downloadUrl: "https://example.test/agreement.docx",
+    documentVersionId: "version_2",
+    ...overrides,
   };
 }

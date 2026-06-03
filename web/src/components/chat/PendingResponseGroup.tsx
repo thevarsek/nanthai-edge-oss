@@ -8,7 +8,12 @@ function getParticipantLabel(participant: Participant): string {
 
 function PendingResponseRow({ participant }: { participant: Participant }) {
   const label = getParticipantLabel(participant);
-  const hasPersonaAvatar = !!(participant.personaName || participant.personaEmoji || participant.personaAvatarImageUrl);
+  const hasPersonaAvatar = !!(
+    participant.personaId ||
+    participant.personaName ||
+    participant.personaEmoji ||
+    participant.personaAvatarImageUrl
+  );
 
   return (
     <div className="flex gap-3 group">

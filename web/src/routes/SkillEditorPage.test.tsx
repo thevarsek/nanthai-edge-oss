@@ -111,7 +111,7 @@ describe("SkillEditorPage", () => {
       runtimeMode: "textOnly",
       requiredToolProfiles: ["docs"],
       requiredIntegrationIds: ["drive"],
-      requiredCapabilities: [],
+      requiredCapabilities: ["future_capability"],
     };
     renderEditor();
 
@@ -128,10 +128,51 @@ describe("SkillEditorPage", () => {
         name: "Existing Skill",
         runtimeMode: "sandboxAugmented",
         requiredToolProfiles: ["docs", "slack", "workspace"],
-        requiredCapabilities: [],
+        requiredCapabilities: ["future_capability"],
         requiredIntegrationIds: ["slack"],
       }));
     });
     expect(mockState.navigate).toHaveBeenCalledWith("/app/settings/skills");
+  });
+
+  it("renders a not-found state instead of a blank edit form when the skill lookup returns null", () => {
+    mockState.params = { skillId: "missing_skill" };
+    mockState.existingSkill = null;
+
+    renderEditor();
+
+    expect(screen.getByText("skill_not_found")).toBeInTheDocument();
+    expect(screen.queryByText("save")).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("skill_name_placeholder")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("back_to_skills"));
+    expect(mockState.navigate).toHaveBeenCalledWith("/app/settings/skills");
+    expect(mockState.updateSkill).not.toHaveBeenCalled();
+  });
+
+  it("preserves unrepresented required tool profiles when editing a skill", async () => {
+    mockState.params = { skillId: "skill_1" };
+    mockState.existingSkill = {
+      _id: "skill_1",
+      name: "Existing Skill",
+      summary: "Existing summary",
+      instructionsRaw: "Existing instructions",
+      runtimeMode: "toolAugmented",
+      requiredToolProfiles: ["docs", "subagents", "scheduledJobs"],
+      requiredIntegrationIds: [],
+      requiredCapabilities: [],
+    };
+    renderEditor();
+
+    fireEvent.change(screen.getByPlaceholderText("skill_summary_placeholder"), { target: { value: "Updated summary" } });
+    fireEvent.click(screen.getByText("save"));
+
+    await waitFor(() => {
+      expect(mockState.updateSkill).toHaveBeenCalledWith(expect.objectContaining({
+        skillId: "skill_1",
+        summary: "Updated summary",
+        requiredToolProfiles: ["docs", "scheduledJobs", "subagents"],
+      }));
+    });
   });
 });

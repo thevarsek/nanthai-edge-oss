@@ -78,7 +78,7 @@ export function useChatSearch(messages: MessageLike[]): ChatSearchState & ChatSe
           startOffset: found,
           globalIndex: globalIdx++,
         });
-        pos = found + 1; // advance past this match start for overlapping
+        pos = found + needle.length;
       }
     }
     return results;

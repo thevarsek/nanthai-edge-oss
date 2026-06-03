@@ -12,6 +12,7 @@ type OAuthContext = {
 export type OAuthPopupMessage = {
   type: "nanthai-oauth-result";
   provider: OAuthProvider;
+  state: string;
   success: boolean;
   error?: string;
 };
@@ -32,6 +33,7 @@ const MICROSOFT_SCOPES = [
   "User.Read",
   "offline_access",
 ];
+const inFlightPopupProviders = new Set<OAuthProvider>();
 
 function randomString(length: number): string {
   const bytes = new Uint8Array(length);
@@ -47,6 +49,14 @@ async function sha256Base64Url(value: string): Promise<string> {
 
 function storageKey(provider: OAuthProvider): string {
   return `${STORAGE_PREFIX}.${provider}`;
+}
+
+function authorizationState(url: string): string | null {
+  try {
+    return new URL(url).searchParams.get("state");
+  } catch {
+    return null;
+  }
 }
 
 function getClientId(provider: OAuthProvider): string | null {
@@ -156,9 +166,12 @@ export async function buildProviderAuthorizationUrl(
     return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?${params.toString()}`;
   }
 
-  const state = randomString(64);
-  persistOAuthContext(provider, { state, redirectUri, createdAt: Date.now() });
   if (provider === "slack") {
+    const state = randomString(64);
+    const verifier = randomString(64);
+    const challenge = await sha256Base64Url(verifier);
+    persistOAuthContext(provider, { state, verifier, redirectUri, createdAt: Date.now() });
+
     // https://docs.slack.dev/authentication/installing-with-oauth#the-user-centric-flow-the-oauthv2useraccess-method
     // https://docs.slack.dev/ai/slack-mcp-server#oauth-url-and-endpoints
     // MCP user-token-only apps use /oauth/v2_user/authorize with scope (not user_scope).
@@ -167,10 +180,14 @@ export async function buildProviderAuthorizationUrl(
       redirect_uri: redirectUri,
       response_type: "code",
       scope: "search:read.public,search:read.users,channels:history,users:read,users:read.email,search:read.private,search:read.mpim,search:read.im,search:read.files,chat:write,groups:history,mpim:history,im:history,canvases:read,canvases:write",
+      code_challenge: challenge,
+      code_challenge_method: "S256",
       state,
     });
     return `https://slack.com/oauth/v2_user/authorize?${params.toString()}`;
   }
+  const state = randomString(64);
+  persistOAuthContext(provider, { state, redirectUri, createdAt: Date.now() });
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -191,58 +208,82 @@ export async function connectProviderWithPopup(
   provider: OAuthProvider,
   options?: { requestedIntegration?: GoogleRequestedIntegration },
 ): Promise<void> {
-  // Open the popup synchronously from the user gesture before any async PKCE work,
-  // otherwise browsers can classify it as an unsolicited popup and block it.
-  const popup = window.open("", "oauth-popup", "width=600,height=700,menubar=no,toolbar=no");
-  if (!popup) {
-    clearOAuthContext(provider);
-    throw new Error(`Popup blocked. Allow popups for this site and try ${providerLabel(provider)} again.`);
+  const label = providerLabel(provider);
+  if (inFlightPopupProviders.has(provider)) {
+    throw new Error(`${label} sign-in is already in progress.`);
   }
+  inFlightPopupProviders.add(provider);
 
-  popup.document.title = `Connecting ${providerLabel(provider)}...`;
-  popup.document.body.innerHTML = "<p style=\"font-family: sans-serif; padding: 24px;\">Connecting...</p>";
-
-  let url: string;
   try {
-    url = await buildProviderAuthorizationUrl(provider, options);
-  } catch (error) {
-    popup.close();
-    clearOAuthContext(provider);
-    throw error;
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const onMessage = (event: MessageEvent<OAuthPopupMessage>) => {
-      if (event.origin !== window.location.origin) return;
-      const message = event.data;
-      if (!message || message.type !== "nanthai-oauth-result" || message.provider !== provider) return;
-      cleanup();
-      if (message.success) {
-        resolve();
-      } else {
-        reject(new Error(message.error ?? `${providerLabel(provider)} connection failed.`));
-      }
-    };
-
-    const timeout = window.setTimeout(() => {
-      cleanup();
+    // Open the popup synchronously from the user gesture before any async PKCE work,
+    // otherwise browsers can classify it as an unsolicited popup and block it.
+    const popup = window.open("", "oauth-popup", "width=600,height=700,menubar=no,toolbar=no");
+    if (!popup) {
       clearOAuthContext(provider);
-      reject(new Error(`${providerLabel(provider)} sign-in timed out.`));
-    }, 5 * 60 * 1000);
+      throw new Error(`Popup blocked. Allow popups for this site and try ${label} again.`);
+    }
 
-    const cleanup = () => {
-      window.removeEventListener("message", onMessage);
-      window.clearTimeout(timeout);
-      // Note: we deliberately do NOT call `popup.close()` here. After the
-      // OAuth redirect, the popup is on a cross-origin document and any
-      // `window.close()` call from the opener trips a Cross-Origin-Opener-
-      // Policy warning (and is a no-op anyway). The popup closes itself
-      // via `postOAuthResult` after posting the result message.
-    };
+    popup.document.title = `Connecting ${label}...`;
+    popup.document.body.innerHTML = "<p style=\"font-family: sans-serif; padding: 24px;\">Connecting...</p>";
 
-    window.addEventListener("message", onMessage);
-    popup.location.href = url;
-  });
+    let url: string;
+    try {
+      url = await buildProviderAuthorizationUrl(provider, options);
+    } catch (error) {
+      popup.close();
+      clearOAuthContext(provider);
+      throw error;
+    }
+
+    const expectedState = authorizationState(url);
+    if (!expectedState) {
+      popup.close();
+      clearOAuthContext(provider);
+      throw new Error(`${label} sign-in failed. Missing OAuth state.`);
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      const onMessage = (event: MessageEvent<OAuthPopupMessage>) => {
+        if (event.origin !== window.location.origin) return;
+        const message = event.data;
+        if (
+          !message ||
+          message.type !== "nanthai-oauth-result" ||
+          message.provider !== provider ||
+          message.state !== expectedState
+        ) {
+          return;
+        }
+        cleanup();
+        if (message.success) {
+          resolve();
+        } else {
+          reject(new Error(message.error ?? `${label} connection failed.`));
+        }
+      };
+
+      const timeout = window.setTimeout(() => {
+        cleanup();
+        clearOAuthContext(provider);
+        reject(new Error(`${label} sign-in timed out.`));
+      }, 5 * 60 * 1000);
+
+      const cleanup = () => {
+        window.removeEventListener("message", onMessage);
+        window.clearTimeout(timeout);
+        // Note: we deliberately do NOT call `popup.close()` here. After the
+        // OAuth redirect, the popup is on a cross-origin document and any
+        // `window.close()` call from the opener trips a Cross-Origin-Opener-
+        // Policy warning (and is a no-op anyway). The popup closes itself
+        // via `postOAuthResult` after posting the result message.
+      };
+
+      window.addEventListener("message", onMessage);
+      popup.location.href = url;
+    });
+  } finally {
+    inFlightPopupProviders.delete(provider);
+  }
 }
 
 export function providerLabel(provider: OAuthProvider): string {

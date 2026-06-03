@@ -140,6 +140,20 @@ function SkillEditorPageContent() {
     );
   }
 
+  if (isEditing && existingSkill === null) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-3">
+        <p className="text-sm text-muted">{t("skill_not_found")}</p>
+        <button
+          onClick={() => navigate("/app/settings/skills")}
+          className="text-sm text-accent hover:underline"
+        >
+          {t("back_to_skills")}
+        </button>
+      </div>
+    );
+  }
+
   // Runtime mode options — matching iOS naming (Workspace Runtime, not Sandbox Augmented)
   const runtimeOptions: { value: RuntimeMode; label: string; description: string }[] = [
     {

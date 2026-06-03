@@ -739,12 +739,14 @@ test("exchangeSlackCode stores rotating user tokens and public query returns met
   const originalFetch = globalThis.fetch;
   const originalEnv = { ...process.env };
   const mutations: Record<string, unknown>[] = [];
+  let slackTokenCodeVerifier: string | null = null;
 
   try {
     process.env.SLACK_CLIENT_ID = "slack_client";
     process.env.SLACK_CLIENT_SECRET = "slack_secret";
-    globalThis.fetch = (async (url: string | URL) => {
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
       if (String(url).includes("oauth.v2.user.access")) {
+        slackTokenCodeVerifier = new URLSearchParams(String(init?.body ?? "")).get("code_verifier");
         return {
           ok: true,
           json: async () => ({
@@ -784,6 +786,7 @@ test("exchangeSlackCode stores rotating user tokens and public query returns met
       },
     }, {
       code: "code_1",
+      codeVerifier: "verifier_1",
       redirectUri: "https://nanthai.tech/oauth/slack/callback",
     });
 
@@ -823,6 +826,7 @@ test("exchangeSlackCode stores rotating user tokens and public query returns met
       displayName: "Slack User",
       workspaceName: "NanthAI",
     });
+    assert.equal(slackTokenCodeVerifier, "verifier_1");
     assert.equal(mutations[0]?.accessToken, "xoxe.xoxp-access");
     assert.equal(mutations[0]?.refreshToken, "xoxe-refresh");
     assert.deepEqual(mutations[0]?.scopes, ["chat:write", "search:read.public"]);

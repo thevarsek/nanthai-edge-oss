@@ -50,4 +50,21 @@ describe("MainWalkthrough", () => {
     fireEvent.keyDown(window, { key: "Tab" });
     expect(close).toHaveFocus();
   });
+
+  it("uses theme-backed primary utility classes for primary-tinted controls", () => {
+    vi.useFakeTimers();
+
+    render(<MainWalkthrough />);
+    act(() => {
+      vi.advanceTimersByTime(600);
+    });
+
+    expect(screen.getByTestId("walkthrough-card")).toHaveClass(
+      "text-primary",
+      "border-primary/40",
+      "bg-primary/10",
+    );
+    expect(screen.getByRole("button", { name: "Go to card 1" })).toHaveClass("bg-primary");
+    expect(screen.getByRole("button", { name: "Next" })).toHaveClass("text-primary");
+  });
 });

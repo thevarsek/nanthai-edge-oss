@@ -22,6 +22,7 @@ import {
 import type { ScheduledJobStepConfig } from "../scheduledJobs/shared";
 import {
   addUploadToKnowledgeBaseArgs,
+  cleanupUnclaimedUploadArgs,
   deleteKnowledgeBaseFileArgs,
 } from "./mutations_args";
 
@@ -236,6 +237,44 @@ export const bindKnowledgeBaseUploadSession = mutation({
       });
     }
     await ctx.db.patch(args.uploadSessionId, { storageId: args.storageId });
+    return null;
+  },
+});
+
+export const cleanupUnclaimedUpload = mutation({
+  args: cleanupUnclaimedUploadArgs,
+  returns: v.null(),
+  handler: async (ctx, args): Promise<null> => {
+    const { userId } = await requireAuth(ctx);
+    const session = await ctx.db.get(args.uploadSessionId);
+    if (!session || session.userId !== userId) {
+      throw new ConvexError({
+        code: "FORBIDDEN" as const,
+        message: "Upload session is missing or not owned by user.",
+      });
+    }
+    if (session.status !== "pending") {
+      return null;
+    }
+    if (session.storageId && session.storageId !== args.storageId) {
+      throw new ConvexError({
+        code: "VALIDATION" as const,
+        message: "Upload session does not match this file.",
+      });
+    }
+
+    const hasRefs = await storageHasSourceReferences(ctx, userId, args.storageId);
+    if (!hasRefs) {
+      try {
+        await ctx.storage.delete(args.storageId);
+      } catch {
+        // The storage blob may already have been deleted by another cleanup.
+      }
+    }
+    await ctx.db.patch(args.uploadSessionId, {
+      storageId: args.storageId,
+      status: "cancelled",
+    });
     return null;
   },
 });

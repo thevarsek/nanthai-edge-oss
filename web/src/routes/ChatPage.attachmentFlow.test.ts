@@ -74,7 +74,7 @@ describe("ChatPage attachment flow helpers", () => {
     expect(generatedDocumentSuggestion(messages)).toMatchObject({
       storageId: storageA,
       name: "assistant_new.pdf",
-      type: "pdf",
+      type: "document",
       mimeType: "application/pdf",
       sizeBytes: 2048,
     });

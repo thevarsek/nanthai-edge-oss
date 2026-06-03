@@ -7,10 +7,9 @@
  */
 export function attachmentTypeForMime(mime: string): string {
   if (mime.startsWith("image/")) return "image";
-  if (mime === "application/pdf") return "pdf";
   if (mime.startsWith("audio/")) return "audio";
   if (mime.startsWith("video/")) return "video";
-  // Everything else (CSV, XLSX, DOCX, TXT, etc.) → "document"
+  // Everything else (PDF, CSV, XLSX, DOCX, TXT, etc.) → "document"
   // so the backend can inject tool-use hints with storageId.
   return "document";
 }

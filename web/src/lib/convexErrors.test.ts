@@ -20,6 +20,10 @@ describe("convexErrors", () => {
     expect(convexErrorMessage(new Error("Network offline"), "Fallback")).toBe("Network offline");
     expect(convexErrorMessage(new Error("Server Error"), "Fallback")).toBe("Fallback");
     expect(convexErrorMessage(new Error("Server Error [Request ID: abc]"), "Fallback")).toBe("Fallback");
+    expect(convexErrorMessage(
+      new Error("[CONVEX M(chat/mutations:sendMessage)] Server Error\n  Called by client"),
+      "Fallback",
+    )).toBe("Fallback");
   });
 
   it("falls back for empty payloads and preserves Convex stringified object errors", () => {

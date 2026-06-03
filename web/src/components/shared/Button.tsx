@@ -12,7 +12,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary:
     "bg-surface-2 text-foreground hover:bg-surface-3 active:bg-surface-3/80 border border-border/30",
   ghost:
-    "text-foreground/70 hover:text-foreground hover:bg-foreground/8 active:bg-foreground/12",
+    "text-foreground/70 hover:text-foreground hover:bg-foreground/[0.08] active:bg-foreground/[0.12]",
   danger:
     "text-destructive hover:bg-destructive/10 active:bg-destructive/15",
   dangerFilled:
@@ -54,13 +54,13 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       icon,
       className,
       children,
+      type = "button",
       ...props
     },
     ref,
   ) => (
     <button
       ref={ref}
-      type="button"
       className={cn(
         // Base
         "inline-flex shrink-0 items-center justify-center font-medium",
@@ -74,6 +74,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         className,
       )}
       {...props}
+      type={type}
     >
       {icon}
       {children}

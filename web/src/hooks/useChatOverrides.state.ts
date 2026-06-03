@@ -35,7 +35,7 @@ export function nextToggledSkillOverrides(
   const next = new Map(current);
   const currentState = next.get(skillId);
   if (currentState === "always" || currentState === "available") {
-    next.delete(skillId);
+    next.set(skillId, "never");
   } else {
     next.set(skillId, "available");
   }

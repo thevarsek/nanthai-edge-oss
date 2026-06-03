@@ -72,6 +72,13 @@ export function useStreaming(
     const targetLen = streamingCharacterLength(text);
 
     if (!hasTrackRef.current) {
+      if (targetLen === 0) {
+        displayedCountRef.current = 0;
+        targetCountRef.current = 0;
+        targetTextRef.current = text;
+        setDisplayed(text);
+        return;
+      }
       // First ingest: show everything immediately (same as iOS new-track path)
       hasTrackRef.current = true;
       displayedCountRef.current = targetLen;

@@ -22,9 +22,13 @@ export function AppEmptyState() {
   const { prefs, personas } = useSharedData();
   const [isCreatingChat, setIsCreatingChat] = useState(false);
   const isCreatingChatRef = useRef(false);
+  const isPreferencesLoading = prefs === undefined;
+  const defaultPersonaId = (prefs as { defaultPersonaId?: string | null } | null | undefined)?.defaultPersonaId;
+  const isDefaultPersonaLoading = Boolean(defaultPersonaId) && personas === undefined;
+  const isNewChatDisabled = isCreatingChat || isPreferencesLoading || isDefaultPersonaLoading;
 
   const handleNewChat = useCallback(async () => {
-    if (isCreatingChatRef.current) return;
+    if (isCreatingChatRef.current || isPreferencesLoading || isDefaultPersonaLoading) return;
     isCreatingChatRef.current = true;
     setIsCreatingChat(true);
     try {
@@ -44,7 +48,7 @@ export function AppEmptyState() {
       isCreatingChatRef.current = false;
       setIsCreatingChat(false);
     }
-  }, [createChat, navigate, personas, prefs, t, toast]);
+  }, [createChat, isDefaultPersonaLoading, isPreferencesLoading, navigate, personas, prefs, t, toast]);
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center h-full select-none">
@@ -58,8 +62,8 @@ export function AppEmptyState() {
       {/* New chat button */}
       <button
         onClick={() => void handleNewChat()}
-        disabled={isCreatingChat}
-        aria-busy={isCreatingChat}
+        disabled={isNewChatDisabled}
+        aria-busy={isNewChatDisabled}
         className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary/12 text-primary text-sm font-semibold hover:bg-primary/20 transition-colors disabled:pointer-events-none disabled:opacity-60"
       >
         <SquarePen size={16} />

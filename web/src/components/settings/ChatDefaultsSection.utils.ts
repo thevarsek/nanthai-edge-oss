@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 export function useOptimistic<T>(serverValue: T): [T, (v: T) => void] {
   const [local, setLocal] = useState(serverValue);
   const localRef = useRef(local);
+  const serverValueRef = useRef(serverValue);
   const hasPendingLocalEditRef = useRef(false);
 
   useEffect(() => {
@@ -10,6 +11,7 @@ export function useOptimistic<T>(serverValue: T): [T, (v: T) => void] {
   }, [local]);
 
   useEffect(() => {
+    serverValueRef.current = serverValue;
     if (hasPendingLocalEditRef.current) {
       if (Object.is(serverValue, localRef.current)) {
         hasPendingLocalEditRef.current = false;
@@ -21,7 +23,13 @@ export function useOptimistic<T>(serverValue: T): [T, (v: T) => void] {
   }, [serverValue]);
 
   const setOptimistic = useCallback((value: T) => {
-    hasPendingLocalEditRef.current = true;
+    if (Object.is(value, localRef.current)) {
+      if (Object.is(value, serverValueRef.current)) {
+        hasPendingLocalEditRef.current = false;
+      }
+      return;
+    }
+    hasPendingLocalEditRef.current = !Object.is(value, serverValueRef.current);
     localRef.current = value;
     setLocal(value);
   }, []);

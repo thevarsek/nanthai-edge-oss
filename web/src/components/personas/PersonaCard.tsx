@@ -1,5 +1,6 @@
 import { type Id } from "@convex/_generated/dataModel";
 import { MessageSquare, Pencil, Trash2 } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -80,6 +81,8 @@ function Subtitle({ persona }: { persona: PersonaCardData }) {
 // ── Card ──────────────────────────────────────────────────────────────────
 
 export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewChatPending = false }: PersonaCardProps) {
+  const { t } = useTranslation();
+
   if (view === "list") {
     return (
       <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-surface-2 transition-colors group">
@@ -89,7 +92,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             <span className="font-medium text-sm truncate">{persona.displayName}</span>
             {persona.isDefault && (
               <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded-full flex-shrink-0">
-                Default
+                {t("default_label")}
               </span>
             )}
           </div>
@@ -104,7 +107,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             disabled={isNewChatPending}
             aria-busy={isNewChatPending}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-primary transition-colors disabled:pointer-events-none disabled:opacity-60"
-            title="New chat"
+            title={t("new_chat")}
           >
             <MessageSquare size={14} />
           </button>
@@ -112,7 +115,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             type="button"
             onClick={() => onEdit(persona._id)}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-primary transition-colors"
-            title="Edit"
+            title={t("edit")}
           >
             <Pencil size={14} />
           </button>
@@ -120,7 +123,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             type="button"
             onClick={() => onDelete(persona._id)}
             className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-red-400 transition-colors"
-            title="Delete"
+            title={t("delete")}
           >
             <Trash2 size={14} />
           </button>
@@ -140,7 +143,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
             <h3 className="font-semibold text-sm truncate">{persona.displayName}</h3>
             {persona.isDefault && (
               <span className="text-[10px] bg-accent/15 text-accent px-1.5 py-0.5 rounded-full flex-shrink-0">
-                Default
+                {t("default_label")}
               </span>
             )}
           </div>
@@ -157,13 +160,13 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
           aria-busy={isNewChatPending}
           className="flex-1 text-xs py-1.5 rounded-lg bg-accent text-white hover:bg-accent/90 transition-colors font-medium disabled:pointer-events-none disabled:opacity-60"
         >
-          New Chat
+          {t("new_chat")}
         </button>
         <button
           type="button"
           onClick={() => onEdit(persona._id)}
           className="p-1.5 rounded-lg hover:bg-surface-1 text-muted hover:text-primary transition-colors"
-          title="Edit"
+          title={t("edit")}
         >
           <Pencil size={14} />
         </button>
@@ -171,7 +174,7 @@ export function PersonaCard({ persona, view, onEdit, onDelete, onNewChat, isNewC
           type="button"
           onClick={() => onDelete(persona._id)}
           className="p-1.5 rounded-lg hover:bg-surface-1 text-muted hover:text-red-400 transition-colors"
-          title="Delete"
+          title={t("delete")}
         >
           <Trash2 size={14} />
         </button>

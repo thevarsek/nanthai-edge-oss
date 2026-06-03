@@ -112,7 +112,7 @@ test("ingestDriveFile reuses a fresh cached blob without downloading", async () 
 
     assert.equal(result.storageId, "storage_cached");
     assert.equal(result.url, "https://storage.example/cached.pdf");
-    assert.equal(result.type, "pdf");
+    assert.equal(result.type, "document");
     assert.equal(fetchCalls.length, 1, "only metadata should be fetched");
     assert.equal(mutations.length, 1, "grant metadata is still refreshed");
   } finally {
@@ -160,11 +160,11 @@ test("ingestDriveFile rejects declared oversized files before download/storage",
   }
 });
 
-test("attachmentTypeForMime maps media, PDFs, and fallback documents", () => {
+test("attachmentTypeForMime maps media and storage-backed documents", () => {
   assert.equal(attachmentTypeForMime("image/png"), "image");
   assert.equal(attachmentTypeForMime("audio/mpeg"), "audio");
   assert.equal(attachmentTypeForMime("video/mp4"), "video");
-  assert.equal(attachmentTypeForMime("application/pdf"), "pdf");
+  assert.equal(attachmentTypeForMime("application/pdf"), "document");
   assert.equal(attachmentTypeForMime("text/csv"), "document");
 });
 
@@ -285,6 +285,7 @@ test("attachPickedDriveFiles ingests unique Drive files, persists provenance, an
     assert.deepEqual(result, { success: true, status: "resuming", attachedCount: 1 });
     const append = mutations.find((entry) => "attachments" in entry)!;
     assert.deepEqual(append.pickedFileIds, ["drive_1"]);
+    assert.equal(append.attachments[0].type, "document");
     assert.equal(append.attachments[0].driveFileId, "drive_1");
     assert.equal("fileId" in append.attachments[0], false);
     assert.equal(scheduled[0].webSearchEnabled, true);

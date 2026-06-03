@@ -11,6 +11,12 @@ import {
   StepTaskSection,
 } from "./ScheduledJobEditorHelpers";
 import { createDraftStep } from "./ScheduledJobEditor.model";
+import {
+  isValidRecurrenceSelection,
+  localWeeklyRecurrenceToUtc,
+  parseLocalTimeInput,
+  utcWeeklyRecurrenceToLocal,
+} from "./ScheduledJobEditorRecurrence";
 
 const mockState = vi.hoisted(() => ({
   connectedAccounts: {
@@ -92,6 +98,70 @@ beforeEach(() => {
 });
 
 describe("ScheduledJobEditorHelpers", () => {
+  it("converts weekly local weekday and time to the persisted UTC schedule together", () => {
+    expect(localWeeklyRecurrenceToUtc(1, 0, 30, -120)).toEqual({
+      dayOfWeek: 0,
+      hourUTC: 22,
+      minuteUTC: 30,
+    });
+    expect(utcWeeklyRecurrenceToLocal(0, 22, 30, -120)).toEqual({
+      dayOfWeek: 1,
+      hour: 0,
+      minute: 30,
+    });
+    expect(localWeeklyRecurrenceToUtc(6, 23, 30, 300)).toEqual({
+      dayOfWeek: 0,
+      hourUTC: 4,
+      minuteUTC: 30,
+    });
+  });
+
+  it("validates recurrence time input before mutating daily or weekly schedule state", () => {
+    expect(parseLocalTimeInput("")).toBeNull();
+    expect(parseLocalTimeInput("25:00")).toBeNull();
+    expect(parseLocalTimeInput("09:45")).toEqual({ hour: 9, minute: 45 });
+    expect(isValidRecurrenceSelection({
+      recurrenceType: "daily",
+      intervalMinutes: 60,
+      dailyHour: Number.NaN,
+      dailyMinute: 0,
+      weeklyDay: 1,
+      cronExpression: "",
+    })).toBe(false);
+    expect(isValidRecurrenceSelection({
+      recurrenceType: "weekly",
+      intervalMinutes: 60,
+      dailyHour: 8,
+      dailyMinute: 0,
+      weeklyDay: 7,
+      cronExpression: "",
+    })).toBe(false);
+
+    const onDailyHour = vi.fn();
+    const onDailyMinute = vi.fn();
+    render(
+      <RecurrencePicker
+        recurrenceType="daily"
+        intervalMinutes={30}
+        dailyHour={8}
+        dailyMinute={15}
+        weeklyDay={1}
+        cronExpression=""
+        onRecurrenceType={vi.fn()}
+        onIntervalMinutes={vi.fn()}
+        onDailyHour={onDailyHour}
+        onDailyMinute={onDailyMinute}
+        onWeeklyDay={vi.fn()}
+        onCronExpression={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(document.querySelector("input[type='time']")!, { target: { value: "" } });
+
+    expect(onDailyHour).not.toHaveBeenCalled();
+    expect(onDailyMinute).not.toHaveBeenCalled();
+  });
+
   it("shows Google Drive and Calendar rows when Google is connected but scopes are missing", () => {
     render(<StepIntegrationsSection step={createDraftStep()} onChange={vi.fn()} />);
 
@@ -115,6 +185,30 @@ describe("ScheduledJobEditorHelpers", () => {
     const { rerender } = render(<StepIntegrationsSection step={createDraftStep()} onChange={onChange} />);
     rerender(<StepIntegrationsSection step={{ ...createDraftStep(), gmailEnabled: false }} onChange={onChange} />);
     expect(screen.getByText(/Connect accounts/)).toBeInTheDocument();
+  });
+
+  it("renders enabled integrations after the backing account disconnects so they can be cleared", () => {
+    const onChange = vi.fn();
+    mockState.connectedAccounts = {
+      googleConnection: null,
+      gmailManualConnection: null,
+      microsoftConnection: null,
+      appleCalendarConnection: null,
+      notionConnection: null,
+      clozeConnection: null,
+      slackConnection: null,
+    };
+
+    render(<StepIntegrationsSection step={{ ...createDraftStep(), slackEnabled: true }} onChange={onChange} />);
+
+    expect(screen.getByText("Slack")).toBeInTheDocument();
+    expect(screen.getByText(/Connect accounts/)).toBeInTheDocument();
+    const slackSwitch = screen.getByRole("switch");
+    expect(slackSwitch).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(slackSwitch);
+
+    expect(onChange).toHaveBeenCalledWith({ slackEnabled: false });
   });
 
   it("updates step list ordering controls and selected task fields", () => {

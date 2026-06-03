@@ -58,11 +58,15 @@ import {
   shouldShowPendingResponsePlaceholder,
   visibleMessagesForPath,
 } from "@/routes/ChatPage.branchFlow";
+import {
+  documentAnnotationBelongsToGeneratedFile,
+  liveDocumentPreviewAnnotations,
+} from "@/routes/ChatPage.flow";
 import { useDrivePickerContinuation } from "@/routes/ChatPage.drivePicker";
 import {
-  buildResearchPaperArgs,
-  buildSendMessageArgs,
+  composerAttachmentState,
   executeChatSend,
+  executeRecordedAudioSend,
   type ChatAttachment,
   type ChatVideoRole,
 } from "@/routes/ChatPage.sendFlow";
@@ -277,7 +281,7 @@ export function ChatPage() {
   const isResearchPaper = searchMode.mode === "paper";
   const [showRename, setShowRename] = useState(false);
   const [retryDifferentMessageId, setRetryDifferentMessageId] = useState<Id<"messages"> | null>(null);
-  const [hasShownChatSkeleton, setHasShownChatSkeleton] = useState(false);
+  const branchSwitchRequestRef = useRef(0);
   const handleRename = useCallback((newTitle: string) => {
     if (typedChatId) void updateChat({ chatId: typedChatId, title: newTitle } as Parameters<typeof updateChat>[0]);
   }, [typedChatId, updateChat]);
@@ -289,17 +293,26 @@ export function ChatPage() {
     if (!typedChatId) return;
     const selection = navigateBranch(messageId, direction);
     if (!selection) return;
+    const requestId = branchSwitchRequestRef.current + 1;
+    branchSwitchRequestRef.current = requestId;
     setOptimisticLeafId(selection.optimisticLeafId);
     void switchBranchAtFork({
       chatId: typedChatId,
       currentSiblingMessageId: selection.currentSiblingId,
       targetSiblingMessageId: selection.targetSiblingId,
     }).then((nextLeafId) => {
+      if (branchSwitchRequestRef.current !== requestId) return;
       setOptimisticLeafId(nextLeafId);
     }).catch(() => {
+      if (branchSwitchRequestRef.current !== requestId) return;
       setOptimisticLeafId(undefined);
     });
   }, [navigateBranch, setOptimisticLeafId, typedChatId, switchBranchAtFork]);
+
+  useEffect(() => {
+    branchSwitchRequestRef.current += 1;
+    setOptimisticLeafId(undefined);
+  }, [setOptimisticLeafId, typedChatId]);
 
   useEffect(() => {
     if (optimisticLeafId && optimisticLeafId === chat?.activeBranchLeafId) {
@@ -320,17 +333,6 @@ export function ChatPage() {
     navigate(`/app/chat/${newId}`, { replace: true });
     return newId;
   }, [typedChatId, createChat, navigate, participants]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      if (typedChatId) {
-        setHasShownChatSkeleton(true);
-        return;
-      }
-      setHasShownChatSkeleton(false);
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [typedChatId]);
 
   const turnOverrideArgs = useMemo(() => ({
     ...(overrides.turnSkillOverrideEntries.length > 0 ? { turnSkillOverrides: overrides.turnSkillOverrideEntries } : {}),
@@ -395,11 +397,14 @@ export function ChatPage() {
   );
   const liveDocumentPreview = useMemo(() => {
     if (!documentPreview) return null;
-    const previewBatchId = documentPreview.annotations?.[0]?.editBatchId;
-    const liveAnnotations = visibleMessages.flatMap((message) => message.documentEditAnnotations ?? []).filter((annotation) => (
-      (previewBatchId && annotation.editBatchId === previewBatchId) ||
-      (documentPreview.generatedFileId && annotation.generatedFileId === documentPreview.generatedFileId)
-    ));
+    const liveAnnotations = liveDocumentPreviewAnnotations({
+      liveAnnotations: visibleMessages.flatMap((message) => message.documentEditAnnotations ?? []),
+      selectedAnnotations: documentPreview.annotations ?? [],
+      generatedFileId: documentPreview.generatedFileId,
+      versionId: documentPreview.versionId,
+      focusEditId: documentPreview.focusEditId,
+      focusEditBatchId: documentPreview.focusEditBatchId,
+    });
     if (liveAnnotations.length === 0) return documentPreview;
     const liveVersionId = liveAnnotations.find((annotation) => annotation.editId === documentPreview.focusEditId)?.versionId
       ?? liveAnnotations[0]?.versionId
@@ -428,8 +433,7 @@ export function ChatPage() {
       return executeChatSend({
         text,
         state: {
-          selectedAttachments: attachments ?? [],
-          kbAttachmentsForDisplay,
+          ...composerAttachmentState({ attachments, kbAttachmentsForDisplay }),
           participants,
           turnOverrideArgs,
           enabledIntegrations: overrides.enabledIntegrations,
@@ -466,47 +470,43 @@ export function ChatPage() {
 
   const handleSendRecording = useCallback(
     async (result: RecordingResult) => {
-      const mergedAttachments: ChatAttachment[] = [...kbAttachmentsForDisplay];
-      if (!validateSendState(mergedAttachments.length)) return;
-      const cid = await ensureChatId();
-      await overrides.flushPendingState(cid);
-      const uploadUrl = await createUploadUrl({});
-      const res = await fetch(uploadUrl, { method: "POST", headers: { "Content-Type": result.mimeType }, body: result.blob });
-      if (!res.ok) return;
-      const { storageId } = (await res.json()) as { storageId: string };
-      if (isResearchPaper) {
-        const participant = participants[0];
-        if (!participant) return;
-        await startResearchPaper(buildResearchPaperArgs({
-          chatId: cid,
-          text: result.transcript || "(voice message)",
-          participant,
-          complexity: convexComplexity ?? 1,
-          attachments: mergedAttachments,
-          recordedAudio: { storageId: storageId as Id<"_storage">, transcript: result.transcript, durationMs: result.durationMs, mimeType: result.mimeType },
-          enabledIntegrations: overrides.enabledIntegrations,
-        }));
-      } else {
-        await sendMessage(buildSendMessageArgs({
-          chatId: cid,
-          text: result.transcript || "(voice message)",
-          participants,
-          attachments: mergedAttachments,
-          recordedAudio: { storageId: storageId as Id<"_storage">, transcript: result.transcript, durationMs: result.durationMs, mimeType: result.mimeType },
-          turnOverrideArgs,
-          enabledIntegrations: overrides.enabledIntegrations,
-          subagentsEnabled: effectiveSubagentsEnabled,
-          webSearchEnabled,
-          convexSearchMode,
-          convexComplexity,
-          isVideoMode,
-          prefs: typedPrefs,
-        }));
+      try {
+        await executeRecordedAudioSend({
+          recording: result,
+          state: {
+            selectedAttachments: [],
+            kbAttachmentsForDisplay,
+            participants,
+            turnOverrideArgs,
+            enabledIntegrations: overrides.enabledIntegrations,
+            subagentsEnabled: effectiveSubagentsEnabled,
+            webSearchEnabled,
+            convexSearchMode,
+            convexComplexity,
+            isResearchPaper,
+            isVideoMode,
+            prefs: typedPrefs,
+          },
+          deps: {
+            validateAttachmentCount: validateSendState,
+            ensureChatId,
+            flushPendingState: overrides.flushPendingState,
+            createUploadUrl: () => createUploadUrl({}),
+            uploadRecording: (url, init) => fetch(url, init),
+            sendMessage,
+            startResearchPaper,
+            clearKBFiles: overrides.clearKBFiles,
+            clearTurnOverrides: overrides.clearTurnOverrides,
+          },
+        });
+      } catch (error) {
+        toast({
+          message: convexErrorMessage(error, t("upload_failed_arg", { var1: t("something_went_wrong") })),
+          variant: "error",
+        });
       }
-      overrides.clearKBFiles();
-      overrides.clearTurnOverrides();
     },
-    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs],
+    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t],
   );
 
   const retryTargetMessage = useMemo(
@@ -575,9 +575,8 @@ export function ChatPage() {
     navigate(`/app/chat/${await forkChat({ chatId: typedChatId, atMessageId: messageId })}`);
   }, [typedChatId, forkChat, navigate]);
   const handleOpenGeneratedFile = useCallback((request: GeneratedFileOpenRequest & { message: Message }) => {
-    const fileId = request.file._id as Id<"generatedFiles">;
     const annotations = (request.message.documentEditAnnotations ?? []).filter((annotation) =>
-      !annotation.generatedFileId || annotation.generatedFileId === fileId
+      documentAnnotationBelongsToGeneratedFile(annotation, request.file)
     );
     setDocumentPreview({
       messageId: request.message._id,
@@ -603,6 +602,7 @@ export function ChatPage() {
       versionId: annotation.versionId,
       annotations: batchAnnotations.length > 0 ? batchAnnotations : [annotation],
       focusEditId: annotation.editId,
+      focusEditBatchId: annotation.editBatchId,
     });
   }, [visibleMessages]);
   const handleJumpToNext = useCallback((targetMessageId: Id<"messages">) => {
@@ -614,7 +614,7 @@ export function ChatPage() {
 
   const mentionSuggestions = useMentionSuggestions(participants);
 
-  if (typedChatId && isLoading && !hasShownChatSkeleton) {
+  if (typedChatId && isLoading) {
     return <div className="flex-1 flex items-center justify-center"><LoadingSpinner /></div>;
   }
 
@@ -695,7 +695,7 @@ export function ChatPage() {
         onSend={handleSend} onCancel={handleCancel} onCreateUploadUrl={() => createUploadUrl({})}
         onPlusMenuSelect={overrides.handlePlusMenuSelect} plusMenuBadges={overrides.badges} isPro={isPro}
         hasConnectedIntegrations={hasConnectedIntegrations} participantCount={participants.length} hasMessages={hasMessages}
-        mentionSuggestions={mentionSuggestions} disabled={false} isAutonomousActive={isAutonomousActive}
+        mentionSuggestions={mentionSuggestions} disabled={!!typedChatId && isLoading} isAutonomousActive={isAutonomousActive}
         onIntervene={autonomous.intervene} onSendRecording={handleSendRecording}
         allParticipantsSupportTools={allParticipantsSupportTools}
         isVideoMode={isVideoMode}

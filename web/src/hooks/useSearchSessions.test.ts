@@ -44,6 +44,11 @@ describe("search session helpers", () => {
     expect(isSessionActive("cancelled")).toBe(false);
   });
 
+  it("uses mode-aware writing phase labels", () => {
+    expect(phaseLabelKey("writing", "web")).toBe("search_phase_writing");
+    expect(phaseLabelKey("writing", "paper")).toBe("search_phase_writing_paper");
+  });
+
   it("builds a lookup map and skips the Convex subscription without a chat id", () => {
     const { result, rerender } = renderHook(({ chatId }: { chatId?: Id<"chats"> }) => useSearchSessions(chatId), {
       initialProps: { chatId: undefined as Id<"chats"> | undefined },

@@ -63,6 +63,7 @@ declare global {
 }
 
 let pickerLoadPromise: Promise<void> | null = null;
+const GOOGLE_API_SCRIPT_TIMEOUT_MS = 15_000;
 
 function removeGooglePickerArtifacts() {
   const selectors = [
@@ -85,25 +86,48 @@ function loadScript(src: string): Promise<void> {
     if (window.gapi?.load || existing.dataset.loaded === "true") {
       return Promise.resolve();
     }
-    return new Promise((resolve, reject) => {
-      existing.addEventListener("load", () => {
-        existing.dataset.loaded = "true";
-        resolve();
-      }, { once: true });
-      existing.addEventListener("error", () => reject(new Error("Failed to load Google Picker.")), { once: true });
-    });
+    if (existing.dataset.failed === "true") {
+      existing.remove();
+    } else {
+      return waitForScript(existing);
+    }
   }
 
+  const script = document.createElement("script");
+  script.src = src;
+  script.async = true;
+  const promise = waitForScript(script);
+  document.head.appendChild(script);
+  return promise;
+}
+
+function waitForScript(script: HTMLScriptElement): Promise<void> {
   return new Promise((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.async = true;
-    script.onload = () => {
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      script.removeEventListener("load", handleLoad);
+      script.removeEventListener("error", handleError);
+    };
+    const fail = (error: Error) => {
+      script.dataset.failed = "true";
+      script.remove();
+      reject(error);
+    };
+    const handleLoad = () => {
+      cleanup();
       script.dataset.loaded = "true";
       resolve();
     };
-    script.onerror = () => reject(new Error("Failed to load Google Picker."));
-    document.head.appendChild(script);
+    const handleError = () => {
+      cleanup();
+      fail(new Error("Failed to load Google Picker."));
+    };
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      fail(new Error("Timed out loading Google Picker."));
+    }, GOOGLE_API_SCRIPT_TIMEOUT_MS);
+    script.addEventListener("load", handleLoad, { once: true });
+    script.addEventListener("error", handleError, { once: true });
   });
 }
 

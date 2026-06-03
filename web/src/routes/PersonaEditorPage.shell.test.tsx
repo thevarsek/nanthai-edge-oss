@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 import { mockState, skill } from "@/test/criticalRoutesCoverage";
@@ -103,5 +103,89 @@ describe("PersonaEditorPage shell behavior", () => {
       }));
     });
     expect(mockState.navigate).toHaveBeenCalledWith("/app/personas");
+  });
+
+  it("shows manual Gmail personas when Google Workspace is disconnected", async () => {
+    mockState.page = "persona";
+    mockState.connectedAccounts = {
+      ...mockState.connectedAccounts,
+      googleConnection: null,
+      gmailManualConnection: { status: "active" },
+    };
+    mockState.modelSummaries = [
+      { modelId: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai", supportsTools: true },
+    ];
+    mockState.mutation.mockResolvedValueOnce("persona_1");
+
+    renderPersonaEditor("/app/personas/new");
+
+    fireEvent.change(screen.getByPlaceholderText("persona_name_placeholder"), { target: { value: "Gmail Assistant" } });
+    fireEvent.change(screen.getByPlaceholderText("system_prompt_placeholder"), { target: { value: "Use Gmail when needed." } });
+    fireEvent.click(screen.getByText("select_a_model"));
+    fireEvent.click(screen.getByText("GPT 4.1"));
+
+    expect(screen.queryByRole("switch", { name: "integration_google_drive" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "integration_gmail" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => {
+      expect(mockState.mutation).toHaveBeenCalledWith(expect.objectContaining({
+        displayName: "Gmail Assistant",
+        modelId: "openai/gpt-4.1",
+        integrationOverrides: expect.arrayContaining([
+          { integrationId: "gmail", enabled: true },
+        ]),
+      }));
+    });
+  });
+
+  it("blocks saving enabled invalid max token overrides", async () => {
+    mockState.page = "persona";
+    mockState.modelSummaries = [
+      { modelId: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai", supportsTools: true },
+    ];
+
+    renderPersonaEditor("/app/personas/new");
+
+    fireEvent.change(screen.getByPlaceholderText("persona_name_placeholder"), { target: { value: "Invalid Tokens" } });
+    fireEvent.change(screen.getByPlaceholderText("system_prompt_placeholder"), { target: { value: "Be careful." } });
+    fireEvent.click(screen.getByText("select_a_model"));
+    fireEvent.click(screen.getByText("GPT 4.1"));
+    fireEvent.click(within(screen.getByText("override_max_tokens").closest("div")!).getByRole("switch"));
+    fireEvent.change(screen.getByPlaceholderText("max_tokens_placeholder"), { target: { value: "12abc" } });
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    expect(screen.getByText("persona_max_tokens_invalid")).toBeInTheDocument();
+    expect(mockState.mutation).not.toHaveBeenCalled();
+  });
+
+  it("revokes local avatar preview object URLs on replace, remove, and unmount", () => {
+    mockState.page = "persona";
+    const originalCreateObjectURL = URL.createObjectURL;
+    const originalRevokeObjectURL = URL.revokeObjectURL;
+    const createObjectURL = vi.fn()
+      .mockReturnValueOnce("blob:first")
+      .mockReturnValueOnce("blob:second");
+    const revokeObjectURL = vi.fn();
+    Object.defineProperty(URL, "createObjectURL", { configurable: true, value: createObjectURL });
+    Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: revokeObjectURL });
+
+    try {
+      const { unmount } = renderPersonaEditor("/app/personas/new");
+      const input = document.querySelector("input[type='file']") as HTMLInputElement;
+
+      fireEvent.change(input, { target: { files: [new File(["first"], "first.png", { type: "image/png" })] } });
+      fireEvent.change(input, { target: { files: [new File(["second"], "second.png", { type: "image/png" })] } });
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:first");
+
+      fireEvent.click(screen.getByRole("button", { name: "remove_avatar" }));
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:second");
+
+      unmount();
+      expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+    } finally {
+      Object.defineProperty(URL, "createObjectURL", { configurable: true, value: originalCreateObjectURL });
+      Object.defineProperty(URL, "revokeObjectURL", { configurable: true, value: originalRevokeObjectURL });
+    }
   });
 });

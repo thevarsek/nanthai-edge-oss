@@ -12,6 +12,17 @@ function base64UrlToUint8Array(base64Url: string) {
   return Uint8Array.from(raw, (c) => c.charCodeAt(0));
 }
 
+function subscriptionMatchesApplicationServerKey(
+  subscription: PushSubscription,
+  applicationServerKey: Uint8Array,
+): boolean {
+  const existingKey = subscription.options.applicationServerKey;
+  if (!existingKey) return true;
+  const existingBytes = new Uint8Array(existingKey);
+  if (existingBytes.length !== applicationServerKey.length) return false;
+  return existingBytes.every((byte, index) => byte === applicationServerKey[index]);
+}
+
 function getInitialPushStatus(): "idle" | "unsupported" | "requesting" | "granted" | "denied" | "error" {
   if (typeof window === "undefined") return "idle";
   if (!("serviceWorker" in navigator) || !("PushManager" in window) || typeof Notification === "undefined") {
@@ -122,17 +133,31 @@ export function useWebPush() {
       setErrorMessage(null);
       setStatus("requesting");
       const permission = await Notification.requestPermission();
-      if (permission !== "granted") {
+      if (permission === "denied") {
         setStatus("denied");
+        setErrorMessage(null);
+        return false;
+      }
+      if (permission !== "granted") {
+        setStatus("idle");
         setErrorMessage(null);
         return false;
       }
 
       const registration = await getActiveServiceWorkerRegistration();
+      const applicationServerKey = base64UrlToUint8Array(WEB_PUSH_VAPID_PUBLIC_KEY);
       const existing = await registration.pushManager.getSubscription();
-      const subscription = existing ?? await registration.pushManager.subscribe({
+      let subscription = existing;
+      if (subscription && !subscriptionMatchesApplicationServerKey(subscription, applicationServerKey)) {
+        const didUnsubscribe = await subscription.unsubscribe();
+        if (!didUnsubscribe) {
+          throw new Error("Browser push subscription could not be refreshed.");
+        }
+        subscription = null;
+      }
+      subscription ??= await registration.pushManager.subscribe({
         userVisibleOnly: true,
-        applicationServerKey: base64UrlToUint8Array(WEB_PUSH_VAPID_PUBLIC_KEY),
+        applicationServerKey,
       });
 
       const token = subscription.endpoint;

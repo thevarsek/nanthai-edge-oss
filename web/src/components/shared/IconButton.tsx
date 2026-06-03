@@ -49,13 +49,13 @@ export interface IconButtonProps
  */
 export const IconButton = forwardRef<HTMLButtonElement, IconButtonProps>(
   (
-    { variant = "ghost", size = "sm", label, className, children, ...props },
+    { variant = "ghost", size = "sm", type = "button", label, className, children, ...props },
     ref,
   ) => (
     <button
       {...props}
       ref={ref}
-      type="button"
+      type={type}
       aria-label={label}
       className={cn(
         // Base

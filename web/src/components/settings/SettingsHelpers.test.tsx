@@ -4,12 +4,23 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { DeleteAccountSection, NavRow, SettingsRow } from "./SettingsHelpers";
 
-const { deleteAccount, navigate, signOut, userDelete } = vi.hoisted(() => ({
-  deleteAccount: vi.fn(),
-  navigate: vi.fn(),
-  signOut: vi.fn(),
-  userDelete: vi.fn(),
-}));
+const { deleteAccount, navigate, signOut, userDelete, clerkUserState } = vi.hoisted(() => {
+  const deleteAccount = vi.fn();
+  const navigate = vi.fn();
+  const signOut = vi.fn();
+  const userDelete = vi.fn();
+  const user = { delete: userDelete };
+  const clerkUserState = {
+    isLoaded: true,
+    isSignedIn: true,
+    user,
+  } as {
+    isLoaded: boolean;
+    isSignedIn: boolean;
+    user: typeof user | null;
+  };
+  return { deleteAccount, navigate, signOut, userDelete, clerkUserState };
+});
 
 vi.mock("convex/react", () => ({
   useAction: () => deleteAccount,
@@ -17,7 +28,7 @@ vi.mock("convex/react", () => ({
 
 vi.mock("@clerk/react", () => ({
   useClerk: () => ({ signOut }),
-  useUser: () => ({ user: { delete: userDelete } }),
+  useUser: () => clerkUserState,
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -41,6 +52,9 @@ describe("SettingsHelpers", () => {
     signOut.mockResolvedValue(null);
     userDelete.mockReset();
     userDelete.mockResolvedValue(undefined);
+    clerkUserState.isLoaded = true;
+    clerkUserState.isSignedIn = true;
+    clerkUserState.user = { delete: userDelete };
   });
 
   it("does not submit an enclosing form for clickable settings rows", () => {
@@ -92,7 +106,7 @@ describe("SettingsHelpers", () => {
     expect(signOut).not.toHaveBeenCalled();
   });
 
-  it("falls back to sign-out when Clerk deletion fails after Convex purge", async () => {
+  it("reports partial failure when Clerk deletion fails after Convex purge", async () => {
     const calls: string[] = [];
     deleteAccount.mockImplementation(async () => {
       calls.push("purgeConvex");
@@ -101,10 +115,6 @@ describe("SettingsHelpers", () => {
     userDelete.mockImplementation(async () => {
       calls.push("deleteClerk");
       throw new Error("delete failed");
-    });
-    signOut.mockImplementation(async () => {
-      calls.push("signOut");
-      return null;
     });
 
     render(
@@ -116,9 +126,60 @@ describe("SettingsHelpers", () => {
     fireEvent.click(screen.getByRole("button", { name: "delete_account" }));
     fireEvent.click(screen.getByRole("button", { name: "delete_my_account" }));
 
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/"));
+    await waitFor(() => {
+      expect(screen.getAllByText("delete_account_identity_cleanup_failed").length).toBeGreaterThan(0);
+    });
 
-    expect(calls).toEqual(["purgeConvex", "deleteClerk", "signOut"]);
+    expect(calls).toEqual(["purgeConvex", "deleteClerk"]);
+    expect(signOut).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("disables account deletion while Clerk user state is loading", () => {
+    clerkUserState.isLoaded = false;
+    clerkUserState.isSignedIn = false;
+    clerkUserState.user = null;
+
+    render(
+      <MemoryRouter>
+        <DeleteAccountSection />
+      </MemoryRouter>,
+    );
+
+    const deleteButton = screen.getByRole("button", { name: "delete_account" });
+    expect(deleteButton).toBeDisabled();
+
+    fireEvent.click(deleteButton);
+
+    expect(screen.queryByRole("button", { name: "delete_my_account" })).not.toBeInTheDocument();
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(userDelete).not.toHaveBeenCalled();
+  });
+
+  it("does not purge Convex if Clerk user disappears before confirmation", async () => {
+    const view = render(
+      <MemoryRouter>
+        <DeleteAccountSection />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "delete_account" }));
+    clerkUserState.isSignedIn = false;
+    clerkUserState.user = null;
+    view.rerender(
+      <MemoryRouter>
+        <DeleteAccountSection />
+      </MemoryRouter>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "delete_my_account" }));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("you_are_not_signed_in").length).toBeGreaterThan(0);
+    });
+
+    expect(deleteAccount).not.toHaveBeenCalled();
+    expect(userDelete).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
   });
 
   it("does not delete Clerk user when Convex purge fails", async () => {

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 describe("ConfirmDialog", () => {
@@ -60,6 +60,37 @@ describe("ConfirmDialog", () => {
     expect(document.body.style.overflow).toBe("clip");
   });
 
+  it("closes only the topmost overlapping dialog on Escape", () => {
+    const firstClose = vi.fn();
+    const secondClose = vi.fn();
+    const first = render(
+      <ConfirmDialog
+        isOpen
+        onClose={firstClose}
+        onConfirm={() => {}}
+        title="Delete item"
+        description="This cannot be undone."
+      />,
+    );
+    const second = render(
+      <ConfirmDialog
+        isOpen
+        onClose={secondClose}
+        onConfirm={() => {}}
+        title="Delete item again"
+        description="This still cannot be undone."
+      />,
+    );
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(firstClose).not.toHaveBeenCalled();
+    expect(secondClose).toHaveBeenCalledTimes(1);
+
+    first.unmount();
+    second.unmount();
+  });
+
   it("keeps tab focus inside the dialog", () => {
     render(
       <ConfirmDialog
@@ -79,5 +110,23 @@ describe("ConfirmDialog", () => {
     expect(confirm).toHaveFocus();
     fireEvent.keyDown(window, { key: "Tab" });
     expect(cancel).toHaveFocus();
+  });
+
+  it("wires the description and error into accessible dialog semantics", () => {
+    render(
+      <ConfirmDialog
+        isOpen
+        onClose={() => {}}
+        onConfirm={() => {}}
+        title="Delete item"
+        description="This cannot be undone."
+        errorMessage="Deletion failed."
+      />,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Delete item" });
+
+    expect(dialog).toHaveAccessibleDescription("This cannot be undone. Deletion failed.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Deletion failed.");
   });
 });

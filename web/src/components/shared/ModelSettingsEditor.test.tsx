@@ -89,6 +89,38 @@ describe("ModelSettingsEditor", () => {
     expect(screen.getByLabelText("Max Tokens")).toHaveValue("2048");
   });
 
+  it("keeps newer dirty edits when realtime acknowledges an older save", async () => {
+    modelSettings = [{
+      openRouterId: "openai/model",
+      temperature: 0.7,
+      maxTokens: 1024,
+      includeReasoning: true,
+      reasoningEffort: "medium",
+    }];
+    const { rerender } = render(<ModelSettingsEditor modelId="openai/model" />);
+
+    fireEvent.change(screen.getByLabelText("Max Tokens"), { target: { value: "2048" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => {
+      expect(upsertModelSettings).toHaveBeenCalledWith(expect.objectContaining({ maxTokens: 2048 }));
+    });
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("Max Tokens"), { target: { value: "3072" } });
+    modelSettings = [{
+      openRouterId: "openai/model",
+      temperature: 0.7,
+      maxTokens: 2048,
+      includeReasoning: true,
+      reasoningEffort: "medium",
+    }];
+    rerender(<ModelSettingsEditor modelId="openai/model" />);
+
+    expect(screen.getByLabelText("Max Tokens")).toHaveValue("3072");
+  });
+
   it("does not pin an in-flight save draft after switching models", async () => {
     let resolveSave: () => void = () => {};
     upsertModelSettings.mockReturnValueOnce(new Promise<void>((resolve) => {

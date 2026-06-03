@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, Link2, MinusCircle, RefreshCw, ExternalLink } fr
 import { useOpenRouterStatus, useCreditBalance, useSharedData, formatUsd, balanceTierOf } from "@/hooks/useSharedData";
 import { OpenRouter } from "@/lib/constants";
 import { generatePKCE } from "@/lib/pkce";
+import { useOptimisticOpenRouterPreference } from "./useOptimisticOpenRouterPreference";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -17,10 +18,6 @@ function creditColorClass(balance: number): string {
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
-
-type PendingPreference = {
-  value: boolean;
-};
 
 /**
  * OpenRouter connection section — reads connection status from Convex
@@ -41,50 +38,25 @@ export function OpenRouterSection() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [pendingBalanceInChat, setPendingBalanceInChat] = useState<PendingPreference | null>(null);
-  const [pendingAdvancedStats, setPendingAdvancedStats] = useState<PendingPreference | null>(null);
 
   // Derive connected status from Convex (undefined = loading, true/false = known)
   const connected = hasApiKey === true;
   const isLoading = hasApiKey === undefined;
-  const effectiveShowBalanceInChat = pendingBalanceInChat?.value ?? showBalanceInChat;
-  const effectiveShowAdvancedStats = pendingAdvancedStats?.value ?? showAdvancedStats;
-
-  useEffect(() => {
-    if (pendingBalanceInChat !== null && pendingBalanceInChat.value === showBalanceInChat) {
-      const timer = window.setTimeout(() => setPendingBalanceInChat(null), 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, [pendingBalanceInChat, showBalanceInChat]);
-
-  useEffect(() => {
-    if (pendingAdvancedStats !== null && pendingAdvancedStats.value === showAdvancedStats) {
-      const timer = window.setTimeout(() => setPendingAdvancedStats(null), 0);
-      return () => window.clearTimeout(timer);
-    }
-  }, [pendingAdvancedStats, showAdvancedStats]);
-
-  const savePreferenceToggle = useCallback(async (
-    key: "showBalanceInChat" | "showAdvancedStats",
-    nextValue: boolean,
-    ) => {
-    setErrorMessage(null);
-    if (key === "showBalanceInChat") {
-      setPendingBalanceInChat({ value: nextValue });
-    } else {
-      setPendingAdvancedStats({ value: nextValue });
-    }
-    try {
-      await upsertPreferences({ [key]: nextValue });
-    } catch (error) {
-      if (key === "showBalanceInChat") {
-        setPendingBalanceInChat(null);
-      } else {
-        setPendingAdvancedStats(null);
-      }
-      setErrorMessage(error instanceof Error ? error.message : t("something_went_wrong"));
-    }
-  }, [t, upsertPreferences]);
+  const fallbackErrorMessage = t("something_went_wrong");
+  const balancePreference = useOptimisticOpenRouterPreference(
+    "showBalanceInChat",
+    showBalanceInChat,
+    upsertPreferences,
+    setErrorMessage,
+    fallbackErrorMessage,
+  );
+  const advancedStatsPreference = useOptimisticOpenRouterPreference(
+    "showAdvancedStats",
+    showAdvancedStats,
+    upsertPreferences,
+    setErrorMessage,
+    fallbackErrorMessage,
+  );
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -195,11 +167,11 @@ export function OpenRouterSection() {
               <button
                 type="button"
                 role="switch"
-                aria-checked={effectiveShowBalanceInChat}
-                onClick={() => void savePreferenceToggle("showBalanceInChat", !effectiveShowBalanceInChat)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${effectiveShowBalanceInChat ? "bg-accent" : "bg-surface-3"}`}
+                aria-checked={balancePreference.value}
+                onClick={() => void balancePreference.setValue(!balancePreference.value)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${balancePreference.value ? "bg-accent" : "bg-surface-3"}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${effectiveShowBalanceInChat ? "translate-x-6" : "translate-x-1"}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${balancePreference.value ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
 
@@ -212,11 +184,11 @@ export function OpenRouterSection() {
               <button
                 type="button"
                 role="switch"
-                aria-checked={effectiveShowAdvancedStats}
-                onClick={() => void savePreferenceToggle("showAdvancedStats", !effectiveShowAdvancedStats)}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${effectiveShowAdvancedStats ? "bg-accent" : "bg-surface-3"}`}
+                aria-checked={advancedStatsPreference.value}
+                onClick={() => void advancedStatsPreference.setValue(!advancedStatsPreference.value)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${advancedStatsPreference.value ? "bg-accent" : "bg-surface-3"}`}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${effectiveShowAdvancedStats ? "translate-x-6" : "translate-x-1"}`} />
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${advancedStatsPreference.value ? "translate-x-6" : "translate-x-1"}`} />
               </button>
             </div>
 

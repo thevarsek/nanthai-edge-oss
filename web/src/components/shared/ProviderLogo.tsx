@@ -119,8 +119,7 @@ interface ProviderLogoProps {
 }
 
 export function ProviderLogo({ slug, modelId, size = 28, className }: ProviderLogoProps) {
-  const rawProvider = slug ?? (modelId ? extractProvider(modelId) : "unknown");
-  const provider = rawProvider.startsWith("~") ? rawProvider.slice(1) : rawProvider;
+  const provider = slug ? extractProvider(slug) : modelId ? extractProvider(modelId) : "unknown";
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
 
   const asset = assetName(provider);
@@ -130,6 +129,8 @@ export function ProviderLogo({ slug, modelId, size = 28, className }: ProviderLo
     const hue = slugHue(provider);
     return (
       <div
+        role="img"
+        aria-label={`${provider} logo`}
         className={className}
         style={{
           width: size,
@@ -144,7 +145,6 @@ export function ProviderLogo({ slug, modelId, size = 28, className }: ProviderLo
           color: `hsl(${hue}, 55%, 35%)`,
           flexShrink: 0,
         }}
-        aria-label={`${provider} logo`}
       >
         {initials(provider)}
       </div>

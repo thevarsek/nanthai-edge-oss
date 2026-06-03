@@ -33,6 +33,16 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
   const lastModelId = useRef(modelId);
   const currentModelId = useRef(modelId);
   const pendingSavedDraft = useRef<ModelSettingsDraftSnapshot | null>(null);
+  const draftSnapshot = useMemo(
+    () => ({
+      hasCustomSettings,
+      temperature,
+      maxTokensText,
+      includeReasoning,
+      reasoningEffort,
+    }),
+    [hasCustomSettings, includeReasoning, maxTokensText, reasoningEffort, temperature],
+  );
 
   useLayoutEffect(() => {
     currentModelId.current = modelId;
@@ -43,8 +53,12 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
     if (modelChanged) {
       pendingSavedDraft.current = null;
     } else if (pendingSavedDraft.current) {
-      if (draftMatchesExisting(pendingSavedDraft.current, existing)) {
+      const savedDraft = pendingSavedDraft.current;
+      if (draftMatchesExisting(savedDraft, existing)) {
         pendingSavedDraft.current = null;
+        if (!draftSnapshotsEqual(draftSnapshot, savedDraft)) {
+          return;
+        }
       } else {
         return;
       }
@@ -60,7 +74,7 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
     setReasoningEffort(nextDraft.reasoningEffort);
     setError(null);
     setIsDirty(false);
-  }, [existing, isDirty, modelId]);
+  }, [draftSnapshot, existing, isDirty, modelId]);
 
   async function handleSave() {
     if (isSaving) return;
@@ -72,13 +86,7 @@ export function ModelSettingsEditor({ modelId }: { modelId: string }) {
     setIsSaving(true);
     setError(null);
     const savedModelId = modelId;
-    const savedDraft = currentDraftSnapshot({
-      hasCustomSettings,
-      temperature,
-      maxTokensText,
-      includeReasoning,
-      reasoningEffort,
-    });
+    const savedDraft = { ...draftSnapshot };
     try {
       if (!hasCustomSettings) {
         if (existing) {
@@ -260,8 +268,15 @@ function draftFromExisting(
   };
 }
 
-function currentDraftSnapshot(draft: ModelSettingsDraftSnapshot): ModelSettingsDraftSnapshot {
-  return { ...draft };
+function draftSnapshotsEqual(
+  first: ModelSettingsDraftSnapshot,
+  second: ModelSettingsDraftSnapshot,
+): boolean {
+  return first.hasCustomSettings === second.hasCustomSettings &&
+    first.temperature === second.temperature &&
+    first.maxTokensText === second.maxTokensText &&
+    first.includeReasoning === second.includeReasoning &&
+    first.reasoningEffort === second.reasoningEffort;
 }
 
 function draftMatchesExisting(

@@ -215,6 +215,7 @@ function CodeBlock({
         </span>
         <button
           ref={btnRef}
+          type="button"
           onClick={handleCopy}
           className="text-xs text-muted hover:text-foreground transition-colors px-2 py-0.5 rounded hover:bg-surface-3"
           aria-label="Copy code"
@@ -247,6 +248,7 @@ function MarkdownTable({
   return (
     <div className="relative my-3 group">
       <button
+        type="button"
         onClick={handleCopy}
         className="absolute top-2 right-2 text-xs text-muted hover:text-foreground transition-colors px-2 py-0.5 rounded bg-nanth-code border border-border/20 opacity-0 group-hover:opacity-100"
         aria-label="Copy table"

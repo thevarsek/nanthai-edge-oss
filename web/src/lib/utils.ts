@@ -6,13 +6,11 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /** Format a timestamp into a relative or absolute label. */
-export function formatTimestamp(ts: number): string {
+export function formatTimestamp(ts: number, now = Date.now()): string {
   const date = new Date(ts);
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const days = Math.floor(diff / 86_400_000);
+  const days = localCalendarDayDelta(date, new Date(now));
 
-  if (days === 0) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  if (days <= 0) return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   if (days === 1) return "Yesterday";
   if (days < 7) return date.toLocaleDateString([], { weekday: "long" });
   return date.toLocaleDateString([], { month: "short", day: "numeric" });
@@ -21,14 +19,21 @@ export function formatTimestamp(ts: number): string {
 /** Time group for chat list sections */
 export type TimeGroup = "Today" | "Yesterday" | "Last 7 Days" | "Last 30 Days" | "Older";
 
-export function getTimeGroup(ts: number): TimeGroup {
-  const diff = Date.now() - ts;
-  const days = diff / 86_400_000;
-  if (days < 1) return "Today";
-  if (days < 2) return "Yesterday";
+export function getTimeGroup(ts: number, now = Date.now()): TimeGroup {
+  const days = localCalendarDayDelta(new Date(ts), new Date(now));
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
   if (days < 7) return "Last 7 Days";
   if (days < 30) return "Last 30 Days";
   return "Older";
+}
+
+function localCalendarDayDelta(from: Date, to: Date): number {
+  return localDayIndex(to) - localDayIndex(from);
+}
+
+function localDayIndex(date: Date): number {
+  return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000;
 }
 
 /** Truncate text with ellipsis */
@@ -68,4 +73,3 @@ export function formatBytes(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
-

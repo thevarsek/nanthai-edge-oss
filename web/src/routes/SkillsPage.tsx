@@ -58,6 +58,7 @@ function SkillsPageContent() {
   const filteredSkills: SkillDoc[] = ((skills ?? []) as SkillDoc[]).filter(
     (s) => !search || s.name.toLowerCase().includes(search.toLowerCase()),
   );
+  const preferencesLoaded = prefs !== undefined;
   const skillDefaultMap = new Map<string, Exclude<SkillDefaultState, undefined>>(
     (((prefs as { skillDefaults?: Array<{ skillId: string; state: Exclude<SkillDefaultState, undefined> }> } | null)?.skillDefaults) ?? [])
       .map((entry) => [entry.skillId, entry.state]),
@@ -67,6 +68,7 @@ function SkillsPageContent() {
   const userSkills = filteredSkills.filter((s) => !isSystemSkill(s));
 
   async function handleCycleDefault(skill: SkillDoc) {
+    if (!preferencesLoaded) return;
     const current = skillDefaultMap.get(skill._id);
     const next = nextDefaultState(skill, current);
     try {
@@ -128,7 +130,8 @@ function SkillsPageContent() {
                         <button
                           key={`default-${skill._id}`}
                           onClick={() => void handleCycleDefault(skill)}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
+                          disabled={!preferencesLoaded}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:cursor-wait disabled:opacity-60 disabled:hover:bg-transparent"
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{skill.name}</p>

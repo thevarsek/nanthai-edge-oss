@@ -14,12 +14,11 @@ import {
   formatPrice,
   formatVideoPrice,
   formatImagePrice,
-  wizardScore,
   type WizardTask,
   type WizardPriority,
 } from "@/components/shared/ModelPickerHelpers.utils";
 import { ModelSettingsEditor } from "@/components/shared/ModelSettingsEditor";
-import { isProviderAllowedForGoogle } from "@/components/shared/ModelPickerShared";
+import { isWizardModelDisabled, selectWizardResults } from "@/components/shared/ModelPickerWizardResults";
 
 // ─── Types (shared with ModelPicker.tsx) ─────────────────────────────────────
 
@@ -378,19 +377,6 @@ const PRIORITIES: { value: WizardPriority; labelKey: string; subtitleKey: string
   { value: "value", labelKey: "guidance_priority_value", subtitleKey: "guidance_priority_value_sub", icon: <DollarSign size={16} /> },
 ];
 
-function isWizardModelDisabled(
-  model: ModelSummary,
-  zdrEnforced?: boolean,
-  googleIntegrationsActive?: boolean,
-): boolean {
-  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
-  const isGoogleBlocked = googleIntegrationsActive === true && (
-    !model.hasZdrEndpoint ||
-    !isProviderAllowedForGoogle(model.modelId, model.provider)
-  );
-  return isZdrDisabled || isGoogleBlocked;
-}
-
 export function ModelWizard({
   models, onSelect, onClose, zdrEnforced, googleIntegrationsActive,
 }: {
@@ -407,12 +393,13 @@ export function ModelWizard({
 
   const results = useMemo(() => {
     if (!task || !priority) return [];
-    return [...models]
-      .map((m) => ({ ...m, score: wizardScore(m, task, priority) }))
-      .filter((m) => m.score > 0)
-      .filter((m) => !isWizardModelDisabled(m, zdrEnforced, googleIntegrationsActive))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, 3);
+    return selectWizardResults({
+      models,
+      task,
+      priority,
+      zdrEnforced,
+      googleIntegrationsActive,
+    });
   }, [googleIntegrationsActive, models, priority, task, zdrEnforced]);
 
   const progressPct = step === 1 ? 33 : step === 2 ? 66 : 100;
@@ -449,6 +436,7 @@ export function ModelWizard({
             <div className="space-y-2">
               {TASKS.map((taskOption) => (
                 <button
+                  type="button"
                   key={taskOption.value}
                   onClick={() => { setTask(taskOption.value); setStep(2); }}
                   className={[
@@ -474,6 +462,7 @@ export function ModelWizard({
             <div className="space-y-2">
               {PRIORITIES.map((p) => (
                 <button
+                  type="button"
                   key={p.value}
                   onClick={() => { setPriority(p.value); setStep(3); }}
                   className={[
@@ -521,7 +510,9 @@ export function ModelWizard({
                   const isDisabled = isZdrDisabled || isGoogleBlocked;
                   return (
                     <button
+                      type="button"
                       key={m.modelId}
+                      disabled={isDisabled}
                       onClick={() => { if (!isDisabled) { onSelect(m.modelId); onClose(); } }}
                       className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-colors text-left ${isDisabled ? "border-border/30 opacity-40 cursor-not-allowed" : "border-border/50 hover:border-primary hover:bg-primary/5"}`}
                     >

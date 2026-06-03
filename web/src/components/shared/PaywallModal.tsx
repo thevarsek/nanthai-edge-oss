@@ -40,12 +40,27 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
   const createCheckoutSession = useAction(api.stripe.actions.createCheckoutSession);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const isLaunchingCheckout = useRef(false);
+  const isClosedOrUnmounted = useRef(false);
+  const isMounted = useRef(false);
 
   useEffect(() => {
+    isMounted.current = true;
     lockBodyScroll();
-    return unlockBodyScroll;
+    closeButtonRef.current?.focus();
+    return () => {
+      isMounted.current = false;
+      isClosedOrUnmounted.current = true;
+      unlockBodyScroll();
+    };
   }, []);
+
+  function requestClose() {
+    isClosedOrUnmounted.current = true;
+    onClose();
+  }
 
   const PRO_FEATURES = [
     { icon: PRO_FEATURE_ICONS[0], title: t("personas"), description: t("paywall_personas_description") },
@@ -61,34 +76,77 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
   async function handleUpgrade() {
     if (isLaunchingCheckout.current) return;
     isLaunchingCheckout.current = true;
+    isClosedOrUnmounted.current = false;
     setIsLoading(true);
     setError(null);
     try {
       const { url } = await createCheckoutSession({});
+      if (isClosedOrUnmounted.current) {
+        isLaunchingCheckout.current = false;
+        if (isMounted.current) {
+          setIsLoading(false);
+        }
+        return;
+      }
       window.location.href = url;
     } catch {
       isLaunchingCheckout.current = false;
+      if (isClosedOrUnmounted.current || !isMounted.current) return;
       setError(t("checkout_failed_try_again", "Checkout could not be started. Please try again."));
       setIsLoading(false);
+    }
+  }
+
+  function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      requestClose();
+      return;
+    }
+
+    if (event.key !== "Tab") return;
+
+    const focusable = Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter((element) => !element.hasAttribute("disabled") && element.tabIndex !== -1);
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    const activeElement = document.activeElement;
+
+    if (event.shiftKey) {
+      if (activeElement === first || !dialogRef.current?.contains(activeElement)) {
+        event.preventDefault();
+        last.focus();
+      }
+    } else if (activeElement === last || !dialogRef.current?.contains(activeElement)) {
+      event.preventDefault();
+      first.focus();
     }
   }
 
   return (
     // Backdrop
     <div
+      ref={dialogRef}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="paywall-title"
+      onKeyDown={handleDialogKeyDown}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
       <div className="relative w-full max-w-lg bg-secondary rounded-2xl shadow-2xl border border-border overflow-hidden">
         {/* Close button */}
         <button
+          ref={closeButtonRef}
           type="button"
-          onClick={onClose}
+          onClick={requestClose}
           className="absolute top-4 right-4 p-1.5 rounded-lg text-foreground/60 hover:text-foreground hover:bg-muted transition-colors"
           aria-label="Close paywall"
         >
@@ -152,7 +210,7 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
             {t("already_purchased")}{" "}
             <button
               type="button"
-              onClick={onClose}
+              onClick={requestClose}
               className="underline hover:text-foreground/70 transition-colors"
             >
               {t("restore_purchase")}

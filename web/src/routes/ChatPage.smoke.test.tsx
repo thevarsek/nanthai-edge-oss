@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
@@ -236,6 +236,27 @@ describe("ChatPage composed route smoke", () => {
     render(<ChatPage />);
 
     expect(screen.getByRole("status")).toHaveTextContent("loading");
+  });
+
+  it("keeps an existing chat route noninteractive while loading persists", () => {
+    vi.useFakeTimers();
+    try {
+      routeState.chatId = "chat_loading";
+      chatState.isLoading = true;
+
+      const { rerender } = render(<ChatPage />);
+      expect(screen.getByRole("status")).toHaveTextContent("loading");
+
+      act(() => {
+        vi.runAllTimers();
+      });
+      rerender(<ChatPage />);
+
+      expect(screen.getByRole("status")).toHaveTextContent("loading");
+      expect(screen.queryByRole("button", { name: "message-input" })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("routes header actions and rename updates through the current chat id", async () => {

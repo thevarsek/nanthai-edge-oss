@@ -75,7 +75,6 @@ export function attachmentTypeForMime(mimeType: string): string {
   if (mimeType.startsWith("image/")) return "image";
   if (mimeType.startsWith("audio/")) return "audio";
   if (mimeType.startsWith("video/")) return "video";
-  if (mimeType === "application/pdf") return "pdf";
   return "document";
 }
 

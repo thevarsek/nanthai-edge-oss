@@ -16,7 +16,7 @@ export type MessageGroup =
 export function messageGroupKey(group: MessageGroup): string {
   return group.type === "single"
     ? group.message._id
-    : `group-${group.groupId}`;
+    : `group-${group.groupId}-${group.messages[0]?._id ?? "empty"}`;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

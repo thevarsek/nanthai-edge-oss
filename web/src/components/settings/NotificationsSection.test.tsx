@@ -77,4 +77,28 @@ describe("NotificationsSection", () => {
       expect(upsertPreferences).toHaveBeenCalledTimes(2);
     });
   });
+
+  it("clears a completed no-op chat notification toggle before accepting later server changes", async () => {
+    isRegistered = true;
+    const { rerender } = render(<NotificationsSection />);
+    const chatToggle = screen.getAllByRole("switch")[2];
+
+    fireEvent.click(chatToggle);
+    expect(chatToggle).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(chatToggle);
+    expect(chatToggle).toHaveAttribute("aria-checked", "false");
+
+    await waitFor(() => {
+      expect(upsertPreferences).toHaveBeenCalledTimes(2);
+    });
+
+    serverChatCompletionEnabled = false;
+    rerender(<NotificationsSection />);
+    expect(screen.getAllByRole("switch")[2]).toHaveAttribute("aria-checked", "false");
+
+    serverChatCompletionEnabled = true;
+    rerender(<NotificationsSection />);
+    expect(screen.getAllByRole("switch")[2]).toHaveAttribute("aria-checked", "true");
+  });
 });

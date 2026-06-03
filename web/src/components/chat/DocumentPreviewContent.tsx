@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import type { Message } from "@/hooks/useChat";
 
@@ -45,18 +45,55 @@ function normalizeForMatch(value: string): string {
   return value.replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function paragraphMatchesAnnotation(
+type ParagraphAnnotationMatch = "typed" | "fallback";
+
+function segmentText(
+  paragraph: DocumentPreviewPayload["paragraphs"][number],
+  kind: DocumentPreviewTextSegment["kind"],
+): string {
+  return normalizeForMatch(
+    paragraph.segments
+      .filter((segment) => segment.kind === kind)
+      .map((segment) => segment.text)
+      .join(""),
+  );
+}
+
+function paragraphAnnotationMatch(
   paragraph: DocumentPreviewPayload["paragraphs"][number],
   annotation?: DocumentEditAnnotation,
-): boolean {
-  if (!annotation) return false;
-  const paragraphText = normalizeForMatch(paragraph.segments.map((segment) => segment.text).join(""));
+): ParagraphAnnotationMatch | null {
+  if (!annotation) return null;
   const deleted = normalizeForMatch(annotation.deletedText);
   const inserted = normalizeForMatch(annotation.insertedText);
-  return Boolean(
-    (deleted && paragraphText.includes(deleted)) ||
-    (inserted && paragraphText.includes(inserted)),
-  );
+  const deletedSegmentText = segmentText(paragraph, "deleted");
+  const insertedSegmentText = segmentText(paragraph, "inserted");
+  if (
+    (deleted && deletedSegmentText.includes(deleted)) ||
+    (inserted && insertedSegmentText.includes(inserted))
+  ) {
+    return "typed";
+  }
+
+  const paragraphText = normalizeForMatch(paragraph.segments.map((segment) => segment.text).join(""));
+  if ((deleted && paragraphText.includes(deleted)) || (inserted && paragraphText.includes(inserted))) {
+    return "fallback";
+  }
+  return null;
+}
+
+function focusedParagraphIndexes(
+  paragraphs: DocumentPreviewPayload["paragraphs"],
+  annotation?: DocumentEditAnnotation,
+): Set<number> {
+  const typedMatches: number[] = [];
+  const fallbackMatches: number[] = [];
+  paragraphs.forEach((paragraph, index) => {
+    const match = paragraphAnnotationMatch(paragraph, annotation);
+    if (match === "typed") typedMatches.push(index);
+    if (match === "fallback") fallbackMatches.push(index);
+  });
+  return new Set(typedMatches.length > 0 ? typedMatches : fallbackMatches);
 }
 
 export function DocumentPreviewContent({
@@ -68,17 +105,18 @@ export function DocumentPreviewContent({
 }) {
   const { t } = useTranslation();
   const paragraphRefs = useRef(new Map<number, HTMLParagraphElement>());
+  const focusedIndexes = useMemo(
+    () => focusedParagraphIndexes(preview.paragraphs, focusedAnnotation),
+    [focusedAnnotation, preview.paragraphs],
+  );
 
   useEffect(() => {
-    if (!focusedAnnotation) return;
-    const index = preview.paragraphs.findIndex((paragraph) =>
-      paragraphMatchesAnnotation(paragraph, focusedAnnotation)
-    );
-    if (index < 0) return;
+    const index = focusedIndexes.values().next().value;
+    if (index == null) return;
     window.setTimeout(() => {
       paragraphRefs.current.get(index)?.scrollIntoView({ block: "center", behavior: "smooth" });
     }, 0);
-  }, [focusedAnnotation, preview.paragraphs]);
+  }, [focusedIndexes]);
 
   if (preview.kind === "unsupported") {
     return (
@@ -91,7 +129,7 @@ export function DocumentPreviewContent({
   return (
     <div className="rounded-lg border border-border/50 bg-white px-6 py-7 text-neutral-950 shadow-sm">
       {preview.paragraphs.map((paragraph, index) => {
-        const focused = paragraphMatchesAnnotation(paragraph, focusedAnnotation);
+        const focused = focusedIndexes.has(index);
         return (
           <p
             key={`${paragraph.style}-${index}`}

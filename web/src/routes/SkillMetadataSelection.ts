@@ -28,6 +28,34 @@ export type SkillToolProfileId =
   | "scheduledJobs"
   | "skillsManagement";
 export type SkillCapabilityId = never;
+const REPRESENTED_TOOL_PROFILES = new Set<SkillToolProfileId>([
+  "docs",
+  "analytics",
+  "workspace",
+  "google",
+  "microsoft",
+  "notion",
+  "cloze",
+  "slack",
+  "appleCalendar",
+]);
+
+function isSkillToolProfileId(value: string): value is SkillToolProfileId {
+  return [
+    "docs",
+    "analytics",
+    "workspace",
+    "subagents",
+    "google",
+    "microsoft",
+    "notion",
+    "cloze",
+    "slack",
+    "appleCalendar",
+    "scheduledJobs",
+    "skillsManagement",
+  ].includes(value);
+}
 
 interface SkillLike {
   _id?: Id<"skills">;
@@ -41,6 +69,8 @@ export interface SkillMetadataSelection {
   usesDataAnalysis: boolean;
   usesDocuments: boolean;
   selectedIntegrationIds: Set<string>;
+  requiredCapabilities?: string[];
+  preservedToolProfiles?: SkillToolProfileId[];
 }
 
 export function emptySkillMetadataSelection(): SkillMetadataSelection {
@@ -49,6 +79,8 @@ export function emptySkillMetadataSelection(): SkillMetadataSelection {
     usesDataAnalysis: false,
     usesDocuments: false,
     selectedIntegrationIds: new Set<string>(),
+    requiredCapabilities: [],
+    preservedToolProfiles: [],
   };
 }
 
@@ -58,15 +90,23 @@ export function cloneSkillMetadataSelection(selection: SkillMetadataSelection): 
     usesDataAnalysis: selection.usesDataAnalysis,
     usesDocuments: selection.usesDocuments,
     selectedIntegrationIds: new Set(selection.selectedIntegrationIds),
+    requiredCapabilities: [...(selection.requiredCapabilities ?? [])],
+    preservedToolProfiles: [...(selection.preservedToolProfiles ?? [])],
   };
 }
 
 export function skillSelectionEquals(a: SkillMetadataSelection, b: SkillMetadataSelection): boolean {
+  const aCapabilities = a.requiredCapabilities ?? [];
+  const bCapabilities = b.requiredCapabilities ?? [];
+  const aPreservedProfiles = a.preservedToolProfiles ?? [];
+  const bPreservedProfiles = b.preservedToolProfiles ?? [];
   if (
     a.usesCodingWorkspace !== b.usesCodingWorkspace ||
     a.usesDataAnalysis !== b.usesDataAnalysis ||
     a.usesDocuments !== b.usesDocuments ||
-    a.selectedIntegrationIds.size !== b.selectedIntegrationIds.size
+    a.selectedIntegrationIds.size !== b.selectedIntegrationIds.size ||
+    aCapabilities.length !== bCapabilities.length ||
+    aPreservedProfiles.length !== bPreservedProfiles.length
   ) {
     return false;
   }
@@ -74,11 +114,17 @@ export function skillSelectionEquals(a: SkillMetadataSelection, b: SkillMetadata
   for (const id of a.selectedIntegrationIds) {
     if (!b.selectedIntegrationIds.has(id)) return false;
   }
+  for (let index = 0; index < aCapabilities.length; index += 1) {
+    if (aCapabilities[index] !== bCapabilities[index]) return false;
+  }
+  for (let index = 0; index < aPreservedProfiles.length; index += 1) {
+    if (aPreservedProfiles[index] !== bPreservedProfiles[index]) return false;
+  }
   return true;
 }
 
 export function requiredToolProfilesForSkill(selection: SkillMetadataSelection): SkillToolProfileId[] {
-  const profiles = new Set<SkillToolProfileId>();
+  const profiles = new Set<SkillToolProfileId>(selection.preservedToolProfiles ?? []);
   if (selection.usesDocuments) profiles.add("docs");
   if (selection.usesDataAnalysis) {
     profiles.add("analytics");
@@ -100,8 +146,7 @@ export function requiredToolProfilesForSkill(selection: SkillMetadataSelection):
 }
 
 export function requiredCapabilitiesForSkill(selection?: SkillMetadataSelection): SkillCapabilityId[] {
-  void selection;
-  return [];
+  return Array.from(new Set(selection?.requiredCapabilities ?? [])).sort() as SkillCapabilityId[];
 }
 
 export function inferredRuntimeMode(selection: SkillMetadataSelection): "textOnly" | "toolAugmented" | "sandboxAugmented" {
@@ -112,11 +157,17 @@ export function inferredRuntimeMode(selection: SkillMetadataSelection): "textOnl
 
 export function skillMetadataSelectionFromSkill(skill: SkillLike): SkillMetadataSelection {
   const profiles = skill.requiredToolProfiles ?? [];
+  const preservedToolProfiles = profiles
+    .filter(isSkillToolProfileId)
+    .filter((profile) => !REPRESENTED_TOOL_PROFILES.has(profile))
+    .sort();
   return {
     usesCodingWorkspace: profiles.includes("workspace"),
     usesDataAnalysis: profiles.includes("analytics"),
     usesDocuments: profiles.includes("docs"),
     selectedIntegrationIds: new Set(skill.requiredIntegrationIds ?? []),
+    requiredCapabilities: [...(skill.requiredCapabilities ?? [])].sort(),
+    preservedToolProfiles,
   };
 }
 

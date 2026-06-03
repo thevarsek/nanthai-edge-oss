@@ -8,6 +8,7 @@ describe("ProviderLogo", () => {
 
     fireEvent.error(screen.getByAltText("missing-provider logo"));
     expect(screen.queryByAltText("missing-provider logo")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "missing-provider logo" })).toHaveTextContent("MP");
 
     rerender(<ProviderLogo slug="openai" />);
 
@@ -28,5 +29,13 @@ describe("ProviderLogo", () => {
 
     rerender(<ProviderLogo slug="kwaivgi" />);
     expect(screen.getByAltText("kwaivgi logo")).toHaveAttribute("src", "/providers/provider_kwaipilot.png");
+  });
+
+  it("extracts the provider when slug receives a full model id", () => {
+    const { rerender } = render(<ProviderLogo slug="openai/gpt-4o" />);
+    expect(screen.getByAltText("openai logo")).toHaveAttribute("src", "/providers/provider_openai.png");
+
+    rerender(<ProviderLogo slug="~anthropic/claude-opus-latest" />);
+    expect(screen.getByAltText("anthropic logo")).toHaveAttribute("src", "/providers/provider_anthropic.png");
   });
 });

@@ -1,21 +1,33 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { useEffect } from "react";
 import type React from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Outlet } from "react-router-dom";
+import { MemoryRouter, Outlet, useNavigate } from "react-router-dom";
 import { App } from "./App";
 
 const { routeMocks } = vi.hoisted(() => ({
   routeMocks: {
     automatedTasksShouldThrow: false,
+    scheduledJobsShouldThrow: false,
+    authGuardProps: [] as Array<{ requireOnboarding?: boolean }>,
+    rootLayoutMounts: 0,
   },
 }));
 
 vi.mock("./routes/AuthGuard", () => ({
-  AuthGuard: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  AuthGuard: ({ children, requireOnboarding }: { children: React.ReactNode; requireOnboarding?: boolean }) => {
+    routeMocks.authGuardProps.push({ requireOnboarding });
+    return <>{children}</>;
+  },
 }));
 
 vi.mock("./routes/RootLayout", () => ({
-  RootLayout: () => <Outlet />,
+  RootLayout: () => {
+    useEffect(() => {
+      routeMocks.rootLayoutMounts += 1;
+    }, []);
+    return <Outlet />;
+  },
 }));
 
 vi.mock("./components/shared/AppEmptyState", () => ({
@@ -30,6 +42,14 @@ vi.mock("./pages/OpenRouterCallbackPage", () => ({
   OpenRouterCallbackPage: () => <div>native-openrouter-callback</div>,
 }));
 
+vi.mock("./routes/OpenRouterConnectPage", () => ({
+  OpenRouterConnectPage: () => <div>web-openrouter-callback</div>,
+}));
+
+vi.mock("./pages/HomePage", () => ({
+  HomePage: () => <div>home-page</div>,
+}));
+
 vi.mock("./pages/TermsPage", () => ({
   TermsPage: () => <div>terms-page</div>,
 }));
@@ -40,6 +60,10 @@ vi.mock("./pages/PrivacyPage", () => ({
 
 vi.mock("./pages/LicensingPage", () => ({
   LicensingPage: () => <div>licensing-page</div>,
+}));
+
+vi.mock("./pages/SupportPage", () => ({
+  SupportPage: () => <div>support-page</div>,
 }));
 
 vi.mock("./pages/features/FeaturesIndexPage", () => ({
@@ -99,8 +123,16 @@ vi.mock("./pages/features/KnowledgeBasePage", () => ({
   KnowledgeBasePage: () => <div>feature-knowledge-base-page</div>,
 }));
 
+vi.mock("./pages/features/MemoriesPage", () => ({
+  MemoriesPage: () => <div>feature-memories-page</div>,
+}));
+
 vi.mock("./pages/features/BranchingPage", () => ({
   BranchingPage: () => <div>feature-branching-page</div>,
+}));
+
+vi.mock("./pages/features/PriceTransparencyPage", () => ({
+  PriceTransparencyPage: () => <div>feature-price-transparency-page</div>,
 }));
 
 vi.mock("./pages/features/ProVsFreePage", () => ({
@@ -156,7 +188,12 @@ vi.mock("./routes/SkillsPage", () => ({
 }));
 
 vi.mock("./routes/ScheduledJobsPage", () => ({
-  ScheduledJobsPage: () => <div>scheduled-jobs-page</div>,
+  ScheduledJobsPage: () => {
+    if (routeMocks.scheduledJobsShouldThrow) {
+      throw new Error("jobs failed");
+    }
+    return <div>scheduled-jobs-page</div>;
+  },
 }));
 
 vi.mock("./routes/SkillEditorPage", () => ({
@@ -195,12 +232,29 @@ function renderAt(path: string) {
   );
 }
 
+function NavigateToFeaturesButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/features")}>go features</button>;
+}
+
+function NavigateToMemoryButton() {
+  const navigate = useNavigate();
+  return <button onClick={() => navigate("/app/settings/memory")}>go memory</button>;
+}
+
 describe("App routes", () => {
   beforeEach(() => {
     routeMocks.automatedTasksShouldThrow = false;
+    routeMocks.scheduledJobsShouldThrow = false;
+    routeMocks.authGuardProps = [];
+    routeMocks.rootLayoutMounts = 0;
   });
 
   it("routes representative public, protected, callback, and fallback paths", async () => {
+    const homeRoute = renderAt("/");
+    expect(await screen.findByText("home-page")).toBeInTheDocument();
+    homeRoute.unmount();
+
     const { unmount } = renderAt("/features/search");
     expect(await screen.findByText("feature-search-page")).toBeInTheDocument();
     unmount();
@@ -216,6 +270,10 @@ describe("App routes", () => {
     const licensingRoute = renderAt("/licensing");
     expect(await screen.findByText("licensing-page")).toBeInTheDocument();
     licensingRoute.unmount();
+
+    const supportRoute = renderAt("/support");
+    expect(await screen.findByText("support-page")).toBeInTheDocument();
+    supportRoute.unmount();
 
     const featuresRoute = renderAt("/features");
     expect(await screen.findByText("features-index-page")).toBeInTheDocument();
@@ -253,6 +311,10 @@ describe("App routes", () => {
     expect(await screen.findByText("feature-knowledge-base-page")).toBeInTheDocument();
     knowledgeFeatureRoute.unmount();
 
+    const memoriesFeatureRoute = renderAt("/features/memories");
+    expect(await screen.findByText("feature-memories-page")).toBeInTheDocument();
+    memoriesFeatureRoute.unmount();
+
     const proVsFreeRoute = renderAt("/features/pro-vs-free");
     expect(await screen.findByText("feature-pro-vs-free-page")).toBeInTheDocument();
     proVsFreeRoute.unmount();
@@ -268,6 +330,10 @@ describe("App routes", () => {
     const branchingRoute = renderAt("/features/branching");
     expect(await screen.findByText("feature-branching-page")).toBeInTheDocument();
     branchingRoute.unmount();
+
+    const priceTransparencyRoute = renderAt("/features/price-transparency");
+    expect(await screen.findByText("feature-price-transparency-page")).toBeInTheDocument();
+    priceTransparencyRoute.unmount();
 
     const audioRoute = renderAt("/features/audio-generation");
     expect(await screen.findByText("feature-audio-generation-page")).toBeInTheDocument();
@@ -355,7 +421,22 @@ describe("App routes", () => {
 
     const onboardingRoute = renderAt("/onboarding");
     expect(await screen.findByText("onboarding-page")).toBeInTheDocument();
+    expect(routeMocks.authGuardProps[routeMocks.authGuardProps.length - 1]).toEqual({
+      requireOnboarding: false,
+    });
     onboardingRoute.unmount();
+
+    const nativeOpenRouterCallbackRoute = renderAt("/openrouter/edge/callback");
+    expect(screen.getByText("native-openrouter-callback")).toBeInTheDocument();
+    nativeOpenRouterCallbackRoute.unmount();
+
+    const webOpenRouterCallbackRoute = renderAt("/openrouter/callback");
+    expect(await screen.findByText("web-openrouter-callback")).toBeInTheDocument();
+    webOpenRouterCallbackRoute.unmount();
+
+    const mobileDrivePickerRoute = renderAt("/mobile-drive-picker");
+    expect(screen.getByText("mobile-drive-picker")).toBeInTheDocument();
+    mobileDrivePickerRoute.unmount();
 
     const callbackRoute = renderAt("/oauth/slack/callback");
     expect(screen.getByText("oauth:slack")).toBeInTheDocument();
@@ -364,6 +445,12 @@ describe("App routes", () => {
     const microsoftCallbackRoute = renderAt("/oauth/microsoft/callback");
     expect(screen.getByText("oauth:microsoft")).toBeInTheDocument();
     microsoftCallbackRoute.unmount();
+
+    const guardCountBeforeUnknownAppRoute = routeMocks.authGuardProps.length;
+    const unknownAppRoute = renderAt("/app/not-a-real-route");
+    expect(await screen.findByText("404")).toBeInTheDocument();
+    expect(routeMocks.authGuardProps.length).toBeGreaterThan(guardCountBeforeUnknownAppRoute);
+    unknownAppRoute.unmount();
 
     renderAt("/not-a-real-route");
     expect(screen.getByText("404")).toBeInTheDocument();
@@ -380,5 +467,66 @@ describe("App routes", () => {
     expect(screen.queryByText("chunk failed")).not.toBeInTheDocument();
 
     errorSpy.mockRestore();
+  });
+
+  it("resets the route error boundary after SPA navigation", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    routeMocks.automatedTasksShouldThrow = true;
+
+    render(
+      <MemoryRouter initialEntries={["/features/automated-tasks"]}>
+        <NavigateToFeaturesButton />
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+
+    routeMocks.automatedTasksShouldThrow = false;
+    fireEvent.click(screen.getByRole("button", { name: "go features" }));
+
+    expect(await screen.findByText("features-index-page")).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+
+    errorSpy.mockRestore();
+  });
+
+  it("resets an app child route error boundary after SPA navigation", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    routeMocks.scheduledJobsShouldThrow = true;
+
+    render(
+      <MemoryRouter initialEntries={["/app/settings/jobs"]}>
+        <NavigateToMemoryButton />
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("Something went wrong")).toBeInTheDocument();
+
+    routeMocks.scheduledJobsShouldThrow = false;
+    fireEvent.click(screen.getByRole("button", { name: "go memory" }));
+
+    expect(await screen.findByText("memory-page")).toBeInTheDocument();
+    expect(screen.queryByText("Something went wrong")).not.toBeInTheDocument();
+
+    errorSpy.mockRestore();
+  });
+
+  it("preserves the persistent app layout across settings child navigation", async () => {
+    render(
+      <MemoryRouter initialEntries={["/app/settings"]}>
+        <NavigateToMemoryButton />
+        <App />
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText("settings-page")).toBeInTheDocument();
+    expect(routeMocks.rootLayoutMounts).toBe(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "go memory" }));
+
+    expect(await screen.findByText("memory-page")).toBeInTheDocument();
+    expect(routeMocks.rootLayoutMounts).toBe(1);
   });
 });

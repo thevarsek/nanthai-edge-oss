@@ -12,14 +12,11 @@ import VANTA_NET from "vanta/dist/vanta.net.min";
 
 export function HeroVantaNet({
   color = 0x00e0d0, // teal
-  backgroundColor = 0x050507,
   opacity = 0.35,
   className = "",
 }: {
   /** Hex integer for line/dot color */
   color?: number;
-  /** Hex integer for background */
-  backgroundColor?: number;
   /** Container opacity (0-1). Keep low to stay subtle. */
   opacity?: number;
   className?: string;
@@ -28,48 +25,60 @@ export function HeroVantaNet({
   const vantaRef = useRef<{ destroy: () => void } | null>(null);
 
   useEffect(() => {
-    // Bail on reduced motion
     const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (mq.matches) return;
     let cancelled = false;
 
-    try {
-      if (!cancelled && !vantaRef.current && containerRef.current) {
-        vantaRef.current = VANTA_NET({
-          THREE,
-          el: containerRef.current,
-          mouseControls: true,
-          touchControls: true,
-          gyroControls: false,
-          minHeight: 200,
-          minWidth: 200,
-          scale: 1.0,
-          scaleMobile: 1.0,
-          color,
-          backgroundColor,
-          maxDistance: 22,
-          spacing: 18,
-          backgroundAlpha: 0,
-          showDots: true,
-          points: 7,
-        });
+    const destroyVanta = () => {
+      if (!vantaRef.current) return;
+      try {
+        vantaRef.current.destroy();
+      } catch {
+        /* noop */
       }
-    } catch (err) {
-      console.error("Vanta hero background failed to initialize", err);
-    }
+      vantaRef.current = null;
+    };
+
+    const syncVanta = () => {
+      if (cancelled) return;
+      if (mq.matches) {
+        destroyVanta();
+        return;
+      }
+
+      try {
+        if (!vantaRef.current && containerRef.current) {
+          vantaRef.current = VANTA_NET({
+            THREE,
+            el: containerRef.current,
+            mouseControls: true,
+            touchControls: true,
+            gyroControls: false,
+            minHeight: 200,
+            minWidth: 200,
+            scale: 1.0,
+            scaleMobile: 1.0,
+            color,
+            maxDistance: 22,
+            spacing: 18,
+            backgroundAlpha: 0,
+            showDots: true,
+            points: 7,
+          });
+        }
+      } catch (err) {
+        console.error("Vanta hero background failed to initialize", err);
+      }
+    };
+
+    syncVanta();
+    mq.addEventListener("change", syncVanta);
 
     return () => {
       cancelled = true;
-      if (vantaRef.current) {
-        try {
-          vantaRef.current.destroy();
-        } catch {
-          /* noop */
-        }
-        vantaRef.current = null;
-      }
+      mq.removeEventListener("change", syncVanta);
+      destroyVanta();
     };
-  }, [color, backgroundColor]);
+  }, [color]);
 
   return (
     <div

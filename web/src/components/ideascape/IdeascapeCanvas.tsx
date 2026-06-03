@@ -81,7 +81,7 @@ export function IdeascapeCanvas({
   // Build merged position map: stored positions override tree layout.
   // Tree layout is centered around x=0 like iOS, so shift into positive display
   // coordinates for rendering while preserving logical coordinates for persistence.
-  const treeMap = useMemo(() => computeTreeLayout(messages), [messages]);
+  const treeMap = useMemo(() => computeTreeLayout(messages, positions), [messages, positions]);
   const logicalPosMap = useMemo(() => {
     const map = new Map<string, { x: number; y: number }>(treeMap);
     for (const p of positions) {

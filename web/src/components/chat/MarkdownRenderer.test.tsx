@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
+import type { FormEvent } from "react";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
@@ -86,6 +87,33 @@ describe("MarkdownRenderer", () => {
     expect(writeText).toHaveBeenCalledWith(
       ["Feature | Status", "--- | ---", "Tables | Done"].join("\n"),
     );
+  });
+
+  test("copy controls do not submit parent forms", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const onSubmit = vi.fn((event: FormEvent<HTMLFormElement>) => event.preventDefault());
+
+    render(
+      <form onSubmit={onSubmit}>
+        <MarkdownRenderer
+          content={[
+            "```ts",
+            "const answer = 42;",
+            "```",
+            "",
+            "| Feature | Status |",
+            "|:--|:--|",
+            "| Tables | Done |",
+          ].join("\n")}
+        />
+      </form>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy table" }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
   test("renders definition list syntax as a structured table", () => {

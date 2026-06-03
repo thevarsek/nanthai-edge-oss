@@ -255,6 +255,7 @@ function KnowledgeBasePageContent() {
   } | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [importingFromDrive, setImportingFromDrive] = useState(false);
   const [driveImportProgress, setDriveImportProgress] = useState<DriveImportProgress | null>(null);
 
@@ -271,6 +272,9 @@ function KnowledgeBasePageContent() {
   );
   const bindKnowledgeBaseUploadSession = useMutation(
     api.knowledge_base.mutations.bindKnowledgeBaseUploadSession,
+  );
+  const cleanupUnclaimedUpload = useMutation(
+    api.knowledge_base.mutations.cleanupUnclaimedUpload,
   );
   const addUploadToKnowledgeBase = useMutation(
     api.knowledge_base.mutations.addUploadToKnowledgeBase,
@@ -292,6 +296,7 @@ function KnowledgeBasePageContent() {
     if (selectedFiles.length === 0) return;
     setUploading(true);
     setUploadError(null);
+    const cleanupCandidates: Array<{ storageId: Id<"_storage">; uploadSessionId: Id<"kbUploadSessions"> }> = [];
     try {
       for (const file of selectedFiles) {
         if (file.size > MAX_KB_UPLOAD_BYTES) {
@@ -309,6 +314,10 @@ function KnowledgeBasePageContent() {
         });
         if (!res.ok) throw new Error("Upload failed");
         const { storageId } = (await res.json()) as { storageId: string };
+        cleanupCandidates.push({
+          storageId: storageId as Id<"_storage">,
+          uploadSessionId,
+        });
         await bindKnowledgeBaseUploadSession({
           uploadSessionId,
           storageId: storageId as Id<"_storage">,
@@ -325,6 +334,7 @@ function KnowledgeBasePageContent() {
         });
       }
     } catch (error) {
+      await Promise.allSettled(cleanupCandidates.map((candidate) => cleanupUnclaimedUpload(candidate)));
       setUploadError(
         t("upload_failed_arg", {
           var1: convexErrorMessage(error, "Unknown error"),
@@ -333,6 +343,23 @@ function KnowledgeBasePageContent() {
     } finally {
       setUploading(false);
       e.target.value = "";
+    }
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!deleteTarget) return;
+    setDeleteError(null);
+    try {
+      await deleteFile({
+        storageId: deleteTarget.storageId as Id<"_storage">,
+        ...(deleteTarget.fileAttachmentId
+          ? { fileAttachmentId: deleteTarget.fileAttachmentId as Id<"fileAttachments"> }
+          : {}),
+        source: deleteTarget.source,
+      });
+      setDeleteTarget(null);
+    } catch (error) {
+      setDeleteError(convexErrorMessage(error, t("something_went_wrong")));
     }
   };
 
@@ -598,11 +625,14 @@ function KnowledgeBasePageContent() {
                     <FileRow
                       key={file.storageId}
                       file={file}
-                      onDelete={(storageId, source) => setDeleteTarget({
-                        storageId,
-                        fileAttachmentId: file.fileAttachmentId,
-                        source,
-                      })}
+                      onDelete={(storageId, source) => {
+                        setDeleteError(null);
+                        setDeleteTarget({
+                          storageId,
+                          fileAttachmentId: file.fileAttachmentId,
+                          source,
+                        });
+                      }}
                       onViewDriveVersion={handleViewDriveVersion}
                       onMakeDriveVersionCurrent={handleMakeDriveVersionCurrent}
                     />
@@ -616,23 +646,16 @@ function KnowledgeBasePageContent() {
 
       <ConfirmDialog
         isOpen={deleteTarget !== null}
-        onClose={() => setDeleteTarget(null)}
-        onConfirm={() => {
-          if (deleteTarget) {
-            void deleteFile({
-              storageId: deleteTarget.storageId as Id<"_storage">,
-              ...(deleteTarget.fileAttachmentId
-                ? { fileAttachmentId: deleteTarget.fileAttachmentId as Id<"fileAttachments"> }
-                : {}),
-              source: deleteTarget.source,
-            });
-          }
+        onClose={() => {
           setDeleteTarget(null);
+          setDeleteError(null);
         }}
+        onConfirm={() => { void handleDeleteConfirm(); }}
         title={t("delete_file_title")}
         description={t("delete_file_description")}
         confirmLabel={t("delete")}
         confirmVariant="destructive"
+        errorMessage={deleteError}
       />
     </div>
   );

@@ -32,7 +32,7 @@ export const rejectArgs = {
 export const updateArgs = {
   memoryId: v.id("memories"),
   content: v.optional(v.string()),
-  category: v.optional(memoryCategory),
+  category: v.optional(v.union(memoryCategory, v.null())),
   retrievalMode: v.optional(memoryRetrievalMode),
   scopeType: v.optional(memoryScopeType),
   personaIds: personaIdsValidator,

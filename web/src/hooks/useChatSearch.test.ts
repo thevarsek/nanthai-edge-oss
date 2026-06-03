@@ -20,6 +20,23 @@ describe("splitTextByMatches", () => {
 });
 
 describe("useChatSearch", () => {
+  it("only reports non-overlapping matches that can be highlighted", () => {
+    const messages = [
+      { _id: "msg_1" as never, role: "assistant", content: "aaaa" },
+    ];
+    const { result } = renderHook(() => useChatSearch(messages));
+
+    act(() => {
+      result.current.setQuery("aa");
+    });
+
+    expect(result.current.matches.map((match) => match.startOffset)).toEqual([0, 2]);
+    const segments = splitTextByMatches("aaaa", result.current.matches, 2);
+    expect(segments.filter((segment) => segment.isMatch).map((segment) => segment.globalIndex)).toEqual(
+      result.current.matches.map((match) => match.globalIndex),
+    );
+  });
+
   it("clamps the focused result when the match list shrinks", () => {
     const initialMessages = [
       { _id: "msg_1" as never, role: "assistant", content: "alpha" },

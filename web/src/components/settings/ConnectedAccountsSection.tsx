@@ -12,6 +12,10 @@ import {
   getOAuthClientId,
   type OAuthProvider,
 } from "@/lib/providerOAuth";
+import {
+  googleWorkspaceConnectionState,
+  statusConnectionState,
+} from "./ConnectedAccountsSection.state";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
@@ -23,6 +27,7 @@ function ConnectionRow({
   onConnect,
   onDisconnect,
   disabled,
+  isLoading,
   disconnectedBadgeLabel,
 }: {
   label: string;
@@ -32,6 +37,7 @@ function ConnectionRow({
   onConnect: () => void;
   onDisconnect: () => void;
   disabled?: boolean;
+  isLoading?: boolean;
   disconnectedBadgeLabel?: string;
 }) {
   const { t } = useTranslation();
@@ -61,10 +67,10 @@ function ConnectionRow({
         <button
           type="button"
           onClick={onConnect}
-          disabled={disabled}
+          disabled={disabled || isLoading}
           className="px-3 py-1.5 rounded-lg bg-accent text-white text-sm font-medium hover:bg-accent/90 transition-colors disabled:opacity-50"
         >
-          {t("connect")}
+          {isLoading ? t("loading") : t("connect")}
         </button>
       )}
     </div>
@@ -368,6 +374,13 @@ export function ConnectedAccountsSection() {
   const disconnectSlack = useAction(api.oauth.slack.disconnectSlack);
   const disconnectAppleCalendar = useAction(api.oauth.apple_calendar.disconnectAppleCalendar);
   const disconnectCloze = useAction(api.oauth.cloze.disconnectCloze);
+  const googleState = googleWorkspaceConnectionState(googleConnection);
+  const gmailManualState = statusConnectionState(gmailManualConnection);
+  const microsoftState = statusConnectionState(microsoftConnection);
+  const notionState = statusConnectionState(notionConnection);
+  const slackState = statusConnectionState(slackConnection);
+  const appleCalendarState = statusConnectionState(appleCalendarConnection);
+  const clozeState = statusConnectionState(clozeConnection);
 
   const openOAuthPopup = async (provider: OAuthProvider) => {
     if (pendingProviderRef.current !== null) return;
@@ -424,64 +437,71 @@ export function ConnectedAccountsSection() {
           label="Google Workspace"
           description={t("google_drive_calendar_access")}
           icon={<IntegrationLogo slug="google-workspace" size={32} />}
-          isConnected={googleConnection?.hasDrive === true && googleConnection?.hasCalendar === true}
+          isConnected={googleState.isConnected}
           onConnect={() => void openOAuthPopup("google")}
           onDisconnect={() => setShowGoogleDisconnectConfirm(true)}
-          disabled={isOAuthLocked || isActionBusy("disconnect-google")}
+          disabled={googleState.isLoading || isOAuthLocked || isActionBusy("disconnect-google")}
+          isLoading={googleState.isLoading}
         />
         <ConnectionRow
           label={t("gmail")}
           description={t("gmail_manual_tools")}
           icon={<IntegrationLogo slug="gmail" size={32} />}
-          isConnected={gmailManualConnection?.status === "active"}
+          isConnected={gmailManualState.isConnected}
           onConnect={() => setShowGmailManualModal(true)}
           onDisconnect={() => { void runAccountAction("disconnect-gmail-manual", () => disconnectGmailManual({})); }}
-          disabled={pendingProvider !== null || isActionBusy("disconnect-gmail-manual")}
+          disabled={gmailManualState.isLoading || pendingProvider !== null || isActionBusy("disconnect-gmail-manual")}
+          isLoading={gmailManualState.isLoading}
         />
         <ConnectionRow
           label="Microsoft 365"
           description={t("microsoft_365_description")}
           icon={<IntegrationLogo slug="microsoft-365" size={32} />}
-          isConnected={!!microsoftConnection}
+          isConnected={microsoftState.isConnected}
           onConnect={() => void openOAuthPopup("microsoft")}
           onDisconnect={() => { void runAccountAction("disconnect-microsoft", () => disconnectMicrosoft({})); }}
-          disabled={isOAuthLocked || isActionBusy("disconnect-microsoft")}
+          disabled={microsoftState.isLoading || isOAuthLocked || isActionBusy("disconnect-microsoft")}
+          isLoading={microsoftState.isLoading}
         />
         <ConnectionRow
           label="Notion"
           description={t("notion_description")}
           icon={<IntegrationLogo slug="notion" size={32} />}
-          isConnected={!!notionConnection}
+          isConnected={notionState.isConnected}
           onConnect={() => void openOAuthPopup("notion")}
           onDisconnect={() => { void runAccountAction("disconnect-notion", () => disconnectNotion({})); }}
-          disabled={isOAuthLocked || isActionBusy("disconnect-notion")}
+          disabled={notionState.isLoading || isOAuthLocked || isActionBusy("disconnect-notion")}
+          isLoading={notionState.isLoading}
         />
         <ConnectionRow
           label={t("integration_slack")}
           description={t("slack_description")}
           icon={<IntegrationLogo slug="slack" size={32} />}
-          isConnected={!!slackConnection}
+          isConnected={slackState.isConnected}
           onConnect={() => void openOAuthPopup("slack")}
           onDisconnect={() => { void runAccountAction("disconnect-slack", () => disconnectSlack({})); }}
-          disabled={isOAuthLocked || isActionBusy("disconnect-slack")}
+          disabled={slackState.isLoading || isOAuthLocked || isActionBusy("disconnect-slack")}
+          isLoading={slackState.isLoading}
         />
         <ConnectionRow
           label="Apple Calendar"
           description={t("apple_calendar_description")}
           icon={<IntegrationLogo slug="apple-calendar" size={32} />}
-          isConnected={!!appleCalendarConnection}
+          isConnected={appleCalendarState.isConnected}
           onConnect={() => setShowAppleModal(true)}
           onDisconnect={() => { void runAccountAction("disconnect-apple-calendar", () => disconnectAppleCalendar({})); }}
-          disabled={pendingProvider !== null || isActionBusy("disconnect-apple-calendar")}
+          disabled={appleCalendarState.isLoading || pendingProvider !== null || isActionBusy("disconnect-apple-calendar")}
+          isLoading={appleCalendarState.isLoading}
         />
         <ConnectionRow
           label="Cloze CRM"
           description={t("cloze_description")}
           icon={<IntegrationLogo slug="cloze" size={32} />}
-          isConnected={clozeConnection?.status === "active"}
+          isConnected={clozeState.isConnected}
           onConnect={() => setShowClozeModal(true)}
           onDisconnect={() => { void runAccountAction("disconnect-cloze", () => disconnectCloze({})); }}
-          disabled={pendingProvider !== null || isActionBusy("disconnect-cloze")}
+          disabled={clozeState.isLoading || pendingProvider !== null || isActionBusy("disconnect-cloze")}
+          isLoading={clozeState.isLoading}
         />
       </div>
 

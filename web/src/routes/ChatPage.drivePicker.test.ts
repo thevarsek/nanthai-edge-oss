@@ -51,7 +51,7 @@ describe("ChatPage Drive picker continuation", () => {
   });
 
   it("does not retry the same failed request on unrelated rerenders", async () => {
-    const visibleMessages = [message({ drivePickerBatchId: request.batchId })];
+    const visibleMessages = [message({ status: "completed", drivePickerBatchId: request.batchId })];
     const getDrivePickerAccessToken = async () => ({ accessToken: "token" });
     const attachPickedDriveFiles = async () => null;
     const toast = vi.fn();

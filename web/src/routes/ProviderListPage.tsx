@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useMutation } from "convex/react";
@@ -11,15 +11,11 @@ import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { Defaults } from "@/lib/constants";
 import { DEFAULT_MEMORY_EXTRACTION_MODEL_ID, TITLE_GENERATION_MODEL_ID } from "@/lib/modelDefaults";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
-
 interface ProviderInfo {
   id: string;
   displayName: string;
   modelCount: number;
 }
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function formatProviderName(slug: string): string {
   const uppercaseAbbreviations = new Set(["ai", "ibm", "nvidia"]);
@@ -32,8 +28,6 @@ function formatProviderName(slug: string): string {
     })
     .join(" ");
 }
-
-// ─── Conflict Dialog ─────────────────────────────────────────────────────────
 
 function ConflictDialog({
   conflicts,
@@ -79,8 +73,6 @@ function ConflictDialog({
   );
 }
 
-// ─── Page ───────────────────────────────────────────────────────────────────
-
 export function ProviderListPage() {
   const navigate = useNavigate();
   const { t } = useTranslation();
@@ -94,12 +86,24 @@ export function ProviderListPage() {
     conflicts: string[];
   } | null>(null);
 
-  const disabledProviders: string[] = useMemo(
+  const serverDisabledProviders: string[] = useMemo(
     () => (prefs?.disabledProviders as string[] | undefined) ?? [],
     [prefs],
   );
+  const [localDisabledProviders, setLocalDisabledProviders] = useState<string[] | null>(null);
+  const disabledProviders = localDisabledProviders ?? serverDisabledProviders;
+  const writeSeqRef = useRef(0);
 
-  // Build provider list from model summaries
+  useEffect(() => {
+    if (localDisabledProviders == null) return;
+    const serverSet = new Set(serverDisabledProviders);
+    const serverMatches = localDisabledProviders.length === serverSet.size &&
+      localDisabledProviders.every((id) => serverSet.has(id));
+    if (!serverMatches) return;
+    const timer = window.setTimeout(() => setLocalDisabledProviders(null), 0);
+    return () => window.clearTimeout(timer);
+  }, [localDisabledProviders, serverDisabledProviders]);
+
   const allProviders: ProviderInfo[] = useMemo(() => {
     if (!modelSummaries) return [];
     const counts = new Map<string, number>();
@@ -138,7 +142,6 @@ export function ProviderListPage() {
     return allProviders.length - disabledKnown.length;
   }, [allProviders, disabledProviders]);
 
-  // Check if disabling a provider would conflict with current settings
   function checkConflicts(providerId: string): string[] {
     const reasons: string[] = [];
 
@@ -166,7 +169,6 @@ export function ProviderListPage() {
       reasons.push(t("conflict_memory_model"));
     }
 
-    // Check persona model references
     if (personas) {
       const affectedPersonas = personas.filter(
         (p) => p.modelId && providerOf(p.modelId as string) === providerId,
@@ -184,7 +186,6 @@ export function ProviderListPage() {
 
   const handleToggle = (providerId: string, wantsEnabled: boolean) => {
     if (!wantsEnabled) {
-      // Disabling — check conflicts first
       const conflicts = checkConflicts(providerId);
       if (conflicts.length > 0) {
         setPendingDisable({ providerId, conflicts });
@@ -192,21 +193,28 @@ export function ProviderListPage() {
       }
       commitDisable(providerId);
     } else {
-      // Enabling — remove from disabled list
       const next = disabledProviders.filter((id) => id !== providerId);
-      void updatePrefs({ disabledProviders: next });
+      commitDisabledProviders(next);
     }
+  };
+
+  const commitDisabledProviders = (next: string[]) => {
+    const requestId = writeSeqRef.current + 1;
+    writeSeqRef.current = requestId;
+    setLocalDisabledProviders(next);
+    void updatePrefs({ disabledProviders: next }).catch(() => {
+      if (writeSeqRef.current === requestId) setLocalDisabledProviders(null);
+    });
   };
 
   const commitDisable = (providerId: string) => {
     const next = [...disabledProviders.filter((id) => id !== providerId), providerId];
-    void updatePrefs({ disabledProviders: next });
+    commitDisabledProviders(next);
     setPendingDisable(null);
   };
 
   return (
     <div className="flex-1 flex flex-col h-full">
-      {/* Header */}
       <div className="flex items-center gap-3 p-4 border-b border-border/50">
         <button
           onClick={() => navigate("/app/settings")}
@@ -219,7 +227,6 @@ export function ProviderListPage() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-4 space-y-4">
-          {/* Search */}
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
             <input
@@ -231,7 +238,6 @@ export function ProviderListPage() {
             />
           </div>
 
-          {/* Provider list */}
           {modelSummaries === undefined ? (
             <div className="flex justify-center py-8">
               <LoadingSpinner />
@@ -279,7 +285,6 @@ export function ProviderListPage() {
         </div>
       </div>
 
-      {/* Conflict dialog */}
       {pendingDisable && (
         <ConflictDialog
           conflicts={pendingDisable.conflicts}

@@ -79,6 +79,7 @@ export function IntegrationLogo({ slug, size = 28, className }: IntegrationLogoP
           color: `hsl(${hue}, 55%, 35%)`,
           flexShrink: 0,
         }}
+        role="img"
         aria-label={`${slug} logo`}
       >
         {initials(slug)}

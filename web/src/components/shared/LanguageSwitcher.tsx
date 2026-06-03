@@ -13,13 +13,18 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
   const { i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   const currentCode = (i18n.resolvedLanguage ?? i18n.language ?? "en") as SupportedLanguageCode;
   const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === currentCode);
+  const currentLanguageLabel = currentLang?.label ?? currentCode;
 
   const handleSelect = (code: SupportedLanguageCode) => {
     void i18n.changeLanguage(code);
     setOpen(false);
+    if (variant === "header") {
+      triggerRef.current?.focus();
+    }
   };
 
   // Close dropdown on outside click
@@ -34,6 +39,7 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
       if (e.key === "Escape") {
         e.preventDefault();
         setOpen(false);
+        triggerRef.current?.focus();
       }
     };
     document.addEventListener("mousedown", handlePointerDown);
@@ -55,11 +61,12 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
               key={code}
               type="button"
               onClick={() => handleSelect(code)}
+              aria-current={isActive ? "true" : undefined}
               className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
             >
               <span className="flex-1 text-sm">{nativeLabel}</span>
               {isActive && (
-                <Check size={16} strokeWidth={2.5} className="text-accent flex-shrink-0" />
+                <Check aria-hidden="true" size={16} strokeWidth={2.5} className="text-accent flex-shrink-0" />
               )}
             </button>
           );
@@ -72,18 +79,22 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Change language"
+        aria-label={`Change language, current language: ${currentLanguageLabel}`}
+        aria-haspopup="menu"
         aria-expanded={open}
         className="group/btn inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[0.8rem] efg-40 transition-colors hover:efg-80"
       >
-        <Globe className="h-3.5 w-3.5" />
+        <Globe aria-hidden="true" className="h-3.5 w-3.5" />
         <span>{currentLang?.nativeLabel ?? "EN"}</span>
       </button>
 
       {open && (
         <div
+          role="menu"
+          aria-label="Select language"
           className="absolute right-0 top-full mt-1 z-50 min-w-[10rem] rounded-xl border eborder-06 ebg-glass-02 backdrop-blur-xl shadow-lg py-1 overflow-hidden"
           style={{ background: `color-mix(in srgb, var(--edge-bg) 92%, transparent)` }}
         >
@@ -93,11 +104,13 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
               <button
                 key={code}
                 type="button"
+                role="menuitemradio"
+                aria-checked={isActive}
                 onClick={() => handleSelect(code)}
                 className="w-full flex items-center justify-between gap-3 px-4 py-2.5 text-[0.82rem] efg-50 hover:efg-80 hover:ebg-glass-04 transition-colors text-left"
               >
                 <span>{nativeLabel}</span>
-                {isActive && <Check className="h-3.5 w-3.5 text-primary" />}
+                {isActive && <Check aria-hidden="true" className="h-3.5 w-3.5 text-primary" />}
               </button>
             );
           })}

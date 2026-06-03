@@ -73,6 +73,7 @@ export interface Message {
   modelId?: string;
   participantId?: string;
   participantName?: string;
+  participantEmoji?: string;
   participantAvatarImageUrl?: string;
   reasoning?: string;
   toolCalls?: ToolCall[];

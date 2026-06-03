@@ -1,6 +1,6 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { ModelInfoSheet, type ModelSummary } from "./ModelPickerHelpers";
+import { ModelInfoSheet, ModelWizard, type ModelSummary } from "./ModelPickerHelpers";
 import {
   formatImagePrice,
   formatPrice,
@@ -8,6 +8,7 @@ import {
   listRowPriceLabel,
   wizardScore,
 } from "./ModelPickerHelpers.utils";
+import { selectWizardResults } from "./ModelPickerWizardResults";
 
 vi.mock("@/components/shared/ModelSettingsEditor", () => ({
   ModelSettingsEditor: () => null,
@@ -24,6 +25,27 @@ function renderSheet(model: Partial<ModelSummary>) {
       onClose={vi.fn()}
     />,
   );
+}
+
+function codingModel({
+  modelId,
+  name,
+  score,
+  hasZdrEndpoint,
+}: {
+  modelId: string;
+  name: string;
+  score: number;
+  hasZdrEndpoint: boolean;
+}): ModelSummary {
+  return {
+    modelId,
+    name,
+    provider: "provider",
+    hasZdrEndpoint,
+    derivedGuidance: { scores: { coding: score, recommended: score, fast: score, value: score } },
+    openRouterUseCases: [{ category: "programming", returnedRank: 1 }],
+  };
 }
 
 describe("ModelInfoSheet pricing", () => {
@@ -103,6 +125,113 @@ describe("wizardScore", () => {
       openRouterUseCases: [{ category: "programming", returnedRank: 1 }],
     };
     expect(wizardScore(rankedCoding, "coding", "quality")).toBeCloseTo(0.94);
+  });
+});
+
+describe("ModelWizard", () => {
+  it("keeps selectable recommendations visible when blocked models score higher", () => {
+    const models = [
+      codingModel({ modelId: "blocked/top", name: "Blocked Top", score: 1, hasZdrEndpoint: false }),
+      codingModel({ modelId: "blocked/mid", name: "Blocked Mid", score: 0.9, hasZdrEndpoint: false }),
+      codingModel({ modelId: "blocked/low", name: "Blocked Low", score: 0.8, hasZdrEndpoint: false }),
+      codingModel({ modelId: "allowed/coder", name: "Allowed Coding", score: 0.4, hasZdrEndpoint: true }),
+    ];
+
+    const selected = selectWizardResults({
+      models,
+      task: "coding",
+      priority: "quality",
+      zdrEnforced: true,
+    });
+
+    expect(selected.map((model) => model.modelId)).toEqual(["allowed/coder", "blocked/top", "blocked/mid"]);
+  });
+
+  it("renders lower-scored selectable recommendations ahead of blocked recommendations", () => {
+    const onSelect = vi.fn();
+    render(
+      <ModelWizard
+        models={[
+          codingModel({ modelId: "blocked/top", name: "Blocked Top", score: 1, hasZdrEndpoint: false }),
+          codingModel({ modelId: "blocked/mid", name: "Blocked Mid", score: 0.9, hasZdrEndpoint: false }),
+          codingModel({ modelId: "blocked/low", name: "Blocked Low", score: 0.8, hasZdrEndpoint: false }),
+          codingModel({ modelId: "allowed/coder", name: "Allowed Coding", score: 0.4, hasZdrEndpoint: true }),
+        ]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        zdrEnforced
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Coding/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Quality/i }));
+
+    expect(screen.getByText("Allowed Coding")).toBeInTheDocument();
+    expect(screen.getByText("Blocked Top")).toBeInTheDocument();
+    expect(screen.getAllByText(/doesn't support Zero Data Retention/i)).not.toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /Allowed Coding/i }));
+    expect(onSelect).toHaveBeenCalledWith("allowed/coder");
+  });
+
+  it("does not submit ancestor forms when selecting wizard controls", () => {
+    const onSelect = vi.fn();
+    const onSubmit = vi.fn();
+    render(
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSubmit();
+        }}
+      >
+        <ModelWizard
+          models={[codingModel({
+            modelId: "allowed/coder",
+            name: "Allowed Coding",
+            score: 0.8,
+            hasZdrEndpoint: true,
+          })]}
+          onSelect={onSelect}
+          onClose={vi.fn()}
+        />
+      </form>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Coding/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Quality/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Allowed Coding/i }));
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(onSelect).toHaveBeenCalledWith("allowed/coder");
+  });
+
+  it("renders blocked scored recommendations with their disabled reason", () => {
+    const onSelect = vi.fn();
+    render(
+      <ModelWizard
+        models={[{
+          modelId: "blocked/coder",
+          name: "Blocked Coding",
+          provider: "blocked",
+          hasZdrEndpoint: false,
+          derivedGuidance: { scores: { coding: 0.9, fast: 0.8, recommended: 0.4 } },
+          openRouterUseCases: [{ category: "programming", returnedRank: 1 }],
+        } as ModelSummary]}
+        onSelect={onSelect}
+        onClose={vi.fn()}
+        zdrEnforced
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Coding/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Speed/i }));
+
+    expect(screen.queryByText(/No guidance data available/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Blocked Coding")).toBeInTheDocument();
+    expect(screen.getByText(/doesn't support Zero Data Retention/i)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Blocked Coding/i }));
+    expect(onSelect).not.toHaveBeenCalled();
   });
 });
 

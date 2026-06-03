@@ -68,9 +68,25 @@ describe("SkillMetadataSelection", () => {
 
     expect(clone).not.toBe(selection);
     expect(clone.selectedIntegrationIds).not.toBe(selection.selectedIntegrationIds);
+    expect(requiredCapabilitiesForSkill(selection)).toEqual(["future_capability"]);
     expect(skillSelectionEquals(selection, clone)).toBe(true);
 
     clone.selectedIntegrationIds.add("slack");
     expect(skillSelectionEquals(selection, clone)).toBe(false);
+  });
+
+  it("preserves existing required tool profiles that the editor controls cannot represent", () => {
+    const selection = skillMetadataSelectionFromSkill({
+      requiredToolProfiles: ["docs", "subagents", "scheduledJobs"],
+      requiredIntegrationIds: [],
+    });
+
+    expect(selection.preservedToolProfiles).toEqual(["scheduledJobs", "subagents"]);
+    expect(requiredToolProfilesForSkill(selection)).toEqual(["docs", "scheduledJobs", "subagents"]);
+
+    const changed = cloneSkillMetadataSelection(selection);
+    changed.usesDocuments = false;
+
+    expect(requiredToolProfilesForSkill(changed)).toEqual(["scheduledJobs", "subagents"]);
   });
 });

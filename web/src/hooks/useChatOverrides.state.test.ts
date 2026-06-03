@@ -23,7 +23,8 @@ describe("useChatOverrides state helpers", () => {
   it("updates skill and integration override domains independently", () => {
     const cycled = nextCycledSkillOverrides(new Map(), "skill_1");
     expect(Array.from(cycled.entries())).toEqual([["skill_1", "always"]]);
-    expect(Array.from(nextToggledSkillOverrides(cycled, "skill_1").entries())).toEqual([]);
+    expect(Array.from(nextToggledSkillOverrides(cycled, "skill_1").entries())).toEqual([["skill_1", "never"]]);
+    expect(Array.from(nextToggledSkillOverrides(new Map([["skill_1", "never"]]), "skill_1").entries())).toEqual([["skill_1", "available"]]);
     expect(Array.from(nextToggledIntegrationOverrides(new Map(), "drive").entries())).toEqual([["drive", true]]);
   });
 

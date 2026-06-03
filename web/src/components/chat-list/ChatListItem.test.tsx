@@ -11,10 +11,6 @@ vi.mock("@/components/shared/ProviderLogo", () => ({
   ProviderLogo: ({ modelId }: { modelId: string }) => <span>logo-{modelId}</span>,
 }));
 
-vi.mock("@/components/shared/PersonaAvatar", () => ({
-  PersonaAvatar: ({ personaName }: { personaName?: string }) => <span>persona-{personaName}</span>,
-}));
-
 const baseChat: ChatListItemData = {
   _id: "chat_1",
   title: "Quarterly planning",
@@ -56,7 +52,7 @@ describe("ChatListItem", () => {
     normal.unmount();
 
     const edit = renderItem({ isEditMode: true, isChecked: true });
-    fireEvent.keyDown(screen.getByText("Quarterly planning"), { key: "Enter" });
+    fireEvent.keyDown(screen.getByRole("button", { name: /Quarterly planning/i }), { key: "Enter" });
     expect(edit.onToggleCheck).toHaveBeenCalledTimes(1);
     expect(edit.onSelect).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "chat_options" })).not.toBeInTheDocument();
@@ -114,5 +110,44 @@ describe("ChatListItem", () => {
     openMenu();
     fireEvent.click(screen.getByRole("button", { name: "delete" }));
     expect(props.onDelete).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens options from keyboard without selecting the row", () => {
+    const enterCase = renderItem();
+    fireEvent.keyDown(screen.getByRole("button", { name: "chat_options" }), { key: "Enter" });
+
+    expect(screen.getByRole("button", { name: "rename" })).toBeInTheDocument();
+    expect(enterCase.onSelect).not.toHaveBeenCalled();
+    expect(enterCase.onToggleCheck).not.toHaveBeenCalled();
+    enterCase.unmount();
+
+    const spaceCase = renderItem();
+    fireEvent.keyDown(screen.getByRole("button", { name: "chat_options" }), { key: " " });
+
+    expect(screen.getByRole("button", { name: "rename" })).toBeInTheDocument();
+    expect(spaceCase.onSelect).not.toHaveBeenCalled();
+    expect(spaceCase.onToggleCheck).not.toHaveBeenCalled();
+  });
+
+  it("keeps a compact persona fallback visible when a multi-participant avatar image fails", () => {
+    renderItem({
+      chat: {
+        ...baseChat,
+        participantSummary: [
+          {
+            modelId: "openai/gpt-4.1",
+            personaId: "persona_1",
+            personaName: "Ada",
+            personaEmoji: "P",
+            personaAvatarImageUrl: "https://files.convex.site/avatar.png",
+          },
+          { modelId: "anthropic/claude-3.5-sonnet" },
+        ],
+      },
+    });
+
+    fireEvent.error(screen.getByAltText("Ada"));
+
+    expect(screen.getByText("P")).toBeInTheDocument();
   });
 });

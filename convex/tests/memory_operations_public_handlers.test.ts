@@ -145,6 +145,45 @@ test("updateHandler normalizes fields and refreshes embeddings", async () => {
   }]);
 });
 
+test("updateHandler clears category when category is explicitly null", async () => {
+  const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+
+  await updateHandler({
+    auth: buildAuth(),
+    db: {
+      get: async () => ({
+        _id: "memory_1",
+        userId: "user_1",
+        content: "Old content",
+        category: "work",
+        retrievalMode: "contextual",
+        scopeType: "allPersonas",
+        personaIds: [],
+        tags: [],
+      }),
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        patches.push({ id, patch });
+      },
+      delete: async () => {},
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => (table === "purchaseEntitlements" ? { status: "active" } : null),
+        }),
+      }),
+    },
+    scheduler: {
+      runAfter: async () => {},
+    },
+  } as any, {
+    memoryId: "memory_1" as any,
+    category: null,
+  });
+
+  assert.equal(patches[0]?.id, "memory_1");
+  assert.ok(Object.hasOwn(patches[0]?.patch ?? {}, "category"));
+  assert.equal(patches[0]?.patch.category, undefined);
+});
+
 test("updateHandler rejects non-Pro writers", async () => {
   await assert.rejects(
     updateHandler({

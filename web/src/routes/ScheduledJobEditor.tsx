@@ -28,6 +28,7 @@ import {
   jobToSteps,
   scheduledJobModelSupportsGoogleIntegrations,
 } from "./ScheduledJobEditor.model";
+import { isValidRecurrenceSelection } from "./ScheduledJobEditorRecurrence";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -217,11 +218,18 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
   };
 
   // ── Validation ──
+  const recurrenceIsValid = isValidRecurrenceSelection({
+    recurrenceType,
+    intervalMinutes,
+    dailyHour,
+    dailyMinute,
+    weeklyDay,
+    cronExpression,
+  });
   const isValid = name.trim().length > 0
     && steps.length >= 1 && steps.length <= 5
     && steps.every((s) => s.prompt.trim() && s.modelId.trim())
-    && !(recurrenceType === "interval" && intervalMinutes < 15)
-    && !(recurrenceType === "cron" && !cronExpression.trim())
+    && recurrenceIsValid
     && !stepValidationSummary;
 
   // ── Save ──

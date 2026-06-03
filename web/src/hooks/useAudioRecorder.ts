@@ -92,10 +92,13 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   const mimeTypeRef = useRef("");
   const maxTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const startAttemptRef = useRef(0);
   // Resolve the stop() promise when mediaRecorder fires onstop.
   const stopResolveRef = useRef<((r: RecordingResult | null) => void) | null>(null);
 
   const cleanup = useCallback(() => {
+    startAttemptRef.current += 1;
     if (stopResolveRef.current) {
       stopResolveRef.current(null);
       stopResolveRef.current = null;
@@ -123,15 +126,24 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   }, []);
 
   // Cleanup on unmount
-  useEffect(() => () => cleanup(), [cleanup]);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    cleanup();
+  }, [cleanup]);
 
   const start = useCallback(async () => {
     if (startingRef.current || mediaRecorderRef.current || streamRef.current) return;
     startingRef.current = true;
+    const startAttempt = startAttemptRef.current + 1;
+    startAttemptRef.current = startAttempt;
     setError(null);
     setIsPreparing(true);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current || startAttemptRef.current !== startAttempt) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
 
       // Audio analyser for waveform
@@ -227,6 +239,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
         }
       }, MAX_DURATION_MS);
     } catch (err) {
+      if (!mountedRef.current || startAttemptRef.current !== startAttempt) return;
       cleanup();
       const msg = err instanceof Error ? err.message : "Microphone access denied";
       setError(msg.includes("Permission") || msg.includes("NotAllowed") ? "Microphone access denied. Please allow microphone in your browser settings." : msg);

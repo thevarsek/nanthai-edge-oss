@@ -14,6 +14,23 @@ interface ConfirmDialogProps {
   errorMessage?: string | null;
 }
 
+const dialogStack: symbol[] = [];
+
+function pushDialog(id: symbol) {
+  dialogStack.push(id);
+}
+
+function removeDialog(id: symbol) {
+  const index = dialogStack.lastIndexOf(id);
+  if (index >= 0) {
+    dialogStack.splice(index, 1);
+  }
+}
+
+function isTopDialog(id: symbol): boolean {
+  return dialogStack[dialogStack.length - 1] === id;
+}
+
 /**
  * A modal confirmation dialog with keyboard support and a semi-transparent
  * backdrop.
@@ -31,12 +48,25 @@ export function ConfirmDialog({
   const { t } = useTranslation();
   const resolvedConfirmLabel = confirmLabel ?? t("delete");
   const titleId = useId();
+  const descriptionId = useId();
+  const errorId = useId();
+  const describedBy = errorMessage ? `${descriptionId} ${errorId}` : descriptionId;
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const stackId = useRef(Symbol("ConfirmDialog"));
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = stackId.current;
+    pushDialog(id);
+    return () => removeDialog(id);
+  }, [isOpen]);
+
   // Keyboard handling
   useEffect(() => {
     if (!isOpen) return;
 
     function handleKey(e: KeyboardEvent) {
+      if (!isTopDialog(stackId.current)) return;
       if (e.key === "Escape") {
         e.preventDefault();
         onClose();
@@ -61,7 +91,7 @@ export function ConfirmDialog({
 
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [isOpen, onClose, onConfirm]);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -83,6 +113,7 @@ export function ConfirmDialog({
       aria-modal="true"
       role="dialog"
       aria-labelledby={titleId}
+      aria-describedby={describedBy}
     >
       {/* Backdrop */}
       <div
@@ -100,12 +131,12 @@ export function ConfirmDialog({
           {title}
         </h2>
 
-        <p className="text-sm text-muted leading-relaxed">
+        <p id={descriptionId} className="text-sm text-muted leading-relaxed">
           {description}
         </p>
 
         {errorMessage && (
-          <p className="text-sm text-red-400 leading-relaxed">
+          <p id={errorId} role="alert" className="text-sm text-red-400 leading-relaxed">
             {errorMessage}
           </p>
         )}

@@ -82,6 +82,21 @@ export function resolveAvatarImageStorageIdPatch(
   return {};
 }
 
+export function parsePersonaMaxTokens(value: string): number | null {
+  const trimmed = value.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const parsed = Number(trimmed);
+  if (!Number.isSafeInteger(parsed) || parsed < 1) return null;
+  return parsed;
+}
+
+function personaMaxTokensForPayload(form: FormState): number | null {
+  if (!form.maxTokensEnabled) return null;
+  const parsed = parsePersonaMaxTokens(form.maxTokens);
+  if (parsed == null) throw new Error("Invalid persona max tokens");
+  return parsed;
+}
+
 export function buildPersonaMutationPayload(
   form: FormState,
   avatarImageStorageId: Id<"_storage"> | null | undefined,
@@ -93,7 +108,7 @@ export function buildPersonaMutationPayload(
     systemPrompt: form.systemPrompt.trim(),
     modelId: form.modelId || undefined,
     temperature: form.temperatureEnabled && form.temperature ? parseFloat(form.temperature) : null,
-    maxTokens: form.maxTokensEnabled && form.maxTokens ? parseInt(form.maxTokens, 10) : null,
+    maxTokens: personaMaxTokensForPayload(form),
     includeReasoning: form.includeReasoningEnabled ? form.includeReasoning : null,
     reasoningEffort: form.includeReasoningEnabled && form.includeReasoning && form.reasoningEffortEnabled
       ? form.reasoningEffort : null,

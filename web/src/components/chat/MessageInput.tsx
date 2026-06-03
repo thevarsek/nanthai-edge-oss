@@ -172,6 +172,7 @@ export function MessageInput({
     isAutonomousActive,
     text,
     attachmentCount: attachments.length,
+    queuedAttachments: extraAttachments,
     isUploading,
     disabled,
     onSend,

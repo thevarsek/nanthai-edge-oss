@@ -77,4 +77,31 @@ describe("ManageFavoritesPage shell behavior", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "delete" }).at(-1)!);
     expect(mockState.mutation).toHaveBeenCalledWith({ favoriteId: "fav_a" });
   });
+
+  it("keeps reorder mode and delete confirmation visible when favorite mutations fail", async () => {
+    mockState.sharedData.favorites = [
+      { _id: "fav_a", name: "Alpha", sortOrder: 1, modelIds: ["openai/gpt-4.1"] },
+      { _id: "fav_b", name: "Beta", sortOrder: 2, modelIds: ["anthropic/claude-sonnet-4.5"] },
+    ];
+    mockState.mutation.mockRejectedValueOnce(new Error("reorder failed"));
+
+    renderRoute(<ManageFavoritesPage />);
+
+    fireEvent.click(screen.getByText("reorder"));
+    fireEvent.click(screen.getAllByRole("button", { name: "move_favorite_down" })[0]!);
+    fireEvent.click(screen.getByText("done"));
+
+    expect(await screen.findByText("reorder failed")).toBeInTheDocument();
+    expect(screen.getByText("done")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("done"));
+    await waitFor(() => expect(screen.getByText("add_favorite")).toBeInTheDocument());
+
+    mockState.mutation.mockRejectedValueOnce(new Error("delete failed"));
+    fireEvent.click(screen.getAllByTitle("delete")[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "delete" }).at(-1)!);
+
+    expect(await screen.findAllByText("delete failed")).toHaveLength(1);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
 });

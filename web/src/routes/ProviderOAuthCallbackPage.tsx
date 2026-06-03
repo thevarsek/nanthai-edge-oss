@@ -15,6 +15,7 @@ import {
 import {
   isMobileOAuthRelayRequest,
   nativeOAuthCallbackUrl,
+  redirectToNativeOAuthCallback,
 } from "./ProviderOAuthCallbackPage.helpers";
 
 type Status = "loading" | "success" | "error";
@@ -32,7 +33,7 @@ type MicrosoftExchangeAction = (args: {
   redirectUri: string;
 }) => Promise<unknown>;
 type NotionExchangeAction = (args: { code: string; redirectUri: string }) => Promise<unknown>;
-type SlackExchangeAction = (args: { code: string; redirectUri: string }) => Promise<unknown>;
+type SlackExchangeAction = (args: { code: string; codeVerifier: string; redirectUri: string }) => Promise<unknown>;
 
 export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvider }) {
   const [status, setStatus] = useState<Status>("loading");
@@ -62,14 +63,16 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
   useEffect(() => {
     if (didRedirectToMobile.current) return;
     const context = readOAuthContext(provider);
-    if (context) return; // Web flow — has localStorage context, proceed normally.
+    const returnedState = searchParams.get("state");
+    if (context && returnedState === context.state) return; // Web flow — matching localStorage context.
     if (window.opener && !window.opener.closed) return; // Web popup — show error, don't redirect.
     if (!isMobileOAuthRelayRequest()) return;
 
-    // No context + no opener → mobile app flow. Forward all query params to the
-    // custom-scheme URL so ASWebAuthenticationSession / Custom Tabs picks it up.
+    // No matching context + no opener → mobile app flow. Forward all query
+    // params to the custom-scheme URL so ASWebAuthenticationSession / Custom
+    // Tabs picks it up.
     didRedirectToMobile.current = true;
-    window.location.href = nativeOAuthCallbackUrl(provider, searchParams);
+    redirectToNativeOAuthCallback(nativeOAuthCallbackUrl(provider, searchParams));
   }, [provider, searchParams]);
 
   useEffect(() => {
@@ -104,7 +107,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
       if (error) {
         if (!context) {
           const message = `${label} sign-in has expired. Start the connection again.`;
-          postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+          postOAuthResult({ type: "nanthai-oauth-result", provider, state: returnedState ?? "", success: false, error: message });
           setErrorMessage(message);
           setStatus("error");
           return;
@@ -112,7 +115,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
         if (returnedState !== context.state) {
           clearOAuthContext(provider);
           const message = `${label} sign-in state mismatch. Please try again.`;
-          postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+          postOAuthResult({ type: "nanthai-oauth-result", provider, state: context.state, success: false, error: message });
           setErrorMessage(message);
           setStatus("error");
           return;
@@ -122,7 +125,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
           ? `${label} sign-in failed: ${errorDescription.replace(/\+/g, " ")}`
           : `${label} sign-in failed. Please try again.`;
         clearOAuthContext(provider);
-        postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+        postOAuthResult({ type: "nanthai-oauth-result", provider, state: context.state, success: false, error: message });
         setErrorMessage(message);
         setStatus("error");
         return;
@@ -130,7 +133,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
 
       if (!context) {
         const message = `${label} sign-in has expired. Start the connection again.`;
-        postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+        postOAuthResult({ type: "nanthai-oauth-result", provider, state: returnedState ?? "", success: false, error: message });
         setErrorMessage(message);
         setStatus("error");
         return;
@@ -140,7 +143,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
       if (!code || !returnedState) {
         clearOAuthContext(provider);
         const message = `${label} sign-in failed. Missing callback parameters.`;
-        postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+        postOAuthResult({ type: "nanthai-oauth-result", provider, state: context.state, success: false, error: message });
         setErrorMessage(message);
         setStatus("error");
         return;
@@ -149,7 +152,7 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
       if (returnedState !== context.state) {
         clearOAuthContext(provider);
         const message = `${label} sign-in state mismatch. Please try again.`;
-        postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+        postOAuthResult({ type: "nanthai-oauth-result", provider, state: context.state, success: false, error: message });
         setErrorMessage(message);
         setStatus("error");
         return;
@@ -164,7 +167,10 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
         if (provider === "notion") {
           await exchangeNotionCode({ code, redirectUri: context.redirectUri });
         } else if (provider === "slack") {
-          await exchangeSlackCode({ code, redirectUri: context.redirectUri });
+          if (!context.verifier) {
+            throw new Error(`${label} sign-in has expired. Start the connection again.`);
+          }
+          await exchangeSlackCode({ code, codeVerifier: context.verifier, redirectUri: context.redirectUri });
         } else {
           if (!context.verifier) {
             throw new Error(`${label} sign-in has expired. Start the connection again.`);
@@ -186,13 +192,13 @@ export function ProviderOAuthCallbackPage({ provider }: { provider: OAuthProvide
         }
 
         clearOAuthContext(provider);
-        postOAuthResult({ type: "nanthai-oauth-result", provider, success: true });
+        postOAuthResult({ type: "nanthai-oauth-result", provider, state: context.state, success: true });
         setStatus("success");
         closeTimer.current = window.setTimeout(() => window.close(), 800);
       } catch (errorValue) {
         clearOAuthContext(provider);
         const message = errorValue instanceof Error ? errorValue.message : `${label} sign-in failed.`;
-        postOAuthResult({ type: "nanthai-oauth-result", provider, success: false, error: message });
+        postOAuthResult({ type: "nanthai-oauth-result", provider, state: context.state, success: false, error: message });
         setErrorMessage(message);
         setStatus("error");
       }

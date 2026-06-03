@@ -2,7 +2,10 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { ProviderOAuthCallbackPage } from "./ProviderOAuthCallbackPage";
-import { nativeOAuthCallbackUrl } from "./ProviderOAuthCallbackPage.helpers";
+import {
+  isMobileOAuthRelayRequest,
+  nativeOAuthCallbackUrl,
+} from "./ProviderOAuthCallbackPage.helpers";
 
 const {
   authState,
@@ -13,6 +16,7 @@ const {
   exchangeSlackCode,
   postOAuthResult,
   readOAuthContext,
+  redirectToNativeOAuthCallback,
 } = vi.hoisted(() => ({
   authState: {
     isAuthenticated: true,
@@ -25,10 +29,11 @@ const {
   exchangeSlackCode: vi.fn(async () => null),
   postOAuthResult: vi.fn(),
   readOAuthContext: vi.fn(),
+  redirectToNativeOAuthCallback: vi.fn(),
 }));
 
 let actionIndex = 0;
-const originalLocation = window.location;
+const originalUserAgent = window.navigator.userAgent;
 
 vi.mock("convex/react", () => ({
   useAction: () => {
@@ -51,6 +56,14 @@ vi.mock("@/lib/providerOAuth", async (importOriginal) => {
 vi.mock("@/components/shared/LoadingSpinner", () => ({
   LoadingSpinner: () => <div>loading</div>,
 }));
+
+vi.mock("./ProviderOAuthCallbackPage.helpers", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ProviderOAuthCallbackPage.helpers")>();
+  return {
+    ...actual,
+    redirectToNativeOAuthCallback,
+  };
+});
 
 function renderCallback(path: string, provider: "google" | "microsoft" | "notion" | "slack" = "google") {
   actionIndex = 0;
@@ -83,9 +96,9 @@ describe("ProviderOAuthCallbackPage", () => {
       configurable: true,
       value: null,
     });
-    Object.defineProperty(window, "location", {
+    Object.defineProperty(window.navigator, "userAgent", {
       configurable: true,
-      value: originalLocation,
+      value: originalUserAgent,
     });
   });
 
@@ -104,13 +117,15 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "google",
+      state: "expected",
       success: true,
     });
   });
 
-  it("uses the Slack exchange path without requiring a PKCE verifier", async () => {
+  it("exchanges a Slack callback with the stored PKCE verifier", async () => {
     readOAuthContext.mockReturnValue({
       state: "expected",
+      verifier: "slack_verifier",
       redirectUri: "https://app.example/oauth/slack/callback",
       createdAt: Date.now(),
     });
@@ -120,6 +135,7 @@ describe("ProviderOAuthCallbackPage", () => {
     await waitFor(() => {
       expect(exchangeSlackCode).toHaveBeenCalledWith({
         code: "slack_code",
+        codeVerifier: "slack_verifier",
         redirectUri: "https://app.example/oauth/slack/callback",
       });
     });
@@ -127,6 +143,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "slack",
+      state: "expected",
       success: true,
     });
   });
@@ -152,6 +169,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "microsoft",
+      state: "expected",
       success: true,
     });
   });
@@ -174,6 +192,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "notion",
+      state: "expected",
       success: true,
     });
   });
@@ -198,7 +217,7 @@ describe("ProviderOAuthCallbackPage", () => {
         requestedIntegration: "drive",
       });
     });
-    expect(window.location.href).not.toContain("tech.nanthai.NanthAi-Edge://");
+    expect(redirectToNativeOAuthCallback).not.toHaveBeenCalled();
   });
 
   it("relays mobile callbacks to the native URL when there is no web popup context", async () => {
@@ -210,23 +229,70 @@ describe("ProviderOAuthCallbackPage", () => {
       configurable: true,
       value: null,
     });
-    Object.defineProperty(window, "location", {
-      configurable: true,
-      value: {
-        ...originalLocation,
-        href: "http://localhost/oauth/google/callback?code=code_1&state=expected",
-      },
-    });
     readOAuthContext.mockReturnValue(null);
 
     renderCallback("/oauth/google/callback?code=code_1&state=expected");
 
     await waitFor(() => {
-      expect(window.location.href).toBe(
+      expect(redirectToNativeOAuthCallback).toHaveBeenCalledWith(
         "tech.nanthai.NanthAi-Edge://oauth/google/callback?code=code_1&state=expected",
       );
     });
     expect(exchangeGoogleCode).not.toHaveBeenCalled();
+    expect(postOAuthResult).not.toHaveBeenCalled();
+  });
+
+  it("relays iPadOS desktop-style callbacks to the native URL without web popup context", async () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+    });
+    Object.defineProperty(window, "opener", {
+      configurable: true,
+      value: null,
+    });
+    readOAuthContext.mockReturnValue(null);
+
+    renderCallback("/oauth/microsoft/callback?code=ms_code&state=native_state", "microsoft");
+
+    await waitFor(() => {
+      expect(redirectToNativeOAuthCallback).toHaveBeenCalledWith(
+        "tech.nanthai.NanthAi-Edge://oauth/microsoft/callback?code=ms_code&state=native_state",
+      );
+    });
+    expect(exchangeMicrosoftCode).not.toHaveBeenCalled();
+    expect(postOAuthResult).not.toHaveBeenCalled();
+  });
+
+  it("does not treat desktop Safari as a mobile OAuth relay request", () => {
+    expect(isMobileOAuthRelayRequest(
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15",
+    )).toBe(false);
+  });
+
+  it("relays mobile Slack callbacks when only a stale web popup context exists", async () => {
+    Object.defineProperty(window.navigator, "userAgent", {
+      configurable: true,
+      value: "Mozilla/5.0 (Linux; Android 15; Pixel 7)",
+    });
+    Object.defineProperty(window, "opener", {
+      configurable: true,
+      value: null,
+    });
+    readOAuthContext.mockReturnValue({
+      state: "stale",
+      redirectUri: "https://app.example/oauth/slack/callback",
+      createdAt: Date.now(),
+    });
+
+    renderCallback("/oauth/slack/callback?code=slack_code&state=native_state", "slack");
+
+    await waitFor(() => {
+      expect(redirectToNativeOAuthCallback).toHaveBeenCalledWith(
+        "tech.nanthai.NanthAi-Edge://oauth/slack/callback?code=slack_code&state=native_state",
+      );
+    });
+    expect(exchangeSlackCode).not.toHaveBeenCalled();
     expect(postOAuthResult).not.toHaveBeenCalled();
   });
 
@@ -250,6 +316,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "google",
+      state: "expected",
       success: false,
       error: "Google sign-in state mismatch. Please try again.",
     });
@@ -269,6 +336,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "google",
+      state: "expected",
       success: false,
       error: "Google sign-in has expired. Start the connection again.",
     });
@@ -283,6 +351,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "google",
+      state: "expected",
       success: false,
       error: "Google sign-in failed: User cancelled",
     });
@@ -302,6 +371,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "notion",
+      state: "expected",
       success: false,
       error: "Notion sign-in failed: User cancelled",
     });
@@ -362,6 +432,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "google",
+      state: "expected",
       success: true,
     });
 
@@ -384,6 +455,7 @@ describe("ProviderOAuthCallbackPage", () => {
     expect(postOAuthResult).toHaveBeenCalledWith({
       type: "nanthai-oauth-result",
       provider: "microsoft",
+      state: "expected",
       success: false,
       error: "Microsoft sign-in state mismatch. Please try again.",
     });

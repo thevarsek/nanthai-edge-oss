@@ -3,6 +3,10 @@ import { describe, expect, test, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import { PersonaCard, type PersonaCardData } from "./PersonaCard";
 
+vi.mock("react-i18next", () => ({
+  useTranslation: () => ({ t: (key: string) => key }),
+}));
+
 const persona: PersonaCardData = {
   _id: "personas_1" as Id<"personas">,
   displayName: "Research Lead",
@@ -29,12 +33,12 @@ describe("PersonaCard", () => {
     );
 
     expect(screen.getByText("Research Lead")).toBeInTheDocument();
-    expect(screen.getByText("Default")).toBeInTheDocument();
-    expect(screen.getByTitle("New chat").parentElement).toHaveClass("opacity-100");
+    expect(screen.getByText("default_label")).toBeInTheDocument();
+    expect(screen.getByTitle("new_chat").parentElement).toHaveClass("opacity-100");
 
-    fireEvent.click(screen.getByTitle("New chat"));
-    fireEvent.click(screen.getByTitle("Edit"));
-    fireEvent.click(screen.getByTitle("Delete"));
+    fireEvent.click(screen.getByTitle("new_chat"));
+    fireEvent.click(screen.getByTitle("edit"));
+    fireEvent.click(screen.getByTitle("delete"));
 
     expect(onNewChat).toHaveBeenCalledWith(persona._id);
     expect(onEdit).toHaveBeenCalledWith(persona._id);
@@ -61,7 +65,7 @@ describe("PersonaCard", () => {
       "referrerpolicy",
       "no-referrer",
     );
-    expect(screen.getByRole("button", { name: /new chat/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "new_chat" })).toBeDisabled();
   });
 
   test("falls back when avatar image URL uses an untrusted source", () => {

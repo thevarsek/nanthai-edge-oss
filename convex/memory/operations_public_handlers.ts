@@ -159,7 +159,7 @@ export async function rejectHandler(
 export interface UpdateArgs extends Record<string, unknown> {
   memoryId: Id<"memories">;
   content?: string;
-  category?: MemoryCategory;
+  category?: MemoryCategory | null;
   retrievalMode?: MemoryRetrievalMode;
   scopeType?: "allPersonas" | "selectedPersonas";
   personaIds?: string[];
@@ -183,10 +183,13 @@ export async function updateHandler(
   const scopeType = normalizeMemoryScopeType(args.scopeType ?? memory.scopeType, rawPersonaIds);
   const personaIds = scopeType === "allPersonas" ? [] : rawPersonaIds;
   const tags = (args.tags ?? memory.tags).map((tag) => tag.trim()).filter(Boolean);
+  const category = Object.hasOwn(args, "category")
+    ? (args.category ?? undefined)
+    : memory.category;
 
   await ctx.db.patch(args.memoryId, {
     content,
-    category: args.category ?? memory.category,
+    category,
     retrievalMode: args.retrievalMode ?? memory.retrievalMode,
     scopeType,
     personaIds,

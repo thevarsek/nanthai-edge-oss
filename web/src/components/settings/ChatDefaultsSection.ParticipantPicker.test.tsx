@@ -142,4 +142,24 @@ describe("ParticipantPicker", () => {
     expect(screen.queryByText("GPT-4o")).not.toBeInTheDocument();
     expect(screen.getByText("Claude")).toBeInTheDocument();
   });
+
+  it("shows one empty state for loaded zero-result searches", () => {
+    personas = [{ _id: "persona_1", displayName: "Guide" }];
+    modelSummaries = [{ modelId: "openai/gpt-4o", name: "GPT-4o", provider: "openai" }];
+
+    render(
+      <ParticipantPicker
+        selectedPersonaId={null}
+        selectedModelId="openai/gpt-4o"
+        onSelectPersona={vi.fn()}
+        onSelectModel={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/search models/i), { target: { value: "nomatch" } });
+
+    expect(screen.getAllByText(/no results/i)).toHaveLength(1);
+    expect(screen.queryByText(/no models match/i)).not.toBeInTheDocument();
+  });
 });

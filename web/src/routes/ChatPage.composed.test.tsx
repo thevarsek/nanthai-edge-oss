@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,6 +66,17 @@ const {
       turnSkillOverrideEntries: [] as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>,
       turnIntegrationOverrideEntries: [] as Array<{ integrationId: string; enabled: boolean }>,
     },
+    messages: [] as Array<{
+      _id: Id<"messages">;
+      chatId: Id<"chats">;
+      role: "user" | "assistant";
+      content: string;
+      status: "completed";
+      createdAt: number;
+    }>,
+    branchNodes: new Map<Id<"messages">, { messageId: Id<"messages"> }>(),
+    navigateBranch: vi.fn(),
+    setOptimisticLeafId: vi.fn(),
   },
 }));
 
@@ -141,7 +152,7 @@ vi.mock("@/hooks/useChat", () => ({
       mode: "chat",
       createdAt: 1,
     },
-    messages: [],
+    messages: testState.messages,
     isLoading: false,
     isGenerating: false,
     sendMessage,
@@ -155,15 +166,15 @@ vi.mock("@/hooks/useChat", () => ({
 vi.mock("@/hooks/useBranching", () => ({
   useBranching: () => ({
     activePath: [],
-    branchNodes: new Map(),
-    navigate: vi.fn(),
+    branchNodes: testState.branchNodes,
+    navigate: testState.navigateBranch,
     optimisticLeafId: undefined,
-    setOptimisticLeafId: vi.fn(),
+    setOptimisticLeafId: testState.setOptimisticLeafId,
   }),
 }));
 
 vi.mock("@/hooks/useMessageGrouping", () => ({
-  useMessageGrouping: () => [],
+  useMessageGrouping: (messages: typeof testState.messages) => messages.map((message) => ({ type: "single", message })),
   messageGroupKey: () => "group",
 }));
 
@@ -290,7 +301,14 @@ vi.mock("@/components/shared/LoadingSpinner", () => ({
 vi.mock("@/components/chat/MessageBubble", () => ({ MessageBubble: () => null }));
 vi.mock("@/components/chat/MultiModelResponseGroup", () => ({ MultiModelResponseGroup: () => null }));
 vi.mock("@/components/chat/PendingResponseGroup", () => ({ PendingResponseGroup: () => null }));
-vi.mock("@/components/chat/BranchIndicator", () => ({ BranchIndicator: () => null }));
+vi.mock("@/components/chat/BranchIndicator", () => ({
+  BranchIndicator: ({ node, onNavigate }: {
+    node: { messageId: Id<"messages"> };
+    onNavigate: (messageId: Id<"messages">, direction: "prev" | "next") => void;
+  }) => (
+    <button type="button" onClick={() => onNavigate(node.messageId, "next")}>branch-next</button>
+  ),
+}));
 vi.mock("@/components/chat-list/SidebarSections", () => ({ RenameChatDialog: () => null }));
 vi.mock("@/components/shared/Toast.context", () => ({ useToast: () => ({ toast }) }));
 
@@ -303,7 +321,12 @@ describe("ChatPage composed send behavior", () => {
     testState.overrides.selectedKBFileIds = new Set();
     testState.overrides.turnSkillOverrideEntries = [];
     testState.overrides.turnIntegrationOverrideEntries = [];
+    testState.messages = [];
+    testState.branchNodes = new Map();
+    testState.navigateBranch.mockReset();
+    testState.setOptimisticLeafId.mockReset();
     sendMessage.mockResolvedValue({ userMessageId: "msg_user", assistantMessageIds: ["msg_assistant"] });
+    switchBranchAtFork.mockResolvedValue("msg_leaf");
   });
 
   afterEach(() => {
@@ -390,5 +413,63 @@ describe("ChatPage composed send behavior", () => {
     expect(screen.getByText("Drive notes.pdf")).toBeInTheDocument();
     expect(clearKBFiles).not.toHaveBeenCalled();
     expect(clearTurnOverrides).not.toHaveBeenCalled();
+  });
+
+  it("ignores stale branch switch completions that resolve out of order", async () => {
+    const user = userEvent.setup();
+    let resolveFirst: (leafId: Id<"messages">) => void = () => {};
+    let resolveSecond: (leafId: Id<"messages">) => void = () => {};
+    switchBranchAtFork
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveFirst = resolve as (leafId: Id<"messages">) => void;
+      }))
+      .mockImplementationOnce(() => new Promise((resolve) => {
+        resolveSecond = resolve as (leafId: Id<"messages">) => void;
+      }));
+    testState.messages = [{
+      _id: "msg_fork" as Id<"messages">,
+      chatId: "chat_1" as Id<"chats">,
+      role: "assistant",
+      content: "fork",
+      status: "completed",
+      createdAt: 1,
+    }];
+    testState.branchNodes = new Map([[
+      "msg_fork" as Id<"messages">,
+      { messageId: "msg_fork" as Id<"messages"> },
+    ]]);
+    testState.navigateBranch
+      .mockReturnValueOnce({
+        optimisticLeafId: "leaf_first_pending",
+        currentSiblingId: "sibling_current",
+        targetSiblingId: "sibling_first",
+      })
+      .mockReturnValueOnce({
+        optimisticLeafId: "leaf_second_pending",
+        currentSiblingId: "sibling_current",
+        targetSiblingId: "sibling_second",
+      });
+
+    render(<ChatPage />);
+    testState.setOptimisticLeafId.mockClear();
+
+    await user.click(screen.getByRole("button", { name: "branch-next" }));
+    await user.click(screen.getByRole("button", { name: "branch-next" }));
+
+    expect(testState.setOptimisticLeafId).toHaveBeenCalledWith("leaf_first_pending");
+    expect(testState.setOptimisticLeafId).toHaveBeenCalledWith("leaf_second_pending");
+
+    await act(async () => {
+      resolveSecond("leaf_second_committed" as Id<"messages">);
+    });
+    await waitFor(() => {
+      expect(testState.setOptimisticLeafId).toHaveBeenCalledWith("leaf_second_committed");
+    });
+
+    await act(async () => {
+      resolveFirst("leaf_first_committed" as Id<"messages">);
+    });
+
+    expect(testState.setOptimisticLeafId).not.toHaveBeenCalledWith("leaf_first_committed");
   });
 });

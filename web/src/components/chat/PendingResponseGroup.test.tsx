@@ -4,8 +4,18 @@ import type { Id } from "@convex/_generated/dataModel";
 import { PendingResponseGroup } from "./PendingResponseGroup";
 
 vi.mock("@/components/shared/PersonaAvatar", () => ({
-  PersonaAvatar: ({ personaName, personaEmoji }: { personaName?: string; personaEmoji?: string }) => (
-    <div data-testid="persona-avatar">{personaName ?? personaEmoji}</div>
+  PersonaAvatar: ({
+    personaId,
+    personaName,
+    personaEmoji,
+  }: {
+    personaId?: string;
+    personaName?: string;
+    personaEmoji?: string;
+  }) => (
+    <div data-testid="persona-avatar" data-persona-id={personaId}>
+      {personaName ?? personaEmoji ?? personaId}
+    </div>
   ),
 }));
 
@@ -26,6 +36,22 @@ describe("PendingResponseGroup", () => {
     expect(screen.getByTestId("provider-logo")).toHaveTextContent("anthropic/claude-sonnet-4");
     expect(screen.getByText("claude-sonnet-4")).toBeInTheDocument();
     expect(screen.getByText("...")).toBeInTheDocument();
+  });
+
+  it("uses persona avatars for persona-id-only pending responses", () => {
+    render(
+      <PendingResponseGroup
+        participants={[
+          {
+            modelId: "openai/gpt-5.2",
+            personaId: "persona_1" as Id<"personas">,
+          },
+        ]}
+      />,
+    );
+
+    expect(screen.queryByTestId("provider-logo")).not.toBeInTheDocument();
+    expect(screen.getByTestId("persona-avatar")).toHaveAttribute("data-persona-id", "persona_1");
   });
 
   it("groups multiple pending persona responses with persona avatars", () => {

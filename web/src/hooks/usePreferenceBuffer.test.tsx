@@ -15,6 +15,7 @@ describe("usePreferenceBuffer", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    localStorage.clear();
   });
 
   it("flushes pending debounced preferences on unmount", async () => {
@@ -98,5 +99,32 @@ describe("usePreferenceBuffer", () => {
     });
 
     expect(upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a failed unmount flush on the next hook mount", async () => {
+    upsert.mockRejectedValueOnce(new Error("offline"));
+    const { usePreferenceBuffer } = await import("./usePreferenceBuffer");
+    const first = renderHook(() => usePreferenceBuffer());
+
+    act(() => {
+      first.result.current.updatePreference({ defaultModelId: "model_a" });
+    });
+
+    first.unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+
+    const second = renderHook(() => usePreferenceBuffer());
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(upsert).toHaveBeenCalledTimes(2);
+    expect(upsert).toHaveBeenNthCalledWith(2, { defaultModelId: "model_a" });
+
+    second.unmount();
   });
 });

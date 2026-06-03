@@ -9,6 +9,11 @@ export const addUploadToKnowledgeBaseArgs = {
   sizeBytes: v.optional(v.number()),
 } satisfies PropertyValidators;
 
+export const cleanupUnclaimedUploadArgs = {
+  storageId: v.id("_storage"),
+  uploadSessionId: v.id("kbUploadSessions"),
+} satisfies PropertyValidators;
+
 export const deleteKnowledgeBaseFileArgs = {
   storageId: v.id("_storage"),
   fileAttachmentId: v.optional(v.id("fileAttachments")),

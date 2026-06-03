@@ -69,12 +69,20 @@ export function MenuSelect({ value, options, onChange }: MenuSelectProps) {
       if (menuRef.current?.contains(e.target as Node)) return;
       setOpen(false);
     };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
     const handleResize = () => setLayoutVersion((value) => value + 1);
     document.addEventListener("mousedown", handleClick);
+    document.addEventListener("keydown", handleKeyDown);
     window.addEventListener("scroll", handleScroll, true);
     window.addEventListener("resize", handleResize);
     return () => {
       document.removeEventListener("mousedown", handleClick);
+      document.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("scroll", handleScroll, true);
       window.removeEventListener("resize", handleResize);
     };

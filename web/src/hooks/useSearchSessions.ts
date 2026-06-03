@@ -38,14 +38,14 @@ export function isSessionActive(status: SearchSessionStatus): boolean {
   return ACTIVE_STATUSES.has(status);
 }
 
-export function phaseLabelKey(status: SearchSessionStatus): string {
+export function phaseLabelKey(status: SearchSessionStatus, mode?: SearchSession["mode"]): string {
   switch (status) {
     case "planning": return "search_phase_planning";
     case "searching": return "search_phase_searching";
     case "analyzing": return "search_phase_analyzing";
     case "deepening": return "search_phase_deepening";
     case "synthesizing": return "search_phase_synthesizing";
-    case "writing": return "search_phase_writing";
+    case "writing": return mode === "paper" ? "search_phase_writing_paper" : "search_phase_writing";
     case "completed": return "search_phase_completed";
     case "failed": return "search_phase_failed";
     case "cancelled": return "search_phase_cancelled";

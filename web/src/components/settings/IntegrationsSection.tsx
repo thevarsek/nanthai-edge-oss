@@ -1,5 +1,5 @@
 import { Puzzle, ChevronRight, Mail } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { useTranslation } from "react-i18next";
@@ -36,7 +36,13 @@ function IntegrationDefaultsCard() {
     [prefs],
   );
   const [localDefaults, setLocalDefaults] = useState<Map<string, boolean> | null>(null);
+  const requestIdsRef = useRef(new Map<string, number>());
+  const serverDefaultsRef = useRef(serverDefaults);
   const defaults = localDefaults ?? serverDefaults;
+
+  useEffect(() => {
+    serverDefaultsRef.current = serverDefaults;
+  }, [serverDefaults]);
 
   useEffect(() => {
     if (localDefaults == null) return;
@@ -59,6 +65,9 @@ function IntegrationDefaultsCard() {
     } else {
       nextDefaults.delete(integrationId);
     }
+    const previousValue = defaults.get(integrationId);
+    const requestId = (requestIdsRef.current.get(integrationId) ?? 0) + 1;
+    requestIdsRef.current.set(integrationId, requestId);
     setLocalDefaults(nextDefaults);
     try {
       if (current === undefined) {
@@ -69,7 +78,16 @@ function IntegrationDefaultsCard() {
         await removeIntegrationDefault({ integrationId });
       }
     } catch (error) {
-      setLocalDefaults(new Map(defaults));
+      if (requestIdsRef.current.get(integrationId) !== requestId) return;
+      setLocalDefaults((currentLocalDefaults) => {
+        const rollbackDefaults = new Map(currentLocalDefaults ?? serverDefaultsRef.current);
+        if (previousValue === undefined) {
+          rollbackDefaults.delete(integrationId);
+        } else {
+          rollbackDefaults.set(integrationId, previousValue);
+        }
+        return rollbackDefaults;
+      });
       toast({ message: convexErrorMessage(error, t("integration_default_update_failed")), variant: "error" });
     }
   }

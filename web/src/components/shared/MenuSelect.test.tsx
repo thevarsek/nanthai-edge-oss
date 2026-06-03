@@ -3,6 +3,31 @@ import { describe, expect, it, vi } from "vitest";
 import { MenuSelect } from "./MenuSelect";
 
 describe("MenuSelect", () => {
+  it("closes the portal menu on Escape and returns focus to the trigger", async () => {
+    render(
+      <MenuSelect
+        value="low"
+        options={[
+          { value: "low", label: "Low" },
+          { value: "high", label: "High" },
+        ]}
+        onChange={vi.fn()}
+      />,
+    );
+    const trigger = screen.getByRole("button", { name: /low/i });
+
+    fireEvent.click(trigger);
+
+    expect(await screen.findByRole("button", { name: /high/i })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: /high/i })).not.toBeInTheDocument();
+    });
+    expect(document.activeElement).toBe(trigger);
+  });
+
   it("keeps the portal menu inside the viewport for long labels", async () => {
     const originalInnerWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", { configurable: true, value: 180 });

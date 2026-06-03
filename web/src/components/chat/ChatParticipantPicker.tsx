@@ -169,6 +169,23 @@ export function ChatParticipantPicker({
     [models, search, sortKey, activeFilters],
   );
 
+  const modelModality = useCallback((modelId: string): OutputModalityCategory => {
+    const model = models.find((entry) => entry.modelId === modelId);
+    return model ? getModelOutputModality(model) : "text";
+  }, [models]);
+
+  const canReplaceAtLimitWithModality = useCallback((newModality: OutputModalityCategory): boolean => (
+    atLimit && !!onSetParticipants && !!lockedModality && newModality !== lockedModality
+  ), [atLimit, lockedModality, onSetParticipants]);
+
+  const canReplaceAtLimitWithModel = useCallback((modelId: string): boolean => (
+    canReplaceAtLimitWithModality(modelModality(modelId))
+  ), [canReplaceAtLimitWithModality, modelModality]);
+
+  const canReplaceAtLimitWithPersona = useCallback((persona: PersonaItem): boolean => (
+    canReplaceAtLimitWithModality(modelModality(persona.modelId ?? Defaults.model))
+  ), [canReplaceAtLimitWithModality, modelModality]);
+
   // ── Toggle handlers ─────────────────────────────────────────────────────
   const toggleFilter = useCallback((f: CapFilter) => {
     setActiveFilters((prev) => toggleCapFilter(prev, f));
@@ -179,15 +196,16 @@ export function ChatParticipantPicker({
       if (selectedPersonaIds.has(p._id)) {
         const part = participants.find((x) => x.personaId === p._id);
         if (part && participants.length > 1) void onRemove(part.id);
-      } else if (!atLimit) {
-        // Check modality mismatch
+      } else {
         const personaModelId = p.modelId ?? Defaults.model;
-        const pm = models.find((x) => x.modelId === personaModelId);
-        const personaModality = pm ? getModelOutputModality(pm) : "text";
+        const personaModality = modelModality(personaModelId);
         if (lockedModality && personaModality !== lockedModality) {
-          setPendingSwitch({ kind: "persona", persona: p, newModality: personaModality });
+          if (!atLimit || onSetParticipants) {
+            setPendingSwitch({ kind: "persona", persona: p, newModality: personaModality });
+          }
           return;
         }
+        if (atLimit) return;
         void onAdd({
           chatId,
           modelId: personaModelId,
@@ -202,7 +220,7 @@ export function ChatParticipantPicker({
         });
       }
     },
-    [chatId, atLimit, onAdd, onRemove, participants, selectedPersonaIds, lockedModality, models],
+    [chatId, atLimit, onAdd, onRemove, onSetParticipants, participants, selectedPersonaIds, lockedModality, modelModality],
   );
 
   const handleToggleModel = useCallback(
@@ -210,39 +228,38 @@ export function ChatParticipantPicker({
       if (selectedModelIds.has(modelId)) {
         const part = participants.find((x) => !x.personaId && x.modelId === modelId);
         if (part && participants.length > 1) void onRemove(part.id);
-      } else if (!atLimit) {
-        // Check modality mismatch — show confirmation instead of hard-blocking
-        if (lockedModality) {
-          const m = models.find((x) => x.modelId === modelId);
-          if (m && getModelOutputModality(m) !== lockedModality) {
-            setPendingSwitch({ kind: "model", modelId, newModality: getModelOutputModality(m) });
-            return;
+      } else {
+        const newModality = modelModality(modelId);
+        if (lockedModality && newModality !== lockedModality) {
+          if (!atLimit || onSetParticipants) {
+            setPendingSwitch({ kind: "model", modelId, newModality });
           }
+          return;
         }
+        if (atLimit) return;
         void onAdd({ chatId, modelId });
       }
     },
-    [chatId, atLimit, onAdd, onRemove, participants, selectedModelIds, lockedModality, models],
+    [chatId, atLimit, onAdd, onRemove, onSetParticipants, participants, selectedModelIds, lockedModality, modelModality],
   );
 
   const handleWizardSelect = useCallback(
     (modelId: string) => {
-      if (!atLimit && !selectedModelIds.has(modelId)) {
-        if (lockedModality) {
-          const model = models.find((entry) => entry.modelId === modelId);
-          if (model) {
-            const newModality = getModelOutputModality(model);
-            if (newModality !== lockedModality) {
-              setPendingSwitch({ kind: "model", modelId, newModality });
-              return;
-            }
+      if (!selectedModelIds.has(modelId)) {
+        const newModality = modelModality(modelId);
+        if (lockedModality && newModality !== lockedModality) {
+          if (!atLimit || onSetParticipants) {
+            setPendingSwitch({ kind: "model", modelId, newModality });
           }
+          return;
         }
-        void onAdd({ chatId, modelId });
+        if (!atLimit) {
+          void onAdd({ chatId, modelId });
+        }
       }
       setShowWizard(false);
     },
-    [chatId, atLimit, lockedModality, models, onAdd, selectedModelIds],
+    [chatId, atLimit, lockedModality, modelModality, onAdd, onSetParticipants, selectedModelIds],
   );
 
   const handleRemove = useCallback(
@@ -390,7 +407,7 @@ export function ChatParticipantPicker({
                   key={p._id}
                   persona={p}
                   isSelected={selectedPersonaIds.has(p._id)}
-                  disabled={atLimit && !selectedPersonaIds.has(p._id)}
+                  disabled={atLimit && !selectedPersonaIds.has(p._id) && !canReplaceAtLimitWithPersona(p)}
                   onToggle={handleTogglePersona}
                   onInfo={setInfoPersona}
                   modelNameMap={modelNameMap}
@@ -421,7 +438,7 @@ export function ChatParticipantPicker({
                     key={model.modelId}
                     model={model}
                     isSelected={selectedModelIds.has(model.modelId)}
-                    disabled={atLimit && !selectedModelIds.has(model.modelId)}
+                    disabled={atLimit && !selectedModelIds.has(model.modelId) && !canReplaceAtLimitWithModel(model.modelId)}
                     sortKey={sortKey}
                     onToggle={handleToggleModel}
                     onInfo={setInfoModel}
