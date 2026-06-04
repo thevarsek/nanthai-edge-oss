@@ -81,6 +81,7 @@ export function MessageInput({
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const [dismissedSuggestionStorageIds, setDismissedSuggestionStorageIds] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const skipNextDraftPersistRef = useRef(false);
   const { t } = useTranslation();
 
   const {
@@ -92,6 +93,7 @@ export function MessageInput({
   // Survives in-session navigation (see web/src/stores/chatDraftStore.ts).
   useEffect(() => {
     const draft = getChatDraft(chatId);
+    skipNextDraftPersistRef.current = true;
     // Draft hydration must be synchronous with the active chat key; deferring
     // leaves stale text visible when switching chats.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -103,6 +105,10 @@ export function MessageInput({
 
   // Write-through: every change to text or attachments is persisted.
   useEffect(() => {
+    if (skipNextDraftPersistRef.current) {
+      skipNextDraftPersistRef.current = false;
+      return;
+    }
     setChatDraft(chatId, { text, attachments });
   }, [chatId, text, attachments]);
 

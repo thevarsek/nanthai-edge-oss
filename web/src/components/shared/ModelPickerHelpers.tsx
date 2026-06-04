@@ -14,6 +14,7 @@ import {
   formatPrice,
   formatVideoPrice,
   formatImagePrice,
+  guidanceLabelText,
   type WizardTask,
   type WizardPriority,
 } from "@/components/shared/ModelPickerHelpers.utils";
@@ -186,14 +187,14 @@ export function ModelInfoSheet({
             {g?.primaryLabel && (
               <div className="flex items-center gap-1.5 text-sm text-primary">
                 <Sparkles size={14} />
-                <span className="font-medium">{g.primaryLabel}</span>
+                <span className="font-medium">{guidanceLabelText(t, g.primaryLabel)}</span>
               </div>
             )}
             {g?.labels && g.labels.length > 0 && (
               <div className="flex flex-wrap gap-1">
                 {g.labels.map((l) => (
                   <span key={l} className="px-2 py-0.5 rounded-full bg-accent/10 text-[10px] font-medium text-accent">
-                    {l}
+                    {guidanceLabelText(t, l)}
                   </span>
                 ))}
               </div>

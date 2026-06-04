@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OpenRouterSection } from "./OpenRouterSection";
+import { OPENROUTER_PREFERENCE_STALE_ECHO_GUARD_MS } from "./useOptimisticOpenRouterPreference";
 
 let prefs: { showBalanceInChat?: boolean; showAdvancedStats?: boolean } = {};
 const upsertPreferences = vi.fn();
@@ -67,8 +68,11 @@ describe("OpenRouterSection", () => {
     expect(balanceSwitch).toHaveAttribute("aria-checked", "true");
     expect(upsertPreferences).toHaveBeenCalledWith({ showBalanceInChat: true });
 
-    prefs = { showBalanceInChat: false, showAdvancedStats: false };
-    rerender(<OpenRouterSection />);
+    await act(async () => {
+      prefs = { showBalanceInChat: false, showAdvancedStats: false };
+      rerender(<OpenRouterSection />);
+      await Promise.resolve();
+    });
 
     expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
 
@@ -78,6 +82,38 @@ describe("OpenRouterSection", () => {
     await waitFor(() => {
       expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
     });
+  });
+
+  it("does not rewrite later server changes after the optimistic value catches up", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<OpenRouterSection />);
+    const [balanceSwitch] = screen.getAllByRole("switch");
+
+    await act(async () => {
+      fireEvent.click(balanceSwitch);
+      await Promise.resolve();
+    });
+    expect(upsertPreferences).toHaveBeenCalledWith({ showBalanceInChat: true });
+
+    await act(async () => {
+      prefs = { showBalanceInChat: true, showAdvancedStats: false };
+      rerender(<OpenRouterSection />);
+      await Promise.resolve();
+    });
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
+
+    await act(async () => {
+      vi.advanceTimersByTime(OPENROUTER_PREFERENCE_STALE_ECHO_GUARD_MS + 1);
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      prefs = { showBalanceInChat: false, showAdvancedStats: false };
+      rerender(<OpenRouterSection />);
+      await Promise.resolve();
+    });
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+    expect(upsertPreferences).toHaveBeenCalledTimes(1);
   });
 
   it("rolls back an optimistic preference toggle and shows the save error when Convex rejects it", async () => {
@@ -94,25 +130,34 @@ describe("OpenRouterSection", () => {
     expect(screen.getAllByRole("switch")[1]).toHaveAttribute("aria-checked", "false");
   });
 
-  it("clears a completed optimistic preference only after the matching server echo is rendered", async () => {
+  it("rewrites a stale server echo after the matching preference value was rendered", async () => {
     vi.useFakeTimers();
+    const correctiveRequest = deferred();
+    upsertPreferences
+      .mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(() => correctiveRequest.promise);
     const { rerender } = render(<OpenRouterSection />);
     const [balanceSwitch] = screen.getAllByRole("switch");
 
-    fireEvent.click(balanceSwitch);
+    await act(async () => {
+      fireEvent.click(balanceSwitch);
+      await Promise.resolve();
+    });
     prefs = { showBalanceInChat: true, showAdvancedStats: false };
     rerender(<OpenRouterSection />);
 
     expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
 
-    await act(async () => {
-      vi.runOnlyPendingTimers();
-    });
-
     prefs = { showBalanceInChat: false, showAdvancedStats: false };
     rerender(<OpenRouterSection />);
 
-    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "true");
+    expect(upsertPreferences).toHaveBeenNthCalledWith(2, { showBalanceInChat: true });
+
+    await act(async () => {
+      correctiveRequest.resolve();
+      await correctiveRequest.promise;
+    });
   });
 
   it("keeps a rapid no-op optimistic toggle through stale preference echoes", async () => {
@@ -175,5 +220,44 @@ describe("OpenRouterSection", () => {
 
     expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
     expect(screen.queryByText("first request failed")).not.toBeInTheDocument();
+  });
+
+  it("rewrites the latest preference after an older successful request resolves late", async () => {
+    const firstRequest = deferred();
+    const secondRequest = deferred();
+    const correctiveRequest = deferred();
+    upsertPreferences
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise)
+      .mockImplementationOnce(() => correctiveRequest.promise);
+    const { rerender } = render(<OpenRouterSection />);
+
+    fireEvent.click(screen.getAllByRole("switch")[0]);
+    fireEvent.click(screen.getAllByRole("switch")[0]);
+
+    expect(upsertPreferences).toHaveBeenNthCalledWith(1, { showBalanceInChat: true });
+    expect(upsertPreferences).toHaveBeenNthCalledWith(2, { showBalanceInChat: false });
+
+    await act(async () => {
+      secondRequest.resolve();
+      await secondRequest.promise;
+    });
+    prefs = { showBalanceInChat: false, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    await act(async () => {
+      firstRequest.resolve();
+      await firstRequest.promise;
+    });
+    prefs = { showBalanceInChat: true, showAdvancedStats: false };
+    rerender(<OpenRouterSection />);
+
+    expect(upsertPreferences).toHaveBeenNthCalledWith(3, { showBalanceInChat: false });
+    expect(screen.getAllByRole("switch")[0]).toHaveAttribute("aria-checked", "false");
+
+    await act(async () => {
+      correctiveRequest.resolve();
+      await correctiveRequest.promise;
+    });
   });
 });

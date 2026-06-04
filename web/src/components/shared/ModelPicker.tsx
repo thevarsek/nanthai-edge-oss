@@ -14,7 +14,7 @@ import {
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { ProviderLogo } from "./ProviderLogo";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "./ModelPickerHelpers";
-import { listRowPriceLabel } from "./ModelPickerHelpers.utils";
+import { guidanceLabelText, listRowPriceLabel } from "./ModelPickerHelpers.utils";
 import {
   type SortKey, type CapFilter, SORT_KEYS, CAP_FILTERS,
   sortMetric, filterAndSortModels, toggleCapFilter,
@@ -57,17 +57,9 @@ function TrendBadge({ model }: { model: ModelSummary }) {
 
 function GuidanceTag({ label }: { label: string }) {
   const { t } = useTranslation();
-  const LABEL_MAP: Record<string, string> = {
-    "recommended.best": t("best_overall"), "recommended.top": t("top_pick"),
-    "coding.best": t("best_for_coding"), "coding.top": t("great_for_coding"),
-    "research.best": t("best_for_research"), "research.top": t("great_for_research"),
-    "fast.best": t("fast_replies"), "fast.top": t("fast_replies"),
-    "value.best": t("best_value"), "value.top": t("great_value"),
-    "image.best": t("top_image_model"), "image.top": t("top_image_model"),
-  };
   return (
     <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-primary/12 text-[9px] font-semibold text-primary">
-      {LABEL_MAP[label] ?? label}
+      {guidanceLabelText(t, label)}
     </span>
   );
 }
@@ -89,9 +81,23 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   // listRowPriceLabel. For image/video-gen we surface per-MP / per-sec / per-M
   // tok instead of the text per-1M (which is $0 for those models).
   const priceLabel = listRowPriceLabel(model);
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.target !== event.currentTarget) return;
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    onSelect();
+  };
 
   return (
-    <div className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${isZdrDisabled ? "opacity-45 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"} ${selected ? "bg-primary/8" : ""}`} onClick={isZdrDisabled ? undefined : onSelect}>
+    <div
+      role="button"
+      aria-label={model.name}
+      aria-disabled={isZdrDisabled}
+      tabIndex={isZdrDisabled ? undefined : 0}
+      className={`flex items-center gap-3 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${isZdrDisabled ? "opacity-45 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"} ${selected ? "bg-primary/8" : ""}`}
+      onClick={isZdrDisabled ? undefined : onSelect}
+      onKeyDown={isZdrDisabled ? undefined : handleKeyDown}
+    >
       <ProviderLogo modelId={model.modelId} size={32} />
 
       <div className="flex-1 min-w-0">

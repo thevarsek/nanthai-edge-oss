@@ -17,7 +17,7 @@ const convexMocks = vi.hoisted(() => ({
     mimeType: string;
     sizeBytes: number;
     downloadUrl: string;
-    documentVersionId: string;
+    documentVersionId?: string;
   }> | undefined,
   getDocumentPreview: vi.fn(async () => ({
     kind: "docx",
@@ -125,6 +125,35 @@ describe("DocumentPreviewPanel", () => {
 
     expect(screen.getByTitle("Contract.pdf")).toHaveAttribute("src", "https://example.test/contract.pdf");
     expect(convexMocks.getDocumentPreview).not.toHaveBeenCalled();
+  });
+
+  test("does not render unsafe live generated-file download URLs", () => {
+    convexMocks.generatedFiles = [
+      generatedFile({
+        filename: "Unsafe.pdf",
+        mimeType: "application/pdf",
+        downloadUrl: "javascript:alert(1)",
+        documentVersionId: undefined,
+      }),
+    ];
+
+    render(
+      <DocumentPreviewPanel
+        selection={{
+          ...selection(),
+          filename: "Unsafe.pdf",
+          mimeType: "application/pdf",
+          downloadUrl: "https://example.test/safe-selection.pdf",
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("link", { name: /Download Unsafe.pdf/i })).not.toBeInTheDocument();
+    expect(screen.queryByTitle("Unsafe.pdf")).not.toBeInTheDocument();
+    expect(screen.getByText("Document preview unavailable.")).toBeInTheDocument();
+    expect(document.querySelector("[href^='javascript:']")).toBeNull();
+    expect(document.querySelector("iframe[src^='javascript:']")).toBeNull();
   });
 });
 

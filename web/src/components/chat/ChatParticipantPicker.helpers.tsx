@@ -6,6 +6,7 @@ import {
   MinusCircle, Info, Check, Eye, Image as ImageIcon, Paintbrush, Video, Wrench, Gift,
   Flame, TrendingUp,
 } from "lucide-react";
+import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
@@ -15,6 +16,16 @@ import { listRowPriceLabel } from "@/components/shared/ModelPickerHelpers.utils"
 import type { ParticipantEntry } from "@/hooks/useParticipants";
 import type { Id } from "@convex/_generated/dataModel";
 import { getModelDisplayName } from "@/lib/modelDisplay";
+
+function activateRowFromKeyboard(
+  event: KeyboardEvent<HTMLDivElement>,
+  onActivate: () => void,
+) {
+  if (event.currentTarget !== event.target) return;
+  if (event.key !== "Enter" && event.key !== " ") return;
+  event.preventDefault();
+  onActivate();
+}
 
 // ─── Persona type (matches shape from useSharedData) ─────────────────────────
 
@@ -169,12 +180,18 @@ export function PersonaRow({
   );
   const isDisabled = disabled || isZdrBlocked || isGoogleBlocked;
   const disabledReason = isZdrBlocked ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
+  const canToggle = !isDisabled || isSelected;
   return (
     <div
+      role="button"
+      tabIndex={canToggle ? 0 : -1}
+      aria-disabled={!canToggle}
+      aria-pressed={isSelected}
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
         isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
-      onClick={() => (!isDisabled || isSelected) && onToggle(persona)}
+      onClick={() => canToggle && onToggle(persona)}
+      onKeyDown={(event) => activateRowFromKeyboard(event, () => canToggle && onToggle(persona))}
     >
       {/* Avatar */}
       <PersonaAvatar
@@ -285,13 +302,19 @@ export function ParticipantModelRow({
   const disabledReason = isZdrDisabled ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
   // Always-on price label — parity with iOS / Android and with ModelPicker row.
   const priceLabel = listRowPriceLabel(model);
+  const canToggle = !isDisabled || isSelected;
 
   return (
     <div
+      role="button"
+      tabIndex={canToggle ? 0 : -1}
+      aria-disabled={!canToggle}
+      aria-pressed={isSelected}
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
         isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
-      onClick={() => (!isDisabled || isSelected) && onToggle(model.modelId)}
+      onClick={() => canToggle && onToggle(model.modelId)}
+      onKeyDown={(event) => activateRowFromKeyboard(event, () => canToggle && onToggle(model.modelId))}
     >
       <ProviderLogo modelId={model.modelId} size={36} />
 

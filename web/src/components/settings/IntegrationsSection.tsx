@@ -37,6 +37,7 @@ function IntegrationDefaultsCard() {
   );
   const [localDefaults, setLocalDefaults] = useState<Map<string, boolean> | null>(null);
   const requestIdsRef = useRef(new Map<string, number>());
+  const latestDesiredDefaultsRef = useRef(new Map<string, boolean | undefined>());
   const serverDefaultsRef = useRef(serverDefaults);
   const defaults = localDefaults ?? serverDefaults;
 
@@ -54,28 +55,52 @@ function IntegrationDefaultsCard() {
     return () => window.clearTimeout(timer);
   }, [localDefaults, serverDefaults]);
 
+  async function persistIntegrationDefault(integrationId: string, value: boolean | undefined) {
+    if (value === undefined) {
+      await removeIntegrationDefault({ integrationId });
+      return;
+    }
+    await setIntegrationDefault({ integrationId, enabled: value });
+  }
+
+  function applyLocalDefault(integrationId: string, value: boolean | undefined) {
+    setLocalDefaults((currentLocalDefaults) => {
+      const nextDefaults = new Map(currentLocalDefaults ?? serverDefaultsRef.current);
+      if (value === undefined) {
+        nextDefaults.delete(integrationId);
+      } else {
+        nextDefaults.set(integrationId, value);
+      }
+      return nextDefaults;
+    });
+  }
+
   async function cycleIntegrationDefault(integrationId: string) {
     if (isLoading) return;
     const current = defaults.get(integrationId);
     const nextDefaults = new Map(defaults);
+    let nextValue: boolean | undefined;
     if (current === undefined) {
-      nextDefaults.set(integrationId, true);
+      nextValue = true;
+      nextDefaults.set(integrationId, nextValue);
     } else if (current === true) {
-      nextDefaults.set(integrationId, false);
+      nextValue = false;
+      nextDefaults.set(integrationId, nextValue);
     } else {
+      nextValue = undefined;
       nextDefaults.delete(integrationId);
     }
     const previousValue = defaults.get(integrationId);
     const requestId = (requestIdsRef.current.get(integrationId) ?? 0) + 1;
     requestIdsRef.current.set(integrationId, requestId);
+    latestDesiredDefaultsRef.current.set(integrationId, nextValue);
     setLocalDefaults(nextDefaults);
     try {
-      if (current === undefined) {
-        await setIntegrationDefault({ integrationId, enabled: true });
-      } else if (current === true) {
-        await setIntegrationDefault({ integrationId, enabled: false });
-      } else {
-        await removeIntegrationDefault({ integrationId });
+      await persistIntegrationDefault(integrationId, nextValue);
+      if (requestIdsRef.current.get(integrationId) !== requestId) {
+        const latestValue = latestDesiredDefaultsRef.current.get(integrationId);
+        applyLocalDefault(integrationId, latestValue);
+        await persistIntegrationDefault(integrationId, latestValue);
       }
     } catch (error) {
       if (requestIdsRef.current.get(integrationId) !== requestId) return;

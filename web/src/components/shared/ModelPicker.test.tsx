@@ -102,6 +102,38 @@ describe("ModelPicker", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("selects enabled model rows with keyboard activation", () => {
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    render(<ModelPicker selectedModelId="" onSelect={onSelect} onClose={onClose} />);
+
+    const row = screen.getByRole("button", { name: "GPT 4o" });
+    expect(row).toHaveAttribute("tabindex", "0");
+
+    row.focus();
+    fireEvent.keyDown(row, { key: "Enter" });
+
+    expect(onSelect).toHaveBeenCalledWith("openai/gpt-4o");
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps ZDR-disabled model rows out of keyboard selection", () => {
+    mockState.prefs = { zdrEnabled: true };
+    const onSelect = vi.fn();
+    const onClose = vi.fn();
+    render(<ModelPicker selectedModelId="" onSelect={onSelect} onClose={onClose} />);
+
+    const row = screen.getByRole("button", { name: "Free Image" });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(row).not.toHaveAttribute("tabindex");
+
+    fireEvent.keyDown(row, { key: "Enter" });
+    fireEvent.keyDown(row, { key: " " });
+
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("routes wizard recommendations through the picker selection contract", () => {
     const onSelect = vi.fn();
     const onClose = vi.fn();
@@ -112,7 +144,11 @@ describe("ModelPicker", () => {
     fireEvent.click(screen.getByRole("button", { name: /speed/i }));
 
     expect(screen.getByText("Best for Coding")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Haiku/ }));
+    const wizardHaikuButton = screen
+      .getAllByRole("button", { name: /Haiku/ })
+      .find((element) => element.tagName === "BUTTON");
+    expect(wizardHaikuButton).toBeDefined();
+    fireEvent.click(wizardHaikuButton!);
 
     expect(onSelect).toHaveBeenCalledWith("anthropic/haiku");
     expect(onClose).toHaveBeenCalledTimes(1);

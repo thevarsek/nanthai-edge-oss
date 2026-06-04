@@ -49,6 +49,22 @@ function codingModel({
 }
 
 describe("ModelInfoSheet pricing", () => {
+  it("renders localized guidance labels instead of raw guidance keys", () => {
+    renderSheet({
+      derivedGuidance: {
+        primaryLabel: "recommended.best",
+        labels: ["coding.top", "custom.label"],
+        scores: { recommended: 0.9, coding: 0.8 },
+      },
+    });
+
+    expect(screen.getByText("Best overall")).toBeInTheDocument();
+    expect(screen.getByText("Great for coding")).toBeInTheDocument();
+    expect(screen.getByText("custom.label")).toBeInTheDocument();
+    expect(screen.queryByText("recommended.best")).not.toBeInTheDocument();
+    expect(screen.queryByText("coding.top")).not.toBeInTheDocument();
+  });
+
   it("shows image-token-only pricing as a per-megapixel row", () => {
     renderSheet({
       supportsImages: true,

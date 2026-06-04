@@ -20,7 +20,7 @@ export function useAttachments(
   supportsFrameImages = false,
 ) {
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadCount, setUploadCount] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -31,7 +31,7 @@ export function useAttachments(
       const input = e.currentTarget;
       const files = Array.from(input.files ?? []);
       if (files.length === 0) return;
-      setIsUploading(true);
+      setUploadCount((count) => count + 1);
       setUploadError(null);
       let failedCount = 0;
       try {
@@ -71,7 +71,7 @@ export function useAttachments(
           setUploadError(`${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload.`);
         }
       } finally {
-        setIsUploading(false);
+        setUploadCount((count) => Math.max(0, count - 1));
         input.value = "";
       }
     },
@@ -95,7 +95,7 @@ export function useAttachments(
   const handlePasteFiles = useCallback(
     async (files: File[]) => {
       if (files.length === 0) return;
-      setIsUploading(true);
+      setUploadCount((count) => count + 1);
       setUploadError(null);
       let failedCount = 0;
       try {
@@ -133,7 +133,7 @@ export function useAttachments(
           setUploadError(`${failedCount} file${failedCount === 1 ? "" : "s"} failed to upload.`);
         }
       } finally {
-        setIsUploading(false);
+        setUploadCount((count) => Math.max(0, count - 1));
       }
     },
     [onCreateUploadUrl, isVideoMode, supportsFrameImages],
@@ -144,7 +144,7 @@ export function useAttachments(
   return {
     attachments,
     setAttachments,
-    isUploading,
+    isUploading: uploadCount > 0,
     uploadError,
     setUploadError,
     fileInputRef,

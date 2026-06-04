@@ -35,4 +35,22 @@ describe("IconButton", () => {
 
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
+
+  it("uses generated Tailwind classes for ghost and danger background states", () => {
+    render(
+      <div>
+        <IconButton label="Ghost" variant="ghost">G</IconButton>
+        <IconButton label="Danger" variant="danger">D</IconButton>
+      </div>,
+    );
+
+    expect(screen.getByRole("button", { name: "Ghost" })).toHaveClass(
+      "hover:bg-foreground/[0.08]",
+      "active:bg-foreground/[0.12]",
+    );
+    expect(screen.getByRole("button", { name: "Danger" })).toHaveClass(
+      "hover:bg-destructive/[0.10]",
+      "active:bg-destructive/[0.15]",
+    );
+  });
 });

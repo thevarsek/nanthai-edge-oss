@@ -9,6 +9,7 @@ import { Download } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { safeDownloadUrl } from "./GeneratedFileDownloadUrl";
 import { getFileIconComponent } from "./fileIcons";
 import { workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 
@@ -37,10 +38,10 @@ function isImage(mimeType: string): boolean {
   return mimeType.startsWith("image/");
 }
 
-function opensInDocumentPanel(file: GeneratedFileForPreview): boolean {
+function opensInDocumentPanel(file: GeneratedFileForPreview, downloadUrl: string | null): boolean {
   const name = file.filename.toLowerCase();
   const mimeType = file.mimeType.toLowerCase();
-  if (mimeType.includes("pdf") || name.endsWith(".pdf")) return Boolean(file.downloadUrl);
+  if (mimeType.includes("pdf") || name.endsWith(".pdf")) return Boolean(downloadUrl);
   if (!file.documentVersionId) return false;
   return (
     mimeType.includes("wordprocessingml") ||
@@ -134,17 +135,21 @@ export function GeneratedFilesCard({
   const files = useQuery(api.chat.queries.getGeneratedFilesByMessage, { messageId });
   if (!files?.length) return null;
 
-  const images = files.filter((f) => isImage(f.mimeType) && f.downloadUrl);
-  const others = files.filter((f) => !isImage(f.mimeType) || !f.downloadUrl);
+  const fileItems = files.map((file) => ({
+    file,
+    downloadUrl: safeDownloadUrl(file.downloadUrl),
+  }));
+  const images = fileItems.filter(({ file, downloadUrl }) => isImage(file.mimeType) && downloadUrl);
+  const others = fileItems.filter(({ file, downloadUrl }) => !isImage(file.mimeType) || !downloadUrl);
 
   return (
     <div className="mt-2 space-y-2">
       {/* Inline image previews */}
       {images.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          {images.map((f) => (
+          {images.map(({ file: f, downloadUrl }) => (
             <div key={f._id} className="space-y-1">
-              <ImagePreview url={f.downloadUrl!} filename={f.filename} />
+              <ImagePreview url={downloadUrl!} filename={f.filename} />
               <div className="flex items-center gap-2 text-[10px] text-muted px-1">
                 <span className="truncate max-w-[200px]">{f.filename}</span>
                 <span>{fileMetadata(f, t)}</span>
@@ -155,8 +160,8 @@ export function GeneratedFilesCard({
       )}
 
       {/* Non-image file download links */}
-      {others.map((f) => {
-        const canOpenInPanel = onOpenFile && opensInDocumentPanel(f);
+      {others.map(({ file: f, downloadUrl }) => {
+        const canOpenInPanel = onOpenFile && opensInDocumentPanel(f, downloadUrl);
         const content = (
           <>
           <div className={workspaceIconBlockClass()}>
@@ -171,7 +176,7 @@ export function GeneratedFilesCard({
           </div>
           </>
         );
-        if (!f.downloadUrl) {
+        if (!downloadUrl) {
           return (
             <div
               key={f._id}
@@ -194,13 +199,13 @@ export function GeneratedFilesCard({
             >
               <button
                 type="button"
-                onClick={() => onOpenFile({ file: f })}
+                onClick={() => onOpenFile({ file: { ...f, downloadUrl } })}
                 className="flex min-w-0 flex-1 items-center gap-3 text-left"
               >
                 {content}
               </button>
               <a
-                href={f.downloadUrl}
+                href={downloadUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 download={f.filename}
@@ -217,7 +222,7 @@ export function GeneratedFilesCard({
         return (
           <a
             key={f._id}
-            href={f.downloadUrl}
+            href={downloadUrl}
             target="_blank"
             rel="noopener noreferrer"
             download={f.filename}

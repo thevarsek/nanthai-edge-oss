@@ -25,7 +25,7 @@ import { ProBadge } from "@/components/shared/ProBadge";
 import { Toggle } from "@/components/shared/Toggle";
 import { PaywallModal } from "@/components/shared/PaywallModal";
 import { SectionHeader, SectionFooter } from "./ChatDefaultsSection.helpers";
-import { useOptimistic, shortModelName, VOICE_OPTIONS } from "./ChatDefaultsSection.utils";
+import { isOwnedVoicePreview, useOptimistic, shortModelName, VOICE_OPTIONS } from "./ChatDefaultsSection.utils";
 import { ParticipantPicker } from "./ChatDefaultsSection.ParticipantPicker";
 
 const VIDEO_DURATION_OPTIONS = [4, 5, 6, 8, 10, 12, 15, 20].map((value) => ({
@@ -109,8 +109,13 @@ export function ChatDefaultsSection() {
       if (!result?.audioBase64) return;
       const audio = new Audio(`data:${result.mimeType ?? "audio/wav"};base64,${result.audioBase64}`);
       audioRef.current = audio;
-      audio.addEventListener("ended", () => { setPreviewPlaying(null); audioRef.current = null; });
-      audio.addEventListener("error", () => { setPreviewPlaying(null); audioRef.current = null; });
+      const clearOwnedPreview = () => {
+        if (!isOwnedVoicePreview(requestId, previewRequestIdRef.current, audio, audioRef.current)) return;
+        setPreviewPlaying(null);
+        audioRef.current = null;
+      };
+      audio.addEventListener("ended", clearOwnedPreview);
+      audio.addEventListener("error", clearOwnedPreview);
       setPreviewPlaying(voice);
       try {
         await audio.play();

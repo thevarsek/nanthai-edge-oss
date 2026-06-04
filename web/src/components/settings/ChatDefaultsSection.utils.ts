@@ -37,6 +37,15 @@ export function useOptimistic<T>(serverValue: T): [T, (v: T) => void] {
   return [local, setOptimistic];
 }
 
+export function isOwnedVoicePreview(
+  requestId: number,
+  currentRequestId: number,
+  audio: HTMLAudioElement,
+  currentAudio: HTMLAudioElement | null,
+) {
+  return requestId === currentRequestId && audio === currentAudio;
+}
+
 export function shortModelName(modelId: string): string {
   return modelId.split("/").pop() ?? modelId;
 }

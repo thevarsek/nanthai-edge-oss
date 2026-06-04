@@ -449,11 +449,13 @@ describe("App routes", () => {
     const guardCountBeforeUnknownAppRoute = routeMocks.authGuardProps.length;
     const unknownAppRoute = renderAt("/app/not-a-real-route");
     expect(await screen.findByText("404")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/app");
     expect(routeMocks.authGuardProps.length).toBeGreaterThan(guardCountBeforeUnknownAppRoute);
     unknownAppRoute.unmount();
 
     renderAt("/not-a-real-route");
     expect(screen.getByText("404")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
   }, 15000);
 
   it("renders a route error boundary for public lazy route failures", async () => {

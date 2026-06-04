@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import { MessageInput, type AttachmentPreview } from "./MessageInput";
-import { clearChatDraft } from "@/stores/chatDraftStore";
+import { clearChatDraft, getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
 
 const generatedDocument: AttachmentPreview = {
   storageId: "storage_1" as Id<"_storage">,
@@ -50,6 +50,8 @@ describe("MessageInput", () => {
     clearChatDraft("chat_upload_partial");
     clearChatDraft("chat_restore_a");
     clearChatDraft("chat_restore_b");
+    clearChatDraft("chat_switch_a");
+    clearChatDraft("chat_switch_b");
     clearChatDraft("chat_extra");
     clearChatDraft("chat_extra_only");
   });
@@ -256,6 +258,39 @@ describe("MessageInput", () => {
 
     expect(screen.getByRole("textbox")).toHaveValue("restore me");
     expect(screen.getByText("Research notes.pdf")).toBeInTheDocument();
+  });
+
+  it("does not overwrite the destination chat draft while hydrating a chat switch", async () => {
+    setChatDraft("chat_switch_a", { text: "alpha draft", attachments: [] });
+    setChatDraft("chat_switch_b", {
+      text: "bravo draft",
+      attachments: [generatedDocument],
+    });
+
+    const { rerender } = renderMessageInput({
+      chatId: "chat_switch_a" as Id<"chats">,
+    });
+    expect(screen.getByRole("textbox")).toHaveValue("alpha draft");
+
+    rerender(
+      <MessageInput
+        chatId={"chat_switch_b" as Id<"chats">}
+        participants={[]}
+        isGenerating={false}
+        onSend={vi.fn()}
+        onCancel={vi.fn()}
+        onCreateUploadUrl={vi.fn()}
+        generatedDocumentSuggestion={generatedDocument}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("textbox")).toHaveValue("bravo draft");
+    });
+    expect(getChatDraft("chat_switch_b")).toEqual({
+      text: "bravo draft",
+      attachments: [generatedDocument],
+    });
   });
 
   it("sends displayed extra attachments with the message payload", async () => {

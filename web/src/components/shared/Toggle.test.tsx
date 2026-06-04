@@ -28,4 +28,17 @@ describe("Toggle", () => {
 
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("includes visible keyboard focus styling", () => {
+    render(<Toggle checked={false} onChange={() => {}} ariaLabel="Audio replies" />);
+
+    const toggle = screen.getByRole("switch", { name: "Audio replies" });
+
+    expect(toggle).toHaveClass(
+      "focus-visible:outline-none",
+      "focus-visible:ring-2",
+      "focus-visible:ring-primary",
+      "focus-visible:ring-offset-2",
+    );
+  });
 });

@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import type { ModelSummary } from "@/components/shared/ModelPickerHelpers";
@@ -149,6 +150,35 @@ describe("ChatParticipantPicker helper rows", () => {
     expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ displayName: "Planner" }));
   });
 
+  it("toggles enabled persona rows from keyboard without nesting the info action", async () => {
+    const user = userEvent.setup();
+    const onToggle = vi.fn();
+    const onInfo = vi.fn();
+    render(
+      <PersonaRow
+        persona={persona()}
+        isSelected={false}
+        disabled={false}
+        onToggle={onToggle}
+        onInfo={onInfo}
+        modelNameMap={modelNameMap}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: /Planner/ });
+    await user.tab();
+    expect(row).toHaveFocus();
+
+    await user.keyboard("{Enter}");
+    expect(onToggle).toHaveBeenCalledWith(expect.objectContaining({ displayName: "Planner" }));
+
+    await user.tab();
+    expect(screen.getByTitle("persona_info")).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onInfo).toHaveBeenCalledWith(expect.objectContaining({ displayName: "Planner" }));
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
   it("renders model badges, guidance scores, prices, and blocked-state copy", () => {
     const onToggle = vi.fn();
     const onInfo = vi.fn();
@@ -203,5 +233,44 @@ describe("ChatParticipantPicker helper rows", () => {
     expect(screen.getByText("zdr_model_not_available_google")).toBeInTheDocument();
     expect(screen.getByText("trending")).toBeInTheDocument();
     expect(screen.getByText("custom.label")).toBeInTheDocument();
+  });
+
+  it("toggles model rows from keyboard and skips disabled unselected rows", async () => {
+    const user = userEvent.setup();
+    const onToggle = vi.fn();
+    const { rerender } = render(
+      <ParticipantModelRow
+        model={model()}
+        isSelected={false}
+        disabled={false}
+        sortKey="coding"
+        onToggle={onToggle}
+        onInfo={vi.fn()}
+      />,
+    );
+
+    const row = screen.getByRole("button", { name: /GPT 5\.2/ });
+    await user.tab();
+    expect(row).toHaveFocus();
+    await user.keyboard(" ");
+    expect(onToggle).toHaveBeenCalledWith("openai/gpt-5.2");
+
+    rerender(
+      <ParticipantModelRow
+        model={model({ hasZdrEndpoint: false })}
+        isSelected={false}
+        disabled={false}
+        sortKey="coding"
+        onToggle={onToggle}
+        onInfo={vi.fn()}
+        zdrEnforced
+      />,
+    );
+
+    const disabledRow = screen.getByRole("button", { name: /GPT 5\.2/ });
+    expect(disabledRow).toHaveAttribute("aria-disabled", "true");
+    expect(disabledRow).toHaveAttribute("tabindex", "-1");
+    fireEvent.keyDown(disabledRow, { key: "Enter" });
+    expect(onToggle).toHaveBeenCalledTimes(1);
   });
 });

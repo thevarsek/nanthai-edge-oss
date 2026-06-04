@@ -36,7 +36,7 @@ export function Toggle({
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       className={[
-        "relative inline-flex items-center rounded-full transition-colors duration-200 flex-shrink-0",
+        "relative inline-flex items-center rounded-full transition-colors duration-200 flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
         trackW,
         trackH,
         disabled ? "opacity-40 cursor-not-allowed" : "cursor-pointer",

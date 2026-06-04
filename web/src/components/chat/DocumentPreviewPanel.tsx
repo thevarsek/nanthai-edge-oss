@@ -7,6 +7,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Message } from "@/hooks/useChat";
 import type { GeneratedFileForPreview } from "./GeneratedFilesCard";
+import { safeDownloadUrl } from "./GeneratedFileDownloadUrl";
 import { DocumentPreviewContent, type DocumentPreviewPayload } from "./DocumentPreviewContent";
 import { workspaceIconBlockClass } from "@/lib/uiTokens";
 
@@ -98,9 +99,10 @@ export function DocumentPreviewPanel({
   const selectionFile = isGeneratedFileLookupLoading ? undefined : selection.file;
   const filename = generatedFile?.filename ?? selectionFile?.filename ?? selection.filename;
   const mimeType = generatedFile?.mimeType ?? selectionFile?.mimeType ?? selection.mimeType;
-  const downloadUrl = isGeneratedFileLookupLoading
+  const rawDownloadUrl = isGeneratedFileLookupLoading
     ? null
     : generatedFile?.downloadUrl ?? selectionFile?.downloadUrl ?? selection.downloadUrl ?? null;
+  const downloadUrl = safeDownloadUrl(rawDownloadUrl);
   const sizeBytes = generatedFile?.sizeBytes ?? selectionFile?.sizeBytes ?? selection.sizeBytes;
   const versionId = isGeneratedFileLookupLoading
     ? undefined

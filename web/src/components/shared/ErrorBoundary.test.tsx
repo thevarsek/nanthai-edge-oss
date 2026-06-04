@@ -24,6 +24,7 @@ describe("ErrorBoundary", () => {
 
     await userEvent.click(screen.getByRole("button", { name: /try again/i }));
     expect(consoleError).toHaveBeenCalled();
+    expect(JSON.stringify(consoleError.mock.calls)).not.toContain("secret internal token detail");
 
     consoleError.mockRestore();
   });

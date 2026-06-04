@@ -25,8 +25,11 @@ export class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo) {
-    console.error(`[ErrorBoundary${this.props.level ? `:${this.props.level}` : ""}]`, error, info.componentStack);
+  componentDidCatch(_error: Error, info: ErrorInfo) {
+    console.error(`[ErrorBoundary${this.props.level ? `:${this.props.level}` : ""}]`, {
+      error: "redacted",
+      hasComponentStack: Boolean(info.componentStack),
+    });
   }
 
   private handleReload = () => {

@@ -13,7 +13,6 @@ const PENDING_ECHO_GUARD_MS = 5_000;
 
 interface PendingPreference<T> {
   value: T;
-  sawStaleEcho: boolean;
   timeoutId: number;
 }
 
@@ -57,6 +56,8 @@ export function AppearanceSection() {
 
   const serverColorTheme: ColorTheme =
     (prefs?.colorTheme as ColorTheme | undefined) ?? "vibrant";
+  const latestServerModeRef = useRef(serverMode);
+  const latestServerColorThemeRef = useRef(serverColorTheme);
   const [localMode, setLocalMode] = useState(serverMode);
   const [localColorTheme, setLocalColorTheme] = useState(serverColorTheme);
   const pendingModeRef = useRef<PendingPreference<AppearanceMode> | null>(null);
@@ -67,31 +68,42 @@ export function AppearanceSection() {
   const startPendingMode = (mode: AppearanceMode) => {
     if (pendingModeRef.current) window.clearTimeout(pendingModeRef.current.timeoutId);
     const timeoutId = window.setTimeout(() => {
-      if (pendingModeRef.current?.value === mode) pendingModeRef.current = null;
+      if (pendingModeRef.current?.value === mode) {
+        pendingModeRef.current = null;
+        setLocalMode(latestServerModeRef.current);
+      }
     }, PENDING_ECHO_GUARD_MS);
-    pendingModeRef.current = { value: mode, sawStaleEcho: false, timeoutId };
+    pendingModeRef.current = { value: mode, timeoutId };
   };
 
   const startPendingColorTheme = (theme: ColorTheme) => {
     if (pendingColorThemeRef.current) window.clearTimeout(pendingColorThemeRef.current.timeoutId);
     const timeoutId = window.setTimeout(() => {
-      if (pendingColorThemeRef.current?.value === theme) pendingColorThemeRef.current = null;
+      if (pendingColorThemeRef.current?.value === theme) {
+        pendingColorThemeRef.current = null;
+        setLocalColorTheme(latestServerColorThemeRef.current);
+      }
     }, PENDING_ECHO_GUARD_MS);
-    pendingColorThemeRef.current = { value: theme, sawStaleEcho: false, timeoutId };
+    pendingColorThemeRef.current = { value: theme, timeoutId };
   };
+
+  useEffect(() => {
+    latestServerModeRef.current = serverMode;
+  }, [serverMode]);
+
+  useEffect(() => {
+    latestServerColorThemeRef.current = serverColorTheme;
+  }, [serverColorTheme]);
 
   useEffect(() => {
     const pending = pendingModeRef.current;
     if (pending) {
       if (serverMode === pending.value) {
-        if (pending.sawStaleEcho) {
-          window.clearTimeout(pending.timeoutId);
-          pendingModeRef.current = null;
-        }
-      } else {
-        pending.sawStaleEcho = true;
+        window.clearTimeout(pending.timeoutId);
+        pendingModeRef.current = null;
+      } else if (serverMode !== localMode) {
+        return;
       }
-      return;
     }
     const timer = window.setTimeout(() => setLocalMode(serverMode), 0);
     return () => window.clearTimeout(timer);
@@ -101,14 +113,11 @@ export function AppearanceSection() {
     const pending = pendingColorThemeRef.current;
     if (pending) {
       if (serverColorTheme === pending.value) {
-        if (pending.sawStaleEcho) {
-          window.clearTimeout(pending.timeoutId);
-          pendingColorThemeRef.current = null;
-        }
-      } else {
-        pending.sawStaleEcho = true;
+        window.clearTimeout(pending.timeoutId);
+        pendingColorThemeRef.current = null;
+      } else if (serverColorTheme !== localColorTheme) {
+        return;
       }
-      return;
     }
     const timer = window.setTimeout(() => setLocalColorTheme(serverColorTheme), 0);
     return () => window.clearTimeout(timer);

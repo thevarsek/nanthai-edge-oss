@@ -68,18 +68,31 @@ function paragraphAnnotationMatch(
   const inserted = normalizeForMatch(annotation.insertedText);
   const deletedSegmentText = segmentText(paragraph, "deleted");
   const insertedSegmentText = segmentText(paragraph, "inserted");
-  if (
-    (deleted && deletedSegmentText.includes(deleted)) ||
-    (inserted && insertedSegmentText.includes(inserted))
-  ) {
+  if (matchesAnnotationSides(deletedSegmentText, insertedSegmentText, deleted, inserted)) {
     return "typed";
   }
 
   const paragraphText = normalizeForMatch(paragraph.segments.map((segment) => segment.text).join(""));
-  if ((deleted && paragraphText.includes(deleted)) || (inserted && paragraphText.includes(inserted))) {
+  if (matchesAnnotationSides(paragraphText, paragraphText, deleted, inserted)) {
     return "fallback";
   }
   return null;
+}
+
+function matchesAnnotationSides(
+  deletedText: string,
+  insertedText: string,
+  deleted: string,
+  inserted: string,
+): boolean {
+  const hasDeleted = deleted.length > 0;
+  const hasInserted = inserted.length > 0;
+  if (hasDeleted && hasInserted) {
+    return deletedText.includes(deleted) && insertedText.includes(inserted);
+  }
+  if (hasDeleted) return deletedText.includes(deleted);
+  if (hasInserted) return insertedText.includes(inserted);
+  return false;
 }
 
 function focusedParagraphIndexes(

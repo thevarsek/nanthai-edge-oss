@@ -3,6 +3,7 @@ import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
 import {
   androidIntentCallbackUrl,
   callbackUrl,
+  decodeDrivePickerRelayState,
   pickedFileIds,
   safeCallbackScheme,
 } from "./MobileDrivePickerPage.helpers";
@@ -26,9 +27,10 @@ function googlePickerAppId(): string {
   return import.meta.env.VITE_GOOGLE_PICKER_APP_ID ?? import.meta.env.VITE_GOOGLE_PROJECT_NUMBER ?? "";
 }
 
-function sanitizedMobilePickerUrl(pathname: string, search: string): string {
+function sanitizedMobilePickerUrl(pathname: string, search: string, stripRelayState = false): string {
   const params = new URLSearchParams(search);
   params.delete("access_token");
+  if (stripRelayState) params.delete("state");
   const nextSearch = params.toString();
   return `${pathname}${nextSearch ? `?${nextSearch}` : ""}`;
 }
@@ -45,26 +47,36 @@ export function MobileDrivePickerPage() {
   const config = useMemo(() => {
     const query = readQueryParams();
     const params = readFragmentParams();
-    const callbackScheme = safeCallbackScheme(query.get("callback_scheme") ?? params.get("callback_scheme"));
+    const rawState = query.get("state") ?? params.get("state");
+    const relayState = decodeDrivePickerRelayState(rawState);
+    const callbackScheme = safeCallbackScheme(
+      query.get("callback_scheme") ?? params.get("callback_scheme") ?? relayState?.callbackScheme ?? null,
+    );
     const queryFileIds = pickedFileIds(query);
     const selectedFileIds = queryFileIds.length > 0 ? queryFileIds : pickedFileIds(params);
-    const accessToken = params.get("access_token") ?? query.get("access_token") ?? "";
-    if (params.has("access_token") || query.has("access_token")) {
+    const accessToken = params.get("access_token") ?? query.get("access_token") ?? relayState?.accessToken ?? "";
+    if (params.has("access_token") || query.has("access_token") || relayState) {
       window.history.replaceState(
         null,
         "",
-        sanitizedMobilePickerUrl(window.location.pathname, window.location.search),
+        sanitizedMobilePickerUrl(window.location.pathname, window.location.search, Boolean(relayState)),
       );
     }
     return {
       accessToken,
-      appId: params.get("app_id") ?? query.get("app_id") ?? googlePickerAppId(),
-      developerKey: params.get("developer_key") ?? query.get("developer_key") ?? googlePickerDeveloperKey(),
+      appId: firstNonEmpty(params.get("app_id"), query.get("app_id"), relayState?.appId, googlePickerAppId()),
+      developerKey: firstNonEmpty(
+        params.get("developer_key"),
+        query.get("developer_key"),
+        relayState?.developerKey,
+        googlePickerDeveloperKey(),
+      ),
       callbackScheme,
       selectedFileIds,
-      state: query.get("state") ?? params.get("state"),
+      state: relayState?.requestState ?? rawState,
       code: query.get("code") ?? params.get("code"),
       error: query.get("error"),
+      multiselect: relayState?.allowMultiple ?? true,
     };
   }, []);
 
@@ -105,7 +117,7 @@ export function MobileDrivePickerPage() {
           accessToken: config.accessToken,
           appId: config.appId,
           developerKey: config.developerKey,
-          multiselect: true,
+          multiselect: config.multiselect,
         });
         if (cancelled) return;
         redirectToCallback(config.callbackScheme, picked.map((file) => file.id), config.state, config.code);
@@ -131,4 +143,8 @@ export function MobileDrivePickerPage() {
       </div>
     </main>
   );
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string {
+  return values.find((value): value is string => Boolean(value)) ?? "";
 }

@@ -54,6 +54,7 @@ export function ParticipantPicker({
   const { t } = useTranslation();
   const { personas, prefs } = useSharedData();
   const modelSummaries = useModelSummaries();
+  const modelsLoading = modelSummaries === undefined;
   const zdrEnforced = prefs?.zdrEnabled === true;
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
@@ -218,7 +219,7 @@ export function ParticipantPicker({
           <PickerSectionHeader title={t("models")} count={filteredModels.length} className="pt-2" />
           {filteredModels.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-24 text-sm text-muted gap-2">
-              {models.length === 0 ? t("loading_models") : filteredPersonas.length === 0 ? t("no_results") : t("no_models_match")}
+              {modelsLoading ? t("loading_models") : filteredPersonas.length === 0 ? t("no_results") : t("no_models_match")}
               {activeFilters.size > 0 && (
                 <button type="button" onClick={() => setActiveFilters(new Set())} className="text-xs text-primary hover:underline">{t("clear_filters")}</button>
               )}

@@ -8,13 +8,13 @@ type IconButtonSize = "xs" | "sm" | "md" | "lg";
 
 const variantClasses: Record<IconButtonVariant, string> = {
   ghost:
-    "text-muted hover:text-foreground hover:bg-foreground/8 active:bg-foreground/12",
+    "text-muted hover:text-foreground hover:bg-foreground/[0.08] active:bg-foreground/[0.12]",
   subtle:
     "text-foreground/60 hover:text-foreground hover:bg-surface-3 active:bg-surface-3/80",
   filled:
     "bg-primary text-white hover:bg-primary/90 active:bg-primary/80",
   danger:
-    "text-muted hover:text-destructive hover:bg-destructive/10 active:bg-destructive/15",
+    "text-muted hover:text-destructive hover:bg-destructive/[0.10] active:bg-destructive/[0.15]",
 };
 
 const sizeClasses: Record<IconButtonSize, string> = {

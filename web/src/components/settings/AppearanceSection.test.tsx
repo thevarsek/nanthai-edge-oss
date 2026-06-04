@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AppearanceSection } from "./AppearanceSection";
 
@@ -93,5 +93,96 @@ describe("AppearanceSection", () => {
     await waitFor(() => {
       expect(document.documentElement).not.toHaveAttribute("data-color-theme");
     });
+  });
+
+  it("follows later server appearance changes after direct acknowledgement", async () => {
+    const { rerender } = render(<AppearanceSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "light" }));
+    prefs = { appearanceMode: "light", colorTheme: "vibrant" };
+    rerender(<AppearanceSection />);
+    prefs = { appearanceMode: "dark", colorTheme: "vibrant" };
+    rerender(<AppearanceSection />);
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+  });
+
+  it("follows later server color changes after direct acknowledgement", async () => {
+    const { rerender } = render(<AppearanceSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "teal" }));
+    prefs = { appearanceMode: "dark", colorTheme: "teal" };
+    rerender(<AppearanceSection />);
+    prefs = { appearanceMode: "dark", colorTheme: "lilac" };
+    rerender(<AppearanceSection />);
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-color-theme", "lilac");
+    });
+  });
+
+  it("rolls back an unacknowledged appearance change when the pending guard expires", async () => {
+    vi.useFakeTimers();
+    render(<AppearanceSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "light" }));
+    expect(document.documentElement).toHaveAttribute("data-theme", "light");
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  });
+
+  it("rolls back to the latest server appearance when pending guard expires", async () => {
+    vi.useFakeTimers();
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+    const { rerender } = render(<AppearanceSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "light" }));
+    prefs = { appearanceMode: "system", colorTheme: "vibrant" };
+    rerender(<AppearanceSection />);
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    expect(localStorage.getItem("nanth_theme")).toBeNull();
+  });
+
+  it("rolls back an unacknowledged color theme change when the pending guard expires", async () => {
+    vi.useFakeTimers();
+    render(<AppearanceSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "teal" }));
+    expect(document.documentElement).toHaveAttribute("data-color-theme", "teal");
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    expect(document.documentElement).not.toHaveAttribute("data-color-theme");
+  });
+
+  it("rolls back to the latest server color theme when pending guard expires", async () => {
+    vi.useFakeTimers();
+    const { rerender } = render(<AppearanceSection />);
+
+    fireEvent.click(screen.getByRole("button", { name: "teal" }));
+    prefs = { appearanceMode: "dark", colorTheme: "lilac" };
+    rerender(<AppearanceSection />);
+
+    act(() => {
+      vi.advanceTimersByTime(5_000);
+    });
+
+    expect(document.documentElement).toHaveAttribute("data-color-theme", "lilac");
   });
 });

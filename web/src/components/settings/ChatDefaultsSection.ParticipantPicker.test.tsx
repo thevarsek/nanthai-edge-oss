@@ -50,6 +50,24 @@ describe("ParticipantPicker", () => {
     expect(screen.queryByText(/no results/i)).not.toBeInTheDocument();
   });
 
+  it("shows loaded empty state when model loading resolves to an empty list", () => {
+    personas = [];
+    modelSummaries = [];
+
+    render(
+      <ParticipantPicker
+        selectedPersonaId={null}
+        selectedModelId="openai/gpt-4o"
+        onSelectPersona={vi.fn()}
+        onSelectModel={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/no results/i)).toBeInTheDocument();
+    expect(screen.queryByText(/loading models/i)).not.toBeInTheDocument();
+  });
+
   it("uses count-aware footer labels", () => {
     personas = [{ _id: "persona_1", displayName: "Guide" }];
     modelSummaries = [{ modelId: "openai/gpt-4o", name: "GPT-4o", provider: "openai" }];

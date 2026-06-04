@@ -1,3 +1,23 @@
+import type { TFunction } from "i18next";
+
+export function guidanceLabelText(t: TFunction, label: string): string {
+  const labelMap: Record<string, string> = {
+    "recommended.best": t("best_overall"),
+    "recommended.top": t("top_pick"),
+    "coding.best": t("best_for_coding"),
+    "coding.top": t("great_for_coding"),
+    "research.best": t("best_for_research"),
+    "research.top": t("great_for_research"),
+    "fast.best": t("fast_replies"),
+    "fast.top": t("fast_replies"),
+    "value.best": t("best_value"),
+    "value.top": t("great_value"),
+    "image.best": t("top_image_model"),
+    "image.top": t("top_image_model"),
+  };
+  return labelMap[label] ?? label;
+}
+
 export function formatPrice(per1M?: number): string {
   if (per1M == null) return "—";
   if (per1M === 0) return "$0.00/M";

@@ -93,6 +93,44 @@ describe("IntegrationDefaultsCard", () => {
     expect(gmailButton).not.toHaveTextContent("Disabled (default)");
   });
 
+  it("rewrites the latest default after an older successful request resolves late", async () => {
+    const firstRequest = deferred();
+    const secondRequest = deferred();
+    const correctiveRequest = deferred();
+    setIntegrationDefault
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise)
+      .mockImplementationOnce(() => correctiveRequest.promise);
+    prefs = { integrationDefaults: [] };
+
+    const { rerender } = render(<IntegrationDefaultsCard />);
+    fireEvent.click(screen.getByRole("button", { name: /gmail/i }));
+    fireEvent.click(screen.getByRole("button", { name: /gmail/i }));
+
+    await act(async () => {
+      secondRequest.resolve();
+      await secondRequest.promise;
+    });
+    prefs = { integrationDefaults: [{ integrationId: "gmail", enabled: false }] };
+    rerender(<IntegrationDefaultsCard />);
+
+    await act(async () => {
+      firstRequest.resolve();
+      await firstRequest.promise;
+    });
+    prefs = { integrationDefaults: [{ integrationId: "gmail", enabled: true }] };
+    rerender(<IntegrationDefaultsCard />);
+
+    expect(setIntegrationDefault).toHaveBeenNthCalledWith(3, { integrationId: "gmail", enabled: false });
+    expect(screen.getByRole("button", { name: /gmail/i })).toHaveTextContent("Disabled");
+    expect(screen.getByRole("button", { name: /gmail/i })).not.toHaveTextContent("Disabled (default)");
+
+    await act(async () => {
+      correctiveRequest.resolve();
+      await correctiveRequest.promise;
+    });
+  });
+
   it("rolls back one failed integration without masking another server echo", async () => {
     const gmailRequest = deferred();
     const driveRequest = deferred();

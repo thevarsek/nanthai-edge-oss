@@ -291,4 +291,5 @@ describe("ChatDefaultsSection", () => {
 
     unmount();
   });
+
 });
