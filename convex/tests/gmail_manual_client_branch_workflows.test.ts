@@ -201,3 +201,30 @@ test("manual Gmail localized mailbox failures return per-message results without
     restore();
   }
 });
+
+test("manual Gmail trash preserves nullish move response fallback", async () => {
+  const movedIds: number[] = [];
+  const moveResponses: Array<null | undefined | false> = [null, undefined, false];
+  const restore = patchImap({
+    connect: async () => undefined,
+    logout: async () => undefined,
+    list: async () => [{ path: "[Gmail]/Trash", name: "Trash", specialUse: "\\Trash" }],
+    getMailboxLock: async () => ({ release: () => undefined }),
+    messageMove: async (id: number) => {
+      movedIds.push(id);
+      return moveResponses.shift();
+    },
+  });
+
+  try {
+    const trash = await trashGmailManualMessages(credentials, ["21", "22", "23"]);
+    assert.deepEqual(trash, [
+      { id: "21", success: true },
+      { id: "22", success: true },
+      { id: "23", success: true },
+    ]);
+    assert.deepEqual(movedIds, [21, 22, 23]);
+  } finally {
+    restore();
+  }
+});

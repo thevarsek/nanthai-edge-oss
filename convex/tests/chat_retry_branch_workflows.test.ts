@@ -74,6 +74,12 @@ function buildRetryCtx(options: {
         if (table === "userPreferences") {
           return { withIndex: () => ({ first: async () => ({ userId: "user_1" }) }) };
         }
+        if (table === "oauthConnections") {
+          return { withIndex: () => ({ first: async () => null }) };
+        }
+        if (table === "personas") {
+          return { withIndex: () => ({ collect: async () => [] }) };
+        }
         if (table === "cachedModels") {
           return {
             withIndex: (_index: string, apply: (q: any) => unknown) => {

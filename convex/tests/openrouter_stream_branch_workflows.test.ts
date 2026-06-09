@@ -122,7 +122,7 @@ test("streaming transport strips unsupported parameters and retries once per nor
   assert.equal(requestBodies[1]?.temperature, 0.2);
 });
 
-test("streaming transport retries 404 no-endpoints responses without provider routing", async () => {
+test("streaming transport retries 404 no-endpoints responses without soft provider routing but preserves ZDR", async () => {
   const requestBodies: Array<Record<string, unknown>> = [];
   let fetchCount = 0;
   const deps = createOpenRouterStreamingDepsForTest({
@@ -141,15 +141,15 @@ test("streaming transport retries 404 no-endpoints responses without provider ro
     "key",
     "openai/gpt-5",
     [{ role: "user", content: "hello" }],
-    { provider: { only: ["openai"] } },
+    { provider: { only: ["openai"], zdr: true } },
     {},
     {},
     deps,
   );
 
   assert.equal(result.content, "rerouted ok");
-  assert.deepEqual(requestBodies[0]?.provider, { sort: "latency", only: ["openai"] });
-  assert.equal("provider" in requestBodies[1], false);
+  assert.deepEqual(requestBodies[0]?.provider, { sort: "latency", only: ["openai"], zdr: true });
+  assert.deepEqual(requestBodies[1]?.provider, { zdr: true });
 });
 
 test("streaming transport preserves structured ConvexError failures for non-retryable upstream errors", async () => {

@@ -238,8 +238,9 @@ async function streamOnce(
   const strippedParams = new Set<string>();
   const maxUnsupportedParamRetries = 6;
   let rateLimitRetries = 0;
-  // 404 "No endpoints found" fallback: retry once with all provider routing
-  // stripped. See the 404 handler below for rationale.
+  // 404 "No endpoints found" fallback: retry once with soft provider routing
+  // stripped. Hard privacy constraints (provider.zdr) are preserved by
+  // buildRequestBody.
   let strippedProviderOnce = false;
 
   while (true) {
@@ -336,13 +337,14 @@ async function streamOnce(
           }
         }
 
-        // 404 "No endpoints found" retry — strip all provider routing hints
+        // 404 "No endpoints found" retry — strip soft provider routing hints
         // and try once more. OpenRouter returns this when the combination of
         // top-level `cache_control`, provider-sort defaults, caller-supplied
-        // `provider` fields (ZDR, order, etc.), and current provider health
+        // `provider` routing fields (order, only, ignore, etc.), and current provider health
         // leaves zero viable endpoints. Stripping the `provider` block and
         // letting OpenRouter auto-route is the safest recovery that still
-        // preserves `cache_control` (which lives outside the provider block).
+        // preserves `cache_control` (which lives outside the provider block)
+        // and provider.zdr (which is a hard privacy constraint, not a hint).
         if (
           response.status === 404 &&
           !strippedProviderOnce &&

@@ -22,11 +22,16 @@ import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import {
+  assertModelSupportsZdr,
+  isZdrEnabled,
+} from "../lib/openrouter_zdr";
+import {
   submitVideoJob,
   pollVideoJobStatus,
   downloadVideoContent,
   type SubmitVideoJobRequest,
 } from "../lib/openrouter_video";
+import { OPENROUTER_DEFAULT_PROVIDER_SORT } from "../lib/model_constants";
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import type { VideoConfig } from "./actions_run_generation_types";
 
@@ -37,6 +42,14 @@ const SLOW_POLL_INTERVAL_MS = 30_000; // 30s after
 const FAST_POLL_COUNT = 4;
 const MAX_POLL_COUNT = 40; // ~18 min total
 const VIDEO_OUTPUT_UPLOAD_PATH = "/video-output-upload";
+
+type VideoInputAttachment = {
+  type?: string;
+  mimeType?: string;
+  url?: string;
+  storageId?: Id<"_storage">;
+  videoRole?: string;
+};
 
 // -- Helpers ------------------------------------------------------------------
 
@@ -170,7 +183,11 @@ export async function submitVideoGenerationHandler(
 
   try {
     // 1. Get the user's API key
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
+    const [apiKey, preferences] = await Promise.all([
+      getRequiredUserOpenRouterApiKey(ctx, userId),
+      ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
+    ]);
+    const requireZdr = isZdrEnabled(preferences);
 
     // 2. Get the user message content (prompt)
     const userMessage = await ctx.runQuery(
@@ -190,8 +207,10 @@ export async function submitVideoGenerationHandler(
 
     if (userMessage.attachments && userMessage.attachments.length > 0) {
       // Filter to image-type attachments only
-      const imageAttachments = userMessage.attachments.filter(
-        (a: any) => a.type === "image" || a.mimeType?.startsWith("image/"),
+      const imageAttachments = (userMessage.attachments as VideoInputAttachment[]).filter(
+        (attachment) =>
+          attachment.type === "image" ||
+          attachment.mimeType?.startsWith("image/"),
       );
 
       let defaultRoleIndex = 0; // tracks smart-default assignment position
@@ -235,6 +254,13 @@ export async function submitVideoGenerationHandler(
       internal.chat.queries.getModelCapabilities,
       { modelId: participant.modelId },
     );
+    if (requireZdr) {
+      assertModelSupportsZdr({
+        modelId: participant.modelId,
+        capabilities: modelCaps,
+        feature: "Video generation",
+      });
+    }
     const videoCaps = modelCaps?.videoCapabilities;
 
     // 5. Build the video request using client videoConfig (with sensible defaults),
@@ -267,6 +293,10 @@ export async function submitVideoGenerationHandler(
       duration: finalDuration,
       aspect_ratio: finalAspectRatio,
       generate_audio: vc?.generateAudio ?? true,
+      provider: {
+        ...OPENROUTER_DEFAULT_PROVIDER_SORT,
+        ...(requireZdr ? { zdr: true } : {}),
+      },
     };
     let outputUploadToken: string | undefined;
     if (modelRequiresOutputUploadUrl(participant.modelId)) {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import type {
   OpenRouterMessage,
@@ -11,6 +11,7 @@ import {
   createRunGenerationWithCompactionDepsForTest,
   runGenerationWithCompaction,
 } from "../chat/actions_run_generation_loop";
+import { compactMessages } from "../chat/compaction";
 import type { ToolCallLoopResult } from "../tools/execute_loop";
 
 function makeUsage(promptTokens: number, completionTokens: number): OpenRouterUsage {
@@ -96,6 +97,41 @@ test("runGenerationWithCompaction returns immediately on simple non-tool respons
   assert.equal(result.streamResult.content, "done");
   assert.deepEqual(result.totalUsage, makeUsage(10, 5));
   assert.equal(result.compactionCount, 0);
+});
+
+test("compactMessages preserves ZDR provider policy", async (t) => {
+  t.after(() => mock.restoreAll());
+  let requestBody: Record<string, unknown> = {};
+  mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
+    requestBody = JSON.parse(String(init?.body));
+    const payload = {
+      id: "gen_compact",
+      choices: [{
+        finish_reason: "stop",
+        message: { content: "summary" },
+      }],
+    };
+    return {
+      ok: true,
+      status: 200,
+      headers: { get: () => null },
+      json: async () => payload,
+      text: async () => JSON.stringify(payload),
+    } as any;
+  }) as any;
+
+  const result = await compactMessages(
+    [
+      { role: "system", content: "system" },
+      { role: "user", content: "hello" },
+      { role: "assistant", content: "world" },
+    ],
+    "key",
+    { requireZdr: true },
+  );
+
+  assert.equal(result.summary, "summary");
+  assert.deepEqual(requestBody.provider, { sort: "latency", zdr: true });
 });
 
 test("runGenerationWithCompaction compacts overflowing tool loops and aggregates usage and tool metadata", async () => {

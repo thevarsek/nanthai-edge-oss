@@ -512,6 +512,7 @@ test("all M23 source labels are distinct and documented", () => {
     "search_analysis",
     "search_synthesis",
     "search_architecture",
+    "tool_web_search",
     "subagent",
   ];
 
@@ -577,6 +578,7 @@ test("getChatCostSummaryHandler sums generation + ancillary costs for the same m
     { messageId: "msg_1", cost: 0.0005, source: "memory_extraction" },// memory
     { messageId: "msg_1", cost: 0.01,   source: "search_perplexity" },// search
     { messageId: "msg_1", cost: 0.003,  source: "search_architecture" },// search
+    { messageId: "msg_1", cost: 0.004,  source: "tool_web_search" },  // search
   ];
 
   const ctx = {
@@ -600,7 +602,7 @@ test("getChatCostSummaryHandler sums generation + ancillary costs for the same m
   assert.ok(result);
 
   // totalCost includes all records (generation + ancillary)
-  const expectedTotal = 0.05 + 0.001 + 0.002 + 0.0005 + 0.01 + 0.003;
+  const expectedTotal = 0.05 + 0.001 + 0.002 + 0.0005 + 0.01 + 0.003 + 0.004;
   assert.ok(Math.abs(result.totalCost - expectedTotal) < 1e-10);
 
   // messageCosts only reflects primary generation (source === undefined)
@@ -609,6 +611,6 @@ test("getChatCostSummaryHandler sums generation + ancillary costs for the same m
   // breakdown buckets
   assert.ok(Math.abs(result.breakdown.responses - 0.05) < 1e-10);
   assert.ok(Math.abs(result.breakdown.memory - 0.0005) < 1e-10);
-  assert.ok(Math.abs(result.breakdown.search - (0.01 + 0.003)) < 1e-10);
+  assert.ok(Math.abs(result.breakdown.search - (0.01 + 0.003 + 0.004)) < 1e-10);
   assert.ok(Math.abs(result.breakdown.other - (0.001 + 0.002)) < 1e-10);
 });

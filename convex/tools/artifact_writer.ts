@@ -2,6 +2,7 @@ import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import type { ToolCall } from "../lib/openrouter";
+import type { OpenRouterUsage } from "../lib/openrouter";
 import type { ToolResult } from "./registry";
 
 const INLINE_RAW_BYTE_LIMIT = 96_000;
@@ -52,6 +53,7 @@ function byteLength(value: string): number {
 }
 
 function resultPayload(result: ToolResult): unknown {
+  if (result.artifactData !== undefined) return result.artifactData;
   if (result.success) return result.data;
   if (result.data && typeof result.data === "object") {
     return { error: result.error, ...(result.data as Record<string, unknown>) };
@@ -85,6 +87,75 @@ function contextClassForResult(result: ToolResult): "operational" | "provenance"
   return "operational";
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isOpenRouterUsage(value: unknown): value is OpenRouterUsage {
+  return isRecord(value)
+    && typeof value.promptTokens === "number"
+    && typeof value.completionTokens === "number"
+    && typeof value.totalTokens === "number";
+}
+
+function optionalNumber(value: number | undefined): number | undefined {
+  return typeof value === "number" ? value : undefined;
+}
+
+function extractWebSearchUsage(
+  toolName: string,
+  result: ToolResult,
+): { usage: OpenRouterUsage; modelId: string; generationId?: string } | null {
+  if (toolName !== "web_search" || !result.success || !isRecord(result.artifactData)) {
+    return null;
+  }
+  const usage = result.artifactData.usage;
+  const modelId = result.artifactData.modelId;
+  if (!isOpenRouterUsage(usage) || typeof modelId !== "string" || modelId.trim().length === 0) {
+    return null;
+  }
+  const generationId = result.artifactData.generationId;
+  return {
+    usage,
+    modelId,
+    generationId: typeof generationId === "string" && generationId.trim().length > 0
+      ? generationId
+      : undefined,
+  };
+}
+
+async function recordWebSearchUsage(
+  ctx: ActionCtx,
+  metadata: ToolArtifactRunMetadata,
+  payload: { usage: OpenRouterUsage; modelId: string; generationId?: string },
+): Promise<void> {
+  await ctx.runMutation(internal.chat.mutations.storeAncillaryCost, {
+    messageId: metadata.messageId,
+    chatId: metadata.chatId,
+    userId: metadata.userId,
+    modelId: payload.modelId,
+    promptTokens: payload.usage.promptTokens,
+    completionTokens: payload.usage.completionTokens,
+    totalTokens: payload.usage.totalTokens,
+    cost: payload.usage.cost ?? undefined,
+    isByok: payload.usage.isByok,
+    cachedTokens: optionalNumber(payload.usage.cachedTokens),
+    cacheWriteTokens: optionalNumber(payload.usage.cacheWriteTokens),
+    audioPromptTokens: optionalNumber(payload.usage.audioPromptTokens),
+    videoTokens: optionalNumber(payload.usage.videoTokens),
+    reasoningTokens: optionalNumber(payload.usage.reasoningTokens),
+    imageCompletionTokens: optionalNumber(payload.usage.imageCompletionTokens),
+    audioCompletionTokens: optionalNumber(payload.usage.audioCompletionTokens),
+    upstreamInferenceCost: optionalNumber(payload.usage.upstreamInferenceCost),
+    upstreamInferencePromptCost: optionalNumber(payload.usage.upstreamInferencePromptCost),
+    upstreamInferenceCompletionsCost: optionalNumber(payload.usage.upstreamInferenceCompletionsCost),
+    cacheDiscount: optionalNumber(payload.usage.cacheDiscount),
+    webSearchRequests: optionalNumber(payload.usage.webSearchRequests),
+    source: "tool_web_search",
+    generationId: payload.generationId,
+  });
+}
+
 async function maybeStoreRaw(
   ctx: ActionCtx,
   raw: string,
@@ -105,6 +176,10 @@ export async function captureToolRoundArtifacts(
     if (!matching) continue;
     const argsRaw = call.function.arguments || "{}";
     const payload = resultPayload(matching.result);
+    const webSearchUsage = extractWebSearchUsage(call.function.name, matching.result);
+    if (webSearchUsage) {
+      await recordWebSearchUsage(input.ctx, input.metadata, webSearchUsage);
+    }
     const resultRaw = JSON.stringify(payload);
     const argsStorage = await maybeStoreRaw(input.ctx, argsRaw);
     const resultStorage = await maybeStoreRaw(input.ctx, resultRaw);

@@ -1,6 +1,6 @@
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
-import { MutationCtx, QueryCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import {
@@ -9,6 +9,8 @@ import {
   type MemoryCategory,
   type MemoryRetrievalMode,
 } from "./shared";
+
+type NormalizedMemoryRecord = ReturnType<typeof normalizeMemoryRecord>;
 
 function isActiveMemory(memory: { isSuperseded?: boolean; expiresAt?: number }, now: number): boolean {
   if (memory.isSuperseded) return false;
@@ -68,7 +70,7 @@ export interface ListArgs extends Record<string, unknown> {
 export async function listHandler(
   ctx: QueryCtx,
   args: ListArgs,
-): Promise<Array<any>> {
+): Promise<NormalizedMemoryRecord[]> {
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
   const now = Date.now();

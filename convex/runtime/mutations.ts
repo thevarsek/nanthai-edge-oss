@@ -1,4 +1,5 @@
 import { internalMutation } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
 
 export const upsertSessionInternal = internalMutation({
@@ -28,7 +29,7 @@ export const upsertSessionInternal = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const patch: Record<string, unknown> = {
+    const sessionFields = {
       provider: "vercel" as const,
       environment: args.environment,
       status: args.status,
@@ -45,6 +46,7 @@ export const upsertSessionInternal = internalMutation({
       failureCount: args.failureCount ?? 0,
       updatedAt: now,
     };
+    const patch: Partial<Doc<"sandboxSessions">> = { ...sessionFields };
 
     if (Object.prototype.hasOwnProperty.call(args, "providerSandboxId")) {
       patch.providerSandboxId = args.providerSandboxId;
@@ -62,8 +64,14 @@ export const upsertSessionInternal = internalMutation({
       userId: args.userId,
       chatId: args.chatId,
       createdAt: now,
-      ...patch,
-    } as any);
+      ...sessionFields,
+      ...(Object.prototype.hasOwnProperty.call(args, "providerSandboxId")
+        ? { providerSandboxId: args.providerSandboxId }
+        : {}),
+      ...(Object.prototype.hasOwnProperty.call(args, "metadata")
+        ? { metadata: args.metadata }
+        : {}),
+    });
   },
 });
 

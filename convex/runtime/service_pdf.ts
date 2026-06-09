@@ -1,6 +1,7 @@
 "use node";
 
 import * as path from "node:path";
+import type { Sandbox } from "@vercel/sandbox";
 import { ConvexError } from "convex/values";
 import { ToolExecutionContext } from "../tools/registry";
 import { getOrCreatePersistentRuntime } from "./service_vm";
@@ -37,7 +38,7 @@ interface GeneratedPdfResult {
 
 type PersistentPdfRuntime = Awaited<ReturnType<typeof getOrCreatePersistentRuntime>>;
 
-async function installPythonPackages(sandbox: any, packages: string[]): Promise<void> {
+async function installPythonPackages(sandbox: Sandbox, packages: string[]): Promise<void> {
   if (packages.length === 0) return;
   await sandbox.runCommand("pip", ["install", "-q", ...packages]);
 }

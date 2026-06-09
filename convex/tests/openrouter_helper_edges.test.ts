@@ -240,6 +240,24 @@ test("buildRequestBody emits plugins:[{id:'web',max_results:5}] for web search o
   );
 });
 
+test("buildRequestBody preserves provider.zdr when provider routing is skipped", () => {
+  const body = buildRequestBody(
+    "openai/gpt-5.5",
+    [{ role: "user", content: "hello" }],
+    {
+      provider: {
+        sort: "latency",
+        only: ["openai"],
+        zdr: true,
+      },
+    },
+    true,
+    true,
+  );
+
+  assert.deepEqual(body.provider, { zdr: true });
+});
+
 // ---------------------------------------------------------------------------
 // REGRESSION: Web search uses the plugin form (`plugins: [{id:"web"}]`) and
 // NEVER the server tool (`tools: [{type: "openrouter:web_search"}]`).

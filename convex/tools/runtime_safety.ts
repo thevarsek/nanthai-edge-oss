@@ -7,6 +7,7 @@ export const RUNTIME_SAFE_TOOL_NAMES = new Set<string>([
   "search_chats",
   "load_skill",
   "list_skills",
+  "web_search",
 ]);
 
 const RUNTIME_SAFE_PROFILE_IDS = new Set<SkillToolProfileId>([]);

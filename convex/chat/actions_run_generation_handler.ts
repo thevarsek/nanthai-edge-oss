@@ -10,6 +10,7 @@ import {
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { resolveEffectiveIntegrations } from "../skills/resolver";
 import type { GenerationContext } from "./queries_generation_context";
+import type { ContextAttachment } from "./helpers_types";
 
 export type { RunGenerationArgs } from "./actions_run_generation_types";
 
@@ -75,10 +76,10 @@ export async function runGenerationHandler(
     const isProUser = genCtx.isPro;
     const directToolNames = Array.from(new Set([
       ...deps.tools.attachmentTriggeredReadToolNames(
-        genCtx.currentUserMessage?.attachments as any,
+        genCtx.currentUserMessage?.attachments as ContextAttachment[] | undefined,
       ),
       ...deps.tools.attachmentTriggeredDocumentWorkspaceToolNames(
-        genCtx.currentUserMessage?.attachments as any,
+        genCtx.currentUserMessage?.attachments as ContextAttachment[] | undefined,
       ),
     ]));
     const connectedIntegrationIds = genCtx.connectedIntegrationIds;
@@ -118,10 +119,10 @@ export async function runGenerationHandler(
         ? genCtx.personasById[String(participant.personaId)] ?? null
         : null;
       const resolvedIntegrations = resolveEffectiveIntegrations({
-        settingsDefaults: userDefaults?.integrationDefaults as any,
-        personaOverrides: personaDoc?.integrationOverrides as any,
-        chatOverrides: chatDoc?.integrationOverrides as any,
-        turnOverrides: explicitTurnIntegrationOverrides as any,
+        settingsDefaults: userDefaults?.integrationDefaults,
+        personaOverrides: personaDoc?.integrationOverrides,
+        chatOverrides: chatDoc?.integrationOverrides,
+        turnOverrides: explicitTurnIntegrationOverrides,
         connectedIntegrationIds,
       });
       const participantArgs = {
@@ -142,17 +143,21 @@ export async function runGenerationHandler(
           resumeExpected: false,
           videoConfig: args.videoConfig,
           // Pre-resolved overrides to eliminate duplicate queries in participant
-          chatSkillOverrides: chatDoc?.skillOverrides as any,
-          chatIntegrationOverrides: chatDoc?.integrationOverrides as any,
-          personaSkillOverrides: personaDoc?.skillOverrides as any,
-          skillDefaults: userDefaults?.skillDefaults as any,
-          integrationDefaults: userDefaults?.integrationDefaults as any,
+          chatSkillOverrides: chatDoc?.skillOverrides,
+          chatIntegrationOverrides: chatDoc?.integrationOverrides,
+          personaSkillOverrides: personaDoc?.skillOverrides,
+          skillDefaults: userDefaults?.skillDefaults,
+          integrationDefaults: userDefaults?.integrationDefaults,
           // Phase 1 instrumentation: scheduler hop #2 latency measurement
           enqueuedAt: deps.now(),
         };
       if (args.drivePickerBatchId) {
         (participantArgs as typeof participantArgs & { drivePickerBatchId: Id<"drivePickerBatches"> })
           .drivePickerBatchId = args.drivePickerBatchId;
+      }
+      if (args.requireZdrOverride === true) {
+        (participantArgs as typeof participantArgs & { requireZdrOverride: boolean })
+          .requireZdrOverride = true;
       }
       const scheduledId = await ctx.scheduler.runAfter(
         0,

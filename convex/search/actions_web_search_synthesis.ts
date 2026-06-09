@@ -18,6 +18,11 @@ import {
 } from "./helpers";
 import { WebSearchActionArgs } from "./actions_web_search_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import {
+  assertModelSupportsZdr,
+  isZdrEnabled,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
 function createStreamWriter(
@@ -49,10 +54,13 @@ export async function synthesizeWithStreaming(
   searchResults: SearchResult[],
   deps: SearchSynthesisDeps = defaultSearchSynthesisDeps,
 ): Promise<void> {
-  const apiKey = await deps.getRequiredUserOpenRouterApiKey(
-    ctx,
-    args.userId,
-  );
+  const [apiKey, preferences] = await Promise.all([
+    deps.getRequiredUserOpenRouterApiKey(ctx, args.userId),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  ]);
+  const requireZdr = isZdrEnabled(preferences);
   const allMessages = await ctx.runQuery(
     internal.chat.queries.listAllMessages,
     { chatId: args.chatId },
@@ -90,6 +98,13 @@ export async function synthesizeWithStreaming(
   const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
     modelId: args.modelId,
   });
+  if (requireZdr) {
+    assertModelSupportsZdr({
+      modelId: args.modelId,
+      capabilities: caps,
+      feature: "Search synthesis",
+    });
+  }
 
   const rawParams: ChatRequestParameters = {
     temperature: args.temperature ?? 0.7,
@@ -99,11 +114,14 @@ export async function synthesizeWithStreaming(
     transforms: SEARCH_TRANSFORMS,
     webSearchEnabled: false,
   };
-  const gatedParams = deps.gateParameters(
+  const gatedParams = withZdrProvider(
+    deps.gateParameters(
     rawParams,
     caps?.supportedParameters,
     caps?.hasImageGeneration,
     caps?.hasReasoning,
+    ),
+    requireZdr,
   );
 
   const writer = deps.createStreamWriter({

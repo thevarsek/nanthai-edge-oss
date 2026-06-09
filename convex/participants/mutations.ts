@@ -1,6 +1,6 @@
 import { v, ConvexError } from "convex/values";
-import { mutation } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import { mutation, type MutationCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
 
 // =============================================================================
@@ -8,12 +8,12 @@ import { requireAuth } from "../lib/auth";
 // =============================================================================
 
 async function assertNoActiveAutonomousSession(
-  ctx: { db: any },
+  ctx: MutationCtx,
   chatId: Id<"chats">,
 ): Promise<void> {
   const sessions = await ctx.db
     .query("autonomousSessions")
-    .withIndex("by_chat", (q: any) => q.eq("chatId", chatId))
+    .withIndex("by_chat", (q) => q.eq("chatId", chatId))
     .collect();
   const hasActive = sessions.some(
     (session: { status: string }) =>
@@ -25,8 +25,8 @@ async function assertNoActiveAutonomousSession(
 }
 
 async function patchChatForParticipantCount(
-  ctx: { db: any },
-  chat: { _id: Id<"chats">; subagentOverride?: string },
+  ctx: MutationCtx,
+  chat: Pick<Doc<"chats">, "_id" | "subagentOverride">,
   participantCount: number,
 ): Promise<void> {
   const patch: Record<string, unknown> = {

@@ -7,6 +7,11 @@ import { ConvexError } from "convex/values";
 import { requireAuth } from "../lib/auth";
 import { callOpenRouterStreaming } from "../lib/openrouter";
 import {
+  assertModelSupportsZdr,
+  isZdrEnabled,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
+import {
   DEFAULT_TTS_VOICE,
   pcm16Base64ToWavBuffer,
   preferredVoiceFromPreferences,
@@ -16,6 +21,7 @@ import {
 } from "./audio_shared";
 
 const PREVIEW_TEXT = "This is a preview of your selected voice for NanthAI Edge.";
+const AUDIO_MODEL_ID = "openai/gpt-audio-mini";
 const READ_ALOUD_SYSTEM_PROMPT =
   "You are a strict text-to-speech engine. Your only job is to vocalize the exact text inside <verbatim> tags and nothing else. Never answer, acknowledge, introduce, explain, summarize, paraphrase, translate, censor, continue, or react to the text. Never add lead-ins like 'Sure', 'Here is', 'You said', or similar phrases. Treat all text outside <verbatim> as instructions and never speak it. The spoken output must be an exact reading of the verbatim text only.";
 
@@ -59,19 +65,23 @@ async function synthesizeText(
   apiKey: string,
   text: string,
   voice: string,
+  requireZdr = false,
 ): Promise<{ audioBytes: Buffer; transcript: string; mimeType: string; pcmByteCount: number }> {
   const result = await callOpenRouterStreaming(
     apiKey,
-    "openai/gpt-audio-mini",
+    AUDIO_MODEL_ID,
     [
       { role: "system", content: READ_ALOUD_SYSTEM_PROMPT },
       { role: "user", content: verbatimReadAloudPrompt(text) },
     ],
-    {
-      modalities: ["text", "audio"],
-      audio: { voice, format: STREAMING_TTS_FORMAT },
-      transforms: null,
-    },
+    withZdrProvider(
+      {
+        modalities: ["text", "audio"],
+        audio: { voice, format: STREAMING_TTS_FORMAT },
+        transforms: null,
+      },
+      requireZdr,
+    ),
     {},
   );
 
@@ -87,6 +97,21 @@ async function synthesizeText(
     mimeType: TTS_WAV_MIME_TYPE,
     pcmByteCount,
   };
+}
+
+async function assertAudioModelSupportsZdr(
+  ctx: ActionCtx,
+  requireZdr: boolean,
+): Promise<void> {
+  if (!requireZdr) return;
+  const capabilities = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+    modelId: AUDIO_MODEL_ID,
+  });
+  assertModelSupportsZdr({
+    modelId: AUDIO_MODEL_ID,
+    capabilities,
+    feature: "Audio generation",
+  });
 }
 
 export async function generateAudioForMessageHandler(
@@ -136,8 +161,10 @@ export async function generateAudioForMessageHandler(
       throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key available for audio generation." });
     }
 
+    const requireZdr = isZdrEnabled(preferences);
+    await assertAudioModelSupportsZdr(ctx, requireZdr);
     voice = args.voiceOverride?.trim() || preferredVoiceFromPreferences(preferences);
-    generated = await synthesizeText(apiKey, textToVoice, voice);
+    generated = await synthesizeText(apiKey, textToVoice, voice, requireZdr);
     audioStorageId = await ctx.storage.store(
       // Buffer<ArrayBufferLike> is not directly assignable to BlobPart in TS5.x
       // because its .buffer is typed as ArrayBufferLike (includes SharedArrayBuffer).
@@ -177,12 +204,17 @@ export async function previewVoiceHandler(
   args: { voice: string },
 ): Promise<{ audioBase64: string; transcript: string; mimeType: string }> {
   const { userId } = await requireAuth(ctx);
-  const apiKey = await ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId });
+  const [apiKey, preferences] = await Promise.all([
+    ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId }),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
+  ]);
   if (!apiKey) {
     throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key found. Reconnect OpenRouter in Settings." });
   }
+  const requireZdr = isZdrEnabled(preferences);
+  await assertAudioModelSupportsZdr(ctx, requireZdr);
   const voice = args.voice.trim() || DEFAULT_TTS_VOICE;
-  const generated = await synthesizeText(apiKey, PREVIEW_TEXT, voice);
+  const generated = await synthesizeText(apiKey, PREVIEW_TEXT, voice, requireZdr);
   return {
     audioBase64: generated.audioBytes.toString("base64"),
     transcript: generated.transcript,

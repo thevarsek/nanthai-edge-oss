@@ -35,6 +35,7 @@ export const runGenerationArgs = {
   userId: v.string(),
   expandMultiModelGroups: v.boolean(),
   webSearchEnabled: v.boolean(),
+  requireZdrOverride: v.optional(v.boolean()),
   // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
   enabledIntegrations: v.optional(v.array(v.string())),
   subagentsEnabled: v.optional(v.boolean()),
@@ -63,6 +64,7 @@ export const runGenerationParticipantArgs = {
   userId: v.string(),
   expandMultiModelGroups: v.boolean(),
   webSearchEnabled: v.boolean(),
+  requireZdrOverride: v.optional(v.boolean()),
   effectiveIntegrations: v.array(v.string()),
   directToolNames: v.optional(v.array(v.string())),
   isPro: v.boolean(),

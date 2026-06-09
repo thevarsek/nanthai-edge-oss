@@ -13,6 +13,7 @@ import { COMPACTION } from "../lib/compaction_constants";
 import { MODEL_IDS } from "../lib/model_constants";
 import { callOpenRouterNonStreaming } from "../lib/openrouter_nonstream";
 import { OpenRouterMessage, OpenRouterUsage } from "../lib/openrouter_types";
+import { withZdrProvider } from "../lib/openrouter_zdr";
 
 // ---------------------------------------------------------------------------
 // Detection helpers
@@ -164,6 +165,7 @@ export interface CompactionResult {
 export async function compactMessages(
   messages: OpenRouterMessage[],
   apiKey: string,
+  options: { requireZdr?: boolean } = {},
 ): Promise<CompactionResult> {
   // Prepare messages for the compaction model — strip binary content.
   const cleanedMessages = messages.map((msg) => {
@@ -207,10 +209,13 @@ export async function compactMessages(
     apiKey,
     compactionModel,
     compactionMessages,
-    {
-      temperature: COMPACTION.COMPACTION_TEMPERATURE,
-      maxTokens: COMPACTION.COMPACTION_MAX_TOKENS,
-    },
+    withZdrProvider(
+      {
+        temperature: COMPACTION.COMPACTION_TEMPERATURE,
+        maxTokens: COMPACTION.COMPACTION_MAX_TOKENS,
+      },
+      options.requireZdr === true,
+    ),
   );
 
   return {

@@ -40,6 +40,7 @@ function baseArgs(overrides: Record<string, unknown> = {}) {
 function refs() {
   return {
     getUserMemories: getFunctionName(internal.chat.queries.getUserMemories),
+    getUserPreferences: getFunctionName(internal.chat.queries.getUserPreferences),
     getUserApiKey: getFunctionName(internal.scheduledJobs.queries.getUserApiKey),
     createMemory: getFunctionName(internal.chat.mutations.createMemory),
   };
@@ -69,6 +70,7 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === names.getUserMemories) return [];
+      if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
       throw new Error(`unexpected query ${name}`);
     },
@@ -117,6 +119,7 @@ test("extractMemoriesHandler skips duplicate content even when the matched row h
       if (name === names.getUserMemories) {
         return [{ content: "User prefers concise answers." }];
       }
+      if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
       throw new Error(`unexpected query ${name}`);
     },
@@ -138,6 +141,7 @@ test("extractMemoriesHandler swallows model and persistence failures", async (t)
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === names.getUserMemories) return [];
+      if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) throw new Error("secret unavailable");
       throw new Error(`unexpected query ${name}`);
     },
@@ -162,6 +166,7 @@ test("extractMemoriesHandler swallows model and persistence failures", async (t)
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === names.getUserMemories) return [];
+      if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
       throw new Error(`unexpected query ${name}`);
     },
@@ -185,6 +190,7 @@ test("extractMemoriesHandler handles empty extraction responses without writes",
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === names.getUserMemories) return [];
+      if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
       throw new Error(`unexpected query ${name}`);
     },

@@ -94,7 +94,11 @@ function makeCtx() {
   };
 }
 
-async function runParticipant(toolRegistry: ToolRegistry, overrides: Record<string, unknown> = {}) {
+async function runParticipant(
+  toolRegistry: ToolRegistry,
+  overrides: Record<string, unknown> = {},
+  argOverrides: Record<string, unknown> = {},
+) {
   const state = makeCtx();
   const result = await generateForParticipant({
     ctx: state.ctx,
@@ -109,6 +113,7 @@ async function runParticipant(toolRegistry: ToolRegistry, overrides: Record<stri
       enabledIntegrations: ["drive"],
       turnSkillOverrides: [{ skillId: "skill_1", state: "always" }],
       turnIntegrationOverrides: [{ integrationId: "drive", state: "enabled" }],
+      ...argOverrides,
     },
     participant: {
       messageId: "msg_assistant",
@@ -163,6 +168,30 @@ test("generateForParticipant persists deferred subagent batches and schedules ea
   assert.equal((batch?.tasks as unknown[]).length, 2);
   assert.equal((batch?.paramsSnapshot as any).enabledIntegrations[0], "drive");
   assert.deepEqual(scheduled, [{ runId: "run_child_1" }, { runId: "run_child_2" }]);
+});
+
+test("generateForParticipant snapshots materialized web search intent for deferred subagents", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => streamToolCall("spawn_subagents", "call_subagents")) as any;
+
+  const { mutations } = await runParticipant(
+    registryWithDeferred("spawn_subagents", {
+      tasks: [{ title: "Research", prompt: "Find source material." }],
+    }),
+    { requireZdrOverride: true },
+    { webSearchEnabled: true },
+  );
+
+  const batch = mutations.find((args) => Array.isArray(args.tasks));
+  const snapshot = batch?.paramsSnapshot as {
+    webSearchToolEnabled?: boolean;
+    requireZdr?: boolean;
+    requestParams?: { webSearchEnabled?: boolean; provider?: Record<string, unknown> };
+  };
+  assert.equal(snapshot.webSearchToolEnabled, true);
+  assert.equal(snapshot.requireZdr, true);
+  assert.equal(snapshot.requestParams?.webSearchEnabled, false);
+  assert.deepEqual(snapshot.requestParams?.provider, { zdr: true });
 });
 
 test("generateForParticipant fails deferred subagent pauses that contain no runnable tasks", async (t) => {

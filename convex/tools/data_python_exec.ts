@@ -3,6 +3,15 @@
 import { createTool } from "./registry";
 import { runDataPythonExec } from "../runtime/service_analytics";
 
+type DataPythonInputFileArg = {
+  storageId?: unknown;
+  filename?: unknown;
+};
+
+function isDataPythonInputFileArg(value: unknown): value is DataPythonInputFileArg {
+  return typeof value === "object" && value !== null;
+}
+
 export const dataPythonExec = createTool({
   name: "data_python_exec",
   description:
@@ -60,12 +69,15 @@ export const dataPythonExec = createTool({
           code,
           inputFiles: Array.isArray(args.inputFiles)
             ? args.inputFiles
-              .map((item) => ({
-                storageId: String((item as any)?.storageId ?? "").trim(),
-                filename: typeof (item as any)?.filename === "string"
-                  ? (item as any).filename
-                  : undefined,
-              }))
+              .map((item: unknown) => {
+                const inputFile = isDataPythonInputFileArg(item) ? item : {};
+                return {
+                  storageId: String(inputFile.storageId ?? "").trim(),
+                  filename: typeof inputFile.filename === "string"
+                    ? inputFile.filename
+                    : undefined,
+                };
+              })
               .filter((item) => item.storageId.length > 0)
             : undefined,
           exportPaths: Array.isArray(args.exportPaths)

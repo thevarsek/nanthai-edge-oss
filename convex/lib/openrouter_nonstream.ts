@@ -22,6 +22,7 @@ import {
   ChatRequestParameters,
   NonStreamResult,
   OpenRouterMessage,
+  PerplexityAnnotation,
   RetryConfig,
 } from "./openrouter_types";
 import { DeepPartial, mergeTestDeps } from "./test_deps";
@@ -45,6 +46,23 @@ export function createOpenRouterNonStreamingDepsForTest(
   return mergeTestDeps(defaultOpenRouterNonStreamingDeps, overrides);
 }
 
+function extractAnnotationsFromPayload(
+  parsed: Record<string, unknown>,
+): PerplexityAnnotation[] {
+  const choices = parsed.choices as
+    | Array<{ message?: { annotations?: unknown[] } }>
+    | undefined;
+  const rawAnnotations = choices?.[0]?.message?.annotations;
+  if (!Array.isArray(rawAnnotations)) return [];
+
+  return rawAnnotations.filter((ann): ann is PerplexityAnnotation => {
+    if (!ann || typeof ann !== "object") return false;
+    const data = ann as Record<string, unknown>;
+    const citation = data.url_citation as Record<string, unknown> | undefined;
+    return data.type === "url_citation" && typeof citation?.url === "string";
+  });
+}
+
 /**
  * Call OpenRouter without streaming (for title generation, etc.).
  */
@@ -63,6 +81,10 @@ export async function callOpenRouterNonStreaming(
   const strippedParams = new Set<string>();
   const maxUnsupportedParamRetries = 6;
   let rateLimitRetries = 0;
+  // 404 "No endpoints found" fallback: retry once with soft provider routing
+  // stripped. Hard privacy constraints (provider.zdr) are preserved by
+  // buildRequestBody.
+  let strippedProviderOnce = false;
   const startTime = Date.now();
   const msgCount = messages.length;
 
@@ -72,6 +94,7 @@ export async function callOpenRouterNonStreaming(
       messages,
       currentParams,
       false,
+      strippedProviderOnce,
     );
 
     const controller = new AbortController();
@@ -138,11 +161,27 @@ export async function callOpenRouterNonStreaming(
           }
         }
 
+        // 404 "No endpoints found" retry — strip soft provider routing hints
+        // and try once more. Keep hard privacy constraints such as provider.zdr.
+        if (
+          response.status === 404 &&
+          !strippedProviderOnce &&
+          /no endpoints found/i.test(errorMessage + " " + responseText)
+        ) {
+          console.warn("[openrouter:nonstream] 404 no endpoints — retrying without provider routing", {
+            model: currentModel,
+            hadCallerProvider: currentParams.provider != null,
+          });
+          strippedProviderOnce = true;
+          continue;
+        }
+
         // Fallback model
         if (fallbackModel && currentModel !== fallbackModel) {
           currentModel = fallbackModel;
           strippedParams.clear();
           rateLimitRetries = 0;
+          strippedProviderOnce = false;
           continue;
         }
 
@@ -196,6 +235,7 @@ export async function callOpenRouterNonStreaming(
           currentModel = fallbackModel;
           strippedParams.clear();
           rateLimitRetries = 0;
+          strippedProviderOnce = false;
           continue;
         }
         console.error("[openrouter:nonstream] 200-wrapped error", {
@@ -213,6 +253,7 @@ export async function callOpenRouterNonStreaming(
         audioBase64: extracted.audioBase64,
         audioTranscript: extracted.audioTranscript,
         generationId: typeof parsed.id === "string" && parsed.id.length > 0 ? parsed.id : null,
+        annotations: extractAnnotationsFromPayload(parsed),
       };
 
       const durationMs = Date.now() - startTime;

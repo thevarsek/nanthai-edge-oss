@@ -1,10 +1,11 @@
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
-import { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { MODEL_IDS } from "../lib/model_constants";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { ConvexError } from "convex/values";
 import { computeEmbedding } from "./embedding_helpers";
+import { isZdrEnabled } from "../lib/openrouter_zdr";
 
 const PRIMARY_PROVIDER = "openrouter" as const;
 const POLL_INTERVAL_MS = 100;
@@ -21,6 +22,10 @@ function hashText(text: string): string {
     hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
   }
   return `h${(hash >>> 0).toString(16)}`;
+}
+
+function hashTextForPrivacyMode(text: string, requireZdr: boolean): string {
+  return hashText(requireZdr ? `zdr:${text}` : text);
 }
 
 function getStableEmbeddingErrorCode(error: unknown): string {
@@ -55,12 +60,15 @@ async function computePrimaryEmbeddingForMessage(
     userId: string;
     chatId?: Id<"chats">;
     queryText: string;
+    requireZdr: boolean;
   },
 ): Promise<void> {
   const now = Date.now();
+  const textHash = hashTextForPrivacyMode(args.queryText, args.requireZdr);
   if (args.queryText.length === 0) {
     await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
       messageId: args.messageId,
+      textHash,
       status: "failed",
       errorCode: "empty_query",
       now,
@@ -70,9 +78,12 @@ async function computePrimaryEmbeddingForMessage(
 
   try {
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const embeddingResult = await computeEmbedding(args.queryText, apiKey);
+    const embeddingResult = await computeEmbedding(args.queryText, apiKey, {
+      requireZdr: args.requireZdr,
+    });
     await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
       messageId: args.messageId,
+      textHash,
       status: embeddingResult ? "ready" : "failed",
       embedding: embeddingResult?.embedding,
       usage: embeddingResult?.usage,
@@ -83,6 +94,7 @@ async function computePrimaryEmbeddingForMessage(
   } catch (error) {
     await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
       messageId: args.messageId,
+      textHash,
       status: "failed",
       errorCode: getStableEmbeddingErrorCode(error),
       now: Date.now(),
@@ -97,7 +109,7 @@ export interface GetMessageQueryEmbeddingArgs extends Record<string, unknown> {
 export async function getMessageQueryEmbeddingHandler(
   ctx: QueryCtx,
   args: GetMessageQueryEmbeddingArgs,
-): Promise<any | null> {
+): Promise<Doc<"messageQueryEmbeddings"> | null> {
   return await ctx.db
     .query("messageQueryEmbeddings")
     .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
@@ -140,12 +152,13 @@ export async function claimMessageQueryEmbeddingLeaseHandler(
     return { claimed: true, status: "pending" };
   }
 
-  if (existing.status === "ready") {
+  if (existing.status === "ready" && existing.textHash === args.textHash) {
     return { claimed: false, status: "ready" };
   }
 
   if (
     existing.status === "pending"
+    && existing.textHash === args.textHash
     && existing.leaseExpiresAt
     && existing.leaseExpiresAt > args.now
     && existing.leaseOwner !== args.leaseOwner
@@ -162,6 +175,8 @@ export async function claimMessageQueryEmbeddingLeaseHandler(
     embedding: undefined,
     usage: undefined,
     generationId: undefined,
+    usageRecordedAt: undefined,
+    usageRecordedMessageId: undefined,
     errorCode: undefined,
     leaseOwner: args.leaseOwner,
     leaseExpiresAt: args.leaseExpiresAt,
@@ -173,6 +188,7 @@ export async function claimMessageQueryEmbeddingLeaseHandler(
 
 export interface CompleteMessageQueryEmbeddingArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
+  textHash: string;
   status: "ready" | "failed";
   embedding?: number[];
   usage?: {
@@ -193,6 +209,7 @@ export async function completeMessageQueryEmbeddingHandler(
     .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
     .first();
   if (!existing) return;
+  if (existing.textHash !== args.textHash) return;
   if (existing.status === "ready" && args.status === "failed") return;
 
   await ctx.db.patch(existing._id, {
@@ -239,6 +256,7 @@ export interface PrimeMessageQueryEmbeddingArgs extends Record<string, unknown> 
   userId: string;
   chatId?: Id<"chats">;
   queryText?: string;
+  requireZdr?: boolean;
 }
 
 export async function primeMessageQueryEmbeddingHandler(
@@ -246,13 +264,18 @@ export async function primeMessageQueryEmbeddingHandler(
   args: PrimeMessageQueryEmbeddingArgs,
 ): Promise<void> {
   const queryText = await getQueryText(ctx, args.messageId, args.queryText);
+  const requireZdr = args.requireZdr ?? isZdrEnabled(
+    await ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  );
   const claim = await ctx.runMutation(
     internal.memory.operations.claimMessageQueryEmbeddingLease,
     {
       messageId: args.messageId,
       userId: args.userId,
       chatId: args.chatId,
-      textHash: hashText(queryText),
+      textHash: hashTextForPrivacyMode(queryText, requireZdr),
       leaseOwner: `prime:${args.messageId}`,
       leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
       now: Date.now(),
@@ -267,6 +290,7 @@ export async function primeMessageQueryEmbeddingHandler(
     userId: args.userId,
     chatId: args.chatId,
     queryText,
+    requireZdr,
   });
 }
 
@@ -278,17 +302,19 @@ export async function ensureMessageQueryEmbeddingReady(
     chatId?: Id<"chats">;
     queryText: string;
     leaseOwner: string;
+    requireZdr?: boolean;
   },
-): Promise<any | null> {
-  const textHash = hashText(args.queryText);
+): Promise<Doc<"messageQueryEmbeddings"> | null> {
+  const requireZdr = args.requireZdr === true;
+  const textHash = hashTextForPrivacyMode(args.queryText, requireZdr);
   const deadline = Date.now() + ENSURE_READY_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
     const row = await ctx.runQuery(internal.memory.operations.getMessageQueryEmbedding, {
       messageId: args.messageId,
     });
-    if (row?.status === "ready") return row;
-    if (row?.status === "failed") return row;
+    if (row?.status === "ready" && row.textHash === textHash) return row;
+    if (row?.status === "failed" && row.textHash === textHash) return row;
 
     const now = Date.now();
     const claim = await ctx.runMutation(
@@ -310,6 +336,7 @@ export async function ensureMessageQueryEmbeddingReady(
         userId: args.userId,
         chatId: args.chatId,
         queryText: args.queryText,
+        requireZdr,
       });
       continue;
     }
@@ -321,16 +348,19 @@ export async function ensureMessageQueryEmbeddingReady(
     messageId: args.messageId,
   });
   if (finalRow?.status === "ready" || finalRow?.status === "failed") {
-    return finalRow;
+    if (finalRow.textHash === textHash) return finalRow;
+    return null;
   }
 
   await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
     messageId: args.messageId,
+    textHash,
     status: "failed",
     errorCode: "embedding_wait_timeout",
     now: Date.now(),
   });
-  return await ctx.runQuery(internal.memory.operations.getMessageQueryEmbedding, {
+  const timedOutRow = await ctx.runQuery(internal.memory.operations.getMessageQueryEmbedding, {
     messageId: args.messageId,
   });
+  return timedOutRow?.textHash === textHash ? timedOutRow : null;
 }

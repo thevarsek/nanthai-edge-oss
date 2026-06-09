@@ -9,13 +9,33 @@ import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
 import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
 import { generateForParticipant } from "../chat/actions_run_generation_participant";
 import type { GenerationContinuationCheckpoint } from "../chat/generation_continuation_shared";
+import type { ParticipantConfig } from "../chat/actions_run_generation_types";
 import {
   buildParentContinuationPayload,
   isSubagentLeaseStale,
+  resolveSnapshotRequireZdr,
+  resolveWebSearchToolIntent,
   SUBAGENT_RECOVERY_LEASE_MS,
 } from "./shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { estimatePromptTokens } from "../chat/runtime_graph";
+import type { OpenRouterMessage } from "../lib/openrouter";
+
+type ParentContinuationRun = Parameters<typeof buildParentContinuationPayload>[0][number];
+type ChildGeneratedFile = NonNullable<ParentContinuationRun["generatedFiles"]>[number];
+type ChildGeneratedChart = NonNullable<ParentContinuationRun["generatedCharts"]>[number];
+type SubagentRunWithArtifacts = {
+  generatedFiles?: ChildGeneratedFile[];
+  generatedCharts?: ChildGeneratedChart[];
+};
+
+function collectGeneratedFiles(runs: SubagentRunWithArtifacts[]): ChildGeneratedFile[] {
+  return runs.flatMap((run) => run.generatedFiles ?? []);
+}
+
+function collectGeneratedCharts(runs: SubagentRunWithArtifacts[]): ChildGeneratedChart[] {
+  return runs.flatMap((run) => run.generatedCharts ?? []);
+}
 
 // PRE-3: Check "cancelled" before "completed" so that a cancelled generation
 // is not accidentally treated as completed when the message was already
@@ -86,8 +106,8 @@ async function reconcileOrFailStaleResume(
 
   const terminalState = mapParentTerminalState(parentMessage?.status, parentJob?.status);
   if (terminalState === "completed") {
-    const childGeneratedFiles = runs.flatMap((run: any) => run.generatedFiles ?? []);
-    const childGeneratedCharts = runs.flatMap((run: any) => run.generatedCharts ?? []);
+    const childGeneratedFiles = collectGeneratedFiles(runs);
+    const childGeneratedCharts = collectGeneratedCharts(runs);
     if (childGeneratedFiles.length > 0) {
       await ctx.runMutation(internal.subagents.mutations.attachGeneratedFilesToMessage, {
         messageId: batch.parentMessageId,
@@ -176,8 +196,8 @@ export async function continueParentAfterSubagentsHandler(
     existingParentJob?.status,
   );
   if (existingTerminalState) {
-    const childGeneratedFiles = runs.flatMap((run: any) => run.generatedFiles ?? []);
-    const childGeneratedCharts = runs.flatMap((run: any) => run.generatedCharts ?? []);
+    const childGeneratedFiles = collectGeneratedFiles(runs);
+    const childGeneratedCharts = collectGeneratedCharts(runs);
     if (existingTerminalState === "completed" && childGeneratedFiles.length > 0) {
       await ctx.runMutation(internal.subagents.mutations.attachGeneratedFilesToMessage, {
         messageId: batch.parentMessageId,
@@ -213,14 +233,16 @@ export async function continueParentAfterSubagentsHandler(
   const participantSnapshot = batch.participantSnapshot as {
     chatId: Id<"chats">;
     userId: string;
-    participant: any;
+    participant: ParticipantConfig;
   };
   const paramsSnapshot = batch.paramsSnapshot as {
     enabledIntegrations?: string[];
-    requestParams?: { webSearchEnabled?: boolean };
+    webSearchToolEnabled?: boolean;
+    requireZdr?: boolean;
+    requestParams?: { webSearchEnabled?: boolean; provider?: { zdr?: boolean } };
   };
   const continuationPayload = buildParentContinuationPayload(
-    runs.map((run: any) => ({
+    runs.map((run) => ({
       childIndex: run.childIndex,
       title: run.title,
       status: run.status,
@@ -231,11 +253,7 @@ export async function continueParentAfterSubagentsHandler(
     })),
   );
 
-  const requestMessages = (batch.resumeConversationSeed as Array<{
-    role: string;
-    tool_call_id?: string;
-    content?: unknown;
-  }>).map((message) => {
+  const requestMessages = (batch.resumeConversationSeed as OpenRouterMessage[]).map((message) => {
     if (message.role === "tool" && message.tool_call_id === batch.toolCallId) {
       return {
         ...message,
@@ -285,7 +303,7 @@ export async function continueParentAfterSubagentsHandler(
     batchId: batch._id,
     m38ResumeMetadata: resumeMetadata,
   });
-  const resumeTokenEstimate = estimatePromptTokens(requestMessages as any);
+  const resumeTokenEstimate = estimatePromptTokens(requestMessages);
   await ctx.runMutation(internal.chat.context_assembly_logs.insertContextAssemblyLog, {
     userId: batch.userId,
     chatId: batch.chatId,
@@ -337,10 +355,13 @@ export async function continueParentAfterSubagentsHandler(
     { userId: participantSnapshot.userId },
   );
   const isProUser = accountCapabilities?.isPro ?? false;
+  const webSearchToolEnabled = resolveWebSearchToolIntent(paramsSnapshot);
+  const requireZdrOverride = resolveSnapshotRequireZdr(paramsSnapshot);
   const toolRegistry = buildProgressiveToolRegistry({
     enabledIntegrations: paramsSnapshot.enabledIntegrations,
     isPro: isProUser,
     allowSubagents: false,
+    webSearchToolEnabled,
   });
 
   try {
@@ -355,7 +376,8 @@ export async function continueParentAfterSubagentsHandler(
         participants: [participantSnapshot.participant],
         userId: participantSnapshot.userId,
         expandMultiModelGroups: false,
-        webSearchEnabled: paramsSnapshot.requestParams?.webSearchEnabled ?? false,
+        webSearchEnabled: webSearchToolEnabled,
+        requireZdrOverride,
         enabledIntegrations: paramsSnapshot.enabledIntegrations,
         subagentsEnabled: false,
         subagentBatchId: batch._id,
@@ -373,6 +395,7 @@ export async function continueParentAfterSubagentsHandler(
       runtimeProfile: "mobileBasic",
       apiKey,
       requestMessagesOverride: requestMessages,
+      requireZdrOverride,
       forceToolChoiceNone: false,
       actionStartTime: Date.now(),
       // Parent-resume runs rebuild from the parent chat transcript only; they
@@ -423,7 +446,8 @@ export async function continueParentAfterSubagentsHandler(
             participant: participantSnapshot.participant,
             userId: participantSnapshot.userId,
             expandMultiModelGroups: false,
-            webSearchEnabled: paramsSnapshot.requestParams?.webSearchEnabled ?? false,
+            webSearchEnabled: webSearchToolEnabled,
+            requireZdrOverride,
             effectiveIntegrations: paramsSnapshot.enabledIntegrations ?? [],
             directToolNames: [],
             isPro: isProUser,
@@ -439,8 +463,8 @@ export async function continueParentAfterSubagentsHandler(
       throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Parent continuation unexpectedly deferred to subagents again." });
     }
 
-    const childGeneratedFiles = runs.flatMap((run: any) => run.generatedFiles ?? []);
-    const childGeneratedCharts = runs.flatMap((run: any) => run.generatedCharts ?? []);
+    const childGeneratedFiles = collectGeneratedFiles(runs);
+    const childGeneratedCharts = collectGeneratedCharts(runs);
     if (childGeneratedFiles.length > 0) {
       await ctx.runMutation(internal.subagents.mutations.attachGeneratedFilesToMessage, {
         messageId: batch.parentMessageId,

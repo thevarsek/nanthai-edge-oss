@@ -14,6 +14,7 @@ import { MODEL_IDS } from "../lib/model_constants";
 import { isTerminalSubagentStatus } from "../subagents/shared";
 import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./audio_public_handlers";
 import { isAudioAttachment } from "./audio_shared";
+import { shouldRequireZdrForMemoryPrewarm } from "./memory_prewarm_zdr";
 import { patchStreamingMessageStatus } from "./streaming_state";
 import { buildSeedTitle, isPlaceholderTitle } from "./title_helpers";
 import { buildRetryContract, type RetrySearchMode } from "./retry_contract";
@@ -271,17 +272,26 @@ export async function sendMessageHandler(
   });
 
   if (trimmedText.length > 0) {
+    const prewarmRequiresZdr = await shouldRequireZdrForMemoryPrewarm(ctx, {
+      userId,
+      chat,
+      participants,
+      enabledIntegrations: effectiveIntegrations,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
+    });
     await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageQueryEmbedding, {
       messageId: userMessageId,
       userId,
       chatId: args.chatId,
       queryText: trimmedText,
+      ...(prewarmRequiresZdr ? { requireZdr: true } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageMemoryContext, {
       messageId: userMessageId,
       userId,
       chatId: args.chatId,
       queryText: trimmedText,
+      ...(prewarmRequiresZdr ? { requireZdr: true } : {}),
     });
   }
 

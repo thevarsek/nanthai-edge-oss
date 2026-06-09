@@ -25,6 +25,10 @@ import {
 } from "./workflow_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import {
+  assertModelSupportsZdr,
+  isZdrEnabled,
+} from "../lib/openrouter_zdr";
+import {
   runPlanningPhase,
   runInitialSearchPhase,
   runAnalysisPhase,
@@ -174,17 +178,58 @@ export async function handlePhaseError(
   }
 }
 
+async function buildArgsWithApiKeyAndPolicy(
+  ctx: ActionCtx,
+  args: PhaseActionArgs,
+): Promise<{
+  pipelineArgs: PipelineArgs;
+  argsWithApiKey: PipelineArgs & { apiKey: string; requireZdr: boolean };
+  requireZdr: boolean;
+}> {
+  const [apiKey, preferences] = await Promise.all([
+    getRequiredUserOpenRouterApiKey(ctx, args.userId),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  ]);
+  const pipelineArgs = toPipelineArgs(args);
+  const requireZdr = isZdrEnabled(preferences);
+  return {
+    pipelineArgs,
+    argsWithApiKey: { ...pipelineArgs, apiKey, requireZdr },
+    requireZdr,
+  };
+}
+
+async function assertPhaseModelSupportsZdr(
+  ctx: ActionCtx,
+  modelId: string,
+  feature: string,
+  requireZdr: boolean,
+): Promise<void> {
+  if (!requireZdr) return;
+  const capabilities = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+    modelId,
+  });
+  assertModelSupportsZdr({ modelId, capabilities, feature });
+}
+
 // -- Phase 1: Planning --------------------------------------------------------
 
 export const runPlanningAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     try {
-      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-      const pipelineArgs = toPipelineArgs(args);
-      const argsWithApiKey = { ...pipelineArgs, apiKey };
+      const { argsWithApiKey, requireZdr } =
+        await buildArgsWithApiKeyAndPolicy(ctx, args);
       const preset = resolveComplexityPreset("paper", args.complexity);
 
+      await assertPhaseModelSupportsZdr(
+        ctx,
+        args.modelId,
+        "Research planning",
+        requireZdr,
+      );
       await checkCancellation(ctx, args.sessionId);
       await runPlanningPhase(ctx, argsWithApiKey, preset.breadth, args.phaseOrder);
 
@@ -206,9 +251,8 @@ export const runInitialSearchAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     try {
-      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-      const pipelineArgs = toPipelineArgs(args);
-      const argsWithApiKey = { ...pipelineArgs, apiKey };
+      const { argsWithApiKey, requireZdr } =
+        await buildArgsWithApiKeyAndPolicy(ctx, args);
       const preset = resolveComplexityPreset("paper", args.complexity);
 
       // Read queries from persisted planning phase
@@ -217,6 +261,12 @@ export const runInitialSearchAction = internalAction({
         throw new Error("No queries found from planning phase");
       }
 
+      await assertPhaseModelSupportsZdr(
+        ctx,
+        preset.searchModel,
+        "Research search",
+        requireZdr,
+      );
       await checkCancellation(ctx, args.sessionId);
       await runInitialSearchPhase(
         ctx,
@@ -255,15 +305,20 @@ export const runAnalysisAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     try {
-      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-      const pipelineArgs = toPipelineArgs(args);
-      const argsWithApiKey = { ...pipelineArgs, apiKey };
+      const { argsWithApiKey, requireZdr } =
+        await buildArgsWithApiKeyAndPolicy(ctx, args);
       const preset = resolveComplexityPreset("paper", args.complexity);
       const iteration = args.depthIteration ?? 0;
 
       // Reconstruct all search results accumulated so far
       const allSearchResults = await reconstructSearchResults(ctx, args.sessionId);
 
+      await assertPhaseModelSupportsZdr(
+        ctx,
+        args.modelId,
+        "Research analysis",
+        requireZdr,
+      );
       await checkCancellation(ctx, args.sessionId);
       await runAnalysisPhase(
         ctx,
@@ -292,9 +347,8 @@ export const runDepthSearchAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     try {
-      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-      const pipelineArgs = toPipelineArgs(args);
-      const argsWithApiKey = { ...pipelineArgs, apiKey };
+      const { argsWithApiKey, requireZdr } =
+        await buildArgsWithApiKeyAndPolicy(ctx, args);
       const preset = resolveComplexityPreset("paper", args.complexity);
       const iteration = args.depthIteration ?? 0;
 
@@ -309,6 +363,12 @@ export const runDepthSearchAction = internalAction({
         throw new Error(`No queries found from analysis phase iteration ${iteration}`);
       }
 
+      await assertPhaseModelSupportsZdr(
+        ctx,
+        preset.searchModel,
+        "Research search",
+        requireZdr,
+      );
       await checkCancellation(ctx, args.sessionId);
       await runDepthSearchPhase(
         ctx,
@@ -349,13 +409,18 @@ export const runSynthesisAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     try {
-      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-      const pipelineArgs = toPipelineArgs(args);
-      const argsWithApiKey = { ...pipelineArgs, apiKey };
+      const { argsWithApiKey, requireZdr } =
+        await buildArgsWithApiKeyAndPolicy(ctx, args);
 
       // Reconstruct all accumulated search results (with citations)
       const allSearchResults = await reconstructSearchResults(ctx, args.sessionId);
 
+      await assertPhaseModelSupportsZdr(
+        ctx,
+        args.modelId,
+        "Research synthesis",
+        requireZdr,
+      );
       await checkCancellation(ctx, args.sessionId);
       await runSynthesisPhase(
         ctx,
@@ -382,9 +447,8 @@ export const runPaperArchitectureAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     try {
-      const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-      const pipelineArgs = toPipelineArgs(args);
-      const argsWithApiKey = { ...pipelineArgs, apiKey };
+      const { argsWithApiKey, requireZdr } =
+        await buildArgsWithApiKeyAndPolicy(ctx, args);
 
       const phases = await ctx.runQuery(
         internal.search.queries.getSearchPhases,
@@ -397,6 +461,12 @@ export const runPaperArchitectureAction = internalAction({
         throw new Error("No synthesis phase found — cannot build paper architecture");
       }
 
+      await assertPhaseModelSupportsZdr(
+        ctx,
+        args.modelId,
+        "Research paper architecture",
+        requireZdr,
+      );
       await checkCancellation(ctx, args.sessionId);
       await runPaperArchitecturePhase(
         ctx,

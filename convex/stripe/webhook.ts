@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { httpAction, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import {
   extractStripeEntitlementUpdate,
   type StripeEvent,
@@ -75,7 +76,10 @@ export const updateStripeEntitlementStatus = internalMutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const matches = new Map<string, { _id: any; userId: string }>();
+    const matches = new Map<
+      Id<"purchaseEntitlements">,
+      { _id: Id<"purchaseEntitlements">; userId: string }
+    >();
 
     for (const externalPurchaseId of args.externalPurchaseIds) {
       const docs = await ctx.db

@@ -5,10 +5,11 @@
 
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { optionalAuth } from "../lib/auth";
 
-async function withAvatarUrl<T extends { avatarImageStorageId?: string }>(
-  ctx: { storage: { getUrl: (storageId: any) => Promise<string | null> } },
+async function withAvatarUrl<T extends { avatarImageStorageId?: Id<"_storage"> }>(
+  ctx: { storage: { getUrl: (storageId: Id<"_storage">) => Promise<string | null> } },
   persona: T,
 ): Promise<T & { avatarImageUrl?: string }> {
   if (!persona.avatarImageStorageId) {

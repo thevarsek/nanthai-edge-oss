@@ -1,5 +1,18 @@
-import { Id } from "../_generated/dataModel";
-import { QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
+
+type MemoryQueryResult = Partial<Doc<"memories">> & {
+  _id: Id<"memories">;
+  content: string;
+};
+
+type PersonaQueryResult = Partial<Doc<"personas">> & {
+  _id: Id<"personas"> | string;
+  userId: string;
+  name?: string;
+  avatarImageStorageId?: Id<"_storage"> | string;
+  avatarImageUrl?: string;
+};
 
 export interface ListAllMessagesArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
@@ -8,7 +21,7 @@ export interface ListAllMessagesArgs extends Record<string, unknown> {
 export async function listAllMessagesHandler(
   ctx: QueryCtx,
   args: ListAllMessagesArgs,
-): Promise<Array<any>> {
+): Promise<Array<Doc<"messages">>> {
   return await ctx.db
     .query("messages")
     .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
@@ -23,7 +36,7 @@ export interface GetUserMemoriesArgs extends Record<string, unknown> {
 export async function getUserMemoriesHandler(
   ctx: QueryCtx,
   args: GetUserMemoriesArgs,
-): Promise<Array<any>> {
+): Promise<MemoryQueryResult[]> {
   return await ctx.db
     .query("memories")
     .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -106,8 +119,8 @@ export interface GetPersonaArgs extends Record<string, unknown> {
 export async function getPersonaHandler(
   ctx: QueryCtx,
   args: GetPersonaArgs,
-): Promise<any | null> {
-  let persona: any | null = null;
+): Promise<PersonaQueryResult | null> {
+  let persona: PersonaQueryResult | null = null;
   try {
     const doc = await ctx.db.get(args.personaId as unknown as Id<"personas">);
     if (doc && doc.userId === args.userId) {
@@ -130,7 +143,9 @@ export async function getPersonaHandler(
 
   // Resolve avatarImageStorageId → avatarImageUrl
   if (persona.avatarImageStorageId) {
-    const avatarImageUrl = await ctx.storage.getUrl(persona.avatarImageStorageId);
+    const avatarImageUrl = await ctx.storage.getUrl(
+      persona.avatarImageStorageId as Id<"_storage">,
+    );
     return { ...persona, avatarImageUrl: avatarImageUrl ?? undefined };
   }
   return { ...persona, avatarImageUrl: undefined };
@@ -143,7 +158,7 @@ export interface GetChatInternalArgs extends Record<string, unknown> {
 export async function getChatInternalHandler(
   ctx: QueryCtx,
   args: GetChatInternalArgs,
-): Promise<any | null> {
+): Promise<Doc<"chats"> | null> {
   return await ctx.db.get(args.chatId);
 }
 
@@ -154,7 +169,7 @@ export interface GetMessageInternalArgs extends Record<string, unknown> {
 export async function getMessageInternalHandler(
   ctx: QueryCtx,
   args: GetMessageInternalArgs,
-): Promise<any | null> {
+): Promise<Doc<"messages"> | null> {
   return await ctx.db.get(args.messageId);
 }
 
@@ -165,14 +180,14 @@ export interface GetGenerationJobInternalArgs extends Record<string, unknown> {
 export async function getGenerationJobInternalHandler(
   ctx: QueryCtx,
   args: GetGenerationJobInternalArgs,
-): Promise<any | null> {
+): Promise<Doc<"generationJobs"> | null> {
   return await ctx.db.get(args.jobId);
 }
 
 export async function getGenerationContinuationInternalHandler(
   ctx: QueryCtx,
   args: GetGenerationJobInternalArgs,
-): Promise<any | null> {
+): Promise<Doc<"generationContinuations"> | null> {
   return await ctx.db
     .query("generationContinuations")
     .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
@@ -186,7 +201,7 @@ export interface GetUserPreferencesArgs extends Record<string, unknown> {
 export async function getUserPreferencesHandler(
   ctx: QueryCtx,
   args: GetUserPreferencesArgs,
-): Promise<any | null> {
+): Promise<Doc<"userPreferences"> | null> {
   return await ctx.db
     .query("userPreferences")
     .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -284,7 +299,7 @@ export interface GetVideoJobInternalArgs extends Record<string, unknown> {
 export async function getVideoJobInternalHandler(
   ctx: QueryCtx,
   args: GetVideoJobInternalArgs,
-): Promise<any> {
+): Promise<Doc<"videoJobs"> | null> {
   return await ctx.db.get(args.videoJobId);
 }
 
@@ -295,7 +310,7 @@ export interface GetVideoOutputUploadByTokenArgs extends Record<string, unknown>
 export async function getVideoOutputUploadByTokenHandler(
   ctx: QueryCtx,
   args: GetVideoOutputUploadByTokenArgs,
-): Promise<any> {
+): Promise<Doc<"videoOutputUploads"> | null> {
   return await ctx.db
     .query("videoOutputUploads")
     .withIndex("by_token", (q) => q.eq("token", args.token))

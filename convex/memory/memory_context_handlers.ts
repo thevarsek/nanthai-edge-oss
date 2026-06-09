@@ -12,10 +12,11 @@
 // =============================================================================
 
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
-import { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { ensureMessageQueryEmbeddingReady } from "./query_embedding_handlers";
+import { isZdrEnabled } from "../lib/openrouter_zdr";
 
 const LEASE_DURATION_MS = 15_000;
 const POLL_INTERVAL_MS = 100;
@@ -32,6 +33,10 @@ function hashText(text: string): string {
     hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
   }
   return `h${(hash >>> 0).toString(16)}`;
+}
+
+function hashTextForPrivacyMode(text: string, requireZdr: boolean): string {
+  return hashText(requireZdr ? `zdr:${text}` : text);
 }
 
 function getStableContextErrorCode(error: unknown): string {
@@ -76,11 +81,14 @@ async function computeMemoryContextForMessage(
     chatId?: Id<"chats">;
     queryText: string;
     leaseOwner: string;
+    requireZdr: boolean;
   },
 ): Promise<void> {
+  const textHash = hashTextForPrivacyMode(args.queryText, args.requireZdr);
   if (args.queryText.length === 0) {
     await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
       messageId: args.messageId,
+      textHash,
       status: "failed",
       errorCode: "empty_query",
       now: Date.now(),
@@ -98,11 +106,13 @@ async function computeMemoryContextForMessage(
       chatId: args.chatId,
       queryText: args.queryText,
       leaseOwner: args.leaseOwner,
+      requireZdr: args.requireZdr,
     });
 
     if (embeddingRow?.status !== "ready" || !Array.isArray(embeddingRow.embedding)) {
       await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
         messageId: args.messageId,
+        textHash,
         status: "failed",
         errorCode: typeof embeddingRow?.errorCode === "string"
           ? embeddingRow.errorCode
@@ -132,6 +142,7 @@ async function computeMemoryContextForMessage(
 
     await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
       messageId: args.messageId,
+      textHash,
       status: "ready",
       hydratedHits,
       memoryQueryText: args.queryText,
@@ -142,6 +153,7 @@ async function computeMemoryContextForMessage(
   } catch (error) {
     await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
       messageId: args.messageId,
+      textHash,
       status: "failed",
       errorCode: getStableContextErrorCode(error),
       now: Date.now(),
@@ -160,7 +172,7 @@ export interface GetMessageMemoryContextArgs extends Record<string, unknown> {
 export async function getMessageMemoryContextHandler(
   ctx: QueryCtx,
   args: GetMessageMemoryContextArgs,
-): Promise<any | null> {
+): Promise<Doc<"messageMemoryContexts"> | null> {
   return await ctx.db
     .query("messageMemoryContexts")
     .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
@@ -231,6 +243,8 @@ export async function claimMessageMemoryContextLeaseHandler(
     memoryQueryText: undefined,
     usage: undefined,
     generationId: undefined,
+    usageRecordedAt: undefined,
+    usageRecordedMessageId: undefined,
     errorCode: undefined,
     leaseOwner: args.leaseOwner,
     leaseExpiresAt: args.leaseExpiresAt,
@@ -246,8 +260,9 @@ export async function claimMessageMemoryContextLeaseHandler(
 
 export interface CompleteMessageMemoryContextArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
+  textHash: string;
   status: "ready" | "failed";
-  hydratedHits?: any[];
+  hydratedHits?: unknown[];
   memoryQueryText?: string;
   usage?: {
     promptTokens: number;
@@ -267,6 +282,7 @@ export async function completeMessageMemoryContextHandler(
     .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
     .first();
   if (!existing) return;
+  if (existing.textHash !== args.textHash) return;
   // Do not downgrade a ready row to failed — a late-arriving failure from a
   // retried worker must never clobber a good cache hit.
   if (existing.status === "ready" && args.status === "failed") return;
@@ -324,6 +340,7 @@ export interface PrimeMessageMemoryContextArgs extends Record<string, unknown> {
   userId: string;
   chatId?: Id<"chats">;
   queryText?: string;
+  requireZdr?: boolean;
 }
 
 export async function primeMessageMemoryContextHandler(
@@ -332,13 +349,18 @@ export async function primeMessageMemoryContextHandler(
 ): Promise<void> {
   const queryText = await getQueryText(ctx, args.messageId, args.queryText);
   const leaseOwner = `prime:${args.messageId}`;
+  const requireZdr = args.requireZdr ?? isZdrEnabled(
+    await ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  );
   const claim = await ctx.runMutation(
     internal.memory.operations.claimMessageMemoryContextLease,
     {
       messageId: args.messageId,
       userId: args.userId,
       chatId: args.chatId,
-      textHash: hashText(queryText),
+      textHash: hashTextForPrivacyMode(queryText, requireZdr),
       leaseOwner,
       leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
       now: Date.now(),
@@ -354,6 +376,7 @@ export async function primeMessageMemoryContextHandler(
     chatId: args.chatId,
     queryText,
     leaseOwner,
+    requireZdr,
   });
 }
 
@@ -369,9 +392,11 @@ export async function ensureMessageMemoryContextReady(
     chatId?: Id<"chats">;
     queryText: string;
     leaseOwner: string;
+    requireZdr?: boolean;
   },
-): Promise<any | null> {
-  const textHash = hashText(args.queryText);
+): Promise<Doc<"messageMemoryContexts"> | null> {
+  const requireZdr = args.requireZdr === true;
+  const textHash = hashTextForPrivacyMode(args.queryText, requireZdr);
   const deadline = Date.now() + ENSURE_READY_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
@@ -405,6 +430,7 @@ export async function ensureMessageMemoryContextReady(
         chatId: args.chatId,
         queryText: args.queryText,
         leaseOwner: args.leaseOwner,
+        requireZdr,
       });
       continue;
     }
@@ -425,12 +451,14 @@ export async function ensureMessageMemoryContextReady(
 
   await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
     messageId: args.messageId,
+    textHash,
     status: "failed",
     errorCode: "memory_context_wait_timeout",
     now: Date.now(),
   });
-  return await ctx.runQuery(
+  const timedOutRow = await ctx.runQuery(
     internal.memory.operations.getMessageMemoryContext,
     { messageId: args.messageId },
   );
+  return timedOutRow?.textHash === textHash ? timedOutRow : null;
 }

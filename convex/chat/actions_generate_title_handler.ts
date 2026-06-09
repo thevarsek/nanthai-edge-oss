@@ -4,6 +4,11 @@ import { Id } from "../_generated/dataModel";
 import { callOpenRouterNonStreaming, OpenRouterMessage } from "../lib/openrouter";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { MODEL_IDS } from "../lib/model_constants";
+import {
+  isZdrEnabled,
+  selectAncillaryModelForZdr,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import {
   fallbackTitleFromSource,
@@ -50,9 +55,14 @@ export async function generateTitleHandler(
   args: GenerateTitleArgs,
   deps: GenerateTitleHandlerDeps = defaultGenerateTitleHandlerDeps,
 ): Promise<void> {
-  const currentChat = await ctx.runQuery(internal.chat.queries.getChatInternal, {
-    chatId: args.chatId,
-  });
+  const [currentChat, prefs] = await Promise.all([
+    ctx.runQuery(internal.chat.queries.getChatInternal, {
+      chatId: args.chatId,
+    }),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  ]);
   if (!currentChat) {
     return;
   }
@@ -104,15 +114,17 @@ export async function generateTitleHandler(
 
   try {
     const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const model =
-      args.titleModel?.trim().length
-        ? args.titleModel.trim()
-        : DEFAULT_TITLE_MODEL;
+    const requireZdr = isZdrEnabled(prefs);
+    const model = selectAncillaryModelForZdr({
+      requestedModel: args.titleModel,
+      defaultModel: DEFAULT_TITLE_MODEL,
+      requireZdr,
+    });
     const result = await deps.callOpenRouterNonStreaming(
       apiKey,
       model,
       messages,
-      { temperature: 0.1, maxTokens: 24 },
+      withZdrProvider({ temperature: 0.1, maxTokens: 24 }, requireZdr),
       { fallbackModel: DEFAULT_TITLE_MODEL },
     );
 

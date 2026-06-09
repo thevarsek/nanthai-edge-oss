@@ -128,6 +128,49 @@ export function parseUnsupportedParameter(
   return null;
 }
 
+function hasWebSearchPlugin(
+  plugins: Array<{ id: string; [key: string]: unknown }> | null | undefined,
+): boolean {
+  return plugins?.some((plugin) => plugin.id === "web") ?? false;
+}
+
+function stripPluginsParameter(
+  params: ChatRequestParameters,
+): ChatRequestParameters | null {
+  const hasExplicitPlugins = params.plugins != null;
+  const hasGeneratedWebPlugin = params.webSearchEnabled === true;
+  if (!hasExplicitPlugins && !hasGeneratedWebPlugin) return null;
+
+  const stripped: ChatRequestParameters = {
+    ...params,
+    webSearchEnabled: false,
+  };
+  if (hasExplicitPlugins) {
+    stripped.plugins = null;
+  }
+  return stripped;
+}
+
+function stripWebSearchParameter(
+  params: ChatRequestParameters,
+): ChatRequestParameters | null {
+  const hasGeneratedWebPlugin = params.webSearchEnabled === true;
+  const hasExplicitWebPlugin = hasWebSearchPlugin(params.plugins);
+  if (!hasGeneratedWebPlugin && !hasExplicitWebPlugin) return null;
+
+  const stripped: ChatRequestParameters = {
+    ...params,
+    webSearchEnabled: false,
+  };
+  if (hasExplicitWebPlugin) {
+    const remainingPlugins = params.plugins?.filter((plugin) => plugin.id !== "web");
+    stripped.plugins = remainingPlugins && remainingPlugins.length > 0
+      ? remainingPlugins
+      : null;
+  }
+  return stripped;
+}
+
 export function stripParameter(
   paramName: string,
   params: ChatRequestParameters,
@@ -160,17 +203,13 @@ export function stripParameter(
       stripped.imageConfig = null;
       return stripped;
     case "plugins":
-      if (stripped.plugins == null) return null;
-      stripped.plugins = null;
-      return stripped;
+      return stripPluginsParameter(params);
     case "transforms":
       if (stripped.transforms === null) return null;
       stripped.transforms = null;
       return stripped;
     case "web_search":
-      if (!stripped.webSearchEnabled) return null;
-      stripped.webSearchEnabled = false;
-      return stripped;
+      return stripWebSearchParameter(params);
     default:
       return null; // Unknown parameter, can't strip
   }

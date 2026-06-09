@@ -711,13 +711,13 @@ async function maybeScheduleAutoAudio(
     ctx.db.get(chatId),
   ]);
   if (!triggerMessage || !chat) return;
-  if (!isAudioBasedUserMessage(triggerMessage as any)) return;
+  if (!isAudioBasedUserMessage(triggerMessage)) return;
 
   const preferences = await ctx.db
     .query("userPreferences")
     .withIndex("by_user", (q) => q.eq("userId", chat.userId))
     .first();
-  if (!resolveAutoAudioResponseEnabled(chat as any, preferences as any)) return;
+  if (!resolveAutoAudioResponseEnabled(chat, preferences)) return;
 
   await ctx.scheduler.runAfter(0, internal.chat.actions.generateAudioForMessage, {
     messageId,
@@ -959,13 +959,7 @@ export async function createMemoryHandler(
 // after fetching authoritative usage from the OpenRouter Generations API.
 // ---------------------------------------------------------------------------
 
-export interface StoreGenerationUsageArgs extends Record<string, unknown> {
-  messageId: Id<"messages">;
-  chatId: Id<"chats">;
-  userId: string;
-  promptTokens: number;
-  completionTokens: number;
-  totalTokens: number;
+interface UsageDetailFieldArgs {
   cost?: number;
   isByok?: boolean;
   cachedTokens?: number;
@@ -982,8 +976,17 @@ export interface StoreGenerationUsageArgs extends Record<string, unknown> {
   webSearchRequests?: number;
 }
 
+export interface StoreGenerationUsageArgs extends Record<string, unknown>, UsageDetailFieldArgs {
+  messageId: Id<"messages">;
+  chatId: Id<"chats">;
+  userId: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 /** Helper: pick only the non-undefined optional usage detail fields from args. */
-function usageDetailFields(args: StoreGenerationUsageArgs): Record<string, number | boolean | undefined> {
+function usageDetailFields(args: UsageDetailFieldArgs): Record<string, number | boolean | undefined> {
   return {
     isByok: args.isByok,
     cachedTokens: args.cachedTokens,
@@ -1175,7 +1178,7 @@ async function maybeScheduleChatCompletionPush(
 // reserved for the primary generation.
 // ---------------------------------------------------------------------------
 
-export interface StoreAncillaryCostArgs extends Record<string, unknown> {
+export interface StoreAncillaryCostArgs extends Record<string, unknown>, UsageDetailFieldArgs {
   messageId: Id<"messages">;
   chatId: Id<"chats">;
   userId: string;
@@ -1183,7 +1186,6 @@ export interface StoreAncillaryCostArgs extends Record<string, unknown> {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
-  cost?: number;
   source: string;
   generationId?: string;
 }
@@ -1208,6 +1210,8 @@ export async function storeAncillaryCostHandler(
     }
   }
 
+  const details = usageDetailFields(args);
+
   await ctx.db.insert("usageRecords", {
     userId: args.userId,
     chatId: args.chatId,
@@ -1217,6 +1221,7 @@ export async function storeAncillaryCostHandler(
     completionTokens: args.completionTokens,
     totalTokens: args.totalTokens,
     cost,
+    ...details,
     source: args.source,
     createdAt: now,
   });

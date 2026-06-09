@@ -184,6 +184,76 @@ test("upsertBatch patches hasZdrEndpoint when it changes on existing model", asy
   assert.equal(patches[0].value.hasZdrEndpoint, true);
 });
 
+test("upsertBatch preserves existing hasZdrEndpoint when incoming ZDR data is unavailable", async () => {
+  const { ctx, patches } = buildUpsertCtx([
+    {
+      _id: "m1",
+      modelId: "openai/gpt-4o",
+      name: "GPT-4o",
+      provider: "openai",
+      hasZdrEndpoint: true,
+    },
+  ]);
+
+  await (upsertBatch as any)._handler(ctx, {
+    models: [
+      {
+        modelId: "openai/gpt-4o",
+        name: "GPT-4o Updated",
+        provider: "openai",
+        hasZdrEndpoint: undefined,
+      },
+    ],
+  });
+
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].value.name, "GPT-4o Updated");
+  assert.equal("hasZdrEndpoint" in patches[0].value, false);
+});
+
+test("upsertBatch skips patch when only unavailable ZDR data differs from existing model", async () => {
+  const { ctx, patches } = buildUpsertCtx([
+    {
+      _id: "m1",
+      modelId: "openai/gpt-4o",
+      name: "GPT-4o",
+      provider: "openai",
+      hasZdrEndpoint: true,
+      supportsImages: false,
+      supportsVideo: false,
+      supportsTools: true,
+      contextLength: 128000,
+      maxCompletionTokens: 16384,
+      inputPricePer1M: 2.5,
+      outputPricePer1M: 10,
+      supportedParameters: ["tools", "temperature"],
+      architecture: { modality: "text+image->text" },
+    },
+  ]);
+
+  await (upsertBatch as any)._handler(ctx, {
+    models: [
+      {
+        modelId: "openai/gpt-4o",
+        name: "GPT-4o",
+        provider: "openai",
+        hasZdrEndpoint: undefined,
+        supportsImages: false,
+        supportsVideo: false,
+        supportsTools: true,
+        contextLength: 128000,
+        maxCompletionTokens: 16384,
+        inputPricePer1M: 2.5,
+        outputPricePer1M: 10,
+        supportedParameters: ["tools", "temperature"],
+        architecture: { modality: "text+image->text" },
+      },
+    ],
+  });
+
+  assert.equal(patches.length, 0);
+});
+
 test("upsertBatch skips patch when hasZdrEndpoint is unchanged", async () => {
   const { ctx, patches } = buildUpsertCtx([
     {

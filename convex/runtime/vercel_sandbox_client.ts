@@ -21,6 +21,8 @@
 import { Sandbox } from "@vercel/sandbox";
 import { guessMimeTypeFromPath } from "./shared";
 
+export type { Sandbox };
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------

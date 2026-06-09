@@ -22,6 +22,7 @@ export interface ProgressiveToolRegistryOptions {
   activeProfiles?: SkillToolProfileId[];
   directToolNames?: string[];
   disabled?: boolean;
+  webSearchToolEnabled?: boolean;
 }
 
 export function buildProgressiveToolRegistry(
@@ -36,6 +37,7 @@ export function buildProgressiveToolRegistry(
     registry,
     options.allowSubagents === true,
     options.directToolNames ?? [],
+    options.webSearchToolEnabled === true,
   );
 
   for (const profile of options.activeProfiles ?? []) {

@@ -15,7 +15,10 @@ import {
   X_TITLE,
   REQUEST_TIMEOUT_MS,
 } from "../lib/openrouter_constants";
-import { MODEL_IDS } from "../lib/model_constants";
+import {
+  MODEL_IDS,
+  OPENROUTER_DEFAULT_PROVIDER_SORT,
+} from "../lib/model_constants";
 
 export const SEARCH_TRANSFORMS = ["middle-out"];
 
@@ -127,13 +130,13 @@ export async function executePerplexitySearch(
   queries: string[],
   searchModel: string,
   apiKey: string,
-  options: { maxTokens?: number } = {},
+  options: { maxTokens?: number; requireZdr?: boolean } = {},
 ): Promise<SearchResult[]> {
   const results = await Promise.allSettled(
-    queries.map((query) => callPerplexity(query, searchModel, apiKey, options.maxTokens)),
+    queries.map((query) => callPerplexity(query, searchModel, apiKey, options)),
   );
 
-  return results.map((result, i) => {
+  const mappedResults = results.map((result, i) => {
     if (result.status === "fulfilled") {
       return {
         query: queries[i],
@@ -154,6 +157,25 @@ export async function executePerplexitySearch(
         : "Unknown search error",
     };
   });
+
+  if (
+    options.requireZdr === true &&
+    mappedResults.length > 0 &&
+    mappedResults.every((result) => !result.success)
+  ) {
+    throw new ConvexError({
+      code: "ZDR_SEARCH_UNAVAILABLE" as const,
+      message:
+        `Search is unavailable with Zero Data Retention for ${searchModel}. ` +
+        "Please choose a ZDR-compatible search model or turn off ZDR.",
+      failures: mappedResults.map((result) => ({
+        query: result.query,
+        error: result.error ?? "Unknown search error",
+      })),
+    });
+  }
+
+  return mappedResults;
 }
 
 interface PerplexityResponse {
@@ -169,84 +191,122 @@ interface PerplexityResponse {
   generationId?: string;
 }
 
+function buildPerplexityProvider(
+  requireZdr: boolean,
+  stripSoftProviderRouting: boolean,
+): Record<string, unknown> | undefined {
+  const provider: Record<string, unknown> = stripSoftProviderRouting
+    ? {}
+    : {
+        ...(OPENROUTER_DEFAULT_PROVIDER_SORT ?? {}),
+      };
+  if (requireZdr) provider.zdr = true;
+  return Object.keys(provider).length > 0 ? provider : undefined;
+}
+
 async function callPerplexity(
   query: string,
   model: string,
   apiKey: string,
-  maxTokens = 5120,
+  options: { maxTokens?: number; requireZdr?: boolean } = {},
 ): Promise<PerplexityResponse> {
   // Perplexity models have native web search — they always search, that's their
   // purpose.  Adding the `openrouter:web_search` server tool causes a 404
   // ("No endpoints found that support tool use").  Only inject the server tool
   // for non-Perplexity models that need it.
   const isPerplexityModel = model.startsWith("perplexity/");
-
-  const body: Record<string, unknown> = {
-    model,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a web research assistant. Return dense research notes, not a narrative essay. " +
-          "Prioritize source-backed claims, named studies, concrete numbers, counterpoints, limitations, and direct URLs. " +
-          "Avoid generic background prose and repetition. Include ALL source URLs as inline clickable markdown links: [Source Title](https://url). " +
-          "Place citations near the claims they support — do not group them at the end.",
-      },
-      { role: "user", content: query },
-    ],
-    stream: false,
-    temperature: 0.3,
-    max_tokens: maxTokens,
-    // Non-Perplexity models: add server tool so they can search the web.
-    // Perplexity models: omit tools — they search natively and reject the
-    // tools parameter with a 404.
-    //
-    // NOTE: This branch is currently dead code — all search models are
-    // Perplexity (`model_constants.searchPerplexity`). If a non-Perplexity
-    // model is added, verify that `openrouter:web_search` as the sole server
-    // tool reliably triggers a search. Server tools are executed by OpenRouter
-    // transparently (not via the model's tool-call mechanism), so
-    // `tool_choice` does not apply. If the model skips searching, the system
-    // prompt's instruction to "include ALL source URLs" is the only lever —
-    // consider switching to a model with native search instead.
-    ...(isPerplexityModel
-      ? {}
-      : {
-          tools: [
-            {
-              type: "openrouter:web_search",
-              parameters: { max_results: 5, max_total_results: 25 },
-            },
-          ],
-        }),
+  const maxTokens = options.maxTokens ?? 5120;
+  const buildBody = (stripSoftProviderRouting: boolean): Record<string, unknown> => {
+    const provider = buildPerplexityProvider(
+      options.requireZdr === true,
+      stripSoftProviderRouting,
+    );
+    return {
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a web research assistant. Return dense research notes, not a narrative essay. " +
+            "Prioritize source-backed claims, named studies, concrete numbers, counterpoints, limitations, and direct URLs. " +
+            "Avoid generic background prose and repetition. Include ALL source URLs as inline clickable markdown links: [Source Title](https://url). " +
+            "Place citations near the claims they support — do not group them at the end.",
+        },
+        { role: "user", content: query },
+      ],
+      stream: false,
+      temperature: 0.3,
+      max_tokens: maxTokens,
+      // Non-Perplexity models: add server tool so they can search the web.
+      // Perplexity models: omit tools — they search natively and reject the
+      // tools parameter with a 404.
+      //
+      // NOTE: This branch is currently dead code — all search models are
+      // Perplexity (`model_constants.searchPerplexity`). If a non-Perplexity
+      // model is added, verify that `openrouter:web_search` as the sole server
+      // tool reliably triggers a search. Server tools are executed by OpenRouter
+      // transparently (not via the model's tool-call mechanism), so
+      // `tool_choice` does not apply. If the model skips searching, the system
+      // prompt's instruction to "include ALL source URLs" is the only lever —
+      // consider switching to a model with native search instead.
+      ...(isPerplexityModel
+        ? {}
+        : {
+            tools: [
+              {
+                type: "openrouter:web_search",
+                parameters: { max_results: 5, max_total_results: 25 },
+              },
+            ],
+          }),
+      ...(provider ? { provider } : {}),
+    };
   };
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
-
   try {
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": HTTP_REFERER,
-        "X-Title": X_TITLE,
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    let responseText = "";
+    let strippedProviderOnce = false;
+    while (true) {
+      const body = buildBody(strippedProviderOnce);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new ConvexError({
-        code: "INTERNAL_ERROR" as const,
-        message: `Perplexity API error (${response.status}): ${errorText.slice(0, 300)}`,
-      });
+      try {
+        const response = await fetch(OPENROUTER_API_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "HTTP-Referer": HTTP_REFERER,
+            "X-Title": X_TITLE,
+          },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+        responseText = await response.text();
+
+        if (!response.ok) {
+          if (
+            response.status === 404 &&
+            !strippedProviderOnce &&
+            /no endpoints found/i.test(responseText)
+          ) {
+            strippedProviderOnce = true;
+            continue;
+          }
+          throw new ConvexError({
+            code: "INTERNAL_ERROR" as const,
+            message: `Perplexity API error (${response.status}): ${responseText.slice(0, 300)}`,
+          });
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+      break;
     }
 
-    const parsed = await response.json();
+    const parsed = JSON.parse(responseText);
     const message = parsed?.choices?.[0]?.message;
     const rawContent: string = message?.content ?? "";
 
@@ -351,8 +411,6 @@ async function callPerplexity(
     }
 
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

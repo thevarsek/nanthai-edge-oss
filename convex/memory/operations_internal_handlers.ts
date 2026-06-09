@@ -1,13 +1,21 @@
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import {
   ActionCtx,
   MutationCtx,
   QueryCtx,
 } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import { computeEmbedding, jaccardSimilarity } from "./embedding_helpers";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { MODEL_IDS } from "../lib/model_constants";
+import { isZdrEnabled } from "../lib/openrouter_zdr";
+
+type MemoryDocResult = Partial<Doc<"memories">> & {
+  _id: Id<"memories">;
+  content?: string;
+  userId?: string;
+};
 
 export interface RetrieveRelevantArgs extends Record<string, unknown> {
   queryText: string;
@@ -26,11 +34,18 @@ export interface RetrieveRelevantArgs extends Record<string, unknown> {
 export async function retrieveRelevantHandler(
   ctx: ActionCtx,
   args: RetrieveRelevantArgs,
-): Promise<Array<any>> {
+): Promise<Array<MemoryDocResult & { score: number }>> {
   if (!args.queryText.trim()) return [];
 
-  const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-  const embeddingResult = await computeEmbedding(args.queryText, apiKey);
+  const [apiKey, preferences] = await Promise.all([
+    getRequiredUserOpenRouterApiKey(ctx, args.userId),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  ]);
+  const embeddingResult = await computeEmbedding(args.queryText, apiKey, {
+    requireZdr: isZdrEnabled(preferences),
+  });
   if (!embeddingResult) return [];
 
   const requestedLimit = args.limit ?? 10;
@@ -45,7 +60,7 @@ export async function retrieveRelevantHandler(
   });
   if (results.length === 0) return [];
 
-  const memories = [];
+  const memories: Array<MemoryDocResult & { score: number }> = [];
   for (const result of results) {
     if (memories.length >= requestedLimit) break;
 
@@ -98,8 +113,30 @@ export async function computeAndStoreEmbeddingHandler(
   });
   if (!memory?.userId) return;
 
-  const apiKey = await getRequiredUserOpenRouterApiKey(ctx, memory.userId);
-  const embeddingResult = await computeEmbedding(args.content, apiKey);
+  const [apiKey, preferences] = await Promise.all([
+    getRequiredUserOpenRouterApiKey(ctx, memory.userId),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: memory.userId,
+    }),
+  ]);
+  let embeddingResult: Awaited<ReturnType<typeof computeEmbedding>>;
+  try {
+    embeddingResult = await computeEmbedding(args.content, apiKey, {
+      requireZdr: isZdrEnabled(preferences),
+    });
+  } catch (error) {
+    if (
+      error instanceof ConvexError &&
+      error.data?.code === "ZDR_EMBEDDING_UNAVAILABLE"
+    ) {
+      console.warn("[memory] skipped embedding storage under ZDR", {
+        memoryId: args.memoryId,
+        userId: memory.userId,
+      });
+      return;
+    }
+    throw error;
+  }
   if (!embeddingResult) return;
 
   await ctx.runMutation(internal.memory.operations.storeEmbedding, {
@@ -131,7 +168,7 @@ export interface GetEmbeddingDocArgs extends Record<string, unknown> {
 export async function getEmbeddingDocHandler(
   ctx: QueryCtx,
   args: GetEmbeddingDocArgs,
-): Promise<any | null> {
+): Promise<Doc<"memoryEmbeddings"> | null> {
   return await ctx.db.get(args.embeddingId);
 }
 
@@ -142,7 +179,7 @@ export interface GetMemoryDocArgs extends Record<string, unknown> {
 export async function getMemoryDocHandler(
   ctx: QueryCtx,
   args: GetMemoryDocArgs,
-): Promise<any | null> {
+): Promise<MemoryDocResult | null> {
   return await ctx.db.get(args.memoryId);
 }
 
@@ -156,8 +193,8 @@ export interface HydrateRelevantMemoryHitsArgs extends Record<string, unknown> {
 export async function hydrateRelevantMemoryHitsHandler(
   ctx: QueryCtx,
   args: HydrateRelevantMemoryHitsArgs,
-): Promise<Array<any>> {
-  const hydrated: Array<any> = [];
+): Promise<Array<Doc<"memories"> & { score: number }>> {
+  const hydrated: Array<Doc<"memories"> & { score: number }> = [];
 
   for (const hit of args.hits) {
     const embeddingDoc = await ctx.db.get(hit.embeddingId);

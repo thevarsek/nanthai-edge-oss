@@ -6,6 +6,11 @@ import { callOpenRouterNonStreaming, type OpenRouterMessage } from "../lib/openr
 import { MODEL_IDS } from "../lib/model_constants";
 import { requireAuth } from "../lib/auth";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import {
+  isZdrEnabled,
+  selectAncillaryModelForZdr,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
 import { extractDocxContent } from "../tools/docx_reader";
 import {
   detectMemoryExclusionRules,
@@ -158,9 +163,15 @@ export async function extractImportCandidatesHandler(
   const { userId } = await deps.requireAuth(ctx);
   await ensureProOnAction(ctx, userId);
   const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, userId);
-  const existingMemories = await ctx.runQuery(internal.chat.queries.getUserMemories, {
-    userId,
-  });
+  const [existingMemories, prefs] = await Promise.all([
+    ctx.runQuery(internal.chat.queries.getUserMemories, {
+      userId,
+    }),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId,
+    }),
+  ]);
+  const requireZdr = isZdrEnabled(prefs);
   const candidates: Array<Record<string, unknown>> = [];
   const exclusionRules = args.allowContactDetails
     ? { excludePhone: false, excludeEmail: false }
@@ -171,17 +182,25 @@ export async function extractImportCandidatesHandler(
     if (!blob) continue;
 
     const messages = await buildImportMessages(file, blob, deps);
+    const modelId = selectAncillaryModelForZdr({
+      requestedModel: args.extractionModel,
+      defaultModel: MODEL_IDS.memoryImportExtraction,
+      requireZdr,
+    });
     const result = await deps.callOpenRouterNonStreaming(
       apiKey,
-      args.extractionModel?.trim() || MODEL_IDS.memoryImportExtraction,
+      modelId,
       messages,
-      {
-        temperature: 0,
-        maxTokens: 1200,
-        plugins: file.mimeType.toLowerCase().includes("pdf")
-          ? [{ id: "file-parser" }]
-          : undefined,
-      },
+      withZdrProvider(
+        {
+          temperature: 0,
+          maxTokens: 1200,
+          plugins: file.mimeType.toLowerCase().includes("pdf")
+            ? [{ id: "file-parser" }]
+            : undefined,
+        },
+        requireZdr,
+      ),
       { fallbackModel: MODEL_IDS.memoryExtractionFallback },
     );
 
@@ -236,7 +255,7 @@ export async function extractImportCandidatesHandler(
       keptForFile += 1;
     }
     console.info(
-      `[memory import] file="${file.filename}" raw=${extracted.length} kept=${keptForFile} textContent=${file.textContent ? "yes" : "no"} model="${args.extractionModel?.trim() || MODEL_IDS.memoryImportExtraction}"`,
+      `[memory import] file="${file.filename}" raw=${extracted.length} kept=${keptForFile} textContent=${file.textContent ? "yes" : "no"} model="${modelId}"`,
     );
   }
 

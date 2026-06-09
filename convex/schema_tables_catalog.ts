@@ -368,7 +368,7 @@ export const catalogSchemaTables = {
     // "generation" | "title" | "compaction" | "memory_extraction" |
     // "memory_embedding" | "search_query_gen" | "search_perplexity" |
     // "search_planning" | "search_analysis" | "search_synthesis" |
-    // "search_architecture" | "subagent"
+    // "search_architecture" | "subagent" | "tool_web_search"
     source: v.optional(v.string()),
     createdAt: v.number(),
   })

@@ -1,5 +1,5 @@
-import { Id } from "../_generated/dataModel";
-import { QueryCtx } from "../_generated/server";
+import type { Doc, Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
 import {
   getAuthorizedChat,
@@ -27,6 +27,18 @@ const MAX_LIST_CHATS_LIMIT = 500;
 const MAX_LIST_CHATS_SEARCH_RESULTS = 500;
 const LEGACY_USER_SOURCE_SCAN_MULTIPLIER = 10;
 const CHAT_FALLBACK_TITLE = "New conversation";
+
+type ChatListItem = Doc<"chats"> & {
+  participantSummary: Array<{
+    modelId: string;
+    personaId?: string;
+    personaName?: string;
+    personaEmoji?: string;
+    personaAvatarImageUrl?: string;
+  }>;
+};
+
+type PublicMessage = Omit<Doc<"messages">, "searchContext">;
 
 function legacyUserSourceScanLimit(limit: number): number {
   return Math.min(MAX_LIST_CHATS_LIMIT, Math.max(limit, limit * LEGACY_USER_SOURCE_SCAN_MULTIPLIER));
@@ -87,7 +99,7 @@ async function searchChatsByText(
   source: ListChatsArgs["source"],
   limit: number,
   folderNamesById: Map<string, string>,
-): Promise<Array<any>> {
+): Promise<Array<Doc<"chats">>> {
   const searchLimit = Math.max(limit, Math.min(MAX_LIST_CHATS_SEARCH_RESULTS, limit * 10));
   const applyFilters = <Q extends { eq: (field: "userId" | "folderId" | "source", value: string) => Q }>(q: Q): Q => {
     const scoped = q.eq("userId", userId);
@@ -106,7 +118,7 @@ async function searchChatsByText(
       .take(searchLimit),
   ]);
 
-  const byId = new Map<string, any>();
+  const byId = new Map<string, Doc<"chats">>();
   for (const chat of [...titleMatches, ...previewMatches]) {
     if (chat.isDeleting !== true && chatMatchesSource(chat, source) && chatMatchesSearch(chat, query, folderNamesById)) {
       byId.set(chat._id as string, chat);
@@ -147,7 +159,7 @@ async function searchChatsByText(
 export async function listChatsHandler(
   ctx: QueryCtx,
   args: ListChatsArgs,
-): Promise<Array<any>> {
+): Promise<ChatListItem[]> {
   const auth = await optionalAuth(ctx);
   if (!auth) return [];
 
@@ -168,7 +180,7 @@ export async function listChatsHandler(
     }
   }
 
-  let chats;
+  let chats: Doc<"chats">[];
   if (args.folderId && searchQuery) {
     chats = await searchChatsByText(ctx, auth.userId, searchQuery, args.folderId, args.source, limit, folderNamesById);
   } else if (searchQuery) {
@@ -367,7 +379,7 @@ export interface GetChatArgs extends Record<string, unknown> {
 export async function getChatHandler(
   ctx: QueryCtx,
   args: GetChatArgs,
-): Promise<any | null> {
+): Promise<Doc<"chats"> | null> {
   const auth = await optionalAuth(ctx);
   if (!auth) return null;
 
@@ -386,7 +398,7 @@ export interface ListMessagesArgs extends Record<string, unknown> {
 export async function listMessagesHandler(
   ctx: QueryCtx,
   args: ListMessagesArgs,
-): Promise<Array<any>> {
+): Promise<PublicMessage[]> {
   const auth = await optionalAuth(ctx);
   if (!auth) return [];
 
@@ -454,7 +466,7 @@ export interface GetMessageArgs extends Record<string, unknown> {
 export async function getMessageHandler(
   ctx: QueryCtx,
   args: GetMessageArgs,
-): Promise<any | null> {
+): Promise<PublicMessage | null> {
   const auth = await optionalAuth(ctx);
   if (!auth) return null;
 
@@ -504,7 +516,7 @@ export interface GetActiveJobsArgs extends Record<string, unknown> {
 export async function getActiveJobsHandler(
   ctx: QueryCtx,
   args: GetActiveJobsArgs,
-): Promise<Array<any>> {
+): Promise<Array<Doc<"generationJobs">>> {
   const auth = await optionalAuth(ctx);
   if (!auth) return [];
 
@@ -714,6 +726,7 @@ const SEARCH_SOURCES = new Set([
   "search_analysis",
   "search_synthesis",
   "search_architecture",
+  "tool_web_search",
 ]);
 
 export async function getChatCostSummaryHandler(

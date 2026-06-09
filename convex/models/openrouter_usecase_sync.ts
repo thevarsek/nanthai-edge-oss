@@ -32,10 +32,18 @@ const TOP_N = 10;
 
 // -- Types --------------------------------------------------------------------
 
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 interface CategoryResult {
   category: string;
   modelIds: string[]; // ordered by API return order (rank)
 }
+
+type OpenRouterCategoryModel = {
+  id?: string;
+};
 
 // -- Sync action --------------------------------------------------------------
 
@@ -75,8 +83,8 @@ export const syncUseCases = internalAction({
         // Take top N model IDs in returned order
         const modelIds = models
           .slice(0, TOP_N)
-          .map((m: any) => m.id as string)
-          .filter((id: string) => typeof id === "string" && id.length > 0);
+          .map((m: OpenRouterCategoryModel) => m.id)
+          .filter(isNonEmptyString);
 
         results.push({ category, modelIds });
       } catch (err) {

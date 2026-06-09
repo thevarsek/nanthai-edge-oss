@@ -18,6 +18,12 @@ Do **not** create separate client-specific business logic when the behavior can 
 - Runtime capabilities such as `mcpRuntime` come from `userCapabilities` / `accountCapabilities`. **Note (M27):** `sandboxRuntime` was removed — workspace and analytics tools are now available to all Pro users without an additional capability grant.
 - Clients should use the Pro-specific preference query for Pro gating and `accountCapabilities` for runtime capability gating. Do not treat generic capability grants as a second Pro source.
 
+## Google Data Protection Scope
+
+Google Workspace integrations require protected provider routing for model calls that can receive direct Google Workspace data, including the main generation/tool flow and same-turn retrieval work that is part of that protected context. This Google-derived protection requirement is not transitive to later helper calls that only process assistant-generated prose or ordinary chat metadata.
+
+Title generation, memory extraction, and text-to-speech/audio generation may use normal helper routing for Google-derived prose unless `userPreferences.zdrEnabled === true` or a helper-specific ZDR requirement is explicitly passed. Do not treat the absence of Google-derived `provider.zdr` on those helper paths as a privacy regression unless the helper starts sending raw Google payloads, Google tool artifacts, or direct Google API responses.
+
 ## Intentional Gaps
 
 - In-chat text search is intentionally not a shared product feature. Web can rely on the browser's native find-in-page behavior; iOS and Android do not provide a custom in-chat search UI.

@@ -5,9 +5,15 @@ import { callOpenRouterStreaming, OpenRouterMessage } from "../lib/openrouter";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { MODEL_IDS } from "../lib/model_constants";
 import {
+  isZdrEnabled,
+  selectAncillaryModelForZdr,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
+import {
   normalizeMemoryCategory,
   normalizeMemoryRecord,
   normalizeMemoryRetrievalMode,
+  type MemoryRecordLike,
 } from "../memory/shared";
 import {
   classifyMemoryType,
@@ -124,17 +130,22 @@ export async function extractMemoriesHandler(
   ctx: ActionCtx,
   args: ExtractMemoriesArgs,
 ): Promise<void> {
-  const existingMemories = await ctx.runQuery(internal.chat.queries.getUserMemories, {
-    userId: args.userId,
-  });
+  const [existingMemories, prefs] = await Promise.all([
+    ctx.runQuery(internal.chat.queries.getUserMemories, {
+      userId: args.userId,
+    }),
+    ctx.runQuery(internal.chat.queries.getUserPreferences, {
+      userId: args.userId,
+    }),
+  ]);
 
   const existingContext =
     existingMemories.length > 0
       ? "\n\nExisting memories (do NOT duplicate these):\n" +
         existingMemories
-          .filter((memory: any) => isMemoryActive(memory))
+          .filter((memory: MemoryRecordLike) => isMemoryActive(memory))
           .slice(0, 60)
-          .map((memory: any) => `- ${memory.content}`)
+          .map((memory: MemoryRecordLike) => `- ${memory.content}`)
           .join("\n")
       : "";
 
@@ -143,12 +154,17 @@ export async function extractMemoriesHandler(
   try {
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
     const messages = buildMemoryExtractionMessages(args, existingContext);
-    const memoryModel = args.extractionModel || DEFAULT_MEMORY_MODEL;
+    const requireZdr = isZdrEnabled(prefs);
+    const memoryModel = selectAncillaryModelForZdr({
+      requestedModel: args.extractionModel,
+      defaultModel: DEFAULT_MEMORY_MODEL,
+      requireZdr,
+    });
     const result = await callOpenRouterStreaming(
       apiKey,
       memoryModel,
       messages,
-      { temperature: 0, maxTokens: 500 },
+      withZdrProvider({ temperature: 0, maxTokens: 500 }, requireZdr),
       {},
       { fallbackModel: MEMORY_FALLBACK_MODEL },
     );
@@ -238,7 +254,7 @@ export async function extractMemoriesHandler(
       const conflicting = findConflictingMemory(
         normalizedContent,
         lifecycle.memoryType,
-        existingMemories.filter((memory: any) => isMemoryActive(memory)),
+        existingMemories.filter((memory: MemoryRecordLike) => isMemoryActive(memory)),
       );
       if (conflicting?._id) {
         await ctx.runMutation(internal.chat.mutations.supersedeMemory, {

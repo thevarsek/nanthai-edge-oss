@@ -98,7 +98,7 @@ export interface ChatRequestParameters {
   modalities?: string[] | null;
   audio?: { voice: string; format: string } | null;
   imageConfig?: { aspectRatio?: string; imageSize?: string } | null;
-  plugins?: { id: string }[] | null;
+  plugins?: Array<{ id: string; [key: string]: unknown }> | null;
   webSearchEnabled?: boolean;
   /**
    * @deprecated No longer applied. Previously capped cumulative web search
@@ -184,6 +184,8 @@ export interface NonStreamResult {
   audioTranscript: string;
   /** OpenRouter generation ID (top-level `id` on the response body). */
   generationId: string | null;
+  /** URL citation annotations, when OpenRouter includes them. */
+  annotations: PerplexityAnnotation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +198,7 @@ export interface PerplexityAnnotation {
   url_citation: {
     url: string;
     title?: string;
+    content?: string;
     start_index?: number;
     end_index?: number;
   };

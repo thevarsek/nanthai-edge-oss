@@ -10,6 +10,7 @@ import {
   generateAudioForMessageHandler,
   previewVoiceHandler,
 } from "../chat/audio_actions";
+import { MODEL_IDS } from "../lib/model_constants";
 
 function textResponse(status: number, text: string) {
   return {
@@ -95,6 +96,7 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
     )) as any;
 
   const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
+  const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
   const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
   const reinforceRef = getFunctionName(internal.chat.mutations.reinforceMemory);
   const supersedeRef = getFunctionName(internal.chat.mutations.supersedeMemory);
@@ -141,6 +143,7 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === getUserMemoriesRef) return existingMemories;
+      if (name === prefsRef) return {};
       if (name === getUserApiKeyRef) return "sk-test";
       throw new Error(`unexpected query ${name}`);
     },
@@ -216,6 +219,7 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
     )) as any;
 
   const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
+  const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
   const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
   const createRef = getFunctionName(internal.chat.mutations.createMemory);
   const mutationCalls: Array<{ ref: string; args: Record<string, unknown> }> = [];
@@ -225,6 +229,7 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === getUserMemoriesRef) return [];
+      if (name === prefsRef) return {};
       if (name === getUserApiKeyRef) return "sk-test";
       throw new Error(`unexpected query ${name}`);
     },
@@ -248,6 +253,48 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
 
   assert.equal(mutationCalls.some((call) => call.ref === createRef), false);
   assert.deepEqual(scheduled.map((entry) => entry.source), ["memory_extraction"]);
+});
+
+test("extractMemoriesHandler uses ZDR-safe default model and provider when ZDR is enabled", async (t) => {
+  t.after(() => mock.restoreAll());
+
+  let requestBody: Record<string, unknown> = {};
+  mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
+    requestBody = JSON.parse(String(init?.body));
+    return sseResponseFromContent("[]");
+  }) as any;
+
+  const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
+  const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
+  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+
+  await extractMemoriesHandler({
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as any);
+      if (name === getUserMemoriesRef) return [];
+      if (name === prefsRef) {
+        return {
+          zdrEnabled: true,
+          memoryExtractionModelId: "openai/non-zdr-memory",
+        };
+      }
+      if (name === getUserApiKeyRef) return "sk-test";
+      throw new Error(`unexpected query ${name}`);
+    },
+    runMutation: async () => null,
+    scheduler: { runAfter: async () => undefined },
+  } as any, {
+    chatId: "chat_1" as any,
+    userMessageContent: "Remember that I prefer concise answers.",
+    userMessageId: "msg_user_zdr" as any,
+    assistantMessageId: "msg_assistant_zdr" as any,
+    assistantContent: "Noted.",
+    userId: "user_1",
+    extractionModel: "openai/non-zdr-memory",
+  });
+
+  assert.equal(requestBody.model, MODEL_IDS.memoryExtraction);
+  assert.deepEqual(requestBody.provider, { sort: "latency", zdr: true });
 });
 
 test("generateAudioForMessageHandler reuses existing audio without regenerating", async (t) => {
@@ -351,6 +398,49 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
   assert.equal(requestBodies[1].audio.voice, "nova");
   assert.equal(previewResult.mimeType, "audio/wav");
   assert.equal(previewResult.audioBase64.length > 0, true);
+});
+
+test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZDR", async (t) => {
+  t.after(() => mock.restoreAll());
+
+  const requestBodies: any[] = [];
+  mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
+    requestBodies.push(JSON.parse(String(init?.body)));
+    return sseResponseWithAudio(Buffer.alloc(480, 1).toString("base64"), "Narrate this.");
+  });
+
+  const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
+  const chatRef = getFunctionName(internal.chat.queries.getChatInternal);
+  const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
+  const keyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
+
+  await generateAudioForMessageHandler({
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as any);
+      if (name === messageRef) {
+        return {
+          _id: "msg_audio_zdr",
+          role: "assistant",
+          chatId: "chat_1",
+          content: "Narrate this.",
+        };
+      }
+      if (name === chatRef) return { _id: "chat_1", userId: "user_1" };
+      if (name === prefsRef) return { zdrEnabled: true, preferredVoice: "alloy" };
+      if (name === keyRef) return "sk-test";
+      if (name === capsRef) return { hasZdrEndpoint: true };
+      throw new Error(`unexpected query ${name}`);
+    },
+    runMutation: async () => null,
+    storage: {
+      store: async () => "storage_zdr",
+    },
+  } as any, {
+    messageId: "msg_audio_zdr" as any,
+  });
+
+  assert.deepEqual(requestBodies[0].provider, { sort: "latency", zdr: true });
 });
 
 test("generateAudioForMessageHandler clears in-progress flags when synthesis fails", async (t) => {

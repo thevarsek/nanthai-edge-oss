@@ -82,9 +82,32 @@ test("stripParameter clears each retryable OpenRouter setting only when it is pr
   assert.equal(stripParameter("reasoning", params)?.reasoningEffort, null);
   assert.equal(stripParameter("modalities", params)?.modalities, null);
   assert.equal(stripParameter("image_config", params)?.imageConfig, null);
-  assert.equal(stripParameter("plugins", params)?.plugins, null);
+  const strippedPlugins = stripParameter("plugins", params);
+  assert.equal(strippedPlugins?.plugins, null);
+  assert.equal(strippedPlugins?.webSearchEnabled, false);
   assert.equal(stripParameter("transforms", params)?.transforms, null);
-  assert.equal(stripParameter("web_search", params)?.webSearchEnabled, false);
+  const strippedWebSearch = stripParameter("web_search", params);
+  assert.equal(strippedWebSearch?.webSearchEnabled, false);
+  assert.equal(strippedWebSearch?.plugins, null);
+
+  assert.deepEqual(
+    stripParameter("plugins", { webSearchEnabled: true }),
+    { webSearchEnabled: false },
+  );
+  assert.deepEqual(
+    stripParameter("web_search", {
+      plugins: [{ id: "custom" }, { id: "web", max_results: 5 }],
+      webSearchEnabled: true,
+    })?.plugins,
+    [{ id: "custom" }],
+  );
+  assert.equal(
+    stripParameter("web_search", {
+      plugins: [{ id: "web", max_results: 5 }],
+      webSearchEnabled: false,
+    })?.plugins,
+    null,
+  );
 
   assert.equal(stripParameter("max_tokens", { maxTokens: null }), null);
   assert.equal(stripParameter("include_reasoning", {}), null);

@@ -1,4 +1,5 @@
-import { MODEL_IDS } from "../lib/model_constants";
+import { ConvexError } from "convex/values";
+import { MODEL_IDS, OPENROUTER_DEFAULT_PROVIDER_SORT } from "../lib/model_constants";
 import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 
 /** M23: Embedding result including optional usage for cost tracking. */
@@ -11,15 +12,30 @@ export interface EmbeddingResult {
   generationId?: string;
 }
 
+function buildEmbeddingProvider(requireZdr: boolean): Record<string, unknown> | undefined {
+  const provider: Record<string, unknown> = {
+    ...(OPENROUTER_DEFAULT_PROVIDER_SORT ?? {}),
+  };
+  if (requireZdr) provider.zdr = true;
+  return Object.keys(provider).length > 0 ? provider : undefined;
+}
+
 /**
  * Compute embedding via OpenRouter using the caller's BYOK API key.
  * All embedding cost and quota is attributed to the user's OpenRouter account.
+ *
+ * OpenRouter currently accepts `provider.zdr` on `/embeddings` for
+ * openai/text-embedding-3-small. Verified with a direct probe on 2026-06-08.
+ * If that route regresses, ZDR callers fail closed with a stable error code
+ * instead of retrying without the privacy constraint.
  */
 export async function computeEmbedding(
   text: string,
   apiKey: string,
+  options: { requireZdr?: boolean } = {},
 ): Promise<EmbeddingResult | null> {
   try {
+    const provider = buildEmbeddingProvider(options.requireZdr === true);
     const response = await fetch(
       "https://openrouter.ai/api/v1/embeddings",
       {
@@ -33,12 +49,23 @@ export async function computeEmbedding(
         body: JSON.stringify({
           model: MODEL_IDS.embedding,
           input: text.substring(0, 8000),
+          ...(provider ? { provider } : {}),
         }),
       },
     );
 
     if (!response.ok) {
+      const errorText = await response.text();
       console.error(`Embedding API error: ${response.status}`);
+      if (options.requireZdr === true) {
+        throw new ConvexError({
+          code: "ZDR_EMBEDDING_UNAVAILABLE" as const,
+          message:
+            "Memory embeddings are unavailable with Zero Data Retention for " +
+            `${MODEL_IDS.embedding}. Contextual memory retrieval was skipped.`,
+          details: errorText.slice(0, 300),
+        });
+      }
       return null;
     }
 
@@ -60,6 +87,7 @@ export async function computeEmbedding(
       generationId: data.id ?? undefined,
     };
   } catch (error) {
+    if (error instanceof ConvexError) throw error;
     console.error("Embedding computation failed:", error);
     return null;
   }

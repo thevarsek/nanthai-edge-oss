@@ -367,3 +367,95 @@ test("runToolCallLoop exits after the configured round budget before the next mo
   assert.equal(result.exitReason, "round_budget");
   assert.equal(result.conversationMessages.length, 3);
 });
+
+test("runToolCallLoop allows two invocation rounds before continuation handoff", async () => {
+  const registry = new ToolRegistry();
+  registry.register(
+    createTool({
+      name: "runtime_safe_tool",
+      description: "runtime safe",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({ success: true, data: { ok: true } }),
+    }),
+  );
+
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () => {
+      streamCalls += 1;
+      return makeStreamResult({
+        finishReason: "tool_calls",
+        toolCalls: [makeToolCall("call_2", "runtime_safe_tool", {})],
+      });
+    },
+  });
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [makeToolCall("call_1", "runtime_safe_tool", {})],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "hi" }],
+      params: {},
+      callbacks: {},
+      registry,
+      toolCtx: { ctx: {} as any, userId: "user_1" },
+      maxRoundsPerInvocation: 2,
+    },
+    deps,
+  );
+
+  assert.equal(streamCalls, 1);
+  assert.equal(result.exitedEarly, true);
+  assert.equal(result.exitReason, "round_budget");
+  assert.equal(result.allToolCalls.length, 2);
+});
+
+test("runToolCallLoop can stop after a tool round before the next model call", async () => {
+  const registry = new ToolRegistry();
+  registry.register(
+    createTool({
+      name: "load_skill",
+      description: "load skill",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        success: true,
+        data: { activeProfiles: ["google"] },
+      }),
+    }),
+  );
+
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () => {
+      streamCalls += 1;
+      return makeStreamResult({ content: "should not happen" });
+    },
+  });
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [makeToolCall("call_1", "load_skill", { skill: "gmail" })],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "hi" }],
+      params: {},
+      callbacks: {},
+      registry,
+      toolCtx: { ctx: {} as any, userId: "user_1" },
+      onPrepareNextTurn: async () => ({ stopBeforeModelCall: true }),
+      maxRoundsPerInvocation: 2,
+    },
+    deps,
+  );
+
+  assert.equal(streamCalls, 0);
+  assert.equal(result.exitedEarly, true);
+  assert.equal(result.exitReason, "round_budget");
+});

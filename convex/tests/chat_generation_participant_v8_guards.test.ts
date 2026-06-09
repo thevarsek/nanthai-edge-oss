@@ -158,6 +158,7 @@ test("generateForParticipant enforces ZDR before opening a model stream", async 
   assert.equal(result.failed, true);
   const finalize = mutations.find((entry) => entry.args.status === "failed");
   assert.match(String(finalize?.args.content), /Zero Data Retention/);
+  assert.match(String(finalize?.args.error), /ZDR_MODEL_UNAVAILABLE/);
 });
 
 test("generateForParticipant rejects Google Workspace data on disallowed providers", async () => {
@@ -192,6 +193,7 @@ test("generateForParticipant rejects Google Workspace data on disallowed provide
   assert.equal(result.failed, true);
   const finalize = mutations.find((entry) => entry.args.status === "failed");
   assert.match(String(finalize?.args.content), /Google Workspace data/);
+  assert.match(String(finalize?.args.error), /GOOGLE_DATA_MODEL_UNAVAILABLE/);
 });
 
 test("generateForParticipant completes a streamed response and stores usage metadata", async (t) => {

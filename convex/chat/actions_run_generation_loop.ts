@@ -106,6 +106,7 @@ export interface GenerationLoopOptions {
   initialToolResults?: RecordedToolResult[];
   initialCompactionCount?: number;
   maxToolRoundsPerInvocation?: number;
+  requireZdr?: boolean;
 }
 
 const defaultRunGenerationWithCompactionDeps = {
@@ -504,6 +505,7 @@ export async function runGenerationWithCompaction(
     const compactionResult = await deps.compactMessages(
       conversationToCompact,
       apiKey,
+      { requireZdr: options.requireZdr === true },
     );
 
     // M23: Collect compaction usage for ancillary cost tracking.

@@ -12,6 +12,7 @@ import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 const listAllMessagesRef = getFunctionName(internal.chat.queries.listAllMessages);
 const getPersonaRef = getFunctionName(internal.chat.queries.getPersona);
 const getModelCapabilitiesRef = getFunctionName(internal.chat.queries.getModelCapabilities);
+const getUserPreferencesRef = getFunctionName(internal.chat.queries.getUserPreferences);
 
 test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-only outputs", async () => {
   const mutationCalls: Record<string, unknown>[] = [];
@@ -89,6 +90,7 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
           hasReasoning: true,
         };
       }
+      if (refKey === getUserPreferencesRef) return {};
       throw new Error("unexpected query");
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -180,6 +182,7 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async () =>
           { _id: "msg_assistant", role: "assistant", content: "" },
         ];
       }
+      if (refKey === getUserPreferencesRef) return {};
       // isJobCancelled (now an internalQuery)
       if (args && typeof args === "object" && "jobId" in (args as Record<string, unknown>)) {
         cancellationChecks += 1;

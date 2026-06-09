@@ -32,6 +32,7 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   userId: string;
   expandMultiModelGroups: boolean;
   webSearchEnabled: boolean;
+  requireZdrOverride?: boolean;
   // M10 Phase B — integration toggles (e.g. ["gmail", "drive", "calendar"])
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;

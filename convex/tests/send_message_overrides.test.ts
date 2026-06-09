@@ -16,6 +16,10 @@ function buildMockCtx(overrides: {
   originalAssistantParentMessageIds?: string[];
   originalAssistantMessage?: Record<string, unknown>;
   cachedModels?: Record<string, Record<string, unknown>>;
+  userPreferences?: Record<string, unknown> | null;
+  oauthConnections?: Record<string, unknown>[];
+  personas?: Record<string, unknown>[];
+  chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
 } = {}) {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
@@ -28,7 +32,32 @@ function buildMockCtx(overrides: {
     originalAssistantParentMessageIds = ["msg_user_1"],
     originalAssistantMessage = {},
     cachedModels = {},
+    userPreferences = { userId: "user_1" },
+    oauthConnections = [],
+    personas = [],
+    chatIntegrationOverrides,
   } = overrides;
+
+  type IndexQuery = { eq: (field: string, value: unknown) => IndexQuery };
+  const indexedRows = (rows: Record<string, unknown>[]) => ({
+    withIndex: (_indexName: string, apply: (query: IndexQuery) => IndexQuery) => {
+      const filters: Record<string, unknown> = {};
+      const query: IndexQuery = {
+        eq: (field: string, value: unknown) => {
+          filters[field] = value;
+          return query;
+        },
+      };
+      apply(query);
+      const filtered = rows.filter((row) =>
+        Object.entries(filters).every(([field, value]) => row[field] === value),
+      );
+      return {
+        first: async () => filtered[0] ?? null,
+        collect: async () => filtered,
+      };
+    },
+  });
 
   const ctx = {
     auth: {
@@ -37,7 +66,13 @@ function buildMockCtx(overrides: {
     db: {
       get: async (id: string) => {
         if (id === "chat_1" && chatExists) {
-          return { _id: "chat_1", userId: "user_1", title: "Chat", messageCount: 1 };
+          return {
+            _id: "chat_1",
+            userId: "user_1",
+            title: "Chat",
+            messageCount: 1,
+            integrationOverrides: chatIntegrationOverrides,
+          };
         }
         // For retry: original assistant message
         if (id === "msg_assist_1") {
@@ -62,6 +97,10 @@ function buildMockCtx(overrides: {
             content: "Hi",
           };
         }
+        const persona = personas.find((row) => row._id === id);
+        if (persona) {
+          return persona;
+        }
         return null;
       },
       insert: async (table: string, value: Record<string, unknown>) => {
@@ -83,7 +122,13 @@ function buildMockCtx(overrides: {
           };
         }
         if (table === "userPreferences") {
-          return { withIndex: () => ({ first: async () => ({ userId: "user_1" }) }) };
+          return indexedRows(userPreferences ? [userPreferences] : []);
+        }
+        if (table === "oauthConnections") {
+          return indexedRows(oauthConnections);
+        }
+        if (table === "personas") {
+          return indexedRows(personas);
         }
         if (table === "messages") {
           return {
@@ -131,6 +176,13 @@ function buildMockCtx(overrides: {
 
   return { ctx, inserts, patches, scheduled };
 }
+
+const activeGmailConnection = {
+  userId: "user_1",
+  provider: "gmail_manual",
+  status: "active",
+  scopes: [],
+};
 
 // =============================================================================
 // createAssistantMessagesAndJobs — stamps turn overrides on assistant messages
@@ -284,6 +336,108 @@ test("sendMessageHandler passes turnIntegrationOverrides to runGeneration schedu
   assert.deepEqual(genCall.args.turnIntegrationOverrides, intOv);
 });
 
+test("sendMessageHandler primes memory caches with ZDR for Google integrations", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    cachedModels: {
+      "openai/gpt-4o": { supportsTools: true },
+    },
+    oauthConnections: [activeGmailConnection],
+  });
+
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1",
+    text: "Use Gmail context",
+    participants: [{ modelId: "openai/gpt-4o" }],
+    enabledIntegrations: ["gmail"],
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) => entry.args.queryText === "Use Gmail context");
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
+});
+
+test("sendMessageHandler primes memory caches with ZDR for Google turn overrides", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    oauthConnections: [activeGmailConnection],
+  });
+
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1",
+    text: "Use Gmail context",
+    participants: [{ modelId: "openai/gpt-4o" }],
+    turnIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) => entry.args.queryText === "Use Gmail context");
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
+});
+
+test("sendMessageHandler primes memory caches with ZDR for saved Google defaults", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    userPreferences: {
+      userId: "user_1",
+      integrationDefaults: [{ integrationId: "gmail", enabled: true }],
+    },
+    oauthConnections: [activeGmailConnection],
+  });
+
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1",
+    text: "Use default Gmail context",
+    participants: [{ modelId: "openai/gpt-4o" }],
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) =>
+    entry.args.queryText === "Use default Gmail context",
+  );
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
+});
+
+test("sendMessageHandler primes memory caches with ZDR for chat Google overrides", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    oauthConnections: [activeGmailConnection],
+    chatIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
+  });
+
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1",
+    text: "Use chat Gmail context",
+    participants: [{ modelId: "openai/gpt-4o" }],
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) =>
+    entry.args.queryText === "Use chat Gmail context",
+  );
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
+});
+
+test("sendMessageHandler primes memory caches with ZDR for persona Google overrides", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    isPro: true,
+    oauthConnections: [activeGmailConnection],
+    personas: [{
+      _id: "persona_1",
+      userId: "user_1",
+      integrationOverrides: [{ integrationId: "gmail", enabled: true }],
+    }],
+  });
+
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1",
+    text: "Use persona Gmail context",
+    participants: [{ modelId: "openai/gpt-4o", personaId: "persona_1" }],
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) =>
+    entry.args.queryText === "Use persona Gmail context",
+  );
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
+});
+
 test("sendMessageHandler omits turn overrides when not provided", async () => {
   const { ctx, scheduled } = buildMockCtx();
 
@@ -357,6 +511,48 @@ test("retryMessageHandler passes turnIntegrationOverrides to runGeneration sched
   const genCall = scheduled.find((s) => s.args.assistantMessageIds);
   assert.ok(genCall);
   assert.deepEqual(genCall.args.turnIntegrationOverrides, intOv);
+});
+
+test("retryMessageHandler primes memory caches with ZDR for Google integrations", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    oauthConnections: [activeGmailConnection],
+    originalAssistantMessage: {
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-4o" }],
+        searchMode: "none",
+        enabledIntegrations: ["gmail"],
+      },
+    },
+  });
+
+  await retryMessageHandler(ctx, {
+    messageId: "msg_assist_1",
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) => entry.args.queryText === "Hi");
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
+});
+
+test("retryMessageHandler primes memory caches with ZDR for Google turn overrides", async () => {
+  const { ctx, scheduled } = buildMockCtx({
+    oauthConnections: [activeGmailConnection],
+    originalAssistantMessage: {
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-4o" }],
+        searchMode: "none",
+        turnIntegrationOverrides: [{ integrationId: "gmail", enabled: true }],
+      },
+    },
+  });
+
+  await retryMessageHandler(ctx, {
+    messageId: "msg_assist_1",
+  } as any);
+
+  const memoryPrewarms = scheduled.filter((entry) => entry.args.queryText === "Hi");
+  assert.equal(memoryPrewarms.length, 2);
+  assert.ok(memoryPrewarms.every((entry) => entry.args.requireZdr === true));
 });
 
 test("retryMessageHandler omits turn overrides when not provided", async () => {

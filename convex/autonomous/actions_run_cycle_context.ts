@@ -1,4 +1,4 @@
-import { ActionCtx } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ParticipantConfig } from "./actions_helpers";
@@ -8,6 +8,13 @@ import {
   RunCycleArgs,
 } from "./actions_run_cycle_types";
 import { resolveMemoryContextForGeneration } from "../chat/action_memory_helpers";
+import { isZdrEnabled } from "../lib/openrouter_zdr";
+
+type MemoryContextMessage = {
+  _id: Id<"messages">;
+  role: string;
+  content: string;
+};
 
 export function normalizeRunCycleArgs(args: RunCycleArgs): NormalizedRunCycleArgs {
   const participants: ParticipantConfig[] = args.participantConfigs.map(
@@ -80,13 +87,16 @@ export async function loadMemoryContext(
 ): Promise<string | undefined> {
   if (!chatId) return undefined;
   const rawMessages = await ctx.runQuery(internal.chat.queries.listAllMessages, { chatId });
+  const preferences = await ctx.runQuery(internal.chat.queries.getUserPreferences, {
+    userId,
+  });
   const lastUserMessage = rawMessages
     .slice()
     .reverse()
-    .find((message: any) => message.role === "user");
+    .find((message: MemoryContextMessage) => message.role === "user");
   if (!lastUserMessage) return undefined;
   return resolveMemoryContextForGeneration(ctx, {
-    messages: rawMessages.map((message: any) => ({
+    messages: rawMessages.map((message: MemoryContextMessage) => ({
       _id: message._id,
       role: message.role,
       content: message.content,
@@ -94,6 +104,7 @@ export async function loadMemoryContext(
     userMessageId: lastUserMessage._id,
     userId,
     personaId,
+    requireZdr: isZdrEnabled(preferences),
   });
 }
 

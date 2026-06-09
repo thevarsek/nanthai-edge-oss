@@ -5,6 +5,7 @@ import type { SkillToolProfileId } from "../skills/tool_profiles";
 import { ToolRegistry, type RegisteredTool } from "./registry";
 import { fetchImage } from "./fetch_image";
 import { searchChats } from "./search_chats";
+import { webSearch } from "./web_search";
 import { createScheduledJob, listScheduledJobs, deleteScheduledJob } from "./scheduled_jobs";
 import { updateScheduledJob } from "./scheduled_jobs_update";
 import { createPersona, deletePersona } from "./persona";
@@ -143,8 +144,12 @@ export function registerBaseTools(
   registry: ToolRegistry,
   _allowSubagents: boolean,
   directToolNames: string[] = [],
+  webSearchToolEnabled = false,
 ): void {
   registerToolsIfMissing(registry, BASE_TOOLS);
+  if (webSearchToolEnabled) {
+    registerToolsIfMissing(registry, [webSearch]);
+  }
   registerDirectToolsIfMissing(registry, directToolNames);
 }
 

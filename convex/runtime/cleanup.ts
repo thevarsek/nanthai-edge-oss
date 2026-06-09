@@ -17,6 +17,13 @@
 
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+
+type StaleSandboxSession = {
+  id: Id<"sandboxSessions">;
+  providerSandboxId?: string;
+  hasVm: boolean;
+};
 
 export const cleanStaleSandboxSessions = internalAction({
   args: {},
@@ -31,7 +38,7 @@ export const cleanStaleSandboxSessions = internalAction({
 
     // 2. Best-effort Sandbox.stop() for sessions that may have a live VM
     const sessionsWithVm = sessions.filter(
-      (s: any) => s.hasVm && s.providerSandboxId,
+      (s: StaleSandboxSession) => s.hasVm && s.providerSandboxId,
     );
     if (sessionsWithVm.length > 0) {
       const { Sandbox } = await import("@vercel/sandbox");
@@ -42,7 +49,7 @@ export const cleanStaleSandboxSessions = internalAction({
       if (token && projectId && teamId) {
         // Fire all stop calls in parallel — each is independent and may fail.
         await Promise.allSettled(
-          sessionsWithVm.map(async (s: any) => {
+          sessionsWithVm.map(async (s: StaleSandboxSession) => {
             try {
               const sandbox = await Sandbox.get({
                 sandboxId: s.providerSandboxId!,
@@ -63,7 +70,7 @@ export const cleanStaleSandboxSessions = internalAction({
     await ctx.runMutation(
       internal.runtime.mutations.markSessionsDeletedInternal,
       {
-        sessionIds: sessions.map((s: any) => s.id),
+        sessionIds: sessions.map((s: StaleSandboxSession) => s.id),
         reason: "Stale session cleanup (cron)",
       },
     );

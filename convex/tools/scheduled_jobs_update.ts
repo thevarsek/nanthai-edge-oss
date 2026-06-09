@@ -1,6 +1,31 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import type { Recurrence } from "../scheduledJobs/recurrence";
+import type { ScheduledJobSearchMode, ScheduledJobStepConfig } from "../scheduledJobs/shared";
 import { createTool } from "./registry";
+
+type ScheduledJobStepArg = {
+  title?: unknown;
+  prompt?: unknown;
+  modelId?: unknown;
+  personaId?: unknown;
+  enabledIntegrations?: unknown;
+  turnSkillOverrides?: unknown;
+  turnIntegrationOverrides?: unknown;
+  webSearchEnabled?: unknown;
+  searchMode?: unknown;
+  searchComplexity?: unknown;
+  knowledgeBaseFileIds?: unknown;
+  includeReasoning?: unknown;
+  reasoningEffort?: unknown;
+};
+
+function isScheduledJobSearchMode(value: unknown): value is ScheduledJobSearchMode {
+  return value === "none"
+    || value === "basic"
+    || value === "web"
+    || value === "research";
+}
 
 export const updateScheduledJob = createTool({
   name: "update_scheduled_job",
@@ -119,13 +144,15 @@ export const updateScheduledJob = createTool({
       resolvedJobId = matches[0]._id as Id<"scheduledJobs">;
     }
 
-    const steps = Array.isArray(args.steps)
-      ? args.steps.map((step: any) => ({
+    const steps: ScheduledJobStepConfig[] | undefined = Array.isArray(args.steps)
+      ? args.steps.map((step: ScheduledJobStepArg) => ({
           title: typeof step.title === "string" ? step.title : undefined,
-          prompt: step.prompt,
-          modelId: step.modelId,
+          prompt: step.prompt as string,
+          modelId: step.modelId as string,
           personaId: typeof step.personaId === "string" ? step.personaId as Id<"personas"> : undefined,
-          enabledIntegrations: Array.isArray(step.enabledIntegrations) ? step.enabledIntegrations : undefined,
+          enabledIntegrations: Array.isArray(step.enabledIntegrations)
+            ? step.enabledIntegrations as string[]
+            : undefined,
           turnSkillOverrides: Array.isArray(step.turnSkillOverrides)
             ? step.turnSkillOverrides as Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>
             : undefined,
@@ -133,10 +160,7 @@ export const updateScheduledJob = createTool({
             ? step.turnIntegrationOverrides as Array<{ integrationId: string; enabled: boolean }>
             : undefined,
           webSearchEnabled: typeof step.webSearchEnabled === "boolean" ? step.webSearchEnabled : undefined,
-          searchMode: (step.searchMode === "none"
-            || step.searchMode === "basic"
-            || step.searchMode === "web"
-            || step.searchMode === "research")
+          searchMode: isScheduledJobSearchMode(step.searchMode)
             ? step.searchMode
             : undefined,
           searchComplexity: typeof step.searchComplexity === "number" ? step.searchComplexity : undefined,
@@ -167,7 +191,7 @@ export const updateScheduledJob = createTool({
             ? (args.personaId.trim() ? args.personaId as Id<"personas"> : null)
             : undefined,
           steps,
-          recurrence: (args.recurrence as any) ?? undefined,
+          recurrence: args.recurrence == null ? undefined : args.recurrence as Recurrence,
           timezone: typeof args.timezone === "string" ? args.timezone : undefined,
           targetFolderId: typeof args.targetFolderId === "string"
             ? (args.targetFolderId.trim() ? args.targetFolderId as Id<"folders"> : null)

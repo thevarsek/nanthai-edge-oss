@@ -154,6 +154,7 @@ test("resolveMemoryContextForGeneration falls back inline and avoids duplicate u
   const scheduled: Array<Record<string, unknown>> = [];
   const mutations: Array<Record<string, unknown>> = [];
   let messageRowReads = 0;
+  const queryText = "inline fallback";
   const ctx = {
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
       if ("userId" in args && !("messageId" in args)) return [];
@@ -166,9 +167,10 @@ test("resolveMemoryContextForGeneration falls back inline and avoids duplicate u
       if ("messageId" in args) {
         messageRowReads += 1;
         return messageRowReads === 1
-          ? { status: "pending" }
+          ? { status: "pending", textHash: hashText(queryText) }
           : {
               status: "ready",
+              textHash: hashText(queryText),
               embedding: [0.1, 0.2],
               usage: { promptTokens: 5, totalTokens: 5 },
               generationId: "embedding_gen",
@@ -190,7 +192,7 @@ test("resolveMemoryContextForGeneration falls back inline and avoids duplicate u
   } as any;
 
   const context = await resolveMemoryContextForGeneration(ctx, {
-    messages: [{ _id: "msg_user" as any, role: "user", content: "inline fallback" }],
+    messages: [{ _id: "msg_user" as any, role: "user", content: queryText }],
     userMessageId: "msg_user" as any,
     userId: "user_1",
     chatId: "chat_1" as any,

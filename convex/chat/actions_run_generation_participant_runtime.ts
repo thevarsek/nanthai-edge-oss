@@ -1,10 +1,13 @@
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { ttftLog } from "../lib/generation_log";
 import { prepareGenerationContext } from "./actions_run_generation_context";
 import { generateForParticipant } from "./actions_run_generation_participant";
+import type { GenerationContext } from "./actions_run_generation_context";
+import type { ModelCapabilities, RunGenerationArgs } from "./actions_run_generation_types";
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import { scheduleGenerationContinuation } from "./actions_run_generation_continuation";
 import {
@@ -18,6 +21,7 @@ import {
 } from "../tools/runtime_safety";
 import { patchDeferredProgressiveToolErrors } from "../tools/progressive_registry_shared";
 import { classifyTerminalErrorCode } from "./terminal_error";
+import type { SkillToolProfileId } from "../skills/tool_profiles";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -79,8 +83,13 @@ async function maybeFinalizeDrivePickerBatch(
   });
 }
 
-function toRunGenerationArgs(args: RunGenerationParticipantArgs) {
-  return {
+type RunGenerationArgsWithContinuationIds = RunGenerationArgs & {
+  subagentBatchId?: Id<"subagentBatches">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
+};
+
+function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationArgsWithContinuationIds {
+  const generationArgs: RunGenerationArgsWithContinuationIds = {
     chatId: args.chatId,
     userMessageId: args.userMessageId,
     assistantMessageIds: args.assistantMessageIds,
@@ -95,7 +104,11 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs) {
     searchSessionId: args.searchSessionId,
     subagentBatchId: args.subagentBatchId,
     drivePickerBatchId: args.drivePickerBatchId,
-  } as const;
+  };
+  if (args.requireZdrOverride === true) {
+    generationArgs.requireZdrOverride = true;
+  }
+  return generationArgs;
 }
 
 async function finalizeParticipantSetupFailure(
@@ -149,8 +162,21 @@ export function requiresNodeWorker(args: {
     args.hasVideoGeneration ||
     args.hasAudioOutput ||
     hasNodeRequiredDirectTools(args.directToolNames) ||
-    hasNodeRequiredProfiles(args.activeProfiles as any)
+    hasNodeRequiredProfiles(args.activeProfiles as SkillToolProfileId[])
   );
+}
+
+function continuationPreviewDirectToolNames(
+  continuationPreview: { groupSnapshot?: unknown } | null,
+): string[] | null {
+  const groupSnapshot = continuationPreview?.groupSnapshot as
+    | { directToolNames?: unknown }
+    | undefined;
+  const directToolNames = groupSnapshot?.directToolNames;
+  if (!Array.isArray(directToolNames)) {
+    return null;
+  }
+  return directToolNames.filter((name): name is string => typeof name === "string");
 }
 
 export async function runGenerationParticipantRuntimeHandler(
@@ -182,8 +208,10 @@ export async function runGenerationParticipantRuntimeHandler(
     }),
   ]);
 
+  const routingDirectToolNames =
+    continuationPreviewDirectToolNames(continuationPreview) ?? args.directToolNames ?? [];
   if (requiresNodeWorker({
-    directToolNames: args.directToolNames ?? [],
+    directToolNames: routingDirectToolNames,
     activeProfiles: continuationPreview?.activeProfiles ?? [],
     hasVideoGeneration: caps?.hasVideoGeneration === true,
     hasAudioOutput: caps?.hasAudioOutput === true,
@@ -212,6 +240,7 @@ export async function runGenerationParticipantRuntimeHandler(
         userId: continuationState.group.userId,
         expandMultiModelGroups: continuationState.group.expandMultiModelGroups,
         webSearchEnabled: continuationState.group.webSearchEnabled,
+        requireZdrOverride: continuationState.group.requireZdrOverride,
         effectiveIntegrations: continuationState.group.effectiveIntegrations,
         directToolNames: continuationState.group.directToolNames,
         isPro: continuationState.group.isPro,
@@ -257,20 +286,24 @@ export async function runGenerationParticipantRuntimeHandler(
     const continuationCount = continuationState?.continuationCount ?? 0;
     const forceToolChoiceNone = continuationCount >= MAX_TOOL_ROUNDS;
 
-    let allMessages: Array<any> = [];
+    let allMessages: GenerationContext["allMessages"] = [];
     let memoryContext: string | undefined;
-    let modelCapabilities: Map<string, any>;
+    let modelCapabilities: Map<string, ModelCapabilities>;
     if (continuationState) {
       modelCapabilities = new Map();
       if (caps) {
         modelCapabilities.set(effectiveArgs.participant.modelId, caps);
       }
     } else {
-      const preloadedCaps = new Map<string, any>();
+      const preloadedCaps = new Map<string, ModelCapabilities>();
       if (caps) {
         preloadedCaps.set(effectiveArgs.participant.modelId, caps);
       }
-      const prepared = await prepareGenerationContext(ctx, generationArgs as any, preloadedCaps);
+      const prepared = await prepareGenerationContext(
+        ctx,
+        generationArgs as RunGenerationArgs,
+        preloadedCaps,
+      );
       allMessages = prepared.allMessages;
       memoryContext = prepared.memoryContext;
       modelCapabilities = prepared.modelCapabilities;
@@ -290,11 +323,12 @@ export async function runGenerationParticipantRuntimeHandler(
     const toolRegistry = buildRuntimeBaseToolRegistry({
       isPro: effectiveArgs.isPro,
       disabled: effectiveArgs.disableTools === true,
+      webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
     });
 
     const result = await generateForParticipant({
       ctx,
-      args: generationArgs as any,
+      args: generationArgs as RunGenerationArgs,
       participant: effectiveArgs.participant,
       allMessages,
       memoryContext,
@@ -309,14 +343,16 @@ export async function runGenerationParticipantRuntimeHandler(
       runtimeProfile: "mobileBasic",
       apiKey,
       requestMessagesOverride: continuationState?.messages,
+      requireZdrOverride: effectiveArgs.requireZdrOverride,
       initialTotalUsage: continuationState?.usage,
       initialToolCalls: continuationState?.toolCalls,
       initialToolResults: continuationState?.toolResults,
       initialCompactionCount: continuationState?.compactionCount ?? 0,
-      restoredActiveProfiles: continuationState?.activeProfiles as any,
+      restoredActiveProfiles: continuationState?.activeProfiles,
       restoredLoadedSkills: continuationState?.loadedSkills,
       forceToolChoiceNone,
       actionStartTime: Date.now(),
+      v8RuntimeHandoffGuards: true,
       streamingMessageId,
       preResolvedOverrides: {
         resolved: true as const,
@@ -332,7 +368,7 @@ export async function runGenerationParticipantRuntimeHandler(
       continuationHandoff: forceToolChoiceNone
         ? undefined
         : {
-            maxToolRoundsPerInvocation: 1,
+            maxToolRoundsPerInvocation: 2,
             continuationCount,
             onHandoff: async (checkpoint) => {
               await scheduleGenerationContinuation(ctx, effectiveArgs, checkpoint);

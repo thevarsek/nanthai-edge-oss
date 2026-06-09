@@ -24,10 +24,8 @@ export function buildRequestBody(
   params: ChatRequestParameters,
   stream: boolean,
   /**
-   * When `true`, skip the default provider-sort merge AND drop any
-   * caller-supplied `provider` block. Used by the 404 "No endpoints found"
-   * retry in `openrouter_stream.streamOnce` to strip all provider routing
-   * hints on the retry attempt.
+   * When `true`, skip soft provider routing hints on retry. Hard privacy
+   * constraints such as `provider.zdr` are preserved.
    */
   skipProviderRouting: boolean = false,
 ): Record<string, unknown> {
@@ -145,7 +143,9 @@ export function buildRequestBody(
     ? {}
     : (OPENROUTER_DEFAULT_PROVIDER_SORT ?? {});
   const mergedProvider: Record<string, unknown> = skipProviderRouting
-    ? {}
+    ? params.provider?.zdr === true
+      ? { zdr: true }
+      : {}
     : {
       ...defaultProviderSort,
       ...(params.provider ?? {}),

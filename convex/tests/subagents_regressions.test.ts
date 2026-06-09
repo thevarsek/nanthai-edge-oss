@@ -84,6 +84,20 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
             }),
           };
         }
+        if (table === "oauthConnections") {
+          return {
+            withIndex: () => ({
+              first: async () => null,
+            }),
+          };
+        }
+        if (table === "personas") {
+          return {
+            withIndex: () => ({
+              collect: async () => [],
+            }),
+          };
+        }
         if (table === "messages") {
           return {
             withIndex: () => ({

@@ -40,7 +40,7 @@ test("executePerplexitySearch rewrites OpenRouter annotations and adds web tools
     ["latest policy"],
     "openai/gpt-4.1",
     "test-key",
-    { maxTokens: 1234 },
+    { maxTokens: 1234, requireZdr: true },
   );
 
   assert.equal(result?.success, true);
@@ -57,7 +57,65 @@ test("executePerplexitySearch rewrites OpenRouter annotations and adds web tools
   });
   assert.equal(result?.generationId, "gen_search_1");
   assert.equal(bodies[0]?.max_tokens, 1234);
+  assert.deepEqual(bodies[0]?.provider, { sort: "latency", zdr: true });
   assert.equal(bodies[0]?.tools?.[0]?.type, "openrouter:web_search");
+});
+
+test("executePerplexitySearch sends provider latency sorting for native Perplexity calls", async (t) => {
+  t.after(() => mock.restoreAll());
+  const bodies: Array<Record<string, any>> = [];
+
+  mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    return new Response(JSON.stringify({
+      id: "gen_search_2",
+      choices: [{ message: { content: "Native search result.", annotations: [] } }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  const [result] = await executePerplexitySearch(
+    ["latest policy"],
+    "perplexity/sonar-pro",
+    "test-key",
+  );
+
+  assert.equal(result?.success, true);
+  assert.deepEqual(bodies[0]?.provider, { sort: "latency" });
+  assert.equal(bodies[0]?.tools, undefined);
+});
+
+test("executePerplexitySearch retries no-endpoints without soft provider routing but preserves ZDR", async (t) => {
+  t.after(() => mock.restoreAll());
+  const bodies: Array<Record<string, any>> = [];
+  let fetchCount = 0;
+
+  mock.method(globalThis, "fetch", async (_url: string, init: RequestInit) => {
+    bodies.push(JSON.parse(String(init.body)));
+    fetchCount += 1;
+    if (fetchCount === 1) {
+      return new Response(
+        JSON.stringify({ error: { message: "No endpoints found for request" } }),
+        { status: 404, headers: { "content-type": "application/json" } },
+      );
+    }
+    return new Response(JSON.stringify({
+      id: "gen_search_retry",
+      choices: [{ message: { content: "Recovered search result.", annotations: [] } }],
+    }), { status: 200, headers: { "content-type": "application/json" } });
+  });
+
+  const [result] = await executePerplexitySearch(
+    ["latest policy"],
+    "perplexity/sonar-pro",
+    "test-key",
+    { requireZdr: true },
+  );
+
+  assert.equal(result?.success, true);
+  assert.equal(result?.content, "Recovered search result.");
+  assert.deepEqual(bodies[0]?.provider, { sort: "latency", zdr: true });
+  assert.deepEqual(bodies[1]?.provider, { zdr: true });
+  assert.equal(fetchCount, 2);
 });
 
 test("executePerplexitySearch preserves HTTP and network failure context per query", async (t) => {
@@ -86,4 +144,26 @@ test("executePerplexitySearch preserves HTTP and network failure context per que
   assert.match(results[1]?.error ?? "", /fetch failed.*ECONNRESET/);
   assert.equal(results[2]?.success, false);
   assert.equal(results[2]?.error, "Unknown search error");
+});
+
+test("executePerplexitySearch fails closed when ZDR search has no successful route", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () =>
+    new Response("No endpoints found matching your data policy", { status: 404 })
+  );
+
+  await assert.rejects(
+    () => executePerplexitySearch(
+      ["first", "second"],
+      "perplexity/sonar-pro",
+      "test-key",
+      { requireZdr: true },
+    ),
+    (error: any) => {
+      assert.equal(error.data?.code, "ZDR_SEARCH_UNAVAILABLE");
+      assert.match(error.data?.message ?? "", /Zero Data Retention/);
+      assert.equal(error.data?.failures?.length, 2);
+      return true;
+    },
+  );
 });

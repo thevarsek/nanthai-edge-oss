@@ -97,9 +97,9 @@ export const deleteUserTableBatch = internalMutation({
           .take(remaining);
         for (const msg of msgs) {
           // Clean up audio storage blob
-          if ((msg as any).audioStorageId) {
+          if (msg.audioStorageId) {
             try {
-              await ctx.storage.delete((msg as any).audioStorageId);
+              await ctx.storage.delete(msg.audioStorageId);
             } catch {
               // Already deleted
             }
@@ -228,12 +228,9 @@ export const deleteUserTableBatch = internalMutation({
     if (tableName === "integrationRequestGates") {
       // Uses by_user_provider index: ["userId", "provider"] — no by_user index
       // Collect all providers for this user by scanning the index prefix
-      const rows = await (ctx.db as any)
-        // TypeScript limitation: `integrationRequestGates` is not in the generated
-        // DataModel for this helper because it has no simple "by_user" index.
-        // The cast is safe — the table and index exist in schema.ts.
+      const rows = await ctx.db
         .query("integrationRequestGates")
-        .withIndex("by_user_provider", (q: any) => q.eq("userId", userId))
+        .withIndex("by_user_provider", (q) => q.eq("userId", userId))
         .take(BATCH_SIZE);
       for (const row of rows) {
         await ctx.db.delete(row._id);
@@ -449,11 +446,13 @@ export const deleteUserTableBatch = internalMutation({
     // Generic: tables with a standard by_user index
     // ---------------------------------------------------------------
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const rows = await (ctx.db as any)
       // TypeScript limitation: `tableName` is a dynamic string so TypeScript
       // cannot infer the table type. The cast is safe — callers validate
       // `tableName` against the fixed allowlist above before reaching this branch.
       .query(tableName)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .withIndex("by_user", (q: any) => q.eq("userId", userId))
       .take(BATCH_SIZE);
     for (const row of rows) {

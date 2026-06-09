@@ -9,6 +9,11 @@ import { internalQuery, type QueryCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { deriveGoogleCapabilityFlags } from "../oauth/google_capabilities";
 import { isUserPro } from "../preferences/entitlements";
+import type {
+  IntegrationOverrideEntry,
+  SkillOverrideEntry,
+} from "../skills/resolver";
+import type { ContextAttachment } from "./helpers_types";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,14 +21,22 @@ import { isUserPro } from "../preferences/entitlements";
 
 export interface GenerationContext {
   isPro: boolean;
-  currentUserMessage: Record<string, unknown> | null;
-  chatDoc: Record<string, unknown> | null;
+  currentUserMessage: (Record<string, unknown> & {
+    attachments?: Array<Partial<ContextAttachment>>;
+  }) | null;
+  chatDoc: (Record<string, unknown> & {
+    skillOverrides?: SkillOverrideEntry[];
+    integrationOverrides?: IntegrationOverrideEntry[];
+  }) | null;
   skillIntegrationDefaults: {
-    skillDefaults: unknown;
-    integrationDefaults: unknown;
+    skillDefaults: SkillOverrideEntry[] | undefined;
+    integrationDefaults: IntegrationOverrideEntry[] | undefined;
   } | null;
   connectedIntegrationIds: string[];
-  personasById: Record<string, Record<string, unknown> | null>;
+  personasById: Record<string, (Record<string, unknown> & {
+    skillOverrides?: SkillOverrideEntry[];
+    integrationOverrides?: IntegrationOverrideEntry[];
+  }) | null>;
 }
 
 // ---------------------------------------------------------------------------

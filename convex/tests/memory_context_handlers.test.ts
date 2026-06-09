@@ -175,6 +175,58 @@ test("claimMessageMemoryContextLeaseHandler takes over a stale textHash and clea
   assert.equal(tables.messageMemoryContexts[0]?.updatedAt, 200);
 });
 
+test("claimMessageMemoryContextLeaseHandler clears usage marker when privacy hash changes", async () => {
+  const { db, tables } = createTableCtx();
+  tables.messageMemoryContexts.push({
+    _id: "messageMemoryContexts_1",
+    messageId: "msg_1",
+    userId: "user_1",
+    status: "ready",
+    textHash: "h_non_zdr",
+    hydratedHits: [{ memoryId: "mem_1", score: 0.9 }],
+    memoryQueryText: "old text",
+    usage: { promptTokens: 5, totalTokens: 5 },
+    usageRecordedAt: 10,
+    usageRecordedMessageId: "assist_old",
+    createdAt: 1,
+    updatedAt: 10,
+  });
+
+  const claimed = await claimMessageMemoryContextLeaseHandler({ db } as any, {
+    messageId: "msg_1" as any,
+    userId: "user_1",
+    chatId: "chat_1" as any,
+    textHash: "h_zdr",
+    leaseOwner: "owner_zdr",
+    leaseExpiresAt: 200,
+    now: 100,
+  });
+
+  assert.deepEqual(claimed, { claimed: true, status: "pending" });
+  assert.equal(tables.messageMemoryContexts[0]?.usageRecordedAt, undefined);
+  assert.equal(tables.messageMemoryContexts[0]?.usageRecordedMessageId, undefined);
+
+  await completeMessageMemoryContextHandler({ db } as any, {
+    messageId: "msg_1" as any,
+    textHash: "h_zdr",
+    status: "ready",
+    hydratedHits: [{ memoryId: "mem_2", score: 0.91 }],
+    memoryQueryText: "new text",
+    usage: { promptTokens: 7, totalTokens: 7 },
+    generationId: "embed_zdr",
+    now: 101,
+  });
+
+  const recorded = await markMessageMemoryContextUsageRecordedHandler({ db } as any, {
+    messageId: "msg_1" as any,
+    usageRecordedAt: 102,
+    usageRecordedMessageId: "assist_new" as any,
+  });
+
+  assert.equal(recorded, true);
+  assert.equal(tables.messageMemoryContexts[0]?.usageRecordedMessageId, "assist_new");
+});
+
 test("claimMessageMemoryContextLeaseHandler takes over an expired lease", async () => {
   const { db, tables } = createTableCtx();
   tables.messageMemoryContexts.push({
@@ -224,6 +276,7 @@ test("completeMessageMemoryContextHandler stores ready payload and clears lease"
 
   await completeMessageMemoryContextHandler({ db } as any, {
     messageId: "msg_1" as any,
+    textHash: "h1",
     status: "ready",
     hydratedHits: [{ memoryId: "mem_1", score: 0.91 }],
     memoryQueryText: "hello there",
@@ -260,6 +313,7 @@ test("completeMessageMemoryContextHandler does not downgrade a ready row to fail
 
   await completeMessageMemoryContextHandler({ db } as any, {
     messageId: "msg_1" as any,
+    textHash: "h1",
     status: "failed",
     errorCode: "memory_context_wait_timeout",
     now: 10,
@@ -288,6 +342,7 @@ test("completeMessageMemoryContextHandler stores failure code and clears payload
 
   await completeMessageMemoryContextHandler({ db } as any, {
     messageId: "msg_1" as any,
+    textHash: "h1",
     status: "failed",
     errorCode: "embedding_not_ready",
     now: 5,
@@ -300,6 +355,41 @@ test("completeMessageMemoryContextHandler stores failure code and clears payload
   assert.equal(row?.memoryQueryText, undefined);
   assert.equal(row?.usage, undefined);
   assert.equal(row?.leaseOwner, undefined);
+});
+
+test("completeMessageMemoryContextHandler ignores stale worker textHash", async () => {
+  const { db, tables } = createTableCtx();
+  tables.messageMemoryContexts.push({
+    _id: "messageMemoryContexts_1",
+    messageId: "msg_1",
+    userId: "user_1",
+    status: "pending",
+    textHash: "h_zdr",
+    leaseOwner: "owner_zdr",
+    leaseExpiresAt: 1000,
+    createdAt: 1,
+    updatedAt: 2,
+  });
+
+  await completeMessageMemoryContextHandler({ db } as any, {
+    messageId: "msg_1" as any,
+    textHash: "h_non_zdr",
+    status: "ready",
+    hydratedHits: [{ memoryId: "mem_stale", score: 0.44 }],
+    memoryQueryText: "old non-zdr query",
+    usage: { promptTokens: 7, totalTokens: 7 },
+    generationId: "gen_stale",
+    now: 3,
+  });
+
+  const row = tables.messageMemoryContexts[0];
+  assert.equal(row?.status, "pending");
+  assert.equal(row?.textHash, "h_zdr");
+  assert.equal(row?.hydratedHits, undefined);
+  assert.equal(row?.memoryQueryText, undefined);
+  assert.equal(row?.usage, undefined);
+  assert.equal(row?.generationId, undefined);
+  assert.equal(row?.updatedAt, 2);
 });
 
 // -----------------------------------------------------------------------------
@@ -486,6 +576,7 @@ test("ensureMessageMemoryContextReady ignores a ready row with stale textHash", 
         if (result.claimed && claimCount === 1) {
           await completeMessageMemoryContextHandler({ db } as any, {
             messageId: "msg_1" as any,
+            textHash: hashText(newText),
             status: "ready",
             hydratedHits: [{ memoryId: "mem_fresh", score: 0.81 }],
             memoryQueryText: newText,

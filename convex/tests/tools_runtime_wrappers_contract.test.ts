@@ -45,6 +45,19 @@ test("data python tools surface runtime context errors through execute wrappers"
   assert.match(String(sandboxResult.error), /require chatId/i);
 });
 
+test("data python exec ignores malformed inputFiles entries before runtime execution", async () => {
+  const execResult = await dataPythonExec.execute(
+    { userId: "user_1" } as any,
+    {
+      code: "print(1)",
+      inputFiles: [null, "bad entry", { filename: "missing-storage.csv" }],
+    },
+  );
+
+  assert.equal(execResult.success, false);
+  assert.match(String(execResult.error), /require chatId/i);
+});
+
 test("persistent runtime wrappers validate required args", async () => {
   const vmResult = await vmExec.execute({} as any, {});
   const readResult = await readPdf.execute({} as any, {});

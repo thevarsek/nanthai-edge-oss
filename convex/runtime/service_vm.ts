@@ -3,6 +3,7 @@
 import { ConvexError } from "convex/values";
 import * as path from "node:path";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
 import {
   guessMimeTypeFromPath,
@@ -12,6 +13,7 @@ import {
 } from "./shared";
 import {
   getOrCreateVercelSandbox,
+  type Sandbox,
   type VercelSandboxEnvironment,
 } from "./vercel_sandbox_client";
 import { resolveOwnedStorageFile } from "./storage";
@@ -82,7 +84,7 @@ export async function getOrCreatePersistentRuntime(
   const chatId = requireChatId(toolCtx);
   const existingSession = await toolCtx.ctx.runQuery(
     internal.runtime.queries.getSessionByChatInternal,
-    { userId: toolCtx.userId, chatId: chatId as any, environment },
+    { userId: toolCtx.userId, chatId: chatId as Id<"chats">, environment },
   );
   const existingSandboxId =
     existingSession?.provider === "vercel" &&
@@ -108,7 +110,7 @@ export async function getOrCreatePersistentRuntime(
     {
       sessionId: existingSession?._id,
       userId: toolCtx.userId,
-      chatId: chatId as any,
+      chatId: chatId as Id<"chats">,
       environment,
       providerSandboxId: sandbox.sandboxId,
       status: "running",
@@ -125,7 +127,7 @@ export async function getOrCreatePersistentRuntime(
 }
 
 async function runVmShell(
-  sandbox: any,
+  sandbox: Sandbox,
   command: string,
   cwd: string,
   timeoutMs?: number,

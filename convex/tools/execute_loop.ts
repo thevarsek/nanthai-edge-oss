@@ -166,6 +166,7 @@ export interface ToolCallLoopOptions {
     registry?: ToolRegistry;
     messages?: OpenRouterMessage[];
     params?: ChatRequestParameters;
+    stopBeforeModelCall?: boolean;
   } | void>;
   /**
    * Optional callback invoked after each model re-call in the loop.
@@ -285,6 +286,7 @@ export async function runToolCallLoop(
     );
     conversationMessages = [...conversationMessages, ...roundMessages];
 
+    let stopBeforeModelCall = false;
     if (options.onPrepareNextTurn) {
       const nextTurn = await options.onPrepareNextTurn(
         round,
@@ -302,6 +304,9 @@ export async function runToolCallLoop(
       }
       if (nextTurn?.params) {
         currentParams = nextTurn.params;
+      }
+      if (nextTurn?.stopBeforeModelCall === true) {
+        stopBeforeModelCall = true;
       }
     }
 
@@ -352,6 +357,12 @@ export async function runToolCallLoop(
         recordedToolResults: allToolResults.slice(),
         deferredResults,
       };
+      break;
+    }
+
+    if (stopBeforeModelCall) {
+      exitedEarly = true;
+      exitReason = "round_budget";
       break;
     }
 

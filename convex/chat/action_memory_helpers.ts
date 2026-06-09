@@ -1,10 +1,11 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import { formatMemoryContext } from "./helpers";
 import { selectMemoriesForContext } from "./actions_memory_lifecycle";
 import {
   isMemoryVisibleToPersona,
+  type MemoryRecordLike,
   normalizeMemoryRecord,
   prioritizeAlwaysOnMemories,
 } from "../memory/shared";
@@ -21,12 +22,15 @@ interface MemoryContextArgs {
   // M23: Optional chat attribution for embedding cost tracking.
   chatId?: Id<"chats">;
   assistantMessageId?: Id<"messages">;
+  requireZdr?: boolean;
 }
 
 type ActionContextLike = Pick<
   ActionCtx,
   "runQuery" | "runMutation" | "scheduler" | "vectorSearch"
 >;
+
+type NormalizedMemory = ReturnType<typeof normalizeMemoryRecord>;
 
 export async function resolveMemoryContextForGeneration(
   ctx: ActionContextLike,
@@ -60,6 +64,7 @@ export async function resolveMemoryContextForGeneration(
       userMessageId: args.userMessageId,
       assistantMessageId: args.assistantMessageId,
       memoryQueryText,
+      requireZdr: args.requireZdr === true,
     })
     : Promise.resolve([]);
 
@@ -76,25 +81,25 @@ export async function resolveMemoryContextForGeneration(
   });
 
   const allMemories = allMemoriesRaw
-    .map((memory: any) => normalizeMemoryRecord(memory))
-    .filter((memory: any) => isMemoryVisibleToPersona(memory, args.personaId));
+    .map((memory: MemoryRecordLike) => normalizeMemoryRecord(memory))
+    .filter((memory: NormalizedMemory) => isMemoryVisibleToPersona(memory, args.personaId));
 
   const alwaysOn = prioritizeAlwaysOnMemories(
-    allMemories.filter((memory: any) => memory.retrievalMode === "alwaysOn"),
+    allMemories.filter((memory: NormalizedMemory) => memory.retrievalMode === "alwaysOn"),
     MODEL_IDS.memoryAlwaysOnLimit,
   );
 
   let memoryCandidates = relevantMemoriesRaw
-        .map((memory: any) => normalizeMemoryRecord(memory))
+        .map((memory: MemoryRecordLike) => normalizeMemoryRecord(memory))
         .filter(
-          (memory: any) =>
+          (memory: NormalizedMemory) =>
             memory.retrievalMode === "contextual" &&
             isMemoryVisibleToPersona(memory, args.personaId),
         );
 
   if (memoryCandidates.length === 0) {
     memoryCandidates = allMemories.filter(
-      (memory: any) => memory.retrievalMode === "contextual",
+      (memory: NormalizedMemory) => memory.retrievalMode === "contextual",
     );
   }
 
@@ -148,12 +153,13 @@ interface HydratedHitsArgs {
   userMessageId: Id<"messages">;
   assistantMessageId?: Id<"messages">;
   memoryQueryText: string;
+  requireZdr: boolean;
 }
 
 async function resolveHydratedHits(
   ctx: ActionContextLike,
   args: HydratedHitsArgs,
-): Promise<any[]> {
+): Promise<MemoryRecordLike[]> {
   const cacheStartedAt = Date.now();
   try {
     const contextRow = await ensureMessageMemoryContextReady(ctx, {
@@ -162,6 +168,7 @@ async function resolveHydratedHits(
       chatId: args.chatId,
       queryText: args.memoryQueryText,
       leaseOwner: `generation:${args.assistantMessageId ?? args.userMessageId}`,
+      requireZdr: args.requireZdr,
     });
 
     if (contextRow?.status === "ready" && Array.isArray(contextRow.hydratedHits)) {
@@ -198,7 +205,7 @@ async function resolveHydratedHits(
           });
         }
       }
-      return contextRow.hydratedHits;
+      return contextRow.hydratedHits as MemoryRecordLike[];
     }
 
     // Cache returned `failed` (including timeout) — log and degrade to [].
@@ -243,7 +250,7 @@ async function resolveHydratedHits(
 async function computeHydratedHitsInline(
   ctx: ActionContextLike,
   args: HydratedHitsArgs,
-): Promise<any[]> {
+): Promise<MemoryRecordLike[]> {
   try {
     const embeddingStartedAt = Date.now();
     const queryEmbedding = await ensureMessageQueryEmbeddingReady(ctx, {
@@ -252,6 +259,7 @@ async function computeHydratedHitsInline(
       chatId: args.chatId,
       queryText: args.memoryQueryText,
       leaseOwner: `generation:${args.assistantMessageId ?? args.userMessageId}`,
+      requireZdr: args.requireZdr,
     });
     ttftLog("[generation] memory embedding computed (inline fallback)", {
       userId: args.userId,

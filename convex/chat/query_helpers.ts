@@ -1,5 +1,5 @@
-import { Id } from "../_generated/dataModel";
-import { QueryCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import type { QueryCtx } from "../_generated/server";
 
 export async function getAuthorizedChat(
   ctx: QueryCtx,
@@ -29,23 +29,25 @@ export async function getAuthorizedMessage(
   return message;
 }
 
+type MessageAttachment = {
+  type: string;
+  url: string;
+  storageId?: string;
+  name?: string;
+  mimeType?: string;
+  sizeBytes?: number;
+};
+
 async function refreshAttachmentUrls(
   ctx: QueryCtx,
-  attachments: Array<{
-    type: string;
-    url: string;
-    storageId?: Id<"_storage">;
-    name?: string;
-    mimeType?: string;
-    sizeBytes?: number;
-  }>,
+  attachments: MessageAttachment[],
 ) {
   return await Promise.all(
     attachments.map(async (attachment) => {
       if (!attachment.storageId) {
         return attachment;
       }
-      const refreshedUrl = await ctx.storage.getUrl(attachment.storageId);
+      const refreshedUrl = await ctx.storage.getUrl(attachment.storageId as Id<"_storage">);
       if (!refreshedUrl) {
         return attachment;
       }
@@ -55,7 +57,7 @@ async function refreshAttachmentUrls(
 }
 
 export async function withRefreshedAttachmentUrls<
-  T extends { attachments?: Array<any> },
+  T extends { attachments?: MessageAttachment[] },
 >(
   ctx: QueryCtx,
   message: T,

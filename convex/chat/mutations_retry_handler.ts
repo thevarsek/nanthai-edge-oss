@@ -6,6 +6,7 @@ import { getIsProUnlocked, requireAuth, requirePro } from "../lib/auth";
 import { MODEL_IDS } from "../lib/model_constants";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
 import { hasGoogleIntegrations, isGoogleDataAllowedModel } from "../models/google_data_providers";
+import { shouldRequireZdrForMemoryPrewarm } from "./memory_prewarm_zdr";
 import {
   cancelGenerationJobsForMessage,
   createAssistantMessagesAndJobs,
@@ -390,17 +391,26 @@ export async function retryMessageHandler(
     typeof retryUserMessage?.content === "string" ? retryUserMessage.content.trim() : "";
 
   if (retryQueryText.length > 0) {
+    const prewarmRequiresZdr = await shouldRequireZdrForMemoryPrewarm(ctx, {
+      userId,
+      chat,
+      participants,
+      enabledIntegrations: effectiveRetryContract.enabledIntegrations,
+      turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
+    });
     await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageQueryEmbedding, {
       messageId: retryUserMessageId,
       userId,
       chatId: originalMsg.chatId,
       queryText: retryQueryText,
+      ...(prewarmRequiresZdr ? { requireZdr: true } : {}),
     });
     await ctx.scheduler.runAfter(0, internal.memory.operations.primeMessageMemoryContext, {
       messageId: retryUserMessageId,
       userId,
       chatId: originalMsg.chatId,
       queryText: retryQueryText,
+      ...(prewarmRequiresZdr ? { requireZdr: true } : {}),
     });
   }
 

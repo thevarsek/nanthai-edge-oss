@@ -19,6 +19,28 @@ import { filterExcludedOpenRouterProviders } from "./provider_filters";
 import { hasFieldsChanged, primitiveArraysEqual, deepEqual } from "./sync_diff";
 import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
 
+type OpenRouterCatalogModel = {
+  id?: string;
+  name?: string;
+  canonical_slug?: string;
+  description?: string;
+  provider?: string | null;
+  context_length?: number;
+  top_provider?: {
+    max_completion_tokens?: number;
+  };
+  pricing?: {
+    prompt?: string;
+    completion?: string;
+  };
+  architecture?: {
+    tokenizer?: string;
+    instruct_type?: string;
+    modality?: string;
+  };
+  supported_parameters?: string[];
+};
+
 // -- Sync metadata helpers ----------------------------------------------------
 
 /** Read the current catalog hash from syncMeta. */
@@ -82,7 +104,7 @@ export const syncFromOpenRouter = internalAction({
     // Compute a content hash from the fields we actually sync.
     // Sorted by model ID for deterministic ordering.
     const hashInput = rawModels
-      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
+      .map((m: OpenRouterCatalogModel) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
       .sort()
       .join("\n");
     const hashBuffer = await crypto.subtle.digest(
@@ -102,6 +124,7 @@ export const syncFromOpenRouter = internalAction({
     // Fetch ZDR endpoint list and build a set of model IDs that support ZDR.
     // This runs regardless of catalog hash so ZDR changes are always picked up.
     const zdrModelIds = new Set<string>();
+    let zdrDataAvailable = false;
     try {
       const zdrResponse = await fetch("https://openrouter.ai/api/v1/endpoints/zdr", {
         headers: {
@@ -111,13 +134,18 @@ export const syncFromOpenRouter = internalAction({
       });
       if (zdrResponse.ok) {
         const zdrData = await zdrResponse.json();
-        const zdrEndpoints = Array.isArray(zdrData.data) ? zdrData.data : [];
-        for (const ep of zdrEndpoints) {
-          if (typeof ep.model_id === "string") {
-            zdrModelIds.add(ep.model_id);
+        const zdrEndpoints = Array.isArray(zdrData.data) ? zdrData.data : null;
+        if (!zdrEndpoints) {
+          console.warn("ZDR endpoint fetch returned malformed data — preserving existing ZDR flags");
+        } else {
+          zdrDataAvailable = true;
+          for (const ep of zdrEndpoints) {
+            if (typeof ep.model_id === "string") {
+              zdrModelIds.add(ep.model_id);
+            }
           }
+          console.log(`ZDR endpoint sync: ${zdrModelIds.size} models with ZDR`);
         }
-        console.log(`ZDR endpoint sync: ${zdrModelIds.size} models with ZDR`);
       } else {
         console.warn(`ZDR endpoint fetch failed: ${zdrResponse.status} — proceeding without ZDR data`);
       }
@@ -127,7 +155,7 @@ export const syncFromOpenRouter = internalAction({
 
     if (previousHash === contentHash) {
       // Catalog unchanged — only refresh ZDR flags if we got data
-      if (zdrModelIds.size > 0) {
+      if (zdrDataAvailable) {
         await ctx.runMutation(internal.models.sync.refreshZdrFlags, {
           zdrModelIds: [...zdrModelIds],
         });
@@ -143,7 +171,7 @@ export const syncFromOpenRouter = internalAction({
         ...model,
         provider: extractProvider((model.id as string) ?? ""),
       })),
-    );
+    ) as OpenRouterCatalogModel[];
 
     if (models.length === 0) {
       console.error("Model catalog sync: no models returned");
@@ -155,7 +183,7 @@ export const syncFromOpenRouter = internalAction({
     for (let i = 0; i < models.length; i += BATCH_SIZE) {
       const batch = models.slice(i, i + BATCH_SIZE);
       await ctx.runMutation(internal.models.sync.upsertBatch, {
-        models: batch.map((m: any) => ({
+        models: batch.map((m: OpenRouterCatalogModel) => ({
           modelId: m.id ?? "",
           name: m.name ?? m.id ?? "",
           canonicalSlug: m.canonical_slug ?? undefined,
@@ -175,7 +203,7 @@ export const syncFromOpenRouter = internalAction({
             const parts = modality.split("->");
             return parts.length >= 2 && parts[1].includes("video");
           })(),
-          hasZdrEndpoint: zdrModelIds.size > 0 ? zdrModelIds.has(m.id ?? "") : undefined,
+          hasZdrEndpoint: zdrDataAvailable ? zdrModelIds.has(m.id ?? "") : undefined,
           supportsTools:
             (m.supported_parameters ?? []).includes("tools") ?? false,
           supportedParameters: m.supported_parameters ?? [],
@@ -198,7 +226,7 @@ export const syncFromOpenRouter = internalAction({
     // Prune models that are no longer in the OpenRouter catalog.
     // Collect all incoming model IDs into a set, then delete DB rows
     // whose modelId is absent. Done in batches to respect mutation limits.
-    const incomingModelIds = new Set(models.map((m: any) => m.id as string));
+    const incomingModelIds = new Set(models.map((m: OpenRouterCatalogModel) => m.id as string));
     await ctx.runMutation(internal.models.sync.pruneStaleModels, {
       activeModelIds: [...incomingModelIds],
     });
@@ -264,14 +292,17 @@ export const upsertBatch = internalMutation({
             "outputPricePer1M",
             "supportsImages",
             "supportsVideo",
-            "hasZdrEndpoint",
             "supportsTools",
           ]) ||
+          (
+            model.hasZdrEndpoint !== undefined
+            && !deepEqual(existing.hasZdrEndpoint, model.hasZdrEndpoint)
+          ) ||
           !primitiveArraysEqual(existing.supportedParameters, model.supportedParameters) ||
           !deepEqual(existing.architecture, model.architecture);
 
         if (changed) {
-          await ctx.db.patch(existing._id, {
+          const patch: Record<string, unknown> = {
             name: model.name,
             canonicalSlug: model.canonicalSlug,
             description: model.description,
@@ -282,11 +313,16 @@ export const upsertBatch = internalMutation({
             outputPricePer1M: model.outputPricePer1M,
             supportsImages: model.supportsImages,
             supportsVideo: model.supportsVideo,
-            hasZdrEndpoint: model.hasZdrEndpoint,
             supportsTools: model.supportsTools,
             supportedParameters: model.supportedParameters,
             architecture: model.architecture,
             lastSyncedAt: now,
+          };
+          if (model.hasZdrEndpoint !== undefined) {
+            patch.hasZdrEndpoint = model.hasZdrEndpoint;
+          }
+          await ctx.db.patch(existing._id, {
+            ...patch,
           });
         }
       } else {

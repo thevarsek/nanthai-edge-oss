@@ -23,6 +23,7 @@ import {
   retrySameRoundProgressiveToolCalls,
 } from "../tools/progressive_registry";
 import { runGenerationWithCompaction } from "../chat/actions_run_generation_loop";
+import type { StreamWriter } from "../chat/stream_writer";
 import { GenerationCancelledError, isGenerationCancelledError } from "../chat/generation_helpers";
 import { extractGeneratedCharts, extractGeneratedFiles } from "../chat/generated_file_helpers";
 import {
@@ -30,6 +31,8 @@ import {
   isSubagentLeaseStale,
   isTerminalSubagentStatus,
   normalizeOpenRouterMessages,
+  resolveSnapshotRequireZdr,
+  resolveWebSearchToolIntent,
   SUBAGENT_RECOVERY_LEASE_MS,
 } from "./shared";
 import { SubagentStreamWriter } from "./stream_writer";
@@ -159,7 +162,9 @@ export async function runSubagentRunHandler(
 
   const paramsSnapshot = batch.paramsSnapshot as {
     enabledIntegrations?: string[];
-    requestParams: ChatRequestParameters;
+    webSearchToolEnabled?: boolean;
+    requireZdr?: boolean;
+    requestParams?: ChatRequestParameters;
   };
   const participantSnapshot = batch.participantSnapshot as {
     userId: string;
@@ -186,6 +191,9 @@ export async function runSubagentRunHandler(
         },
       ];
   const restoredProfiles = extractProfilesFromConversation(messages);
+  const webSearchToolEnabled = resolveWebSearchToolIntent(paramsSnapshot);
+  const requireZdr = resolveSnapshotRequireZdr(paramsSnapshot);
+  const modelSupportsTools = caps?.supportedParameters?.includes("tools") ?? false;
   let loadedSkills = mergeLoadedSkills(
     snapshot?.loadedSkills,
     extractLoadedSkillsFromConversation(messages),
@@ -201,15 +209,13 @@ export async function runSubagentRunHandler(
     isPro: isProUser,
     allowSubagents: false,
     activeProfiles: restoredProfiles,
+    webSearchToolEnabled,
   });
-  // Subagents inherit webSearchEnabled from the parent's params snapshot.
-  // Web search runs via the `plugins: [{id:"web"}]` form (see
-  // `openrouter_request.ts`), which searches exactly once per request — so
-  // there's no per-subagent cumulative budget to set. `gateParameters` will
-  // strip `webSearchEnabled` if the subagent's model doesn't support the
-  // plugin (it does on every model we ship).
+  const shouldUseMaterializedWebSearch =
+    webSearchToolEnabled && !toolRegistry.isEmpty && modelSupportsTools;
   const rawParams = {
-    ...paramsSnapshot.requestParams,
+    ...(paramsSnapshot.requestParams ?? {}),
+    webSearchEnabled: webSearchToolEnabled && !shouldUseMaterializedWebSearch,
     ...buildRegistryParams(toolRegistry),
   };
   const gatedParams = gateParameters(
@@ -234,6 +240,8 @@ export async function runSubagentRunHandler(
     ctx,
     userId: participantSnapshot.userId,
     chatId: participantSnapshot.chatId ?? String(batch.chatId),
+    modelId,
+    requireZdr,
   };
 
   try {
@@ -392,7 +400,10 @@ export async function runSubagentRunHandler(
           isPro: isProUser,
           allowSubagents: false,
           activeProfiles: Array.from(activeProfiles),
+          webSearchToolEnabled,
         });
+        const nextShouldUseMaterializedWebSearch =
+          webSearchToolEnabled && !registry.isEmpty && modelSupportsTools;
         await retrySameRoundProgressiveToolCalls(
           toolCalls,
           results,
@@ -401,6 +412,8 @@ export async function runSubagentRunHandler(
             ctx,
             userId: participantSnapshot.userId,
             chatId: participantSnapshot.chatId ?? String(batch.chatId),
+            modelId,
+            requireZdr,
           },
         );
         patchSameRoundProgressiveToolErrors(toolCalls, results, registry);
@@ -411,6 +424,7 @@ export async function runSubagentRunHandler(
           params: gateParameters(
             {
               ...gatedParams,
+              webSearchEnabled: webSearchToolEnabled && !nextShouldUseMaterializedWebSearch,
               ...buildRegistryParams(registry),
             },
             caps?.supportedParameters,
@@ -423,13 +437,14 @@ export async function runSubagentRunHandler(
       // SubagentStreamWriter and StreamWriter intentionally share the same
       // runtime surface. This stays casted until the chat/subagent writers are
       // unified behind a shared interface.
-      writer: writer as any,
+      writer: writer as unknown as StreamWriter,
       actionStartTime: Date.now(),
       allowContinuationHandoff: true,
       initialTotalUsage: snapshot?.totalUsage ?? null,
       initialToolCalls: snapshot?.allToolCalls ?? [],
       initialToolResults: snapshot?.allToolResults ?? [],
       initialCompactionCount: snapshot?.compactionCount ?? 0,
+      requireZdr,
     });
 
     // M23: Store ancillary compaction costs against the parent message.

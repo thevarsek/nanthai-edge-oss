@@ -1,8 +1,9 @@
-import { ActionCtx } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { isPlaceholderTitle } from "./title_helpers";
+import { isZdrEnabled } from "../lib/openrouter_zdr";
 
 export interface PostProcessArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
@@ -56,19 +57,24 @@ export async function postProcessHandler(
       }),
     ),
   );
-  const assistantContents = assistantMessages
-    .filter((msg: any): msg is NonNullable<typeof msg> =>
-      msg !== null && msg.status === "completed" && msg.content.trim() !== "",
-    )
-    .map((msg: any) => msg.content.trim());
+  const assistantContents = assistantMessages.flatMap((msg) => {
+    if (msg === null || msg.status !== "completed") {
+      return [];
+    }
+    const content = msg.content.trim();
+    return content === "" ? [] : [content];
+  });
   const assistantContent = assistantContents.join(
     "\n\n<assistant_response_separator>\n\n",
   );
+  const requireZdr = isZdrEnabled(prefs);
 
   const needsTitle = deps.isPlaceholderTitle(chat.title);
   const sourceContentForTitle = userContent || assistantContent;
   if (needsTitle && sourceContentForTitle) {
-    const configuredTitleModel = prefs?.titleModelId?.trim() || undefined;
+    const configuredTitleModel = requireZdr
+      ? undefined
+      : prefs?.titleModelId?.trim() || undefined;
     await ctx.scheduler.runAfter(0, internal.chat.actions.generateTitle, {
       chatId: args.chatId,
       sourceContent: sourceContentForTitle,
@@ -89,7 +95,9 @@ export async function postProcessHandler(
     return;
   }
 
-  const extractionModel = prefs?.memoryExtractionModelId?.trim() || undefined;
+  const extractionModel = requireZdr
+    ? undefined
+    : prefs?.memoryExtractionModelId?.trim() || undefined;
   await ctx.scheduler.runAfter(0, internal.chat.actions.extractMemories, {
     chatId: args.chatId,
     userMessageContent: userContent,

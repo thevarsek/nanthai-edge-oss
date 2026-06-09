@@ -14,6 +14,11 @@ import { promoteLatestUserVideoUrls } from "../chat/helpers_video_url_utils";
 import { StreamWriter } from "../chat/stream_writer";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import {
+  assertModelSupportsZdr,
+  isZdrEnabled,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
+import {
   generateModeratorDirective,
   ModeratorConfig,
   ParticipantConfig,
@@ -222,7 +227,11 @@ export async function runParticipantTurn(
   };
 
   try {
-    const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, userId);
+    const [apiKey, preferences] = await Promise.all([
+      deps.getRequiredUserOpenRouterApiKey(ctx, userId),
+      ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
+    ]);
+    const requireZdr = isZdrEnabled(preferences);
     let moderatorDirective: string | undefined;
     if (moderatorConfig) {
       moderatorDirective = await deps.generateModeratorDirective(
@@ -298,6 +307,13 @@ export async function runParticipantTurn(
     });
 
     const caps = modelCapabilities.get(participant.modelId);
+    if (requireZdr) {
+      assertModelSupportsZdr({
+        modelId: participant.modelId,
+        capabilities: caps,
+        feature: "Autonomous discussion",
+      });
+    }
     const assembledRequestMessages = await deps.assembleRequestContextForGeneration({
       ctx,
       chatId,
@@ -359,11 +375,14 @@ export async function runParticipantTurn(
       reasoningEffort: participant.reasoningEffort ?? null,
       webSearchEnabled,
     };
-    const gatedParams = deps.gateParameters(
-      rawParams,
-      caps?.supportedParameters,
-      caps?.hasImageGeneration,
-      caps?.hasReasoning,
+    const gatedParams = withZdrProvider(
+      deps.gateParameters(
+        rawParams,
+        caps?.supportedParameters,
+        caps?.hasImageGeneration,
+        caps?.hasReasoning,
+      ),
+      requireZdr,
     );
 
     let totalReasoning = "";

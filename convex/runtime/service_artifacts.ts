@@ -16,6 +16,7 @@
 
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
 import { guessMimeTypeFromPath, isTextLikeMime, runtimeWorkspacePaths } from "./shared";
 import { getWorkspaceSandbox } from "./service";
@@ -156,8 +157,8 @@ export async function storeArtifactBytes(
   if (chatId) {
     await toolCtx.ctx.runMutation(internal.runtime.mutations.recordSandboxArtifactInternal, {
       userId: toolCtx.userId,
-      chatId: chatId as any,
-      sandboxSessionId: toolCtx.sandboxSessionId as any,
+      chatId: chatId as Id<"chats">,
+      sandboxSessionId: toolCtx.sandboxSessionId as Id<"sandboxSessions"> | undefined,
       path: filename,
       filename,
       mimeType: finalMime,

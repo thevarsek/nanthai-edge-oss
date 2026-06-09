@@ -15,6 +15,7 @@
 
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { ToolExecutionContext } from "../tools/registry";
 import { runVercelSandboxCode } from "./vercel_sandbox_client";
 import { storeArtifactBytes } from "./service_artifacts";
@@ -131,7 +132,7 @@ export async function runDataPythonSandbox(
   // Look up existing sandbox session for this chat
   const existingSession = await toolCtx.ctx.runQuery(
     internal.runtime.queries.getSessionByChatInternal,
-    { userId: toolCtx.userId, chatId: chatId as any, environment: "python" },
+    { userId: toolCtx.userId, chatId: chatId as Id<"chats">, environment: "python" },
   );
 
   const existingSandboxId =
@@ -208,7 +209,7 @@ export async function runDataPythonSandbox(
         {
           sessionId: existingSession._id,
           userId: toolCtx.userId,
-          chatId: chatId as any,
+          chatId: chatId as Id<"chats">,
           environment: "python",
           providerSandboxId: result.sandboxId,
           status: "running",
@@ -227,7 +228,7 @@ export async function runDataPythonSandbox(
         internal.runtime.mutations.upsertSessionInternal,
         {
           userId: toolCtx.userId,
-          chatId: chatId as any,
+          chatId: chatId as Id<"chats">,
           environment: "python",
           providerSandboxId: result.sandboxId,
           status: "running",

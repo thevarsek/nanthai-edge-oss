@@ -12,6 +12,7 @@
 
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { prepareBenchmarkUpdates } from "./artificial_analysis_prepare";
 
 // -- AA API response types (match actual nested response structure) ------------
@@ -150,10 +151,9 @@ export const syncBenchmarks = internalAction({
       matchedCount: prepared.matchedCount,
       totalModels: prepared.totalModels,
       patches: prepared.patches.map((entry) => ({
-        docId: entry.docId as any,
+        docId: entry.docId as Id<"cachedModels">,
         patch: entry.patch,
       })),
     });
   },
 });
-

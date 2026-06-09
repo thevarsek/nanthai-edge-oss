@@ -104,6 +104,46 @@ test("callOpenRouterNonStreaming strips unsupported params before retrying", asy
   assert.equal(result.content, "ok");
 });
 
+test("callOpenRouterNonStreaming retries no-endpoints without soft provider routing but preserves ZDR", async () => {
+  const requestBodies: Record<string, unknown>[] = [];
+  let fetchCount = 0;
+
+  const deps = createOpenRouterNonStreamingDepsForTest({
+    fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)));
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return jsonResponse(404, {
+          error: { message: "No endpoints found for request" },
+        }) as any;
+      }
+      return jsonResponse(200, {
+        id: "gen_1",
+        choices: [{ message: { content: "rerouted ok" }, finish_reason: "stop" }],
+        usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+      }) as any;
+    },
+  });
+
+  const result = await callOpenRouterNonStreaming(
+    "key",
+    "openai/gpt-4.1",
+    [{ role: "user", content: "hi" }],
+    { provider: { only: ["openai"], zdr: true } },
+    {},
+    deps,
+  );
+
+  assert.equal(fetchCount, 2);
+  assert.equal(result.content, "rerouted ok");
+  assert.deepEqual(requestBodies[0]?.provider, {
+    sort: "latency",
+    only: ["openai"],
+    zdr: true,
+  });
+  assert.deepEqual(requestBodies[1]?.provider, { zdr: true });
+});
+
 test("callOpenRouterNonStreaming switches to the fallback model after a wrapped 200 error", async () => {
   const models: string[] = [];
 

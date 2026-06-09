@@ -1,7 +1,13 @@
 "use node";
 
 import { ConvexError } from "convex/values";
-import { ImapFlow, type FetchMessageObject } from "imapflow";
+import {
+  ImapFlow,
+  type AppendResponseObject,
+  type CopyResponseObject,
+  type FetchMessageObject,
+  type ListOptions,
+} from "imapflow";
 import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
@@ -31,6 +37,27 @@ export interface GmailMessageSummary {
   isUnread: boolean;
   labels: string[];
 }
+
+type GmailAppendResponse = AppendResponseObject & {
+  id?: string;
+};
+
+type GmailSpecialUseListOptions = ListOptions & {
+  specialUse: true;
+};
+
+type GmailLabelClient = ImapFlow & {
+  messageLabelsAdd?: (
+    range: number,
+    labels: string[],
+    options?: { uid?: boolean },
+  ) => Promise<unknown>;
+  messageLabelsRemove?: (
+    range: number,
+    labels: string[],
+    options?: { uid?: boolean },
+  ) => Promise<unknown>;
+};
 
 function normalizeMailboxLabel(label: string): string {
   const trimmed = label.trim();
@@ -236,14 +263,14 @@ export async function createGmailManualDraft(
       await findGmailSpecialUseMailbox(client, "\\Drafts") ??
       normalizeMailboxLabel("DRAFTS");
     const message = buildRawDraftMessage(credentials, args);
-    const result = await client.append(draftsPath, Buffer.from(message, "utf8"), ["\\Draft"], new Date());
+    const result = await client.append(draftsPath, Buffer.from(message, "utf8"), ["\\Draft"], new Date()) as GmailAppendResponse | false;
     if (result === false) {
       throw new Error("Gmail rejected the draft append operation.");
     }
     return {
       mailbox: draftsPath,
-      uid: typeof (result as any).uid === "number" ? (result as any).uid : undefined,
-      messageId: typeof (result as any).id === "string" ? (result as any).id : undefined,
+      uid: typeof result.uid === "number" ? result.uid : undefined,
+      messageId: typeof result.id === "string" ? result.id : undefined,
     };
   } finally {
     await client.logout().catch(() => undefined);
@@ -272,7 +299,7 @@ export async function listGmailManualMessages(
         threadId: true,
         source: args.includeBody === true,
         bodyStructure: args.includeBody !== true,
-      } as any)) {
+      })) {
         messages.push(await serializeMessage(message, args.includeBody === true));
       }
 
@@ -301,11 +328,11 @@ async function serializeMessage(
   const from = envelope?.from?.map((addr) => addr.address || addr.name).filter(Boolean).join(", ") || "unknown";
   const to = envelope?.to?.map((addr) => addr.address || addr.name).filter(Boolean).join(", ");
   const flags = Array.from(message.flags ?? []);
-  const labels = Array.from((message as any).labels ?? []).map(String);
+  const labels = Array.from(message.labels ?? []).map(String);
 
   return {
     id: String(message.uid),
-    threadId: String((message as any).threadId ?? message.uid),
+    threadId: String(message.threadId ?? message.uid),
     subject,
     from,
     to,
@@ -325,9 +352,9 @@ async function findGmailSpecialUseMailbox(
   // "[Gmail]/Cestino" on Italian accounts). The cross-locale way to find them
   // is to look for the LIST SPECIAL-USE flag (\Trash, \Junk, \Sent, \All).
   try {
-    const boxes = await client.list({ specialUse: true } as any);
+    const boxes = await client.list({ specialUse: true } as GmailSpecialUseListOptions);
     for (const box of boxes) {
-      const flags = (box as any).specialUse;
+      const flags = box.specialUse;
       if (typeof flags === "string" && flags === specialUse) return box.path;
       if (Array.isArray(flags) && flags.includes(specialUse)) return box.path;
     }
@@ -361,11 +388,15 @@ export async function trashGmailManualMessages(
       const results: Array<{ id: string; success: boolean; error?: string }> = [];
       for (const id of messageIds) {
         try {
-          const moveResult = await client.messageMove(Number(id), trashPath, { uid: true });
+          const moveResult = await client.messageMove(Number(id), trashPath, { uid: true }) as CopyResponseObject | false | null | undefined;
           // imapflow returns null/undefined when no UIDs were actually moved.
           // Treat that as a failure so callers don't silently report success.
-          const movedCount = (moveResult as any)?.uidMap?.size
-            ?? (Array.isArray((moveResult as any)?.uidMap) ? (moveResult as any).uidMap.length : null);
+          const uidMap = moveResult ? moveResult.uidMap : undefined;
+          const movedCount = typeof uidMap?.size === "number"
+            ? uidMap.size
+            : Array.isArray(uidMap)
+              ? uidMap.length
+              : null;
           if (movedCount === 0 || movedCount === null) {
             // If we can't tell, fall back to assuming success — but log path so
             // we can verify after a single round-trip in production.
@@ -443,7 +474,7 @@ export async function modifyGmailManualLabels(
               if (!trashPath) throw new Error("Gmail Trash mailbox not found via SPECIAL-USE.");
               await client.messageMove(Number(id), trashPath, { uid: true });
             } else if (upper !== "INBOX") {
-              await (client as any).messageLabelsAdd?.(Number(id), [label], { uid: true });
+              await (client as GmailLabelClient).messageLabelsAdd?.(Number(id), [label], { uid: true });
             }
           }
           for (const label of removeLabels) {
@@ -458,7 +489,7 @@ export async function modifyGmailManualLabels(
               if (!allMailPath) throw new Error("Gmail All Mail mailbox not found via SPECIAL-USE.");
               await client.messageMove(Number(id), allMailPath, { uid: true });
             } else {
-              await (client as any).messageLabelsRemove?.(Number(id), [label], { uid: true });
+              await (client as GmailLabelClient).messageLabelsRemove?.(Number(id), [label], { uid: true });
             }
           }
           results.push({ id, success: true });

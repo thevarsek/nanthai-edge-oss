@@ -120,6 +120,20 @@ test("retryMessageHandler reuses cached web-search context from searchContexts t
             }),
           };
         }
+        if (table === "oauthConnections") {
+          return {
+            withIndex: () => ({
+              first: async () => null,
+            }),
+          };
+        }
+        if (table === "personas") {
+          return {
+            withIndex: () => ({
+              collect: async () => [],
+            }),
+          };
+        }
         throw new Error(`Unexpected table query: ${table}`);
       },
       insert: async (table: string, value: Record<string, unknown>) => {
@@ -229,6 +243,27 @@ test("retryMessageHandler strips legacy integrations for non-tool models instead
           };
         }
         if (table === "chatParticipants") {
+          return {
+            withIndex: () => ({
+              collect: async () => [],
+            }),
+          };
+        }
+        if (table === "userPreferences") {
+          return {
+            withIndex: () => ({
+              first: async () => ({ userId: "user_1" }),
+            }),
+          };
+        }
+        if (table === "oauthConnections") {
+          return {
+            withIndex: () => ({
+              first: async () => null,
+            }),
+          };
+        }
+        if (table === "personas") {
           return {
             withIndex: () => ({
               collect: async () => [],
@@ -361,6 +396,27 @@ test("retryMessageHandler allows old retries when only built-in tools were used"
           return {
             withIndex: () => ({
               first: async () => null,
+            }),
+          };
+        }
+        if (table === "userPreferences") {
+          return {
+            withIndex: () => ({
+              first: async () => ({ userId: "user_1" }),
+            }),
+          };
+        }
+        if (table === "oauthConnections") {
+          return {
+            withIndex: () => ({
+              first: async () => null,
+            }),
+          };
+        }
+        if (table === "personas") {
+          return {
+            withIndex: () => ({
+              collect: async () => [],
             }),
           };
         }

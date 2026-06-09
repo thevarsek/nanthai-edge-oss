@@ -10,6 +10,7 @@ import {
   createPostProcessHandlerDepsForTest,
   postProcessHandler,
 } from "../chat/actions_post_process_handler";
+import { MODEL_IDS } from "../lib/model_constants";
 
 test("postProcessHandler exits when the chat is missing or the user message is a scheduled step", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
@@ -204,6 +205,7 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
       audioBase64: "",
       audioTranscript: "",
       generationId: "gen_1",
+      annotations: [],
       usage: { promptTokens: 1, completionTokens: 2, totalTokens: 3, cost: 0.01 },
     }),
   });
@@ -265,6 +267,51 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
   assert.equal(guardedMutations.length, 0);
 });
 
+test("generateTitleHandler uses ZDR-safe default model and provider when ZDR is enabled", async () => {
+  let capturedModel = "";
+  let capturedParams: Record<string, unknown> = {};
+  const deps = createGenerateTitleHandlerDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    callOpenRouterNonStreaming: async (_apiKey, model, _messages, params) => {
+      capturedModel = model;
+      capturedParams = params as Record<string, unknown>;
+      return {
+        content: "ZDR title",
+        finishReason: "stop",
+        audioBase64: "",
+        audioTranscript: "",
+        generationId: null,
+        annotations: [],
+        usage: null,
+      };
+    },
+  });
+
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("chatId" in args) return { _id: "chat_1", title: "New chat" };
+      if ("userId" in args) {
+        return {
+          zdrEnabled: true,
+          titleModelId: "openai/non-zdr-title",
+        };
+      }
+      return null;
+    },
+    runMutation: async () => undefined,
+  });
+
+  await generateTitleHandler(ctx, {
+    chatId: "chat_1" as any,
+    sourceContent: "Summarize this conversation",
+    userId: "user_1",
+    titleModelId: "openai/non-zdr-title",
+  }, deps);
+
+  assert.equal(capturedModel, MODEL_IDS.titleGeneration);
+  assert.deepEqual(capturedParams.provider, { zdr: true });
+});
+
 test("generateTitleHandler no-ops for missing chats or user-edited titles and falls back when the model output is unusable", async () => {
   let modelCalls = 0;
   const deps = createGenerateTitleHandlerDepsForTest({
@@ -277,6 +324,7 @@ test("generateTitleHandler no-ops for missing chats or user-edited titles and fa
         audioBase64: "",
         audioTranscript: "",
         generationId: null,
+        annotations: [],
         usage: null,
       };
     },

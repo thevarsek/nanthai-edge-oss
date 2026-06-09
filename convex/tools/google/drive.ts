@@ -9,9 +9,19 @@
 import { createTool } from "../registry";
 import { getGoogleAccessToken, googleCapabilityToolError } from "./auth";
 import { internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
+
+type ScopedDocumentCandidate = {
+  driveFileId?: string;
+  ref: string;
+  documentId: string;
+  versionId: string;
+  extractionStatus?: string;
+  pageCount?: number;
+};
 
 // ---------------------------------------------------------------------------
 // drive_upload — Upload a Convex-stored file to Google Drive
@@ -480,10 +490,12 @@ export const driveRead = createTool({
               internal.documents.mutations.ensureDocumentsForChat,
               {
                 userId: toolCtx.userId,
-                chatId: toolCtx.chatId as import("../../_generated/dataModel").Id<"chats">,
+                chatId: toolCtx.chatId as Id<"chats">,
               },
             );
-            const match = docs.find((d: any) => d.driveFileId === meta.id);
+            const match = (docs as ScopedDocumentCandidate[]).find(
+              (doc) => doc.driveFileId === meta.id,
+            );
             if (match) {
               scopedDocHandle = {
                 doc_id: match.ref,

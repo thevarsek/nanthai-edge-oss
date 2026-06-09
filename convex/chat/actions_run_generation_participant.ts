@@ -7,6 +7,7 @@ import {
   gateParameters,
   OnDelta,
   OnReasoningDelta,
+  OpenRouterMessage,
   OpenRouterUsage,
   resolvePerplexityCitations,
 } from "../lib/openrouter";
@@ -27,6 +28,7 @@ import {
   persistGeneratedImageUrlsWithTracking,
 } from "./action_image_helpers";
 import { resolveMemoryContextForGeneration } from "./action_memory_helpers";
+import type { MessageWithStoredAttachments } from "./action_image_helpers";
 import {
   ModelCapabilities,
   ParticipantConfig,
@@ -42,7 +44,7 @@ import {
   formatSkillCatalogXml,
   SKILL_DISCOVERY_INSTRUCTION,
 } from "../skills/helpers";
-import { resolveEffectiveSkills } from "../skills/resolver";
+import { resolveEffectiveSkills, type SkillOverrideEntry } from "../skills/resolver";
 import { StreamWriter } from "./stream_writer";
 import { ToolRegistry } from "../tools/registry";
 import {
@@ -54,6 +56,10 @@ import {
 } from "../documents/shared";
 import { hasGoogleIntegrations, isGoogleDataAllowedModel } from "../models/google_data_providers";
 import { MODEL_IDS } from "../lib/model_constants";
+import {
+  isZdrEnabled,
+  mergeZdrProvider,
+} from "../lib/openrouter_zdr";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { captureToolRoundArtifacts } from "../tools/artifact_writer";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
@@ -73,9 +79,20 @@ import {
   extractProfilesFromLoadSkillResults,
   mergeLoadedSkills,
 } from "../tools/progressive_registry_shared";
+import { hasNodeRequiredProfiles } from "../tools/runtime_safety";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "./loaded_skill_prompt";
+import type { Doc } from "../_generated/dataModel";
+import type { ContextMessage } from "./helpers_types";
+
+type GenerationMessage = {
+  _id: string;
+  role: string;
+  content: string;
+  attachments?: MessageWithStoredAttachments["attachments"];
+  [key: string]: unknown;
+};
 
 export function shouldPersistParticipantReasoning(totalReasoning: string): boolean {
   return totalReasoning.length > 0;
@@ -104,6 +121,9 @@ const DATE_CONTEXT_PROFILES = new Set<SkillToolProfileId>([
   "appleCalendar",
   "scheduledJobs",
 ]);
+
+const V8_FIRST_TOOL_ROUND_HANDOFF_MS = 30_000;
+const V8_ACTION_HANDOFF_MS = 90_000;
 
 export function shouldInjectDateContext(params: {
   webSearchEnabled: boolean;
@@ -134,7 +154,7 @@ export interface GenerateForParticipantParams {
   ctx: ActionCtx;
   args: RunGenerationArgs;
   participant: ParticipantConfig;
-  allMessages: Array<any>;
+  allMessages: GenerationMessage[];
   memoryContext: string | undefined;
   modelCapabilities: Map<string, ModelCapabilities>;
   /** Optional tool registry. When provided and non-empty, tool definitions
@@ -151,7 +171,9 @@ export interface GenerateForParticipantParams {
   runtimeProfile: "mobileBasic";
   apiKey: string;
   /** Optional prebuilt OpenRouter request messages for resumed flows. */
-  requestMessagesOverride?: Array<any>;
+  requestMessagesOverride?: OpenRouterMessage[];
+  /** True when a deferred/resumed parent turn already required ZDR routing. */
+  requireZdrOverride?: boolean;
   initialTotalUsage?: OpenRouterUsage | null;
   initialToolCalls?: RecordedToolCall[];
   initialToolResults?: RecordedToolResult[];
@@ -171,6 +193,7 @@ export interface GenerateForParticipantParams {
     onHandoff: (checkpoint: GenerationContinuationCheckpoint) => Promise<void>;
     continuationCount: number;
   };
+  v8RuntimeHandoffGuards?: boolean;
   streamingMessageId?: Id<"streamingMessages">;
   onProfilesExpanded?: (
     toolCalls: Array<{ function: { name: string } }>,
@@ -182,6 +205,7 @@ export interface GenerateForParticipantParams {
   ) => Promise<{
     registry?: ToolRegistry;
     params?: ChatRequestParameters;
+    stopBeforeModelCall?: boolean;
   } | void>;
   /**
    * Called when new direct tools (e.g. document_workspace tools) come into
@@ -203,11 +227,18 @@ export interface GenerateForParticipantParams {
   /** Pre-resolved overrides from coordinator to eliminate duplicate queries. */
   preResolvedOverrides?: {
     resolved: true;
-    chatSkillOverrides?: Array<{ skillId: string; state: string }>;
-    personaSkillOverrides?: Array<{ skillId: string; state: string }>;
-    skillDefaults?: Array<{ skillId: string; state: string }>;
+    chatSkillOverrides?: SkillOverrideEntry[];
+    personaSkillOverrides?: SkillOverrideEntry[];
+    skillDefaults?: SkillOverrideEntry[];
   };
 }
+
+type RunGenerationContinuationExtras = {
+  subagentBatchId?: Id<"subagentBatches">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
+  chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
+};
 
 async function resolveSystemPrompt(
   ctx: ActionCtx,
@@ -326,12 +357,12 @@ export async function generateForParticipant(
       : Promise.resolve(null),
     shouldBuildSkillCatalog && modelSupportsTools
       ? ctx.runQuery(internal.skills.queries.listActiveSystemSkills, {})
-      : Promise.resolve([] as any[]),
+      : Promise.resolve([] as Doc<"skills">[]),
     shouldBuildSkillCatalog && modelSupportsTools
       ? ctx.runQuery(internal.skills.queries.listUserSkillsInternal, {
           userId: args.userId,
         })
-      : Promise.resolve([] as any[]),
+      : Promise.resolve([] as Doc<"skills">[]),
     shouldBuildSkillCatalog && modelSupportsTools && !hasPreResolved
       ? ctx.runQuery(internal.preferences.queries.getSkillIntegrationDefaults, {
           userId: args.userId,
@@ -373,6 +404,7 @@ export async function generateForParticipant(
     messageId: String(participant.messageId),
     jobId: String(participant.jobId),
     generationKey: String(participant.jobId),
+    modelId: participant.modelId,
   };
 
   try {
@@ -454,11 +486,11 @@ export async function generateForParticipant(
         // fall back to legacy fields transparently.
         // Use pre-resolved overrides from coordinator when available.
         const resolved = resolveEffectiveSkills({
-          allSkills: [...systemSkills, ...userSkills] as any,
-          settingsDefaults: (hasPreResolved ? preResolvedOverrides.skillDefaults : userDefaults?.skillDefaults) as any,
-          personaOverrides: (hasPreResolved ? preResolvedOverrides.personaSkillOverrides : personaAny?.skillOverrides) as any,
-          chatOverrides: (hasPreResolved ? preResolvedOverrides.chatSkillOverrides : chatAny?.skillOverrides) as any,
-          turnOverrides: args.turnSkillOverrides as any,
+          allSkills: [...systemSkills, ...userSkills],
+          settingsDefaults: hasPreResolved ? preResolvedOverrides.skillDefaults : userDefaults?.skillDefaults,
+          personaOverrides: hasPreResolved ? preResolvedOverrides.personaSkillOverrides : personaAny?.skillOverrides as SkillOverrideEntry[] | undefined,
+          chatOverrides: hasPreResolved ? preResolvedOverrides.chatSkillOverrides : chatAny?.skillOverrides as SkillOverrideEntry[] | undefined,
+          turnOverrides: args.turnSkillOverrides,
         });
 
         const { catalog, alwaysSkills } = buildSkillCatalogFromResolved(
@@ -516,12 +548,20 @@ export async function generateForParticipant(
       }
     }
 
+    // ZDR + Google data protection decision is needed before memory context
+    // assembly because contextual memory embeddings call OpenRouter too.
+    const userWantsZdr = isZdrEnabled(userPrefs);
+    const googleActive = hasGoogleIntegrations(
+      progressiveTools?.enabledIntegrations,
+    );
+    const requireZdr = params.requireZdrOverride === true || userWantsZdr || googleActive;
+
     const memoryContextStartedAt = Date.now();
     const resolvedMemoryContext = requestMessagesOverride
       ? undefined
       : await resolveMemoryContextForGeneration(ctx, {
         messages: allMessages.map((message) => ({
-          _id: message._id,
+          _id: message._id as Id<"messages">,
           role: message.role,
           content: message.content,
         })),
@@ -530,6 +570,7 @@ export async function generateForParticipant(
         personaId: participant.personaId ?? null,
         chatId: args.chatId,
         assistantMessageId: participant.messageId,
+        requireZdr,
       });
     ttftLog("[generation] memory context resolved", {
       chatId: args.chatId,
@@ -548,7 +589,7 @@ export async function generateForParticipant(
       loadedSkills: params.restoredLoadedSkills,
     });
     const legacyRequestMessages = requestMessagesOverride ?? buildRequestMessages({
-      messages: allMessages,
+      messages: allMessages as unknown as ContextMessage[],
       excludeMessageId: participant.messageId,
       systemPrompt: skillAugmentedPrompt ?? undefined,
       dateContext: shouldAddDateContext ? buildCurrentDatePrompt() : undefined,
@@ -567,7 +608,7 @@ export async function generateForParticipant(
         jobId: participant.jobId,
         participantId: participant.personaId ?? participant.modelId,
         legacyMessages: legacyRequestMessages,
-        allMessages,
+        allMessages: allMessages as unknown as ContextMessage[],
         providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,
       });
     }
@@ -579,7 +620,7 @@ export async function generateForParticipant(
     });
     const requestMessages = await appendCurrentTurnAudioInput(
       promotedRequest.messages,
-      allMessages.find((message) => message._id === args.userMessageId) as any,
+      allMessages.find((message) => message._id === args.userMessageId),
       caps?.hasAudioInput,
     );
     const restoredProfiles = progressiveTools
@@ -647,12 +688,17 @@ export async function generateForParticipant(
     }
 
     const providerConstraintsStartedAt = Date.now();
+    const shouldUseMaterializedWebSearch =
+      args.webSearchEnabled === true &&
+      effectiveToolRegistry != null &&
+      !effectiveToolRegistry.isEmpty &&
+      modelSupportsTools;
     const rawParams: ChatRequestParameters = {
       temperature: participant.temperature ?? 0.7,
       maxTokens: participant.maxTokens ?? null,
       includeReasoning: participant.includeReasoning ?? null,
       reasoningEffort: participant.reasoningEffort ?? null,
-      webSearchEnabled: args.webSearchEnabled,
+      webSearchEnabled: args.webSearchEnabled && !shouldUseMaterializedWebSearch,
     };
 
     // M10: Inject tool definitions when a registry is available.
@@ -668,28 +714,23 @@ export async function generateForParticipant(
       caps?.hasReasoning,
     );
 
-    // ZDR + Google data protection enforcement.
-    // userPrefs was fetched in the preflight parallel batch above.
-    const userWantsZdr = userPrefs?.zdrEnabled === true;
-    const googleActive = hasGoogleIntegrations(
-      progressiveTools?.enabledIntegrations,
-    );
-    const requireZdr = userWantsZdr || googleActive;
-
     if (requireZdr) {
       if (!(caps?.hasZdrEndpoint)) {
-        throw new ConvexError(
-          googleActive
+        throw new ConvexError({
+          code: googleActive ? "GOOGLE_DATA_MODEL_UNAVAILABLE" : "ZDR_MODEL_UNAVAILABLE",
+          message: googleActive
             ? "This model isn't available for conversations using Google Workspace data. Please select a compatible model."
             : "This model doesn't support Zero Data Retention. Please select a compatible model.",
-        );
+        });
       }
-      effectiveParams.provider = { zdr: true };
+      effectiveParams.provider = mergeZdrProvider(effectiveParams.provider, true);
     }
+    sharedToolCtx.requireZdr = requireZdr;
     if (googleActive && !isGoogleDataAllowedModel(participant.modelId, caps?.provider)) {
-      throw new ConvexError(
-        "This model isn't available for conversations using Google Workspace data. Please select a compatible model.",
-      );
+      throw new ConvexError({
+        code: "GOOGLE_DATA_MODEL_UNAVAILABLE",
+        message: "This model isn't available for conversations using Google Workspace data. Please select a compatible model.",
+      });
     }
     ttftLog("[generation] provider constraints resolved", {
       chatId: args.chatId,
@@ -700,6 +741,7 @@ export async function generateForParticipant(
       requireZdr,
       googleActive,
       hasTools: effectiveToolRegistry != null && !effectiveToolRegistry.isEmpty,
+      materializedWebSearch: shouldUseMaterializedWebSearch,
     });
 
     let hasLoggedFirstDelta = false;
@@ -851,6 +893,7 @@ export async function generateForParticipant(
     // window or action timeout is approaching limits.
     const progressiveToolCalls: RecordedToolCall[] = [];
     const pendingProgressiveToolCallsByIndex = new Map<number, string>();
+    const toolRoundStartedAtByRound = new Map<number, number>();
     const activeProfiles = new Set<SkillToolProfileId>(
       restoredProfiles,
     );
@@ -865,6 +908,7 @@ export async function generateForParticipant(
       toolRegistry: effectiveToolRegistry,
       toolCtx: sharedToolCtx,
       onToolRoundStart: async (_round, toolCalls) => {
+        toolRoundStartedAtByRound.set(_round, Date.now());
         for (const [index, tc] of toolCalls.entries()) {
           const recordedToolCall = {
             id: tc.id,
@@ -919,7 +963,7 @@ export async function generateForParticipant(
           results,
         });
       },
-      onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {
+      onPrepareNextTurn: async (round, toolCalls, results, conversationMessages) => {
         if (!progressiveTools) return;
 
         const newProfiles = extractProfilesFromLoadSkillResults(toolCalls, results);
@@ -938,9 +982,21 @@ export async function generateForParticipant(
             changed = true;
           }
         }
+        const toolRoundDurationMs =
+          Date.now() - (toolRoundStartedAtByRound.get(round) ?? Date.now());
+        const actionElapsedMs = Date.now() - params.actionStartTime;
+        const shouldStopForSlowV8Round =
+          params.v8RuntimeHandoffGuards === true &&
+          continuationHandoff != null &&
+          round === 1 &&
+          (
+            toolRoundDurationMs >= V8_FIRST_TOOL_ROUND_HANDOFF_MS ||
+            actionElapsedMs >= V8_ACTION_HANDOFF_MS
+          );
         if (!changed) {
           return {
             messages: normalizedNextMessages,
+            stopBeforeModelCall: shouldStopForSlowV8Round,
           };
         }
         const expanded = await onProfilesExpanded?.(
@@ -957,10 +1013,19 @@ export async function generateForParticipant(
         if (expanded?.params) {
           effectiveParams = expanded.params;
         }
+        const shouldStopForV8Guard =
+          params.v8RuntimeHandoffGuards === true &&
+          continuationHandoff != null &&
+          (
+            expanded?.stopBeforeModelCall === true ||
+            hasNodeRequiredProfiles(Array.from(activeProfiles)) ||
+            shouldStopForSlowV8Round
+          );
         return {
           registry: effectiveToolRegistry,
           params: effectiveParams,
           messages: normalizedNextMessages,
+          stopBeforeModelCall: shouldStopForV8Guard,
         };
       },
       modelContextLimit: caps?.contextLength ?? 128_000,
@@ -972,6 +1037,7 @@ export async function generateForParticipant(
       initialToolResults: params.initialToolResults ?? [],
       initialCompactionCount: params.initialCompactionCount ?? 0,
       maxToolRoundsPerInvocation: continuationHandoff?.maxToolRoundsPerInvocation,
+      requireZdr,
     });
 
     const result = genResult.streamResult;
@@ -1027,6 +1093,8 @@ export async function generateForParticipant(
             enabledIntegrations: progressiveTools?.enabledIntegrations ?? [],
             turnSkillOverrides: args.turnSkillOverrides,
             turnIntegrationOverrides: args.turnIntegrationOverrides,
+            webSearchToolEnabled: args.webSearchEnabled,
+            requireZdr,
             requestParams: effectiveParams,
           },
           participantSnapshot: {
@@ -1071,6 +1139,8 @@ export async function generateForParticipant(
           enabledIntegrations: args.enabledIntegrations,
           turnSkillOverrides: args.turnSkillOverrides,
           turnIntegrationOverrides: args.turnIntegrationOverrides,
+          webSearchToolEnabled: args.webSearchEnabled,
+          requireZdr,
           requestParams: effectiveParams,
         },
         participantSnapshot: {
@@ -1099,6 +1169,7 @@ export async function generateForParticipant(
         genResult.continuation.messages,
         loadedSkills,
       );
+      const groupArgs = args as RunGenerationArgs & RunGenerationContinuationExtras;
       await continuationHandoff.onHandoff({
         participant,
         group: {
@@ -1108,19 +1179,20 @@ export async function generateForParticipant(
           userId: args.userId,
           expandMultiModelGroups: args.expandMultiModelGroups,
           webSearchEnabled: args.webSearchEnabled,
+          requireZdrOverride: requireZdr,
           effectiveIntegrations: progressiveTools?.enabledIntegrations ?? [],
           directToolNames: effectiveDirectToolNames,
           isPro,
           allowSubagents: progressiveTools?.allowSubagents ?? false,
           disableTools: (args as { disableTools?: boolean }).disableTools,
           searchSessionId: args.searchSessionId,
-          subagentBatchId: (args as { subagentBatchId?: any }).subagentBatchId,
-          drivePickerBatchId: (args as { drivePickerBatchId?: any }).drivePickerBatchId,
-          chatSkillOverrides: preResolvedOverrides?.chatSkillOverrides as any,
-          chatIntegrationOverrides: args.chatIntegrationOverrides as any,
-          personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides as any,
-          skillDefaults: preResolvedOverrides?.skillDefaults as any,
-          integrationDefaults: args.integrationDefaults as any,
+          subagentBatchId: groupArgs.subagentBatchId,
+          drivePickerBatchId: groupArgs.drivePickerBatchId,
+          chatSkillOverrides: preResolvedOverrides?.chatSkillOverrides,
+          chatIntegrationOverrides: groupArgs.chatIntegrationOverrides,
+          personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides,
+          skillDefaults: preResolvedOverrides?.skillDefaults,
+          integrationDefaults: groupArgs.integrationDefaults,
         },
         checkpointVersion: "v2",
         assembledCheckpoint: {

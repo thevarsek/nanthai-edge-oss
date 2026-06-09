@@ -282,6 +282,7 @@ export const saveGenerationContinuationArgs = {
       userId: v.string(),
       expandMultiModelGroups: v.boolean(),
       webSearchEnabled: v.boolean(),
+      requireZdrOverride: v.optional(v.boolean()),
       effectiveIntegrations: v.array(v.string()),
       directToolNames: v.array(v.string()),
       isPro: v.boolean(),
@@ -472,6 +473,19 @@ export type StoreAncillaryCostArgs = {
   completionTokens: number;
   totalTokens: number;
   cost?: number;
+  isByok?: boolean;
+  cachedTokens?: number;
+  cacheWriteTokens?: number;
+  audioPromptTokens?: number;
+  videoTokens?: number;
+  reasoningTokens?: number;
+  imageCompletionTokens?: number;
+  audioCompletionTokens?: number;
+  upstreamInferenceCost?: number;
+  upstreamInferencePromptCost?: number;
+  upstreamInferenceCompletionsCost?: number;
+  cacheDiscount?: number;
+  webSearchRequests?: number;
   source: string;
   generationId?: string;
 };
@@ -485,6 +499,19 @@ export const storeAncillaryCostArgs = {
   completionTokens: v.number(),
   totalTokens: v.number(),
   cost: v.optional(v.number()),
+  isByok: v.optional(v.boolean()),
+  cachedTokens: v.optional(v.number()),
+  cacheWriteTokens: v.optional(v.number()),
+  audioPromptTokens: v.optional(v.number()),
+  videoTokens: v.optional(v.number()),
+  reasoningTokens: v.optional(v.number()),
+  imageCompletionTokens: v.optional(v.number()),
+  audioCompletionTokens: v.optional(v.number()),
+  upstreamInferenceCost: v.optional(v.number()),
+  upstreamInferencePromptCost: v.optional(v.number()),
+  upstreamInferenceCompletionsCost: v.optional(v.number()),
+  cacheDiscount: v.optional(v.number()),
+  webSearchRequests: v.optional(v.number()),
   source: v.string(),
   generationId: v.optional(v.string()),
 } satisfies PropertyValidators;

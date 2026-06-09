@@ -175,3 +175,88 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
   assert.ok(scheduled.some((entry) => entry.batchId === "batch_1"));
   assert.equal(responses.length, 0);
 });
+
+test("runSubagentRunHandler rebuilds materialized web_search from snapshot intent", async (t) => {
+  t.after(() => mock.restoreAll());
+  let requestBody: Record<string, unknown> = {};
+  mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
+    requestBody = JSON.parse(String(init?.body));
+    return sseText("Child answer with optional web search available.");
+  }) as any;
+
+  const run = {
+    _id: "run_1",
+    batchId: "batch_1",
+    status: "queued",
+    title: "Research",
+    taskPrompt: "Use current information if needed.",
+    continuationCount: 0,
+  };
+  const batch = {
+    _id: "batch_1",
+    status: "running_children",
+    userId: "user_1",
+    chatId: "chat_1",
+    parentMessageId: "parent_msg_1",
+    parentJobId: "parent_job_1",
+    toolCallId: "call_spawn",
+    sourceUserMessageId: "msg_user",
+    childConversationSeed: [{ role: "user", content: "Seed prompt." }],
+    paramsSnapshot: {
+      enabledIntegrations: [],
+      webSearchToolEnabled: true,
+      requireZdr: true,
+      requestParams: {
+        webSearchEnabled: false,
+        provider: { zdr: true },
+      },
+    },
+    participantSnapshot: {
+      userId: "user_1",
+      chatId: "chat_1",
+      participant: { modelId: "openai/gpt-5" },
+    },
+  };
+
+  let userScopedQueryCount = 0;
+  const ctx = {
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("expectedStatuses" in args) return true;
+      if (args.runId === "run_1" && args.status === "completed") {
+        return { batchId: "batch_1", allTerminal: false };
+      }
+      return null;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) return run;
+      if ("batchId" in args) return batch;
+      if ("modelId" in args) {
+        return {
+          supportedParameters: ["tools"],
+          hasImageGeneration: false,
+          hasReasoning: true,
+          hasZdrEndpoint: true,
+          contextLength: 128_000,
+        };
+      }
+      if ("userId" in args) {
+        userScopedQueryCount += 1;
+        return userScopedQueryCount === 1
+          ? "sk-test"
+          : { isPro: true };
+      }
+      return null;
+    },
+    scheduler: {
+      runAfter: async () => "scheduled_1",
+    },
+  } as any;
+
+  await runSubagentRunHandler(ctx, { runId: "run_1" as any });
+
+  const toolNames = (requestBody.tools as Array<{ function?: { name?: string } }> | undefined)
+    ?.map((tool) => tool.function?.name);
+  assert.ok(toolNames?.includes("web_search"));
+  assert.equal("plugins" in requestBody, false);
+  assert.deepEqual(requestBody.provider, { sort: "latency", zdr: true });
+});

@@ -34,6 +34,15 @@ export interface SubmitVideoJobRequest {
   duration?: number;
   generate_audio?: boolean;
   seed?: number;
+  provider?: {
+    sort?: "latency" | "throughput" | "price";
+    preferred_max_latency?: {
+      p50?: number;
+      p90?: number;
+      p99?: number;
+    };
+    zdr?: boolean;
+  };
   output?: {
     upload_url?: string;
   };

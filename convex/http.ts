@@ -5,8 +5,8 @@
 // =============================================================================
 
 import { httpRouter } from "convex/server";
-import { httpAction } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { httpAction, type ActionCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import {
   isAllowedVideoUploadMimeType,
@@ -18,7 +18,7 @@ import { triggerScheduledJob } from "./scheduledJobs/http";
 
 const http = httpRouter();
 
-async function handleVideoOutputUpload(ctx: any, request: Request): Promise<Response> {
+async function handleVideoOutputUpload(ctx: ActionCtx, request: Request): Promise<Response> {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   if (!token) {

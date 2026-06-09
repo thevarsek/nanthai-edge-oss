@@ -11,6 +11,7 @@ import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 const checkProStatusRef = getFunctionName(internal.preferences.queries.checkProStatus);
 const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
+const getUserPreferencesRef = getFunctionName(internal.chat.queries.getUserPreferences);
 
 test("extractImportCandidatesHandler requires Pro", async () => {
   const deps = createMemoryImportDepsForTest({
@@ -63,6 +64,7 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
           audioBase64: "",
           audioTranscript: "",
           generationId: null,
+          annotations: [],
         };
       }
       if (joined.includes("resume.docx")) {
@@ -74,6 +76,7 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
           audioBase64: "",
           audioTranscript: "",
           generationId: null,
+          annotations: [],
         };
       }
       return {
@@ -84,6 +87,7 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
         audioBase64: "",
         audioTranscript: "",
         generationId: null,
+        annotations: [],
       };
     },
   });
@@ -97,6 +101,9 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
       }
       if (refKey === getUserMemoriesRef) {
         return [{ content: "User leads product teams." }];
+      }
+      if (refKey === getUserPreferencesRef) {
+        return {};
       }
       throw new Error("unexpected query");
     },
@@ -170,6 +177,7 @@ test("extractImportCandidatesHandler caps accepted candidates at 32", async () =
         audioBase64: "",
         audioTranscript: "",
         generationId: null,
+        annotations: [],
       };
     },
   });
@@ -182,6 +190,9 @@ test("extractImportCandidatesHandler caps accepted candidates at 32", async () =
       }
       if (refKey === getUserMemoriesRef) {
         return [];
+      }
+      if (refKey === getUserPreferencesRef) {
+        return {};
       }
       throw new Error("unexpected query");
     },

@@ -5,19 +5,20 @@
 // handlers when a single batch wasn't enough.
 // =============================================================================
 
-import { internalMutation } from "../_generated/server";
+import { internalMutation, type MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 
 const BATCH_SIZE = 100;
 
 async function deleteMemoryWithEmbedding(
-  ctx: any,
-  memoryId: any,
+  ctx: MutationCtx,
+  memoryId: Id<"memories">,
 ): Promise<void> {
   const embedding = await ctx.db
     .query("memoryEmbeddings")
-    .withIndex("by_memory", (q: any) => q.eq("memoryId", memoryId))
+    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
     .first();
   if (embedding) {
     await ctx.db.delete(embedding._id);

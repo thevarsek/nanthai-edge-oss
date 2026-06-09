@@ -24,6 +24,7 @@ import {
   ResolvedImage,
   resolveSlideImages,
 } from "./image_resolver";
+import type { Id } from "../_generated/dataModel";
 
 // ---------------------------------------------------------------------------
 // Types (shared with generate_pptx)
@@ -436,7 +437,7 @@ export const editPptx = createTool({
     // Step 1: Verify original exists and get stats.
     let originalBlob: Blob | null;
     try {
-      originalBlob = await toolCtx.ctx.storage.get(storageId as any);
+      originalBlob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
     } catch {
       return { success: false, data: null, error: `Invalid storageId: "${storageId}"` };
     }

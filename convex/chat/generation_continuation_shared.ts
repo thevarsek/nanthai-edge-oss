@@ -23,6 +23,7 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   userId: string;
   expandMultiModelGroups: boolean;
   webSearchEnabled: boolean;
+  requireZdrOverride?: boolean;
   effectiveIntegrations: string[];
   directToolNames?: string[];
   isPro: boolean;
@@ -51,6 +52,7 @@ export interface GenerationContinuationGroupSnapshot {
   userId: string;
   expandMultiModelGroups: boolean;
   webSearchEnabled: boolean;
+  requireZdrOverride?: boolean;
   effectiveIntegrations: string[];
   directToolNames: string[];
   isPro: boolean;

@@ -19,6 +19,11 @@ import {
 } from "./helpers";
 import { MODEL_IDS } from "../lib/model_constants";
 import {
+  assertModelSupportsZdr,
+  isZdrEnabled,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
+import {
   runWebSearchArgs,
   trackPerplexitySearchCosts,
   updateSession,
@@ -42,7 +47,13 @@ async function runWebSearchHandler(
   });
 
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
+    const [apiKey, preferences] = await Promise.all([
+      getRequiredUserOpenRouterApiKey(ctx, args.userId),
+      ctx.runQuery(internal.chat.queries.getUserPreferences, {
+        userId: args.userId,
+      }),
+    ]);
+    const requireZdr = isZdrEnabled(preferences);
     const preset = resolveComplexityPreset("web", args.complexity);
     let searchResults: SearchResult[];
 
@@ -58,9 +69,21 @@ async function runWebSearchHandler(
         currentPhase: "synthesizing",
       });
     } else if (args.complexity === 1) {
-      searchResults = await runDirectSearch(ctx, args, preset.searchModel, apiKey);
+      searchResults = await runDirectSearch(
+        ctx,
+        args,
+        preset.searchModel,
+        apiKey,
+        requireZdr,
+      );
     } else {
-      searchResults = await runQueryGenAndSearch(ctx, args, preset, apiKey);
+      searchResults = await runQueryGenAndSearch(
+        ctx,
+        args,
+        preset,
+        apiKey,
+        requireZdr,
+      );
     }
 
     const searchContext = {
@@ -165,11 +188,25 @@ async function runWebSearchHandler(
   }
 }
 
+async function assertActionModelSupportsZdr(
+  ctx: ActionCtx,
+  modelId: string,
+  feature: string,
+  requireZdr: boolean,
+): Promise<void> {
+  if (!requireZdr) return;
+  const capabilities = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+    modelId,
+  });
+  assertModelSupportsZdr({ modelId, capabilities, feature });
+}
+
 async function runDirectSearch(
   ctx: ActionCtx,
   args: WebSearchActionArgs,
   searchModel: string,
   apiKey: string,
+  requireZdr: boolean,
 ): Promise<SearchResult[]> {
   await updateSession(ctx, args.sessionId, {
     status: "searching",
@@ -177,11 +214,16 @@ async function runDirectSearch(
     currentPhase: "searching",
   });
 
+  await assertActionModelSupportsZdr(ctx, searchModel, "Web search", requireZdr);
+
   const results = await executePerplexitySearch(
     [args.query],
     searchModel,
     apiKey,
-    { maxTokens: resolveSearchMaxTokens("web", args.complexity, searchModel) },
+    {
+      maxTokens: resolveSearchMaxTokens("web", args.complexity, searchModel),
+      requireZdr,
+    },
   );
 
   // M23: Track Perplexity search costs.
@@ -206,12 +248,28 @@ async function runQueryGenAndSearch(
   args: WebSearchActionArgs,
   preset: ReturnType<typeof resolveComplexityPreset>,
   apiKey: string,
+  requireZdr: boolean,
 ): Promise<SearchResult[]> {
   await updateSession(ctx, args.sessionId, {
     status: "planning",
     progress: 10,
     currentPhase: "planning",
   });
+
+  await Promise.all([
+    assertActionModelSupportsZdr(
+      ctx,
+      args.modelId,
+      "Web search planning",
+      requireZdr,
+    ),
+    assertActionModelSupportsZdr(
+      ctx,
+      preset.searchModel,
+      "Web search",
+      requireZdr,
+    ),
+  ]);
 
   const queryGenPrompt = buildQueryGenerationPrompt(args.query, preset.breadth);
   let queryGenSystemPrompt = args.systemPrompt;
@@ -235,7 +293,10 @@ async function runQueryGenAndSearch(
     apiKey,
     args.modelId,
     queryGenMessages,
-    { temperature: 0.7, maxTokens: 2048, transforms: SEARCH_TRANSFORMS },
+    withZdrProvider(
+      { temperature: 0.7, maxTokens: 2048, transforms: SEARCH_TRANSFORMS },
+      requireZdr,
+    ),
     { fallbackModel: MODEL_IDS.searchQueryGeneration },
   );
 
@@ -277,7 +338,10 @@ async function runQueryGenAndSearch(
     queries,
     preset.searchModel,
     apiKey,
-    { maxTokens: resolveSearchMaxTokens("web", args.complexity, preset.searchModel) },
+    {
+      maxTokens: resolveSearchMaxTokens("web", args.complexity, preset.searchModel),
+      requireZdr,
+    },
   );
 
   // M23: Track Perplexity search costs.

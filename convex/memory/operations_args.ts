@@ -136,6 +136,7 @@ export const claimMessageQueryEmbeddingLeaseArgs = {
 
 export const completeMessageQueryEmbeddingArgs = {
   messageId: v.id("messages"),
+  textHash: v.string(),
   status: v.union(v.literal("ready"), v.literal("failed")),
   embedding: v.optional(v.array(v.float64())),
   usage: v.optional(v.object({
@@ -158,6 +159,7 @@ export const primeMessageQueryEmbeddingArgs = {
   userId: v.string(),
   chatId: v.optional(v.id("chats")),
   queryText: v.optional(v.string()),
+  requireZdr: v.optional(v.boolean()),
 } satisfies PropertyValidators;
 
 // --- Phase 3: messageMemoryContexts ---------------------------------------
@@ -178,6 +180,7 @@ export const claimMessageMemoryContextLeaseArgs = {
 
 export const completeMessageMemoryContextArgs = {
   messageId: v.id("messages"),
+  textHash: v.string(),
   status: v.union(v.literal("ready"), v.literal("failed")),
   hydratedHits: v.optional(v.array(v.any())),
   memoryQueryText: v.optional(v.string()),
@@ -201,4 +204,5 @@ export const primeMessageMemoryContextArgs = {
   userId: v.string(),
   chatId: v.optional(v.id("chats")),
   queryText: v.optional(v.string()),
+  requireZdr: v.optional(v.boolean()),
 } satisfies PropertyValidators;

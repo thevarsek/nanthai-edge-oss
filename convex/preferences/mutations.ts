@@ -242,6 +242,10 @@ export const upsertPreferences = mutation({
     if (args.clearDefaultPersona === true) {
       patch.defaultPersonaId = undefined;
     }
+    if (args.zdrEnabled === true) {
+      patch.titleModelId = undefined;
+      patch.memoryExtractionModelId = undefined;
+    }
 
     if (existing) {
       await ctx.db.patch(existing._id, patch);
@@ -285,8 +289,12 @@ export const upsertPreferences = mutation({
       defaultAudioSpeed: args.defaultAudioSpeed ?? 1,
       isMemoryEnabled: args.isMemoryEnabled ?? true,
       memoryGatingMode: args.memoryGatingMode ?? "automatic",
-      memoryExtractionModelId: args.memoryExtractionModelId ?? undefined,
-      titleModelId: args.titleModelId ?? undefined,
+      memoryExtractionModelId: args.zdrEnabled === true
+        ? undefined
+        : args.memoryExtractionModelId ?? undefined,
+      titleModelId: args.zdrEnabled === true
+        ? undefined
+        : args.titleModelId ?? undefined,
       disabledProviders: args.disabledProviders ?? undefined,
       hasSeenIdeascapeHelp: args.hasSeenIdeascapeHelp ?? undefined,
       hasSeenMainWalkthrough: args.hasSeenMainWalkthrough ?? undefined,
@@ -296,6 +304,7 @@ export const upsertPreferences = mutation({
       defaultVideoDuration: args.defaultVideoDuration ?? undefined,
       defaultVideoResolution: args.defaultVideoResolution ?? undefined,
       defaultVideoGenerateAudio: args.defaultVideoGenerateAudio ?? undefined,
+      zdrEnabled: args.zdrEnabled ?? undefined,
       preferenceWriteEpoch: currentPreferenceWriteEpoch,
       updatedAt: now,
     });

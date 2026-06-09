@@ -34,6 +34,8 @@ export interface ToolResult {
   success: boolean;
   /** Serializable data to feed back to the model as the tool response. */
   data: unknown;
+  /** Optional fuller payload for durable artifacts; never sent to the model. */
+  artifactData?: unknown;
   /** Optional human-readable error message (when success=false). */
   error?: string;
   /**
@@ -60,6 +62,10 @@ export interface ToolExecutionContext {
   messageId?: string;
   jobId?: string;
   generationKey?: string;
+  /** Current OpenRouter model for model-scoped helper tools. */
+  modelId?: string;
+  /** Whether helper tools must enforce OpenRouter provider.zdr. */
+  requireZdr?: boolean;
   /**
    * The Convex ID of the current sandbox session (if a Vercel sandbox is
    * active for this chat). Set by data_python_sandbox after session upsert

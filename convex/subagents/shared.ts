@@ -13,7 +13,29 @@ export interface ParentBatchParamsSnapshot {
   turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   /** M30 — Turn-level integration overrides (propagated from parent generation) */
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  /** Original web-search intent before request params choose plugin vs tool routing. */
+  webSearchToolEnabled?: boolean;
+  /** True when the deferred parent turn already required ZDR routing. */
+  requireZdr?: boolean;
   requestParams: ChatRequestParameters;
+}
+
+export function resolveWebSearchToolIntent(snapshot: {
+  webSearchToolEnabled?: boolean;
+  requestParams?: ChatRequestParameters;
+}): boolean {
+  return snapshot.webSearchToolEnabled
+    ?? snapshot.requestParams?.webSearchEnabled
+    ?? false;
+}
+
+export function resolveSnapshotRequireZdr(snapshot: {
+  requireZdr?: boolean;
+  requestParams?: ChatRequestParameters;
+}): boolean {
+  return snapshot.requireZdr
+    ?? snapshot.requestParams?.provider?.zdr
+    ?? false;
 }
 
 export interface ParentBatchParticipantSnapshot {

@@ -18,6 +18,10 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES,
   ingestDriveFile,
 } from "./ingest";
+import {
+  resolveSnapshotRequireZdr,
+  resolveWebSearchToolIntent,
+} from "../subagents/shared";
 
 type DrivePickerBatch = {
   status: "awaiting_pick" | "resuming" | "completed" | "failed" | "cancelled";
@@ -93,7 +97,8 @@ export const attachPickedDriveFiles = action({
       participants: [resume.participant],
       userId: resume.userId,
       expandMultiModelGroups: false,
-      webSearchEnabled: resume.paramsSnapshot?.requestParams?.webSearchEnabled ?? false,
+      webSearchEnabled: resolveWebSearchToolIntent(resume.paramsSnapshot ?? {}),
+      requireZdrOverride: resolveSnapshotRequireZdr(resume.paramsSnapshot ?? {}),
       enabledIntegrations: resume.paramsSnapshot?.enabledIntegrations ?? [],
       turnSkillOverrides: resume.paramsSnapshot?.turnSkillOverrides,
       turnIntegrationOverrides: resume.paramsSnapshot?.turnIntegrationOverrides,

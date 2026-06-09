@@ -36,6 +36,7 @@ export interface ModelCapabilities {
   hasVideoInput?: boolean;
   hasImageGeneration?: boolean;
   hasReasoning?: boolean;
+  hasZdrEndpoint?: boolean;
   contextLength?: number;
 }
 

@@ -54,14 +54,21 @@ export const repairInvalidMessagePersonas = internalMutation({
         // then null out participantId so it no longer points at a missing doc.
         repairedCount += 1;
         if (!dryRun) {
-          const patch: Record<string, unknown> = { participantId: undefined };
+          const legacyMessage = message as typeof message & {
+            autonomousParticipantId?: unknown;
+            participantId?: unknown;
+          };
+          const patch: {
+            participantId?: undefined;
+            autonomousParticipantId?: string;
+          } = { participantId: undefined };
           if (
-            !(message as any).autonomousParticipantId &&
-            typeof message.participantId === "string"
+            !legacyMessage.autonomousParticipantId &&
+            typeof legacyMessage.participantId === "string"
           ) {
-            patch.autonomousParticipantId = message.participantId as string;
+            patch.autonomousParticipantId = legacyMessage.participantId;
           }
-          await ctx.db.patch(message._id, patch as any);
+          await ctx.db.patch(message._id, patch);
         }
       }
 
@@ -136,7 +143,7 @@ export const backfillEmbeddingUserIds = internalMutation({
 
     for (const embRow of page.page) {
       // Already has userId — nothing to do.
-      if ((embRow as any).userId) {
+      if (embRow.userId) {
         skippedCount += 1;
         continue;
       }
@@ -151,7 +158,7 @@ export const backfillEmbeddingUserIds = internalMutation({
 
       patchedCount += 1;
       if (!dryRun) {
-        await ctx.db.patch(embRow._id, { userId: memory.userId } as any);
+        await ctx.db.patch(embRow._id, { userId: memory.userId });
       }
     }
 

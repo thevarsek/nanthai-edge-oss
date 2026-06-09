@@ -196,6 +196,39 @@ test("updateScheduledJob resolves by name and forwards update arguments", async 
   assert.equal(updates[0]?.status, "paused");
 });
 
+test("updateScheduledJob omits null recurrence to preserve existing schedule", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  let queryCount = 0;
+  const result = await updateScheduledJob.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        runQuery: async () => {
+          queryCount += 1;
+          if (queryCount === 1) return true;
+          return [{ _id: "job_1", name: "Morning Summary" }];
+        },
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          if (args.recurrence === null) {
+            throw new Error("recurrence must be omitted, not null");
+          }
+          updates.push(args);
+          return null;
+        },
+      },
+    } as any,
+    {
+      jobId: "job_1",
+      recurrence: null,
+      status: "active",
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(updates[0]?.recurrence, undefined);
+  assert.equal(updates[0]?.status, "active");
+});
+
 test("updateScheduledJob forwards personaId and targetFolderId, including explicit clears", async () => {
   const updates: Array<Record<string, unknown>> = [];
   let queryCount = 0;

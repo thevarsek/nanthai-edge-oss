@@ -4,7 +4,8 @@
 // state for too long. Called by cron every 15 minutes.
 // =============================================================================
 
-import { internalMutation } from "../_generated/server";
+import { internalMutation, type MutationCtx } from "../_generated/server";
+import type { Doc } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { MAX_CONSECUTIVE_FAILURES } from "../scheduledJobs/actions_lifecycle";
 import { cancelGenerationContinuationHandler } from "../chat/mutations_generation_continuation_handlers";
@@ -18,8 +19,8 @@ const STALE_STREAMING_JOB_TIMEOUT_MS = 45 * 60 * 1000; // 45 minutes
 const STALE_ERROR = "Timed out (stale job cleanup)";
 
 async function releaseScheduledExecutionForStaleJob(
-  ctx: any,
-  generationJob: any,
+  ctx: MutationCtx,
+  generationJob: Doc<"generationJobs">,
   now: number,
 ): Promise<void> {
   if (!generationJob.sourceJobId || !generationJob.sourceExecutionId) {

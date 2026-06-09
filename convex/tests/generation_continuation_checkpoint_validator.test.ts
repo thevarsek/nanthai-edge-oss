@@ -48,6 +48,7 @@ test("saveGenerationContinuationArgs.checkpoint.group validator covers every Gen
     userId: "user_1",
     expandMultiModelGroups: false,
     webSearchEnabled: false,
+    requireZdrOverride: true,
     effectiveIntegrations: [],
     directToolNames: [],
     isPro: false,

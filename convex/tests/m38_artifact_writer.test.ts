@@ -110,6 +110,63 @@ test("artifact writer stores oversized args and results under separate storage i
   assert.match(stored[1], /"text"/);
 });
 
+test("artifact writer records materialized web_search usage as ancillary cost", async () => {
+  const mutations: Array<Record<string, any>> = [];
+  const ctx = {
+    storage: { store: async () => "storage_1" },
+    runMutation: async (_ref: unknown, args: Record<string, any>) => {
+      mutations.push(args);
+      if (Array.isArray(args.artifacts)) return ["artifact_1"];
+      return null;
+    },
+  } as any;
+
+  await captureToolRoundArtifacts({
+    ctx,
+    metadata: {
+      userId: "user_1",
+      chatId: "chat_1" as any,
+      messageId: "msg_1" as any,
+      jobId: "job_1" as any,
+    },
+    round: 1.0,
+    toolCalls: [toolCall("call_web", "web_search", { query: "current news" })],
+    results: [{
+      toolCallId: "call_web",
+      result: {
+        success: true,
+        data: { content: "summary" },
+        artifactData: {
+          content: "summary",
+          usage: {
+            promptTokens: 11,
+            completionTokens: 7,
+            totalTokens: 18,
+            cost: 0.0012,
+            isByok: true,
+            webSearchRequests: 1,
+          },
+          generationId: "gen_web_1",
+          modelId: "openai/gpt-5",
+        },
+      },
+    }],
+  });
+
+  const usageMutation = mutations.find((entry) => entry.source === "tool_web_search");
+  assert.equal(usageMutation?.messageId, "msg_1");
+  assert.equal(usageMutation?.modelId, "openai/gpt-5");
+  assert.equal(usageMutation?.promptTokens, 11);
+  assert.equal(usageMutation?.completionTokens, 7);
+  assert.equal(usageMutation?.totalTokens, 18);
+  assert.equal(usageMutation?.cost, 0.0012);
+  assert.equal(usageMutation?.isByok, true);
+  assert.equal(usageMutation?.webSearchRequests, 1);
+  assert.equal(usageMutation?.generationId, "gen_web_1");
+  const artifactInsert = mutations.find((entry) => Array.isArray(entry.artifacts));
+  assert.equal(artifactInsert?.artifacts[0].toolName, "web_search");
+});
+
 test("artifact writer marks deferred and failed calls as recovery context", async () => {
   const mutations: Array<Record<string, any>> = [];
   const ctx = {

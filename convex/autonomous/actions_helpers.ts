@@ -1,7 +1,13 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
+import type { ActionCtx } from "../_generated/server";
 import { MODEL_IDS } from "../lib/model_constants";
 import { callOpenRouterNonStreaming, OpenRouterMessage } from "../lib/openrouter";
+import {
+  isZdrEnabled,
+  selectAncillaryModelForZdr,
+  withZdrProvider,
+} from "../lib/openrouter_zdr";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 
 export interface ParticipantConfig {
@@ -21,6 +27,8 @@ export interface ModeratorConfig {
   personaId?: Id<"personas">;
   displayName: string;
 }
+
+type AutonomousHelperContext = Pick<ActionCtx, "runQuery">;
 
 export function dedupeMessageIds(ids: Id<"messages">[]): Id<"messages">[] {
   const seen = new Set<Id<"messages">>();
@@ -56,19 +64,41 @@ function fallbackModeratorDirective(): string {
   return "Address the strongest unresolved point so far. Take a clear position, add one concrete tradeoff, and avoid repeating earlier arguments.";
 }
 
+async function modelSupportsZdr(
+  ctx: AutonomousHelperContext,
+  modelId: string,
+): Promise<boolean> {
+  const capabilities = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+    modelId,
+  });
+  return capabilities?.hasZdrEndpoint === true;
+}
+
 /**
  * Generate a moderator directive to guide the next participant's response.
  * Non-streaming call to a mid-tier model. Returns null on failure (non-fatal).
  */
 export async function generateModeratorDirective(
-  ctx: any,
+  ctx: AutonomousHelperContext,
   moderator: ModeratorConfig,
   nextParticipant: ParticipantConfig,
   chatId: Id<"chats">,
   userId: string,
 ): Promise<string | undefined> {
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
+    const [apiKey, preferences] = await Promise.all([
+      getRequiredUserOpenRouterApiKey(ctx, userId),
+      ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
+    ]);
+    const requireZdr = isZdrEnabled(preferences);
+    const primaryModelId = selectAncillaryModelForZdr({
+      requestedModel: moderator.modelId,
+      defaultModel: MODEL_IDS.appDefault,
+      requireZdr,
+    });
+    if (requireZdr && !(await modelSupportsZdr(ctx, primaryModelId))) {
+      return fallbackModeratorDirective();
+    }
     let moderatorSystemPrompt: string | undefined;
     if (moderator.personaId) {
       const persona = await ctx.runQuery(internal.chat.queries.getPersona, {
@@ -112,19 +142,22 @@ Requirements:
 
     let result = await callOpenRouterNonStreaming(
       apiKey,
-      moderator.modelId,
+      primaryModelId,
       messages,
-      { temperature: 0.7, maxTokens: 100 },
+      withZdrProvider({ temperature: 0.7, maxTokens: 100 }, requireZdr),
       { fallbackModel: MODEL_IDS.autonomousFallback },
     );
 
     let directive = result.content.trim();
-    if (!directive && moderator.modelId !== MODEL_IDS.autonomousFallback) {
+    if (!directive && primaryModelId !== MODEL_IDS.autonomousFallback) {
+      if (requireZdr && !(await modelSupportsZdr(ctx, MODEL_IDS.autonomousFallback))) {
+        return fallbackModeratorDirective();
+      }
       result = await callOpenRouterNonStreaming(
         apiKey,
         MODEL_IDS.autonomousFallback,
         messages,
-        { temperature: 0.7, maxTokens: 100 },
+        withZdrProvider({ temperature: 0.7, maxTokens: 100 }, requireZdr),
         { fallbackModel: undefined },
       );
       directive = result.content.trim();
@@ -141,13 +174,25 @@ Requirements:
  * Uses a cheap model for cost-effective analysis. Returns true if consensus.
  */
 export async function checkConsensusInternal(
-  ctx: any,
+  ctx: AutonomousHelperContext,
   chatId: Id<"chats">,
   participantCount: number,
   userId: string,
 ): Promise<boolean> {
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
+    const [apiKey, preferences] = await Promise.all([
+      getRequiredUserOpenRouterApiKey(ctx, userId),
+      ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
+    ]);
+    const requireZdr = isZdrEnabled(preferences);
+    const consensusModelId = selectAncillaryModelForZdr({
+      requestedModel: MODEL_IDS.autonomousConsensus,
+      defaultModel: MODEL_IDS.appDefault,
+      requireZdr,
+    });
+    if (requireZdr && !(await modelSupportsZdr(ctx, consensusModelId))) {
+      return false;
+    }
     const recentMessages = await ctx.runQuery(
       internal.autonomous.queries.recentMessages,
       { chatId, count: Math.max(participantCount, 3) },
@@ -164,9 +209,9 @@ ${contextSummary}`;
     const messages: OpenRouterMessage[] = [{ role: "user", content: prompt }];
     const result = await callOpenRouterNonStreaming(
       apiKey,
-      MODEL_IDS.autonomousConsensus,
+      consensusModelId,
       messages,
-      { temperature: 0.3, maxTokens: 50 },
+      withZdrProvider({ temperature: 0.3, maxTokens: 50 }, requireZdr),
       { fallbackModel: MODEL_IDS.autonomousFallback },
     );
 

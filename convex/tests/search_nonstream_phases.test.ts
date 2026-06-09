@@ -52,6 +52,7 @@ test("runPlanningPhase falls back to the raw query when orchestration JSON is in
       audioBase64: "",
       audioTranscript: "",
       generationId: "gen_1",
+      annotations: [],
     }),
   });
 
@@ -115,7 +116,7 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
 
   const initial = await runInitialSearchPhase(
     ctx,
-    { ...buildArgs(), complexity: 3 },
+    { ...buildArgs(), complexity: 3, requireZdr: true },
     ["swift actors"],
     "perplexity/sonar",
     2,
@@ -123,7 +124,7 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   );
   const depth = await runDepthSearchPhase(
     ctx,
-    { ...buildArgs(), complexity: 3 },
+    { ...buildArgs(), complexity: 3, requireZdr: true },
     ["swift isolated"],
     "perplexity/sonar",
     3,
@@ -138,6 +139,8 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   assert.equal(trackCalls.length, 2);
   assert.equal(searchOptions[0]?.maxTokens, 8000);
   assert.equal(searchOptions[1]?.maxTokens, 8000);
+  assert.equal(searchOptions[0]?.requireZdr, true);
+  assert.equal(searchOptions[1]?.requireZdr, true);
   assert.equal(writes[0]?.phaseType, "initial_search");
   assert.equal(writes[1]?.phaseType, "depth_iteration");
 });
@@ -160,6 +163,7 @@ test("runAnalysisPhase uses persona system prompts and falls back when JSON pars
         audioBase64: "",
         audioTranscript: "",
         generationId: null,
+        annotations: [],
       };
     },
   });
@@ -221,6 +225,7 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
       audioBase64: "",
       audioTranscript: "",
       generationId: "gen_synth",
+      annotations: [],
       };
     },
   });
@@ -244,6 +249,7 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
       maxTokens: 12_000,
       includeReasoning: true,
       reasoningEffort: "high",
+      requireZdr: true,
     },
     [
       {
@@ -264,6 +270,7 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   assert.equal(requestParams[0]?.maxTokens, 12_000);
   assert.equal(requestParams[0]?.includeReasoning, false);
   assert.equal(requestParams[0]?.reasoningEffort, null);
+  assert.deepEqual(requestParams[0]?.provider, { zdr: true });
 });
 
 test("runPaperArchitecturePhase persists structured artifact and tracks cost", async () => {
@@ -287,6 +294,7 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
       audioBase64: "",
       audioTranscript: "",
       generationId: "gen_arch",
+      annotations: [],
       };
     },
   });
@@ -310,6 +318,7 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
       maxTokens: 12_000,
       includeReasoning: true,
       reasoningEffort: "medium",
+      requireZdr: true,
     },
     "{\"researchQuestion\":\"What changed?\"}",
     "{\"findings\":\"Actors improve isolation\"}",
@@ -323,4 +332,5 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
   assert.equal(requestParams[0]?.maxTokens, 12_000);
   assert.equal(requestParams[0]?.includeReasoning, false);
   assert.equal(requestParams[0]?.reasoningEffort, null);
+  assert.deepEqual(requestParams[0]?.provider, { zdr: true });
 });

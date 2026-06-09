@@ -16,6 +16,7 @@ import {
   summarizeSearchResults,
 } from "./helpers";
 import { MODEL_IDS } from "../lib/model_constants";
+import { withZdrProvider } from "../lib/openrouter_zdr";
 import {
   computeProgress,
   PipelineArgs,
@@ -24,7 +25,10 @@ import {
 import { trackPerplexitySearchCosts } from "./actions_web_search_shared";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 
-type PipelineArgsWithApiKey = PipelineArgs & { apiKey: string };
+type PipelineArgsWithApiKey = PipelineArgs & {
+  apiKey: string;
+  requireZdr?: boolean;
+};
 
 const defaultWorkflowNonstreamDeps = {
   callOpenRouterNonStreaming,
@@ -99,7 +103,10 @@ export async function runPlanningPhase(
     args.apiKey,
     args.modelId,
     messages,
-    { temperature: 0.7, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
+    withZdrProvider(
+      { temperature: 0.7, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
+      args.requireZdr === true,
+    ),
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
   );
 
@@ -152,7 +159,10 @@ export async function runInitialSearchPhase(
     queries,
     searchModel,
     args.apiKey,
-    { maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel) },
+    {
+      maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel),
+      requireZdr: args.requireZdr === true,
+    },
   );
 
   // M23: Track Perplexity search costs.
@@ -197,7 +207,10 @@ export async function runAnalysisPhase(
     args.apiKey,
     args.modelId,
     messages,
-    { temperature: 0.5, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
+    withZdrProvider(
+      { temperature: 0.5, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
+      args.requireZdr === true,
+    ),
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
   );
 
@@ -252,7 +265,10 @@ export async function runDepthSearchPhase(
     queries,
     searchModel,
     args.apiKey,
-    { maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel) },
+    {
+      maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel),
+      requireZdr: args.requireZdr === true,
+    },
   );
 
   // M23: Track Perplexity search costs.
@@ -296,13 +312,16 @@ export async function runSynthesisPhase(
     args.apiKey,
     args.modelId,
     messages,
-    {
-      temperature: 0.3,
-      maxTokens: args.maxTokens,
-      includeReasoning: false,
-      reasoningEffort: null,
-      transforms: SEARCH_TRANSFORMS,
-    },
+    withZdrProvider(
+      {
+        temperature: 0.3,
+        maxTokens: args.maxTokens,
+        includeReasoning: false,
+        reasoningEffort: null,
+        transforms: SEARCH_TRANSFORMS,
+      },
+      args.requireZdr === true,
+    ),
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
   );
 
@@ -367,13 +386,16 @@ export async function runPaperArchitecturePhase(
     args.apiKey,
     args.modelId,
     messages,
-    {
-      temperature: 0.3,
-      maxTokens: args.maxTokens,
-      includeReasoning: false,
-      reasoningEffort: null,
-      transforms: SEARCH_TRANSFORMS,
-    },
+    withZdrProvider(
+      {
+        temperature: 0.3,
+        maxTokens: args.maxTokens,
+        includeReasoning: false,
+        reasoningEffort: null,
+        transforms: SEARCH_TRANSFORMS,
+      },
+      args.requireZdr === true,
+    ),
     { fallbackModel: MODEL_IDS.searchResearchOrchestration },
   );
 

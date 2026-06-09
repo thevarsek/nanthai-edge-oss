@@ -145,7 +145,7 @@ test("model sync metadata helpers and upsertBatch avoid unnecessary duplicate in
   assert.equal(inserts[0]?.table, "cachedModels");
 });
 
-test("syncFromOpenRouter skips writes when the content hash matches", async () => {
+test("syncFromOpenRouter refreshes ZDR flags when the content hash matches and ZDR data is available", async () => {
   const originalFetch = globalThis.fetch;
   try {
     const data = [{ id: "openai/gpt-5.2", name: "GPT 5.2", pricing: { prompt: "0.000001", completion: "0.000002" }, context_length: 200000, supported_parameters: [] }];
@@ -167,6 +167,55 @@ test("syncFromOpenRouter skips writes when the content hash matches", async () =
       status: 200,
       statusText: "OK",
     })) as any;
+
+    const mutations: Array<Record<string, unknown>> = [];
+    await (syncFromOpenRouter as any)._handler({
+      runQuery: async () => previousHash,
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {});
+
+    assert.deepEqual(mutations, [{ zdrModelIds: [] }]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("syncFromOpenRouter skips unchanged catalog writes when ZDR fetch fails", async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    const data = [{ id: "openai/gpt-5.2", name: "GPT 5.2", pricing: { prompt: "0.000001", completion: "0.000002" }, context_length: 200000, supported_parameters: [] }];
+    const hashInput = data
+      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
+      .sort()
+      .join("\n");
+    const hashBuffer = await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      new TextEncoder().encode(hashInput),
+    );
+    const previousHash = Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    let fetchCount = 0;
+
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return {
+          ok: true,
+          json: async () => ({ data }),
+          status: 200,
+          statusText: "OK",
+        };
+      }
+      return {
+        ok: false,
+        json: async () => ({}),
+        status: 503,
+        statusText: "Unavailable",
+      };
+    }) as any;
 
     const mutations: Array<Record<string, unknown>> = [];
     await (syncFromOpenRouter as any)._handler({

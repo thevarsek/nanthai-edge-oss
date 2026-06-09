@@ -1,5 +1,6 @@
-import { ActionCtx } from "../_generated/server";
+import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import type { Doc } from "../_generated/dataModel";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { RunGenerationParticipantArgs } from "./generation_continuation_shared";
 
@@ -15,6 +16,8 @@ const failureStatuses = new Set([
   "cancelled",
   "timedOut",
 ]);
+
+type GenerationJobStatus = Doc<"generationJobs">["status"];
 
 const defaultMaybeFinalizeGroupDeps = {
   now: () => Date.now(),
@@ -41,17 +44,17 @@ export async function maybeFinalizeGenerationGroup(
       ctx.runQuery(internal.chat.queries.getGenerationJobInternal, { jobId }),
     ),
   );
-  if (jobs.some((job: any) => job == null)) {
+  if (jobs.some((job) => job == null)) {
     return;
   }
 
-  const statuses = jobs.map((job: any) => job!.status);
-  if (statuses.some((status: any) => !terminalStatuses.has(status))) {
+  const statuses = jobs.map((job) => job!.status);
+  if (statuses.some((status: GenerationJobStatus) => !terminalStatuses.has(status))) {
     return;
   }
 
-  const allCancelled = statuses.every((status: any) => status === "cancelled");
-  const allCancelledOrFailed = statuses.every((status: any) => failureStatuses.has(status));
+  const allCancelled = statuses.every((status: GenerationJobStatus) => status === "cancelled");
+  const allCancelledOrFailed = statuses.every((status: GenerationJobStatus) => failureStatuses.has(status));
 
   if (!allCancelledOrFailed) {
     const didMark = await ctx.runMutation(
