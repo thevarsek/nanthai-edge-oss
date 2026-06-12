@@ -12,6 +12,7 @@ import type { Id } from "@convex/_generated/dataModel";
 import { safeDownloadUrl } from "./GeneratedFileDownloadUrl";
 import { getFileIconComponent } from "./fileIcons";
 import { workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
+import { captureArtifactUsage } from "@/lib/featureAnalytics";
 
 export type GeneratedFileForPreview = {
   _id: string;
@@ -77,15 +78,34 @@ function fileMetadata(
 }
 
 /** Inline image preview with expand-on-click lightbox. */
-function ImagePreview({ url, filename }: { url: string; filename: string }) {
+function ImagePreview({
+  url,
+  file,
+  messageId,
+}: {
+  url: string;
+  file: GeneratedFileForPreview;
+  messageId: Id<"messages">;
+}) {
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
+  const filename = file.filename;
+  const capture = (action: "opened" | "downloaded") => captureArtifactUsage(action, {
+    message_id: String(messageId),
+    artifact_id: file._id,
+    mime_type: file.mimeType,
+    size_bytes: file.sizeBytes ?? null,
+    has_document_id: Boolean(file.documentId || file.documentVersionId),
+  });
 
   return (
     <>
       <button
         type="button"
-        onClick={() => setExpanded(true)}
+        onClick={() => {
+          capture("opened");
+          setExpanded(true);
+        }}
         className={workspaceSurfaceClass("block overflow-hidden transition-colors hover:border-border/40 cursor-zoom-in")}
       >
         <img
@@ -112,7 +132,10 @@ function ImagePreview({ url, filename }: { url: string; filename: string }) {
             <a
               href={url}
               download={filename}
-              onClick={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                capture("downloaded");
+              }}
               className="text-xs text-primary hover:underline"
             >
               {t("download")}
@@ -135,6 +158,16 @@ export function GeneratedFilesCard({
   const files = useQuery(api.chat.queries.getGeneratedFilesByMessage, { messageId });
   if (!files?.length) return null;
 
+  const captureArtifact = (action: "opened" | "downloaded", file: GeneratedFileForPreview) => {
+    captureArtifactUsage(action, {
+      message_id: String(messageId),
+      artifact_id: file._id,
+      mime_type: file.mimeType,
+      size_bytes: file.sizeBytes ?? null,
+      has_document_id: Boolean(file.documentId || file.documentVersionId),
+    });
+  };
+
   const fileItems = files.map((file) => ({
     file,
     downloadUrl: safeDownloadUrl(file.downloadUrl),
@@ -149,7 +182,7 @@ export function GeneratedFilesCard({
         <div className="flex flex-wrap gap-2">
           {images.map(({ file: f, downloadUrl }) => (
             <div key={f._id} className="space-y-1">
-              <ImagePreview url={downloadUrl!} filename={f.filename} />
+              <ImagePreview url={downloadUrl!} file={f} messageId={messageId} />
               <div className="flex items-center gap-2 text-[10px] text-muted px-1">
                 <span className="truncate max-w-[200px]">{f.filename}</span>
                 <span>{fileMetadata(f, t)}</span>
@@ -199,7 +232,10 @@ export function GeneratedFilesCard({
             >
               <button
                 type="button"
-                onClick={() => onOpenFile({ file: { ...f, downloadUrl } })}
+                onClick={() => {
+                  captureArtifact("opened", f);
+                  onOpenFile({ file: { ...f, downloadUrl } });
+                }}
                 className="flex min-w-0 flex-1 items-center gap-3 text-left"
               >
                 {content}
@@ -212,7 +248,10 @@ export function GeneratedFilesCard({
                 className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-3 hover:text-foreground"
                 aria-label={t("download_filename", { filename: f.filename })}
                 title={t("download")}
-                onClick={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  captureArtifact("downloaded", f);
+                }}
               >
                 <Download size={16} />
               </a>
@@ -229,6 +268,7 @@ export function GeneratedFilesCard({
             className={workspaceSurfaceClass(
               "flex min-h-[64px] items-center gap-3 px-3 py-2.5 text-foreground transition-colors hover:bg-surface-3/50",
             )}
+            onClick={() => captureArtifact("downloaded", f)}
           >
             {content}
             <Download size={16} className="text-muted" />

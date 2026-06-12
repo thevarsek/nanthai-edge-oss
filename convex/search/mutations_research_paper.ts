@@ -7,7 +7,9 @@ import { isAudioAttachment } from "../chat/audio_shared";
 import {
   normalizeMessageAttachments,
   resolveParentMessageIdsForSend,
+  scheduleCancelledAssistantResponseAnalytics,
 } from "../chat/mutation_send_helpers";
+import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
 
 export const startResearchPaper = mutation({
   args: {
@@ -49,6 +51,7 @@ export const startResearchPaper = mutation({
     expandMultiModelGroups: v.optional(v.boolean()),
     enabledIntegrations: v.optional(v.array(v.string())),
     subagentsEnabled: v.optional(v.boolean()),
+    analytics: v.optional(analyticsClientMetadataValidator),
   },
   returns: v.object({
     sessionId: v.id("searchSessions"),
@@ -138,6 +141,8 @@ export const startResearchPaper = mutation({
       userId,
       modelId: args.participant.modelId,
       status: "queued",
+      analytics: args.analytics,
+      analyticsSource: "research_paper",
       createdAt: now,
     });
 
@@ -190,6 +195,7 @@ export const startResearchPaper = mutation({
         reasoningEffort: args.participant.reasoningEffort ?? undefined,
         enabledIntegrations: args.enabledIntegrations,
         subagentsEnabled: false,
+        analytics: args.analytics,
       },
     );
 
@@ -252,9 +258,10 @@ export async function cancelResearchPaperHandler(
     return;
   }
 
+  const now = Date.now();
   await ctx.db.patch(args.sessionId, {
     status: "cancelled",
-    completedAt: Date.now(),
+    completedAt: now,
   });
 
   const message = await ctx.db.get(session.assistantMessageId);
@@ -267,11 +274,18 @@ export async function cancelResearchPaperHandler(
     .withIndex("by_message", (q) => q.eq("messageId", session.assistantMessageId))
     .collect();
   for (const job of jobs) {
-    if (job.status !== "completed" && job.status !== "failed") {
+    if (
+      job.status !== "completed" &&
+      job.status !== "failed" &&
+      job.status !== "cancelled" &&
+      job.status !== "timedOut"
+    ) {
       await ctx.db.patch(job._id, {
         status: "cancelled",
-        completedAt: Date.now(),
+        completedAt: now,
+        terminalErrorCode: "cancelled_by_user",
       });
+      await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
     }
   }
 
@@ -279,6 +293,7 @@ export async function cancelResearchPaperHandler(
     await ctx.db.patch(session.assistantMessageId, {
       status: "cancelled",
       content: message.content || cancellationPlaceholderForMode(session.mode),
+      terminalErrorCode: "cancelled_by_user",
     });
   }
 }

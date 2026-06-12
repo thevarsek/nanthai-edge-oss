@@ -24,6 +24,12 @@ import {
 } from "./workflow_shared";
 import { trackPerplexitySearchCosts } from "./actions_web_search_shared";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import {
+  captureBackendAIOperationCompleted,
+  captureBackendAIOperationFailed,
+  captureBackendAIOperationStarted,
+} from "../analytics/backend_events";
+import type { OpenRouterUsage } from "../lib/openrouter";
 
 type PipelineArgsWithApiKey = PipelineArgs & {
   apiKey: string;
@@ -38,6 +44,10 @@ const defaultWorkflowNonstreamDeps = {
 };
 
 export type WorkflowNonstreamDeps = typeof defaultWorkflowNonstreamDeps;
+
+function researchBackendAnalyticsSource(args: PipelineArgs): NonNullable<PipelineArgs["analyticsSource"]> {
+  return args.analyticsSource ?? "research_paper";
+}
 
 export function createWorkflowNonstreamDepsForTest(
   overrides: DeepPartial<WorkflowNonstreamDeps> = {},
@@ -56,6 +66,43 @@ interface AnalysisResult {
 }
 
 type StructuredPhaseResult = string;
+
+function aggregateSearchUsage(results: SearchResult[]): OpenRouterUsage | null {
+  const usages = results
+    .map((result) => result.usage)
+    .filter((usage): usage is NonNullable<SearchResult["usage"]> => Boolean(usage));
+  if (usages.length === 0) return null;
+  return usages.reduce<OpenRouterUsage>((total, usage) => ({
+    promptTokens: total.promptTokens + usage.promptTokens,
+    completionTokens: total.completionTokens + usage.completionTokens,
+    totalTokens: total.totalTokens + usage.totalTokens,
+    cost: (total.cost ?? 0) + (usage.cost ?? 0),
+    webSearchRequests: (total.webSearchRequests ?? 0) + 1,
+  }), {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+    webSearchRequests: 0,
+  });
+}
+
+function researchOperationProperties(
+  args: PipelineArgsWithApiKey,
+  phaseOrder: number,
+  extra: Record<string, string | number | boolean | null | undefined> = {},
+) {
+  return {
+    search_session_id: String(args.sessionId),
+    complexity: args.complexity,
+    phase_order: phaseOrder,
+    persona_used: Boolean(args.personaId),
+    subagents_enabled: args.subagentsEnabled === true,
+    integration_count: args.enabledIntegrations?.length ?? 0,
+    zdr_required: args.requireZdr === true,
+    ...extra,
+  };
+}
 
 async function buildOrchestrationMessages(
   ctx: ActionCtx,
@@ -99,16 +146,74 @@ export async function runPlanningPhase(
 
   const prompt = buildResearchPlanningPrompt(args.query, breadth);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await deps.callOpenRouterNonStreaming(
-    args.apiKey,
-    args.modelId,
-    messages,
-    withZdrProvider(
-      { temperature: 0.7, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
-      args.requireZdr === true,
-    ),
-    { fallbackModel: MODEL_IDS.searchResearchOrchestration },
-  );
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "research_planning",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      breadth,
+      request_message_count: messages.length,
+    }),
+  });
+  let result: Awaited<ReturnType<typeof deps.callOpenRouterNonStreaming>>;
+  try {
+    result = await deps.callOpenRouterNonStreaming(
+      args.apiKey,
+      args.modelId,
+      messages,
+      withZdrProvider(
+        { temperature: 0.7, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
+        args.requireZdr === true,
+      ),
+      { fallbackModel: MODEL_IDS.searchResearchOrchestration },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "research_planning",
+      source: researchBackendAnalyticsSource(args),
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: researchOperationProperties(args, phaseOrder, {
+        breadth,
+        request_message_count: messages.length,
+      }),
+    });
+    throw error;
+  }
+
+  const artifact = parsePlanningArtifact(result.content, args.query, breadth);
+  const queries = artifact.queries.map((query) => query.query);
+  const plan = artifact.plan;
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "research_planning",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    usage: result.usage,
+    durationMs: Date.now() - operationStartedAt,
+    openrouterGenerationId: result.generationId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      breadth,
+      generated_query_count: queries.length,
+      request_message_count: messages.length,
+    }),
+  });
 
   // M23: Track research planning cost.
   if (result.usage) {
@@ -125,10 +230,6 @@ export async function runPlanningPhase(
       generationId: result.generationId ?? undefined,
     });
   }
-
-  const artifact = parsePlanningArtifact(result.content, args.query, breadth);
-  const queries = artifact.queries.map((query) => query.query);
-  const plan = artifact.plan;
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,
@@ -155,15 +256,68 @@ export async function runInitialSearchPhase(
     phaseOrder,
   });
 
-  const results = await deps.executePerplexitySearch(
-    queries,
-    searchModel,
-    args.apiKey,
-    {
-      maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel),
-      requireZdr: args.requireZdr === true,
-    },
-  );
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "research_initial_search",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: searchModel,
+    properties: researchOperationProperties(args, phaseOrder, {
+      query_count: queries.length,
+    }),
+  });
+  let results: SearchResult[];
+  try {
+    results = await deps.executePerplexitySearch(
+      queries,
+      searchModel,
+      args.apiKey,
+      {
+        maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel),
+        requireZdr: args.requireZdr === true,
+      },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "research_initial_search",
+      source: researchBackendAnalyticsSource(args),
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: searchModel,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: researchOperationProperties(args, phaseOrder, {
+        query_count: queries.length,
+      }),
+    });
+    throw error;
+  }
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "research_initial_search",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: searchModel,
+    usage: aggregateSearchUsage(results),
+    durationMs: Date.now() - operationStartedAt,
+    properties: researchOperationProperties(args, phaseOrder, {
+      query_count: queries.length,
+      result_count: results.length,
+      successful_result_count: results.filter((result) => result.success).length,
+      failed_result_count: results.filter((result) => !result.success).length,
+    }),
+  });
 
   // M23: Track Perplexity search costs.
   await deps.trackPerplexitySearchCosts(ctx, results, {
@@ -203,16 +357,81 @@ export async function runAnalysisPhase(
 
   const prompt = buildResearchAnalysisPrompt(priorSummary, breadth);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await deps.callOpenRouterNonStreaming(
-    args.apiKey,
-    args.modelId,
-    messages,
-    withZdrProvider(
-      { temperature: 0.5, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
-      args.requireZdr === true,
-    ),
-    { fallbackModel: MODEL_IDS.searchResearchOrchestration },
-  );
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "research_analysis",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      breadth,
+      iteration,
+      prior_result_count: priorResults.length,
+      request_message_count: messages.length,
+    }),
+  });
+  let result: Awaited<ReturnType<typeof deps.callOpenRouterNonStreaming>>;
+  try {
+    result = await deps.callOpenRouterNonStreaming(
+      args.apiKey,
+      args.modelId,
+      messages,
+      withZdrProvider(
+        { temperature: 0.5, maxTokens: 4096, transforms: SEARCH_TRANSFORMS },
+        args.requireZdr === true,
+      ),
+      { fallbackModel: MODEL_IDS.searchResearchOrchestration },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "research_analysis",
+      source: researchBackendAnalyticsSource(args),
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: researchOperationProperties(args, phaseOrder, {
+        breadth,
+        iteration,
+        prior_result_count: priorResults.length,
+        request_message_count: messages.length,
+      }),
+    });
+    throw error;
+  }
+
+  const artifact = parseAnalysisArtifact(result.content, args.query, breadth);
+  const gaps = artifact.coverageSummary;
+  const queries = artifact.followUpQueries.map((query) => query.query);
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "research_analysis",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    usage: result.usage,
+    durationMs: Date.now() - operationStartedAt,
+    openrouterGenerationId: result.generationId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      breadth,
+      iteration,
+      prior_result_count: priorResults.length,
+      generated_query_count: queries.length,
+      request_message_count: messages.length,
+    }),
+  });
 
   // M23: Track research analysis cost.
   if (result.usage) {
@@ -229,10 +448,6 @@ export async function runAnalysisPhase(
       generationId: result.generationId ?? undefined,
     });
   }
-
-  const artifact = parseAnalysisArtifact(result.content, args.query, breadth);
-  const gaps = artifact.coverageSummary;
-  const queries = artifact.followUpQueries.map((query) => query.query);
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,
@@ -261,15 +476,71 @@ export async function runDepthSearchPhase(
     phaseOrder,
   });
 
-  const results = await deps.executePerplexitySearch(
-    queries,
-    searchModel,
-    args.apiKey,
-    {
-      maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel),
-      requireZdr: args.requireZdr === true,
-    },
-  );
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "research_depth_search",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: searchModel,
+    properties: researchOperationProperties(args, phaseOrder, {
+      iteration,
+      query_count: queries.length,
+    }),
+  });
+  let results: SearchResult[];
+  try {
+    results = await deps.executePerplexitySearch(
+      queries,
+      searchModel,
+      args.apiKey,
+      {
+        maxTokens: resolveSearchMaxTokens("paper", args.complexity, searchModel),
+        requireZdr: args.requireZdr === true,
+      },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "research_depth_search",
+      source: researchBackendAnalyticsSource(args),
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: searchModel,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: researchOperationProperties(args, phaseOrder, {
+        iteration,
+        query_count: queries.length,
+      }),
+    });
+    throw error;
+  }
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "research_depth_search",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: searchModel,
+    usage: aggregateSearchUsage(results),
+    durationMs: Date.now() - operationStartedAt,
+    properties: researchOperationProperties(args, phaseOrder, {
+      iteration,
+      query_count: queries.length,
+      result_count: results.length,
+      successful_result_count: results.filter((result) => result.success).length,
+      failed_result_count: results.filter((result) => !result.success).length,
+    }),
+  });
 
   // M23: Track Perplexity search costs.
   await deps.trackPerplexitySearchCosts(ctx, results, {
@@ -308,22 +579,87 @@ export async function runSynthesisPhase(
 
   const prompt = buildResearchSynthesisPrompt(allResultsSummary);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await deps.callOpenRouterNonStreaming(
-    args.apiKey,
-    args.modelId,
-    messages,
-    withZdrProvider(
-      {
-        temperature: 0.3,
-        maxTokens: args.maxTokens,
-        includeReasoning: false,
-        reasoningEffort: null,
-        transforms: SEARCH_TRANSFORMS,
-      },
-      args.requireZdr === true,
-    ),
-    { fallbackModel: MODEL_IDS.searchResearchOrchestration },
-  );
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "research_synthesis",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      result_count: allResults.length,
+      request_message_count: messages.length,
+    }),
+  });
+  let result: Awaited<ReturnType<typeof deps.callOpenRouterNonStreaming>>;
+  try {
+    result = await deps.callOpenRouterNonStreaming(
+      args.apiKey,
+      args.modelId,
+      messages,
+      withZdrProvider(
+        {
+          temperature: 0.3,
+          maxTokens: args.maxTokens,
+          includeReasoning: false,
+          reasoningEffort: null,
+          transforms: SEARCH_TRANSFORMS,
+        },
+        args.requireZdr === true,
+      ),
+      { fallbackModel: MODEL_IDS.searchResearchOrchestration },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "research_synthesis",
+      source: researchBackendAnalyticsSource(args),
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: researchOperationProperties(args, phaseOrder, {
+        result_count: allResults.length,
+        request_message_count: messages.length,
+      }),
+    });
+    throw error;
+  }
+
+  const artifact = parseStructuredArtifact(result.content, {
+    findings: "No synthesis output was returned; use collected results from the session context.",
+    sourceNotes: [],
+    literatureMatrix: [],
+    claimBank: [],
+    contradictions: [],
+    limitations: ["Limited or unavailable synthesis output."],
+    researchGaps: [],
+  });
+  const synthesisData = JSON.stringify(artifact);
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "research_synthesis",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    usage: result.usage,
+    durationMs: Date.now() - operationStartedAt,
+    openrouterGenerationId: result.generationId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      result_count: allResults.length,
+      request_message_count: messages.length,
+    }),
+  });
 
   // M23: Track research synthesis cost.
   if (result.usage) {
@@ -340,17 +676,6 @@ export async function runSynthesisPhase(
       generationId: result.generationId ?? undefined,
     });
   }
-
-  const artifact = parseStructuredArtifact(result.content, {
-    findings: "No synthesis output was returned; use collected results from the session context.",
-    sourceNotes: [],
-    literatureMatrix: [],
-    claimBank: [],
-    contradictions: [],
-    limitations: ["Limited or unavailable synthesis output."],
-    researchGaps: [],
-  });
-  const synthesisData = JSON.stringify(artifact);
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,
@@ -382,22 +707,90 @@ export async function runPaperArchitecturePhase(
     args.complexity,
   );
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
-  const result = await deps.callOpenRouterNonStreaming(
-    args.apiKey,
-    args.modelId,
-    messages,
-    withZdrProvider(
-      {
-        temperature: 0.3,
-        maxTokens: args.maxTokens,
-        includeReasoning: false,
-        reasoningEffort: null,
-        transforms: SEARCH_TRANSFORMS,
-      },
-      args.requireZdr === true,
-    ),
-    { fallbackModel: MODEL_IDS.searchResearchOrchestration },
-  );
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "research_paper_architecture",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      planning_data_present: planningData.trim().length > 0,
+      synthesis_data_present: synthesisData.trim().length > 0,
+      request_message_count: messages.length,
+    }),
+  });
+  let result: Awaited<ReturnType<typeof deps.callOpenRouterNonStreaming>>;
+  try {
+    result = await deps.callOpenRouterNonStreaming(
+      args.apiKey,
+      args.modelId,
+      messages,
+      withZdrProvider(
+        {
+          temperature: 0.3,
+          maxTokens: args.maxTokens,
+          includeReasoning: false,
+          reasoningEffort: null,
+          transforms: SEARCH_TRANSFORMS,
+        },
+        args.requireZdr === true,
+      ),
+      { fallbackModel: MODEL_IDS.searchResearchOrchestration },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "research_paper_architecture",
+      source: researchBackendAnalyticsSource(args),
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: researchOperationProperties(args, phaseOrder, {
+        planning_data_present: planningData.trim().length > 0,
+        synthesis_data_present: synthesisData.trim().length > 0,
+        request_message_count: messages.length,
+      }),
+    });
+    throw error;
+  }
+
+  const artifact = parseStructuredArtifact(result.content, {
+    title: args.query,
+    structurePattern: "Fallback structure based on available synthesis.",
+    thesis: "Use the synthesis findings to answer the research question cautiously.",
+    outline: [],
+    evidenceMap: [],
+    argumentBlueprint: [],
+    draftingNotes: ["Architecture generation returned no structured artifact; draft from synthesis and search context."],
+  });
+  const architectureData = JSON.stringify(artifact);
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "research_paper_architecture",
+    source: researchBackendAnalyticsSource(args),
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    usage: result.usage,
+    durationMs: Date.now() - operationStartedAt,
+    openrouterGenerationId: result.generationId,
+    properties: researchOperationProperties(args, phaseOrder, {
+      planning_data_present: planningData.trim().length > 0,
+      synthesis_data_present: synthesisData.trim().length > 0,
+      request_message_count: messages.length,
+    }),
+  });
 
   if (result.usage) {
     await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
@@ -413,17 +806,6 @@ export async function runPaperArchitecturePhase(
       generationId: result.generationId ?? undefined,
     });
   }
-
-  const artifact = parseStructuredArtifact(result.content, {
-    title: args.query,
-    structurePattern: "Fallback structure based on available synthesis.",
-    thesis: "Use the synthesis findings to answer the research question cautiously.",
-    outline: [],
-    evidenceMap: [],
-    argumentBlueprint: [],
-    draftingNotes: ["Architecture generation returned no structured artifact; draft from synthesis and search context."],
-  });
-  const architectureData = JSON.stringify(artifact);
 
   await ctx.runMutation(internal.search.mutations.writeSearchPhase, {
     sessionId: args.sessionId,

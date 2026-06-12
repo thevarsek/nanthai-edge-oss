@@ -165,6 +165,26 @@ export const claimRunForExecution = internalMutation({
   },
 });
 
+export const markRunAnalyticsStarted = internalMutation({
+  args: {
+    runId: v.id("subagentRuns"),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    if (!run || isTerminalSubagentStatus(run.status)) return false;
+    if (run.analyticsStartedAt !== undefined) {
+      return false;
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.runId, {
+      analyticsStartedAt: now,
+      updatedAt: now,
+    });
+    return true;
+  },
+});
+
 export const checkpointRunContinuation = internalMutation({
   args: {
     runId: v.id("subagentRuns"),

@@ -41,10 +41,11 @@ test("video submit snaps config, attaches images, creates jobs, and schedules po
     }), { status: 200 });
   }) as any;
 
-  const ctx = {
-    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-      if (args.userId) return "sk-test";
-      if (args.messageId) {
+	  const ctx = {
+	    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+	      if (args.jobId) return { _id: "job_1", status: "queued" };
+	      if (args.userId) return "sk-test";
+	      if (args.messageId) {
         return {
           _id: "msg_user",
           content: "Make a launch video",
@@ -104,13 +105,74 @@ test("video submit snaps config, attaches images, creates jobs, and schedules po
   assert.equal((requests[0]?.body as any).frame_images.length, 2);
   assert.equal((requests[0]?.body as any).input_references.length, 1);
   assert.ok(mutations.some((args) => args.openRouterJobId === "or_video_1"));
-  assert.ok(mutations.some((args) => args.status === "streaming"));
-  assert.equal(scheduled[0]?.delay, 15000);
+  assert.ok(mutations.some((args) => args.status === "streaming" && typeof args.startedAt === "number"));
+  const startedAnalytics = scheduled.find((entry) => entry.payload.event === "assistant_response_started");
+  assert.equal(startedAnalytics?.delay, 0);
+  assert.equal((startedAnalytics?.payload.properties as any)?.source, "video_generation");
+  const pollSchedule = scheduled.find((entry) => "videoJobId" in entry.payload);
+  assert.equal(pollSchedule?.delay, 15000);
+});
+
+test("video submit marks created video job failed when first poll scheduling fails", async () => {
+  const originalFetch = globalThis.fetch;
+  const mutations: Array<Record<string, unknown>> = [];
+
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    id: "or_video_1",
+    polling_url: "https://openrouter.ai/api/v1/videos/or_video_1",
+    status: "pending",
+  }), { status: 200 })) as any;
+
+  const ctx = {
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if (args.jobId) return { _id: "job_1", status: "queued" };
+      if (args.userId) return "sk-test";
+      if (args.messageId) return { _id: "msg_user", content: "Make a launch video" };
+      if (args.modelId) return { videoCapabilities: {} };
+      return null;
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if (args.openRouterJobId) return "video_job_1";
+      return undefined;
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, payload: Record<string, unknown>) => {
+        if ("videoJobId" in payload) {
+          throw new Error("poll schedule failed");
+        }
+      },
+    },
+    storage: {
+      getUrl: async () => null,
+    },
+  } as any;
+
+  try {
+    await submitVideoGenerationHandler(ctx, baseArgs());
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.ok(mutations.some((args) =>
+    args.openRouterJobId === "or_video_1",
+  ));
+  assert.ok(mutations.some((args) =>
+    args.videoJobId === "video_job_1" &&
+    args.status === "failed" &&
+    String(args.error).includes("poll schedule failed"),
+  ));
+  assert.ok(mutations.some((args) =>
+    args.messageId === "msg_assistant" &&
+    args.status === "failed" &&
+    String(args.error).includes("poll schedule failed"),
+  ));
 });
 
 test("video polling completes, stores media, finalizes message, and marks related flows complete", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   const stored: Blob[] = [];
   const pollArgs = {
     videoJobId: "video_job_1",
@@ -143,7 +205,15 @@ test("video polling completes, stores media, finalizes message, and marks relate
 
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-      if (args.videoJobId) return { _id: "video_job_1", status: "in_progress", pollCount: 3, pollingUrl: "https://poll" };
+      if (args.videoJobId) {
+        return {
+          _id: "video_job_1",
+          _creationTime: Date.now() - 12_000,
+          status: "in_progress",
+          pollCount: 3,
+          pollingUrl: "https://poll",
+        };
+      }
       if (args.jobId) return { _id: "job_1", status: "completed" };
       if (args.userId) return "sk-test";
       return null;
@@ -154,7 +224,9 @@ test("video polling completes, stores media, finalizes message, and marks relate
       return undefined;
     },
     scheduler: {
-      runAfter: async () => {},
+      runAfter: async (_delay: number, _ref: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
     },
     storage: {
       store: async (blob: Blob) => {
@@ -179,12 +251,16 @@ test("video polling completes, stores media, finalizes message, and marks relate
   assert.ok(mutations.some((args) => args.storageId === "storage_video" && args.type === "video"));
   assert.ok(mutations.some((args) => (args.patch as { status?: string } | undefined)?.status === "completed"));
   assert.ok(mutations.some((args) => args.batchId === "batch_1" && args.status === "completed"));
+  const completedAnalytics = scheduled.find((entry) => entry.event === "assistant_response_completed");
+  const durationMs = (completedAnalytics?.properties as { duration_ms?: unknown } | undefined)?.duration_ms;
+  assert.equal(typeof durationMs, "number");
+  assert.ok((durationMs as number) >= 0);
 });
 
 test("video polling handles cancelled, failed, timeout, and missing-content terminal paths", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
-  const scheduled: Array<number> = [];
+  const scheduled: Array<{ delay: number; payload?: Record<string, unknown> }> = [];
   let mode: "cancelled" | "failed" | "timeout" | "missing" | "progress" = "cancelled";
 
   const ctx = {
@@ -192,6 +268,7 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
       if (args.videoJobId) {
         return {
           _id: "video_job_1",
+          _creationTime: Date.now() - 1_000,
           status: "in_progress",
           pollCount: mode === "timeout" ? 39 : 0,
           pollingUrl: "https://poll",
@@ -206,8 +283,8 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
       return args.messageId === "msg_assistant" && !("content" in args);
     },
     scheduler: {
-      runAfter: async (delay: number) => {
-        scheduled.push(delay);
+      runAfter: async (delay: number, _ref: unknown, payload?: Record<string, unknown>) => {
+        scheduled.push({ delay, payload });
       },
     },
   } as any;
@@ -221,6 +298,10 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
 
   try {
     await pollVideoGenerationHandler(ctx, args);
+    assert.ok(scheduled.some((entry) =>
+      entry.delay === 0 &&
+      entry.payload?.event === "assistant_response_failed" &&
+      (entry.payload?.properties as Record<string, unknown> | undefined)?.source === "video_generation"));
 
     mode = "failed";
     globalThis.fetch = (async () => new Response(JSON.stringify({
@@ -259,19 +340,22 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
   assert.ok(mutations.some((entry) => entry.error === "provider failed"));
   assert.ok(mutations.some((entry) => String(entry.error).includes("timed out")));
   assert.ok(mutations.some((entry) => entry.error === "Video completed but no content URL returned"));
-  assert.ok(scheduled.includes(15000));
+  assert.ok(scheduled.some((entry) => entry.delay === 15000));
 });
 
 test("video submit failure finalizes generation and drive-picker batch", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if (args.jobId) return { _id: "job_1", status: "queued" };
       if (args.userId) return "";
-      if (args.jobId) return { _id: "job_1", status: "failed" };
       return null;
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push(args);
+      if (Object.keys(args).length === 1 && args.jobId === "job_1") {
+        return true;
+      }
       return false;
     },
     scheduler: { runAfter: async () => {} },
@@ -281,4 +365,105 @@ test("video submit failure finalizes generation and drive-picker batch", async (
 
   assert.ok(mutations.some((entry) => entry.status === "failed" && String(entry.error).includes("No OpenRouter API key")));
   assert.ok(mutations.some((entry) => entry.batchId === "batch_1" && entry.status === "failed"));
+});
+
+test("video submit cancellation after provider submission emits terminal analytics without duplicate start", async () => {
+  const originalFetch = globalThis.fetch;
+  const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  let jobQueryCount = 0;
+  let didFetch = false;
+
+  globalThis.fetch = (async () => {
+    didFetch = true;
+    return new Response(JSON.stringify({
+      id: "or_video_cancelled",
+      polling_url: "https://openrouter.ai/api/v1/videos/or_video_cancelled",
+      status: "pending",
+    }), { status: 200 });
+  }) as any;
+
+  const ctx = {
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if (args.jobId) {
+        jobQueryCount += 1;
+        return {
+          _id: "job_1",
+          status: jobQueryCount >= 4 ? "cancelled" : "streaming",
+        };
+      }
+      if (args.userId) return "sk-test";
+      if (args.messageId) return { _id: "msg_user", content: "Make a launch video" };
+      if (args.modelId) return { videoCapabilities: {} };
+      return null;
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if (args.openRouterJobId) return "video_job_1";
+      return undefined;
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
+    },
+    storage: {
+      getUrl: async () => null,
+    },
+  } as any;
+
+  try {
+    await submitVideoGenerationHandler(ctx, baseArgs());
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(mutations.some((entry) => entry.openRouterJobId === "or_video_cancelled"), false);
+  assert.equal(didFetch, true);
+  assert.ok(mutations.some((entry) => entry.batchId === "batch_1" && entry.status === "cancelled"));
+  assert.equal(
+    scheduled.filter((entry) => entry.event === "assistant_response_started").length,
+    1,
+  );
+  assert.equal(
+    scheduled.filter((entry) => entry.event === "assistant_response_failed").length,
+    1,
+  );
+});
+
+test("video submit exits without provider work when generation job is already cancelled", async () => {
+  const originalFetch = globalThis.fetch;
+  const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  let fetchCalled = false;
+  globalThis.fetch = (async () => {
+    fetchCalled = true;
+    return new Response("{}", { status: 200 });
+  }) as any;
+
+  const ctx = {
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if (args.jobId) return { _id: "job_1", status: "cancelled" };
+      return null;
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      return undefined;
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
+    },
+  } as any;
+
+  try {
+    await submitVideoGenerationHandler(ctx, baseArgs());
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(fetchCalled, false);
+  assert.ok(mutations.some((entry) => entry.batchId === "batch_1" && entry.status === "cancelled"));
+  assert.equal(scheduled.some((entry) => entry.event === "assistant_response_started"), false);
 });

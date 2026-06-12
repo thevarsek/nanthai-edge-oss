@@ -19,6 +19,12 @@ import {
   TTS_PCM_SAMPLE_RATE_HZ,
   TTS_WAV_MIME_TYPE,
 } from "./audio_shared";
+import {
+  captureBackendAIOperationCompleted,
+  captureBackendAIOperationFailed,
+  captureBackendAIOperationStarted,
+} from "../analytics/backend_events";
+import type { OpenRouterUsage } from "../lib/openrouter";
 
 const PREVIEW_TEXT = "This is a preview of your selected voice for NanthAI Edge.";
 const AUDIO_MODEL_ID = "openai/gpt-audio-mini";
@@ -66,7 +72,14 @@ async function synthesizeText(
   text: string,
   voice: string,
   requireZdr = false,
-): Promise<{ audioBytes: Buffer; transcript: string; mimeType: string; pcmByteCount: number }> {
+): Promise<{
+  audioBytes: Buffer;
+  transcript: string;
+  mimeType: string;
+  pcmByteCount: number;
+  usage: OpenRouterUsage | null;
+  generationId: string | null;
+}> {
   const result = await callOpenRouterStreaming(
     apiKey,
     AUDIO_MODEL_ID,
@@ -96,6 +109,8 @@ async function synthesizeText(
     transcript: result.audioTranscript || result.content || text,
     mimeType: TTS_WAV_MIME_TYPE,
     pcmByteCount,
+    usage: result.usage,
+    generationId: result.generationId,
   };
 }
 
@@ -152,18 +167,33 @@ export async function generateAudioForMessageHandler(
   let generated: Awaited<ReturnType<typeof synthesizeText>>;
   let audioStorageId: Id<"_storage">;
   let voice: string;
+  let requireZdr = false;
+  let operationStartedAt: number | undefined;
   try {
-    const [preferences, apiKey] = await Promise.all([
-      ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
-      ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId }),
-    ]);
+    const preferences = await ctx.runQuery(internal.chat.queries.getUserPreferences, { userId });
+    requireZdr = isZdrEnabled(preferences);
+    voice = args.voiceOverride?.trim() || preferredVoiceFromPreferences(preferences);
+    operationStartedAt = Date.now();
+    await captureBackendAIOperationStarted(ctx, {
+      userId,
+      operation: "audio_generation",
+      source: args.previewText ? "message_audio_preview" : "message_audio",
+      chatId: String(message.chatId),
+      messageId: String(args.messageId),
+      modelId: AUDIO_MODEL_ID,
+      properties: {
+        voice,
+        text_length: textToVoice.length,
+        preview_text_used: Boolean(args.previewText),
+        voice_override_used: Boolean(args.voiceOverride),
+        zdr_required: requireZdr,
+      },
+    });
+    const apiKey = await ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId });
     if (!apiKey) {
       throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key available for audio generation." });
     }
-
-    const requireZdr = isZdrEnabled(preferences);
     await assertAudioModelSupportsZdr(ctx, requireZdr);
-    voice = args.voiceOverride?.trim() || preferredVoiceFromPreferences(preferences);
     generated = await synthesizeText(apiKey, textToVoice, voice, requireZdr);
     audioStorageId = await ctx.storage.store(
       // Buffer<ArrayBufferLike> is not directly assignable to BlobPart in TS5.x
@@ -172,6 +202,22 @@ export async function generateAudioForMessageHandler(
       new Blob([new Uint8Array(generated.audioBytes)], { type: generated.mimeType }),
     );
   } catch (err) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId,
+      operation: "audio_generation",
+      source: args.previewText ? "message_audio_preview" : "message_audio",
+      chatId: String(message.chatId),
+      messageId: String(args.messageId),
+      modelId: AUDIO_MODEL_ID,
+      durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+      error: err,
+      properties: {
+        text_length: textToVoice.length,
+        preview_text_used: Boolean(args.previewText),
+        voice_override_used: Boolean(args.voiceOverride),
+        zdr_required: requireZdr,
+      },
+    });
     // Clear the in-progress flag so the user can retry.
     await ctx.runMutation(internal.chat.mutations.clearAudioGenerating, {
       messageId: args.messageId,
@@ -182,13 +228,60 @@ export async function generateAudioForMessageHandler(
     ? durationMsFromPcmBytes(generated.pcmByteCount)
     : estimateDurationMs(generated.transcript);
 
-  await ctx.runMutation(internal.chat.mutations.patchMessageAudio, {
-    messageId: args.messageId,
-    audioStorageId,
-    audioDurationMs,
-    audioVoice: voice,
-    audioTranscript: generated.transcript,
-    audioGeneratedAt: Date.now(),
+  try {
+    await ctx.runMutation(internal.chat.mutations.patchMessageAudio, {
+      messageId: args.messageId,
+      audioStorageId,
+      audioDurationMs,
+      audioVoice: voice,
+      audioTranscript: generated.transcript,
+      audioGeneratedAt: Date.now(),
+    });
+  } catch (err) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId,
+      operation: "audio_generation",
+      source: args.previewText ? "message_audio_preview" : "message_audio",
+      chatId: String(message.chatId),
+      messageId: String(args.messageId),
+      modelId: AUDIO_MODEL_ID,
+      durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+      error: err,
+      properties: {
+        voice,
+        text_length: textToVoice.length,
+        transcript_length: generated.transcript.length,
+        audio_duration_ms: audioDurationMs,
+        pcm_byte_count: generated.pcmByteCount,
+        storage_persisted: true,
+        preview_text_used: Boolean(args.previewText),
+        voice_override_used: Boolean(args.voiceOverride),
+        zdr_required: requireZdr,
+      },
+    });
+    throw err;
+  }
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId,
+    operation: "audio_generation",
+    source: args.previewText ? "message_audio_preview" : "message_audio",
+    chatId: String(message.chatId),
+    messageId: String(args.messageId),
+    modelId: AUDIO_MODEL_ID,
+    usage: generated.usage,
+    durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+    openrouterGenerationId: generated.generationId,
+    properties: {
+      voice,
+      text_length: textToVoice.length,
+      transcript_length: generated.transcript.length,
+      audio_duration_ms: audioDurationMs,
+      pcm_byte_count: generated.pcmByteCount,
+      storage_persisted: true,
+      preview_text_used: Boolean(args.previewText),
+      voice_override_used: Boolean(args.voiceOverride),
+    },
   });
 
   return {
@@ -214,10 +307,53 @@ export async function previewVoiceHandler(
   const requireZdr = isZdrEnabled(preferences);
   await assertAudioModelSupportsZdr(ctx, requireZdr);
   const voice = args.voice.trim() || DEFAULT_TTS_VOICE;
-  const generated = await synthesizeText(apiKey, PREVIEW_TEXT, voice, requireZdr);
-  return {
-    audioBase64: generated.audioBytes.toString("base64"),
-    transcript: generated.transcript,
-    mimeType: generated.mimeType,
-  };
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId,
+    operation: "audio_preview",
+    source: "settings_voice_preview",
+    modelId: AUDIO_MODEL_ID,
+    properties: {
+      voice,
+      text_length: PREVIEW_TEXT.length,
+      zdr_required: requireZdr,
+    },
+  });
+  try {
+    const generated = await synthesizeText(apiKey, PREVIEW_TEXT, voice, requireZdr);
+    await captureBackendAIOperationCompleted(ctx, {
+      userId,
+      operation: "audio_preview",
+      source: "settings_voice_preview",
+      modelId: AUDIO_MODEL_ID,
+      usage: generated.usage,
+      durationMs: Date.now() - operationStartedAt,
+      openrouterGenerationId: generated.generationId,
+      properties: {
+        voice,
+        text_length: PREVIEW_TEXT.length,
+        transcript_length: generated.transcript.length,
+        pcm_byte_count: generated.pcmByteCount,
+      },
+    });
+    return {
+      audioBase64: generated.audioBytes.toString("base64"),
+      transcript: generated.transcript,
+      mimeType: generated.mimeType,
+    };
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId,
+      operation: "audio_preview",
+      source: "settings_voice_preview",
+      modelId: AUDIO_MODEL_ID,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: {
+        voice,
+        text_length: PREVIEW_TEXT.length,
+      },
+    });
+    throw error;
+  }
 }

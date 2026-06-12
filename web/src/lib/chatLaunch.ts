@@ -1,4 +1,5 @@
 import type { Id } from "@convex/_generated/dataModel";
+import { captureAnalytics } from "@/lib/analytics";
 
 export interface PersonaLike {
   _id: Id<"personas">;
@@ -129,9 +130,18 @@ export async function launchChat(args: {
   participants: LaunchParticipant[];
   folderId?: string;
 }) {
-  return await args.createChat({
+  const chatId = await args.createChat({
     mode: "chat",
     ...(args.folderId ? { folderId: args.folderId } : {}),
     participants: args.participants,
   });
+  captureAnalytics("chat_created", {
+    feature_area: "chat",
+    chat_id: String(chatId),
+    source: "launcher",
+    participant_count: args.participants.length,
+    model_ids: args.participants.map((participant) => participant.modelId).join(","),
+    has_folder: args.folderId !== undefined,
+  });
+  return chatId;
 }

@@ -6,6 +6,7 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { useOpenRouterStatus, useSharedData } from "@/hooks/useSharedData";
 import { OpenRouter } from "@/lib/constants";
 import { generatePKCE } from "@/lib/pkce";
+import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
 
 type RedirectState = {
   from?: {
@@ -47,12 +48,17 @@ export function OpenRouterRequiredPage() {
   async function handleConnect() {
     setIsConnecting(true);
     setErrorMessage(null);
+    captureAnalytics("openrouter_connect_started", {
+      feature_area: "settings",
+      source: "required_key_gate",
+    });
     try {
       const { state, verifier, challenge } = await generatePKCE();
       sessionStorage.setItem("pkce_state", state);
       sessionStorage.setItem("pkce_verifier", verifier);
       sessionStorage.setItem("openrouter_post_connect", "return");
       sessionStorage.setItem("openrouter_post_connect_path", returnPath);
+      sessionStorage.setItem("openrouter_post_connect_source", "required_key_gate");
       const params = new URLSearchParams({
         callback_url: OpenRouter.callbackUrl,
         code_challenge: challenge,
@@ -61,6 +67,12 @@ export function OpenRouterRequiredPage() {
       });
       window.location.href = `${OpenRouter.oauthUrl}?${params.toString()}`;
     } catch (err) {
+      captureAnalytics("openrouter_connect_failed", {
+        feature_area: "settings",
+        source: "required_key_gate",
+        failure_stage: "start",
+        error_label: analyticsErrorLabel(err),
+      });
       setErrorMessage(
         err instanceof Error && err.message.trim().length > 0
           ? err.message

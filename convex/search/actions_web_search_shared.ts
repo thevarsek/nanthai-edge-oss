@@ -3,6 +3,9 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { integrationOverrideEntry } from "../schema_validators";
+import { analyticsClientMetadataValidator, type AnalyticsClientMetadata } from "../analytics/client_metadata";
+import { analyticsSourceValidator } from "../chat/actions_args";
+import type { GenerationAnalyticsSource } from "../chat/actions_run_generation_types";
 
 export const runWebSearchArgs = {
   sessionId: v.id("searchSessions"),
@@ -28,6 +31,8 @@ export const runWebSearchArgs = {
   enabledIntegrations: v.optional(v.array(v.string())),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
 
 export interface WebSearchActionArgs extends Record<string, unknown> {
@@ -51,6 +56,8 @@ export interface WebSearchActionArgs extends Record<string, unknown> {
   enabledIntegrations?: string[];
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 export async function updateSession(

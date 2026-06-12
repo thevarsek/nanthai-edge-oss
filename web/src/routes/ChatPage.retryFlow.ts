@@ -1,5 +1,5 @@
 import type { Id } from "@convex/_generated/dataModel";
-import type { Message, Participant, UseChatReturn } from "@/hooks/useChat";
+import type { Message, Participant, RetryAnalyticsSnapshot, UseChatReturn } from "@/hooks/useChat";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
 import { getRetryBaseParticipant } from "@/routes/ChatPage.flow";
 
@@ -24,7 +24,10 @@ export function buildRetryMessageArgs(args: {
   effectiveSubagentsEnabled?: boolean;
 }): Parameters<UseChatReturn["retryMessage"]>[0] {
   if (args.targetMessage?.retryContract) {
-    return { messageId: args.messageId };
+    return {
+      messageId: args.messageId,
+      analyticsSnapshot: retryAnalyticsSnapshot(args.targetMessage.retryContract),
+    };
   }
   return {
     messageId: args.messageId,
@@ -42,6 +45,18 @@ export function buildRetryMessageArgs(args: {
     ...(args.effectiveSubagentsEnabled !== undefined
       ? { subagentsEnabled: args.effectiveSubagentsEnabled }
       : {}),
+  };
+}
+
+export function retryAnalyticsSnapshot(retryContract: NonNullable<Message["retryContract"]>): RetryAnalyticsSnapshot {
+  return {
+    participantCount: retryContract.participants.length || null,
+    modelIds: retryContract.participants.map((participant) => participant.modelId).join(",") || null,
+    searchMode: retryContract.searchMode,
+    complexity: retryContract.searchComplexity ?? null,
+    integrationCount: retryContract.enabledIntegrations?.length ?? 0,
+    subagentsEnabled: retryContract.subagentsEnabled === true,
+    hasVideoConfig: retryContract.videoConfig !== undefined,
   };
 }
 

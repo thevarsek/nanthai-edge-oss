@@ -157,12 +157,23 @@ test("generateForParticipant persists deferred subagent batches and schedules ea
     ],
   }));
 
-  assert.deepEqual(result, {
+  assert.deepEqual({
+    deferredForSubagents: result.deferredForSubagents,
+    cancelled: result.cancelled,
+    failed: result.failed,
+    continued: result.continued,
+    usage: result.usage,
+    generationId: result.generationId,
+  }, {
     deferredForSubagents: true,
     cancelled: false,
     failed: false,
     continued: false,
+    usage: null,
+    generationId: "gen_tools",
   });
+  assert.equal(result.latencies?.tool_call_count, 1);
+  assert.equal(result.latencies?.tool_round_count, 1);
   const batch = mutations.find((args) => Array.isArray(args.tasks));
   assert.equal(batch?.toolCallId, "call_subagents");
   assert.equal((batch?.tasks as unknown[]).length, 2);
@@ -237,12 +248,23 @@ test("generateForParticipant hands off after a completed tool round when invocat
     },
   });
 
-  assert.deepEqual(result, {
+  assert.deepEqual({
+    deferredForSubagents: result.deferredForSubagents,
+    cancelled: result.cancelled,
+    failed: result.failed,
+    continued: result.continued,
+    usage: result.usage,
+    generationId: result.generationId,
+  }, {
     deferredForSubagents: false,
     cancelled: false,
     failed: false,
     continued: true,
+    usage: null,
+    generationId: "gen_tools",
   });
+  assert.equal(result.latencies?.tool_call_count, 1);
+  assert.equal(result.latencies?.tool_round_count, 1);
   assert.equal(handoffs.length, 1);
   assert.equal((handoffs[0]?.participant as any)?.jobId, "job_1");
   assert.equal(((handoffs[0]?.toolCalls as unknown[])?.[0] as any)?.name, "inspect_context");

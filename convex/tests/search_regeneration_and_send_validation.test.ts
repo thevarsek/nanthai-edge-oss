@@ -246,6 +246,13 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
     sessionId: sourceSessionId as any,
     modelId: "openai/gpt-5.2",
     subagentsEnabled: true,
+    analytics: {
+      platform: "web",
+      surface: "web_app",
+      routeOrScreen: "/app/chat/chat_1",
+      clientEventId: "event_1",
+      clientSentAt: 123,
+    },
   });
 
   assert.equal(result.assistantMessageId, newAssistantMessageId);
@@ -258,6 +265,17 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.equal(searchSessionInsert.value.currentPhase, "synthesis");
   assert.equal(searchSessionInsert.value.query, sourceSession.query);
   assert.equal(searchSessionInsert.value.complexity, 3);
+
+  const jobInsert = inserts.find((item) => item.table === "generationJobs");
+  assert.ok(jobInsert);
+  assert.equal(jobInsert.value.analyticsSource, "research_paper");
+  assert.deepEqual(jobInsert.value.analytics, {
+    platform: "web",
+    surface: "web_app",
+    routeOrScreen: "/app/chat/chat_1",
+    clientEventId: "event_1",
+    clientSentAt: 123,
+  });
 
   const copiedPhases = inserts.filter((item) => item.table === "searchPhases");
   assert.deepEqual(
@@ -283,5 +301,12 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   assert.equal(searchRun.payload.query, sourceSession.query);
   assert.equal(searchRun.payload.complexity, 3);
   assert.equal(searchRun.payload.subagentsEnabled, false);
+  assert.deepEqual(searchRun.payload.analytics, {
+    platform: "web",
+    surface: "web_app",
+    routeOrScreen: "/app/chat/chat_1",
+    clientEventId: "event_1",
+    clientSentAt: 123,
+  });
   assert.equal(searchRun.payload.phaseOrder, 2);
 });

@@ -415,6 +415,7 @@ test("cancelGenerationHandler cancels subagent batches for a single job", async 
 
 test("continueParentAfterSubagentsHandler reconciles stale completed resumes without replaying generation", async () => {
   const runMutationCalls: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   let queryStep = 0;
   let userScopedQueryCount = 0;
   const ctx = {
@@ -426,6 +427,14 @@ test("continueParentAfterSubagentsHandler reconciles stale completed resumes wit
       return true;
     },
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("batchId" in args && "limit" in args) {
+        return {
+          artifactRefs: [],
+          memoryRefs: [],
+          childPrivateArtifactCount: 0,
+          childPrivateMemoryCount: 0,
+        };
+      }
       if ("userId" in args) {
         userScopedQueryCount += 1;
         return userScopedQueryCount === 1
@@ -450,7 +459,7 @@ test("continueParentAfterSubagentsHandler reconciles stale completed resumes wit
             userId: "user_1",
             participant: { modelId: "openai/gpt-4o" },
           },
-          paramsSnapshot: {},
+          paramsSnapshot: { analytics: { platform: "web" } },
         };
       }
       if (queryStep === 2) {
@@ -465,13 +474,21 @@ test("continueParentAfterSubagentsHandler reconciles stale completed resumes wit
       throw new Error(`Unexpected query step ${queryStep}`);
     },
     scheduler: {
-      runAfter: async () => "sched_1",
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
     },
   } as any;
 
   await continueParentAfterSubagentsHandler(ctx, { batchId: "batch_1" } as any);
 
   assert.ok(runMutationCalls.some((call) => call.status === "cancelled"));
+  const terminalAnalytics = scheduled.find((entry) => entry.event === "assistant_response_failed");
+  assert.ok(terminalAnalytics);
+  assert.equal((terminalAnalytics?.properties as Record<string, unknown>).source, "subagent_parent_resume");
+  assert.equal((terminalAnalytics?.properties as Record<string, unknown>).recovered_terminal, true);
+  assert.equal((terminalAnalytics?.properties as Record<string, unknown>).client_platform, "web");
 });
 
 test("continueParentAfterSubagentsHandler schedules postProcess with the source user message id", async () => {
@@ -549,6 +566,14 @@ test("continueParentAfterSubagentsHandler finalizes parent failure and clears co
       return true;
     },
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("batchId" in args && "limit" in args) {
+        return {
+          artifactRefs: [],
+          memoryRefs: [],
+          childPrivateArtifactCount: 0,
+          childPrivateMemoryCount: 0,
+        };
+      }
       if ("userId" in args) {
         userScopedQueryCount += 1;
         return userScopedQueryCount === 1
@@ -605,6 +630,7 @@ test("continueParentAfterSubagentsHandler finalizes parent failure and clears co
 
 test("runSubagentRunHandler fails stale streaming runs instead of replaying them", async () => {
   const runMutationCalls: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   let userScopedQueryCount = 0;
   const ctx = {
     runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
@@ -632,6 +658,7 @@ test("runSubagentRunHandler fails stale streaming runs instead of replaying them
           _id: "run_1",
           batchId: "batch_1",
           status: "streaming",
+          startedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 5_000,
           updatedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 1_000,
           content: "partial",
           reasoning: "thinking",
@@ -641,10 +668,25 @@ test("runSubagentRunHandler fails stale streaming runs instead of replaying them
           generatedFiles: [],
         };
       }
+      if ("batchId" in args) {
+        return {
+          _id: "batch_1",
+          status: "running_children",
+          userId: "user_1",
+          chatId: "chat_1",
+          parentMessageId: "parent_1",
+          parentJobId: "job_1",
+          paramsSnapshot: {},
+          participantSnapshot: { participant: { modelId: "openai/gpt-5" } },
+        };
+      }
       return null;
     },
     scheduler: {
-      runAfter: async () => "sched_1",
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
     },
   } as any;
 
@@ -655,6 +697,67 @@ test("runSubagentRunHandler fails stale streaming runs instead of replaying them
       && call.status === "failed"
       && typeof call.error === "string"
       && call.error.includes("lease expired")));
+  assert.ok(scheduled.some((entry) =>
+    entry.event === "assistant_response_started"
+      && (entry.properties as Record<string, unknown>).stale_recovery === true));
+  assert.ok(scheduled.some((entry) =>
+    entry.event === "assistant_response_failed"
+      && (entry.properties as Record<string, unknown>).stale_recovery === true));
+});
+
+test("runSubagentRunHandler does not synthesize stale recovery starts after normal start capture", async () => {
+  const scheduled: Array<Record<string, unknown>> = [];
+  const ctx = {
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("expectedStatuses" in args) return false;
+      if ("runId" in args && "status" in args) return { batchId: "batch_1", allTerminal: false };
+      return null;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) {
+        return {
+          _id: "run_1",
+          batchId: "batch_1",
+          status: "streaming",
+          startedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 5_000,
+          analyticsStartedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 4_000,
+          updatedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 1_000,
+          content: "partial",
+          reasoning: "thinking",
+          toolCalls: [],
+          toolResults: [],
+          generatedFiles: [],
+        };
+      }
+      if ("batchId" in args) {
+        return {
+          _id: "batch_1",
+          status: "running_children",
+          userId: "user_1",
+          chatId: "chat_1",
+          parentMessageId: "parent_1",
+          parentJobId: "job_1",
+          paramsSnapshot: {},
+          participantSnapshot: { participant: { modelId: "openai/gpt-5" } },
+        };
+      }
+      return null;
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
+    },
+  } as any;
+
+  await runSubagentRunHandler(ctx, { runId: "run_1" } as any);
+
+  assert.equal(
+    scheduled.some((entry) => entry.event === "assistant_response_started"),
+    false,
+  );
+  assert.ok(scheduled.some((entry) => entry.event === "assistant_response_failed"));
 });
 
 test("runSubagentRunHandler cancels claimed work when the batch is already cancelled", async () => {
@@ -754,39 +857,96 @@ test("runSubagentRunHandler stops safely for missing runs, missing batches, and 
   assert.deepEqual(missingBatchScheduled, [{ runId: "run_1" }]);
 
   const missingKeyMutations: Array<Record<string, unknown>> = [];
-  await assert.rejects(
-    runSubagentRunHandler({
-      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
-        missingKeyMutations.push(args);
-        return true;
+  const missingKeyScheduled: Array<Record<string, unknown>> = [];
+  await runSubagentRunHandler({
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      missingKeyMutations.push(args);
+      return true;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) return { _id: "run_1", batchId: "batch_1", status: "queued" };
+      if ("batchId" in args) {
+        return {
+          _id: "batch_1",
+          status: "running_children",
+          userId: "user_1",
+          chatId: "chat_1",
+          parentMessageId: "parent_1",
+          childConversationSeed: [],
+          paramsSnapshot: { requestParams: {} },
+          participantSnapshot: { userId: "user_1", chatId: "chat_1", participant: { modelId: "openai/gpt-5" } },
+        };
+      }
+      if ("userId" in args) return null;
+      throw new Error(`Unexpected missing-key query: ${JSON.stringify(args)}`);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        missingKeyScheduled.push(args);
+        return "sched_1";
       },
-      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
-        if ("runId" in args) return { _id: "run_1", batchId: "batch_1", status: "queued" };
-        if ("batchId" in args) {
-          return {
-            _id: "batch_1",
-            status: "running_children",
-            userId: "user_1",
-            chatId: "chat_1",
-            parentMessageId: "parent_1",
-            childConversationSeed: [],
-            paramsSnapshot: { requestParams: {} },
-            participantSnapshot: { userId: "user_1", chatId: "chat_1", participant: { modelId: "openai/gpt-5" } },
-          };
-        }
-        if ("userId" in args) return null;
-        throw new Error(`Unexpected missing-key query: ${JSON.stringify(args)}`);
-      },
-      scheduler: {
-        runAfter: async () => "sched_1",
-      },
-    } as any, { runId: "run_1" } as any),
-    /MISSING_API_KEY|No OpenRouter API key/,
-  );
+    },
+  } as any, { runId: "run_1" } as any);
   assert.deepEqual(missingKeyMutations[0], {
     runId: "run_1",
     expectedStatuses: ["queued", "waiting_continuation"],
   });
+  const missingKeyFailure = missingKeyMutations.find((entry) => entry.status === "failed");
+  assert.equal(missingKeyFailure?.runId, "run_1");
+  assert.match(String(missingKeyFailure?.error), /MISSING_API_KEY|No OpenRouter API key/);
+  assert.ok(missingKeyScheduled.some((entry) => entry.event === "assistant_response_failed"));
+});
+
+test("runSubagentRunHandler does not emit a duplicate start for continuation resumes", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+
+  await runSubagentRunHandler({
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if ("expectedStatuses" in args) return true;
+      return { batchId: "batch_1", allTerminal: true };
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("runId" in args) {
+        return {
+          _id: "run_1",
+          batchId: "batch_1",
+          status: "streaming",
+          continuationCount: 1,
+          content: "partial",
+          reasoning: "",
+          toolCalls: [],
+          toolResults: [],
+        };
+      }
+      if ("batchId" in args) {
+        return {
+          _id: "batch_1",
+          status: "running_children",
+          userId: "user_1",
+          chatId: "chat_1",
+          parentMessageId: "parent_1",
+          parentJobId: "job_1",
+          childConversationSeed: [],
+          paramsSnapshot: { requestParams: {} },
+          participantSnapshot: { userId: "user_1", chatId: "chat_1", participant: { modelId: "openai/gpt-5" } },
+        };
+      }
+      if ("userId" in args) return null;
+      throw new Error(`Unexpected query: ${JSON.stringify(args)}`);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "sched_1";
+      },
+    },
+  } as any, { runId: "run_1" } as any);
+
+  assert.ok(mutations.some((entry) => entry.status === "failed"));
+  assert.equal(scheduled.some((entry) => entry.event === "assistant_response_started"), false);
+  assert.ok(scheduled.some((entry) => entry.event === "assistant_response_failed"));
 });
 
 test("runSubagentRunHandler completes a simple streaming run and schedules parent continuation", async (t) => {

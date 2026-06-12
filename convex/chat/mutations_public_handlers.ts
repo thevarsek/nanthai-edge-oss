@@ -2,6 +2,7 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { requireAuth, requirePro, getIsProUnlocked } from "../lib/auth";
 import {
   insertFileAttachment,
@@ -25,6 +26,7 @@ import {
   normalizeMessageAttachments,
   normalizeParticipants,
   resolveParentMessageIdsForSend,
+  scheduleCancelledAssistantResponseAnalytics,
   SendParticipantConfig,
 } from "./mutation_send_helpers";
 
@@ -128,6 +130,7 @@ export interface SendMessageArgs extends Record<string, unknown> {
   // M30 — Turn-level skill & integration overrides (slash chips)
   turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  analytics?: AnalyticsClientMetadata;
 }
 
 export interface SendMessageResult {
@@ -329,6 +332,12 @@ export async function sendMessageHandler(
       turnSkillOverrides: args.turnSkillOverrides,
       turnIntegrationOverrides: args.turnIntegrationOverrides,
       retryContract,
+      analytics: args.analytics,
+      analyticsSource: effectiveSearchMode === "web"
+        ? "web_search"
+        : args.videoConfig
+          ? "video_generation"
+          : undefined,
     });
   ttftLog("[generation] assistant/jobs created", {
     chatId: args.chatId,
@@ -405,6 +414,7 @@ export async function sendMessageHandler(
       turnIntegrationOverrides: args.turnIntegrationOverrides,
       // Phase 1 TTFT: scheduler hop #1 measurement
       enqueuedAt: Date.now(),
+      analytics: args.analytics,
     });
     ttftLog("[generation] runGeneration enqueued", {
       chatId: args.chatId,
@@ -467,6 +477,7 @@ export async function sendMessageHandler(
           enabledIntegrations: effectiveIntegrations,
           turnIntegrationOverrides: args.turnIntegrationOverrides,
           subagentsEnabled: effectiveSubagents,
+          analytics: args.analytics,
         },
       );
     }
@@ -512,6 +523,7 @@ export async function cancelGenerationHandler(
   });
 
   const message = await ctx.db.get(job.messageId);
+  await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
   if (message && message.status !== "completed") {
     await ctx.db.patch(job.messageId, {
       status: "cancelled",
@@ -605,6 +617,7 @@ export async function cancelActiveGenerationHandler(
       terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
+    await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
     if (message && message.status !== "completed") {
       await ctx.db.patch(job.messageId, {
         status: "cancelled",
@@ -655,6 +668,7 @@ export async function cancelActiveGenerationHandler(
       terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
+    await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
     if (message && message.status !== "completed") {
       await ctx.db.patch(job.messageId, {
         status: "cancelled",

@@ -2,15 +2,25 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const upsert = vi.fn();
+let clerkUserId: string | undefined = "user_1";
 
 vi.mock("convex/react", () => ({
   useMutation: () => upsert,
+}));
+
+vi.mock("@clerk/react", () => ({
+  useUser: () => ({
+    isLoaded: true,
+    isSignedIn: clerkUserId !== undefined,
+    user: clerkUserId ? { id: clerkUserId } : null,
+  }),
 }));
 
 describe("usePreferenceBuffer", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     upsert.mockReset();
+    clerkUserId = "user_1";
   });
 
   afterEach(() => {
@@ -31,6 +41,22 @@ describe("usePreferenceBuffer", () => {
     unmount();
 
     expect(upsert).toHaveBeenCalledWith({ defaultModelId: "model_a" });
+  });
+
+  it("notifies after a patch persists successfully", async () => {
+    const onPersistedPatch = vi.fn();
+    const { usePreferenceBuffer } = await import("./usePreferenceBuffer");
+    const { result, unmount } = renderHook(() => usePreferenceBuffer({ onPersistedPatch }));
+
+    act(() => {
+      result.current.updatePreferenceImmediate({ defaultModelId: "model_a" });
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(onPersistedPatch).toHaveBeenCalledWith({ defaultModelId: "model_a" });
+    unmount();
   });
 
   it("requeues debounced preferences when the backend write fails", async () => {
@@ -126,5 +152,60 @@ describe("usePreferenceBuffer", () => {
     expect(upsert).toHaveBeenNthCalledWith(2, { defaultModelId: "model_a" });
 
     second.unmount();
+  });
+
+  it("does not replay another user's stored pending patch", async () => {
+    upsert.mockRejectedValueOnce(new Error("offline"));
+    const { usePreferenceBuffer } = await import("./usePreferenceBuffer");
+    const first = renderHook(() => usePreferenceBuffer());
+
+    act(() => {
+      first.result.current.updatePreference({ defaultModelId: "model_a" });
+    });
+    first.unmount();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(upsert).toHaveBeenCalledTimes(1);
+
+    clerkUserId = "user_2";
+    const second = renderHook(() => usePreferenceBuffer());
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    second.unmount();
+  });
+
+  it("does not retry an in-flight failed write under the next signed-in user", async () => {
+    let rejectWrite: ((error: Error) => void) | undefined;
+    upsert.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectWrite = reject;
+    }));
+    const { usePreferenceBuffer } = await import("./usePreferenceBuffer");
+    const { result, rerender, unmount } = renderHook(() => usePreferenceBuffer());
+
+    act(() => {
+      result.current.updatePreferenceImmediate({ defaultModelId: "model_a" });
+    });
+    expect(upsert).toHaveBeenCalledTimes(1);
+
+    clerkUserId = "user_2";
+    rerender();
+    await act(async () => {
+      rejectWrite?.(new Error("offline"));
+      await Promise.resolve();
+    });
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(
+      localStorage.getItem("nanthai.preferences.pendingPatch.user_1"),
+    ).toContain("model_a");
+
+    unmount();
   });
 });

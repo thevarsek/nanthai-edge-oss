@@ -8,6 +8,7 @@ import {
   attachmentTriggeredReadToolNames,
 } from "./helpers_attachment_utils";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import { analyticsClientProperties } from "../analytics/client_metadata";
 import { resolveEffectiveIntegrations } from "../skills/resolver";
 import type { GenerationContext } from "./queries_generation_context";
 import type { ContextAttachment } from "./helpers_types";
@@ -54,6 +55,7 @@ export async function runGenerationHandler(
     jobIds: args.participants.map((p) => p.jobId),
     searchSessionId: args.searchSessionId ?? null,
     schedulerHop1Ms,
+    ...analyticsClientProperties(args.analytics),
   });
   try {
     // Consolidated preflight: single query replaces ~13 individual round-trips.
@@ -151,6 +153,14 @@ export async function runGenerationHandler(
           // Phase 1 instrumentation: scheduler hop #2 latency measurement
           enqueuedAt: deps.now(),
         };
+      if (args.analytics) {
+        (participantArgs as typeof participantArgs & { analytics: NonNullable<RunGenerationArgs["analytics"]> })
+          .analytics = args.analytics;
+      }
+      if (args.analyticsSource) {
+        (participantArgs as typeof participantArgs & { analyticsSource: NonNullable<RunGenerationArgs["analyticsSource"]> })
+          .analyticsSource = args.analyticsSource;
+      }
       if (args.drivePickerBatchId) {
         (participantArgs as typeof participantArgs & { drivePickerBatchId: Id<"drivePickerBatches"> })
           .drivePickerBatchId = args.drivePickerBatchId;

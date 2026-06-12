@@ -1,12 +1,14 @@
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant } from "@/hooks/useChat";
+import type { AnalyticsClientMetadata } from "@/lib/analytics";
 
 export function buildRegeneratePaperArgs(args: {
   sessionId: string;
   participant: Participant;
   enabledIntegrations: ReadonlySet<string>;
+  analytics?: AnalyticsClientMetadata;
 }) {
-  const { sessionId, participant, enabledIntegrations } = args;
+  const { sessionId, participant, enabledIntegrations, analytics } = args;
   return {
     sessionId: sessionId as Id<"searchSessions">,
     modelId: participant.modelId,
@@ -19,5 +21,6 @@ export function buildRegeneratePaperArgs(args: {
     ...(participant.includeReasoning != null ? { includeReasoning: participant.includeReasoning } : {}),
     ...(participant.reasoningEffort ? { reasoningEffort: participant.reasoningEffort } : {}),
     ...(enabledIntegrations.size > 0 ? { enabledIntegrations: Array.from(enabledIntegrations) } : {}),
+    ...(analytics ? { analytics } : {}),
   };
 }

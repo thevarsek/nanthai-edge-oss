@@ -5,10 +5,9 @@
 // messageQueryEmbeddings lease + prime + ensureReady pattern exactly so the
 // generation action can short-circuit the entire ~660ms chain on cache hit.
 //
-// Critical invariant: memory retrieval is NEVER silently skipped. On cache
-// miss/failure, the consumer falls back to inline compute. On timeout we
-// write `status: "failed"` with a stable error code so the consumer gets
-// `[]` (current graceful-degrade behavior) rather than a hang.
+// Critical invariant: background prewarm computes the expensive retrieval
+// chain. Generation may briefly wait for that prewarm, but it must not perform
+// embedding + vector search inline on the first-token path.
 // =============================================================================
 
 import { internal } from "../_generated/api";
@@ -22,6 +21,11 @@ const LEASE_DURATION_MS = 15_000;
 const POLL_INTERVAL_MS = 100;
 const ENSURE_READY_TIMEOUT_MS = 20_000;
 const VECTOR_SEARCH_LIMIT = 12;
+
+interface EnsureMessageMemoryContextReadyOptions {
+  maxWaitMs?: number;
+  claimAndCompute?: boolean;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -394,10 +398,13 @@ export async function ensureMessageMemoryContextReady(
     leaseOwner: string;
     requireZdr?: boolean;
   },
+  options: EnsureMessageMemoryContextReadyOptions = {},
 ): Promise<Doc<"messageMemoryContexts"> | null> {
   const requireZdr = args.requireZdr === true;
   const textHash = hashTextForPrivacyMode(args.queryText, requireZdr);
-  const deadline = Date.now() + ENSURE_READY_TIMEOUT_MS;
+  const maxWaitMs = options.maxWaitMs ?? ENSURE_READY_TIMEOUT_MS;
+  const claimAndCompute = options.claimAndCompute ?? true;
+  const deadline = Date.now() + maxWaitMs;
 
   while (Date.now() < deadline) {
     const row = await ctx.runQuery(
@@ -408,6 +415,14 @@ export async function ensureMessageMemoryContextReady(
     // Stale rows (edited message) must be recomputed.
     if (row?.status === "ready" && row?.textHash === textHash) return row;
     if (row?.status === "failed" && row?.textHash === textHash) return row;
+
+    if (!claimAndCompute) {
+      const remainingMs = Math.max(0, deadline - Date.now());
+      if (remainingMs > 0) {
+        await sleep(Math.min(POLL_INTERVAL_MS, remainingMs));
+      }
+      continue;
+    }
 
     const now = Date.now();
     const claim = await ctx.runMutation(
@@ -447,6 +462,10 @@ export async function ensureMessageMemoryContextReady(
     && finalRow.textHash === textHash
   ) {
     return finalRow;
+  }
+
+  if (!claimAndCompute) {
+    return null;
   }
 
   await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {

@@ -66,7 +66,7 @@ test("runGenerationParticipantHandler finalizes and clears state before rethrowi
 
   assert.deepEqual(
     mutationCalls.filter((args) => Object.keys(args).length === 1 && args.jobId === "job_1"),
-    [{ jobId: "job_1" }, { jobId: "job_1" }],
+    [{ jobId: "job_1" }, { jobId: "job_1" }, { jobId: "job_1" }],
   );
   assert.ok(
     mutationCalls.some((args) =>
@@ -161,13 +161,85 @@ test("runGenerationParticipantHandler hands video-capable models to the video ac
   );
 
   assert.deepEqual(mutationCalls, [{ jobId: "job_1" }]);
-  assert.equal(scheduled.length, 1);
-  assert.equal((scheduled[0]?.participant as any)?.modelId, "google/veo-3");
-  assert.deepEqual(scheduled[0]?.videoConfig, { prompt: "make a product demo" });
+  const analyticsSchedule = scheduled.find((payload) =>
+    payload.event === "video_generation_requested"
+  );
+  assert.equal(analyticsSchedule?.distinctId, "user_1");
+  assert.equal(analyticsSchedule?.event, "video_generation_requested");
+  assert.equal((analyticsSchedule?.properties as any)?.chat_id, "chat_1");
+  assert.equal((analyticsSchedule?.properties as any)?.message_id, "msg_assistant");
+  assert.equal((analyticsSchedule?.properties as any)?.job_id, "job_1");
+  assert.equal((analyticsSchedule?.properties as any)?.model_id, "google/veo-3");
+  const videoSchedule = scheduled.find((payload) => "participant" in payload);
+  assert.equal((videoSchedule?.participant as any)?.modelId, "google/veo-3");
+  assert.deepEqual(videoSchedule?.videoConfig, { prompt: "make a product demo" });
+});
+
+test("runGenerationParticipantHandler schedules analytics without awaiting PostHog fetch", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalProjectToken = process.env.POSTHOG_PROJECT_TOKEN;
+  let fetchCalls = 0;
+  const scheduled: Array<Record<string, unknown>> = [];
+
+  globalThis.fetch = (async () => {
+    fetchCalls += 1;
+    return await new Promise<Response>(() => {});
+  }) as typeof fetch;
+  process.env.POSTHOG_PROJECT_TOKEN = "phc_slow_test_token";
+
+  try {
+    const ctx = createMockCtx({
+      runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+        if ("jobId" in args) {
+          return { status: "queued" };
+        }
+        if ("modelId" in args) {
+          return { hasVideoGeneration: false };
+        }
+        if ("userId" in args) {
+          return null;
+        }
+        throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+      },
+      runMutation: async () => undefined,
+      scheduler: {
+        runAfter: async (_delay: number, _ref: unknown, payload: Record<string, unknown>) => {
+          scheduled.push(payload);
+          return `scheduled_${scheduled.length}`;
+        },
+        runAt: async () => "unused",
+      },
+    });
+
+    const result = await Promise.race([
+      runGenerationParticipantHandler(ctx, baseRunGenerationParticipantArgs())
+        .then(() => "resolved" as const)
+        .catch((error: unknown) => error),
+      new Promise<"timed_out">((resolve) => {
+        setTimeout(() => resolve("timed_out"), 100);
+      }),
+    ]);
+
+    assert.notEqual(result, "timed_out");
+    assert.ok(result instanceof ConvexError);
+    assert.equal(fetchCalls, 0);
+    assert.deepEqual(
+      scheduled.map((payload) => payload.event),
+      ["assistant_response_started", "assistant_response_failed"],
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalProjectToken === undefined) {
+      delete process.env.POSTHOG_PROJECT_TOKEN;
+    } else {
+      process.env.POSTHOG_PROJECT_TOKEN = originalProjectToken;
+    }
+  }
 });
 
 test("runGenerationParticipantHandler finalizes video setup failure when scheduling fails", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   const schedulingError = new Error("scheduler offline");
   let jobQueryCount = 0;
 
@@ -184,12 +256,21 @@ test("runGenerationParticipantHandler finalizes video setup failure when schedul
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutationCalls.push(args);
+      if (Object.keys(args).length === 1 && args.jobId === "job_1") {
+        return true;
+      }
     },
     scheduler: {
-      runAfter: async () => {
+      runAfter: async (_delay: number, _ref: unknown, payload?: Record<string, unknown>) => {
+        if (payload && "participant" in payload) {
+          throw schedulingError;
+        }
+        if (payload) scheduled.push(payload);
+        return "scheduled_analytics";
+      },
+      runAt: async () => {
         throw schedulingError;
       },
-      runAt: async () => "unused",
     },
   });
 
@@ -214,11 +295,20 @@ test("runGenerationParticipantHandler finalizes video setup failure when schedul
     && args.error === "scheduler offline"
   ));
   assert.ok(mutationCalls.some((args) => args.jobId === "job_1"));
+  assert.deepEqual(
+    scheduled
+      .filter((payload) =>
+        payload.event === "assistant_response_started" ||
+        payload.event === "assistant_response_failed"
+      )
+      .map((payload) => payload.event),
+    ["assistant_response_started", "assistant_response_failed"],
+  );
 });
 
 test("runGenerationParticipantHandler finalizes subagent and Drive picker batches after setup failure", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
-  const jobStatuses = ["queued", "failed", "failed", "timedOut"];
+  const jobStatuses = ["queued", "streaming", "failed", "failed", "timedOut"];
   const messageStatuses = ["cancelled", "completed"];
 
   const ctx = createMockCtx({

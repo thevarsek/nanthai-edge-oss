@@ -11,8 +11,14 @@ import {
 } from "../memory/shared";
 import { MODEL_IDS } from "../lib/model_constants";
 import { ttftLog } from "../lib/generation_log";
-import { ensureMessageQueryEmbeddingReady } from "../memory/query_embedding_handlers";
 import { ensureMessageMemoryContextReady } from "../memory/memory_context_handlers";
+import {
+  captureBackendAIOperationCompleted,
+  captureBackendAIOperationFailed,
+  captureBackendAIOperationStarted,
+} from "../analytics/backend_events";
+
+const GENERATION_MEMORY_CONTEXT_WAIT_MS = 250;
 
 interface MemoryContextArgs {
   messages: Array<{ _id: Id<"messages">; role: string; content: string }>;
@@ -53,10 +59,9 @@ export async function resolveMemoryContextForGeneration(
     { userId: args.userId },
   );
 
-  // Phase 3: consult the prewarmed memory-context cache first. On ready hit
-  // we skip embedding + vector search + hydrate entirely. On miss/failed we
-  // fall back to the inline path (preserved below) so memory retrieval is
-  // never silently skipped.
+  // Consult the prewarmed memory-context cache. A ready hit avoids embedding,
+  // vector search, and hydration on the generation path; any miss degrades to
+  // broad contextual memory instead of blocking TTFT with inline retrieval.
   const relevantMemoriesPromise = memoryQueryText.length > 0
     ? resolveHydratedHits(ctx, {
       userId: args.userId,
@@ -144,7 +149,7 @@ export async function resolveMemoryContextForGeneration(
 }
 
 // ---------------------------------------------------------------------------
-// Hydrated-hits resolver: Phase 3 cache lookup, fall back to inline compute.
+// Hydrated-hits resolver: short cache wait, then broad contextual fallback.
 // ---------------------------------------------------------------------------
 
 interface HydratedHitsArgs {
@@ -169,6 +174,9 @@ async function resolveHydratedHits(
       queryText: args.memoryQueryText,
       leaseOwner: `generation:${args.assistantMessageId ?? args.userMessageId}`,
       requireZdr: args.requireZdr,
+    }, {
+      maxWaitMs: GENERATION_MEMORY_CONTEXT_WAIT_MS,
+      claimAndCompute: false,
     });
 
     if (contextRow?.status === "ready" && Array.isArray(contextRow.hydratedHits)) {
@@ -218,127 +226,89 @@ async function resolveHydratedHits(
         durationMs: Date.now() - cacheStartedAt,
         errorCode: contextRow.errorCode ?? null,
       });
+      await captureMemoryContextFallback(ctx, args, cacheStartedAt, "failed", contextRow.errorCode);
       return [];
     }
 
-    // Unexpected: cache row neither ready nor failed after ensureReady. Fall
-    // back to inline compute rather than degrade silently.
-    console.warn("[generation] memory-context cache indeterminate, falling back to inline", {
+    console.warn("[generation] memory-context cache indeterminate, returning empty", {
       userId: args.userId,
       chatId: args.chatId ?? null,
       messageId: args.assistantMessageId ?? null,
       durationMs: Date.now() - cacheStartedAt,
     });
+    await captureMemoryContextFallback(
+      ctx,
+      args,
+      cacheStartedAt,
+      contextRow?.status ?? "missing",
+    );
   } catch (error) {
-    console.warn("[generation] memory-context cache threw, falling back to inline", {
+    console.warn("[generation] memory-context cache threw, returning empty", {
       userId: args.userId,
       chatId: args.chatId ?? null,
       messageId: args.assistantMessageId ?? null,
       durationMs: Date.now() - cacheStartedAt,
       error: error instanceof Error ? error.message : String(error),
     });
+    await captureMemoryContextFallback(ctx, args, cacheStartedAt, "exception", undefined, error);
   }
 
-  return computeHydratedHitsInline(ctx, args);
+  return [];
 }
 
-// ---------------------------------------------------------------------------
-// Inline fallback (original implementation). Kept verbatim so cache-miss
-// behavior exactly matches pre-Phase-3 behavior including logging and billing.
-// ---------------------------------------------------------------------------
-
-async function computeHydratedHitsInline(
+async function captureMemoryContextFallback(
   ctx: ActionContextLike,
   args: HydratedHitsArgs,
-): Promise<MemoryRecordLike[]> {
-  try {
-    const embeddingStartedAt = Date.now();
-    const queryEmbedding = await ensureMessageQueryEmbeddingReady(ctx, {
-      messageId: args.userMessageId,
-      userId: args.userId,
-      chatId: args.chatId,
-      queryText: args.memoryQueryText,
-      leaseOwner: `generation:${args.assistantMessageId ?? args.userMessageId}`,
-      requireZdr: args.requireZdr,
+  cacheStartedAt: number,
+  cacheStatus: string,
+  errorCode?: string,
+  error?: unknown,
+): Promise<void> {
+  const messageId = String(args.assistantMessageId ?? args.userMessageId);
+  const durationMs = Date.now() - cacheStartedAt;
+  const properties = {
+    cache_status: cacheStatus,
+    error_code: errorCode ?? null,
+    user_message_id: String(args.userMessageId),
+    assistant_message_id: args.assistantMessageId ? String(args.assistantMessageId) : null,
+    require_zdr: args.requireZdr,
+    fallback: "broad_contextual_memory",
+  };
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "memory_context_prewarm",
+    source: "generation_memory_context",
+    chatId: args.chatId ? String(args.chatId) : undefined,
+    messageId,
+    modelId: MODEL_IDS.embedding,
+    durationMs,
+    properties: {
+      ...properties,
+      cache_lookup_only: true,
+    },
+  });
+  const terminalArgs = {
+    userId: args.userId,
+    operation: "memory_context_prewarm",
+    source: "generation_memory_context",
+    chatId: args.chatId ? String(args.chatId) : undefined,
+    messageId,
+    modelId: MODEL_IDS.embedding,
+    durationMs,
+    properties,
+  };
+  if (error !== undefined) {
+    await captureBackendAIOperationFailed(ctx, {
+      ...terminalArgs,
+      error,
     });
-    ttftLog("[generation] memory embedding computed (inline fallback)", {
-      userId: args.userId,
-      chatId: args.chatId ?? null,
-      messageId: args.assistantMessageId ?? null,
-      durationMs: Date.now() - embeddingStartedAt,
-      hasEmbedding: queryEmbedding?.status === "ready",
-    });
-    if (queryEmbedding?.status !== "ready" || !Array.isArray(queryEmbedding.embedding)) {
-      return [];
-    }
-
-    const vectorSearchStartedAt = Date.now();
-    const results = await ctx.vectorSearch("memoryEmbeddings", "by_embedding", {
-      vector: queryEmbedding.embedding,
-      limit: 12,
-      filter: (q) => q.eq("userId", args.userId),
-    });
-    ttftLog("[generation] memory vector search completed (inline fallback)", {
-      userId: args.userId,
-      chatId: args.chatId ?? null,
-      messageId: args.assistantMessageId ?? null,
-      durationMs: Date.now() - vectorSearchStartedAt,
-      hitCount: results.length,
-    });
-    if (results.length === 0) {
-      return [];
-    }
-
-    const hydrateStartedAt = Date.now();
-    const hydrated = await ctx.runQuery(
-      internal.memory.operations.hydrateRelevantMemoryHits,
-      {
-        hits: results.map((result) => ({
-          embeddingId: result._id,
-          score: result._score,
-        })),
+  } else {
+    await captureBackendAIOperationCompleted(ctx, {
+      ...terminalArgs,
+      properties: {
+        ...properties,
+        degraded: true,
       },
-    );
-    ttftLog("[generation] memory hits hydrated (inline fallback)", {
-      userId: args.userId,
-      chatId: args.chatId ?? null,
-      messageId: args.assistantMessageId ?? null,
-      durationMs: Date.now() - hydrateStartedAt,
-      hydratedCount: hydrated.length,
     });
-
-    if (queryEmbedding.usage && args.chatId && args.assistantMessageId) {
-      const marked = await ctx.runMutation(
-        internal.memory.operations.markMessageQueryEmbeddingUsageRecorded,
-        {
-          messageId: args.userMessageId,
-          usageRecordedAt: Date.now(),
-          usageRecordedMessageId: args.assistantMessageId,
-        },
-      );
-      if (marked) {
-        await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
-          messageId: args.assistantMessageId,
-          chatId: args.chatId,
-          userId: args.userId,
-          modelId: MODEL_IDS.embedding,
-          promptTokens: queryEmbedding.usage.promptTokens,
-          completionTokens: 0,
-          totalTokens: queryEmbedding.usage.totalTokens,
-          source: "memory_embedding_retrieve",
-          generationId: queryEmbedding.generationId ?? undefined,
-        });
-      }
-    }
-
-    return hydrated;
-  } catch (error) {
-    console.warn("[generation] memory vector search failed, degrading gracefully", {
-      userId: args.userId,
-      chatId: args.chatId ?? null,
-      messageId: args.assistantMessageId ?? null,
-      error: error instanceof Error ? error.message : String(error),
-    });
-    return [];
   }
 }

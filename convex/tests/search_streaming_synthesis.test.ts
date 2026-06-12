@@ -14,10 +14,21 @@ const getPersonaRef = getFunctionName(internal.chat.queries.getPersona);
 const getModelCapabilitiesRef = getFunctionName(internal.chat.queries.getModelCapabilities);
 const getUserPreferencesRef = getFunctionName(internal.chat.queries.getUserPreferences);
 
+function makeSchedulerCapture(scheduled: Array<Record<string, unknown>>) {
+  return {
+    runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+      scheduled.push(args);
+      return `scheduled_${scheduled.length}`;
+    },
+    runAt: async () => "unused",
+  };
+}
+
 test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-only outputs", async () => {
   const mutationCalls: Record<string, unknown>[] = [];
   const builtRequests: Record<string, unknown>[] = [];
   const gatedParams: Record<string, unknown>[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   const writer = {
     totalContent: "",
     totalReasoning: "",
@@ -95,8 +106,12 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutationCalls.push(args);
+      if (Object.keys(args).length === 1 && args.jobId === "job_1") {
+        return true;
+      }
       return false;
     },
+    scheduler: makeSchedulerCapture(scheduled),
   });
 
   await synthesizeWithStreaming(
@@ -119,10 +134,18 @@ test("synthesizeWithStreaming injects citation guidance and finalizes reasoning-
   assert.equal(gatedParams[0]?.webSearchEnabled, false);
   assert.equal(mutationCalls.at(-1)?.content, "Model returned reasoning only.");
   assert.equal(mutationCalls.at(-1)?.reasoning, "Reasoning only");
+  assert.deepEqual(
+    scheduled.map((entry) => entry.event),
+    ["assistant_response_started", "assistant_response_completed"],
+  );
+  assert.equal((scheduled[0]?.properties as Record<string, unknown>).source, "web_search");
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).total_tokens, 13);
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).legacy_streaming_synthesis, true);
 });
 
 test("synthesizeWithStreaming checks cancellation every ten deltas", async () => {
   let cancellationChecks = 0;
+  const scheduled: Array<Record<string, unknown>> = [];
 
   const deps = createSearchSynthesisDepsForTest({
     getRequiredUserOpenRouterApiKey: async () => "key",
@@ -196,6 +219,7 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async () =>
       }
       throw new Error("unexpected mutation");
     },
+    scheduler: makeSchedulerCapture(scheduled),
   });
 
   await assert.rejects(
@@ -218,4 +242,9 @@ test("synthesizeWithStreaming checks cancellation every ten deltas", async () =>
   );
 
   assert.equal(cancellationChecks, 1);
+  assert.deepEqual(
+    scheduled.map((entry) => entry.event),
+    ["assistant_response_started", "assistant_response_failed"],
+  );
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).failure_category, "cancelled");
 });

@@ -1,10 +1,14 @@
 import { createContext, useContext } from "react";
-import type { PlaybackState } from "@/hooks/useAudioPlayback";
+import type { AudioPlaybackCallbacks, PlaybackState } from "@/hooks/useAudioPlayback";
 import type { Id } from "@convex/_generated/dataModel";
 
 export interface AudioPlaybackContextValue {
   state: PlaybackState;
-  play: (messageId: Id<"messages">, existingAudioStorageId?: Id<"_storage">) => Promise<void>;
+  play: (
+    messageId: Id<"messages">,
+    existingAudioStorageId?: Id<"_storage">,
+    callbacks?: AudioPlaybackCallbacks,
+  ) => Promise<void>;
   pause: () => void;
   stop: () => void;
   cycleSpeed: () => void;

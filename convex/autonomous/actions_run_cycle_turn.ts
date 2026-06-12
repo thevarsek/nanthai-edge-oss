@@ -26,6 +26,12 @@ import {
 import { ModelCapabilities, TurnOutcome } from "./actions_run_cycle_types";
 import { loadMemoryContext } from "./actions_run_cycle_context";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import {
+  captureAssistantResponseCompleted,
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
+import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
 
 const EMPTY_STREAM_RETRY_DELAYS = [500, 1500];
 const CANCELLED_TURN_ERROR = "AUTONOMOUS_SESSION_CANCELLED";
@@ -407,6 +413,46 @@ export async function runParticipantTurn(
       beforePatch: assertTurnStillActive,
     });
 
+    const generationStartedAt = deps.now();
+    let shouldCaptureStarted = false;
+    try {
+      shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, jobId);
+    } catch (error) {
+      console.warn("[analytics] failed to mark autonomous turn analytics start", {
+        jobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      shouldCaptureStarted = true;
+    }
+    if (!shouldCaptureStarted) {
+      await markTurnCancelled();
+      return { kind: "cancelled" };
+    }
+    await captureAssistantResponseStartedEvent(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(messageId),
+      jobId: String(jobId),
+      modelId: participant.modelId,
+      source: "autonomous_discussion",
+      participantCount: 1,
+      webSearchEnabled,
+      properties: {
+        autonomous_session_id: String(sessionId),
+        participant_id: String(participant.participantId),
+        persona_id: participant.personaId ? String(participant.personaId) : null,
+        cycle_parent_count: cycleParentIds.length,
+        request_message_count: requestMessages.length,
+        base_context_message_count: baseRequestMessages.length,
+        assembled_context_message_count: assembledRequestMessages.length,
+        promoted_video_url_count: promotedRequest.events.filter((event) => event.status === "promoted").length,
+        skipped_video_url_count: promotedRequest.events.filter((event) => event.status === "skipped").length,
+        memory_context_loaded: Boolean(resolvedMemoryContext || memoryContext),
+        moderator_directive_used: Boolean(moderatorDirective),
+        zdr_required: requireZdr,
+      },
+    });
+
     const result = await deps.callOpenRouterStreaming(
       apiKey,
       participant.modelId,
@@ -446,6 +492,21 @@ export async function runParticipantTurn(
         userId,
         reason: "Model returned reasoning only without a visible response.",
       });
+      await captureAssistantResponseFailure(ctx, {
+        userId,
+        chatId: String(chatId),
+        messageId: String(messageId),
+        jobId: String(jobId),
+        modelId: participant.modelId,
+        source: "autonomous_discussion",
+        error: new Error("Model returned reasoning only without a visible response."),
+        properties: {
+          autonomous_session_id: String(sessionId),
+          participant_id: String(participant.participantId),
+          persona_id: participant.personaId ? String(participant.personaId) : null,
+          duration_ms: deps.now() - generationStartedAt,
+        },
+      });
       return {
         kind: "failed",
         reason: "Model returned reasoning only without a visible response.",
@@ -457,6 +518,21 @@ export async function runParticipantTurn(
         chatId,
         userId,
         reason: "Model returned an empty response after retries.",
+      });
+      await captureAssistantResponseFailure(ctx, {
+        userId,
+        chatId: String(chatId),
+        messageId: String(messageId),
+        jobId: String(jobId),
+        modelId: participant.modelId,
+        source: "autonomous_discussion",
+        error: new Error("Model returned an empty response after retries."),
+        properties: {
+          autonomous_session_id: String(sessionId),
+          participant_id: String(participant.participantId),
+          persona_id: participant.personaId ? String(participant.personaId) : null,
+          duration_ms: deps.now() - generationStartedAt,
+        },
       });
       return {
         kind: "failed",
@@ -476,6 +552,27 @@ export async function runParticipantTurn(
       userId,
     });
 
+    await captureAssistantResponseCompleted(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(messageId),
+      jobId: String(jobId),
+      modelId: participant.modelId,
+      source: "autonomous_discussion",
+      usage: result.usage,
+      durationMs: deps.now() - generationStartedAt,
+      participantCount: 1,
+      openrouterGenerationId: result.generationId,
+      properties: {
+        autonomous_session_id: String(sessionId),
+        participant_id: String(participant.participantId),
+        persona_id: participant.personaId ? String(participant.personaId) : null,
+        image_count: result.imageUrls.length,
+        reasoning_present: Boolean(result.reasoning || totalReasoning),
+        web_search_enabled: webSearchEnabled,
+      },
+    });
+
     await ctx.runMutation(internal.autonomous.mutations_helpers.setChatActiveLeaf, {
       chatId,
       messageId,
@@ -489,6 +586,22 @@ export async function runParticipantTurn(
     return { kind: "completed", messageId };
   } catch (error) {
     if (isCancelledTurnError(error)) {
+      if (messageId && jobId) {
+        await captureAssistantResponseFailure(ctx, {
+          userId,
+          chatId: String(chatId),
+          messageId: String(messageId),
+          jobId: String(jobId),
+          modelId: participant.modelId,
+          source: "autonomous_discussion",
+          cancelled: true,
+          properties: {
+            autonomous_session_id: String(sessionId),
+            participant_id: String(participant.participantId),
+            persona_id: participant.personaId ? String(participant.personaId) : null,
+          },
+        });
+      }
       return { kind: "cancelled" };
     }
 
@@ -500,6 +613,20 @@ export async function runParticipantTurn(
         chatId,
         userId,
         reason,
+      });
+      await captureAssistantResponseFailure(ctx, {
+        userId,
+        chatId: String(chatId),
+        messageId: String(messageId),
+        jobId: String(jobId),
+        modelId: participant.modelId,
+        source: "autonomous_discussion",
+        error,
+        properties: {
+          autonomous_session_id: String(sessionId),
+          participant_id: String(participant.participantId),
+          persona_id: participant.personaId ? String(participant.personaId) : null,
+        },
       });
     } else {
       await cleanupTransientTurnEntities(ctx, messageId, jobId);

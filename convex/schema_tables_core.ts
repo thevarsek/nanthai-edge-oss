@@ -55,6 +55,25 @@ import {
   retryContract,
 } from "./schema_validators";
 
+const generationJobAnalyticsMetadata = v.object({
+  platform: v.union(v.literal("web"), v.literal("ios"), v.literal("android")),
+  appVersion: v.optional(v.string()),
+  buildNumber: v.optional(v.string()),
+  surface: v.optional(v.string()),
+  routeOrScreen: v.optional(v.string()),
+  clientEventId: v.optional(v.string()),
+  clientSentAt: v.optional(v.number()),
+});
+
+const generationJobAnalyticsSource = v.union(
+  v.literal("chat_generation"),
+  v.literal("web_search"),
+  v.literal("research_paper"),
+  v.literal("subagent_parent_resume"),
+  v.literal("scheduled_job"),
+  v.literal("video_generation"),
+);
+
 export const coreSchemaTables = {
   chats: defineTable({
     userId: v.string(),
@@ -373,8 +392,11 @@ export const coreSchemaTables = {
     sourceStepIndex: v.optional(v.number()),
     sourceStepTitle: v.optional(v.string()),
     openrouterGenerationId: v.optional(v.string()),
+    analytics: v.optional(generationJobAnalyticsMetadata),
+    analyticsSource: v.optional(generationJobAnalyticsSource),
     terminalErrorCode: v.optional(terminalErrorCode),
     startedAt: v.optional(v.number()),
+    analyticsStartedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
@@ -846,6 +868,7 @@ export const coreSchemaTables = {
     continuationCount: v.optional(v.number()),
     error: v.optional(v.string()),
     startedAt: v.optional(v.number()),
+    analyticsStartedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),

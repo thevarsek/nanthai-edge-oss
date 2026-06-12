@@ -41,6 +41,7 @@ const state = vi.hoisted(() => {
     updatePreference: vi.fn(),
     updatePreferenceImmediate: vi.fn(),
     previewVoice: vi.fn(async () => ({ audioBase64: "ZmFrZQ==", mimeType: "audio/wav" })),
+    captureSettingChanged: vi.fn(),
   };
 });
 
@@ -63,9 +64,15 @@ vi.mock("@/hooks/useSharedData", () => ({
 }));
 
 vi.mock("@/hooks/usePreferenceBuffer", () => ({
-  usePreferenceBuffer: () => ({
-    updatePreference: state.updatePreference,
-    updatePreferenceImmediate: state.updatePreferenceImmediate,
+  usePreferenceBuffer: (options?: { onPersistedPatch?: (patch: Record<string, unknown>) => void }) => ({
+    updatePreference: (patch: Record<string, unknown>) => {
+      state.updatePreference(patch);
+      options?.onPersistedPatch?.(patch);
+    },
+    updatePreferenceImmediate: (patch: Record<string, unknown>) => {
+      state.updatePreferenceImmediate(patch);
+      options?.onPersistedPatch?.(patch);
+    },
   }),
 }));
 
@@ -162,6 +169,10 @@ vi.mock("@/components/shared/ProBadge", () => ({
   ProBadge: () => <span>pro-badge</span>,
 }));
 
+vi.mock("@/lib/featureAnalytics", () => ({
+  captureSettingChanged: state.captureSettingChanged,
+}));
+
 function renderSection() {
   return render(
     <MemoryRouter>
@@ -190,6 +201,7 @@ beforeEach(() => {
   state.updatePreference.mockReset();
   state.updatePreferenceImmediate.mockReset();
   state.previewVoice.mockReset();
+  state.captureSettingChanged.mockReset();
   state.previewVoice.mockResolvedValue({ audioBase64: "ZmFrZQ==", mimeType: "audio/wav" });
   class FakeAudio {
     src = "";
@@ -210,7 +222,6 @@ describe("ChatDefaultsSection", () => {
     fireEvent.click(screen.getByText("pick-default-model"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({
       defaultModelId: "anthropic/claude-sonnet-4.5",
-      defaultPersonaId: null,
     });
 
     fireEvent.click(screen.getByText("pick-default-persona"));
@@ -257,6 +268,23 @@ describe("ChatDefaultsSection", () => {
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ zdrEnabled: true });
     fireEvent.click(settingSwitch("send_on_enter"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ sendOnEnter: false });
+  });
+
+  it("captures debounced generation settings only after the persisted patch changes", () => {
+    renderSection();
+
+    const temperatureInput = screen.getByDisplayValue("0.7");
+    fireEvent.blur(temperatureInput);
+    expect(state.captureSettingChanged).not.toHaveBeenCalledWith(expect.objectContaining({
+      setting_key: "defaultTemperature",
+    }));
+
+    fireEvent.change(temperatureInput, { target: { value: "1.1" } });
+    expect(state.captureSettingChanged).toHaveBeenCalledWith({
+      setting_key: "defaultTemperature",
+      setting_area: "chat",
+      value_type: "number",
+    });
   });
 
   it("gates advanced search and subagents for free users but saves them for pro users", () => {

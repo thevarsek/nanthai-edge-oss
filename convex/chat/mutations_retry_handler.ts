@@ -2,6 +2,7 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { getIsProUnlocked, requireAuth, requirePro } from "../lib/auth";
 import { MODEL_IDS } from "../lib/model_constants";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
@@ -41,6 +42,7 @@ export interface RetryMessageArgs extends Record<string, unknown> {
   };
   turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  analytics?: AnalyticsClientMetadata;
 }
 
 export interface RetryMessageResult {
@@ -366,6 +368,12 @@ export async function retryMessageHandler(
       turnSkillOverrides: effectiveRetryContract.turnSkillOverrides,
       turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
       retryContract: effectiveRetryContract,
+      analytics: args.analytics,
+      analyticsSource: effectiveRetryContract.searchMode === "web"
+        ? "web_search"
+        : effectiveRetryContract.videoConfig
+          ? "video_generation"
+          : undefined,
     });
 
   await ctx.db.patch(chat._id, {
@@ -435,6 +443,7 @@ export async function retryMessageHandler(
       turnSkillOverrides: effectiveRetryContract.turnSkillOverrides,
       turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
       enqueuedAt: Date.now(),
+      analytics: args.analytics,
     });
   } else if (effectiveSearchMode === "web") {
     const cachedSearchContextDoc = await ctx.db
@@ -494,6 +503,7 @@ export async function retryMessageHandler(
           enabledIntegrations: effectiveRetryContract.enabledIntegrations,
           turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
           subagentsEnabled: effectiveSubagentsEnabled,
+          analytics: args.analytics,
         },
       );
     }

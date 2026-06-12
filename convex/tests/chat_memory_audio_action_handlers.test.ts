@@ -12,6 +12,25 @@ import {
 } from "../chat/audio_actions";
 import { MODEL_IDS } from "../lib/model_constants";
 
+function makeSchedulerCapture(scheduled: Array<Record<string, unknown>>) {
+  return {
+    runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+      scheduled.push(args);
+      return `scheduled_${scheduled.length}`;
+    },
+    runAt: async () => "unused",
+  };
+}
+
+function analyticsForOperation(
+  scheduled: Array<Record<string, unknown>>,
+  operation: string,
+) {
+  return scheduled.filter((entry) =>
+    (entry.properties as Record<string, unknown> | undefined)?.operation === operation
+  );
+}
+
 function textResponse(status: number, text: string) {
   return {
     ok: status >= 200 && status < 300,
@@ -181,9 +200,21 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
   assert.equal(created[0]?.args.supersedesMemoryId, "memory_old_location");
   assert.equal(created[1]?.args.supersedesMemoryId, undefined);
   assert.deepEqual(
-    scheduled.map((entry) => entry.source ?? entry.memoryId),
+    scheduled
+      .filter((entry) => entry.source === "memory_extraction" || entry.memoryId)
+      .map((entry) => entry.source ?? entry.memoryId),
     ["memory_extraction", "memory_new_1", "memory_new_2"],
   );
+  const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
+  assert.deepEqual(
+    memoryAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  const completed = memoryAnalytics.find((entry) => entry.event === "backend_ai_operation_completed");
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.created_memory_count, 2);
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.reinforced_memory_count, 1);
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.superseded_memory_count, 1);
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.total_tokens, 19);
 });
 
 test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", async (t) => {
@@ -252,7 +283,18 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
   });
 
   assert.equal(mutationCalls.some((call) => call.ref === createRef), false);
-  assert.deepEqual(scheduled.map((entry) => entry.source), ["memory_extraction"]);
+  assert.deepEqual(
+    scheduled.filter((entry) => entry.source).map((entry) => entry.source),
+    ["memory_extraction"],
+  );
+  const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
+  assert.deepEqual(
+    memoryAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  const completed = memoryAnalytics.find((entry) => entry.event === "backend_ai_operation_completed");
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.created_memory_count, 0);
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.skipped_candidate_count, 3);
 });
 
 test("extractMemoriesHandler uses ZDR-safe default model and provider when ZDR is enabled", async (t) => {
@@ -338,6 +380,8 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
   t.after(() => mock.restoreAll());
 
   const requestBodies: any[] = [];
+  const audioScheduled: Array<Record<string, unknown>> = [];
+  const previewScheduled: Array<Record<string, unknown>> = [];
   mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
     requestBodies.push(JSON.parse(String(init?.body)));
     return sseResponseWithAudio(Buffer.alloc(480, 1).toString("base64"), "Narrate this.");
@@ -377,6 +421,7 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
         return "storage_new";
       },
     },
+    scheduler: makeSchedulerCapture(audioScheduled),
   } as any, {
     messageId: "msg_audio_2" as any,
   });
@@ -386,6 +431,7 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
       getUserIdentity: async () => ({ subject: "user_1" }),
     },
     runQuery: async () => "sk-test",
+    scheduler: makeSchedulerCapture(previewScheduled),
   } as any, {
     voice: "   ",
   });
@@ -398,12 +444,27 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
   assert.equal(requestBodies[1].audio.voice, "nova");
   assert.equal(previewResult.mimeType, "audio/wav");
   assert.equal(previewResult.audioBase64.length > 0, true);
+  const audioAnalytics = analyticsForOperation(audioScheduled, "audio_generation");
+  assert.deepEqual(
+    audioAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((audioAnalytics[0]?.properties as Record<string, unknown>).source, "message_audio");
+  assert.equal((audioAnalytics[1]?.properties as Record<string, unknown>).audio_duration_ms, 10);
+  assert.equal((audioAnalytics[1]?.properties as Record<string, unknown>).storage_persisted, true);
+  const previewAnalytics = analyticsForOperation(previewScheduled, "audio_preview");
+  assert.deepEqual(
+    previewAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((previewAnalytics[0]?.properties as Record<string, unknown>).source, "settings_voice_preview");
 });
 
 test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZDR", async (t) => {
   t.after(() => mock.restoreAll());
 
   const requestBodies: any[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
     requestBodies.push(JSON.parse(String(init?.body)));
     return sseResponseWithAudio(Buffer.alloc(480, 1).toString("base64"), "Narrate this.");
@@ -436,11 +497,15 @@ test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZD
     storage: {
       store: async () => "storage_zdr",
     },
+    scheduler: makeSchedulerCapture(scheduled),
   } as any, {
     messageId: "msg_audio_zdr" as any,
   });
 
   assert.deepEqual(requestBodies[0].provider, { sort: "latency", zdr: true });
+  const started = analyticsForOperation(scheduled, "audio_generation")
+    .find((entry) => entry.event === "backend_ai_operation_started");
+  assert.equal((started?.properties as Record<string, unknown> | undefined)?.zdr_required, true);
 });
 
 test("generateAudioForMessageHandler clears in-progress flags when synthesis fails", async (t) => {
@@ -451,6 +516,7 @@ test("generateAudioForMessageHandler clears in-progress flags when synthesis fai
 
   const clearRef = getFunctionName(internal.chat.mutations.clearAudioGenerating);
   const mutationCalls: Array<{ ref: string; args: Record<string, unknown> }> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
 
   await assert.rejects(
     () =>
@@ -485,6 +551,7 @@ test("generateAudioForMessageHandler clears in-progress flags when synthesis fai
             throw new Error("store should not run");
           },
         },
+        scheduler: makeSchedulerCapture(scheduled),
       } as any, {
         messageId: "msg_audio_3" as any,
       }),
@@ -492,6 +559,9 @@ test("generateAudioForMessageHandler clears in-progress flags when synthesis fai
   );
 
   assert.equal(mutationCalls.some((call) => call.ref === clearRef), true);
+  const failed = analyticsForOperation(scheduled, "audio_generation")
+    .find((entry) => entry.event === "backend_ai_operation_failed");
+  assert.equal((failed?.properties as Record<string, unknown> | undefined)?.error_label, "internal_error");
 });
 
 test("generateAudioForMessageHandler rejects invalid messages and missing chats", async () => {

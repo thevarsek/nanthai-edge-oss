@@ -104,6 +104,8 @@ export const attachPickedDriveFiles = action({
       turnIntegrationOverrides: resume.paramsSnapshot?.turnIntegrationOverrides,
       subagentsEnabled: false,
       drivePickerBatchId: args.batchId,
+      analytics: resume.paramsSnapshot?.analytics,
+      analyticsSource: resume.paramsSnapshot?.analyticsSource,
     });
 
     await ctx.runMutation(internal.drive_picker.mutations.scheduleResume, {

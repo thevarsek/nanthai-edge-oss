@@ -17,7 +17,9 @@ export async function prepareGenerationContext(
   const rawMessages = await ctx.runQuery(internal.chat.queries.listAllMessages, {
     chatId: args.chatId,
   });
-  const allMessages = await hydrateAttachmentsForRequest(ctx, rawMessages);
+  const allMessages = await hydrateAttachmentsForRequest(ctx, rawMessages, {
+    inlineStoredNonImageAttachments: false,
+  });
 
   let modelCapabilities: Map<string, ModelCapabilities>;
   if (preloadedCapabilities && preloadedCapabilities.size > 0) {

@@ -62,6 +62,16 @@ test("saveGenerationContinuationArgs.checkpoint.group validator covers every Gen
     personaSkillOverrides: [],
     skillDefaults: [],
     integrationDefaults: [],
+    analyticsSource: "chat_generation",
+    analytics: {
+      platform: "web",
+      appVersion: "1.0.0",
+      buildNumber: "1",
+      surface: "web_app",
+      routeOrScreen: "/app/chat",
+      clientEventId: "event_1",
+      clientSentAt: 1,
+    },
   };
 
   const checkpointValidator = (saveGenerationContinuationArgs.checkpoint as any);

@@ -7,10 +7,15 @@ import {
   GenerationCancelledError,
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
+import {
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
 import { buildPaperGenerationSystemPrompt } from "./helpers";
 import {
   formatResearchPaperFailureMessage,
 } from "./workflow_shared";
+import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
 
 const CANCEL_CHECK_INTERVAL_EVENTS = 10;
 
@@ -63,6 +68,7 @@ export const regeneratePaperActionArgs = {
   complexity: v.optional(v.number()),
   enabledIntegrations: v.optional(v.array(v.string())),
   subagentsEnabled: v.optional(v.boolean()),
+  analytics: v.optional(analyticsClientMetadataValidator),
 } satisfies PropertyValidators;
 
 /**
@@ -90,6 +96,7 @@ export const regeneratePaperAction = internalAction({
       },
     });
 
+    let scheduledRunGeneration = false;
     try {
       const sourceSessionId = args.sourceSessionId ?? args.sessionId;
       const synthesisData = await resolveRegenerationSynthesisData(ctx, sourceSessionId);
@@ -148,7 +155,10 @@ export const regeneratePaperAction = internalAction({
         subagentsEnabled: false,
         disableTools: true,
         searchSessionId: args.sessionId,
+        analytics: args.analytics,
+        analyticsSource: "research_paper",
       });
+      scheduledRunGeneration = true;
 
       // Write stats but keep status as "writing" — runGeneration will mark
       // the session "completed" or "failed" when generation finishes.
@@ -166,6 +176,22 @@ export const regeneratePaperAction = internalAction({
       const errorMessage = formatResearchPaperFailureMessage(error);
       const wasCancelled = isGenerationCancelledError(error);
 
+      if (!scheduledRunGeneration && !wasCancelled) {
+        await captureAssistantResponseStartedEvent(ctx, {
+          userId: args.userId,
+          chatId: String(args.chatId),
+          messageId: String(args.assistantMessageId),
+          jobId: String(args.jobId),
+          modelId: args.modelId,
+          source: "research_paper",
+          analytics: args.analytics,
+          participantCount: 1,
+          properties: {
+            legacy_regeneration: true,
+            synthetic_start_for_prefetch_failure: true,
+          },
+        });
+      }
       await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
         messageId: args.assistantMessageId,
         jobId: args.jobId,
@@ -175,6 +201,18 @@ export const regeneratePaperAction = internalAction({
         error: errorMessage,
         userId: args.userId,
       });
+      if (!wasCancelled) {
+        await captureAssistantResponseFailure(ctx, {
+          userId: args.userId,
+          chatId: String(args.chatId),
+          messageId: String(args.assistantMessageId),
+          jobId: String(args.jobId),
+          modelId: args.modelId,
+          source: "research_paper",
+          error,
+          analytics: args.analytics,
+        });
+      }
       try {
         await ctx.runMutation(internal.search.mutations.updateSearchSession, {
           sessionId: args.sessionId,

@@ -3,7 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatPage } from "./ChatPage";
 
-const { navigate, routeState, chatState, overrideState, updateChat, retryMessage, addTurnSkillOverride } = vi.hoisted(() => ({
+const {
+  navigate,
+  routeState,
+  chatState,
+  overrideState,
+  participantState,
+  analyticsMocks,
+  updateChat,
+  retryMessage,
+  addTurnSkillOverride,
+} = vi.hoisted(() => ({
   navigate: vi.fn(),
   routeState: { chatId: undefined as string | undefined },
   chatState: {
@@ -18,6 +28,20 @@ const { navigate, routeState, chatState, overrideState, updateChat, retryMessage
     turnIntegrationOverrides: new Map<string, boolean>(),
     activePanel: null as string | null,
   },
+  participantState: {
+    participants: [{ id: "participant_1", modelId: "openai/gpt-5.2", personaId: null }],
+    isLoading: false,
+  },
+  analyticsMocks: {
+    analyticsErrorLabel: vi.fn((error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error"),
+    captureAnalytics: vi.fn(),
+    createAnalyticsClientMetadata: vi.fn(() => ({
+      platform: "web",
+      surface: "web_app",
+      clientEventId: "client-event-1",
+      clientSentAt: 123,
+    })),
+  },
   updateChat: vi.fn(async () => null),
   retryMessage: vi.fn(async () => null),
   addTurnSkillOverride: vi.fn(),
@@ -31,6 +55,8 @@ vi.mock("react-router-dom", () => ({
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
+
+vi.mock("@/lib/analytics", () => analyticsMocks);
 
 vi.mock("convex/react", () => ({
   useAction: () => vi.fn(async () => ({ accessToken: "token" })),
@@ -117,7 +143,8 @@ vi.mock("@/hooks/useChatOverrides", () => ({
 
 vi.mock("@/hooks/useParticipants", () => ({
   useParticipants: () => ({
-    participants: [{ id: "participant_1", modelId: "openai/gpt-5.2", personaId: null }],
+    participants: participantState.participants,
+    isLoading: participantState.isLoading,
     addParticipant: vi.fn(),
     removeParticipant: vi.fn(),
     setParticipants: vi.fn(),
@@ -217,6 +244,8 @@ describe("ChatPage composed route smoke", () => {
     chatState.isLoading = false;
     chatState.isGenerating = false;
     overrideState.activePanel = null;
+    participantState.participants = [{ id: "participant_1", modelId: "openai/gpt-5.2", personaId: null }];
+    participantState.isLoading = false;
   });
 
   it("renders the empty chat route shell, composer, balance, and autonomous toolbar", () => {
@@ -272,6 +301,38 @@ describe("ChatPage composed route smoke", () => {
     await user.click(screen.getByRole("button", { name: "rename-chat" }));
     await user.click(screen.getByRole("button", { name: "confirm-rename" }));
     expect(updateChat).toHaveBeenCalledWith({ chatId: "chat_active", title: "Renamed" });
+  });
+
+  it("waits for participants before capturing chat opened analytics", async () => {
+    routeState.chatId = "chat_active";
+    chatState.chat = { title: "Active" };
+    chatState.messages = [{ _id: "msg_user", role: "user", content: "Hi", status: "completed", createdAt: 1 }];
+    participantState.isLoading = true;
+    participantState.participants = [];
+
+    const { rerender } = render(<ChatPage />);
+
+    await waitFor(() => {
+      expect(analyticsMocks.captureAnalytics).not.toHaveBeenCalledWith(
+        "chat_opened",
+        expect.any(Object),
+      );
+    });
+
+    participantState.isLoading = false;
+    participantState.participants = [{ id: "participant_1", modelId: "openai/gpt-5.2", personaId: null }];
+    rerender(<ChatPage />);
+
+    await waitFor(() => {
+      expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+        "chat_opened",
+        expect.objectContaining({
+          chat_id: "chat_active",
+          message_count: 1,
+          participant_count: 1,
+        }),
+      );
+    });
   });
 
   it("opens slash skill overrides and retry-with-different-model picker from shell callbacks", async () => {

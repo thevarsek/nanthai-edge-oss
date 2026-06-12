@@ -27,6 +27,7 @@ import { PaywallModal } from "@/components/shared/PaywallModal";
 import { SectionHeader, SectionFooter } from "./ChatDefaultsSection.helpers";
 import { isOwnedVoicePreview, useOptimistic, shortModelName, VOICE_OPTIONS } from "./ChatDefaultsSection.utils";
 import { ParticipantPicker } from "./ChatDefaultsSection.ParticipantPicker";
+import { captureSettingChanged } from "@/lib/featureAnalytics";
 
 const VIDEO_DURATION_OPTIONS = [4, 5, 6, 8, 10, 12, 15, 20].map((value) => ({
   value,
@@ -37,13 +38,37 @@ const VIDEO_RESOLUTION_OPTIONS = ["480p", "720p", "1080p", "4K"].map((value) => 
   label: value,
 }));
 
+type SettingArea = Parameters<typeof captureSettingChanged>[0]["setting_area"];
+
+const SETTING_ANALYTICS_AREAS: Record<string, SettingArea> = {
+  defaultModelId: "model_picker",
+  defaultPersonaId: "model_picker",
+  titleModelId: "settings",
+  defaultTemperature: "chat",
+  defaultMaxTokens: "chat",
+  includeReasoning: "chat",
+  reasoningEffort: "chat",
+  webSearchEnabledByDefault: "search_research",
+  defaultSearchMode: "search_research",
+  defaultSearchComplexity: "search_research",
+  subagentsEnabledByDefault: "subagents",
+  autoAudioResponse: "audio",
+  preferredVoice: "audio",
+  defaultAudioSpeed: "audio",
+  defaultVideoAspectRatio: "image_video",
+  defaultVideoResolution: "image_video",
+  defaultVideoDuration: "image_video",
+  defaultVideoGenerateAudio: "image_video",
+  zdrEnabled: "settings",
+  sendOnEnter: "settings",
+};
+
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function ChatDefaultsSection() {
   const { t } = useTranslation();
   const { prefs, personas } = useSharedData();
   const modelSummaries = useModelSummaries();
-  const { updatePreference, updatePreferenceImmediate } = usePreferenceBuffer();
   const { isPro } = useProGate();
   const [showParticipantPicker, setShowParticipantPicker] = useState(false);
   const [showTitleModelPicker, setShowTitleModelPicker] = useState(false);
@@ -133,9 +158,44 @@ export function ChatDefaultsSection() {
   useEffect(() => () => { if (audioRef.current) { audioRef.current.pause(); audioRef.current = null; } }, []);
 
   // ── Handlers ──
+  const capturePreferenceChange = useCallback((
+    settingKey: string,
+    settingArea: SettingArea,
+    value: unknown,
+  ) => {
+    captureSettingChanged({
+      setting_key: settingKey,
+      setting_area: settingArea,
+      value_type: value === null
+        ? "null"
+        : typeof value === "boolean"
+          ? "boolean"
+          : typeof value === "number"
+            ? "number"
+            : "string",
+      });
+  }, []);
+
+  const capturePersistedPreferenceChanges = useCallback((patch: Record<string, unknown>) => {
+    for (const [settingKey, value] of Object.entries(patch)) {
+      const settingArea = SETTING_ANALYTICS_AREAS[settingKey];
+      if (settingArea) {
+        capturePreferenceChange(settingKey, settingArea, value);
+      }
+    }
+  }, [capturePreferenceChange]);
+
+  const { updatePreference, updatePreferenceImmediate } = usePreferenceBuffer({
+    onPersistedPatch: capturePersistedPreferenceChanges,
+  });
+
   const handleSelectDefaultModel = useCallback((modelId: string) => {
-    updatePreferenceImmediate({ defaultModelId: modelId, defaultPersonaId: null });
-  }, [updatePreferenceImmediate]);
+    updatePreferenceImmediate(
+      defaultPersonaId === null
+        ? { defaultModelId: modelId }
+        : { defaultModelId: modelId, defaultPersonaId: null },
+    );
+  }, [defaultPersonaId, updatePreferenceImmediate]);
 
   const handleSelectDefaultPersona = useCallback((personaId: string) => {
     const persona = personas?.find((candidate) => candidate._id === personaId);
@@ -234,7 +294,7 @@ export function ChatDefaultsSection() {
         {/* Include Reasoning */}
         <div className="flex items-center justify-between px-4 py-3">
           <label className="text-sm">{t("include_reasoning")}</label>
-          <Toggle checked={includeReasoning} onChange={(v) => updatePreferenceImmediate({ includeReasoning: v })} />
+          <Toggle checked={includeReasoning} onChange={(v) => { updatePreferenceImmediate({ includeReasoning: v }); }} />
         </div>
         {/* Reasoning Effort */}
         {includeReasoning && (
@@ -250,7 +310,7 @@ export function ChatDefaultsSection() {
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         <div className="flex items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2"><Globe size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("internet_search")}</label></div>
-          <Toggle checked={webSearchEnabled} onChange={(v) => updatePreferenceImmediate({ webSearchEnabledByDefault: v })} />
+          <Toggle checked={webSearchEnabled} onChange={(v) => { updatePreferenceImmediate({ webSearchEnabledByDefault: v }); }} />
         </div>
         {webSearchEnabled && (
           <div className="flex items-center justify-between gap-6 px-4 py-3">
@@ -284,7 +344,7 @@ export function ChatDefaultsSection() {
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         <div className="flex items-center justify-between px-4 py-3">
           <div className={settingsIconLabelClass}><AudioLines size={16} className="flex-shrink-0 text-muted" /><label className="text-sm">{t("audio_auto_reply")}</label></div>
-          <Toggle checked={autoAudioResponse} onChange={(v) => updatePreferenceImmediate({ autoAudioResponse: v })} />
+          <Toggle checked={autoAudioResponse} onChange={(v) => { updatePreferenceImmediate({ autoAudioResponse: v }); }} />
         </div>
         <div className="flex items-center justify-between gap-6 px-4 py-3">
           <label className={settingsLabelClass}>{t("voice")}</label>
@@ -338,7 +398,7 @@ export function ChatDefaultsSection() {
       <div className="rounded-2xl bg-surface-2 overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3">
           <label className="text-sm">{t("zdr_toggle_label")}</label>
-          <Toggle checked={prefs?.zdrEnabled ?? false} onChange={(v) => updatePreferenceImmediate({ zdrEnabled: v })} />
+          <Toggle checked={prefs?.zdrEnabled ?? false} onChange={(v) => { updatePreferenceImmediate({ zdrEnabled: v }); }} />
         </div>
       </div>
       <SectionFooter>{t("zdr_section_footer")}</SectionFooter>
@@ -348,7 +408,7 @@ export function ChatDefaultsSection() {
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         <div className="flex items-center justify-between px-4 py-3">
           <div><p className="text-sm">{t("send_on_enter")}</p><p className="text-xs text-muted mt-0.5">{t("shift_enter_newline")}</p></div>
-          <Toggle checked={prefs?.sendOnEnter ?? true} onChange={(v) => updatePreferenceImmediate({ sendOnEnter: v })} />
+          <Toggle checked={prefs?.sendOnEnter ?? true} onChange={(v) => { updatePreferenceImmediate({ sendOnEnter: v }); }} />
         </div>
       </div>
 

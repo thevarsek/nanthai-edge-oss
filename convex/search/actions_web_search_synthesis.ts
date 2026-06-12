@@ -24,6 +24,12 @@ import {
   withZdrProvider,
 } from "../lib/openrouter_zdr";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import {
+  captureAssistantResponseCompleted,
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
+import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
 
 function createStreamWriter(
   args: ConstructorParameters<typeof StreamWriter>[0],
@@ -130,53 +136,124 @@ export async function synthesizeWithStreaming(
     transformContent: deps.clampMessageContent,
   });
   let deltaEventsSinceCancelCheck = 0;
+  const generationStartedAt = Date.now();
 
-  const result = await deps.callOpenRouterStreaming(
-    apiKey,
-    args.modelId,
-    requestMessages,
-    gatedParams,
-    {
-      onDelta: async (delta) => {
-        await writer.handleContentDeltaBoundary(delta.length);
-        await writer.appendContent(delta);
-        await writer.patchContentIfNeeded();
-
-        deltaEventsSinceCancelCheck += 1;
-        if (deltaEventsSinceCancelCheck % 10 === 0) {
-          const cancelled = await ctx.runQuery(
-            internal.chat.queries.isJobCancelled,
-            { jobId: args.jobId },
-          );
-          if (cancelled) throw new GenerationCancelledError();
-        }
-      },
-      onReasoningDelta: async (delta) => {
-        await writer.appendReasoning(delta);
-        await writer.patchReasoningIfNeeded(writer.hasSeenContentDelta);
-      },
-    },
-    { emptyStreamRetries: 2, emptyStreamBackoffs: [500, 1500] },
-  );
-
-  await writer.flush();
-
-  let finalContent = writer.totalContent.trim();
-  if (!finalContent && (result.reasoning || writer.totalReasoning)) {
-    finalContent = "Model returned reasoning only.";
-  } else if (!finalContent) {
-    finalContent = "[No response received from model]";
+  let shouldCaptureStarted = false;
+  try {
+    shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, args.jobId);
+  } catch (error) {
+    console.warn("[analytics] failed to mark web search synthesis analytics start", {
+      jobId: args.jobId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    shouldCaptureStarted = true;
   }
-  finalContent = deps.clampMessageContent(finalContent);
-
-  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
-    messageId: args.assistantMessageId,
-    jobId: args.jobId,
-    chatId: args.chatId,
-    content: finalContent,
-    status: "completed",
-    usage: result.usage ?? undefined,
-    reasoning: result.reasoning || writer.totalReasoning || undefined,
+  if (!shouldCaptureStarted) {
+    return;
+  }
+  await captureAssistantResponseStartedEvent(ctx, {
     userId: args.userId,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    source: args.analyticsSource ?? "web_search",
+    participantCount: 1,
+    webSearchEnabled: false,
+    properties: {
+      search_session_id: String(args.sessionId),
+      search_result_count: searchResults.length,
+      request_message_count: requestMessages.length,
+      legacy_streaming_synthesis: true,
+      zdr_required: requireZdr,
+    },
   });
+
+  try {
+    const result = await deps.callOpenRouterStreaming(
+      apiKey,
+      args.modelId,
+      requestMessages,
+      gatedParams,
+      {
+        onDelta: async (delta) => {
+          await writer.handleContentDeltaBoundary(delta.length);
+          await writer.appendContent(delta);
+          await writer.patchContentIfNeeded();
+
+          deltaEventsSinceCancelCheck += 1;
+          if (deltaEventsSinceCancelCheck % 10 === 0) {
+            const cancelled = await ctx.runQuery(
+              internal.chat.queries.isJobCancelled,
+              { jobId: args.jobId },
+            );
+            if (cancelled) throw new GenerationCancelledError();
+          }
+        },
+        onReasoningDelta: async (delta) => {
+          await writer.appendReasoning(delta);
+          await writer.patchReasoningIfNeeded(writer.hasSeenContentDelta);
+        },
+      },
+      { emptyStreamRetries: 2, emptyStreamBackoffs: [500, 1500] },
+    );
+
+    await writer.flush();
+
+    let finalContent = writer.totalContent.trim();
+    if (!finalContent && (result.reasoning || writer.totalReasoning)) {
+      finalContent = "Model returned reasoning only.";
+    } else if (!finalContent) {
+      finalContent = "[No response received from model]";
+    }
+    finalContent = deps.clampMessageContent(finalContent);
+
+    await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+      messageId: args.assistantMessageId,
+      jobId: args.jobId,
+      chatId: args.chatId,
+      content: finalContent,
+      status: "completed",
+      usage: result.usage ?? undefined,
+      reasoning: result.reasoning || writer.totalReasoning || undefined,
+      userId: args.userId,
+    });
+
+    await captureAssistantResponseCompleted(ctx, {
+      userId: args.userId,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      source: args.analyticsSource ?? "web_search",
+      usage: result.usage,
+      durationMs: Date.now() - generationStartedAt,
+      participantCount: 1,
+      openrouterGenerationId: result.generationId,
+      properties: {
+        search_session_id: String(args.sessionId),
+        search_result_count: searchResults.length,
+        request_message_count: requestMessages.length,
+        legacy_streaming_synthesis: true,
+      },
+    });
+  } catch (error) {
+    await captureAssistantResponseFailure(ctx, {
+      userId: args.userId,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      source: args.analyticsSource ?? "web_search",
+      error,
+      cancelled: error instanceof GenerationCancelledError,
+      properties: {
+        search_session_id: String(args.sessionId),
+        search_result_count: searchResults.length,
+        request_message_count: requestMessages.length,
+        legacy_streaming_synthesis: true,
+      },
+    });
+    throw error;
+  }
 }

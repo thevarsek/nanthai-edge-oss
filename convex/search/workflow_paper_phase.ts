@@ -82,5 +82,7 @@ export async function runPaperGenerationPhase(
     subagentsEnabled: args.subagentsEnabled,
     disableTools: true,
     searchSessionId: args.sessionId,
+    analytics: args.analytics,
+    analyticsSource: args.analyticsSource ?? "research_paper",
   });
 }

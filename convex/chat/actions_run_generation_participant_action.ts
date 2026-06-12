@@ -1,6 +1,5 @@
 "use node";
 
-import { ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -21,6 +20,17 @@ import type { ModelCapabilities, RunGenerationArgs } from "./actions_run_generat
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import { scheduleGenerationContinuation } from "./actions_run_generation_continuation";
 import { LYRIA_MP3_MIME_TYPE, parseMp3DurationMs } from "./audio_shared";
+import {
+  captureAssistantResponseStarted,
+  captureAssistantResponseFailure,
+  captureAssistantResponseTerminal,
+  captureAssistantResponseThrown,
+  captureVideoGenerationRequested,
+} from "./generation_analytics";
+import {
+  markGenerationJobAnalyticsStarted,
+  markGenerationJobStreamingIfActive,
+} from "./generation_start_guard";
 import {
   RunGenerationParticipantArgs,
   TERMINAL_GENERATION_JOB_STATUSES,
@@ -108,6 +118,8 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     searchSessionId: args.searchSessionId,
     subagentBatchId: args.subagentBatchId,
     drivePickerBatchId: args.drivePickerBatchId,
+    analytics: args.analytics,
+    analyticsSource: args.analyticsSource,
   };
   if (args.requireZdrOverride === true) {
     generationArgs.requireZdrOverride = true;
@@ -194,6 +206,8 @@ export async function runGenerationParticipantHandler(
         personaSkillOverrides: continuationState.group.personaSkillOverrides,
         skillDefaults: continuationState.group.skillDefaults,
         integrationDefaults: continuationState.group.integrationDefaults,
+        analytics: continuationState.group.analytics,
+        analyticsSource: continuationState.group.analyticsSource,
         resumeExpected: true,
       }
     : args;
@@ -223,6 +237,7 @@ export async function runGenerationParticipantHandler(
       modelId: effectiveArgs.participant.modelId,
     });
     if (caps?.hasVideoGeneration) {
+      const videoAnalyticsCapture = captureVideoGenerationRequested(ctx, effectiveArgs);
       try {
         await ctx.scheduler.runAfter(
           0,
@@ -241,18 +256,82 @@ export async function runGenerationParticipantHandler(
             searchSessionId: effectiveArgs.searchSessionId,
             drivePickerBatchId: effectiveArgs.drivePickerBatchId,
             videoConfig: effectiveArgs.videoConfig,
+            analytics: effectiveArgs.analytics,
+            analyticsSource: effectiveArgs.analyticsSource,
           },
         );
+        await videoAnalyticsCapture;
         return; // Video flow takes over — no streaming/tool loop needed
       } catch (error) {
+        await videoAnalyticsCapture;
+        let shouldCaptureStarted = false;
+        try {
+          shouldCaptureStarted = await markGenerationJobAnalyticsStarted(
+            ctx,
+            effectiveArgs.participant.jobId,
+          );
+        } catch (analyticsError) {
+          console.warn("[analytics] failed to mark video scheduling failure analytics start", {
+            jobId: effectiveArgs.participant.jobId,
+            error: analyticsError instanceof Error ? analyticsError.message : String(analyticsError),
+          });
+          shouldCaptureStarted = true;
+        }
+        if (shouldCaptureStarted) {
+          await captureAssistantResponseStarted(ctx, effectiveArgs, {
+            isResume: false,
+            schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
+              ? Date.now() - effectiveArgs.enqueuedAt
+              : null,
+          });
+        }
         await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
+        await captureAssistantResponseFailure(ctx, {
+          userId: effectiveArgs.userId,
+          chatId: String(effectiveArgs.chatId),
+          messageId: String(effectiveArgs.participant.messageId),
+          jobId: String(effectiveArgs.participant.jobId),
+          modelId: effectiveArgs.participant.modelId,
+          source: effectiveArgs.analyticsSource ?? "video_generation",
+          error,
+          analytics: effectiveArgs.analytics,
+        });
         throw error;
       }
     }
   }
 
+  let startedAnalyticsCapture: Promise<void> | undefined;
   try {
     const preflightStartedAt = Date.now();
+    if (args.resumeExpected !== true) {
+      const didStart = await markGenerationJobStreamingIfActive(
+        ctx,
+        effectiveArgs.participant.jobId,
+      );
+      if (!didStart) {
+        return;
+      }
+      let shouldCaptureStarted = false;
+      try {
+        shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, effectiveArgs.participant.jobId);
+      } catch (error) {
+        console.warn("[analytics] failed to mark generation job analytics start", {
+          jobId: effectiveArgs.participant.jobId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        shouldCaptureStarted = true;
+      }
+      if (!shouldCaptureStarted) {
+        return;
+      }
+      startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
+        isResume: false,
+        schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
+          ? Date.now() - effectiveArgs.enqueuedAt
+          : null,
+      });
+    }
     ttftLog("[generation] participant preflight started", {
       chatId: effectiveArgs.chatId,
       messageId: effectiveArgs.participant.messageId,
@@ -403,6 +482,7 @@ export async function runGenerationParticipantHandler(
             },
           },
     });
+    const generationDurationMs = Date.now() - preflightStartedAt;
 
     if (!result.deferredForSubagents && !result.continued) {
       await ctx.runMutation(internal.chat.mutations.clearGenerationContinuation, {
@@ -419,15 +499,23 @@ export async function runGenerationParticipantHandler(
         searchSessionId: effectiveArgs.searchSessionId,
       });
     }
+    await Promise.all([
+      startedAnalyticsCapture,
+      captureAssistantResponseTerminal(
+        ctx,
+        effectiveArgs,
+        continuationState,
+        result,
+        generationDurationMs,
+      ),
+    ]);
   } catch (error) {
-    if (error instanceof ConvexError) {
-      await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
-      await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
-      throw error;
-    }
-
     await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
     await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
+    await Promise.all([
+      startedAnalyticsCapture,
+      captureAssistantResponseThrown(ctx, effectiveArgs, error),
+    ]);
     throw error;
   }
 }

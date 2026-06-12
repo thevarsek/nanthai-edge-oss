@@ -118,11 +118,14 @@ test("submitVideoGeneration handles missing prompts and default config failure p
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if (args.userId) return "sk-test";
       if (args.messageId) return null;
-      if (args.jobId) return { _id: "job_1", status: "failed" };
+      if (args.jobId) return { _id: "job_1", status: "queued" };
       return null;
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push(args);
+      if (Object.keys(args).length === 1 && args.jobId === "job_1") {
+        return true;
+      }
       return false;
     },
     scheduler: { runAfter: async () => {} },
@@ -151,6 +154,7 @@ test("submitVideoGeneration handles missing prompts and default config failure p
   const successCtx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if (args.userId) return "sk-test";
+      if (args.jobId) return { _id: "job_1", status: "queued" };
       if (args.messageId) {
         return {
           _id: "msg_user",

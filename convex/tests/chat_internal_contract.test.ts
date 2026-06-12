@@ -81,6 +81,40 @@ test("chat actions remain registered and previewVoice enforces auth", async () =
   );
 });
 
+test("cancelled assistant analytics action pairs queued cancellation with a start", async () => {
+  const scheduled: Array<Record<string, unknown>> = [];
+  await (chatActions.captureCancelledAssistantResponse as any)._handler(
+    {
+      scheduler: {
+        runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
+          scheduled.push(payload);
+          return "scheduled_1";
+        },
+      },
+    },
+    {
+      userId: "user_1",
+      chatId: "chat_1",
+      messageId: "message_1",
+      jobId: "job_1",
+      modelId: "openai/gpt-5",
+      source: "web_search",
+      analytics: { platform: "web" },
+      emitStarted: true,
+    },
+  );
+
+  assert.deepEqual(scheduled.map((entry) => entry.event), [
+    "assistant_response_started",
+    "assistant_response_failed",
+  ]);
+  const startedProperties = scheduled[0]?.properties as Record<string, unknown>;
+  const failedProperties = scheduled[1]?.properties as Record<string, unknown>;
+  assert.equal(startedProperties.setup_phase, "cancelled_before_start");
+  assert.equal(startedProperties.source, "web_search");
+  assert.equal(failedProperties.failure_category, "cancelled");
+});
+
 test("deleteSingleChat deletes an owned chat graph when no children remain", async () => {
   const { ctx, deleted, scheduled } = buildManageCtx({
     _id: "chat_1",

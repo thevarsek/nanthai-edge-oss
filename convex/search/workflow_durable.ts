@@ -13,9 +13,15 @@ import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
 import { integrationOverrideEntry } from "../schema_validators";
+import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
+import { analyticsSourceValidator } from "../chat/actions_args";
 import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
+import {
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
 import { extractQueryStrings, resolveComplexityPreset, SearchResult } from "./helpers";
 import {
   checkCancellation,
@@ -60,6 +66,8 @@ const phaseActionArgs = {
   enabledIntegrations: v.optional(v.array(v.string())),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
   // Phase-specific: tracks where we are in the pipeline
   phaseOrder: v.number(),
   // For depth loop phases: which iteration we're on
@@ -147,6 +155,7 @@ export async function handlePhaseError(
   ctx: ActionCtx,
   args: PipelineArgs,
   error: unknown,
+  durationMs?: number,
 ): Promise<void> {
   const errorMessage = formatResearchPaperFailureMessage(error);
   const wasCancelled = isGenerationCancelledError(error);
@@ -162,6 +171,41 @@ export async function handlePhaseError(
     error: errorMessage,
     userId: args.userId,
   });
+  if (!wasCancelled) {
+    await captureAssistantResponseStartedEvent(ctx, {
+      userId: args.userId,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      source: args.analyticsSource ?? "research_paper",
+      analytics: args.analytics,
+      participantCount: 1,
+      integrationCount: args.enabledIntegrations?.length ?? 0,
+      subagentsEnabled: args.subagentsEnabled === true,
+      properties: {
+        search_session_id: String(args.sessionId),
+        complexity: args.complexity,
+        pre_handoff_failure: true,
+      },
+    });
+    await captureAssistantResponseFailure(ctx, {
+      userId: args.userId,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      source: args.analyticsSource ?? "research_paper",
+      error,
+      analytics: args.analytics,
+      durationMs,
+      properties: {
+        search_session_id: String(args.sessionId),
+        complexity: args.complexity,
+        pre_handoff_failure: true,
+      },
+    });
+  }
 
   try {
     await updateSession(ctx, args.sessionId, {
@@ -219,6 +263,7 @@ async function assertPhaseModelSupportsZdr(
 export const runPlanningAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     try {
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -240,7 +285,7 @@ export const runPlanningAction = internalAction({
         { ...args, phaseOrder: args.phaseOrder + 1 },
       );
     } catch (error) {
-      await handlePhaseError(ctx, toPipelineArgs(args), error);
+      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -250,6 +295,7 @@ export const runPlanningAction = internalAction({
 export const runInitialSearchAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     try {
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -294,7 +340,7 @@ export const runInitialSearchAction = internalAction({
         );
       }
     } catch (error) {
-      await handlePhaseError(ctx, toPipelineArgs(args), error);
+      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -304,6 +350,7 @@ export const runInitialSearchAction = internalAction({
 export const runAnalysisAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     try {
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -336,7 +383,7 @@ export const runAnalysisAction = internalAction({
         { ...args, phaseOrder: args.phaseOrder + 1 },
       );
     } catch (error) {
-      await handlePhaseError(ctx, toPipelineArgs(args), error);
+      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -346,6 +393,7 @@ export const runAnalysisAction = internalAction({
 export const runDepthSearchAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     try {
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -398,7 +446,7 @@ export const runDepthSearchAction = internalAction({
         );
       }
     } catch (error) {
-      await handlePhaseError(ctx, toPipelineArgs(args), error);
+      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -408,6 +456,7 @@ export const runDepthSearchAction = internalAction({
 export const runSynthesisAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     try {
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -436,7 +485,7 @@ export const runSynthesisAction = internalAction({
         { ...args, phaseOrder: args.phaseOrder + 1 },
       );
     } catch (error) {
-      await handlePhaseError(ctx, toPipelineArgs(args), error);
+      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -446,6 +495,7 @@ export const runSynthesisAction = internalAction({
 export const runPaperArchitectureAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     try {
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -482,7 +532,7 @@ export const runPaperArchitectureAction = internalAction({
         { ...args, phaseOrder: args.phaseOrder + 1 },
       );
     } catch (error) {
-      await handlePhaseError(ctx, toPipelineArgs(args), error);
+      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -492,6 +542,7 @@ export const runPaperArchitectureAction = internalAction({
 export const runPaperHandoffAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
+    const phaseStartedAt = Date.now();
     const pipelineArgs = toPipelineArgs(args);
     try {
       const preset = resolveComplexityPreset("paper", args.complexity);
@@ -542,7 +593,7 @@ export const runPaperHandoffAction = internalAction({
         participantCount: 1,
       });
     } catch (error) {
-      await handlePhaseError(ctx, pipelineArgs, error);
+      await handlePhaseError(ctx, pipelineArgs, error, Date.now() - phaseStartedAt);
     }
   },
 });

@@ -7,6 +7,10 @@ import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
 import {
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
+import {
   resolveComplexityPreset,
   executePerplexitySearch,
   resolveSearchMaxTokens,
@@ -23,6 +27,7 @@ import {
   isZdrEnabled,
   withZdrProvider,
 } from "../lib/openrouter_zdr";
+import type { OpenRouterUsage } from "../lib/openrouter";
 import {
   runWebSearchArgs,
   trackPerplexitySearchCosts,
@@ -30,21 +35,54 @@ import {
   WebSearchActionArgs,
 } from "./actions_web_search_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import {
+  captureBackendAIOperationCompleted,
+  captureBackendAIOperationFailed,
+  captureBackendAIOperationStarted,
+} from "../analytics/backend_events";
 
 export const runWebSearch = internalAction({
   args: runWebSearchArgs,
   handler: runWebSearchHandler,
 });
 
+function aggregateSearchUsage(results: SearchResult[]): OpenRouterUsage | null {
+  const usages = results
+    .map((result) => result.usage)
+    .filter((usage): usage is NonNullable<SearchResult["usage"]> => Boolean(usage));
+  if (usages.length === 0) return null;
+  return usages.reduce<OpenRouterUsage>((total, usage) => ({
+    promptTokens: total.promptTokens + usage.promptTokens,
+    completionTokens: total.completionTokens + usage.completionTokens,
+    totalTokens: total.totalTokens + usage.totalTokens,
+    cost: (total.cost ?? 0) + (usage.cost ?? 0),
+    webSearchRequests: (total.webSearchRequests ?? 0) + 1,
+  }), {
+    promptTokens: 0,
+    completionTokens: 0,
+    totalTokens: 0,
+    cost: 0,
+    webSearchRequests: 0,
+  });
+}
+
 async function runWebSearchHandler(
   ctx: ActionCtx,
   args: WebSearchActionArgs,
 ): Promise<void> {
+  const workflowStartedAt = Date.now();
   await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
     jobId: args.jobId,
     status: "streaming",
     startedAt: Date.now(),
   });
+  const alreadyCancelled = await ctx.runQuery(
+    internal.chat.queries.isJobCancelled,
+    { jobId: args.jobId },
+  );
+  if (alreadyCancelled) {
+    return;
+  }
 
   try {
     const [apiKey, preferences] = await Promise.all([
@@ -142,6 +180,8 @@ async function runWebSearchHandler(
       turnIntegrationOverrides: args.turnIntegrationOverrides,
       subagentsEnabled: args.subagentsEnabled,
       searchSessionId: args.sessionId,
+      analytics: args.analytics,
+      analyticsSource: args.analyticsSource ?? "web_search",
     });
 
     // Write search stats but keep status as "writing" — runGeneration will
@@ -171,6 +211,42 @@ async function runWebSearchHandler(
       error: errorMessage,
       userId: args.userId,
     });
+    if (!wasCancelled) {
+      await captureAssistantResponseStartedEvent(ctx, {
+        userId: args.userId,
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId),
+        jobId: String(args.jobId),
+        modelId: args.modelId,
+        source: args.analyticsSource ?? "web_search",
+        analytics: args.analytics,
+        participantCount: 1,
+        webSearchEnabled: true,
+        integrationCount: args.enabledIntegrations?.length ?? 0,
+        subagentsEnabled: args.subagentsEnabled === true,
+        properties: {
+          search_session_id: String(args.sessionId),
+          complexity: args.complexity,
+          pre_handoff_failure: true,
+        },
+      });
+      await captureAssistantResponseFailure(ctx, {
+        userId: args.userId,
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId),
+        jobId: String(args.jobId),
+        modelId: args.modelId,
+        source: args.analyticsSource ?? "web_search",
+        error,
+        analytics: args.analytics,
+        durationMs: Date.now() - workflowStartedAt,
+        properties: {
+          search_session_id: String(args.sessionId),
+          complexity: args.complexity,
+          pre_handoff_failure: true,
+        },
+      });
+    }
 
     try {
       await updateSession(ctx, args.sessionId, {
@@ -216,15 +292,77 @@ async function runDirectSearch(
 
   await assertActionModelSupportsZdr(ctx, searchModel, "Web search", requireZdr);
 
-  const results = await executePerplexitySearch(
-    [args.query],
-    searchModel,
-    apiKey,
-    {
-      maxTokens: resolveSearchMaxTokens("web", args.complexity, searchModel),
-      requireZdr,
+  const operationStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "web_search_direct_search",
+    source: args.analyticsSource ?? "web_search",
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: searchModel,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      query_count: 1,
+      zdr_required: requireZdr,
     },
-  );
+  });
+  let results: SearchResult[];
+  try {
+    results = await executePerplexitySearch(
+      [args.query],
+      searchModel,
+      apiKey,
+      {
+        maxTokens: resolveSearchMaxTokens("web", args.complexity, searchModel),
+        requireZdr,
+      },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "web_search_direct_search",
+      source: args.analyticsSource ?? "web_search",
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: searchModel,
+      durationMs: Date.now() - operationStartedAt,
+      error,
+      properties: {
+        search_session_id: String(args.sessionId),
+        complexity: args.complexity,
+        query_count: 1,
+        zdr_required: requireZdr,
+      },
+    });
+    throw error;
+  }
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "web_search_direct_search",
+    source: args.analyticsSource ?? "web_search",
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: searchModel,
+    usage: aggregateSearchUsage(results),
+    durationMs: Date.now() - operationStartedAt,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      query_count: 1,
+      result_count: results.length,
+      successful_result_count: results.filter((result) => result.success).length,
+      failed_result_count: results.filter((result) => !result.success).length,
+      zdr_required: requireZdr,
+    },
+  });
 
   // M23: Track Perplexity search costs.
   await trackPerplexitySearchCosts(ctx, results, {
@@ -289,16 +427,88 @@ async function runQueryGenAndSearch(
     ]
     : [{ role: "user" as const, content: queryGenPrompt }];
 
-  const queryGenResult = await callOpenRouterNonStreaming(
-    apiKey,
-    args.modelId,
-    queryGenMessages,
-    withZdrProvider(
-      { temperature: 0.7, maxTokens: 2048, transforms: SEARCH_TRANSFORMS },
-      requireZdr,
-    ),
-    { fallbackModel: MODEL_IDS.searchQueryGeneration },
+  const queryGenStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "web_search_query_generation",
+    source: args.analyticsSource ?? "web_search",
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      breadth: preset.breadth,
+      request_message_count: queryGenMessages.length,
+      persona_used: Boolean(args.personaId),
+      zdr_required: requireZdr,
+    },
+  });
+  let queryGenResult: Awaited<ReturnType<typeof callOpenRouterNonStreaming>>;
+  try {
+    queryGenResult = await callOpenRouterNonStreaming(
+      apiKey,
+      args.modelId,
+      queryGenMessages,
+      withZdrProvider(
+        { temperature: 0.7, maxTokens: 2048, transforms: SEARCH_TRANSFORMS },
+        requireZdr,
+      ),
+      { fallbackModel: MODEL_IDS.searchQueryGeneration },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "web_search_query_generation",
+      source: args.analyticsSource ?? "web_search",
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: args.modelId,
+      durationMs: Date.now() - queryGenStartedAt,
+      error,
+      properties: {
+        search_session_id: String(args.sessionId),
+        complexity: args.complexity,
+        breadth: preset.breadth,
+        request_message_count: queryGenMessages.length,
+        persona_used: Boolean(args.personaId),
+        zdr_required: requireZdr,
+      },
+    });
+    throw error;
+  }
+
+  const queries = parseGeneratedQueries(
+    queryGenResult.content,
+    args.query,
+    preset.breadth,
   );
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "web_search_query_generation",
+    source: args.analyticsSource ?? "web_search",
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    usage: queryGenResult.usage,
+    durationMs: Date.now() - queryGenStartedAt,
+    openrouterGenerationId: queryGenResult.generationId,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      breadth: preset.breadth,
+      generated_query_count: queries.length,
+      request_message_count: queryGenMessages.length,
+      persona_used: Boolean(args.personaId),
+      zdr_required: requireZdr,
+    },
+  });
 
   // M23: Track search query generation cost.
   if (queryGenResult.usage) {
@@ -316,12 +526,6 @@ async function runQueryGenAndSearch(
     });
   }
 
-  const queries = parseGeneratedQueries(
-    queryGenResult.content,
-    args.query,
-    preset.breadth,
-  );
-
   const cancelled = await ctx.runQuery(
     internal.chat.queries.isJobCancelled,
     { jobId: args.jobId },
@@ -334,15 +538,77 @@ async function runQueryGenAndSearch(
     currentPhase: "searching",
   });
 
-  const results = await executePerplexitySearch(
-    queries,
-    preset.searchModel,
-    apiKey,
-    {
-      maxTokens: resolveSearchMaxTokens("web", args.complexity, preset.searchModel),
-      requireZdr,
+  const searchStartedAt = Date.now();
+  await captureBackendAIOperationStarted(ctx, {
+    userId: args.userId,
+    operation: "web_search_multi_search",
+    source: args.analyticsSource ?? "web_search",
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: preset.searchModel,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      query_count: queries.length,
+      zdr_required: requireZdr,
     },
-  );
+  });
+  let results: SearchResult[];
+  try {
+    results = await executePerplexitySearch(
+      queries,
+      preset.searchModel,
+      apiKey,
+      {
+        maxTokens: resolveSearchMaxTokens("web", args.complexity, preset.searchModel),
+        requireZdr,
+      },
+    );
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "web_search_multi_search",
+      source: args.analyticsSource ?? "web_search",
+      analytics: args.analytics,
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId),
+      jobId: String(args.jobId),
+      modelId: preset.searchModel,
+      durationMs: Date.now() - searchStartedAt,
+      error,
+      properties: {
+        search_session_id: String(args.sessionId),
+        complexity: args.complexity,
+        query_count: queries.length,
+        zdr_required: requireZdr,
+      },
+    });
+    throw error;
+  }
+
+  await captureBackendAIOperationCompleted(ctx, {
+    userId: args.userId,
+    operation: "web_search_multi_search",
+    source: args.analyticsSource ?? "web_search",
+    analytics: args.analytics,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: preset.searchModel,
+    usage: aggregateSearchUsage(results),
+    durationMs: Date.now() - searchStartedAt,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      query_count: queries.length,
+      result_count: results.length,
+      successful_result_count: results.filter((result) => result.success).length,
+      failed_result_count: results.filter((result) => !result.success).length,
+      zdr_required: requireZdr,
+    },
+  });
 
   // M23: Track Perplexity search costs.
   await trackPerplexitySearchCosts(ctx, results, {

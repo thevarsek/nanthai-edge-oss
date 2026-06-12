@@ -34,6 +34,7 @@ import { formatCost } from "@/hooks/useChatCosts";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 import { getAssistantDisplayIdentity } from "./MessageBubble.assistantIdentity";
+import { captureFeatureUsage, captureResponseCopied } from "@/lib/featureAnalytics";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -312,13 +313,19 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const handleCopy = useCallback(async () => {
     await navigator.clipboard.writeText(copyText);
+    captureResponseCopied({
+      message_id: String(message._id),
+      model_id: message.modelId ?? null,
+      has_media: hasImageUrls || hasVideoUrls,
+      source: message.searchSessionId ? "search_research" : "chat",
+    });
     setCopied(true);
     if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
     copyResetTimerRef.current = setTimeout(() => {
       setCopied(false);
       copyResetTimerRef.current = null;
     }, 2000);
-  }, [copyText]);
+  }, [copyText, hasImageUrls, hasVideoUrls, message._id, message.modelId, message.searchSessionId]);
 
   useEffect(() => () => {
     if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
@@ -326,8 +333,29 @@ export const AssistantMessage = memo(function AssistantMessage({
 
   const hasAudio = !!message.audioStorageId || !!message.audioGenerating;
   const handlePlayAudio = useCallback(
-    () => void audio.play(message._id, message.audioStorageId),
-    [audio, message._id, message.audioStorageId],
+    () => {
+      void audio.play(message._id, message.audioStorageId, {
+        onPlaybackStarted: message.audioStorageId
+          ? () => captureFeatureUsage({
+            feature_area: "audio",
+            feature: "audio_playback",
+            action: "played",
+            message_id: String(message._id),
+            model_id: message.modelId ?? null,
+          })
+          : undefined,
+        onGenerationRequested: message.audioStorageId
+          ? undefined
+          : () => captureFeatureUsage({
+            feature_area: "audio",
+            feature: "audio_generation",
+            action: "requested",
+            message_id: String(message._id),
+            model_id: message.modelId ?? null,
+          }),
+      });
+    },
+    [audio, message._id, message.audioStorageId, message.modelId],
   );
 
   const handleResolveDocumentEdit = useCallback(async (annotation: DocumentEditAnnotation, decision: "accept" | "reject") => {

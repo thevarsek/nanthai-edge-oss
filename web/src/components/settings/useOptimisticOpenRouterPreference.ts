@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { captureSettingChanged } from "@/lib/featureAnalytics";
 
 export type OpenRouterPreferenceKey = "showBalanceInChat" | "showAdvancedStats";
 export const OPENROUTER_PREFERENCE_STALE_ECHO_GUARD_MS = 5_000;
@@ -12,6 +13,14 @@ type PendingPreference = {
 type SaveOpenRouterPreference = (
   prefs: Partial<Record<OpenRouterPreferenceKey, boolean>>,
 ) => Promise<unknown>;
+
+function captureOpenRouterPreferenceChanged(key: OpenRouterPreferenceKey) {
+  captureSettingChanged({
+    setting_key: key,
+    setting_area: "settings",
+    value_type: "boolean",
+  });
+}
 
 export function useOptimisticOpenRouterPreference(
   key: OpenRouterPreferenceKey,
@@ -124,6 +133,7 @@ export function useOptimisticOpenRouterPreference(
 
     try {
       await savePreference({ [key]: nextValue });
+      captureOpenRouterPreferenceChanged(key);
       setPending((current) => {
         if (current?.requestId !== requestId) return current;
         if (lastServerValue.current === nextValue) {

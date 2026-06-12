@@ -12,6 +12,25 @@ import {
 } from "../chat/actions_post_process_handler";
 import { MODEL_IDS } from "../lib/model_constants";
 
+function makeSchedulerCapture(scheduled: Array<Record<string, unknown>>) {
+  return {
+    runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+      scheduled.push(args);
+      return `scheduled_${scheduled.length}`;
+    },
+    runAt: async () => "unused",
+  };
+}
+
+function analyticsForOperation(
+  scheduled: Array<Record<string, unknown>>,
+  operation: string,
+) {
+  return scheduled.filter((entry) =>
+    (entry.properties as Record<string, unknown> | undefined)?.operation === operation
+  );
+}
+
 test("postProcessHandler exits when the chat is missing or the user message is a scheduled step", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
   const missingChatCtx = createMockCtx({
@@ -197,6 +216,7 @@ test("postProcessHandler skips memory extraction for short content, disabled mem
 
 test("generateTitleHandler overwrites placeholder or seed titles, stores ancillary cost, and respects latest-title guard", async () => {
   const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   const deps = createGenerateTitleHandlerDepsForTest({
     getRequiredUserOpenRouterApiKey: async () => "key",
     callOpenRouterNonStreaming: async () => ({
@@ -215,6 +235,7 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push(args);
     },
+    scheduler: makeSchedulerCapture(scheduled),
   });
 
   await generateTitleHandler(ctx, {
@@ -244,8 +265,18 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
     chatId: "chat_1",
     title: "Typed Arrays in Swift",
   });
+  const titleAnalytics = analyticsForOperation(scheduled, "title_generation");
+  assert.deepEqual(
+    titleAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal(titleAnalytics[0]?.distinctId, "user_1");
+  assert.equal((titleAnalytics[0]?.properties as Record<string, unknown>).source, "post_process");
+  assert.equal((titleAnalytics[1]?.properties as Record<string, unknown>).total_tokens, 3);
+  assert.equal((titleAnalytics[1]?.properties as Record<string, unknown>).title_updated, true);
 
   const guardedMutations: Array<Record<string, unknown>> = [];
+  const guardedScheduled: Array<Record<string, unknown>> = [];
   let readCount = 0;
   const guardedCtx = createMockCtx({
     runQuery: async () => {
@@ -257,6 +288,7 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       guardedMutations.push(args);
     },
+    scheduler: makeSchedulerCapture(guardedScheduled),
   });
 
   await generateTitleHandler(guardedCtx, {
@@ -265,6 +297,12 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
     userId: "user_1",
   }, deps);
   assert.equal(guardedMutations.length, 0);
+  const guardedCompleted = analyticsForOperation(guardedScheduled, "title_generation")
+    .find((entry) => entry.event === "backend_ai_operation_completed");
+  assert.equal(
+    (guardedCompleted?.properties as Record<string, unknown> | undefined)?.blocked_by_latest_title_guard,
+    true,
+  );
 });
 
 test("generateTitleHandler uses ZDR-safe default model and provider when ZDR is enabled", async () => {
@@ -287,6 +325,7 @@ test("generateTitleHandler uses ZDR-safe default model and provider when ZDR is 
     },
   });
 
+  const scheduled: Array<Record<string, unknown>> = [];
   const ctx = createMockCtx({
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if ("chatId" in args) return { _id: "chat_1", title: "New chat" };
@@ -299,6 +338,7 @@ test("generateTitleHandler uses ZDR-safe default model and provider when ZDR is 
       return null;
     },
     runMutation: async () => undefined,
+    scheduler: makeSchedulerCapture(scheduled),
   });
 
   await generateTitleHandler(ctx, {
@@ -310,6 +350,9 @@ test("generateTitleHandler uses ZDR-safe default model and provider when ZDR is 
 
   assert.equal(capturedModel, MODEL_IDS.titleGeneration);
   assert.deepEqual(capturedParams.provider, { zdr: true });
+  const started = analyticsForOperation(scheduled, "title_generation")
+    .find((entry) => entry.event === "backend_ai_operation_started");
+  assert.equal((started?.properties as Record<string, unknown> | undefined)?.zdr_required, true);
 });
 
 test("generateTitleHandler no-ops for missing chats or user-edited titles and falls back when the model output is unusable", async () => {
@@ -353,11 +396,13 @@ test("generateTitleHandler no-ops for missing chats or user-edited titles and fa
   assert.equal(modelCalls, 0);
 
   const fallbackMutations: Array<Record<string, unknown>> = [];
+  const fallbackScheduled: Array<Record<string, unknown>> = [];
   const fallbackCtx = createMockCtx({
     runQuery: async () => ({ _id: "chat_3", title: "New chat" }),
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       fallbackMutations.push(args);
     },
+    scheduler: makeSchedulerCapture(fallbackScheduled),
   });
   await generateTitleHandler(fallbackCtx, {
     chatId: "chat_3" as any,
@@ -369,10 +414,14 @@ test("generateTitleHandler no-ops for missing chats or user-edited titles and fa
     chatId: "chat_3",
     title: "Build a recovery plan for nightly",
   }]);
+  const fallbackCompleted = analyticsForOperation(fallbackScheduled, "title_generation")
+    .find((entry) => entry.event === "backend_ai_operation_completed");
+  assert.equal((fallbackCompleted?.properties as Record<string, unknown> | undefined)?.fallback_used, true);
 });
 
 test("generateTitleHandler falls back to source-derived titles when the model call throws", async () => {
   const mutations: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   const deps = createGenerateTitleHandlerDepsForTest({
     getRequiredUserOpenRouterApiKey: async () => "key",
     callOpenRouterNonStreaming: async () => {
@@ -385,6 +434,7 @@ test("generateTitleHandler falls back to source-derived titles when the model ca
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push(args);
     },
+    scheduler: makeSchedulerCapture(scheduled),
   });
 
   await generateTitleHandler(ctx, {
@@ -399,4 +449,33 @@ test("generateTitleHandler falls back to source-derived titles when the model ca
     chatId: "chat_4",
     title: "Assistant fallback summary works too",
   }]);
+  const failed = analyticsForOperation(scheduled, "title_generation")
+    .find((entry) => entry.event === "backend_ai_operation_failed");
+  assert.equal((failed?.properties as Record<string, unknown> | undefined)?.fallback_title_available, true);
+
+  const missingKeyScheduled: Array<Record<string, unknown>> = [];
+  const missingKeyDeps = createGenerateTitleHandlerDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => {
+      throw new Error("missing api key");
+    },
+    callOpenRouterNonStreaming: async () => {
+      throw new Error("should not call model");
+    },
+  });
+  const missingKeyCtx = createMockCtx({
+    runQuery: async () => ({ _id: "chat_5", title: "New chat" }),
+    runMutation: async () => undefined,
+    scheduler: makeSchedulerCapture(missingKeyScheduled),
+  });
+
+  await generateTitleHandler(missingKeyCtx, {
+    chatId: "chat_5" as any,
+    sourceContent: "Explain cache invalidation",
+    userId: "user_1",
+  }, missingKeyDeps);
+
+  assert.deepEqual(
+    analyticsForOperation(missingKeyScheduled, "title_generation").map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_failed"],
+  );
 });

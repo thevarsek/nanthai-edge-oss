@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant } from "@/hooks/useChat";
 import {
@@ -15,6 +15,25 @@ import {
   type ChatSendOrchestrationState,
   type RecordedAudioOrchestrationDeps,
 } from "./ChatPage.sendFlow";
+
+const analyticsMocks = vi.hoisted(() => ({
+  analyticsErrorLabel: vi.fn((error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error"),
+  captureAnalytics: vi.fn(),
+  createAnalyticsClientMetadata: vi.fn((event: string, routeOrScreen?: string) => ({
+    platform: "web",
+    surface: "web_app",
+    clientEventId: `${event}-test-event`,
+    clientSentAt: 123,
+    ...(routeOrScreen ? { routeOrScreen } : {}),
+  })),
+}));
+
+const featureAnalyticsMocks = vi.hoisted(() => ({
+  captureSendFeatureUsage: vi.fn(),
+}));
+
+vi.mock("@/lib/analytics", () => analyticsMocks);
+vi.mock("@/lib/featureAnalytics", () => featureAnalyticsMocks);
 
 const chatId = "chat_1" as Id<"chats">;
 const storageId = "storage_1" as Id<"_storage">;
@@ -35,6 +54,14 @@ const imageAttachment: ChatAttachment = {
   videoRole: "first_frame",
 };
 
+const audioAttachment: ChatAttachment = {
+  type: "audio",
+  storageId: "storage_audio" as Id<"_storage">,
+  name: "voice.m4a",
+  mimeType: "audio/mp4",
+  sizeBytes: 123,
+};
+
 function baseState(overrides: Partial<ChatSendOrchestrationState> = {}): ChatSendOrchestrationState {
   return {
     selectedAttachments: [],
@@ -53,11 +80,15 @@ function baseState(overrides: Partial<ChatSendOrchestrationState> = {}): ChatSen
 
 function baseDeps(overrides: Partial<ChatSendOrchestrationDeps> = {}): ChatSendOrchestrationDeps {
   return {
-    validateAttachmentCount: vi.fn(() => true),
+    validateAttachmentCount: vi.fn(() => null),
     ensureChatId: vi.fn(async () => chatId),
     flushPendingState: vi.fn(async () => undefined),
     sendMessage: vi.fn(async () => ({ userMessageId: "msg_user", assistantMessageIds: [] })),
-    startResearchPaper: vi.fn(async () => null),
+    startResearchPaper: vi.fn(async () => ({
+      sessionId: "session_1",
+      userMessageId: "msg_user",
+      assistantMessageId: "msg_assistant",
+    })),
     clearKBFiles: vi.fn(),
     clearTurnOverrides: vi.fn(),
     ...overrides,
@@ -74,6 +105,13 @@ function baseRecordingDeps(overrides: Partial<RecordedAudioOrchestrationDeps> = 
 }
 
 describe("ChatPage send flow helpers", () => {
+  beforeEach(() => {
+    analyticsMocks.analyticsErrorLabel.mockClear();
+    analyticsMocks.captureAnalytics.mockClear();
+    analyticsMocks.createAnalyticsClientMetadata.mockClear();
+    featureAnalyticsMocks.captureSendFeatureUsage.mockClear();
+  });
+
   it("serializes normal attachments with video roles and Drive metadata", () => {
     expect(serializeChatAttachments([imageAttachment], { includeVideoRole: true })).toEqual([{
       type: "image",
@@ -340,7 +378,7 @@ describe("ChatPage send flow helpers", () => {
 
   it("returns false without clearing draft state when auth or OpenRouter validation blocks send", async () => {
     const deps = baseDeps({
-      validateAttachmentCount: vi.fn(() => false),
+      validateAttachmentCount: vi.fn(() => "Complexity 3 search does not support attachments."),
     });
 
     await expect(executeChatSend({
@@ -353,6 +391,38 @@ describe("ChatPage send flow helpers", () => {
     expect(deps.sendMessage).not.toHaveBeenCalled();
     expect(deps.clearKBFiles).not.toHaveBeenCalled();
     expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+    const sendAttempt = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_attempted");
+    const sendFailure = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_failed");
+    expect(sendAttempt?.[1]).toMatchObject({ chat_id: null });
+    expect(sendFailure?.[1]).toMatchObject({
+      chat_id: null,
+      error_label: "complexity_3_attachments",
+    });
+    expect(sendFailure?.[1].client_event_id).toBe(sendAttempt?.[1].client_event_id);
+  });
+
+  it("includes the existing chat id on validation failure analytics", async () => {
+    const deps = baseDeps({
+      validateAttachmentCount: vi.fn(() => "Research Paper requires a single participant."),
+    });
+
+    await expect(executeChatSend({
+      text: "blocked",
+      state: baseState({
+        chatId,
+        selectedAttachments: [imageAttachment],
+      }),
+      deps,
+    })).resolves.toBe(false);
+
+    const sendAttempt = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_attempted");
+    const sendFailure = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_failed");
+    expect(sendAttempt?.[1]).toMatchObject({ chat_id: String(chatId) });
+    expect(sendFailure?.[1]).toMatchObject({
+      chat_id: String(chatId),
+      error_label: "research_paper_multi_participant",
+    });
+    expect(sendFailure?.[1].client_event_id).toBe(sendAttempt?.[1].client_event_id);
   });
 
   it("includes selected Google Drive files as turn context and clears that context after success", async () => {
@@ -447,6 +517,71 @@ describe("ChatPage send flow helpers", () => {
     expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
   });
 
+  it("captures send failure analytics when chat creation fails before mutation", async () => {
+    const deps = baseDeps({
+      ensureChatId: vi.fn(async () => {
+        throw new Error("create chat failed");
+      }),
+    });
+
+    await expect(executeChatSend({
+      text: "new chat",
+      state: baseState(),
+      deps,
+    })).rejects.toThrow("create chat failed");
+
+    expect(deps.flushPendingState).not.toHaveBeenCalled();
+    expect(deps.sendMessage).not.toHaveBeenCalled();
+    const sendAttempt = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_attempted");
+    const sendFailure = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_failed");
+    expect(sendAttempt?.[1]).toMatchObject({ chat_id: null });
+    expect(sendFailure?.[1]).toMatchObject({
+      chat_id: null,
+      failure_stage: "chat_setup",
+      error_label: "error",
+    });
+    expect(sendFailure?.[1].client_event_id).toBe(sendAttempt?.[1].client_event_id);
+    expect(deps.clearKBFiles).not.toHaveBeenCalled();
+    expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+  });
+
+  it("captures send failure analytics when pending state flush fails", async () => {
+    const deps = baseDeps({
+      flushPendingState: vi.fn(async () => {
+        throw new Error("flush failed");
+      }),
+    });
+
+    await expect(executeRecordedAudioSend({
+      recording: {
+        blob: new Blob(["voice"], { type: "audio/webm" }),
+        mimeType: "audio/webm",
+        durationMs: 900,
+        transcript: "voice setup",
+      },
+      state: baseState({ chatId }),
+      deps: {
+        ...baseRecordingDeps(),
+        ...deps,
+      },
+    })).rejects.toThrow("flush failed");
+
+    expect(deps.sendMessage).not.toHaveBeenCalled();
+    const sendAttempt = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_attempted");
+    const sendFailure = analyticsMocks.captureAnalytics.mock.calls.find(([event]) => event === "message_send_failed");
+    expect(sendAttempt?.[1]).toMatchObject({
+      chat_id: String(chatId),
+      has_audio: true,
+      audio_duration_ms: 900,
+    });
+    expect(sendFailure?.[1]).toMatchObject({
+      chat_id: String(chatId),
+      failure_stage: "pending_state_flush",
+      error_label: "error",
+    });
+    expect(sendFailure?.[1].client_event_id).toBe(sendAttempt?.[1].client_event_id);
+  });
+
   it("does not clear one-turn state when research paper send fails", async () => {
     const deps = baseDeps({
       startResearchPaper: vi.fn(async () => {
@@ -468,6 +603,40 @@ describe("ChatPage send flow helpers", () => {
     expect(deps.sendMessage).not.toHaveBeenCalled();
     expect(deps.clearKBFiles).not.toHaveBeenCalled();
     expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+  });
+
+  it("marks research paper sends with audio attachments as audio feature usage", async () => {
+    const deps = baseDeps();
+
+    await expect(executeChatSend({
+      text: "research this audio",
+      state: baseState({
+        isResearchPaper: true,
+        convexComplexity: 2,
+        selectedAttachments: [audioAttachment],
+      }),
+      deps,
+    })).resolves.toBe(true);
+
+    expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+      "message_send_attempted",
+      expect.objectContaining({
+        has_audio: true,
+        attachment_count: 1,
+        search_mode: "paper",
+      }),
+    );
+    expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+      "message_sent",
+      expect.objectContaining({
+        user_message_id: "msg_user",
+        assistant_message_id: "msg_assistant",
+        assistant_message_count: 1,
+      }),
+    );
+    expect(featureAnalyticsMocks.captureSendFeatureUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ has_audio: true }),
+    );
   });
 
   it("does not silently drop one-turn state when recorded audio upload fails", async () => {
@@ -498,6 +667,16 @@ describe("ChatPage send flow helpers", () => {
     expect(deps.startResearchPaper).not.toHaveBeenCalled();
     expect(deps.clearKBFiles).not.toHaveBeenCalled();
     expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+    expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+      "message_send_failed",
+      expect.objectContaining({
+        chat_id: "chat_1",
+        failure_stage: "upload",
+        has_audio: true,
+        audio_duration_ms: 1_200,
+        integration_count: 1,
+      }),
+    );
   });
 
   it("uploads recorded audio and sends the returned storage id", async () => {

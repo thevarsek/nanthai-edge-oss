@@ -6,6 +6,7 @@ import { CheckCircle2, XCircle, Link2, MinusCircle, RefreshCw, ExternalLink } fr
 import { useOpenRouterStatus, useCreditBalance, useSharedData, formatUsd, balanceTierOf } from "@/hooks/useSharedData";
 import { OpenRouter } from "@/lib/constants";
 import { generatePKCE } from "@/lib/pkce";
+import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
 import { useOptimisticOpenRouterPreference } from "./useOptimisticOpenRouterPreference";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -61,12 +62,17 @@ export function OpenRouterSection() {
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
     setErrorMessage(null);
+    captureAnalytics("openrouter_connect_started", {
+      feature_area: "settings",
+      source: "settings",
+    });
     try {
       const { state, verifier, challenge } = await generatePKCE();
       sessionStorage.setItem("pkce_state", state);
       sessionStorage.setItem("pkce_verifier", verifier);
       sessionStorage.setItem("openrouter_post_connect", "settings");
       sessionStorage.setItem("openrouter_post_connect_path", "/app/settings");
+      sessionStorage.setItem("openrouter_post_connect_source", "settings");
       const params = new URLSearchParams({
         callback_url: OpenRouter.callbackUrl,
         code_challenge: challenge,
@@ -75,6 +81,12 @@ export function OpenRouterSection() {
       });
       window.location.href = `${OpenRouter.oauthUrl}?${params.toString()}`;
     } catch (error) {
+      captureAnalytics("openrouter_connect_failed", {
+        feature_area: "settings",
+        source: "settings",
+        failure_stage: "start",
+        error_label: analyticsErrorLabel(error),
+      });
       setErrorMessage(
         error instanceof Error && error.message.trim().length > 0
           ? error.message
@@ -88,6 +100,10 @@ export function OpenRouterSection() {
     setErrorMessage(null);
     try {
       await deleteApiKey({});
+      captureAnalytics("openrouter_disconnected", {
+        feature_area: "settings",
+        source: "settings",
+      });
       setShowDisconnectConfirm(false);
     } catch (err) {
       setErrorMessage(

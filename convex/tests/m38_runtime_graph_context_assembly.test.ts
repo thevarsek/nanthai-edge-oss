@@ -173,7 +173,7 @@ test("context assembly renders persisted provenance resolution status for select
 });
 
 test("stored raw artifacts are rehydrated only after assembly selects them", async () => {
-  const mutations: Array<Record<string, unknown>> = [];
+  const scheduledLogs: Array<Record<string, unknown>> = [];
   let queryCallCount = 0;
   let storageReads = 0;
   const messages = await assembleRequestContextForGeneration({
@@ -196,10 +196,11 @@ test("stored raw artifacts are rehydrated only after assembly selects them", asy
           privacyClassification: "normal",
         }];
       },
-      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
-        mutations.push(args);
-        if (Array.isArray(args.memoryIds)) return [];
-        return undefined;
+      runMutation: async () => undefined,
+      scheduler: {
+        runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+          scheduledLogs.push(args);
+        },
       },
       storage: {
         get: async () => {
@@ -238,7 +239,8 @@ test("stored raw artifacts are rehydrated only after assembly selects them", asy
 
   assert.match(JSON.stringify(messages), /BETA,99\.70/);
   assert.equal(storageReads, 1);
-  assert.equal(mutations.length, 1);
+  assert.equal(scheduledLogs.length, 1);
+  assert.equal(scheduledLogs[0]?.rehydratedArtifactCount, 1);
 });
 
 test("stored raw artifacts are not read on normal turns when exact detail is not requested", async () => {
@@ -263,6 +265,9 @@ test("stored raw artifacts are not read on normal turns when exact detail is not
       },
       runMutation: async (_ref: unknown, args: Record<string, unknown>) =>
         Array.isArray(args.memoryIds) ? [] : undefined,
+      scheduler: {
+        runAfter: async () => undefined,
+      },
       storage: {
         get: async () => {
           storageReads += 1;
@@ -341,6 +346,9 @@ test("provenance repair only mutates memories selected by assembly policy", asyn
           return [{ memoryId: "mem_visible", status: "valid", repairAttempts: 0.0 }];
         }
         return undefined;
+      },
+      scheduler: {
+        runAfter: async () => undefined,
       },
       storage: { get: async () => null },
     } as any,
@@ -458,6 +466,9 @@ test("assembly queries are constrained to the active branch lineage", async () =
         return [];
       },
       runMutation: async () => undefined,
+      scheduler: {
+        runAfter: async () => undefined,
+      },
       storage: { get: async () => null },
     } as any,
     chatId: "chat_1" as any,

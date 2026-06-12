@@ -27,10 +27,12 @@ test("submitVideoGenerationHandler sends provider.zdr for ZDR-capable video mode
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
   const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
   const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
+  const generationJobRef = getFunctionName(internal.chat.queries.getGenerationJobInternal);
 
   await submitVideoGenerationHandler({
     runQuery: async (ref: unknown, args: Record<string, unknown>) => {
       const name = getFunctionName(ref as any);
+      if (name === generationJobRef) return { _id: "job_1", status: "queued" };
       if (name === keyRef) return "sk-test";
       if (name === prefsRef) return { zdrEnabled: true };
       if (name === messageRef && args.messageId === "msg_user") {

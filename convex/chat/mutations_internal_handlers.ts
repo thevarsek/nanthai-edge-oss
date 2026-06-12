@@ -804,8 +804,9 @@ export interface UpdateJobStatusArgs extends Record<string, unknown> {
     | "completed"
     | "failed"
     | "cancelled"
-    | "timedOut";
+  | "timedOut";
   startedAt?: number;
+  analyticsStartedAt?: number;
   error?: string;
   openrouterGenerationId?: string;
   terminalErrorCode?: TerminalErrorCode;
@@ -834,6 +835,7 @@ export async function updateJobStatusHandler(
 
   const patch: Record<string, unknown> = { status: args.status };
   if (args.startedAt) patch.startedAt = args.startedAt;
+  if (args.analyticsStartedAt) patch.analyticsStartedAt = args.analyticsStartedAt;
   if (args.error) patch.error = args.error;
   if (args.openrouterGenerationId) patch.openrouterGenerationId = args.openrouterGenerationId;
   if (args.terminalErrorCode) patch.terminalErrorCode = args.terminalErrorCode;

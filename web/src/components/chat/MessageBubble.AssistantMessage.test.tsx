@@ -237,7 +237,9 @@ describe("AssistantMessage", () => {
     expect(screen.getByTestId("generated-charts")).toHaveTextContent("message_1");
     expect(screen.getByTestId("attachments")).toHaveTextContent("1");
     fireEvent.click(screen.getByRole("button", { name: "audio-player" }));
-    expect(view.audio.play).toHaveBeenCalledWith("message_1", audioStorageId);
+    expect(view.audio.play).toHaveBeenCalledWith("message_1", audioStorageId, expect.objectContaining({
+      onPlaybackStarted: expect.any(Function),
+    }));
     await waitFor(() => expect(view.container).toHaveTextContent("$0.0123"));
   });
 

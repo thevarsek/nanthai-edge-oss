@@ -94,6 +94,21 @@ type GenerationMessage = {
   [key: string]: unknown;
 };
 
+export type GenerationLatencyMetrics = {
+  participant_preflight_duration_ms?: number;
+  system_prompt_duration_ms?: number;
+  memory_lookup_duration_ms?: number;
+  context_assembly_duration_ms?: number;
+  provider_constraints_duration_ms?: number;
+  openrouter_round_trip_duration_ms?: number;
+  tool_execution_duration_ms?: number;
+  ttft_ms?: number;
+  first_reasoning_token_ms?: number;
+  tool_round_count?: number;
+  tool_call_count?: number;
+  compaction_count?: number;
+};
+
 export function shouldPersistParticipantReasoning(totalReasoning: string): boolean {
   return totalReasoning.length > 0;
 }
@@ -274,6 +289,10 @@ export async function generateForParticipant(
   cancelled: boolean;
   failed: boolean;
   continued: boolean;
+  usage?: OpenRouterUsage | null;
+  generationId?: string | null;
+  latencies?: GenerationLatencyMetrics;
+  error?: unknown;
 }> {
   const {
     ctx,
@@ -309,6 +328,7 @@ export async function generateForParticipant(
   // which cost ~150–230ms of sequential round-trips. The only data that
   // actually depends on another is the system-prompt building the
   // skill-augmented prompt, which is pure CPU once persona is fetched.
+  const latencyMetrics: GenerationLatencyMetrics = {};
   const preflightStartedAt = Date.now();
   const hasPreResolved = preResolvedOverrides?.resolved === true;
   const needsPersonaForSkills = !hasPreResolved && participant.personaId != null;
@@ -379,6 +399,7 @@ export async function generateForParticipant(
     builtSkillCatalog: shouldBuildSkillCatalog && modelSupportsTools,
     hasPreResolved,
   });
+  latencyMetrics.participant_preflight_duration_ms = Date.now() - preflightStartedAt;
 
   // Pre-start cancellation check: if the job was cancelled (e.g. by the user
   // while the scheduler.runAfter was pending), bail out immediately. We still
@@ -420,6 +441,7 @@ export async function generateForParticipant(
       // which is handled because participant.systemPrompt is the expected path.
       shouldFetchPersona ? personaDocForPreflight : null,
     );
+    latencyMetrics.system_prompt_duration_ms = Date.now() - requestAssemblyStartedAt;
     ttftLog("[generation] system prompt resolved", {
       chatId: args.chatId,
       messageId: participant.messageId,
@@ -580,6 +602,7 @@ export async function generateForParticipant(
       durationMs: Date.now() - memoryContextStartedAt,
       usedOverrideMessages: requestMessagesOverride != null,
     });
+    latencyMetrics.memory_lookup_duration_ms = Date.now() - memoryContextStartedAt;
 
     const requestMessagesStartedAt = Date.now();
     const shouldAddDateContext = requestMessagesOverride == null && shouldInjectDateContext({
@@ -658,6 +681,7 @@ export async function generateForParticipant(
       requestMessageCount: normalizedRequestMessages.length,
       restoredProfileCount: restoredProfiles.length,
     });
+    latencyMetrics.context_assembly_duration_ms = Date.now() - requestMessagesStartedAt;
 
     if (normalizedRequestMessages.length === 0) {
       throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "No request messages to send" });
@@ -743,6 +767,7 @@ export async function generateForParticipant(
       hasTools: effectiveToolRegistry != null && !effectiveToolRegistry.isEmpty,
       materializedWebSearch: shouldUseMaterializedWebSearch,
     });
+    latencyMetrics.provider_constraints_duration_ms = Date.now() - providerConstraintsStartedAt;
 
     let hasLoggedFirstDelta = false;
     let hasLoggedFirstReasoningDelta = false;
@@ -780,6 +805,7 @@ export async function generateForParticipant(
       onDelta: async (delta) => {
         if (!hasLoggedFirstDelta && delta.length > 0) {
           hasLoggedFirstDelta = true;
+          latencyMetrics.ttft_ms = Date.now() - openRouterRequestStartedAt;
           ttftLog("[generation] first delta received", {
             chatId: args.chatId,
             messageId: participant.messageId,
@@ -824,6 +850,7 @@ export async function generateForParticipant(
       onReasoningDelta: async (delta) => {
         if (!hasLoggedFirstReasoningDelta && delta.length > 0) {
           hasLoggedFirstReasoningDelta = true;
+          latencyMetrics.first_reasoning_token_ms = Date.now() - openRouterRequestStartedAt;
           ttftLog("[generation] first reasoning delta received", {
             chatId: args.chatId,
             messageId: participant.messageId,
@@ -984,6 +1011,8 @@ export async function generateForParticipant(
         }
         const toolRoundDurationMs =
           Date.now() - (toolRoundStartedAtByRound.get(round) ?? Date.now());
+        latencyMetrics.tool_execution_duration_ms =
+          (latencyMetrics.tool_execution_duration_ms ?? 0) + toolRoundDurationMs;
         const actionElapsedMs = Date.now() - params.actionStartTime;
         const shouldStopForSlowV8Round =
           params.v8RuntimeHandoffGuards === true &&
@@ -1043,6 +1072,11 @@ export async function generateForParticipant(
     const result = genResult.streamResult;
     const collectedToolCalls = genResult.allToolCalls;
     const collectedToolResults = genResult.allToolResults;
+    latencyMetrics.openrouter_round_trip_duration_ms =
+      Date.now() - openRouterRequestStartedAt;
+    latencyMetrics.tool_round_count = toolRoundStartedAtByRound.size;
+    latencyMetrics.tool_call_count = collectedToolCalls.length;
+    latencyMetrics.compaction_count = genResult.compactionCount;
 
     // M23: Store ancillary compaction costs against this message.
     for (const cu of genResult.compactionUsages) {
@@ -1096,6 +1130,8 @@ export async function generateForParticipant(
             webSearchToolEnabled: args.webSearchEnabled,
             requireZdr,
             requestParams: effectiveParams,
+            analytics: args.analytics,
+            analyticsSource: args.analyticsSource,
           },
           participantSnapshot: {
             chatId: args.chatId,
@@ -1108,6 +1144,9 @@ export async function generateForParticipant(
           cancelled: false,
           failed: false,
           continued: false,
+          usage: genResult.totalUsage,
+          generationId: result.generationId,
+          latencies: latencyMetrics,
         };
       }
       const tasks = (deferred?.payload.data as { tasks?: Array<{ title: string; prompt: string }> } | undefined)?.tasks ?? [];
@@ -1142,6 +1181,8 @@ export async function generateForParticipant(
           webSearchToolEnabled: args.webSearchEnabled,
           requireZdr,
           requestParams: effectiveParams,
+          analytics: args.analytics,
+          analyticsSource: args.analyticsSource,
         },
         participantSnapshot: {
           chatId: args.chatId,
@@ -1161,6 +1202,9 @@ export async function generateForParticipant(
         cancelled: false,
         failed: false,
         continued: false,
+        usage: genResult.totalUsage,
+        generationId: result.generationId,
+        latencies: latencyMetrics,
       };
     }
 
@@ -1193,6 +1237,8 @@ export async function generateForParticipant(
           personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides,
           skillDefaults: preResolvedOverrides?.skillDefaults,
           integrationDefaults: groupArgs.integrationDefaults,
+          analytics: groupArgs.analytics,
+          analyticsSource: groupArgs.analyticsSource,
         },
         checkpointVersion: "v2",
         assembledCheckpoint: {
@@ -1220,6 +1266,9 @@ export async function generateForParticipant(
         cancelled: false,
         failed: false,
         continued: true,
+        usage: genResult.totalUsage,
+        generationId: result.generationId,
+        latencies: latencyMetrics,
       };
     }
 
@@ -1414,6 +1463,9 @@ export async function generateForParticipant(
       cancelled: false,
       failed: false,
       continued: false,
+      usage: usageToStore,
+      generationId: result.generationId,
+      latencies: latencyMetrics,
     };
   } catch (error) {
     const errorMessage =
@@ -1440,6 +1492,8 @@ export async function generateForParticipant(
       cancelled: wasCancelled,
       failed: !wasCancelled,
       continued: false,
+      latencies: latencyMetrics,
+      error,
     };
   } finally {
     // Stop the workspace (just-bash) sandbox — it is per-generation, not persistent.

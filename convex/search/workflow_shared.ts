@@ -2,6 +2,8 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { GenerationCancelledError } from "../chat/generation_helpers";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
+import type { GenerationAnalyticsSource } from "../chat/actions_run_generation_types";
 
 export interface PipelineArgs extends Record<string, unknown> {
   sessionId: Id<"searchSessions">;
@@ -23,6 +25,8 @@ export interface PipelineArgs extends Record<string, unknown> {
   enabledIntegrations?: string[];
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 export async function checkCancellation(

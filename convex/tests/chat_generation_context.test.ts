@@ -3,8 +3,9 @@ import test from "node:test";
 
 import { prepareGenerationContext } from "../chat/actions_run_generation_context";
 
-test("prepareGenerationContext hydrates attachments and deduplicates repeated model capability lookups", async () => {
+test("prepareGenerationContext hydrates image URLs without reading stored document blobs", async () => {
   const capabilityQueries: string[] = [];
+  let storageReads = 0;
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if ("chatId" in args) {
@@ -13,7 +14,10 @@ test("prepareGenerationContext hydrates attachments and deduplicates repeated mo
             _id: "msg_1",
             role: "user",
             content: "hello",
-            attachments: [{ type: "image", storageId: "img_1", url: "stale" }],
+            attachments: [
+              { type: "image", storageId: "img_1", url: "stale" },
+              { type: "document", storageId: "doc_1", mimeType: "application/pdf" },
+            ],
           },
         ];
       }
@@ -22,7 +26,10 @@ test("prepareGenerationContext hydrates attachments and deduplicates repeated mo
     },
     storage: {
       getUrl: async () => "https://cdn.example/img_1.png",
-      get: async () => null,
+      get: async () => {
+        storageReads += 1;
+        return null;
+      },
       store: async () => {
         throw new Error("not used");
       },
@@ -45,4 +52,6 @@ test("prepareGenerationContext hydrates attachments and deduplicates repeated mo
     result.allMessages[0]?.attachments?.[0]?.url,
     "https://cdn.example/img_1.png",
   );
+  assert.equal(result.allMessages[0]?.attachments?.[1]?.url, undefined);
+  assert.equal(storageReads, 0);
 });

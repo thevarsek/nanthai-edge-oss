@@ -1,4 +1,5 @@
 import { v, type PropertyValidators } from "convex/values";
+import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
 import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
 
 // M29: Video generation config validator — defined here (not mutations_args.ts)
@@ -9,6 +10,15 @@ export const videoConfigValidator = v.object({
   duration: v.optional(v.number()),         // seconds (e.g. 5, 10)
   generateAudio: v.optional(v.boolean()),   // whether to generate audio track
 });
+
+export const analyticsSourceValidator = v.union(
+  v.literal("chat_generation"),
+  v.literal("web_search"),
+  v.literal("research_paper"),
+  v.literal("subagent_parent_resume"),
+  v.literal("scheduled_job"),
+  v.literal("video_generation"),
+);
 
 export const participantConfigValidator = v.object({
   modelId: v.string(),
@@ -53,6 +63,8 @@ export const runGenerationArgs = {
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   // Phase 1 TTFT: scheduler hop #1 latency measurement (enqueue → handler entry)
   enqueuedAt: v.optional(v.number()),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
 
 export const runGenerationParticipantArgs = {
@@ -84,6 +96,8 @@ export const runGenerationParticipantArgs = {
   integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
   // Phase 1 TTFT: scheduler hop #2 latency measurement (coordinator dispatch → participant entry)
   enqueuedAt: v.optional(v.number()),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
 
 export const postProcessArgs = {
@@ -141,6 +155,8 @@ export const submitVideoGenerationArgs = {
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   // M29 Phase 0.5 — client-controlled video config
   videoConfig: v.optional(videoConfigValidator),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
 
 export const pollVideoGenerationArgs = {
@@ -154,4 +170,6 @@ export const pollVideoGenerationArgs = {
   userId: v.string(),
   searchSessionId: v.optional(v.id("searchSessions")),
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;

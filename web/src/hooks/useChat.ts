@@ -10,6 +10,12 @@ import {
   createChatMergeCache,
   reconcileStreamingMessages,
 } from "@/hooks/useChat.streaming";
+import {
+  analyticsErrorLabel,
+  captureAnalytics,
+  createAnalyticsClientMetadata,
+} from "@/lib/analytics";
+import { captureSendFeatureUsage } from "@/lib/featureAnalytics";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -41,6 +47,16 @@ export interface RetryContract {
     resolution?: string;
     generateAudio?: boolean;
   };
+}
+
+export interface RetryAnalyticsSnapshot {
+  participantCount: number | null;
+  modelIds: string | null;
+  searchMode: "none" | "normal" | "web" | null;
+  complexity: number | null;
+  integrationCount: number;
+  subagentsEnabled: boolean;
+  hasVideoConfig: boolean;
 }
 
 export interface ToolCall {
@@ -265,6 +281,14 @@ function stripLocalParticipantFields(participant: Participant): Omit<Participant
   };
 }
 
+function sendAttachmentIsAudio(attachment: NonNullable<SendMessageArgs["attachments"]>[number]): boolean {
+  return attachment.type === "audio" || attachment.mimeType?.toLowerCase().startsWith("audio/") === true;
+}
+
+function sendAttachmentIsImage(attachment: NonNullable<SendMessageArgs["attachments"]>[number]): boolean {
+  return attachment.type === "image" || attachment.mimeType?.toLowerCase().startsWith("image/") === true;
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export interface UseChatReturn {
@@ -293,6 +317,7 @@ export interface UseChatReturn {
       resolution?: string;
       generateAudio?: boolean;
     };
+    analyticsSnapshot?: RetryAnalyticsSnapshot;
   }) => Promise<{ assistantMessageIds: Id<"messages">[] }>;
   deleteMessage: (args: { messageId: Id<"messages"> }) => Promise<null>;
   updateChat: (args: UpdateChatArgs) => Promise<UpdateChatResult | null>;
@@ -355,16 +380,73 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
 
   // ── Action wrappers ────────────────────────────────────────────────────────
   const sendMessage = useCallback(
-    (args: SendMessageArgs) => sendMessageMutation({
-      ...args,
-      participants: args.participants.map(stripLocalParticipantFields),
-    }),
+    async (args: SendMessageArgs) => {
+      const analytics = createAnalyticsClientMetadata("message_send_attempted", window.location.pathname);
+      const hasAudioAttachment = args.attachments?.some(sendAttachmentIsAudio) ?? false;
+      const hasImageAttachment = args.attachments?.some(sendAttachmentIsImage) ?? false;
+      const analyticsProperties = {
+        feature_area: "chat",
+        chat_id: String(args.chatId),
+        participant_count: args.participants.length,
+        model_ids: args.participants.map((participant) => participant.modelId).join(","),
+        text_present: args.text.trim().length > 0,
+        has_attachments: (args.attachments?.length ?? 0) > 0,
+        attachment_count: args.attachments?.length ?? 0,
+        has_audio: args.recordedAudio !== undefined || hasAudioAttachment,
+        has_image_attachment: hasImageAttachment,
+        audio_duration_ms: args.recordedAudio?.durationMs ?? null,
+        web_search_enabled: args.webSearchEnabled === true,
+        search_mode: args.searchMode ?? "none",
+        complexity: args.complexity ?? null,
+        integration_count: args.enabledIntegrations?.length ?? 0,
+        skill_override_count: args.turnSkillOverrides?.length ?? 0,
+        integration_override_count: args.turnIntegrationOverrides?.length ?? 0,
+        subagents_enabled: args.subagentsEnabled === true,
+        has_video_config: args.videoConfig !== undefined,
+        client_event_id: analytics.clientEventId,
+      };
+      captureAnalytics("message_send_attempted", analyticsProperties);
+      captureSendFeatureUsage(analyticsProperties);
+
+      try {
+        const result = await sendMessageMutation({
+          ...args,
+          analytics,
+          participants: args.participants.map(stripLocalParticipantFields),
+        });
+        captureAnalytics("message_sent", {
+          ...analyticsProperties,
+          user_message_id: String(result.userMessageId),
+          assistant_message_id: result.assistantMessageIds[0]
+            ? String(result.assistantMessageIds[0])
+            : null,
+          assistant_message_ids: result.assistantMessageIds.map(String),
+          assistant_message_count: result.assistantMessageIds.length,
+        });
+        return result;
+      } catch (error) {
+        captureAnalytics("message_send_failed", {
+          ...analyticsProperties,
+          failure_stage: "mutation",
+          error_type: error instanceof Error ? error.name : "unknown",
+          error_label: analyticsErrorLabel(error),
+        });
+        throw error;
+      }
+    },
     [sendMessageMutation],
   );
 
   const cancelGeneration = useCallback(
-    (args: { chatId: Id<"chats"> }) =>
-      cancelGenerationMutation({ chatId: args.chatId }),
+    async (args: { chatId: Id<"chats"> }) => {
+      const result = await cancelGenerationMutation({ chatId: args.chatId });
+      captureAnalytics("generation_cancelled", {
+        feature_area: "chat",
+        chat_id: String(args.chatId),
+        cancelled_count: result.cancelledCount,
+      });
+      return result;
+    },
     [cancelGenerationMutation],
   );
 
@@ -384,15 +466,53 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
         resolution?: string;
         generateAudio?: boolean;
       };
-    }) => retryMessageMutation({
-      ...args,
-      participants: args.participants?.map(stripLocalParticipantFields),
-    }),
-    [retryMessageMutation],
+      analyticsSnapshot?: RetryAnalyticsSnapshot;
+    }) => {
+      const analytics = createAnalyticsClientMetadata("message_retry_requested", window.location.pathname);
+      const { analyticsSnapshot, ...retryArgs } = args;
+      const participants = retryArgs.participants;
+      const analyticsProperties = {
+        feature_area: "chat",
+        chat_id: chatId ? String(chatId) : null,
+        message_id: String(retryArgs.messageId),
+        participant_count: participants?.length ?? analyticsSnapshot?.participantCount ?? null,
+        participant_count_source: participants ? "participant_override" : "retry_contract",
+        model_ids: participants?.map((participant) => participant.modelId).join(",")
+          ?? analyticsSnapshot?.modelIds
+          ?? null,
+        search_mode: retryArgs.searchMode ?? analyticsSnapshot?.searchMode ?? null,
+        complexity: retryArgs.complexity ?? analyticsSnapshot?.complexity ?? null,
+        integration_count: retryArgs.enabledIntegrations?.length ?? analyticsSnapshot?.integrationCount ?? 0,
+        subagents_enabled: retryArgs.subagentsEnabled ?? analyticsSnapshot?.subagentsEnabled ?? false,
+        has_video_config: retryArgs.videoConfig !== undefined || analyticsSnapshot?.hasVideoConfig === true,
+        client_event_id: analytics.clientEventId,
+      };
+      captureAnalytics("message_retry_requested", analyticsProperties);
+      return retryMessageMutation({
+        ...retryArgs,
+        analytics,
+        participants: participants?.map(stripLocalParticipantFields),
+      }).catch((error: unknown) => {
+        captureAnalytics("message_retry_failed", {
+          ...analyticsProperties,
+          error_type: error instanceof Error ? error.name : "unknown",
+          error_label: analyticsErrorLabel(error),
+        });
+        throw error;
+      });
+    },
+    [chatId, retryMessageMutation],
   );
 
   const deleteMessage = useCallback(
-    (args: { messageId: Id<"messages"> }) => deleteMessageMutation(args),
+    async (args: { messageId: Id<"messages"> }) => {
+      const result = await deleteMessageMutation(args);
+      captureAnalytics("response_deleted", {
+        feature_area: "chat",
+        message_id: String(args.messageId),
+      });
+      return result;
+    },
     [deleteMessageMutation],
   );
 
@@ -407,7 +527,18 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
       chatId: Id<"chats">;
       currentSiblingMessageId: Id<"messages">;
       targetSiblingMessageId: Id<"messages">;
-    }) => switchBranchAtForkMutation(args),
+    }) => {
+      return switchBranchAtForkMutation(args).then((nextLeafId) => {
+        captureAnalytics("feature_used", {
+          feature_area: "chat",
+          feature: "branching",
+          action: "branch_switched",
+          chat_id: String(args.chatId),
+          message_id: String(args.targetSiblingMessageId),
+        });
+        return nextLeafId;
+      });
+    },
     [switchBranchAtForkMutation],
   );
 

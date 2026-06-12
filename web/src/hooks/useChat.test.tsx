@@ -4,6 +4,21 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { ActiveJob, Chat, Message, StreamingMessage } from "@/hooks/useChat";
 import { useChat } from "@/hooks/useChat";
 
+const analyticsMocks = vi.hoisted(() => ({
+  analyticsErrorLabel: vi.fn((error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error"),
+  captureAnalytics: vi.fn(),
+  createAnalyticsClientMetadata: vi.fn((event: string) => ({
+    platform: "web",
+    surface: "web_app",
+    clientEventId: `${event}-test-event`,
+    clientSentAt: 123,
+  })),
+}));
+
+const featureAnalyticsMocks = vi.hoisted(() => ({
+  captureSendFeatureUsage: vi.fn(),
+}));
+
 const convexMocks = vi.hoisted(() => ({
   queryResults: [] as unknown[],
   queryCalls: [] as Array<{ args: unknown }>,
@@ -11,6 +26,8 @@ const convexMocks = vi.hoisted(() => ({
   mutations: Array.from({ length: 6 }, () => vi.fn(async (args: unknown) => args)),
 }));
 
+vi.mock("@/lib/analytics", () => analyticsMocks);
+vi.mock("@/lib/featureAnalytics", () => featureAnalyticsMocks);
 vi.mock("convex/react", () => ({
   useQuery: (_query: unknown, args: unknown) => {
     convexMocks.queryCalls.push({ args });
@@ -55,6 +72,10 @@ beforeEach(() => {
     mutation.mockClear();
     mutation.mockImplementation(async (args: unknown) => args);
   }
+  analyticsMocks.analyticsErrorLabel.mockClear();
+  analyticsMocks.captureAnalytics.mockClear();
+  analyticsMocks.createAnalyticsClientMetadata.mockClear();
+  featureAnalyticsMocks.captureSendFeatureUsage.mockClear();
 });
 
 describe("useChat", () => {
@@ -151,6 +172,45 @@ describe("useChat", () => {
       participants: [expect.not.objectContaining({ id: "local-participant" })],
       enabledIntegrations: ["drive"],
     }));
+    expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+      "message_sent",
+      expect.objectContaining({
+        assistant_message_id: "assistant_msg",
+        assistant_message_ids: ["assistant_msg"],
+        assistant_message_count: 1,
+      }),
+    );
+  });
+
+  it("marks audio attachments as audio send analytics", async () => {
+    convexMocks.queryResults = [chat(), [], [], []];
+    convexMocks.mutations[0]!.mockResolvedValue({ userMessageId: "user_msg", assistantMessageIds: [] });
+    const { result } = renderHook(() => useChat(chatId));
+
+    await act(async () => {
+      await result.current.sendMessage({
+        chatId,
+        text: "listen to this",
+        participants: [{ modelId: "openai/gpt-4.1" }],
+        attachments: [{
+          type: "file",
+          name: "voice.m4a",
+          mimeType: "audio/mp4",
+          storageId: "storage_audio" as Id<"_storage">,
+        }],
+      });
+    });
+
+    expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+      "message_send_attempted",
+      expect.objectContaining({
+        has_audio: true,
+        attachment_count: 1,
+      }),
+    );
+    expect(featureAnalyticsMocks.captureSendFeatureUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ has_audio: true }),
+    );
   });
 
   it("passes management mutation args through to Convex", async () => {
@@ -184,5 +244,43 @@ describe("useChat", () => {
       currentSiblingMessageId: "message_a",
       targetSiblingMessageId: "message_b",
     });
+  });
+
+  it("uses retry analytics snapshots without sending them to Convex", async () => {
+    convexMocks.queryResults = [chat(), [], [], []];
+    convexMocks.mutations[2]!.mockResolvedValue({ assistantMessageIds: ["retry_msg"] });
+    const { result } = renderHook(() => useChat(chatId));
+
+    await act(async () => {
+      await result.current.retryMessage({
+        messageId,
+        analyticsSnapshot: {
+          participantCount: 2,
+          modelIds: "openai/gpt-5,anthropic/claude-sonnet-4.5",
+          searchMode: "web",
+          complexity: 2,
+          integrationCount: 1,
+          subagentsEnabled: true,
+          hasVideoConfig: true,
+        },
+      });
+    });
+
+    expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+      "message_retry_requested",
+      expect.objectContaining({
+        participant_count: 2,
+        participant_count_source: "retry_contract",
+        model_ids: "openai/gpt-5,anthropic/claude-sonnet-4.5",
+        search_mode: "web",
+        complexity: 2,
+        integration_count: 1,
+        subagents_enabled: true,
+        has_video_config: true,
+      }),
+    );
+    expect(convexMocks.mutations[2]).toHaveBeenCalledWith(
+      expect.not.objectContaining({ analyticsSnapshot: expect.anything() }),
+    );
   });
 });

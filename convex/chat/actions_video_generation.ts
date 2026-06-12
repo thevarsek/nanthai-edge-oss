@@ -34,6 +34,17 @@ import {
 import { OPENROUTER_DEFAULT_PROVIDER_SORT } from "../lib/model_constants";
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import type { VideoConfig } from "./actions_run_generation_types";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
+import type { GenerationAnalyticsSource } from "./actions_run_generation_types";
+import {
+  captureAssistantResponseCompleted,
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "./generation_analytics";
+import {
+  markGenerationJobAnalyticsStarted,
+  markGenerationJobStreamingIfActive,
+} from "./generation_start_guard";
 
 // -- Constants ----------------------------------------------------------------
 
@@ -42,6 +53,7 @@ const SLOW_POLL_INTERVAL_MS = 30_000; // 30s after
 const FAST_POLL_COUNT = 4;
 const MAX_POLL_COUNT = 40; // ~18 min total
 const VIDEO_OUTPUT_UPLOAD_PATH = "/video-output-upload";
+const TERMINAL_GENERATION_JOB_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
 
 type VideoInputAttachment = {
   type?: string;
@@ -146,6 +158,8 @@ export interface SubmitVideoGenerationArgs extends Record<string, unknown> {
   searchSessionId?: Id<"searchSessions">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
   videoConfig?: VideoConfig;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 export interface PollVideoGenerationArgs extends Record<string, unknown> {
@@ -159,6 +173,8 @@ export interface PollVideoGenerationArgs extends Record<string, unknown> {
   userId: string;
   searchSessionId?: Id<"searchSessions">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 async function maybeCompleteDrivePickerBatch(
@@ -180,7 +196,79 @@ export async function submitVideoGenerationHandler(
   args: SubmitVideoGenerationArgs,
 ): Promise<void> {
   const { participant, userId, chatId } = args;
+  const initialGenerationJob = await ctx.runQuery(
+    internal.chat.queries.getGenerationJobInternal,
+    { jobId: participant.jobId },
+  );
+  if (!initialGenerationJob || TERMINAL_GENERATION_JOB_STATUSES.has(initialGenerationJob.status)) {
+    if (initialGenerationJob?.status === "cancelled") {
+      await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
+    }
+    return;
+  }
+  const didStartGenerationJob = await markGenerationJobStreamingIfActive(
+    ctx,
+    participant.jobId,
+  );
+  if (!didStartGenerationJob) {
+    const latestGenerationJob = await ctx.runQuery(
+      internal.chat.queries.getGenerationJobInternal,
+      { jobId: participant.jobId },
+    );
+    if (latestGenerationJob?.status === "cancelled") {
+      await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
+    }
+    return;
+  }
 
+  let shouldCaptureStarted = false;
+  try {
+    shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, participant.jobId);
+  } catch (error) {
+    console.warn("[analytics] failed to mark video generation job analytics start", {
+      jobId: participant.jobId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    shouldCaptureStarted = true;
+  }
+  if (!shouldCaptureStarted) {
+    const latestGenerationJob = await ctx.runQuery(
+      internal.chat.queries.getGenerationJobInternal,
+      { jobId: participant.jobId },
+    );
+    if (latestGenerationJob?.status === "cancelled") {
+      await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
+    }
+    return;
+  }
+  await captureAssistantResponseStartedEvent(ctx, {
+    userId,
+    chatId: String(chatId),
+    messageId: String(participant.messageId),
+    jobId: String(participant.jobId),
+    modelId: participant.modelId,
+    source: args.analyticsSource ?? "video_generation",
+    analytics: args.analytics,
+    participantCount: args.assistantMessageIds.length,
+    properties: {
+      video_config_present: args.videoConfig !== undefined,
+    },
+  });
+  const completeCancelledSubmit = async () => {
+    await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
+    await captureAssistantResponseFailure(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(participant.messageId),
+      jobId: String(participant.jobId),
+      modelId: participant.modelId,
+      source: args.analyticsSource ?? "video_generation",
+      cancelled: true,
+      analytics: args.analytics,
+    });
+  };
+
+  let createdVideoJobId: Id<"videoJobs"> | undefined;
   try {
     // 1. Get the user's API key
     const [apiKey, preferences] = await Promise.all([
@@ -338,8 +426,29 @@ export async function submitVideoGenerationHandler(
       request.input_references = inputReferences;
     }
 
+    const preSubmitGenerationJob = await ctx.runQuery(
+      internal.chat.queries.getGenerationJobInternal,
+      { jobId: participant.jobId },
+    );
+    if (!preSubmitGenerationJob || TERMINAL_GENERATION_JOB_STATUSES.has(preSubmitGenerationJob.status)) {
+      if (preSubmitGenerationJob?.status === "cancelled") {
+        await completeCancelledSubmit();
+      }
+      return;
+    }
+
     // 6. Submit to OpenRouter
     const submission = await submitVideoJob(apiKey, request);
+    const latestGenerationJob = await ctx.runQuery(
+      internal.chat.queries.getGenerationJobInternal,
+      { jobId: participant.jobId },
+    );
+    if (!latestGenerationJob || TERMINAL_GENERATION_JOB_STATUSES.has(latestGenerationJob.status)) {
+      if (latestGenerationJob?.status === "cancelled") {
+        await completeCancelledSubmit();
+      }
+      return;
+    }
 
     // 7. Create the videoJobs row
     const videoJobId: Id<"videoJobs"> = await ctx.runMutation(
@@ -361,14 +470,9 @@ export async function submitVideoGenerationHandler(
         } : undefined,
       },
     );
+    createdVideoJobId = videoJobId;
 
-    // 8. Update the generation job to "streaming" (signals progress to clients)
-    await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
-      jobId: participant.jobId,
-      status: "streaming",
-    });
-
-    // 9. Schedule the first poll
+    // 8. Schedule the first poll
     await ctx.scheduler.runAfter(
       FAST_POLL_INTERVAL_MS,
       internal.chat.actions.pollVideoGeneration,
@@ -383,12 +487,25 @@ export async function submitVideoGenerationHandler(
         userId,
         searchSessionId: args.searchSessionId,
         drivePickerBatchId: args.drivePickerBatchId,
+        analytics: args.analytics,
+        analyticsSource: args.analyticsSource,
       },
     );
   } catch (error) {
     // Finalize the message as failed
     const errorMessage =
       error instanceof Error ? error.message : "Unknown video generation error";
+    if (createdVideoJobId) {
+      try {
+        await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
+          videoJobId: createdVideoJobId,
+          status: "failed",
+          error: errorMessage,
+        });
+      } catch {
+        // Best-effort: the message generation failure below remains authoritative.
+      }
+    }
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
       messageId: participant.messageId,
       jobId: participant.jobId,
@@ -410,6 +527,16 @@ export async function submitVideoGenerationHandler(
     });
 
     await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
+    await captureAssistantResponseFailure(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(participant.messageId),
+      jobId: String(participant.jobId),
+      modelId: participant.modelId,
+      source: args.analyticsSource ?? "video_generation",
+      error,
+      analytics: args.analytics,
+    });
   }
 }
 
@@ -449,6 +576,24 @@ export async function pollVideoGenerationHandler(
         error: "Cancelled by user",
       });
       await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
+      const cancellationPrecededVideoJob =
+        typeof generationJob.completedAt !== "number" ||
+        generationJob.completedAt <= videoJob._creationTime;
+      if (cancellationPrecededVideoJob) {
+        await captureAssistantResponseFailure(ctx, {
+          userId,
+          chatId: String(chatId),
+          messageId: String(messageId),
+          jobId: String(jobId),
+          modelId: videoJob.model,
+          source: args.analyticsSource ?? "video_generation",
+          cancelled: true,
+          analytics: args.analytics,
+          properties: {
+            video_job_id: String(videoJobId),
+          },
+        });
+      }
       return;
     }
 
@@ -479,8 +624,11 @@ export async function pollVideoGenerationHandler(
     // 5. Handle terminal states
     if (pollResult.status === "completed") {
       await handleVideoCompleted(ctx, args, pollResult, apiKey, {
+        _creationTime: videoJob._creationTime,
+        createdAt: videoJob.createdAt,
         outputUploadToken: videoJob.outputUploadToken,
         pollCount: newPollCount,
+        model: videoJob.model,
       });
       return;
     }
@@ -507,6 +655,20 @@ export async function pollVideoGenerationHandler(
         searchSessionId: args.searchSessionId,
       });
       await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
+      await captureAssistantResponseFailure(ctx, {
+        userId,
+        chatId: String(chatId),
+        messageId: String(messageId),
+        jobId: String(jobId),
+        modelId: videoJob.model,
+        source: args.analyticsSource ?? "video_generation",
+        error: new Error(
+          [pollResult.error?.code, pollResult.error?.message]
+            .filter((part): part is string => typeof part === "string" && part.length > 0)
+            .join(" ") || "Video generation failed",
+        ),
+        analytics: args.analytics,
+      });
       return;
     }
 
@@ -538,6 +700,16 @@ export async function pollVideoGenerationHandler(
         searchSessionId: args.searchSessionId,
       });
       await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
+      await captureAssistantResponseFailure(ctx, {
+        userId,
+        chatId: String(chatId),
+        messageId: String(messageId),
+        jobId: String(jobId),
+        modelId: videoJob.model,
+        source: args.analyticsSource ?? "video_generation",
+        error: new Error("Video generation timed out"),
+        analytics: args.analytics,
+      });
       return;
     }
 
@@ -556,6 +728,16 @@ export async function pollVideoGenerationHandler(
     // Non-retryable error — finalize as failed
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error during video poll";
+    let modelId: string | null = null;
+    try {
+      const videoJob = await ctx.runQuery(
+        internal.chat.queries.getVideoJobInternal,
+        { videoJobId },
+      );
+      modelId = videoJob?.model ?? null;
+    } catch {
+      // Best-effort analytics enrichment only.
+    }
 
     // Try to mark the video job as failed
     try {
@@ -588,6 +770,16 @@ export async function pollVideoGenerationHandler(
       searchSessionId: args.searchSessionId,
     });
     await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
+    await captureAssistantResponseFailure(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(messageId),
+      jobId: String(jobId),
+      modelId,
+      source: args.analyticsSource ?? "video_generation",
+      error,
+      analytics: args.analytics,
+    });
   }
 }
 
@@ -598,7 +790,13 @@ async function handleVideoCompleted(
   args: PollVideoGenerationArgs,
   pollResult: { unsigned_urls?: string[]; usage?: { cost?: number; is_byok?: boolean }; generation_id?: string },
   apiKey: string,
-  videoJob: { outputUploadToken?: string; pollCount: number },
+  videoJob: {
+    _creationTime?: number;
+    createdAt?: number;
+    outputUploadToken?: string;
+    pollCount: number;
+    model?: string;
+  },
 ): Promise<void> {
   const { chatId, messageId, jobId, userId } = args;
 
@@ -661,6 +859,16 @@ async function handleVideoCompleted(
       searchSessionId: args.searchSessionId,
     });
     await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
+    await captureAssistantResponseFailure(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(messageId),
+      jobId: String(jobId),
+      modelId: videoJob.model,
+      source: args.analyticsSource ?? "video_generation",
+      error: new Error("Video completed without stored output"),
+      analytics: args.analytics,
+    });
     return;
   }
 
@@ -692,6 +900,16 @@ async function handleVideoCompleted(
       searchSessionId: args.searchSessionId,
     });
     await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
+    await captureAssistantResponseFailure(ctx, {
+      userId,
+      chatId: String(chatId),
+      messageId: String(messageId),
+      jobId: String(jobId),
+      modelId: videoJob.model,
+      source: args.analyticsSource ?? "video_generation",
+      error: new Error("Video storage URL unavailable"),
+      analytics: args.analytics,
+    });
     return;
   }
 
@@ -746,4 +964,21 @@ async function handleVideoCompleted(
     searchSessionId: args.searchSessionId,
   });
   await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "completed");
+  await captureAssistantResponseCompleted(ctx, {
+    userId,
+    chatId: String(chatId),
+    messageId: String(messageId),
+    jobId: String(jobId),
+    modelId: videoJob.model,
+    source: args.analyticsSource ?? "video_generation",
+    usage,
+    analytics: args.analytics,
+    durationMs: typeof (videoJob._creationTime ?? videoJob.createdAt) === "number"
+      ? Date.now() - (videoJob._creationTime ?? videoJob.createdAt ?? Date.now())
+      : undefined,
+    participantCount: args.assistantMessageIds.length,
+    properties: {
+      video_job_id: String(args.videoJobId),
+    },
+  });
 }

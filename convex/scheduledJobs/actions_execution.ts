@@ -121,6 +121,7 @@ async function routeScheduledStep(
       enabledIntegrations: args.step.enabledIntegrations,
       turnSkillOverrides: args.step.turnSkillOverrides,
       turnIntegrationOverrides: args.step.turnIntegrationOverrides,
+      analyticsSource: "scheduled_job",
     });
      return;
   }
@@ -158,6 +159,7 @@ async function routeScheduledStep(
       enabledIntegrations: args.step.enabledIntegrations,
       turnIntegrationOverrides: args.step.turnIntegrationOverrides,
       subagentsEnabled: undefined,
+      analyticsSource: "scheduled_job",
     });
     return;
   }
@@ -194,6 +196,7 @@ async function routeScheduledStep(
     enabledIntegrations: args.step.enabledIntegrations,
     turnIntegrationOverrides: args.step.turnIntegrationOverrides,
     subagentsEnabled: undefined,
+    analyticsSource: "scheduled_job",
   });
 }
 

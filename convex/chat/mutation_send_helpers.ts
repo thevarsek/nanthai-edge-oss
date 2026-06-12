@@ -1,6 +1,8 @@
 import { MutationCtx } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import { Doc, Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { ConvexError } from "convex/values";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
 import { RetryContract } from "./retry_contract";
 import { TerminalErrorCode } from "./terminal_error";
@@ -226,6 +228,8 @@ export async function createAssistantMessagesAndJobs(
     turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
     turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
     retryContract?: RetryContract;
+    analytics?: AnalyticsClientMetadata;
+    analyticsSource?: CancelledAnalyticsSource;
   },
 ): Promise<{
   assistantMessageIds: Id<"messages">[];
@@ -282,6 +286,8 @@ export async function createAssistantMessagesAndJobs(
       userId: args.userId,
       modelId: participant.modelId,
       status: "queued",
+      analytics: args.analytics,
+      analyticsSource: args.analyticsSource,
       createdAt: args.jobCreatedAt,
     });
     generationJobIds.push(jobId);
@@ -330,6 +336,141 @@ export async function cancelGenerationJobsForMessage(
         scheduledFunctionId: undefined,
         terminalErrorCode,
       });
+      await scheduleCancelledAssistantResponseAnalytics(ctx, job);
     }
   }
+}
+
+type CancelledAnalyticsSource =
+  | "chat_generation"
+  | "web_search"
+  | "research_paper"
+  | "subagent_parent_resume"
+  | "scheduled_job"
+  | "video_generation";
+
+async function cancelledAnalyticsSource(
+  ctx: MutationCtx,
+  job: Doc<"generationJobs">,
+  message: Doc<"messages">,
+): Promise<CancelledAnalyticsSource> {
+  if (job.sourceJobId) {
+    return "scheduled_job";
+  }
+  if (message.searchSessionId) {
+    const session = await ctx.db.get(message.searchSessionId);
+    if (session?.mode === "paper") {
+      return "research_paper";
+    }
+    return "web_search";
+  }
+  const videoJob = await ctx.db
+    .query("videoJobs")
+    .withIndex("by_messageId", (q) => q.eq("messageId", job.messageId))
+    .first();
+  if (videoJob) {
+    return "video_generation";
+  }
+  return "chat_generation";
+}
+
+export async function scheduleCancelledAssistantResponseAnalytics(
+  ctx: MutationCtx,
+  job: Doc<"generationJobs">,
+  message?: Doc<"messages"> | null,
+): Promise<void> {
+  const messageDoc = message ?? await ctx.db.get(job.messageId);
+  if (!messageDoc) return;
+  const scheduler = (ctx as { scheduler?: Pick<MutationCtx["scheduler"], "runAfter"> }).scheduler;
+  if (typeof scheduler?.runAfter !== "function") return;
+  const deferredContext: Awaited<ReturnType<typeof deferredCancellationContext>> = job.status === "streaming"
+    ? await deferredCancellationContext(ctx, job)
+    : { isDeferred: false };
+  const shouldEmitSyntheticStart = job.status === "queued" ||
+    (job.status === "streaming" && job.analyticsStartedAt === undefined);
+  if (
+    job.status !== "queued" &&
+    !(
+      job.status === "streaming" &&
+      (deferredContext.isDeferred || job.analyticsStartedAt === undefined)
+    )
+  ) {
+    return;
+  }
+  await scheduler.runAfter(0, internal.chat.actions.captureCancelledAssistantResponse, {
+    userId: job.userId,
+    chatId: job.chatId,
+    messageId: job.messageId,
+    jobId: job._id,
+    modelId: job.modelId,
+    source: deferredContext.source ?? job.analyticsSource ?? await cancelledAnalyticsSource(ctx, job, messageDoc),
+    analytics: deferredContext.analytics ?? job.analytics,
+    subagentBatchId: deferredContext.subagentBatchId,
+    drivePickerBatchId: deferredContext.drivePickerBatchId,
+    emitStarted: shouldEmitSyntheticStart,
+  });
+}
+
+async function deferredCancellationContext(
+  ctx: MutationCtx,
+  job: Doc<"generationJobs">,
+): Promise<{
+  isDeferred: boolean;
+  source?: CancelledAnalyticsSource;
+  analytics?: AnalyticsClientMetadata;
+  subagentBatchId?: Id<"subagentBatches">;
+  drivePickerBatchId?: Id<"drivePickerBatches">;
+}> {
+  const subagentBatch = await ctx.db
+    .query("subagentBatches")
+    .withIndex("by_parent_message", (q) => q.eq("parentMessageId", job.messageId))
+    .first();
+  if (subagentBatch && subagentBatch.status !== "completed" && subagentBatch.status !== "failed") {
+    const params = subagentBatch.paramsSnapshot as {
+      analytics?: AnalyticsClientMetadata;
+      analyticsSource?: CancelledAnalyticsSource;
+    } | undefined;
+    return {
+      isDeferred: true,
+      source: params?.analyticsSource,
+      analytics: params?.analytics,
+      subagentBatchId: subagentBatch._id,
+    };
+  }
+
+  const drivePickerBatch = await ctx.db
+    .query("drivePickerBatches")
+    .withIndex("by_parent_message", (q) => q.eq("parentMessageId", job.messageId))
+    .first();
+  if (
+    drivePickerBatch &&
+    drivePickerBatch.status !== "completed" &&
+    drivePickerBatch.status !== "failed" &&
+    drivePickerBatch.status !== "cancelled"
+  ) {
+    const params = drivePickerBatch.paramsSnapshot as {
+      analytics?: AnalyticsClientMetadata;
+      analyticsSource?: CancelledAnalyticsSource;
+    } | undefined;
+    return {
+      isDeferred: true,
+      source: params?.analyticsSource,
+      analytics: params?.analytics,
+      drivePickerBatchId: drivePickerBatch._id,
+    };
+  }
+
+  const videoJob = await ctx.db
+    .query("videoJobs")
+    .withIndex("by_messageId", (q) => q.eq("messageId", job.messageId))
+    .first();
+  if (videoJob && videoJob.status !== "completed" && videoJob.status !== "failed") {
+    return {
+      isDeferred: true,
+      source: "video_generation",
+      analytics: job.analytics,
+    };
+  }
+
+  return { isDeferred: false };
 }

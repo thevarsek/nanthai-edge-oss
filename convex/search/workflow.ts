@@ -18,12 +18,18 @@ import {
   isGenerationCancelledError,
 } from "../chat/generation_helpers";
 import {
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
+import {
   checkCancellation,
   PipelineArgs,
   updateSession,
 } from "./workflow_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { integrationOverrideEntry } from "../schema_validators";
+import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
+import { analyticsSourceValidator } from "../chat/actions_args";
 
 const researchPaperPipelineArgs = {
   sessionId: v.id("searchSessions"),
@@ -45,6 +51,8 @@ const researchPaperPipelineArgs = {
   enabledIntegrations: v.optional(v.array(v.string())),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
+  analytics: v.optional(analyticsClientMetadataValidator),
+  analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
 
 export const researchPaperPipeline = internalAction({
@@ -64,11 +72,19 @@ async function researchPaperPipelineHandler(
   ctx: ActionCtx,
   args: PipelineArgs,
 ): Promise<void> {
+  const workflowStartedAt = Date.now();
   await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
     jobId: args.jobId,
     status: "streaming",
     startedAt: Date.now(),
   });
+  const alreadyCancelled = await ctx.runQuery(
+    internal.chat.queries.isJobCancelled,
+    { jobId: args.jobId },
+  );
+  if (alreadyCancelled) {
+    return;
+  }
 
   try {
     // Validate API key early so we fail fast before scheduling anything
@@ -101,6 +117,41 @@ async function researchPaperPipelineHandler(
       error: errorMessage,
       userId: args.userId,
     });
+    if (!wasCancelled) {
+      await captureAssistantResponseStartedEvent(ctx, {
+        userId: args.userId,
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId),
+        jobId: String(args.jobId),
+        modelId: args.modelId,
+        source: args.analyticsSource ?? "research_paper",
+        analytics: args.analytics,
+        participantCount: 1,
+        integrationCount: args.enabledIntegrations?.length ?? 0,
+        subagentsEnabled: args.subagentsEnabled === true,
+        properties: {
+          search_session_id: String(args.sessionId),
+          complexity: args.complexity,
+          pre_handoff_failure: true,
+        },
+      });
+      await captureAssistantResponseFailure(ctx, {
+        userId: args.userId,
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId),
+        jobId: String(args.jobId),
+        modelId: args.modelId,
+        source: args.analyticsSource ?? "research_paper",
+        error,
+        analytics: args.analytics,
+        durationMs: Date.now() - workflowStartedAt,
+        properties: {
+          search_session_id: String(args.sessionId),
+          complexity: args.complexity,
+          pre_handoff_failure: true,
+        },
+      });
+    }
 
     try {
       await updateSession(ctx, args.sessionId, {

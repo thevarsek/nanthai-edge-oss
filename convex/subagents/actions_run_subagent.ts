@@ -44,6 +44,14 @@ import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "../chat/loaded_skill_prompt";
 import { captureToolRoundArtifacts } from "../tools/artifact_writer";
 import { estimatePromptTokens } from "../chat/runtime_graph";
+import {
+  captureAssistantResponseCompleted,
+  captureAssistantResponseContinued,
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
+import { scheduleContextAssemblyLog } from "../chat/context_assembly_log_scheduler";
 
 interface SubagentConversationSnapshot {
   messages: OpenRouterMessage[];
@@ -99,6 +107,49 @@ async function maybeFailStaleStreamingRun(
     generatedCharts: run.generatedCharts,
     error: "Subagent execution lease expired before reaching a safe checkpoint.",
   });
+  const batch = await ctx.runQuery(internal.subagents.queries.getBatchInternal, { batchId: run.batchId });
+  const participantSnapshot = batch?.participantSnapshot as {
+    participant?: { modelId?: string | null };
+  } | undefined;
+  const paramsSnapshot = batch?.paramsSnapshot as {
+    analytics?: AnalyticsClientMetadata;
+    enabledIntegrations?: string[];
+  } | undefined;
+  if (batch) {
+    const error = new Error("Subagent execution lease expired before reaching a safe checkpoint.");
+    const modelId = participantSnapshot?.participant?.modelId ?? null;
+    const recoveryProperties = {
+      subagent_batch_id: String(batch._id),
+      subagent_run_id: String(run._id),
+      stale_recovery: true,
+    };
+    if ((run.continuationCount ?? 0) === 0 && run.analyticsStartedAt === undefined) {
+      await captureAssistantResponseStartedEvent(ctx, {
+        userId: batch.userId,
+        chatId: String(batch.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId,
+        source: "subagent_child",
+        analytics: paramsSnapshot?.analytics,
+        participantCount: 1,
+        integrationCount: paramsSnapshot?.enabledIntegrations?.length ?? 0,
+        properties: recoveryProperties,
+      });
+    }
+    await captureAssistantResponseFailure(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId,
+      source: "subagent_child",
+      error,
+      analytics: paramsSnapshot?.analytics,
+      durationMs: typeof run.startedAt === "number" ? Date.now() - run.startedAt : undefined,
+      properties: recoveryProperties,
+    });
+  }
   if (finalizeResult?.allTerminal) {
     const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
       batchId: finalizeResult.batchId,
@@ -148,8 +199,56 @@ export async function runSubagentRunHandler(
   if (!batch) {
     return;
   }
-  const apiKey = await getRequiredUserOpenRouterApiKey(ctx, batch.userId);
+  const paramsSnapshot = batch.paramsSnapshot as {
+    enabledIntegrations?: string[];
+    webSearchToolEnabled?: boolean;
+    requireZdr?: boolean;
+    requestParams?: ChatRequestParameters;
+    analytics?: AnalyticsClientMetadata;
+  };
+  const participantSnapshot = batch.participantSnapshot as {
+    userId: string;
+    chatId?: string;
+    participant: { modelId: string };
+  } | undefined;
+  const startedProperties = {
+    subagent_batch_id: String(batch._id),
+    subagent_run_id: String(run._id),
+  };
+  const isContinuationResume = (run.continuationCount ?? 0) > 0;
+  const captureStartedIfInitial = async (
+    setupPhase: string,
+    modelId: string | null,
+    extraProperties: Record<string, string | number | boolean | null | undefined> = {},
+  ): Promise<boolean> => {
+    if (isContinuationResume) return true;
+    const shouldCaptureStarted = await ctx.runMutation(internal.subagents.mutations.markRunAnalyticsStarted, {
+      runId: run._id,
+    }) !== false;
+    if (!shouldCaptureStarted) return false;
+    await captureAssistantResponseStartedEvent(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId,
+      source: "subagent_child",
+      analytics: paramsSnapshot.analytics,
+      participantCount: 1,
+      integrationCount: paramsSnapshot.enabledIntegrations?.length ?? 0,
+      properties: {
+        ...startedProperties,
+        setup_phase: setupPhase,
+        ...extraProperties,
+      },
+    });
+    return true;
+  };
   if (batch.status === "cancelled") {
+    const cancelledModelId = participantSnapshot?.participant.modelId;
+    const didCaptureStart = cancelledModelId
+      ? await captureStartedIfInitial("batch_cancelled", cancelledModelId)
+      : false;
     await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
       status: "cancelled",
@@ -157,27 +256,114 @@ export async function runSubagentRunHandler(
       reasoning: run.reasoning,
       error: "Subagent batch was cancelled.",
     });
+    if (cancelledModelId && didCaptureStart) {
+      await captureAssistantResponseFailure(ctx, {
+        userId: batch.userId,
+        chatId: String(batch.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId: cancelledModelId,
+        source: "subagent_child",
+        cancelled: true,
+        analytics: paramsSnapshot.analytics,
+        properties: startedProperties,
+      });
+    }
     return;
   }
-
-  const paramsSnapshot = batch.paramsSnapshot as {
-    enabledIntegrations?: string[];
-    webSearchToolEnabled?: boolean;
-    requireZdr?: boolean;
-    requestParams?: ChatRequestParameters;
-  };
-  const participantSnapshot = batch.participantSnapshot as {
-    userId: string;
-    chatId?: string;
-    participant: { modelId: string };
-  };
+  if (!participantSnapshot?.participant.modelId) {
+    const didCaptureStart = await captureStartedIfInitial("snapshot_validation", null);
+    if (!didCaptureStart) return;
+    const error = new Error("Subagent batch missing participant snapshot.");
+    const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
+      runId: run._id,
+      status: "failed",
+      content: run.content,
+      reasoning: run.reasoning,
+      error: error.message,
+    });
+    await captureAssistantResponseFailure(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      source: "subagent_child",
+      error,
+      analytics: paramsSnapshot.analytics,
+      properties: startedProperties,
+    });
+    if (finalizeResult?.allTerminal) {
+      const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
+        batchId: finalizeResult.batchId,
+        status: "waiting_to_resume",
+        expectedCurrentStatus: "running_children",
+        continuationScheduledAt: Date.now(),
+      });
+      if (didMark) {
+        await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
+          batchId: finalizeResult.batchId,
+        });
+      }
+    }
+    return;
+  }
   const modelId = participantSnapshot.participant.modelId;
-  const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, { modelId });
-  const accountCapabilities = await ctx.runQuery(
-    internal.capabilities.queries.getAccountCapabilitiesInternal,
-    { userId: participantSnapshot.userId },
-  );
-  const isProUser = accountCapabilities.isPro;
+  const didCaptureStart = await captureStartedIfInitial("preflight", modelId);
+  if (!didCaptureStart) return;
+
+  let apiKey: string;
+  let caps: {
+    supportedParameters?: string[];
+    hasImageGeneration?: boolean;
+    hasReasoning?: boolean;
+    contextLength?: number;
+  } | null;
+  let accountCapabilities: { isPro?: boolean } | null;
+  try {
+    apiKey = await getRequiredUserOpenRouterApiKey(ctx, batch.userId);
+    caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, { modelId });
+    accountCapabilities = await ctx.runQuery(
+      internal.capabilities.queries.getAccountCapabilitiesInternal,
+      { userId: participantSnapshot.userId },
+    );
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const status = isGenerationCancelledError(error) ? "cancelled" : "failed";
+    const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
+      runId: run._id,
+      status,
+      content: run.content,
+      reasoning: run.reasoning,
+      error: errorMessage,
+    });
+    await captureAssistantResponseFailure(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId,
+      source: "subagent_child",
+      error,
+      cancelled: status === "cancelled",
+      analytics: paramsSnapshot.analytics,
+      properties: startedProperties,
+    });
+    if (finalizeResult?.allTerminal) {
+      const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
+        batchId: finalizeResult.batchId,
+        status: "waiting_to_resume",
+        expectedCurrentStatus: "running_children",
+        continuationScheduledAt: Date.now(),
+      });
+      if (didMark) {
+        await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
+          batchId: finalizeResult.batchId,
+        });
+      }
+    }
+    return;
+  }
+  const isProUser = accountCapabilities?.isPro ?? false;
   const snapshot = run.conversationSnapshot as SubagentConversationSnapshot | undefined;
   const liveToolCalls: RecordedToolCall[] = [...(snapshot?.allToolCalls ?? run.toolCalls ?? [])];
   const liveToolResults: RecordedToolResult[] = [...(snapshot?.allToolResults ?? run.toolResults ?? [])];
@@ -246,7 +432,7 @@ export async function runSubagentRunHandler(
 
   try {
     const requestTokenEstimate = estimatePromptTokens(normalizedMessages);
-    await ctx.runMutation(internal.chat.context_assembly_logs.insertContextAssemblyLog, {
+    await scheduleContextAssemblyLog(ctx, {
       userId: batch.userId,
       chatId: batch.chatId,
       messageId: batch.parentMessageId,
@@ -289,7 +475,6 @@ export async function runSubagentRunHandler(
       serializationMs: 0,
       decisionSummary: "subagent child request assembled from child seed; private tool artifacts captured under child runtime owner",
     });
-
     const callbacks: { onDelta: OnDelta; onReasoningDelta: OnReasoningDelta } = {
       onDelta: async (delta) => {
         await writer.handleContentDeltaBoundary(delta.length);
@@ -494,6 +679,20 @@ export async function runSubagentRunHandler(
             generationId: result.streamResult.generationId ?? undefined,
           });
         }
+        await captureAssistantResponseFailure(ctx, {
+          userId: batch.userId,
+          chatId: String(batch.chatId),
+          messageId: String(batch.parentMessageId),
+          jobId: String(batch.parentJobId),
+          modelId,
+          source: "subagent_child",
+          error: new Error("Subagent exceeded continuation limit."),
+          analytics: paramsSnapshot.analytics,
+          properties: {
+            subagent_batch_id: String(batch._id),
+            subagent_run_id: String(run._id),
+          },
+        });
         if (finalizeResult?.allTerminal) {
           const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
             batchId: finalizeResult.batchId,
@@ -532,6 +731,23 @@ export async function runSubagentRunHandler(
           compactionCount: result.compactionCount,
         } satisfies SubagentConversationSnapshot,
       });
+      await captureAssistantResponseContinued(ctx, {
+        userId: batch.userId,
+        chatId: String(batch.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId,
+        source: "subagent_child",
+        usage: result.totalUsage,
+        analytics: paramsSnapshot.analytics,
+        participantCount: 1,
+        openrouterGenerationId: result.streamResult.generationId ?? null,
+        properties: {
+          subagent_batch_id: String(batch._id),
+          subagent_run_id: String(run._id),
+          continuation_count: nextContinuationCount,
+        },
+      });
       await ctx.scheduler.runAfter(0, internal.subagents.actions.continueSubagentRun, {
         runId: run._id,
       });
@@ -569,6 +785,21 @@ export async function runSubagentRunHandler(
         generationId: result.streamResult.generationId ?? undefined,
       });
     }
+    await captureAssistantResponseCompleted(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId,
+      source: "subagent_child",
+      usage: subagentUsage,
+      analytics: paramsSnapshot.analytics,
+      openrouterGenerationId: result.streamResult.generationId ?? null,
+      properties: {
+        subagent_batch_id: String(batch._id),
+        subagent_run_id: String(run._id),
+      },
+    });
 
     if (finalizeResult?.allTerminal) {
       const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
@@ -592,6 +823,21 @@ export async function runSubagentRunHandler(
       content: writer.totalContent || undefined,
       reasoning: writer.totalReasoning || undefined,
       error: errorMessage,
+    });
+    await captureAssistantResponseFailure(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId,
+      source: "subagent_child",
+      error,
+      cancelled: status === "cancelled",
+      analytics: paramsSnapshot.analytics,
+      properties: {
+        subagent_batch_id: String(batch._id),
+        subagent_run_id: String(run._id),
+      },
     });
     if (finalizeResult?.allTerminal) {
       const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {

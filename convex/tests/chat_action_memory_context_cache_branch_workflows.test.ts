@@ -150,45 +150,35 @@ test("resolveMemoryContextForGeneration skips retrieval for blank prompts withou
   assert.equal(scheduledCount, 0);
 });
 
-test("resolveMemoryContextForGeneration falls back inline and avoids duplicate usage billing", async () => {
+test("resolveMemoryContextForGeneration uses broad contextual fallback when cache is pending", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
-  const mutations: Array<Record<string, unknown>> = [];
-  let messageRowReads = 0;
-  const queryText = "inline fallback";
+  let messageRowQueryCount = 0;
+  let vectorSearchCount = 0;
+  const queryText = "pending cache";
   const ctx = {
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
-      if ("userId" in args && !("messageId" in args)) return [];
-      if ("hits" in args) {
+      if ("userId" in args && !("messageId" in args)) {
         return [memory({
-          _id: "memory_inline",
-          content: "User relies on inline memory fallback.",
+          _id: "memory_broad",
+          content: "User relies on broad memory fallback.",
         })];
       }
       if ("messageId" in args) {
-        messageRowReads += 1;
-        return messageRowReads === 1
-          ? { status: "pending", textHash: hashText(queryText) }
-          : {
-              status: "ready",
-              textHash: hashText(queryText),
-              embedding: [0.1, 0.2],
-              usage: { promptTokens: 5, totalTokens: 5 },
-              generationId: "embedding_gen",
-            };
+        messageRowQueryCount += 1;
+        return { status: "pending", textHash: hashText(queryText) };
       }
       return [];
     },
-    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
-      mutations.push(args);
-      if ("usageRecordedMessageId" in args) return false;
-      return undefined;
-    },
+    runMutation: async () => undefined,
     scheduler: {
       runAfter: async (_delay: number, _fn: unknown, args: Record<string, unknown>) => {
         scheduled.push(args);
       },
     },
-    vectorSearch: async () => [{ _id: "embedding_1", _score: 0.91 }],
+    vectorSearch: async () => {
+      vectorSearchCount += 1;
+      return [{ _id: "embedding_1", _score: 0.9 }];
+    },
   } as any;
 
   const context = await resolveMemoryContextForGeneration(ctx, {
@@ -199,8 +189,15 @@ test("resolveMemoryContextForGeneration falls back inline and avoids duplicate u
     assistantMessageId: "msg_assistant" as any,
   });
 
-  assert.match(context, /inline memory fallback/);
-  assert.equal(mutations.some((args) => args.usageRecordedMessageId === "msg_assistant"), true);
+  assert.match(context, /broad memory fallback/);
+  assert.equal(vectorSearchCount, 0);
+  const analyticsEvents = scheduled.filter((args) => "event" in args);
+  assert.deepEqual(
+    analyticsEvents.map((args) => args.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((analyticsEvents[1]?.properties as any)?.degraded, true);
+  assert.equal(analyticsEvents.some((args) => args.event === "backend_ai_operation_failed"), false);
   assert.equal(scheduled.some((args) => args.source === "memory_embedding_retrieve"), false);
-  assert.deepEqual(scheduled.at(-1)?.memoryIds, ["memory_inline"]);
+  assert.deepEqual(scheduled.at(-1)?.memoryIds, ["memory_broad"]);
 });

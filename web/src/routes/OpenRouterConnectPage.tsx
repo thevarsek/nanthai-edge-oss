@@ -6,6 +6,7 @@ import { useConvexAuth } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { exchangeCodeForKey } from "@/lib/pkce";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
 
 type Status = "loading" | "success" | "error";
 const AUTH_TIMEOUT_MS = 12000;
@@ -27,6 +28,13 @@ export function OpenRouterConnectPage() {
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const didRun = useRef(false);
   const callbackTarget = useMemo(() => sessionStorage.getItem("openrouter_post_connect"), []);
+  const callbackSource = useMemo(
+    () => sessionStorage.getItem("openrouter_post_connect_source") ?? callbackTarget ?? "unknown",
+    [callbackTarget],
+  );
+  const callbackFeatureArea = callbackSource === "onboarding" || callbackSource === "onboarding_replay"
+    ? "onboarding"
+    : "settings";
 
   const errorReturnPath = callbackTarget === "settings"
     ? "/app/settings"
@@ -72,7 +80,14 @@ export function OpenRouterConnectPage() {
       const stateParam = searchParams.get("state");
 
       if (!code || !stateParam) {
-        setErrorMessage(t("openrouter_err_missing_code"));
+        const message = t("openrouter_err_missing_code");
+        captureAnalytics("openrouter_connect_failed", {
+          feature_area: callbackFeatureArea,
+          source: callbackSource,
+          failure_stage: "callback_validation",
+          error_label: "missing_callback_params",
+        });
+        setErrorMessage(message);
         setStatus("error");
         return;
       }
@@ -81,13 +96,27 @@ export function OpenRouterConnectPage() {
       const storedVerifier = sessionStorage.getItem("pkce_verifier");
 
       if (!storedState || storedState !== stateParam) {
-        setErrorMessage(t("openrouter_err_state_mismatch"));
+        const message = t("openrouter_err_state_mismatch");
+        captureAnalytics("openrouter_connect_failed", {
+          feature_area: callbackFeatureArea,
+          source: callbackSource,
+          failure_stage: "callback_validation",
+          error_label: "state_mismatch",
+        });
+        setErrorMessage(message);
         setStatus("error");
         return;
       }
 
       if (!storedVerifier) {
-        setErrorMessage(t("openrouter_err_pkce_missing"));
+        const message = t("openrouter_err_pkce_missing");
+        captureAnalytics("openrouter_connect_failed", {
+          feature_area: callbackFeatureArea,
+          source: callbackSource,
+          failure_stage: "callback_validation",
+          error_label: "missing_pkce_verifier",
+        });
+        setErrorMessage(message);
         setStatus("error");
         return;
       }
@@ -96,20 +125,35 @@ export function OpenRouterConnectPage() {
         const apiKey = await exchangeCodeForKey(code, storedVerifier);
         const postConnectTarget = sessionStorage.getItem("openrouter_post_connect");
         const postConnectPath = sessionStorage.getItem("openrouter_post_connect_path");
+        const postConnectSource = sessionStorage.getItem("openrouter_post_connect_source")
+          ?? postConnectTarget
+          ?? "unknown";
 
         // Clean up sessionStorage
         sessionStorage.removeItem("pkce_state");
         sessionStorage.removeItem("pkce_verifier");
         sessionStorage.removeItem("openrouter_post_connect");
         sessionStorage.removeItem("openrouter_post_connect_path");
+        sessionStorage.removeItem("openrouter_post_connect_source");
 
         // Store the API key to Convex (server-side, encrypted at rest)
         await upsertApiKey({ apiKey });
 
         if (postConnectTarget === "onboarding") {
           await setOnboardingCompleted({});
+          captureAnalytics("onboarding_completed", {
+            feature_area: "onboarding",
+            source: "openrouter_connect",
+          });
         }
 
+        captureAnalytics("openrouter_connect_completed", {
+          feature_area: postConnectSource === "onboarding" || postConnectSource === "onboarding_replay"
+            ? "onboarding"
+            : "settings",
+          source: postConnectSource,
+          completed_onboarding: postConnectTarget === "onboarding",
+        });
         setStatus("success");
 
         const nextPath = postConnectTarget === "onboarding"
@@ -127,6 +171,12 @@ export function OpenRouterConnectPage() {
         );
       } catch (err) {
         const message = err instanceof Error ? err.message : t("openrouter_err_unknown");
+        captureAnalytics("openrouter_connect_failed", {
+          feature_area: callbackFeatureArea,
+          source: callbackSource,
+          failure_stage: "exchange_or_save",
+          error_label: analyticsErrorLabel(err),
+        });
         setErrorMessage(message);
         setStatus("error");
       }

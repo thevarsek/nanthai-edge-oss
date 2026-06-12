@@ -52,6 +52,7 @@ function buildParams(overrides: Record<string, unknown> = {}) {
 function createAutonomousCtx() {
   const mutations: Array<Record<string, unknown>> = [];
   const queryCalls: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   let insertCount = 0;
   const ctx = createMockCtx({
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -77,9 +78,15 @@ function createAutonomousCtx() {
       }
       return undefined;
     },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return `scheduled_${scheduled.length}`;
+      },
+    },
   });
 
-  return { ctx, mutations, queryCalls };
+  return { ctx, mutations, queryCalls, scheduled };
 }
 
 test("runParticipantTurn cleans up transient entities when no request messages remain", async () => {
@@ -111,7 +118,7 @@ test("runParticipantTurn cleans up transient entities when no request messages r
 });
 
 test("runParticipantTurn finalizes visible responses and propagates moderator directives and gated params", async () => {
-  const { ctx, mutations } = createAutonomousCtx();
+  const { ctx, mutations, scheduled } = createAutonomousCtx();
   const gateCalls: unknown[] = [];
   const requestInputs: unknown[] = [];
   const streamCalls: Array<{ messages: unknown; params: unknown }> = [];
@@ -207,6 +214,13 @@ test("runParticipantTurn finalizes visible responses and propagates moderator di
     mutations.some((entry) => entry.sessionId === "session_1" && Array.isArray(entry.parentMessageIds)),
     true,
   );
+  assert.deepEqual(
+    scheduled.map((entry) => entry.event),
+    ["assistant_response_started", "assistant_response_completed"],
+  );
+  assert.equal((scheduled[0]?.properties as Record<string, unknown>).source, "autonomous_discussion");
+  assert.equal((scheduled[0]?.properties as Record<string, unknown>).autonomous_session_id, "session_1");
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).participant_count, 1);
 });
 
 test("runParticipantTurn finalizes empty model output as a visible failed message", async () => {
@@ -456,7 +470,7 @@ test("runParticipantTurn preserves multimodal parts when converting autonomous c
 });
 
 test("runParticipantTurn finalizes upstream errors as visible failed messages", async () => {
-  const { ctx, mutations } = createAutonomousCtx();
+  const { ctx, mutations, scheduled } = createAutonomousCtx();
   const deps = createRunParticipantTurnDepsForTest({
     getRequiredUserOpenRouterApiKey: async () => "key",
     loadMemoryContext: async () => undefined,
@@ -496,10 +510,17 @@ test("runParticipantTurn finalizes upstream errors as visible failed messages", 
     error: "Anthropic rejected assistant prefill",
     userId: "user_1",
   });
+  assert.deepEqual(
+    scheduled.map((entry) => entry.event),
+    ["assistant_response_started", "assistant_response_failed"],
+  );
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).source, "autonomous_discussion");
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).failure_category, "unknown_error");
 });
 
 test("runParticipantTurn marks message and job cancelled when a turn is cancelled mid-stream", async () => {
-  const { ctx, mutations } = createAutonomousCtx();
+  const { mutations } = createAutonomousCtx();
+  const scheduled: Array<Record<string, unknown>> = [];
   let cancellationChecks = 0;
 
   const deps = createRunParticipantTurnDepsForTest({
@@ -554,6 +575,12 @@ test("runParticipantTurn marks message and job cancelled when a turn is cancelle
       if (args.chatId && args.modelId && args.messageId === "msg_new" && args.userId) return "job_new";
       return undefined;
     },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return `scheduled_${scheduled.length}`;
+      },
+    },
   });
 
   const result = await runParticipantTurn({
@@ -570,4 +597,9 @@ test("runParticipantTurn marks message and job cancelled when a turn is cancelle
     mutations.some((entry) => entry.messageId === "msg_new" && entry.status === "cancelled"),
     true,
   );
+  assert.deepEqual(
+    scheduled.map((entry) => entry.event),
+    ["assistant_response_started", "assistant_response_failed"],
+  );
+  assert.equal((scheduled[1]?.properties as Record<string, unknown>).failure_category, "cancelled");
 });

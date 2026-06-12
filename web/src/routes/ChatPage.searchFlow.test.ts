@@ -16,11 +16,19 @@ describe("ChatPage search flow helpers", () => {
       includeReasoning: true,
       reasoningEffort: "high",
     };
+    const analytics = {
+      platform: "web" as const,
+      surface: "web_app",
+      routeOrScreen: "/app/chat/session_1",
+      clientEventId: "event_1",
+      clientSentAt: 123,
+    };
 
     expect(buildRegeneratePaperArgs({
       sessionId: "session_1",
       participant,
       enabledIntegrations: new Set(["gmail", "drive"]),
+      analytics,
     })).toEqual({
       sessionId: "session_1",
       modelId: "openai/gpt-5.2",
@@ -33,6 +41,7 @@ describe("ChatPage search flow helpers", () => {
       includeReasoning: true,
       reasoningEffort: "high",
       enabledIntegrations: ["gmail", "drive"],
+      analytics,
     });
   });
 

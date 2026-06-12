@@ -112,6 +112,18 @@ test("unclaimed stale streaming subagent runs are failed and resume the parent w
           generatedCharts: [{ toolName: "chart", chartType: "bar", title: "Trend", elements: [] }],
         };
       }
+      if (args.batchId === "batch_1") {
+        return {
+          _id: "batch_1",
+          status: "running_children",
+          userId: "user_1",
+          chatId: "chat_1",
+          parentMessageId: "parent_1",
+          parentJobId: "job_1",
+          paramsSnapshot: { analytics: { platform: "web" } },
+          participantSnapshot: { participant: { modelId: "openai/gpt-5" } },
+        };
+      }
       throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
     },
     scheduler: {
@@ -135,7 +147,13 @@ test("unclaimed stale streaming subagent runs are failed and resume the parent w
     && args.status === "waiting_to_resume"
     && args.expectedCurrentStatus === "running_children"
   ));
-  assert.deepEqual(scheduled, [{ batchId: "batch_1" }]);
+  assert.ok(scheduled.some((entry) =>
+    entry.event === "assistant_response_started"
+      && (entry.properties as Record<string, unknown>).stale_recovery === true));
+  assert.ok(scheduled.some((entry) =>
+    entry.event === "assistant_response_failed"
+      && (entry.properties as Record<string, unknown>).stale_recovery === true));
+  assert.ok(scheduled.some((entry) => entry.batchId === "batch_1"));
 });
 
 test("claimed subagent run exits cleanly when the run disappears before recovery scheduling", async () => {

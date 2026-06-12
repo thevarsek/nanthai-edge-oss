@@ -1,4 +1,5 @@
 import { Id } from "../_generated/dataModel";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 
 export interface VideoConfig {
   resolution?: string;
@@ -6,6 +7,14 @@ export interface VideoConfig {
   duration?: number;
   generateAudio?: boolean;
 }
+
+export type GenerationAnalyticsSource =
+  | "chat_generation"
+  | "web_search"
+  | "research_paper"
+  | "subagent_parent_resume"
+  | "scheduled_job"
+  | "video_generation";
 
 export interface ParticipantConfig {
   modelId: string;
@@ -48,6 +57,8 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   // Phase 1 TTFT instrumentation: scheduler hop #1 measurement
   enqueuedAt?: number;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 export interface VideoCapabilities {

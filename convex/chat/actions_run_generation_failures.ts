@@ -5,6 +5,7 @@ import {
 } from "./generation_helpers";
 import { RunGenerationArgs } from "./actions_run_generation_types";
 import { classifyTerminalErrorCode } from "./terminal_error";
+import { captureAssistantResponseFailure } from "./generation_analytics";
 
 export async function failPendingParticipants(
   ctx: ActionCtx,
@@ -43,6 +44,17 @@ export async function failPendingParticipants(
             status: finalStatus,
             error: errorMessage,
           }),
+        });
+        await captureAssistantResponseFailure(ctx, {
+          userId: args.userId,
+          chatId: String(args.chatId),
+          messageId: String(participant.messageId),
+          jobId: String(participant.jobId),
+          modelId: participant.modelId,
+          source: args.analyticsSource ?? "chat_generation",
+          error: rawError,
+          cancelled: wasCancelled,
+          analytics: args.analytics,
         });
       } catch (finalizeError) {
         console.error(

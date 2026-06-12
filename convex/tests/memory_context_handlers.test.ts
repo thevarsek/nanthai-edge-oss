@@ -535,6 +535,60 @@ test("ensureMessageMemoryContextReady returns ready row when textHash matches (n
   assert.equal(computeCalled, false, "vectorSearch must not be called on cache hit");
 });
 
+test("ensureMessageMemoryContextReady can wait without claiming or failing pending rows", async () => {
+  const { db, tables } = createTableCtx();
+  const queryText = "pending prewarm";
+  tables.messageMemoryContexts.push({
+    _id: "messageMemoryContexts_1",
+    messageId: "msg_1",
+    userId: "user_1",
+    status: "pending",
+    textHash: hashText(queryText),
+    leaseOwner: "prewarm",
+    leaseExpiresAt: Date.now() + 10_000,
+    memoryQueryText: queryText,
+    createdAt: 1,
+    updatedAt: 2,
+  });
+
+  let mutationCount = 0;
+  let vectorSearchCount = 0;
+  const ctx = {
+    runQuery: async (_fn: unknown, args?: Record<string, unknown>) => {
+      if (args && "messageId" in args) {
+        return await getMessageMemoryContextHandler({ db } as any, args as any);
+      }
+      return null;
+    },
+    runMutation: async () => {
+      mutationCount += 1;
+      return undefined;
+    },
+    scheduler: { runAfter: async () => undefined },
+    vectorSearch: async () => {
+      vectorSearchCount += 1;
+      return [];
+    },
+  } as any;
+
+  const result = await ensureMessageMemoryContextReady(
+    ctx,
+    {
+      messageId: "msg_1" as any,
+      userId: "user_1",
+      chatId: "chat_1" as any,
+      queryText,
+      leaseOwner: "generation",
+    },
+    { maxWaitMs: 0, claimAndCompute: false },
+  );
+
+  assert.equal(result, null);
+  assert.equal(mutationCount, 0);
+  assert.equal(vectorSearchCount, 0);
+  assert.equal(tables.messageMemoryContexts[0]?.status, "pending");
+});
+
 test("ensureMessageMemoryContextReady ignores a ready row with stale textHash", async () => {
   const { db, tables } = createTableCtx();
   const oldText = "old text";

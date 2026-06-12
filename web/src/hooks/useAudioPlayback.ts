@@ -21,6 +21,16 @@ export interface PlaybackState {
   duration: number;
 }
 
+export interface AudioPlaybackCallbacks {
+  onPlaybackStarted?: () => void;
+  onGenerationRequested?: () => void;
+}
+
+interface MessageCallbackRequest {
+  messageId: Id<"messages">;
+  callback?: () => void;
+}
+
 const SPEEDS = [1, 1.5, 2] as const;
 
 export function useAudioPlayback(defaultSpeed = 1) {
@@ -37,6 +47,8 @@ export function useAudioPlayback(defaultSpeed = 1) {
   const rafRef = useRef<number | null>(null);
   const pollCountRef = useRef(0);
   const existingAudioRequestRef = useRef<Id<"messages"> | null>(null);
+  const playbackStartedCallbackRef = useRef<MessageCallbackRequest | null>(null);
+  const generationRequestRef = useRef<MessageCallbackRequest | null>(null);
 
   useEffect(() => {
     if (speedOverride == null && audioRef.current) audioRef.current.playbackRate = defaultSpeed;
@@ -64,6 +76,8 @@ export function useAudioPlayback(defaultSpeed = 1) {
     setDuration(0);
     pollCountRef.current = 0;
     existingAudioRequestRef.current = null;
+    playbackStartedCallbackRef.current = null;
+    generationRequestRef.current = null;
   }, []);
 
   // Progress animation loop
@@ -81,7 +95,14 @@ export function useAudioPlayback(defaultSpeed = 1) {
 
   const playUrl = useCallback(
     (url: string, messageId: Id<"messages">) => {
+      const playbackRequest = playbackStartedCallbackRef.current;
+      const onPlaybackStarted = playbackRequest?.messageId === messageId
+        ? playbackRequest.callback
+        : undefined;
       cleanup();
+      playbackStartedCallbackRef.current = onPlaybackStarted
+        ? { messageId, callback: onPlaybackStarted }
+        : null;
       const audio = new Audio(url);
       audioRef.current = audio;
       audio.playbackRate = speed;
@@ -94,16 +115,39 @@ export function useAudioPlayback(defaultSpeed = 1) {
       audio.addEventListener("error", () => {
         setIsPlaying(false);
         setIsLoading(false);
+        if (
+          playbackStartedCallbackRef.current?.messageId === messageId &&
+          playbackStartedCallbackRef.current.callback === onPlaybackStarted
+        ) {
+          playbackStartedCallbackRef.current = null;
+        }
       });
       setActiveMessageId(messageId);
       setIsLoading(false);
       setIsPlaying(true);
-      void audio.play().then(startProgressLoop).catch(() => {
-        if (audioRef.current === audio) {
-          setIsPlaying(false);
-          setIsLoading(false);
-        }
-      });
+      void audio.play()
+        .then(() => {
+          onPlaybackStarted?.();
+          if (
+            playbackStartedCallbackRef.current?.messageId === messageId &&
+            playbackStartedCallbackRef.current.callback === onPlaybackStarted
+          ) {
+            playbackStartedCallbackRef.current = null;
+          }
+          startProgressLoop();
+        })
+        .catch(() => {
+          if (audioRef.current === audio) {
+            setIsPlaying(false);
+            setIsLoading(false);
+            if (
+              playbackStartedCallbackRef.current?.messageId === messageId &&
+              playbackStartedCallbackRef.current.callback === onPlaybackStarted
+            ) {
+              playbackStartedCallbackRef.current = null;
+            }
+          }
+        });
     },
     [cleanup, speed, startProgressLoop],
   );
@@ -126,7 +170,11 @@ export function useAudioPlayback(defaultSpeed = 1) {
 
   /** Start playback for a message. If no audio exists, requests TTS generation. */
   const play = useCallback(
-    async (messageId: Id<"messages">, existingAudioStorageId?: Id<"_storage">) => {
+    async (
+      messageId: Id<"messages">,
+      existingAudioStorageId?: Id<"_storage">,
+      callbacks?: AudioPlaybackCallbacks,
+    ) => {
       // Toggle off if same message
       if (activeMessageId === messageId && isPlaying) {
         audioRef.current?.pause();
@@ -137,12 +185,17 @@ export function useAudioPlayback(defaultSpeed = 1) {
       // Resume if paused on same message
       if (activeMessageId === messageId && audioRef.current && !isPlaying) {
         const audio = audioRef.current;
-        void audio.play().then(startProgressLoop).catch(() => {
-          if (audioRef.current === audio) {
-            setIsPlaying(false);
-            setIsLoading(false);
-          }
-        });
+        void audio.play()
+          .then(() => {
+            callbacks?.onPlaybackStarted?.();
+            startProgressLoop();
+          })
+          .catch(() => {
+            if (audioRef.current === audio) {
+              setIsPlaying(false);
+              setIsLoading(false);
+            }
+          });
         setIsPlaying(true);
         return;
       }
@@ -150,6 +203,9 @@ export function useAudioPlayback(defaultSpeed = 1) {
       cleanup();
       setActiveMessageId(messageId);
       setIsLoading(true);
+      playbackStartedCallbackRef.current = callbacks?.onPlaybackStarted
+        ? { messageId, callback: callbacks.onPlaybackStarted }
+        : null;
 
       if (existingAudioStorageId) {
         // Audio already generated — the reactive query will provide the URL.
@@ -159,13 +215,26 @@ export function useAudioPlayback(defaultSpeed = 1) {
       }
 
       existingAudioRequestRef.current = null;
+      const generationRequest: MessageCallbackRequest = {
+        messageId,
+        callback: callbacks?.onGenerationRequested,
+      };
+      generationRequestRef.current = generationRequest;
       // Request TTS generation — backend schedules it, then the reactive
       // query on getMessageAudioUrl will fire when audioStorageId is patched.
       try {
         await requestAudioGeneration({ messageId });
+        if (generationRequestRef.current === generationRequest) {
+          generationRequest.callback?.();
+          generationRequestRef.current = null;
+        }
       } catch {
-        setIsLoading(false);
-        setActiveMessageId(null);
+        if (generationRequestRef.current === generationRequest) {
+          setIsLoading(false);
+          setActiveMessageId(null);
+          generationRequestRef.current = null;
+          playbackStartedCallbackRef.current = null;
+        }
       }
     },
     [activeMessageId, isPlaying, cleanup, startProgressLoop, requestAudioGeneration],

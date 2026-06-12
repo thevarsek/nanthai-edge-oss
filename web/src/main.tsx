@@ -10,6 +10,7 @@ import { App } from "./App";
 import { SharedDataProvider } from "./hooks/SharedDataProvider";
 import { ToastProvider } from "./components/shared/Toast";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
+import { AnalyticsBridge } from "./components/analytics/AnalyticsBridge";
 import "./i18n"; // initializes i18next (side-effect import)
 import "./index.css";
 
@@ -35,6 +36,7 @@ createRoot(document.getElementById("root")!).render(
       >
         <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
           <BrowserRouter>
+            <AnalyticsBridge />
             <SharedDataProvider>
               <ToastProvider>
                 <ErrorBoundary level="app">

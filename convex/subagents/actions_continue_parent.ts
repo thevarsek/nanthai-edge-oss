@@ -8,7 +8,14 @@ import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
 import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
 import { generateForParticipant } from "../chat/actions_run_generation_participant";
+import {
+  captureAssistantResponseCompleted,
+  captureAssistantResponseContinued,
+  captureAssistantResponseFailure,
+  captureAssistantResponseStartedEvent,
+} from "../chat/generation_analytics";
 import type { GenerationContinuationCheckpoint } from "../chat/generation_continuation_shared";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import type { ParticipantConfig } from "../chat/actions_run_generation_types";
 import {
   buildParentContinuationPayload,
@@ -20,6 +27,8 @@ import {
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { estimatePromptTokens } from "../chat/runtime_graph";
 import type { OpenRouterMessage } from "../lib/openrouter";
+import { scheduleContextAssemblyLog } from "../chat/context_assembly_log_scheduler";
+import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
 
 type ParentContinuationRun = Parameters<typeof buildParentContinuationPayload>[0][number];
 type ChildGeneratedFile = NonNullable<ParentContinuationRun["generatedFiles"]>[number];
@@ -50,6 +59,70 @@ function mapParentTerminalState(
   }
   if (messageStatus === "completed" || jobStatus === "completed") return "completed";
   return null;
+}
+
+type ParentResumeTerminalState = "completed" | "failed" | "cancelled";
+
+type ParentResumeAnalyticsBatch = {
+  _id: Id<"subagentBatches">;
+  parentMessageId: Id<"messages">;
+  parentJobId: Id<"generationJobs">;
+  chatId: Id<"chats">;
+  userId: string;
+  participantSnapshot?: {
+    participant?: {
+      modelId?: string | null;
+    };
+  };
+  paramsSnapshot?: {
+    analytics?: AnalyticsClientMetadata;
+  };
+};
+
+type ParentResumeTerminalJob = {
+  error?: string;
+  openrouterGenerationId?: string | null;
+};
+
+async function captureRecoveredParentResumeTerminal(
+  ctx: ActionCtx,
+  batch: ParentResumeAnalyticsBatch,
+  terminalState: ParentResumeTerminalState,
+  parentJob?: ParentResumeTerminalJob | null,
+): Promise<void> {
+  const modelId = batch.participantSnapshot?.participant?.modelId ?? null;
+  const properties = {
+    subagent_batch_id: String(batch._id),
+    terminal_state: terminalState,
+    recovered_terminal: true,
+  };
+  if (terminalState === "completed") {
+    await captureAssistantResponseCompleted(ctx, {
+      userId: batch.userId,
+      chatId: String(batch.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId,
+      source: "subagent_parent_resume",
+      analytics: batch.paramsSnapshot?.analytics,
+      openrouterGenerationId: parentJob?.openrouterGenerationId,
+      properties,
+    });
+    return;
+  }
+
+  await captureAssistantResponseFailure(ctx, {
+    userId: batch.userId,
+    chatId: String(batch.chatId),
+    messageId: String(batch.parentMessageId),
+    jobId: String(batch.parentJobId),
+    modelId,
+    source: "subagent_parent_resume",
+    error: parentJob?.error ? new Error(parentJob.error) : undefined,
+    cancelled: terminalState === "cancelled",
+    analytics: batch.paramsSnapshot?.analytics,
+    properties,
+  });
 }
 
 async function finalizeParentResumeFailure(
@@ -124,6 +197,7 @@ async function reconcileOrFailStaleResume(
         generatedCharts: childGeneratedCharts,
       });
     }
+    await captureRecoveredParentResumeTerminal(ctx, batch, "completed", parentJob);
     await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
       batchId: batch._id,
       status: "completed",
@@ -133,6 +207,7 @@ async function reconcileOrFailStaleResume(
   }
 
   if (terminalState === "failed" || terminalState === "cancelled") {
+    await captureRecoveredParentResumeTerminal(ctx, batch, terminalState, parentJob);
     await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
       batchId: batch._id,
       status: terminalState,
@@ -153,6 +228,7 @@ async function reconcileOrFailStaleResume(
     error: "Subagent resume lease expired before completion.",
     userId: batch.userId,
   });
+  await captureRecoveredParentResumeTerminal(ctx, batch, "failed", parentJob);
   await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
     batchId: batch._id,
     status: "failed",
@@ -214,6 +290,7 @@ export async function continueParentAfterSubagentsHandler(
         generatedCharts: childGeneratedCharts,
       });
     }
+    await captureRecoveredParentResumeTerminal(ctx, batch, existingTerminalState, existingParentJob);
     await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
       batchId: batch._id,
       status: existingTerminalState,
@@ -240,6 +317,8 @@ export async function continueParentAfterSubagentsHandler(
     webSearchToolEnabled?: boolean;
     requireZdr?: boolean;
     requestParams?: { webSearchEnabled?: boolean; provider?: { zdr?: boolean } };
+    analytics?: AnalyticsClientMetadata;
+    analyticsSource?: "chat_generation" | "web_search" | "research_paper" | "scheduled_job";
   };
   const continuationPayload = buildParentContinuationPayload(
     runs.map((run) => ({
@@ -304,7 +383,7 @@ export async function continueParentAfterSubagentsHandler(
     m38ResumeMetadata: resumeMetadata,
   });
   const resumeTokenEstimate = estimatePromptTokens(requestMessages);
-  await ctx.runMutation(internal.chat.context_assembly_logs.insertContextAssemblyLog, {
+  await scheduleContextAssemblyLog(ctx, {
     userId: batch.userId,
     chatId: batch.chatId,
     messageId: batch.parentMessageId,
@@ -364,8 +443,40 @@ export async function continueParentAfterSubagentsHandler(
     webSearchToolEnabled,
   });
 
+  let didCaptureParentTerminal = false;
   try {
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, participantSnapshot.userId);
+    let shouldCaptureStarted = false;
+    try {
+      shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, batch.parentJobId);
+    } catch (error) {
+      console.warn("[analytics] failed to mark parent resume analytics start", {
+        jobId: batch.parentJobId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      shouldCaptureStarted = true;
+    }
+    if (!shouldCaptureStarted) {
+      return;
+    }
+    await captureAssistantResponseStartedEvent(ctx, {
+      userId: participantSnapshot.userId,
+      chatId: String(participantSnapshot.chatId),
+      messageId: String(batch.parentMessageId),
+      jobId: String(batch.parentJobId),
+      modelId: participantSnapshot.participant.modelId,
+      source: "subagent_parent_resume",
+      analytics: paramsSnapshot.analytics,
+      participantCount: 1,
+      webSearchEnabled: webSearchToolEnabled,
+      integrationCount: paramsSnapshot.enabledIntegrations?.length ?? 0,
+      isResume: true,
+      properties: {
+        subagent_batch_id: String(batch._id),
+        request_message_count: requestMessages.length,
+        request_token_estimate: resumeTokenEstimate,
+      },
+    });
     const generationResult = await generateForParticipant({
       ctx,
       args: {
@@ -381,6 +492,8 @@ export async function continueParentAfterSubagentsHandler(
         enabledIntegrations: paramsSnapshot.enabledIntegrations,
         subagentsEnabled: false,
         subagentBatchId: batch._id,
+        analytics: paramsSnapshot.analytics,
+        analyticsSource: "subagent_parent_resume",
       },
       participant: participantSnapshot.participant,
       allMessages: [],
@@ -453,6 +566,8 @@ export async function continueParentAfterSubagentsHandler(
             isPro: isProUser,
             allowSubagents: false,
             subagentBatchId: batch._id,
+            analytics: paramsSnapshot.analytics,
+            analyticsSource: "subagent_parent_resume",
             resumeExpected: true,
           }, resumeCheckpoint);
         },
@@ -483,7 +598,55 @@ export async function continueParentAfterSubagentsHandler(
     }
 
     if (generationResult.continued) {
+      await captureAssistantResponseContinued(ctx, {
+        userId: participantSnapshot.userId,
+        chatId: String(participantSnapshot.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId: participantSnapshot.participant.modelId,
+        source: "subagent_parent_resume",
+        usage: generationResult.usage,
+        analytics: paramsSnapshot.analytics,
+        participantCount: 1,
+        openrouterGenerationId: generationResult.generationId,
+        latencies: generationResult.latencies,
+        properties: {
+          subagent_batch_id: String(batch._id),
+        },
+      });
       return;
+    }
+    if (generationResult.failed || generationResult.cancelled) {
+      await captureAssistantResponseFailure(ctx, {
+        userId: participantSnapshot.userId,
+        chatId: String(participantSnapshot.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId: participantSnapshot.participant.modelId,
+        source: "subagent_parent_resume",
+        error: generationResult.error,
+        cancelled: generationResult.cancelled,
+        analytics: paramsSnapshot.analytics,
+        properties: {
+          subagent_batch_id: String(batch._id),
+        },
+      });
+      didCaptureParentTerminal = true;
+    } else {
+      await captureAssistantResponseCompleted(ctx, {
+        userId: participantSnapshot.userId,
+        chatId: String(participantSnapshot.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId: participantSnapshot.participant.modelId,
+        source: "subagent_parent_resume",
+        usage: generationResult.usage,
+        analytics: paramsSnapshot.analytics,
+        properties: {
+          subagent_batch_id: String(batch._id),
+        },
+      });
+      didCaptureParentTerminal = true;
     }
 
     const parentMessage = await ctx.runQuery(internal.chat.queries.getMessageInternal, {
@@ -509,6 +672,18 @@ export async function continueParentAfterSubagentsHandler(
       });
     }
   } catch (error) {
+    if (!didCaptureParentTerminal) {
+      await captureAssistantResponseFailure(ctx, {
+        userId: participantSnapshot.userId,
+        chatId: String(participantSnapshot.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId: participantSnapshot.participant.modelId,
+        source: "subagent_parent_resume",
+        error,
+        analytics: paramsSnapshot.analytics,
+      });
+    }
     await finalizeParentResumeFailure(ctx, batch, error);
   }
 }

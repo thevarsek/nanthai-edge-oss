@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation } from "convex/react";
@@ -7,6 +7,7 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { useOpenRouterStatus, useSharedData } from "@/hooks/useSharedData";
 import { generatePKCE } from "@/lib/pkce";
 import { OpenRouter } from "@/lib/constants";
+import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
 
 // MARK: - Screen definitions
 
@@ -29,6 +30,7 @@ export function OnboardingPage() {
   const [current, setCurrent] = useState(0);
   const [finishing, setFinishing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const capturedOnboardingStartedRef = useRef(false);
   const isReplayMode = searchParams.get("mode") === "replay";
 
   const SCREENS: OnboardingScreen[] = [
@@ -58,12 +60,35 @@ export function OnboardingPage() {
       ? t("openrouter_connected_title")
       : t("continue_with_a_supported_provider_to_finish_onboarding");
   const finalButtonLabel = isReplayMode ? t("done") : t("finish");
+  const shouldCaptureOnboardingAnalytics = isReplayMode || prefs?.onboardingCompleted === false;
 
   useEffect(() => {
     if (!isReplayMode && prefs?.onboardingCompleted) {
       navigate("/openrouter-required", { replace: true });
+      return;
     }
-  }, [isReplayMode, navigate, prefs?.onboardingCompleted]);
+    if (!shouldCaptureOnboardingAnalytics) return;
+
+    if (!capturedOnboardingStartedRef.current) {
+      capturedOnboardingStartedRef.current = true;
+      captureAnalytics("onboarding_started", {
+        feature_area: "onboarding",
+        replay_mode: isReplayMode,
+      });
+    }
+  }, [isReplayMode, navigate, prefs?.onboardingCompleted, shouldCaptureOnboardingAnalytics]);
+
+  useEffect(() => {
+    if (!shouldCaptureOnboardingAnalytics) return;
+
+    captureAnalytics("onboarding_step_viewed", {
+      feature_area: "onboarding",
+      step_index: current,
+      step_count: SCREENS.length,
+      replay_mode: isReplayMode,
+      action: screen.action ?? null,
+    });
+  }, [current, isReplayMode, screen.action, SCREENS.length, shouldCaptureOnboardingAnalytics]);
 
   function handleBack() {
     if (!isFirst) setCurrent((c) => c - 1);
@@ -75,11 +100,19 @@ export function OnboardingPage() {
 
   async function handleConnect() {
     setErrorMessage(null);
+    captureAnalytics("openrouter_connect_started", {
+      feature_area: "onboarding",
+      source: isReplayMode ? "onboarding_replay" : "onboarding",
+    });
     try {
       const { state, verifier, challenge } = await generatePKCE();
       sessionStorage.setItem("pkce_state", state);
       sessionStorage.setItem("pkce_verifier", verifier);
       sessionStorage.setItem("openrouter_post_connect", isReplayMode ? "return" : "onboarding");
+      sessionStorage.setItem(
+        "openrouter_post_connect_source",
+        isReplayMode ? "onboarding_replay" : "onboarding",
+      );
       if (isReplayMode) {
         sessionStorage.setItem("openrouter_post_connect_path", "/app/settings");
       } else {
@@ -93,6 +126,12 @@ export function OnboardingPage() {
       });
       window.location.href = `${OpenRouter.oauthUrl}?${params.toString()}`;
     } catch (err) {
+      captureAnalytics("openrouter_connect_failed", {
+        feature_area: "onboarding",
+        source: isReplayMode ? "onboarding_replay" : "onboarding",
+        failure_stage: "start",
+        error_label: analyticsErrorLabel(err),
+      });
       setErrorMessage(
         err instanceof Error && err.message.trim().length > 0
           ? err.message
@@ -111,6 +150,10 @@ export function OnboardingPage() {
     setErrorMessage(null);
     try {
       await setOnboardingCompleted({});
+      captureAnalytics("onboarding_completed", {
+        feature_area: "onboarding",
+        replay_mode: isReplayMode,
+      });
       navigate(isReplayMode ? "/app/settings" : "/app/chat", { replace: true });
     } catch (err) {
       setErrorMessage(

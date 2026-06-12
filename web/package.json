@@ -22,6 +22,7 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "katex": "^0.16.40",
     "lucide-react": "^0.577.0",
+    "posthog-js": "^1.384.3",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-helmet-async": "^3.0.0",

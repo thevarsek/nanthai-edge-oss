@@ -15,6 +15,11 @@ import {
   isPlaceholderTitle,
   normalizedGeneratedTitle,
 } from "./title_helpers";
+import {
+  captureBackendAIOperationCompleted,
+  captureBackendAIOperationFailed,
+  captureBackendAIOperationStarted,
+} from "../analytics/backend_events";
 
 const DEFAULT_TITLE_MODEL = MODEL_IDS.titleGeneration;
 
@@ -112,14 +117,30 @@ export async function generateTitleHandler(
     },
   ];
 
+  const requireZdr = isZdrEnabled(prefs);
+  const model = selectAncillaryModelForZdr({
+    requestedModel: args.titleModel,
+    defaultModel: DEFAULT_TITLE_MODEL,
+    requireZdr,
+  });
+  const operationStartedAt = Date.now();
+
   try {
-    const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const requireZdr = isZdrEnabled(prefs);
-    const model = selectAncillaryModelForZdr({
-      requestedModel: args.titleModel,
-      defaultModel: DEFAULT_TITLE_MODEL,
-      requireZdr,
+    await captureBackendAIOperationStarted(ctx, {
+      userId: args.userId,
+      operation: "title_generation",
+      source: "post_process",
+      chatId: String(args.chatId),
+      messageId: args.messageId ? String(args.messageId) : undefined,
+      modelId: model,
+      properties: {
+        requested_model_id: args.titleModel ?? null,
+        assistant_context_included: Boolean(args.assistantContent),
+        seed_title_present: normalizedSeedTitle.length > 0,
+        zdr_required: requireZdr,
+      },
     });
+    const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, args.userId);
     const result = await deps.callOpenRouterNonStreaming(
       apiKey,
       model,
@@ -145,11 +166,30 @@ export async function generateTitleHandler(
     }
 
     let title = normalizedGeneratedTitle(result.content);
+    const model_title_accepted = Boolean(title && !isPlaceholderTitle(title));
     if (!title || isPlaceholderTitle(title)) {
       title = fallbackTitle;
     }
 
     if (!title) {
+      await captureBackendAIOperationCompleted(ctx, {
+        userId: args.userId,
+        operation: "title_generation",
+        source: "post_process",
+        chatId: String(args.chatId),
+        messageId: args.messageId ? String(args.messageId) : undefined,
+        modelId: model,
+        usage: result.usage,
+        durationMs: Date.now() - operationStartedAt,
+        openrouterGenerationId: result.generationId,
+        properties: {
+          requested_model_id: args.titleModel ?? null,
+          title_updated: false,
+          model_title_accepted,
+          fallback_used: false,
+          zdr_required: requireZdr,
+        },
+      });
       return;
     }
 
@@ -157,6 +197,25 @@ export async function generateTitleHandler(
       chatId: args.chatId,
     });
     if (!latestChat || !canUpdateChatTitle(latestChat.title, normalizedSeedTitle)) {
+      await captureBackendAIOperationCompleted(ctx, {
+        userId: args.userId,
+        operation: "title_generation",
+        source: "post_process",
+        chatId: String(args.chatId),
+        messageId: args.messageId ? String(args.messageId) : undefined,
+        modelId: model,
+        usage: result.usage,
+        durationMs: Date.now() - operationStartedAt,
+        openrouterGenerationId: result.generationId,
+        properties: {
+          requested_model_id: args.titleModel ?? null,
+          title_updated: false,
+          model_title_accepted,
+          fallback_used: !model_title_accepted,
+          blocked_by_latest_title_guard: true,
+          zdr_required: requireZdr,
+        },
+      });
       return;
     }
 
@@ -164,7 +223,40 @@ export async function generateTitleHandler(
       chatId: args.chatId,
       title,
     });
-  } catch {
+    await captureBackendAIOperationCompleted(ctx, {
+      userId: args.userId,
+      operation: "title_generation",
+      source: "post_process",
+      chatId: String(args.chatId),
+      messageId: args.messageId ? String(args.messageId) : undefined,
+      modelId: model,
+      usage: result.usage,
+      durationMs: Date.now() - operationStartedAt,
+      openrouterGenerationId: result.generationId,
+      properties: {
+        requested_model_id: args.titleModel ?? null,
+        title_updated: true,
+        model_title_accepted,
+        fallback_used: !model_title_accepted,
+        zdr_required: requireZdr,
+      },
+    });
+  } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "title_generation",
+      source: "post_process",
+      chatId: String(args.chatId),
+      messageId: args.messageId ? String(args.messageId) : undefined,
+      modelId: model,
+      error,
+      durationMs: Date.now() - operationStartedAt,
+      properties: {
+        requested_model_id: args.titleModel ?? null,
+        fallback_title_available: Boolean(fallbackTitle),
+        zdr_required: requireZdr,
+      },
+    });
     if (!fallbackTitle) {
       return;
     }

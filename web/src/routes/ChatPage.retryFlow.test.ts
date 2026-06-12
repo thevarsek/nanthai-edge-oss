@@ -41,7 +41,18 @@ describe("ChatPage retry flow helpers", () => {
       turnSkillOverrideEntries: [{ skillId: "skill_1" as Id<"skills">, state: "always" }],
       turnIntegrationOverrideEntries: [{ integrationId: "calendar", enabled: true }],
       effectiveSubagentsEnabled: true,
-    })).toEqual({ messageId });
+    })).toEqual({
+      messageId,
+      analyticsSnapshot: {
+        participantCount: 1,
+        modelIds: "openai/gpt-5.2",
+        searchMode: "web",
+        complexity: null,
+        integrationCount: 0,
+        subagentsEnabled: false,
+        hasVideoConfig: false,
+      },
+    });
   });
 
   it("builds legacy retry args from current overrides when no retryContract exists", () => {

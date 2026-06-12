@@ -30,6 +30,10 @@ interface StorageContext {
   };
 }
 
+interface HydrateAttachmentsForRequestOptions {
+  inlineStoredNonImageAttachments?: boolean;
+}
+
 function parseDataUrl(
   value: string,
 ): { mimeType: string; base64: string } | null {
@@ -257,7 +261,9 @@ export async function persistGeneratedImageUrlsWithTracking(
 export async function hydrateAttachmentsForRequest(
   ctx: StorageContext,
   messages: MessageWithStoredAttachments[],
+  options: HydrateAttachmentsForRequestOptions = {},
 ): Promise<MessageWithStoredAttachments[]> {
+  const inlineStoredNonImageAttachments = options.inlineStoredNonImageAttachments !== false;
   const hydrated = await Promise.all(
     messages.map(async (message) => {
       if (!message.attachments || message.attachments.length === 0) {
@@ -274,6 +280,10 @@ export async function hydrateAttachmentsForRequest(
             const imageUrl = await ctx.storage.getUrl(attachment.storageId);
             if (!imageUrl) return attachment;
             return { ...attachment, url: imageUrl };
+          }
+
+          if (!inlineStoredNonImageAttachments) {
+            return attachment;
           }
 
           try {

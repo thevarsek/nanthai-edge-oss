@@ -264,7 +264,7 @@ test("handlePhaseError finalizes with failed status on regular errors", async ()
 });
 
 test("handlePhaseError finalizes with cancelled status on GenerationCancelledError", async () => {
-  const { ctx, mutations } = buildFakeCtx({});
+  const { ctx, mutations, scheduled } = buildFakeCtx({});
   const args = buildBaseArgs();
 
   await handlePhaseError(ctx, args, new GenerationCancelledError());
@@ -284,6 +284,14 @@ test("handlePhaseError finalizes with cancelled status on GenerationCancelledErr
     return (a.patch as Record<string, unknown> | undefined)?.status === "cancelled";
   });
   assert.ok(sessionPatch);
+  assert.equal(
+    scheduled.some((entry) => {
+      const analyticsArgs = entry.args as Record<string, unknown>;
+      return analyticsArgs.event === "assistant_response_started" ||
+        analyticsArgs.event === "assistant_response_failed";
+    }),
+    false,
+  );
 });
 
 test("handlePhaseError handles non-Error thrown values gracefully", async () => {
@@ -338,7 +346,9 @@ test("runInitialSearchAction schedules synthesis for complexity 1 (depth=1, no d
   await (runInitialSearchAction as any)._handler(ctx, buildBaseArgs({ complexity: 1, phaseOrder: 1 }));
 
   // complexity 1 → depth=1 → depthIterations=0 → should skip to synthesis
-  const lastScheduled = scheduled[scheduled.length - 1];
+  const lastScheduled = scheduled.find((s) =>
+    (s.args as Record<string, unknown>).phaseOrder === 2
+  );
   assert.ok(lastScheduled);
   // phaseOrder should be incremented
   assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 2);
@@ -354,7 +364,10 @@ test("runInitialSearchAction schedules analysis for complexity 2 (depth=2, enter
 
   await (runInitialSearchAction as any)._handler(ctx, buildBaseArgs({ complexity: 2, phaseOrder: 1 }));
 
-  const lastScheduled = scheduled[scheduled.length - 1];
+  const lastScheduled = scheduled.find((s) =>
+    (s.args as Record<string, unknown>).depthIteration === 0
+    && (s.args as Record<string, unknown>).phaseOrder === 2
+  );
   assert.ok(lastScheduled);
   assert.equal((lastScheduled.args as Record<string, unknown>).depthIteration, 0);
   assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 2);
@@ -378,7 +391,9 @@ test("runDepthSearchAction schedules synthesis when depth loop is exhausted", as
   }));
 
   // Should schedule synthesis (not another analysis)
-  const lastScheduled = scheduled[scheduled.length - 1];
+  const lastScheduled = scheduled.find((s) =>
+    (s.args as Record<string, unknown>).phaseOrder === 4
+  );
   assert.ok(lastScheduled);
   assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 4);
   // No depthIteration in synthesis args
@@ -400,7 +415,9 @@ test("runDepthSearchAction schedules next analysis when more depth iterations re
     depthIteration: 0,
   }));
 
-  const lastScheduled = scheduled[scheduled.length - 1];
+  const lastScheduled = scheduled.find((s) =>
+    (s.args as Record<string, unknown>).depthIteration === 1
+  );
   assert.ok(lastScheduled);
   assert.equal((lastScheduled.args as Record<string, unknown>).depthIteration, 1);
 });
@@ -611,6 +628,45 @@ test("researchPaperPipeline entry point schedules runPlanningAction with phaseOr
   assert.equal((scheduled[0].args as Record<string, unknown>).phaseOrder, 0);
   assert.equal((scheduled[0].args as Record<string, unknown>).complexity, 2);
   assert.equal((scheduled[0].args as Record<string, unknown>).query, "AI pricing");
+});
+
+test("researchPaperPipeline exits without replaying analytics when already cancelled at entry", async () => {
+  const { researchPaperPipeline } = await import("../search/workflow");
+
+  const mutations: Array<{ args: Record<string, unknown> }> = [];
+  const scheduled: Array<unknown> = [];
+
+  await (researchPaperPipeline as any)._handler({
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      mutations.push({ args });
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("jobId" in args) return true;
+      throw new Error(`Unexpected query after cancellation: ${JSON.stringify(args)}`);
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
+        scheduled.push(args);
+      },
+    },
+  }, {
+    sessionId: "session_1",
+    assistantMessageId: "assistant_1",
+    jobId: "job_1",
+    chatId: "chat_1",
+    userMessageId: "user_message_1",
+    userId: "user_1",
+    query: "AI pricing",
+    complexity: 2,
+    expandMultiModelGroups: false,
+    modelId: "openai/gpt-5.2",
+  });
+
+  assert.equal(
+    mutations.some((entry) => entry.args.status === "cancelled" || entry.args.status === "failed"),
+    false,
+  );
+  assert.equal(scheduled.length, 0);
 });
 
 test("researchPaperPipeline entry point fails fast when API key is missing", async () => {

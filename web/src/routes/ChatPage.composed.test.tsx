@@ -11,6 +11,7 @@ const {
   attachPickedDriveFiles,
   cancelGeneration,
   cancelSession,
+  captureAnalytics,
   clearKBFiles,
   clearTurnOverrides,
   createChat,
@@ -33,6 +34,7 @@ const {
   attachPickedDriveFiles: vi.fn(async () => null),
   cancelGeneration: vi.fn(async () => ({ cancelledCount: 1 })),
   cancelSession: vi.fn(async () => null),
+  captureAnalytics: vi.fn(),
   clearKBFiles: vi.fn(),
   clearTurnOverrides: vi.fn(),
   createChat: vi.fn(async () => "chat_created"),
@@ -73,8 +75,14 @@ const {
       content: string;
       status: "completed";
       createdAt: number;
+      searchSessionId?: Id<"searchSessions">;
     }>,
     branchNodes: new Map<Id<"messages">, { messageId: Id<"messages"> }>(),
+    sessionMap: new Map<string, {
+      chatId: Id<"chats">;
+      assistantMessageId: Id<"messages">;
+      mode: "web" | "paper";
+    }>(),
     navigateBranch: vi.fn(),
     setOptimisticLeafId: vi.fn(),
   },
@@ -142,6 +150,17 @@ vi.mock("convex/react", () => ({
     if (key === "getKnowledgeBaseFilesByStorageIds" && args !== "skip") return testState.kbFiles;
     return undefined;
   },
+}));
+
+vi.mock("@/lib/analytics", () => ({
+  analyticsErrorLabel: (error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error",
+  captureAnalytics,
+  createAnalyticsClientMetadata: (event: string) => ({
+    platform: "web",
+    surface: "web_app",
+    clientEventId: `${event}_id`,
+    clientSentAt: 123,
+  }),
 }));
 
 vi.mock("@/hooks/useChat", () => ({
@@ -256,7 +275,7 @@ vi.mock("@/hooks/useAutonomous", () => ({
 }));
 
 vi.mock("@/hooks/useSearchSessions", () => ({
-  useSearchSessions: () => ({ sessionMap: new Map() }),
+  useSearchSessions: () => ({ sessionMap: testState.sessionMap }),
 }));
 
 vi.mock("@/hooks/useChatCosts", () => ({
@@ -298,7 +317,22 @@ vi.mock("@/components/shared/LoadingSpinner", () => ({
   LoadingSpinner: () => <div>loading</div>,
 }));
 
-vi.mock("@/components/chat/MessageBubble", () => ({ MessageBubble: () => null }));
+vi.mock("@/components/chat/MessageBubble", async () => {
+  const { useSearchSessionContext } = await vi.importActual<typeof import("@/components/chat/SearchSessionContext")>(
+    "@/components/chat/SearchSessionContext",
+  );
+  return {
+    MessageBubble: ({ message }: { message: { searchSessionId?: string } }) => {
+      const { onCancel } = useSearchSessionContext();
+      if (!message.searchSessionId) return null;
+      return (
+        <button type="button" onClick={() => onCancel(message.searchSessionId!)}>
+          cancel-session
+        </button>
+      );
+    },
+  };
+});
 vi.mock("@/components/chat/MultiModelResponseGroup", () => ({ MultiModelResponseGroup: () => null }));
 vi.mock("@/components/chat/PendingResponseGroup", () => ({ PendingResponseGroup: () => null }));
 vi.mock("@/components/chat/BranchIndicator", () => ({
@@ -323,6 +357,7 @@ describe("ChatPage composed send behavior", () => {
     testState.overrides.turnIntegrationOverrideEntries = [];
     testState.messages = [];
     testState.branchNodes = new Map();
+    testState.sessionMap = new Map();
     testState.navigateBranch.mockReset();
     testState.setOptimisticLeafId.mockReset();
     sendMessage.mockResolvedValue({ userMessageId: "msg_user", assistantMessageIds: ["msg_assistant"] });
@@ -471,5 +506,39 @@ describe("ChatPage composed send behavior", () => {
     });
 
     expect(testState.setOptimisticLeafId).not.toHaveBeenCalledWith("leaf_first_committed");
+  });
+
+  it("logs the actual search session mode when cancelling search progress", async () => {
+    const user = userEvent.setup();
+    testState.sessionMap = new Map([
+      ["session_web", {
+        chatId: "chat_1" as Id<"chats">,
+        assistantMessageId: "msg_search" as Id<"messages">,
+        mode: "web",
+      }],
+    ]);
+    testState.messages = [{
+      _id: "msg_search" as Id<"messages">,
+      chatId: "chat_1" as Id<"chats">,
+      role: "assistant",
+      content: "searching",
+      status: "completed",
+      createdAt: 1,
+      searchSessionId: "session_web" as Id<"searchSessions">,
+    }];
+
+    render(<ChatPage />);
+    await user.click(screen.getByRole("button", { name: "cancel-session" }));
+
+    await waitFor(() => expect(cancelSession).toHaveBeenCalledWith({ sessionId: "session_web" }));
+    expect(captureAnalytics).toHaveBeenCalledWith(
+      "generation_cancelled",
+      expect.objectContaining({
+        chat_id: "chat_1",
+        message_id: "msg_search",
+        session_id: "session_web",
+        search_mode: "web",
+      }),
+    );
   });
 });

@@ -31,6 +31,12 @@ import {
   shouldExcludeMemoryContent,
   type ExtractedMemory,
 } from "./actions_extract_memories_utils";
+import {
+  captureBackendAIOperationCompleted,
+  captureBackendAIOperationFailed,
+  captureBackendAIOperationStarted,
+} from "../analytics/backend_events";
+import type { OpenRouterUsage } from "../lib/openrouter";
 
 const DEFAULT_MEMORY_MODEL = MODEL_IDS.memoryExtraction;
 const MEMORY_FALLBACK_MODEL = MODEL_IDS.memoryExtractionFallback;
@@ -151,15 +157,37 @@ export async function extractMemoriesHandler(
 
   const exclusionRules = detectMemoryExclusionRules(args.userMessageContent);
   let extracted: ExtractedMemory[] = [];
+  let memoryModel = args.extractionModel ?? DEFAULT_MEMORY_MODEL;
+  let operationStartedAt: number | undefined;
+  let operationUsage: OpenRouterUsage | null = null;
+  let operationGenerationId: string | null = null;
+  let modelCallSucceeded = false;
+  let requireZdr = false;
   try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
     const messages = buildMemoryExtractionMessages(args, existingContext);
-    const requireZdr = isZdrEnabled(prefs);
-    const memoryModel = selectAncillaryModelForZdr({
+    requireZdr = isZdrEnabled(prefs);
+    memoryModel = selectAncillaryModelForZdr({
       requestedModel: args.extractionModel,
       defaultModel: DEFAULT_MEMORY_MODEL,
       requireZdr,
     });
+    operationStartedAt = Date.now();
+    await captureBackendAIOperationStarted(ctx, {
+      userId: args.userId,
+      operation: "memory_extraction",
+      source: "post_process",
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId ?? args.userMessageId),
+      modelId: memoryModel,
+      properties: {
+        requested_model_id: args.extractionModel ?? null,
+        existing_memory_count: existingMemories.length,
+        pending_review: args.isPending === true,
+        assistant_message_present: Boolean(args.assistantMessageId),
+        zdr_required: requireZdr,
+      },
+    });
+    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
     const result = await callOpenRouterStreaming(
       apiKey,
       memoryModel,
@@ -168,6 +196,9 @@ export async function extractMemoriesHandler(
       {},
       { fallbackModel: MEMORY_FALLBACK_MODEL },
     );
+    operationUsage = result.usage;
+    operationGenerationId = result.generationId;
+    modelCallSucceeded = true;
     extracted = parseMemoryExtractionPayload(result.content);
 
     // M23: Track memory extraction cost against the assistant message.
@@ -187,27 +218,80 @@ export async function extractMemoriesHandler(
       });
     }
   } catch (error) {
+    await captureBackendAIOperationFailed(ctx, {
+      userId: args.userId,
+      operation: "memory_extraction",
+      source: "post_process",
+      chatId: String(args.chatId),
+      messageId: String(args.assistantMessageId ?? args.userMessageId),
+      modelId: memoryModel,
+      durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+      error,
+      properties: {
+        requested_model_id: args.extractionModel ?? null,
+        existing_memory_count: existingMemories.length,
+        pending_review: args.isPending === true,
+        stage: "model_call",
+        zdr_required: requireZdr,
+      },
+    });
     console.error("Memory extraction model call failed", error);
   }
 
   try {
-    if (extracted.length === 0) return;
+    let skippedCount = 0;
+    let reinforcedCount = 0;
+    let supersededCount = 0;
+    let createdCount = 0;
+    let embeddingScheduledCount = 0;
+
+    if (extracted.length === 0) {
+      if (modelCallSucceeded) {
+        await captureBackendAIOperationCompleted(ctx, {
+          userId: args.userId,
+          operation: "memory_extraction",
+          source: "post_process",
+          chatId: String(args.chatId),
+          messageId: String(args.assistantMessageId ?? args.userMessageId),
+          modelId: memoryModel,
+          usage: operationUsage,
+          durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+          openrouterGenerationId: operationGenerationId,
+          properties: {
+            requested_model_id: args.extractionModel ?? null,
+            raw_candidate_count: 0,
+            created_memory_count: 0,
+            reinforced_memory_count: 0,
+            superseded_memory_count: 0,
+            skipped_candidate_count: 0,
+            embedding_scheduled_count: 0,
+            existing_memory_count: existingMemories.length,
+            pending_review: args.isPending === true,
+          },
+        });
+      }
+      return;
+    }
 
     for (const item of extracted.slice(0, 4)) {
       const normalizedContent = normalizeMemoryContent(item.content ?? "");
       if (!normalizedContent) {
+        skippedCount += 1;
         logMemorySkip("invalid_empty", item.content ?? "");
         continue;
       }
       if (normalizedContent.length > 280) {
+        skippedCount += 1;
         logMemorySkip("too_long", normalizedContent);
         continue;
       }
       if (shouldExcludeMemoryContent(normalizedContent, exclusionRules)) {
+        skippedCount += 1;
         logMemorySkip("privacy", normalizedContent);
         continue;
       }
       if (!memoryLikelyUserFact(normalizedContent)) {
+        skippedCount += 1;
         logMemorySkip("meta_or_low_quality", normalizedContent);
         continue;
       }
@@ -223,10 +307,12 @@ export async function extractMemoriesHandler(
       const importanceScore = clampScore(item.importanceScore, lifecycle.importanceScore);
       const confidenceScore = clampScore(item.confidenceScore, lifecycle.confidenceScore);
       if (importanceScore < MIN_IMPORTANCE_SCORE) {
+        skippedCount += 1;
         logMemorySkip("low_importance", normalizedContent);
         continue;
       }
       if (confidenceScore < MIN_CONFIDENCE_SCORE) {
+        skippedCount += 1;
         logMemorySkip("low_confidence", normalizedContent);
         continue;
       }
@@ -243,10 +329,12 @@ export async function extractMemoriesHandler(
           candidateConfidenceScore: confidenceScore,
           candidateExpiresAt: expiresAt,
         });
+        reinforcedCount += 1;
         logMemorySkip("duplicate_reinforced", normalizedContent);
         continue;
       }
       if (isDuplicateMemory(normalizedContent, existingMemories)) {
+        skippedCount += 1;
         logMemorySkip("duplicate", normalizedContent);
         continue;
       }
@@ -261,6 +349,7 @@ export async function extractMemoriesHandler(
           memoryId: conflicting._id,
           supersededAt: now,
         });
+        supersededCount += 1;
       }
 
       const memoryId = await ctx.runMutation(internal.chat.mutations.createMemory, {
@@ -300,13 +389,58 @@ export async function extractMemoriesHandler(
         sourceType: "chat",
         tags: item.tags,
       }));
+      createdCount += 1;
 
       await ctx.scheduler.runAfter(0, internal.memory.operations.computeAndStoreEmbedding, {
         memoryId,
         content: normalizedContent,
       });
+      embeddingScheduledCount += 1;
+    }
+
+    if (modelCallSucceeded) {
+      await captureBackendAIOperationCompleted(ctx, {
+        userId: args.userId,
+        operation: "memory_extraction",
+        source: "post_process",
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId ?? args.userMessageId),
+        modelId: memoryModel,
+        usage: operationUsage,
+        durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+        openrouterGenerationId: operationGenerationId,
+        properties: {
+          requested_model_id: args.extractionModel ?? null,
+          raw_candidate_count: extracted.length,
+          processed_candidate_count: Math.min(extracted.length, 4),
+          created_memory_count: createdCount,
+          reinforced_memory_count: reinforcedCount,
+          superseded_memory_count: supersededCount,
+          skipped_candidate_count: skippedCount,
+          embedding_scheduled_count: embeddingScheduledCount,
+          existing_memory_count: existingMemories.length,
+          pending_review: args.isPending === true,
+        },
+      });
     }
   } catch {
+    if (modelCallSucceeded) {
+      await captureBackendAIOperationFailed(ctx, {
+        userId: args.userId,
+        operation: "memory_extraction",
+        source: "post_process",
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId ?? args.userMessageId),
+        modelId: memoryModel,
+        durationMs: operationStartedAt ? Date.now() - operationStartedAt : undefined,
+        error: new Error("Memory extraction persistence failed."),
+        properties: {
+          requested_model_id: args.extractionModel ?? null,
+          raw_candidate_count: extracted.length,
+          stage: "persistence",
+        },
+      });
+    }
     // Memory extraction is best-effort and should not fail the overall chat flow.
     console.error("Memory extraction failed");
   }

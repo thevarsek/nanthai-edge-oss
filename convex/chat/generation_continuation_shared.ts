@@ -3,7 +3,12 @@ import { OpenRouterMessage, OpenRouterUsage } from "../lib/openrouter";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import type { LoadedSkillState } from "../tools/progressive_registry_shared";
-import { ParticipantConfig, VideoConfig } from "./actions_run_generation_types";
+import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
+import type {
+  GenerationAnalyticsSource,
+  ParticipantConfig,
+  VideoConfig,
+} from "./actions_run_generation_types";
 
 export const GENERATION_CONTINUATION_LEASE_MS = 12 * 60 * 1000;
 
@@ -43,6 +48,8 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
   // Phase 1 TTFT instrumentation: scheduler hop #2 measurement (refreshed on each continuation)
   enqueuedAt?: number;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 export interface GenerationContinuationGroupSnapshot {
@@ -67,6 +74,8 @@ export interface GenerationContinuationGroupSnapshot {
   personaSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   skillDefaults?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
+  analytics?: AnalyticsClientMetadata;
+  analyticsSource?: GenerationAnalyticsSource;
 }
 
 export interface GenerationContinuationCheckpoint {

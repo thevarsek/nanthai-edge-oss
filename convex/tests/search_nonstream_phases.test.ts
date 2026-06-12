@@ -12,6 +12,15 @@ import {
 } from "../search/workflow_nonstream_phases";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
+function analyticsForOperation(
+  scheduled: Array<Record<string, unknown>>,
+  operation: string,
+) {
+  return scheduled.filter((entry) =>
+    (entry.properties as Record<string, unknown> | undefined)?.operation === operation
+  );
+}
+
 function buildArgs() {
   return {
     sessionId: "session_1",
@@ -68,7 +77,13 @@ test("runPlanningPhase falls back to the raw query when orchestration JSON is in
     },
   });
 
-  const result = await runPlanningPhase(ctx, buildArgs(), 3, 1, deps);
+  const result = await runPlanningPhase(
+    ctx,
+    { ...buildArgs(), analyticsSource: "scheduled_job" },
+    3,
+    1,
+    deps,
+  );
 
   assert.equal(updateCalls[0]?.status, "planning");
   assert.deepEqual(result, {
@@ -76,13 +91,24 @@ test("runPlanningPhase falls back to the raw query when orchestration JSON is in
     queries: ["What changed in Swift concurrency?"],
   });
   assert.equal(mutationCalls[0]?.phaseType, "planning");
-  assert.equal(ancillaryCalls[0]?.source, "search_planning");
+  assert.equal(ancillaryCalls.find((entry) => entry.source === "search_planning")?.source, "search_planning");
+  const planningAnalytics = analyticsForOperation(ancillaryCalls, "research_planning");
+  assert.deepEqual(
+    planningAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.deepEqual(
+    planningAnalytics.map((entry) => (entry.properties as Record<string, unknown>).source),
+    ["scheduled_job", "scheduled_job"],
+  );
+  assert.equal((planningAnalytics[1]?.properties as Record<string, unknown>).generated_query_count, 1);
 });
 
 test("runInitialSearchPhase and runDepthSearchPhase persist results and track search costs", async () => {
   const updates: Record<string, unknown>[] = [];
   const trackCalls: Record<string, unknown>[] = [];
   const writes: Record<string, unknown>[] = [];
+  const scheduled: Record<string, unknown>[] = [];
   const searchOptions: Array<Record<string, unknown> | undefined> = [];
 
   const deps = createWorkflowNonstreamDepsForTest({
@@ -111,7 +137,11 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       writes.push(args);
     },
-    scheduler: { runAfter: async () => undefined },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+      },
+    },
   });
 
   const initial = await runInitialSearchPhase(
@@ -143,6 +173,18 @@ test("runInitialSearchPhase and runDepthSearchPhase persist results and track se
   assert.equal(searchOptions[1]?.requireZdr, true);
   assert.equal(writes[0]?.phaseType, "initial_search");
   assert.equal(writes[1]?.phaseType, "depth_iteration");
+  const initialAnalytics = analyticsForOperation(scheduled, "research_initial_search");
+  const depthAnalytics = analyticsForOperation(scheduled, "research_depth_search");
+  assert.deepEqual(
+    initialAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.deepEqual(
+    depthAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((initialAnalytics[1]?.properties as Record<string, unknown>).query_count, 1);
+  assert.equal((depthAnalytics[1]?.properties as Record<string, unknown>).iteration, 1);
 });
 
 test("runAnalysisPhase uses persona system prompts and falls back when JSON parsing fails", async () => {
@@ -266,11 +308,17 @@ test("runSynthesisPhase serializes parsed JSON or falls back when output is empt
   assert.equal(updates[0]?.status, "synthesizing");
   assert.equal(result, "{\"findings\":\"Done\",\"sources\":[\"https://example.com\"]}");
   assert.equal(writes[0]?.phaseType, "synthesis");
-  assert.equal(ancillaryCalls[0]?.source, "search_synthesis");
+  assert.equal(ancillaryCalls.find((entry) => entry.source === "search_synthesis")?.source, "search_synthesis");
   assert.equal(requestParams[0]?.maxTokens, 12_000);
   assert.equal(requestParams[0]?.includeReasoning, false);
   assert.equal(requestParams[0]?.reasoningEffort, null);
   assert.deepEqual(requestParams[0]?.provider, { zdr: true });
+  const synthesisAnalytics = analyticsForOperation(ancillaryCalls, "research_synthesis");
+  assert.deepEqual(
+    synthesisAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((synthesisAnalytics[1]?.properties as Record<string, unknown>).result_count, 1);
 });
 
 test("runPaperArchitecturePhase persists structured artifact and tracks cost", async () => {
@@ -328,9 +376,15 @@ test("runPaperArchitecturePhase persists structured artifact and tracks cost", a
 
   assert.match(result, /Swift concurrency paper/);
   assert.equal(writes[0]?.phaseType, "paper_architecture");
-  assert.equal(ancillaryCalls[0]?.source, "search_architecture");
+  assert.equal(ancillaryCalls.find((entry) => entry.source === "search_architecture")?.source, "search_architecture");
   assert.equal(requestParams[0]?.maxTokens, 12_000);
   assert.equal(requestParams[0]?.includeReasoning, false);
   assert.equal(requestParams[0]?.reasoningEffort, null);
   assert.deepEqual(requestParams[0]?.provider, { zdr: true });
+  const architectureAnalytics = analyticsForOperation(ancillaryCalls, "research_paper_architecture");
+  assert.deepEqual(
+    architectureAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((architectureAnalytics[1]?.properties as Record<string, unknown>).planning_data_present, true);
 });

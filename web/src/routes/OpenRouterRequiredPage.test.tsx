@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { OpenRouterRequiredPage } from "./OpenRouterRequiredPage";
 
-const { navigate, sharedState, signOut, generatePKCE } = vi.hoisted(() => ({
+const { navigate, sharedState, signOut, generatePKCE, captureAnalytics } = vi.hoisted(() => ({
   navigate: vi.fn(),
   sharedState: {
     hasApiKey: false as boolean | undefined,
@@ -15,6 +15,7 @@ const { navigate, sharedState, signOut, generatePKCE } = vi.hoisted(() => ({
     verifier: "verifier_1",
     challenge: "challenge_1",
   })),
+  captureAnalytics: vi.fn(),
 }));
 
 const originalLocation = window.location;
@@ -42,6 +43,11 @@ vi.mock("@/hooks/useSharedData", () => ({
 
 vi.mock("@/lib/pkce", () => ({
   generatePKCE,
+}));
+
+vi.mock("@/lib/analytics", () => ({
+  analyticsErrorLabel: (error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error",
+  captureAnalytics,
 }));
 
 vi.mock("@/components/shared/LoadingSpinner", () => ({
@@ -119,6 +125,16 @@ describe("OpenRouterRequiredPage", () => {
     expect(await screen.findByText("crypto unavailable")).toBeInTheDocument();
     expect(sessionStorage.getItem("pkce_state")).toBeNull();
     expect(sessionStorage.getItem("openrouter_post_connect")).toBeNull();
+    expect(captureAnalytics).toHaveBeenCalledWith("openrouter_connect_started", {
+      feature_area: "settings",
+      source: "required_key_gate",
+    });
+    expect(captureAnalytics).toHaveBeenCalledWith("openrouter_connect_failed", {
+      feature_area: "settings",
+      source: "required_key_gate",
+      failure_stage: "start",
+      error_label: "error",
+    });
   });
 
   it("writes return-target PKCE state and redirects to OpenRouter", async () => {
@@ -140,9 +156,14 @@ describe("OpenRouterRequiredPage", () => {
     await waitFor(() => {
       expect(sessionStorage.getItem("pkce_state")).toBe("state_1");
     });
+    expect(captureAnalytics).toHaveBeenCalledWith("openrouter_connect_started", {
+      feature_area: "settings",
+      source: "required_key_gate",
+    });
     expect(sessionStorage.getItem("pkce_verifier")).toBe("verifier_1");
     expect(sessionStorage.getItem("openrouter_post_connect")).toBe("return");
     expect(sessionStorage.getItem("openrouter_post_connect_path")).toBe("/app/settings/jobs?job=1#run");
+    expect(sessionStorage.getItem("openrouter_post_connect_source")).toBe("required_key_gate");
     expect(window.location.href).toContain("https://openrouter.ai/auth?");
     expect(window.location.href).toContain("code_challenge=challenge_1");
     expect(window.location.href).toContain("state=state_1");

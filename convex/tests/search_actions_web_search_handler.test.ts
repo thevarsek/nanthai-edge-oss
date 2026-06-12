@@ -66,6 +66,15 @@ function createCtx(
   };
 }
 
+function analyticsForOperation(
+  scheduled: Array<Record<string, unknown>>,
+  operation: string,
+) {
+  return scheduled.filter((entry) =>
+    (entry.properties as Record<string, unknown> | undefined)?.operation === operation
+  );
+}
+
 function jsonResponse(
   status: number,
   payload: unknown,
@@ -158,6 +167,14 @@ test("runWebSearch performs direct search, tracks perplexity cost, and schedules
 
   const ancillary = ctxState.scheduled.find((entry) => entry.source === "search_perplexity");
   assert.equal(ancillary?.generationId, "perplexity_direct_1");
+  const directAnalytics = analyticsForOperation(ctxState.scheduled, "web_search_direct_search");
+  assert.deepEqual(
+    directAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((directAnalytics[0]?.properties as Record<string, unknown>).source, "web_search");
+  assert.equal((directAnalytics[1]?.properties as Record<string, unknown>).total_tokens, 18);
+  assert.equal((directAnalytics[1]?.properties as Record<string, unknown>).result_count, 1);
 
   const generation = ctxState.scheduled.find((entry) => Array.isArray(entry.assistantMessageIds));
   assert.equal(generation?.searchSessionId, "session_1");
@@ -246,6 +263,18 @@ test("runWebSearch generates queries with persona fallback before searching", as
     "search_perplexity",
     "search_perplexity",
   ]);
+  const queryGenerationAnalytics = analyticsForOperation(ctxState.scheduled, "web_search_query_generation");
+  const multiSearchAnalytics = analyticsForOperation(ctxState.scheduled, "web_search_multi_search");
+  assert.deepEqual(
+    queryGenerationAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.deepEqual(
+    multiSearchAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((queryGenerationAnalytics[1]?.properties as Record<string, unknown>).generated_query_count, 3);
+  assert.equal((multiSearchAnalytics[1]?.properties as Record<string, unknown>).web_search_requests, 3);
 
   const searchPatch = ctxState.mutations.find((entry) => entry.mode === "web");
   assert.deepEqual((searchPatch?.searchContext as any).queries, [
@@ -253,6 +282,29 @@ test("runWebSearch generates queries with persona fallback before searching", as
     "swift 6 strict concurrency migration guide",
     "swift 6 sendable updates",
   ]);
+});
+
+test("runWebSearch exits without replaying analytics when already cancelled at entry", async (t) => {
+  t.after(() => mock.restoreAll());
+
+  let didFetch = false;
+  mock.method(globalThis, "fetch", async () => {
+    didFetch = true;
+    return jsonResponse(200, {});
+  }) as any;
+
+  const ctxState = createCtx({ cancelOnCheck: 1 });
+  await (runWebSearch as any)._handler(ctxState.ctx, {
+    ...baseArgs,
+    complexity: 1,
+  });
+
+  assert.equal(didFetch, false);
+  assert.equal(
+    ctxState.mutations.some((entry) => entry.status === "cancelled" || entry.status === "failed"),
+    false,
+  );
+  assert.equal(ctxState.scheduled.length, 0);
 });
 
 test("runWebSearch finalizes cancelled searches before generation handoff", async (t) => {
@@ -281,7 +333,7 @@ test("runWebSearch finalizes cancelled searches before generation handoff", asyn
       },
     })) as any;
 
-  const ctxState = createCtx({ cancelOnCheck: 1 });
+  const ctxState = createCtx({ cancelOnCheck: 2 });
   await (runWebSearch as any)._handler(ctxState.ctx, {
     ...baseArgs,
     complexity: 1,
@@ -294,6 +346,13 @@ test("runWebSearch finalizes cancelled searches before generation handoff", asyn
   assert.equal(finalizeCall?.content, "[Search cancelled]");
   assert.equal(
     ctxState.scheduled.some((entry) => Array.isArray(entry.assistantMessageIds)),
+    false,
+  );
+  assert.equal(
+    ctxState.scheduled.some((entry) =>
+      entry.event === "assistant_response_started" ||
+      entry.event === "assistant_response_failed"
+    ),
     false,
   );
   assert.equal(finalizeRef.length > 0, true);

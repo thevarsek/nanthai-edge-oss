@@ -22,6 +22,15 @@ import {
 import { patchDeferredProgressiveToolErrors } from "../tools/progressive_registry_shared";
 import { classifyTerminalErrorCode } from "./terminal_error";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
+import {
+  captureAssistantResponseStarted,
+  captureAssistantResponseTerminal,
+  captureAssistantResponseThrown,
+} from "./generation_analytics";
+import {
+  markGenerationJobAnalyticsStarted,
+  markGenerationJobStreamingIfActive,
+} from "./generation_start_guard";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -102,6 +111,8 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     subagentsEnabled: args.allowSubagents,
     disableTools: args.disableTools,
     searchSessionId: args.searchSessionId,
+    analytics: args.analytics,
+    analyticsSource: args.analyticsSource,
     subagentBatchId: args.subagentBatchId,
     drivePickerBatchId: args.drivePickerBatchId,
   };
@@ -254,6 +265,8 @@ export async function runGenerationParticipantRuntimeHandler(
         personaSkillOverrides: continuationState.group.personaSkillOverrides,
         skillDefaults: continuationState.group.skillDefaults,
         integrationDefaults: continuationState.group.integrationDefaults,
+        analytics: continuationState.group.analytics,
+        analyticsSource: continuationState.group.analyticsSource,
         resumeExpected: true,
       }
     : args;
@@ -274,8 +287,35 @@ export async function runGenerationParticipantRuntimeHandler(
     });
   }
 
+  let startedAnalyticsCapture: Promise<void> | undefined;
   try {
     const preflightStartedAt = Date.now();
+    if (args.resumeExpected !== true) {
+      const didStart = await markGenerationJobStreamingIfActive(
+        ctx,
+        effectiveArgs.participant.jobId,
+      );
+      if (!didStart) {
+        return;
+      }
+      let shouldCaptureStarted = false;
+      try {
+        shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, effectiveArgs.participant.jobId);
+      } catch (error) {
+        console.warn("[analytics] failed to mark generation job analytics start", {
+          jobId: effectiveArgs.participant.jobId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        shouldCaptureStarted = true;
+      }
+      if (!shouldCaptureStarted) {
+        return;
+      }
+      startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
+        isResume: false,
+        schedulerHop2Ms,
+      });
+    }
     ttftLog("[generation] participant preflight started", {
       chatId: effectiveArgs.chatId,
       messageId: effectiveArgs.participant.messageId,
@@ -375,6 +415,7 @@ export async function runGenerationParticipantRuntimeHandler(
             },
           },
     });
+    const generationDurationMs = Date.now() - preflightStartedAt;
 
     if (!result.deferredForSubagents && !result.continued) {
       await ctx.scheduler.runAfter(0, internal.chat.mutations.clearGenerationContinuation, {
@@ -391,9 +432,23 @@ export async function runGenerationParticipantRuntimeHandler(
         searchSessionId: effectiveArgs.searchSessionId,
       });
     }
+    await Promise.all([
+      startedAnalyticsCapture,
+      captureAssistantResponseTerminal(
+        ctx,
+        effectiveArgs,
+        continuationState,
+        result,
+        generationDurationMs,
+      ),
+    ]);
   } catch (error) {
     await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
     await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
+    await Promise.all([
+      startedAnalyticsCapture,
+      captureAssistantResponseThrown(ctx, effectiveArgs, error),
+    ]);
     throw error;
   }
 }

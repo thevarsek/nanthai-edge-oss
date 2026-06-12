@@ -46,6 +46,15 @@ function refs() {
   };
 }
 
+function analyticsForOperation(
+  scheduled: Array<Record<string, unknown>>,
+  operation: string,
+) {
+  return scheduled.filter((entry) =>
+    (entry.properties as Record<string, unknown> | undefined)?.operation === operation
+  );
+}
+
 test("extractMemoriesHandler keeps processing around invalid candidates and creates bounded memories", async (t) => {
   t.after(() => mock.restoreAll());
   mock.method(globalThis, "fetch", async () => sseResponse(JSON.stringify([
@@ -93,9 +102,18 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
   assert.equal(created[0].isPending, true);
   assert.equal(typeof created[0].expiresAt, "number");
   assert.deepEqual(
-    scheduled.map((entry) => entry.source ?? entry.memoryId),
+    scheduled
+      .filter((entry) => entry.source === "memory_extraction" || entry.memoryId)
+      .map((entry) => entry.source ?? entry.memoryId),
     ["memory_extraction", "memory_work_1"],
   );
+  const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
+  assert.deepEqual(
+    memoryAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((memoryAnalytics[1]?.properties as Record<string, unknown>).created_memory_count, 1);
+  assert.equal((memoryAnalytics[1]?.properties as Record<string, unknown>).skipped_candidate_count, 2);
 });
 
 test("extractMemoriesHandler skips duplicate content even when the matched row has no id", async (t) => {
@@ -204,5 +222,14 @@ test("extractMemoriesHandler handles empty extraction responses without writes",
     },
   } as any, baseArgs());
 
-  assert.deepEqual(scheduled.map((entry) => entry.source), ["memory_extraction"]);
+  assert.deepEqual(
+    scheduled.filter((entry) => entry.source).map((entry) => entry.source),
+    ["memory_extraction"],
+  );
+  const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
+  assert.deepEqual(
+    memoryAnalytics.map((entry) => entry.event),
+    ["backend_ai_operation_started", "backend_ai_operation_completed"],
+  );
+  assert.equal((memoryAnalytics[1]?.properties as Record<string, unknown>).raw_candidate_count, 0);
 });

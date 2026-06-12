@@ -1,5 +1,7 @@
 import { SignIn } from "@clerk/react";
+import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
+import { captureAnalytics } from "@/lib/analytics";
 
 /**
  * Sign-in page using Clerk's hosted UI.
@@ -7,6 +9,13 @@ import { useTranslation } from "react-i18next";
  */
 export function SignInPage() {
   const { t } = useTranslation();
+  useEffect(() => {
+    captureAnalytics("sign_in_started", {
+      feature_area: "auth",
+      source: "web_sign_in",
+    });
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
       {/* Branding */}

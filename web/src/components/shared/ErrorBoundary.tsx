@@ -3,6 +3,7 @@
 // and shows a fallback UI instead of a blank white screen.
 
 import { Component, type ErrorInfo, type ReactNode } from "react";
+import { captureAnalyticsException } from "@/lib/analytics";
 
 interface Props {
   children: ReactNode;
@@ -29,6 +30,10 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error(`[ErrorBoundary${this.props.level ? `:${this.props.level}` : ""}]`, {
       error: "redacted",
       hasComponentStack: Boolean(info.componentStack),
+    });
+    captureAnalyticsException(_error, {
+      boundary_level: this.props.level ?? "unknown",
+      has_component_stack: Boolean(info.componentStack),
     });
   }
 

@@ -29,6 +29,8 @@ import { RenameChatDialog } from "@/components/chat-list/SidebarSections";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ParticipantPicker } from "@/components/settings/ChatDefaultsSection.ParticipantPicker";
 import { useToast } from "@/components/shared/Toast.context";
+import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } from "@/lib/analytics";
+import { captureFeatureUsage } from "@/lib/featureAnalytics";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import {
   useChatScroll, useChatSearchWiring, useMentionSuggestions, useSubagentOverride,
@@ -75,6 +77,7 @@ import {
   buildRetryMessageArgs,
   retryBaseParticipantForMessage,
   retryGoogleIntegrationsAreActive,
+  retryAnalyticsSnapshot,
   retryParticipantWithModel,
   retryParticipantWithPersona,
 } from "@/routes/ChatPage.retryFlow";
@@ -95,7 +98,14 @@ export function ChatPage() {
   const showAdvancedStats = typedPrefs?.showAdvancedStats === true;
   const { messageCosts, totalCost, breakdown } = useChatCosts(typedChatId, showAdvancedStats);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { participants: convexParticipants, addParticipant, removeParticipant: removeParticipantMut, setParticipants: setParticipantsMut } = useParticipants(typedChatId);
+  const trackedOpenChatIdRef = useRef<string | null>(null);
+  const {
+    participants: convexParticipants,
+    isLoading: isParticipantsLoading,
+    addParticipant,
+    removeParticipant: removeParticipantMut,
+    setParticipants: setParticipantsMut,
+  } = useParticipants(typedChatId);
   const connectedProviders = useMemo(
     () => ({
       gmail: gmailManualConnection?.status === "active",
@@ -127,6 +137,20 @@ export function ChatPage() {
   const handleComposerTextChange = useCallback((text: string) => {
     setShowSlashPalette(text === "/");
   }, []);
+
+  useEffect(() => {
+    if (!typedChatId || !chat || isLoading || isParticipantsLoading) return;
+    const chatIdString = String(typedChatId);
+    if (trackedOpenChatIdRef.current === chatIdString) return;
+    trackedOpenChatIdRef.current = chatIdString;
+    captureAnalytics("chat_opened", {
+      feature_area: "chat",
+      chat_id: chatIdString,
+      chat_mode: chat.mode,
+      message_count: messages.length,
+      participant_count: convexParticipants.length,
+    });
+  }, [chat, convexParticipants.length, isLoading, isParticipantsLoading, messages.length, typedChatId]);
   const [slashSkillNames, setSlashSkillNames] = useState<Map<string, string>>(new Map());
   const handleSlashSelectSkill = useCallback((skillId: Id<"skills">, skillName: string) => {
     overrides.addTurnSkillOverride(skillId, "always");
@@ -330,6 +354,14 @@ export function ChatPage() {
       mode: "chat",
       participants,
     });
+    captureAnalytics("chat_created", {
+      feature_area: "chat",
+      chat_id: String(newId),
+      source: "chat_page",
+      participant_count: participants.length,
+      model_ids: participants.map((participant) => participant.modelId).join(","),
+      has_folder: false,
+    });
     navigate(`/app/chat/${newId}`, { replace: true });
     return newId;
   }, [typedChatId, createChat, navigate, participants]);
@@ -339,25 +371,55 @@ export function ChatPage() {
     ...(overrides.turnIntegrationOverrideEntries.length > 0 ? { turnIntegrationOverrides: overrides.turnIntegrationOverrideEntries } : {}),
   }), [overrides.turnSkillOverrideEntries, overrides.turnIntegrationOverrideEntries]);
   const handleCancelSession = useCallback(
-    (sessionId: string) => { void cancelSession({ sessionId: sessionId as Id<"searchSessions"> }); },
-    [cancelSession],
+    (sessionId: string) => {
+      void cancelSession({ sessionId: sessionId as Id<"searchSessions"> }).then(() => {
+        const session = sessionMap.get(sessionId);
+        captureAnalytics("generation_cancelled", {
+          feature_area: "chat",
+          chat_id: session ? String(session.chatId) : null,
+          message_id: session ? String(session.assistantMessageId) : null,
+          session_id: sessionId,
+          search_mode: session?.mode ?? "unknown",
+        });
+      });
+    },
+    [cancelSession, sessionMap],
   );
   const handleRegeneratePaper = useCallback(
     (sessionId: string) => {
       const participant = participants[0];
       if (!participant) return;
+      const analytics = createAnalyticsClientMetadata("message_retry_requested", window.location.pathname);
+      const session = sessionMap.get(sessionId);
+      const properties = {
+        feature_area: "chat",
+        chat_id: session ? String(session.chatId) : null,
+        message_id: session ? String(session.assistantMessageId) : null,
+        session_id: sessionId,
+        search_mode: "paper",
+        model_id: participant.modelId,
+        integration_count: overrides.enabledIntegrations.size,
+        client_event_id: analytics.clientEventId,
+      };
+      captureAnalytics("message_retry_requested", properties);
       void regeneratePaper(buildRegeneratePaperArgs({
         sessionId,
         participant,
         enabledIntegrations: overrides.enabledIntegrations,
+        analytics,
       })).catch((error) => {
+        captureAnalytics("message_retry_failed", {
+          ...properties,
+          error_type: error instanceof Error ? error.name : "unknown",
+          error_label: analyticsErrorLabel(error),
+        });
         const fallback = t("failed_to_regenerate_paper_arg", {
           var1: t("something_went_wrong"),
         });
         toast({ message: convexErrorMessage(error, fallback), variant: "error" });
       });
     },
-    [overrides.enabledIntegrations, participants, regeneratePaper, t, toast],
+    [overrides.enabledIntegrations, participants, regeneratePaper, sessionMap, t, toast],
   );
   const searchSessionCtx = useMemo(
     () => ({ sessionMap, onCancel: handleCancelSession, onRegenerate: handleRegeneratePaper }),
@@ -423,9 +485,9 @@ export function ChatPage() {
     });
     if (message) {
       toast({ message, variant: "error" });
-      return false;
+      return message;
     }
-    return true;
+    return null;
   }, [convexComplexity, isResearchPaper, participants.length, toast]);
 
   const handleSend = useCallback(
@@ -433,6 +495,7 @@ export function ChatPage() {
       return executeChatSend({
         text,
         state: {
+          chatId: chatId ?? undefined,
           ...composerAttachmentState({ attachments, kbAttachmentsForDisplay }),
           participants,
           turnOverrideArgs,
@@ -456,7 +519,7 @@ export function ChatPage() {
         },
       });
     },
-    [ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
+    [chatId, ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
   );
 
   useDrivePickerContinuation({
@@ -474,6 +537,7 @@ export function ChatPage() {
         await executeRecordedAudioSend({
           recording: result,
           state: {
+            chatId: chatId ?? undefined,
             selectedAttachments: [],
             kbAttachmentsForDisplay,
             participants,
@@ -506,7 +570,7 @@ export function ChatPage() {
         });
       }
     },
-    [ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t],
+    [chatId, ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t],
   );
 
   const retryTargetMessage = useMemo(
@@ -552,14 +616,23 @@ export function ChatPage() {
   }, []);
   const handleSelectRetryModel = useCallback((modelId: string) => {
     if (!retryDifferentMessageId) return;
+    const targetMessage = messages.find((message) => message._id === retryDifferentMessageId);
+    const analyticsSnapshot = targetMessage?.retryContract
+      ? retryAnalyticsSnapshot(targetMessage.retryContract)
+      : undefined;
     void retryMessage({
       messageId: retryDifferentMessageId,
       participants: [retryParticipantWithModel(retryBaseParticipant, modelId)],
+      ...(analyticsSnapshot ? { analyticsSnapshot } : {}),
     });
     setRetryDifferentMessageId(null);
-  }, [retryBaseParticipant, retryDifferentMessageId, retryMessage]);
+  }, [messages, retryBaseParticipant, retryDifferentMessageId, retryMessage]);
   const handleSelectRetryPersona = useCallback((personaId: string) => {
     if (!retryDifferentMessageId) return;
+    const targetMessage = messages.find((message) => message._id === retryDifferentMessageId);
+    const analyticsSnapshot = targetMessage?.retryContract
+      ? retryAnalyticsSnapshot(targetMessage.retryContract)
+      : undefined;
     void retryMessage({
       messageId: retryDifferentMessageId,
       participants: [retryParticipantWithPersona({
@@ -567,12 +640,28 @@ export function ChatPage() {
         personaId,
         personas,
       })],
+      ...(analyticsSnapshot ? { analyticsSnapshot } : {}),
     });
     setRetryDifferentMessageId(null);
-  }, [retryBaseParticipant, retryDifferentMessageId, retryMessage, personas]);
+  }, [messages, retryBaseParticipant, retryDifferentMessageId, retryMessage, personas]);
   const handleFork = useCallback(async (messageId: Id<"messages">) => {
     if (!typedChatId) return;
-    navigate(`/app/chat/${await forkChat({ chatId: typedChatId, atMessageId: messageId })}`);
+    const forkedChatId = await forkChat({ chatId: typedChatId, atMessageId: messageId });
+    captureAnalytics("branch_created", {
+      feature_area: "chat",
+      source_chat_id: String(typedChatId),
+      chat_id: forkedChatId ? String(forkedChatId) : null,
+      message_id: String(messageId),
+    });
+    captureFeatureUsage({
+      feature_area: "chat",
+      feature: "branching",
+      action: "created",
+      source_chat_id: String(typedChatId),
+      chat_id: forkedChatId ? String(forkedChatId) : null,
+      message_id: String(messageId),
+    });
+    navigate(`/app/chat/${forkedChatId}`);
   }, [typedChatId, forkChat, navigate]);
   const handleOpenGeneratedFile = useCallback((request: GeneratedFileOpenRequest & { message: Message }) => {
     const annotations = (request.message.documentEditAnnotations ?? []).filter((annotation) =>
@@ -643,7 +732,7 @@ export function ChatPage() {
               onClose={closeChatSearch}
             />
           )}
-          <div ref={chatSearchScrollContainerRef} className="h-full overflow-y-auto px-4 py-4 space-y-4">
+          <div ref={chatSearchScrollContainerRef} data-ph-block data-ph-mask className="h-full overflow-y-auto px-4 py-4 space-y-4">
             {visibleMessages.length === 0 ? <EmptyChatState /> : groupedMessages.map((group) =>
               group.type === "single" ? (
                 <div key={group.message._id} data-message-id={group.message._id}>

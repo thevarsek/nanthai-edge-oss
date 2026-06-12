@@ -181,6 +181,26 @@ export const updateJobStatus = internalMutation({
   handler: updateJobStatusHandler,
 });
 
+export const markGenerationJobAnalyticsStarted = internalMutation({
+  args: { jobId: v.id("generationJobs") },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job || ["cancelled", "completed", "failed", "timedOut"].includes(job.status)) {
+      return false;
+    }
+
+    if (job.analyticsStartedAt !== undefined) {
+      return false;
+    }
+
+    await ctx.db.patch(args.jobId, {
+      analyticsStartedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
 export const saveGenerationContinuation = internalMutation({
   args: saveGenerationContinuationArgs,
   handler: saveGenerationContinuationHandler,

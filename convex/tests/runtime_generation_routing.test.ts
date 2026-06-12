@@ -229,7 +229,7 @@ test("runGenerationParticipantRuntimeHandler clears continuations for missing an
 test("runGenerationParticipantRuntimeHandler finalizes setup failures and related batches", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
-  let jobQueryCount = 0;
+  const jobStatuses = ["queued", "streaming", "failed", "failed"];
   const ctx = createMockCtx({
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if ("modelId" in args) {
@@ -241,8 +241,7 @@ test("runGenerationParticipantRuntimeHandler finalizes setup failures and relate
         };
       }
       if ("jobId" in args) {
-        jobQueryCount += 1;
-        return { status: jobQueryCount === 1 ? "queued" : "failed" };
+        return { status: jobStatuses.shift() ?? "failed" };
       }
       if ("messageId" in args) {
         return { status: "failed" };

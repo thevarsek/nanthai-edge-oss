@@ -7,6 +7,9 @@ let prefs: { showBalanceInChat?: boolean; showAdvancedStats?: boolean } = {};
 const upsertPreferences = vi.fn();
 const deleteApiKey = vi.fn();
 const refreshCredits = vi.fn();
+const { captureSettingChanged } = vi.hoisted(() => ({
+  captureSettingChanged: vi.fn(),
+}));
 
 function deferred<T = void>() {
   let resolve!: (value: T) => void;
@@ -37,6 +40,10 @@ vi.mock("@convex/_generated/api", () => ({
   },
 }));
 
+vi.mock("@/lib/featureAnalytics", () => ({
+  captureSettingChanged,
+}));
+
 vi.mock("convex/react", () => ({
   useMutation: (mutation: string) => {
     if (mutation === "upsertPreferences") return upsertPreferences;
@@ -50,6 +57,7 @@ describe("OpenRouterSection", () => {
     upsertPreferences.mockReset();
     deleteApiKey.mockReset();
     refreshCredits.mockReset();
+    captureSettingChanged.mockReset();
     upsertPreferences.mockResolvedValue(undefined);
     deleteApiKey.mockResolvedValue(undefined);
     refreshCredits.mockResolvedValue(undefined);
@@ -67,6 +75,13 @@ describe("OpenRouterSection", () => {
 
     expect(balanceSwitch).toHaveAttribute("aria-checked", "true");
     expect(upsertPreferences).toHaveBeenCalledWith({ showBalanceInChat: true });
+    await waitFor(() => {
+      expect(captureSettingChanged).toHaveBeenCalledWith({
+        setting_key: "showBalanceInChat",
+        setting_area: "settings",
+        value_type: "boolean",
+      });
+    });
 
     await act(async () => {
       prefs = { showBalanceInChat: false, showAdvancedStats: false };
@@ -128,6 +143,7 @@ describe("OpenRouterSection", () => {
 
     expect(await screen.findByText("network down")).toBeInTheDocument();
     expect(screen.getAllByRole("switch")[1]).toHaveAttribute("aria-checked", "false");
+    expect(captureSettingChanged).not.toHaveBeenCalled();
   });
 
   it("rewrites a stale server echo after the matching preference value was rendered", async () => {
@@ -158,6 +174,8 @@ describe("OpenRouterSection", () => {
       correctiveRequest.resolve();
       await correctiveRequest.promise;
     });
+
+    expect(captureSettingChanged).toHaveBeenCalledTimes(1);
   });
 
   it("keeps a rapid no-op optimistic toggle through stale preference echoes", async () => {
@@ -259,5 +277,7 @@ describe("OpenRouterSection", () => {
       correctiveRequest.resolve();
       await correctiveRequest.promise;
     });
+
+    expect(captureSettingChanged).toHaveBeenCalledTimes(2);
   });
 });

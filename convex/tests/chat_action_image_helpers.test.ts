@@ -105,16 +105,19 @@ test("persistGeneratedImageUrls keeps SVG data URLs renderable while still stori
 });
 
 test("hydrateAttachmentsForRequest refreshes image URLs and inlines document blobs as data URLs", async () => {
+  let storageReads = 0;
   const result = await hydrateAttachmentsForRequest(
     {
       storage: {
         store: async () => {
           throw new Error("not used");
         },
-        get: async (storageId: string) =>
-          storageId === "doc_1"
+        get: async (storageId: string) => {
+          storageReads += 1;
+          return storageId === "doc_1"
             ? new Blob([new Uint8Array([0, 1, 2])], { type: "application/pdf" })
-            : null,
+            : null;
+        },
         getUrl: async (storageId: string) =>
           storageId === "img_1" ? "https://cdn.example/img_1.png" : null,
       },
@@ -138,6 +141,43 @@ test("hydrateAttachmentsForRequest refreshes image URLs and inlines document blo
   assert.equal(attachments[1]?.url, "data:application/pdf;base64,AAEC");
   assert.equal(attachments[1]?.sizeBytes, 3);
   assert.equal(attachments[2]?.url, "keep-me");
+  assert.equal(storageReads, 2);
+});
+
+test("hydrateAttachmentsForRequest can skip non-image storage reads for generation prep", async () => {
+  let storageReads = 0;
+  const result = await hydrateAttachmentsForRequest(
+    {
+      storage: {
+        store: async () => {
+          throw new Error("not used");
+        },
+        get: async () => {
+          storageReads += 1;
+          return new Blob([new Uint8Array([0, 1, 2])], { type: "application/pdf" });
+        },
+        getUrl: async (storageId: string) =>
+          storageId === "img_1" ? "https://cdn.example/img_1.png" : null,
+      },
+    } as any,
+    [
+      {
+        _id: "msg_1",
+        role: "assistant",
+        content: "hello",
+        attachments: [
+          { type: "image", storageId: "img_1", url: "stale" },
+          { type: "document", storageId: "doc_1", mimeType: "application/pdf" },
+        ],
+      },
+    ] as any,
+    { inlineStoredNonImageAttachments: false },
+  );
+
+  const attachments = result[0]?.attachments ?? [];
+  assert.equal(attachments[0]?.url, "https://cdn.example/img_1.png");
+  assert.equal(attachments[1]?.url, undefined);
+  assert.equal(storageReads, 0);
 });
 
 test("clampMessageContent truncates oversized streaming payloads with a suffix", () => {

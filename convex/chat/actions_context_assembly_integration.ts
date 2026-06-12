@@ -8,6 +8,7 @@ import {
   type AssemblyArtifactCandidate,
   type AssemblyMemoryCandidate,
 } from "./context_assembler";
+import { scheduleContextAssemblyLog } from "./context_assembly_log_scheduler";
 import { branchPathIds } from "./helpers_utils";
 import type { ContextMessage } from "./helpers_types";
 
@@ -223,7 +224,7 @@ export async function assembleRequestContextForGeneration(
     assembledMessages: assembly.messages,
   });
 
-  await input.ctx.runMutation(internal.chat.context_assembly_logs.insertContextAssemblyLog, {
+  await scheduleContextAssemblyLog(input.ctx, {
     userId: input.userId,
     chatId: input.chatId,
     messageId: input.assistantMessageId,

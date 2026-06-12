@@ -1,6 +1,8 @@
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant, SendMessageArgs } from "@/hooks/useChat";
 import type { SharedPreferences } from "@/lib/chatRequestResolution";
+import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } from "@/lib/analytics";
+import { captureSendFeatureUsage } from "@/lib/featureAnalytics";
 
 export type ChatVideoRole = "first_frame" | "last_frame" | "reference";
 
@@ -36,6 +38,7 @@ export interface TurnOverrideArgs {
 }
 
 export interface ChatSendOrchestrationState {
+  chatId?: string;
   selectedAttachments: ChatAttachment[];
   kbAttachmentsForDisplay: ChatAttachment[];
   participants: Participant[];
@@ -51,7 +54,7 @@ export interface ChatSendOrchestrationState {
 }
 
 export interface ChatSendOrchestrationDeps {
-  validateAttachmentCount: (attachmentCount: number) => boolean;
+  validateAttachmentCount: (attachmentCount: number) => string | null;
   ensureChatId: () => Promise<Id<"chats">>;
   flushPendingState: (chatId: Id<"chats">) => Promise<void>;
   sendMessage: (args: SendMessageArgs) => Promise<unknown>;
@@ -100,6 +103,14 @@ function attachmentDedupeKey(attachment: DedupeAttachment): string | null {
     return `file:${attachment.type ?? ""}:${attachment.name}:${attachment.mimeType}:${attachment.sizeBytes ?? ""}`;
   }
   return null;
+}
+
+function attachmentIsAudio(attachment: Pick<ChatAttachment, "type" | "mimeType">): boolean {
+  return attachment.type === "audio" || attachment.mimeType.toLowerCase().startsWith("audio/");
+}
+
+function attachmentIsImage(attachment: Pick<ChatAttachment, "type" | "mimeType">): boolean {
+  return attachment.type === "image" || attachment.mimeType.toLowerCase().startsWith("image/");
 }
 
 export function dedupeChatAttachments<T extends DedupeAttachment>(attachments: T[]): T[] {
@@ -206,7 +217,277 @@ export function buildResearchPaperArgs(args: {
     ...(args.enabledIntegrations.size > 0
       ? { enabledIntegrations: Array.from(args.enabledIntegrations) }
       : {}),
+    analytics: createAnalyticsClientMetadata("message_send_attempted", window.location.pathname),
   };
+}
+
+function researchPaperAnalyticsProperties(args: {
+  chatId: Id<"chats">;
+  text: string;
+  participant: Participant;
+  attachments: ChatAttachment[];
+  recordedAudio?: RecordedAudioPayload;
+  complexity: number;
+  enabledIntegrations: ReadonlySet<string>;
+  analytics: ReturnType<typeof createAnalyticsClientMetadata>;
+}) {
+  const hasAudioAttachment = args.attachments.some(attachmentIsAudio);
+  const hasImageAttachment = args.attachments.some(attachmentIsImage);
+  return {
+    feature_area: "chat",
+    chat_id: String(args.chatId),
+    participant_count: 1,
+    model_ids: args.participant.modelId,
+    text_present: args.text.trim().length > 0,
+    has_attachments: args.attachments.length > 0,
+    attachment_count: args.attachments.length,
+    has_audio: args.recordedAudio !== undefined || hasAudioAttachment,
+    has_image_attachment: hasImageAttachment,
+    audio_duration_ms: args.recordedAudio?.durationMs ?? null,
+    web_search_enabled: true,
+    search_mode: "paper",
+    complexity: args.complexity,
+    integration_count: args.enabledIntegrations.size,
+    skill_override_count: 0,
+    integration_override_count: 0,
+    subagents_enabled: false,
+    has_video_config: false,
+    client_event_id: args.analytics.clientEventId,
+  };
+}
+
+function researchPaperResultAnalyticsProperties(result: unknown) {
+  if (typeof result !== "object" || result === null) {
+    return {
+      user_message_id: null,
+      assistant_message_id: null,
+      assistant_message_count: null,
+    };
+  }
+
+  const paperResult = result as {
+    userMessageId?: unknown;
+    assistantMessageId?: unknown;
+  };
+  const userMessageId = typeof paperResult.userMessageId === "string" ? paperResult.userMessageId : null;
+  const assistantMessageId = typeof paperResult.assistantMessageId === "string"
+    ? paperResult.assistantMessageId
+    : null;
+
+  return {
+    user_message_id: userMessageId,
+    assistant_message_id: assistantMessageId,
+    assistant_message_count: assistantMessageId ? 1 : null,
+  };
+}
+
+async function startResearchPaperWithAnalytics(args: {
+  chatId: Id<"chats">;
+  text: string;
+  participant: Participant;
+  complexity: number;
+  attachments: ChatAttachment[];
+  recordedAudio?: RecordedAudioPayload;
+  enabledIntegrations: ReadonlySet<string>;
+  deps: ChatSendOrchestrationDeps;
+}) {
+  const mutationArgs = buildResearchPaperArgs(args);
+  const properties = researchPaperAnalyticsProperties({
+    ...args,
+    analytics: mutationArgs.analytics,
+  });
+  captureAnalytics("message_send_attempted", properties);
+  captureSendFeatureUsage(properties);
+  try {
+    const result = await args.deps.startResearchPaper(mutationArgs);
+    captureAnalytics("message_sent", {
+      ...properties,
+      ...researchPaperResultAnalyticsProperties(result),
+    });
+    return result;
+  } catch (error) {
+    captureAnalytics("message_send_failed", {
+      ...properties,
+      failure_stage: "mutation",
+      error_type: error instanceof Error ? error.name : "unknown",
+      error_label: analyticsErrorLabel(error),
+    });
+    throw error;
+  }
+}
+
+function captureRecordedAudioUploadFailure(args: {
+  chatId: Id<"chats">;
+  text: string;
+  state: ChatSendOrchestrationState;
+  attachments: ChatAttachment[];
+  recording: RecordingResultPayload;
+  error: unknown;
+}) {
+  const analytics = createAnalyticsClientMetadata("message_send_attempted", window.location.pathname);
+  const properties = {
+    feature_area: "chat",
+    chat_id: String(args.chatId),
+    text_present: args.text.trim().length > 0,
+    participant_count: args.state.participants.length,
+    model_ids: args.state.participants.map((participant) => participant.modelId).join(","),
+    has_attachments: args.attachments.length > 0,
+    attachment_count: args.attachments.length,
+    has_audio: true,
+    has_image_attachment: args.attachments.some(attachmentIsImage),
+    audio_duration_ms: args.recording.durationMs,
+    web_search_enabled: args.state.webSearchEnabled,
+    search_mode: args.state.isResearchPaper ? "paper" : args.state.convexSearchMode ?? "none",
+    complexity: args.state.convexComplexity ?? null,
+    integration_count: args.state.enabledIntegrations.size,
+    skill_override_count: args.state.turnOverrideArgs.turnSkillOverrides?.length ?? 0,
+    integration_override_count: args.state.turnOverrideArgs.turnIntegrationOverrides?.length ?? 0,
+    subagents_enabled: args.state.subagentsEnabled,
+    has_video_config: args.state.isVideoMode,
+    client_event_id: analytics.clientEventId,
+  };
+  captureAnalytics("message_send_attempted", properties);
+  captureAnalytics("message_send_failed", {
+    ...properties,
+    failure_stage: "upload",
+    error_type: args.error instanceof Error ? args.error.name : "unknown",
+    error_label: analyticsErrorLabel(args.error),
+  });
+}
+
+function captureSendValidationFailure(args: {
+  chatId?: string;
+  text: string;
+  state: ChatSendOrchestrationState;
+  attachments: ChatAttachment[];
+  failureStage: "validation" | "recording_validation";
+  errorLabel: string;
+}) {
+  const analytics = createAnalyticsClientMetadata("message_send_attempted", window.location.pathname);
+  const hasAudioAttachment = args.attachments.some(attachmentIsAudio);
+  const hasImageAttachment = args.attachments.some(attachmentIsImage);
+  const properties = {
+    feature_area: "chat",
+    chat_id: args.chatId ? String(args.chatId) : null,
+    text_present: args.text.trim().length > 0,
+    participant_count: args.state.participants.length,
+    model_ids: args.state.participants.map((participant) => participant.modelId).join(","),
+    has_attachments: args.attachments.length > 0,
+    attachment_count: args.attachments.length,
+    has_audio: args.failureStage === "recording_validation" || hasAudioAttachment,
+    has_image_attachment: hasImageAttachment,
+    web_search_enabled: args.state.webSearchEnabled,
+    search_mode: args.state.isResearchPaper ? "paper" : args.state.convexSearchMode ?? "none",
+    complexity: args.state.convexComplexity ?? null,
+    integration_count: args.state.enabledIntegrations.size,
+    skill_override_count: args.state.turnOverrideArgs.turnSkillOverrides?.length ?? 0,
+    integration_override_count: args.state.turnOverrideArgs.turnIntegrationOverrides?.length ?? 0,
+    subagents_enabled: args.state.subagentsEnabled,
+    has_video_config: args.state.isVideoMode,
+    client_event_id: analytics.clientEventId,
+  };
+  captureAnalytics("message_send_attempted", properties);
+  captureAnalytics("message_send_failed", {
+    ...properties,
+    failure_stage: args.failureStage,
+    error_type: "validation",
+    error_label: args.errorLabel,
+  });
+}
+
+function capturePreSendSetupFailure(args: {
+  chatId?: string;
+  text: string;
+  state: ChatSendOrchestrationState;
+  attachments: ChatAttachment[];
+  failureStage: "chat_setup" | "pending_state_flush";
+  error: unknown;
+  recordedAudio?: RecordingResultPayload;
+}) {
+  const analytics = createAnalyticsClientMetadata("message_send_attempted", window.location.pathname);
+  const hasAudioAttachment = args.attachments.some(attachmentIsAudio);
+  const hasImageAttachment = args.attachments.some(attachmentIsImage);
+  const properties = {
+    feature_area: "chat",
+    chat_id: args.chatId ? String(args.chatId) : null,
+    text_present: args.text.trim().length > 0,
+    participant_count: args.state.participants.length,
+    model_ids: args.state.participants.map((participant) => participant.modelId).join(","),
+    has_attachments: args.attachments.length > 0,
+    attachment_count: args.attachments.length,
+    has_audio: args.recordedAudio !== undefined || hasAudioAttachment,
+    has_image_attachment: hasImageAttachment,
+    audio_duration_ms: args.recordedAudio?.durationMs ?? null,
+    web_search_enabled: args.state.webSearchEnabled,
+    search_mode: args.state.isResearchPaper ? "paper" : args.state.convexSearchMode ?? "none",
+    complexity: args.state.convexComplexity ?? null,
+    integration_count: args.state.enabledIntegrations.size,
+    skill_override_count: args.state.turnOverrideArgs.turnSkillOverrides?.length ?? 0,
+    integration_override_count: args.state.turnOverrideArgs.turnIntegrationOverrides?.length ?? 0,
+    subagents_enabled: args.state.subagentsEnabled,
+    has_video_config: args.state.isVideoMode,
+    client_event_id: analytics.clientEventId,
+  };
+  captureAnalytics("message_send_attempted", properties);
+  captureAnalytics("message_send_failed", {
+    ...properties,
+    failure_stage: args.failureStage,
+    error_type: args.error instanceof Error ? args.error.name : "unknown",
+    error_label: analyticsErrorLabel(args.error),
+  });
+}
+
+async function prepareChatForSend(args: {
+  state: ChatSendOrchestrationState;
+  deps: ChatSendOrchestrationDeps;
+  text: string;
+  attachments: ChatAttachment[];
+  recordedAudio?: RecordingResultPayload;
+}): Promise<Id<"chats">> {
+  let chatId: Id<"chats">;
+  try {
+    chatId = await args.deps.ensureChatId();
+  } catch (error) {
+    capturePreSendSetupFailure({
+      chatId: args.state.chatId,
+      text: args.text,
+      state: args.state,
+      attachments: args.attachments,
+      recordedAudio: args.recordedAudio,
+      failureStage: "chat_setup",
+      error,
+    });
+    throw error;
+  }
+
+  try {
+    await args.deps.flushPendingState(chatId);
+  } catch (error) {
+    capturePreSendSetupFailure({
+      chatId,
+      text: args.text,
+      state: args.state,
+      attachments: args.attachments,
+      recordedAudio: args.recordedAudio,
+      failureStage: "pending_state_flush",
+      error,
+    });
+    throw error;
+  }
+
+  return chatId;
+}
+
+function validationErrorLabel(message: string | null): string {
+  if (!message) return "validation_error";
+  const normalized = message.toLowerCase();
+  if (normalized.includes("research paper") && normalized.includes("single participant")) {
+    return "research_paper_multi_participant";
+  }
+  if (normalized.includes("complexity 3") && normalized.includes("attachments")) {
+    return "complexity_3_attachments";
+  }
+  return "validation_error";
 }
 
 export async function executeChatSend(
@@ -222,24 +503,38 @@ export async function executeChatSend(
     ...state.kbAttachmentsForDisplay,
   ]);
 
-  if (!deps.validateAttachmentCount(mergedAttachments.length)) {
+  const validationMessage = deps.validateAttachmentCount(mergedAttachments.length);
+  if (validationMessage) {
+    captureSendValidationFailure({
+      chatId: state.chatId,
+      text,
+      state,
+      attachments: mergedAttachments,
+      failureStage: "validation",
+      errorLabel: validationErrorLabel(validationMessage),
+    });
     return false;
   }
 
-  const chatId = await deps.ensureChatId();
-  await deps.flushPendingState(chatId);
+  const chatId = await prepareChatForSend({
+    state,
+    deps,
+    text,
+    attachments: mergedAttachments,
+  });
 
   if (state.isResearchPaper) {
     const participant = state.participants[0];
     if (!participant) return false;
-    await deps.startResearchPaper(buildResearchPaperArgs({
+    await startResearchPaperWithAnalytics({
       chatId,
       text,
       participant,
       complexity: state.convexComplexity ?? 1,
       attachments: mergedAttachments,
       enabledIntegrations: state.enabledIntegrations,
-    }));
+      deps,
+    });
   } else {
     await deps.sendMessage(buildSendMessageArgs({
       chatId,
@@ -275,24 +570,53 @@ export async function executeRecordedAudioSend(
     ...state.kbAttachmentsForDisplay,
   ]);
 
-  if (!deps.validateAttachmentCount(mergedAttachments.length)) {
+  const validationMessage = deps.validateAttachmentCount(mergedAttachments.length);
+  if (validationMessage) {
+    captureSendValidationFailure({
+      chatId: state.chatId,
+      text: recording.transcript || "(voice message)",
+      state,
+      attachments: mergedAttachments,
+      failureStage: "recording_validation",
+      errorLabel: validationErrorLabel(validationMessage),
+    });
     return false;
   }
 
-  const chatId = await deps.ensureChatId();
-  await deps.flushPendingState(chatId);
-  const uploadUrl = await deps.createUploadUrl();
-  const response = await deps.uploadRecording(uploadUrl, {
-    method: "POST",
-    headers: { "Content-Type": recording.mimeType },
-    body: recording.blob,
+  const text = recording.transcript || "(voice message)";
+  const chatId = await prepareChatForSend({
+    state,
+    deps,
+    text,
+    attachments: mergedAttachments,
+    recordedAudio: recording,
   });
-  if (!response.ok) {
-    throw new Error("Voice recording upload failed.");
-  }
-  const { storageId } = (await response.json()) as { storageId?: string };
-  if (!storageId) {
-    throw new Error("Voice recording upload did not return a storage id.");
+  let storageId: string;
+  try {
+    const uploadUrl = await deps.createUploadUrl();
+    const response = await deps.uploadRecording(uploadUrl, {
+      method: "POST",
+      headers: { "Content-Type": recording.mimeType },
+      body: recording.blob,
+    });
+    if (!response.ok) {
+      throw new Error("Voice recording upload failed.");
+    }
+    const parsed = (await response.json()) as { storageId?: string };
+    if (!parsed.storageId) {
+      throw new Error("Voice recording upload did not return a storage id.");
+    }
+    storageId = parsed.storageId;
+  } catch (error) {
+    captureRecordedAudioUploadFailure({
+      chatId,
+      text,
+      state,
+      attachments: mergedAttachments,
+      recording,
+      error,
+    });
+    throw error;
   }
   const recordedAudio: RecordedAudioPayload = {
     storageId: storageId as Id<"_storage">,
@@ -300,12 +624,11 @@ export async function executeRecordedAudioSend(
     durationMs: recording.durationMs,
     mimeType: recording.mimeType,
   };
-  const text = recording.transcript || "(voice message)";
 
   if (state.isResearchPaper) {
     const participant = state.participants[0];
     if (!participant) return false;
-    await deps.startResearchPaper(buildResearchPaperArgs({
+    await startResearchPaperWithAnalytics({
       chatId,
       text,
       participant,
@@ -313,7 +636,8 @@ export async function executeRecordedAudioSend(
       attachments: mergedAttachments,
       recordedAudio,
       enabledIntegrations: state.enabledIntegrations,
-    }));
+      deps,
+    });
   } else {
     await deps.sendMessage(buildSendMessageArgs({
       chatId,

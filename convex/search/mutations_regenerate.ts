@@ -3,6 +3,10 @@ import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
 import { Id } from "../_generated/dataModel";
+import {
+  analyticsClientMetadataValidator,
+  type AnalyticsClientMetadata,
+} from "../analytics/client_metadata";
 
 const REGENERATE_REUSED_PHASE_TYPES = new Set([
   "planning",
@@ -33,6 +37,7 @@ export interface RegeneratePaperArgs extends Record<string, unknown> {
   reasoningEffort?: string | null;
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
+  analytics?: AnalyticsClientMetadata;
 }
 
 export const regeneratePaper = mutation({
@@ -50,6 +55,7 @@ export const regeneratePaper = mutation({
     reasoningEffort: v.optional(v.union(v.string(), v.null())),
     enabledIntegrations: v.optional(v.array(v.string())),
     subagentsEnabled: v.optional(v.boolean()),
+    analytics: v.optional(analyticsClientMetadataValidator),
   },
   returns: v.object({
     assistantMessageId: v.id("messages"),
@@ -107,6 +113,8 @@ export async function regeneratePaperHandler(
       userId,
       modelId: args.modelId,
       status: "queued",
+      analytics: args.analytics,
+      analyticsSource: "research_paper",
       createdAt: now,
     });
 
@@ -214,6 +222,7 @@ export async function regeneratePaperHandler(
         expandMultiModelGroups: false,
         enabledIntegrations: args.enabledIntegrations,
         subagentsEnabled: false,
+        analytics: args.analytics,
         phaseOrder: nextPhaseOrder,
       },
     );

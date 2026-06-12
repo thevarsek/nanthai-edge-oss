@@ -12,7 +12,8 @@ import {
   loadedSkillStates,
   terminalErrorCode,
 } from "../schema_validators";
-import { participantConfigValidator, videoConfigValidator } from "./actions_args";
+import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
+import { analyticsSourceValidator, participantConfigValidator, videoConfigValidator } from "./actions_args";
 
 export const attachmentValidator = v.object({
   type: v.string(),
@@ -84,6 +85,7 @@ export const sendMessageArgs = {
   // M30 — Turn-level skill & integration overrides (slash chips)
   turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+  analytics: v.optional(analyticsClientMetadataValidator),
 } satisfies PropertyValidators;
 
 export const cancelGenerationArgs = {
@@ -110,6 +112,7 @@ export const retryMessageArgs = {
   // M30 — Turn-level skill & integration overrides (slash chips)
   turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+  analytics: v.optional(analyticsClientMetadataValidator),
 } satisfies PropertyValidators;
 
 export const updateMessageContentArgs = {
@@ -263,6 +266,7 @@ export const updateJobStatusArgs = {
     v.literal("timedOut"),
   ),
   startedAt: v.optional(v.number()),
+  analyticsStartedAt: v.optional(v.number()),
   error: v.optional(v.string()),
   openrouterGenerationId: v.optional(v.string()),
   terminalErrorCode: v.optional(terminalErrorCode),
@@ -297,6 +301,8 @@ export const saveGenerationContinuationArgs = {
       personaSkillOverrides: v.optional(v.array(skillOverrideEntry)),
       skillDefaults: v.optional(v.array(skillOverrideEntry)),
       integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
+      analyticsSource: v.optional(analyticsSourceValidator),
+      analytics: v.optional(analyticsClientMetadataValidator),
     }),
     checkpointVersion: v.optional(v.union(v.literal("v1"), v.literal("v2"))),
     assembledCheckpoint: v.optional(v.any()),

@@ -9,6 +9,7 @@ import {
   normalizeMessageAttachments,
   normalizeParticipants,
   resolveParentMessageIdsForSend,
+  scheduleCancelledAssistantResponseAnalytics,
 } from "../chat/mutation_send_helpers";
 
 type Row = Record<string, any>;
@@ -22,6 +23,7 @@ function buildCtx(options?: {
   const tableRows = new Map(Object.entries(options?.tableRows ?? {}));
   const patches: Array<{ id: string; value: Row }> = [];
   const continuationCancels: string[] = [];
+  const scheduledAnalytics: Row[] = [];
 
   const rowsFor = (table: string) => tableRows.get(table) ?? [];
   const chainFor = (table: string) => {
@@ -57,10 +59,14 @@ function buildCtx(options?: {
       cancel: async (id: string) => {
         continuationCancels.push(id);
       },
+      runAfter: async (_delay: number, _fn: unknown, payload: Row) => {
+        scheduledAnalytics.push(payload);
+        return "scheduled_analytics";
+      },
     },
   } as any;
 
-  return { ctx, patches, continuationCancels };
+  return { ctx, patches, continuationCancels, scheduledAnalytics };
 }
 
 test("normalizeMessageAttachments resolves uploaded files, base64 sizes, and validation failures", async () => {
@@ -193,4 +199,125 @@ test("send helper defaults participants, maps optional fields, and cancels non-t
       },
     },
   ]);
+});
+
+test("cancelled assistant analytics preserves deferred source metadata", async () => {
+  const { ctx, scheduledAnalytics } = buildCtx({
+    records: {
+      message_1: { _id: "message_1", chatId: "chat_1" },
+    },
+    tableRows: {
+      subagentBatches: [
+        {
+          _id: "batch_1",
+          parentMessageId: "message_1",
+          status: "running_children",
+          paramsSnapshot: {
+            analyticsSource: "research_paper",
+            analytics: { platform: "web" },
+          },
+        },
+      ],
+    },
+  });
+
+  await scheduleCancelledAssistantResponseAnalytics(ctx, {
+    _id: "job_1",
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    modelId: "openai/gpt-5",
+    status: "streaming",
+    startedAt: 123,
+    analyticsStartedAt: 124,
+  } as any);
+
+  assert.equal(scheduledAnalytics[0]?.source, "research_paper");
+  assert.deepEqual(scheduledAnalytics[0]?.analytics, { platform: "web" });
+  assert.equal(scheduledAnalytics[0]?.subagentBatchId, "batch_1");
+  assert.equal(scheduledAnalytics[0]?.emitStarted, false);
+});
+
+test("streaming handoff cancellation without a started timestamp emits a synthetic start", async () => {
+  const { ctx, scheduledAnalytics } = buildCtx({
+    records: {
+      message_1: {
+        _id: "message_1",
+        chatId: "chat_1",
+        searchSessionId: "search_1",
+      },
+      search_1: {
+        _id: "search_1",
+        mode: "paper",
+      },
+    },
+  });
+
+  await scheduleCancelledAssistantResponseAnalytics(ctx, {
+    _id: "job_1",
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    modelId: "openai/gpt-5",
+    status: "streaming",
+    analytics: { platform: "web" },
+  } as any);
+
+  assert.equal(scheduledAnalytics[0]?.source, "research_paper");
+  assert.deepEqual(scheduledAnalytics[0]?.analytics, { platform: "web" });
+  assert.equal(scheduledAnalytics[0]?.emitStarted, true);
+});
+
+test("streaming video cancellation emits terminal analytics without a duplicate start", async () => {
+  const { ctx, scheduledAnalytics } = buildCtx({
+    records: {
+      message_1: { _id: "message_1", chatId: "chat_1" },
+    },
+    tableRows: {
+      videoJobs: [
+        {
+          _id: "video_job_1",
+          messageId: "message_1",
+          status: "in_progress",
+        },
+      ],
+    },
+  });
+
+  await scheduleCancelledAssistantResponseAnalytics(ctx, {
+    _id: "job_1",
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    modelId: "video/model",
+    status: "streaming",
+    startedAt: 123,
+    analyticsStartedAt: 124,
+    analytics: { platform: "web" },
+  } as any);
+
+  assert.equal(scheduledAnalytics[0]?.source, "video_generation");
+  assert.deepEqual(scheduledAnalytics[0]?.analytics, { platform: "web" });
+  assert.equal(scheduledAnalytics[0]?.emitStarted, false);
+});
+
+test("queued cancellation asks the analytics action to emit a matching start", async () => {
+  const { ctx, scheduledAnalytics } = buildCtx({
+    records: {
+      message_1: { _id: "message_1", chatId: "chat_1" },
+    },
+  });
+
+  await scheduleCancelledAssistantResponseAnalytics(ctx, {
+    _id: "job_1",
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    modelId: "openai/gpt-5",
+    status: "queued",
+    analyticsSource: "web_search",
+  } as any);
+
+  assert.equal(scheduledAnalytics[0]?.source, "web_search");
+  assert.equal(scheduledAnalytics[0]?.emitStarted, true);
 });
