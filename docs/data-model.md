@@ -4,9 +4,11 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 4 files imported into `convex/schema.ts` — 49 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 4 files imported into `convex/schema.ts` — 55 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
+
+The schema-history sections later in this file preserve milestone-era table counts. Use this current overview as the source of truth for the active schema count.
 
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
@@ -14,6 +16,8 @@ The Convex schema is defined across 4 files imported into `convex/schema.ts` —
 | `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (per-message snapshot), turnSkillOverrides (M30), turnIntegrationOverrides (M30), loadedSkillIds (M30), usedIntegrationIds (M30), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), documentCitations (M32), documentEvents (M33), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20), videoUrls (M29), hasVideo (M29), retryContract (PR #78 — full participant/config snapshot stored at send time for retry use), terminalErrorCode (PR #78 — canonical failure reason: `stream_timeout` / `provider_error` / `cancelled_by_retry` / `cancelled_by_user` / `unknown_error`). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
 | `documents` | Canonical readable document identity (M32) | userId, title, filename, mimeType, source, currentVersionId, originChatId, folderId, sourceStorageId, fileAttachmentId, generatedFileId, generatedMediaId, driveFileId, externalModifiedTime, externalSyncedVersionId, status, syncState, lastExtractedAt. Indexes support user/folder views, current-version lookup, source-storage lookup, generated-file/media linkage, and origin-chat folder sync. |
 | `documentVersions` | Immutable document versions (M32/M33) | documentId, userId, storageId, filename, mimeType, versionNumber, source, parentVersionId, contentHash, extractionStatus, extractionTextStorageId, extractionMarkdownStorageId, extractionByteLength, extractionError, pageCount, wordCount, externalModifiedTime. Extraction output is stored out-of-row in Convex `_storage`. |
+| `documentEditBatches` | Durable DOCX tracked-change proposal batches (M39) | userId, documentId, assistantMessageId?, generatedFileId?, generationKey, baseVersionId, currentVersionId, status, createdAt, updatedAt. Indexes support document timelines, generation-key dedupe, message lookup, and user cleanup. |
+| `documentEdits` | Individual accept/reject-able DOCX tracked changes (M39) | userId, documentId, batchId, assistantMessageId?, introducedVersionId, preResolutionVersionId?, resolvedVersionId?, changeId, Word wrapper IDs, deletedText, insertedText, contextBefore?, contextAfter?, reason?, status, createdAt, resolvedAt?, resolvedBy?. |
 | `streamingMessages` | Active streaming overlay rows | messageId, chatId, content, reasoning, status, toolCalls, createdAt, updatedAt. Written by `StreamWriter` during generation so live token patches avoid invalidating heavy `listMessages` subscriptions. |
 | `chatParticipants` | Models/personas in a chat | chatId, modelId, personaId, sortOrder, personaName, personaEmoji, personaAvatarImageUrl, createdAt |
 | `generationJobs` | LLM generation tracking | messageId, status (pending/running/completed/failed), terminalErrorCode (PR #78 — canonical failure code on failed jobs) |
@@ -192,7 +196,7 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 | **Added `oauthConnections` table** | External integration OAuth tokens. Stores provider (google/microsoft/notion/slack/cloze), access/refresh tokens, expiry, scopes, user email, status. Indexes: `by_user`, `by_user_provider`, `by_status`. Notion uses HTTP Basic Auth for token exchange (no PKCE). Slack uses OAuth 2.0 (workspace-level). Cloze uses API key auth (no OAuth). |
 | **Added tool fields to `messages`** | `toolCalls` (v.optional array), `toolResults` (v.optional array), `generatedFileIds` (v.optional array of Id<"generatedFiles">). |
 | **Added `enabledIntegrations` to `sendMessageArgs`** | Passed to backend as the per-message effective integration snapshot. M30 keeps this on message/send paths while persona/chat defaults now live in layered override fields. |
-| **Schema split** | `convex/schema.ts` now imports from 4 table definition files: `schema_tables_core.ts` (14 tables), `schema_tables_catalog.ts` (6 tables), `schema_tables_user.ts` (12 tables), `schema_tables_runtime.ts` (4 tables). |
+| **Schema split** | `convex/schema.ts` imports from 4 table definition files. Current counts are `schema_tables_core.ts` (28 tables), `schema_tables_catalog.ts` (9 tables), `schema_tables_user.ts` (14 tables), and `schema_tables_runtime.ts` (4 tables). |
 
 ---
 
@@ -210,7 +214,7 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 | **Added `isProUnlocked`, `proUnlockedAt` to `userPreferences`** | Legacy Pro mirror fields. **Removed** in the post-M21 entitlement schema cleanup — `purchaseEntitlements` is the sole source of truth for Pro status. |
 | **Added `includeReasoning`, `reasoningEffort` to `scheduledJobs`** | Reasoning overrides for reasoning-capable models in jobs. |
 | **New cron: `cleanOldJobRuns`** | Daily at 5 UTC — prunes job runs older than 30 days. 7 system crons total (including `cleanStaleSearchPhases` at 4 UTC). |
-| **Table count: 19 → 22** | 3 new tables: `scheduledJobs`, `jobRuns`, `userSecrets`. |
+| **Historical table count: 19 → 22** | 3 new tables: `scheduledJobs`, `jobRuns`, `userSecrets`. |
 
 ---
 
@@ -221,7 +225,7 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 | **Added `defaultSearchMode`, `defaultSearchComplexity` to `userPreferences`** | Default internet search tier (`"basic"` / `"web"` / `"paper"`) and complexity (1-3) for new chats. |
 | **Added `webSearchOverride`, `searchModeOverride`, `searchComplexityOverride` to `chats`** | Per-chat search setting overrides. `nil` = inherit global default from `userPreferences`. Once a user explicitly toggles search within a chat, the override is persisted and survives navigation, backgrounding, and app relaunch. Follows the same pattern as `temperatureOverride`, `maxTokensOverride`, etc. |
 | **Replaced `webSearchEnabled` on `scheduledJobs`** | New fields: `searchMode` (`"none"` / `"basic"` / `"web"` / `"research"`) and `searchComplexity` (1-3). Backward compat: absent `searchMode` + `webSearchEnabled: true` → `"basic"`. |
-| **Added `deviceTokens` table** | Provider-based push notification tokens: userId, token, platform, provider, optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider`. Table count: 22 → 23. |
+| **Added `deviceTokens` table** | Provider-based push notification tokens: userId, token, platform, provider, optional APNs environment, updatedAt. Indexes: `by_user`, `by_token`, `by_platform_provider`. Historical table count: 22 → 23. |
 
 ---
 
@@ -234,7 +238,7 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 
 > **Note:** `isProUnlocked` and `proUnlockedAt` have been removed from the `userPreferences` schema (post-M21 entitlement cleanup). `originalTransactionId` remains for StoreKit audit compatibility. Pro state comes exclusively from `purchaseEntitlements` via `preferences/entitlements.ts` and `preferences/queries:getProStatus`.
 
-No new tables. Table count remains 23.
+No new tables in M14. The historical table count remained 23.
 
 ### `userPreferences` (legacy fields + onboarding)
 
@@ -307,7 +311,7 @@ Although rank-like values are conceptually integers, they are still stored as Co
 
 | Change | Details |
 |--------|---------|
-| **Added `skills` table** | AI skill definitions (system catalog + user-authored): slug, name, summary, instructionsRaw, instructionsCompiled?, compilationStatus, scope, ownerUserId, origin, visibility, lockState, status, runtimeMode, requiredToolIds, requiredIntegrationIds, unsupportedCapabilityCodes, validationWarnings, version, createdAt, updatedAt. 20+ fields, 4 indexes (`by_scope`, `by_owner`, `by_slug`, `by_status`). Table count: 29 → 30. |
+| **Added `skills` table** | AI skill definitions (system catalog + user-authored): slug, name, summary, instructionsRaw, instructionsCompiled?, compilationStatus, scope, ownerUserId, origin, visibility, lockState, status, runtimeMode, requiredToolIds, requiredIntegrationIds, unsupportedCapabilityCodes, validationWarnings, version, createdAt, updatedAt. 20+ fields, 4 indexes (`by_scope`, `by_owner`, `by_slug`, `by_status`). Historical table count: 29 → 30. |
 | **M30 replaced legacy skill attachment fields** | `personas` now use `skillOverrides` / `integrationOverrides`; `chats` now use `skillOverrides` / `integrationOverrides`; legacy `discoverableSkillIds`, `disabledSkillIds`, and persona-level `enabledIntegrations` were removed after rollout stabilization. |
 
 ---
@@ -322,7 +326,7 @@ Although rank-like values are conceptually integers, they are still stored as Co
 | **Capability model added** | `userCapabilities` stores internal/manual grants (currently `pro` and `mcpRuntime`), layered on top of entitlement-derived `pro`. **Note (M27):** `sandboxRuntime` was removed — all Pro users now get runtime access. |
 | **Per-chat sandbox lifecycle persisted** | [DEPRECATED — M27] `sandboxSessions` was used for E2B provider sandbox tracking. Runtime now uses ephemeral per-generation just-bash sandboxes — no persistent session tracking needed. |
 | **Runtime artifacts and observability persisted** | `sandboxArtifacts` tracks exported files related to a sandbox; `sandboxEvents` stores lifecycle and analytics events. |
-| **Table count: 30 → 35** | 5 new tables: `generatedCharts`, `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
+| **Historical table count: 30 → 35** | 5 new tables: `generatedCharts`, `userCapabilities`, `sandboxSessions`, `sandboxArtifacts`, `sandboxEvents`. |
 
 ---
 
@@ -334,7 +338,7 @@ Although rank-like values are conceptually integers, they are still stored as Co
 | **Added `messageMemoryContexts` table** | Per-message hydrated memory-context cache keyed by `messageId` + `textHash`. Stores the full post-vector-search memory hit payload so generation can skip the full retrieval chain on cache hit. |
 | **Model privacy metadata expanded** | `cachedModels` now includes `hasZdrEndpoint` so clients can enforce ZDR-compatible model choices when the user enables Zero Data Retention. |
 | **User preferences expanded** | `userPreferences.zdrEnabled` persists the global Zero Data Retention toggle used by model pickers, chat defaults, and runtime request gating across iOS, Android, and web. |
-| **Table count: 42 → 44** | The two new memory/embedding cache tables are now part of the catalog schema domain. |
+| **Historical table count: 42 → 44** | The two new memory/embedding cache tables are now part of the catalog schema domain. |
 
 ## Post-M14 Weekend Sprint Schema Changes (2026-03-07 → 2026-03-09)
 
@@ -397,7 +401,7 @@ This cleanup covers the M36 removed standalone skills: `conditions-precedent-che
 | `loadedSkillIds` | `v.optional(v.array(v.id("skills")))` | Assistant orchestration trace of skills loaded into the run (M30). |
 | `usedIntegrationIds` | `v.optional(v.array(v.string()))` | Assistant orchestration trace of integrations actually used during the run (M30). |
 
-No new tables. Table count remains 23.
+No new tables in this historical section. The historical table count remained 23.
 
 ---
 
@@ -414,7 +418,7 @@ No new tables. Table count remains 23.
 | **Added audio preference fields to `userPreferences`** | `autoAudioResponse` (v.optional(v.boolean())), `preferredVoice` (v.optional(v.string())). |
 | **Added `autoAudioResponseOverride` to `chats`** | `v.optional(v.boolean())` — per-chat override for auto-audio preference. |
 
-No new tables. Table count remains 35.
+No new tables in M20. The historical table count remained 35.
 
 ---
 
@@ -422,7 +426,7 @@ No new tables. Table count remains 35.
 
 | Change | Details |
 |--------|---------|
-| **Added `rate_limit` table** | Backend rate limiting for abuse prevention. Fields: `userId`, `action`, `windowStart`, `count`, `updatedAt`. Indexed by `by_user_action`. Table count: 35 → 36. |
+| **Added `rate_limit` table** | Backend rate limiting for abuse prevention. Fields: `userId`, `action`, `windowStart`, `count`, `updatedAt`. Indexed by `by_user_action`. Historical table count: 35 → 36. |
 | **Added `by_status` index to `generationJobs`** | Enables indexed cleanup of stale generation jobs instead of full table scan. |
 | **Added `audioGenerating` flag to `messages`** | Transient boolean flag indicating TTS generation is in progress, patched false on completion or failure. |
 | **Split `repairInvalidMessagePersonas`** | Not a schema change but a migration pattern: large repair mutations are chunked (process N documents per call, reschedule if more remain) to stay within Convex's mutation time budget. |
@@ -436,7 +440,7 @@ No new tables. Table count remains 35.
 | **Extended `usageRecords` with `source` labels** | 11 previously-untracked cost sources (title, compaction, memory extraction/embedding, search query/perplexity/planning/analysis/synthesis, subagent) now have `source` field + `by_message` index for per-message cost aggregation. |
 | **Added `showAdvancedStats` to `userPreferences`** | `v.optional(v.boolean())` — toggle for per-message/chat cost display. |
 
-No new tables. Table count remains 36.
+No new tables in M27. The historical table count remained 36; the current table count is listed in the Schema Overview.
 
 ---
 
@@ -449,7 +453,7 @@ No new tables. Table count remains 36.
 | **Extended `http.ts` MIME map** | Added `mp3: "audio/mpeg"`, `wav: "audio/wav"`, `m4a: "audio/mp4"` to the `/download` endpoint. |
 | **Extended `listModelSummaries` response** | `isFree` field now computed server-side via `:free` slug suffix instead of zero-price check. All clients decode this field. |
 
-No new tables. Table count remains 36.
+No new tables in M23. The historical table count remained 36.
 
 ---
 
@@ -465,7 +469,7 @@ No new tables. Table count remains 36.
 | **Removed `sandboxRuntime` capability checks** | The `sandboxRuntime` capability is no longer checked in tool registry, skill visibility, or runtime profile logic. The `userCapabilities` table still exists but `sandboxRuntime` grants are no longer required. |
 | **Removed 5 banned patterns from `validators.ts`** | `USES_BASH`, `USES_FILESYSTEM`, `USES_RAW_FETCH`, `USES_BUNDLED_SCRIPTS`, `USES_GIT` removed from `BANNED_PATTERNS` since just-bash handles these operations. |
 
-No new tables. Table count remains 36.
+No new tables in M26. The historical table count remained 36.
 
 ---
 
@@ -473,15 +477,15 @@ No new tables. Table count remains 36.
 
 | Change | Details |
 |--------|---------|
-| **Added `generationContinuations` table** | Durable cross-action checkpoint/resume for long-running generation pipelines. Fields: `chatId` (v.id("chats")), `messageId` (v.id("messages")), `jobId` (v.id("generationJobs")), `userId` (string), `status` (generationContinuationStatus: `"waiting"` / `"running"` / `"completed"` / `"cancelled"`), `participantSnapshot` (any — serialized participant config), `groupSnapshot` (any — serialized group state), `requestMessages` (any — accumulated OpenRouter messages), `usage` (optional usage object), `toolCalls` (optional array of {id, name, arguments}), `toolResults` (optional array of {toolCallId, toolName, result, isError?}), `activeProfiles` (array of string — active skill tool profiles), `compactionCount` (number), `continuationCount` (number), `partialContent` (optional string), `partialReasoning` (optional string), `scheduledAt` (optional number), `scheduledFunctionId` (optional v.id("_scheduled_functions")), `claimedAt` (optional number), `leaseExpiresAt` (optional number), `createdAt` (number), `updatedAt` (number). Indexes: `by_job` (jobId), `by_status` (status, updatedAt), `by_chat` (chatId, updatedAt). Table count: 36 → 37. |
+| **Added `generationContinuations` table** | Durable cross-action checkpoint/resume for long-running generation pipelines. Fields: `chatId` (v.id("chats")), `messageId` (v.id("messages")), `jobId` (v.id("generationJobs")), `userId` (string), `status` (generationContinuationStatus: `"waiting"` / `"running"` / `"completed"` / `"cancelled"`), `participantSnapshot` (any — serialized participant config), `groupSnapshot` (any — serialized group state), `requestMessages` (any — accumulated OpenRouter messages), `usage` (optional usage object), `toolCalls` (optional array of {id, name, arguments}), `toolResults` (optional array of {toolCallId, toolName, result, isError?}), `activeProfiles` (array of string — active skill tool profiles), `compactionCount` (number), `continuationCount` (number), `partialContent` (optional string), `partialReasoning` (optional string), `scheduledAt` (optional number), `scheduledFunctionId` (optional v.id("_scheduled_functions")), `claimedAt` (optional number), `leaseExpiresAt` (optional number), `createdAt` (number), `updatedAt` (number). Indexes: `by_job` (jobId), `by_status` (status, updatedAt), `by_chat` (chatId, updatedAt). Historical table count: 36 → 37. |
 | **Moved `isJobCancelled` to `internalQuery`** | Was `internalMutation` in `chat/mutations.ts`; now `internalQuery` in `chat/queries.ts`. Pure read operation — all 7 callers changed from `ctx.runMutation` to `ctx.runQuery`. Reduces OCC contention during streaming. |
 | **Added orphan continuation reaping to `cleanStale`** | `jobs/cleanup.ts` now scans non-terminal `generationContinuations` rows during each 15-minute cron run. Deletes rows with terminal/missing parent jobs, expired leases (2× lease duration grace), or unclaimed waiting rows (24-minute cutoff). Cancels associated scheduled functions before deletion. |
 
-Table count: 37.
+M27-era table count: 37. The current table count is listed in the Schema Overview.
 
 ---
 
-*Last updated: 2026-04-13 — Post-M27 durable generation continuations (generationContinuations table, isJobCancelled → internalQuery, orphan continuation reaping). M27 Free Code Execution (png_image chart type, sandboxSessionId optional, sandboxRuntime removal, deprecated runtime tables). Table count: 37.*
+*Last updated: 2026-04-13 — Post-M27 durable generation continuations (generationContinuations table, isJobCancelled → internalQuery, orphan continuation reaping). M27 Free Code Execution (png_image chart type, sandboxSessionId optional, sandboxRuntime removal, deprecated runtime tables). Historical M27-era table count: 37.*
 
 ---
 
@@ -495,7 +499,7 @@ Table count: 37.
 | **New module: `convex/chat/retry_contract.ts`** | Exports `RetryContract`, `RetryParticipantSnapshot`, `RetryVideoConfig`, `RetrySearchMode` types + `cloneRetryContract()` and `buildRetryContract()` helpers. Single source of truth for retry contract assembly. |
 | **New module: `convex/chat/terminal_error.ts`** | Exports `TerminalErrorCode` type and `classifyTerminalErrorCode()` function. Fixed a race where `cancelled_by_retry` could be overwritten by late-arriving finalizations from a prior generation. |
 | **Cross-platform DTO updates** | iOS, Android, and web `RetryContract` DTOs updated to include `turnSkillOverrides`, `turnIntegrationOverrides`, `videoConfig`, and `systemPrompt` fields. |
-| **No new tables** | Table count remains 37. |
+| **No new tables** | Historical PR #78-era table count remained 37. |
 
 ### `schema_validators.ts` additions
 
@@ -522,10 +526,10 @@ Two new shared validators added:
 | **New module: `convex/drive_picker/ingest.ts`** | Consolidated Drive metadata + bytes fetch shared by both the chat-flow Drive picker (`drive_picker/actions.ts`) and the KB-import flow (`knowledge_base/actions.ts`). |
 | **Lazy refresh chokepoint** | `scheduledJobs/queries.ts:getKBFileContents` resolves the FA row, calls `refreshDriveStorageIfStale` when `driveFileId` is set, and swaps the storage id if Drive's `modifiedTime` advanced since `lastRefreshedAt`. This is the single point where stale Drive bytes get refreshed for KB consumers. |
 | **Account purge extended** | `userPurge` now drains `googleDriveFileGrants` rows in addition to all other per-user tables. |
-| **Table count: 44 → 46** | 2 new tables (`googleDriveFileGrants`, `drivePickerBatches`). Plus the 5 tables previously absent from the table-list above (`googleDriveFileGrants`, `drivePickerBatches`, `scheduledJobTriggerTokens`, `scheduledJobApiInvocations`, `syncMeta`) are now documented — the M19 → post-M27 incremental counts (37) had drifted from reality. |
+| **Historical table count: 44 → 46** | 2 new tables (`googleDriveFileGrants`, `drivePickerBatches`). Plus the 5 tables previously absent from the table-list above (`googleDriveFileGrants`, `drivePickerBatches`, `scheduledJobTriggerTokens`, `scheduledJobApiInvocations`, `syncMeta`) were documented at the time — the M19 → post-M27 incremental counts (37) had drifted from reality. The current table count is listed in the Schema Overview. |
 | **Backend tests** | 1303 → 1310. New tests: `kb_source_parity_contract.test.ts`, `shared_queries_contract.test.ts` (Drive refresh routing + per-id error isolation). |
 
-*Last updated: 2026-04-26 — M24 Phase 6 Drive-in-KB: `googleDriveFileGrants` and `drivePickerBatches` tables added, `fileAttachments` extended with `driveFileId` + `lastRefreshedAt` + 2 new indexes, KB module relocated to `convex/knowledge_base/`, lazy-refresh chokepoint in `getKBFileContents`. Table count corrected: 46.*
+*Last updated: 2026-04-26 — M24 Phase 6 Drive-in-KB: `googleDriveFileGrants` and `drivePickerBatches` tables added, `fileAttachments` extended with `driveFileId` + `lastRefreshedAt` + 2 new indexes, KB module relocated to `convex/knowledge_base/`, lazy-refresh chokepoint in `getKBFileContents`. Historical table count corrected to 46.*
 
 ---
 
@@ -538,6 +542,6 @@ Two new shared validators added:
 | **Added `contextAssemblyLogs` table** | Sampled audit/telemetry records for context assembly decisions. Stores mode, runtime kind, selected graph counts, token estimates, rehydration and provenance timings, drift booleans, policy version/summary, exclusion counts, and automated judgement payloads. |
 | **Extended `generationContinuations` and subagent runtime rows** | Continuation and parent-resume paths can carry M38 artifact/memory refs and resume metadata without replacing deterministic resume seeds or exposing child-private raw payloads. |
 | **Account cleanup extended** | Account deletion drains M38 artifact rows, memories, assembly logs, and both raw artifact storage blobs. |
-| **Table count: 46 → 49** | 3 new M38 tables: `toolExecutionArtifacts`, `toolMemories`, and `contextAssemblyLogs`. |
+| **Historical table count: 46 → 49** | 3 new M38 tables: `toolExecutionArtifacts`, `toolMemories`, and `contextAssemblyLogs`. |
 
-*Last updated: 2026-05-15 — M38/M38.5 durable tool artifact and context assembly closeout. Table count: 49.*
+*Last updated: 2026-06-14 — Current schema recounted at 55 app tables across 4 schema files; M39 document edit tables and post-M38 table-count drift documented.*

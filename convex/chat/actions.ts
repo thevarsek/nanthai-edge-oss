@@ -29,7 +29,7 @@ import { extractMemoriesHandler } from "./actions_extract_memories_handler";
 import { generateTitleHandler } from "./actions_generate_title_handler";
 import { postProcessHandler } from "./actions_post_process_handler";
 import { runGenerationHandler } from "./actions_run_generation_handler";
-import { runGenerationParticipantHandler } from "./actions_run_generation_participant_action";
+import { runGenerationParticipantRuntimeHandler } from "./actions_run_generation_participant_runtime";
 import { submitVideoGenerationHandler, pollVideoGenerationHandler } from "./actions_video_generation";
 import { fetchAndStoreGenerationUsageHandler } from "./actions_fetch_usage";
 import {
@@ -44,7 +44,7 @@ export const runGeneration = internalAction({
 
 export const runGenerationParticipant = internalAction({
   args: runGenerationParticipantArgs,
-  handler: runGenerationParticipantHandler,
+  handler: runGenerationParticipantRuntimeHandler,
 });
 
 export const postProcess = internalAction({

@@ -24,26 +24,45 @@ import { readPdf } from "./read_pdf";
 import { generatePdf } from "./generate_pdf";
 import { editPdf } from "./edit_pdf";
 
+export const analyticsProfileTools = [
+  workspaceImportFile,
+  workspaceExportFile,
+  dataPythonExec,
+  dataPythonSandbox,
+];
+
+export const workspaceProfileTools = [
+  workspaceExec,
+  workspaceListFiles,
+  workspaceReadFile,
+  workspaceWriteFile,
+  workspaceMakeDirs,
+  workspaceImportFile,
+  workspaceExportFile,
+  workspaceReset,
+];
+
+export const persistentRuntimeProfileTools = [
+  vmExec,
+  vmListFiles,
+  vmReadFile,
+  vmWriteFile,
+  vmDeleteFile,
+  vmMakeDirs,
+  vmImportFile,
+  vmExportFile,
+  vmReset,
+  readPdf,
+  generatePdf,
+  editPdf,
+];
+
 export function registerAnalyticsTools(registry: ToolRegistry): void {
-  registry.register(
-    workspaceImportFile,
-    workspaceExportFile,
-    dataPythonExec,
-    dataPythonSandbox,
-  );
+  registry.register(...analyticsProfileTools);
 }
 
 export function registerWorkspaceProfileTools(registry: ToolRegistry): void {
-  registry.register(
-    workspaceExec,
-    workspaceListFiles,
-    workspaceReadFile,
-    workspaceWriteFile,
-    workspaceMakeDirs,
-    workspaceImportFile,
-    workspaceExportFile,
-    workspaceReset,
-  );
+  registry.register(...workspaceProfileTools);
 }
 
 export function registerWorkspaceTools(registry: ToolRegistry): void {
@@ -62,20 +81,7 @@ export function registerWorkspaceTools(registry: ToolRegistry): void {
 }
 
 export function registerPersistentRuntimeTools(registry: ToolRegistry): void {
-  registry.register(
-    vmExec,
-    vmListFiles,
-    vmReadFile,
-    vmWriteFile,
-    vmDeleteFile,
-    vmMakeDirs,
-    vmImportFile,
-    vmExportFile,
-    vmReset,
-    readPdf,
-    generatePdf,
-    editPdf,
-  );
+  registry.register(...persistentRuntimeProfileTools);
 }
 
 export function registerAllRuntimeTools(registry: ToolRegistry): void {

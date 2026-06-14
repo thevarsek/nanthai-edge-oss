@@ -57,7 +57,10 @@ async function getOrCreateWorkspaceSandbox(
   const workspace = runtimeWorkspacePaths(chatId);
 
   if (toolCtx.workspaceSandbox) {
-    return { sandbox: toolCtx.workspaceSandbox, cwd: workspace.root };
+    return {
+      sandbox: toolCtx.workspaceSandbox as import("just-bash").Sandbox,
+      cwd: workspace.root,
+    };
   }
 
   const sandbox = await createWorkspaceSandbox({ cwd: workspace.root });

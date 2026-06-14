@@ -1,5 +1,3 @@
-"use node";
-
 import {
   makeFunctionReference,
   type FunctionReference,

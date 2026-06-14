@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import type { OpenRouterMessage, ToolCall } from "../lib/openrouter";
+import type { ToolExecutionContext, ToolResult } from "../tools/registry";
 import {
   availableProgressiveProfiles,
   buildProgressiveToolRegistry,
@@ -93,6 +95,90 @@ test("buildProgressiveToolRegistry: docs profile adds document tools", () => {
   assert.ok(registry.get("generate_xlsx"));
 });
 
+test("buildProgressiveToolRegistry: restored document authoring tools proxy through actions", async () => {
+  const registry = buildProgressiveToolRegistry({
+    isPro: true,
+    enabledIntegrations: [],
+    allowSubagents: false,
+    activeProfiles: ["docs"],
+  });
+  const generatePptx = registry.get("generate_pptx");
+  const editPptx = registry.get("edit_pptx");
+  const proposeDocxEdits = registry.get("propose_docx_edits");
+  assert.ok(generatePptx);
+  assert.ok(editPptx);
+  assert.ok(proposeDocxEdits);
+
+  const runActionCalls: unknown[] = [];
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    jobId: "job_1",
+    generationKey: "generation_1",
+    ctx: {
+      runAction: async (_ref: unknown, args: unknown): Promise<ToolResult> => {
+        runActionCalls.push(args);
+        return { success: true, data: { proxied: true } };
+      },
+    },
+  } as unknown as ToolExecutionContext;
+
+  await generatePptx.execute(toolCtx, { title: "Deck", slides: [{ title: "A" }] });
+  await editPptx.execute(toolCtx, {
+    storageId: "storage_1",
+    title: "Deck",
+    slides: [{ title: "A" }],
+  });
+  await proposeDocxEdits.execute(toolCtx, {
+    doc_id: "doc-0",
+    edits: [{ find: "old", replace: "new" }],
+  });
+
+  assert.deepEqual(runActionCalls, [
+    {
+      toolName: "generate_pptx",
+      toolArgs: { title: "Deck", slides: [{ title: "A" }] },
+      toolContext: {
+        userId: "user_1",
+        chatId: "chat_1",
+        messageId: "message_1",
+        jobId: "job_1",
+        generationKey: "generation_1",
+      },
+    },
+    {
+      toolName: "edit_pptx",
+      toolArgs: {
+        storageId: "storage_1",
+        title: "Deck",
+        slides: [{ title: "A" }],
+      },
+      toolContext: {
+        userId: "user_1",
+        chatId: "chat_1",
+        messageId: "message_1",
+        jobId: "job_1",
+        generationKey: "generation_1",
+      },
+    },
+    {
+      toolName: "propose_docx_edits",
+      toolArgs: {
+        doc_id: "doc-0",
+        edits: [{ find: "old", replace: "new" }],
+      },
+      toolContext: {
+        userId: "user_1",
+        chatId: "chat_1",
+        messageId: "message_1",
+        jobId: "job_1",
+        generationKey: "generation_1",
+      },
+    },
+  ]);
+});
+
 test("buildProgressiveToolRegistry: workspace and analytics profiles expand separately", () => {
   const analyticsRegistry = buildProgressiveToolRegistry({
     isPro: true,
@@ -124,7 +210,20 @@ test("buildProgressiveToolRegistry: workspace and analytics profiles expand sepa
   assert.equal(persistentRegistry.get("workspace_exec"), undefined);
 });
 
-test("buildProgressiveToolRegistry: integration profiles only add enabled integrations", () => {
+test("production registry paths do not import temporary unavailable placeholders", () => {
+  const googleIndex = readFileSync("convex/tools/google/index.ts", "utf8");
+  const profiles = readFileSync("convex/tools/progressive_registry_profiles.ts", "utf8");
+  const chatActions = readFileSync("convex/chat/actions.ts", "utf8");
+
+  assert.equal(googleIndex.includes("gmail_unavailable"), false);
+  assert.equal(profiles.includes("runtime_profile_unavailable"), false);
+  assert.equal(profiles.includes("pptx_unavailable"), false);
+  assert.equal(profiles.includes("docx_edit_unavailable"), false);
+  assert.equal(chatActions.includes("actions_run_generation_participant_action"), false);
+  assert.equal(chatActions.includes("runGenerationParticipantRuntimeHandler"), true);
+});
+
+test("buildProgressiveToolRegistry: integration profiles only add enabled integrations", async () => {
   const registry = buildProgressiveToolRegistry({
     isPro: true,
     enabledIntegrations: ["gmail"],
@@ -132,10 +231,50 @@ test("buildProgressiveToolRegistry: integration profiles only add enabled integr
     activeProfiles: ["google"],
   });
 
-  assert.ok(registry.get("gmail_send"));
+  const gmailSend = registry.get("gmail_send");
+  assert.ok(gmailSend);
   assert.ok(registry.get("gmail_create_draft"));
   assert.equal(registry.get("drive_upload"), undefined);
   assert.equal(registry.get("calendar_create"), undefined);
+
+  const runActionCalls: unknown[] = [];
+  const toolCtx = {
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    jobId: "job_1",
+    generationKey: "generation_1",
+    modelId: "model_1",
+    requireZdr: true,
+    ctx: {
+      runAction: async (_ref: unknown, args: unknown): Promise<ToolResult> => {
+        runActionCalls.push(args);
+        return { success: true, data: { proxied: true } };
+      },
+    },
+  } as unknown as ToolExecutionContext;
+
+  const result = await gmailSend.execute(toolCtx, {
+    to: "you@example.com",
+    subject: "Hello",
+    body: "Body",
+  });
+
+  assert.equal(result.success, true);
+  assert.deepEqual(result.data, { proxied: true });
+  assert.deepEqual(runActionCalls, [{
+    toolName: "gmail_send",
+    toolArgs: { to: "you@example.com", subject: "Hello", body: "Body" },
+    toolContext: {
+      userId: "user_1",
+      chatId: "chat_1",
+      messageId: "message_1",
+      jobId: "job_1",
+      generationKey: "generation_1",
+      modelId: "model_1",
+      requireZdr: true,
+    },
+  }]);
 });
 
 test("buildProgressiveToolRegistry: subagents profile adds spawn_subagents only when allowed", () => {

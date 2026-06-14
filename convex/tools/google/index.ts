@@ -1,10 +1,7 @@
-"use node";
-
 // convex/tools/google/index.ts
 // =============================================================================
 // Barrel export for all Google Workspace tools.
 // =============================================================================
 
-export { gmailSend, gmailCreateDraft, gmailRead, gmailSearch, gmailDelete, gmailModifyLabels, gmailListLabels } from "./gmail_unavailable";
-export { driveUpload, driveList, driveRead, driveMove } from "./drive";
-export { calendarList, calendarCreate, calendarDelete } from "./calendar";
+export { gmailSend, gmailCreateDraft, gmailRead, gmailSearch, gmailDelete, gmailModifyLabels, gmailListLabels } from "./gmail_proxy";
+export { driveUpload, driveList, driveRead, driveMove, calendarList, calendarCreate, calendarDelete } from "./proxy";

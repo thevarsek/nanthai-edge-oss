@@ -3,22 +3,4 @@
 // Barrel export for all Cloze tools.
 // =============================================================================
 
-export {
-  clozePersonFind,
-  clozePersonCount,
-  clozePersonAdd,
-  clozePersonChange,
-} from "./people";
-
-export {
-  clozeAddNote,
-  clozeAddTodo,
-  clozeTimeline,
-  clozeSaveDraft,
-  clozeAboutMe,
-} from "./timeline";
-
-export {
-  clozeProjectFind,
-  clozeProjectChange,
-} from "./projects";
+export { clozePersonFind, clozePersonCount, clozePersonAdd, clozePersonChange, clozeAddNote, clozeAddTodo, clozeTimeline, clozeSaveDraft, clozeAboutMe, clozeProjectFind, clozeProjectChange } from "./proxy";

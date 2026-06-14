@@ -1,9 +1,14 @@
 "use node";
 
+import {
+  makeFunctionReference,
+  type FunctionReference,
+} from "convex/server";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { extractDocxContent } from "./docx_reader";
 import { createTool, ToolExecutionContext } from "./registry";
+import { serializableToolContext, type SerializableToolContext } from "./proxy_context";
 import {
   normalizeWhitespace,
   ScopedDocument,
@@ -15,6 +20,25 @@ type ExtractionPayload = {
   pageCount?: number;
   wordCount?: number;
 };
+
+type ExtractPdfVersionArgs = {
+  storageId: Id<"_storage">;
+  filename: string;
+  toolContext: SerializableToolContext;
+};
+
+const extractPdfVersionRef = makeFunctionReference<
+  "action",
+  ExtractPdfVersionArgs,
+  ExtractionPayload
+>(
+  "documents/pdf_extraction_actions:extractPdfVersion",
+) as unknown as FunctionReference<
+  "action",
+  "internal",
+  ExtractPdfVersionArgs,
+  ExtractionPayload
+>;
 
 const DEFAULT_READ_DOCUMENT_CHARS = 60_000;
 const MAX_READ_DOCUMENT_CHARS = 120_000;
@@ -126,10 +150,11 @@ async function extractVersion(
     let payload: ExtractionPayload;
 
     if (mime === "application/pdf" || filename.endsWith(".pdf")) {
-      unsupported = true;
-      throw new Error(
-        "PDF extraction is available only for documents with precomputed text while runtime tools are isolated.",
-      );
+      payload = await toolCtx.ctx.runAction(extractPdfVersionRef, {
+        storageId: version.storageId,
+        filename: version.filename,
+        toolContext: serializableToolContext(toolCtx),
+      });
     } else if (
       mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       filename.endsWith(".docx")

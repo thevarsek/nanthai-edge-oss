@@ -9,9 +9,10 @@ submitting a contribution, you agree to the licensing terms described below.
 
 ## What's in Scope
 
-This repository contains the **web client** and **Convex backend** for NanthAI
-Edge. Native iOS and Android clients are developed separately and are not part
-of this repository.
+The public OSS checkout contains the **web client** and **Convex backend** for
+NanthAI Edge. The private/internal checkout also contains the native iOS and
+Android clients. Scope your changes and verification commands to the files that
+exist in your checkout.
 
 Contributions are welcome for:
 
@@ -39,7 +40,7 @@ Contributions are welcome for:
      actions (HTTP/streaming)
    - Run `npx tsc --noEmit --project convex/tsconfig.json` and `npm run convex:lint` for backend changes
    - Run `cd web && npx tsc --noEmit --project tsconfig.app.json` and `cd web && npm run lint` for web changes
-   - Run `brew install swiftlint` once, then `npm run ios:lint` for iOS changes
+   - In the private/internal checkout, run the native Android or iOS build/lint/test gates when touching native code
    - Run `npx tsx --test convex/tests/*.test.ts` to verify backend tests pass
 
 4. **Submit a pull request** against `main` with a clear description of the

@@ -45,6 +45,8 @@ Subagents are no longer part of the base registry. They are unlocked through the
 
 Scheduled job tools, persona tools, skill management mutators, docs, connected apps, analytics, workspace/runtime tools, and subagents now sit behind profile-driven expansion.
 
+M43 implementation note: connected-app tools and analyzer-fragile document authoring tools are exposed through lightweight proxy descriptors. Their public tool IDs and schemas remain stable, but the real Gmail, Google Drive/Calendar, Microsoft, Notion, Slack, Cloze, PPTX, and DOCX tracked-change implementations load only inside dedicated Convex internal actions. Workspace, analytics, VM, and PDF runtime-profile tools remain direct on the dedicated Node participant path so same-generation sandbox state is preserved.
+
 ### Static context measurements (May 11, 2026)
 
 The current progressive implementation materially reduces the default model-facing context surface before any skill is loaded:
@@ -109,12 +111,12 @@ Current backend behavior is intentionally forgiving:
 | Persona management | `create_persona`, `delete_persona` | Pro + `personas` profile |
 | Skill management mutators | `create_skill`, `update_skill`, `delete_skill`, `enable_skill_for_chat`, `disable_skill_for_chat`, `assign_skill_to_persona`, `remove_skill_from_persona` | Pro + `skillsManagement` profile |
 | Subagents | `spawn_subagents` | Pro + tool-capable model + subagents enabled + subagent profile loaded |
-| Google Drive + Calendar | `drive_upload`, `drive_list`, `drive_read`, `drive_move`, `calendar_list`, `calendar_create`, `calendar_delete` | Pro + active Google OAuth connection + requested integration. OAuth is narrowed to `drive.file` + `calendar.events`; Drive access requires explicit Picker/OnePick file grants or app-created files. |
-| Gmail Manual | `gmail_send`, `gmail_read`, `gmail_search`, `gmail_delete`, `gmail_modify_labels`, `gmail_list_labels` | Pro + active `gmail_manual` connection + requested integration. Gmail no longer uses Google OAuth scopes. |
+| Google Drive + Calendar | `drive_upload`, `drive_list`, `drive_read`, `drive_move`, `google_calendar_list`, `google_calendar_create`, `google_calendar_delete` | Pro + active Google OAuth connection + requested integration. OAuth is narrowed to `drive.file` + `calendar.events`; Drive access requires explicit Picker/OnePick file grants or app-created files. |
+| Gmail Manual | `gmail_send`, `gmail_create_draft`, `gmail_read`, `gmail_search`, `gmail_delete`, `gmail_modify_labels`, `gmail_list_labels` | Pro + active `gmail_manual` connection + requested integration. Gmail no longer uses Google OAuth scopes. |
 | Microsoft 365 | `outlook_send`, `outlook_read`, `outlook_search`, `outlook_delete`, `outlook_move`, `outlook_list_folders`, `onedrive_upload`, `onedrive_list`, `onedrive_read`, `onedrive_move`, `ms_calendar_list`, `ms_calendar_create`, `ms_calendar_delete` | Pro + active Microsoft connection + requested integration |
 | Notion | `notion_search`, `notion_read_page`, `notion_create_page`, `notion_update_page`, `notion_delete_page`, `notion_update_database_entry`, `notion_query_database` | Pro + active Notion connection + requested integration |
 | Apple Calendar | `apple_calendar_list`, `apple_calendar_create`, `apple_calendar_update`, `apple_calendar_delete` | Pro + active Apple Calendar connection + requested integration |
-| Slack | `slack_send_message`, `slack_read_messages`, `slack_search_messages`, `slack_list_channels`, `slack_search_users`, `slack_create_canvas`, `slack_update_canvas`, `slack_read_canvas`, `slack_read_user_profile` | Pro + active Slack connection + requested integration |
+| Slack | `slack_search_messages`, `slack_search_users`, `slack_search_channels`, `slack_send_message`, `slack_read_channel`, `slack_read_thread`, `slack_create_canvas`, `slack_update_canvas`, `slack_read_canvas`, `slack_read_user_profile` | Pro + active Slack connection + requested integration |
 | Cloze | `cloze_person_find`, `cloze_person_count`, `cloze_person_add`, `cloze_person_change`, `cloze_project_find`, `cloze_project_change`, `cloze_add_note`, `cloze_add_todo`, `cloze_timeline`, `cloze_save_draft`, `cloze_about_me` | Pro + active Cloze connection + requested integration |
 | Workspace/runtime | `workspace_exec`, `workspace_list_files`, `workspace_read_file`, `workspace_write_file`, `workspace_make_dirs`, `workspace_import_file`, `workspace_export_file`, `workspace_reset`, `data_python_exec`, `data_python_sandbox`, `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset`, `read_pdf`, `generate_pdf`, `edit_pdf` | Pro (skill-activated) |
 
@@ -129,7 +131,7 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Runtime / analytics | `code-workspace`, `persistent-runtime`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `persistentRuntime`, `analytics` | Pro (skill-activated) |
 | Documents | `documents`, `document-review`, `document-drafting`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
-| Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `gmailManual`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
+| Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
 | Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
 | GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo` | instruction-led | Pro-useful |
@@ -154,7 +156,7 @@ M33 added a dedicated document workflow layer on top of the lower-level file too
 
 ### M36 catalog closeout
 
-The seeded system catalog is now 66 system skills: 55 visible skills, 10 integration-managed skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
+The seeded system catalog is now 67 system skills: 56 visible active skills, 8 integration-managed active skills, 2 archived integration-managed compatibility skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
 
 ### Hidden built-in skills
 
@@ -288,7 +290,7 @@ In practice there are now two runtime shapes:
 - [`client-convex-contract.md`](client-convex-contract.md) — shared client-facing Convex contract
 - [`tech-stack.md`](tech-stack.md) — OSS runtime and dependency overview
 
-*Last updated: 2026-05-07 — M36 skill catalog consolidation and removed-skill cleanup documented.*
+*Last updated: 2026-06-14 — M43 tool proxy/action-boundary behavior documented, Gmail/Google Calendar/Slack tool IDs corrected, and restored runtime/doc authoring tool availability confirmed.*
 
 ## Slack MCP Tools — Hosted MCP And Drift Detection
 

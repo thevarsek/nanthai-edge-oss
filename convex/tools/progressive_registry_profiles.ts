@@ -22,9 +22,9 @@ import { spawnSubagents } from "./spawn_subagents";
 import { generateDocx } from "./generate_docx";
 import { readDocx } from "./read_docx";
 import { editDocx } from "./edit_docx";
-import { proposeDocxEdits } from "./docx_edit_unavailable";
+import { proposeDocxEdits } from "./docx_edit_proxy";
 import { readPptx } from "./read_pptx";
-import { generatePptx, editPptx } from "./pptx_unavailable";
+import { generatePptx, editPptx } from "./pptx_proxy";
 import { generateXlsx } from "./generate_xlsx";
 import { readXlsx } from "./read_xlsx";
 import { editXlsx } from "./edit_xlsx";
@@ -112,7 +112,7 @@ import {
   analyticsProfileTools,
   persistentRuntimeProfileTools,
   workspaceProfileTools,
-} from "./runtime_profile_unavailable";
+} from "./workspace_registry";
 import type { ProgressiveToolRegistryOptions } from "./progressive_registry";
 
 const DOC_TOOLS: RegisteredTool[] = [

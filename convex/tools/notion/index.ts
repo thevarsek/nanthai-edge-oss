@@ -3,12 +3,4 @@
 // Barrel export for all Notion tools.
 // =============================================================================
 
-export {
-  notionSearch,
-  notionReadPage,
-  notionCreatePage,
-  notionUpdatePage,
-  notionDeletePage,
-  notionUpdateDatabaseEntry,
-  notionQueryDatabase,
-} from "./pages";
+export { notionSearch, notionReadPage, notionCreatePage, notionUpdatePage, notionDeletePage, notionUpdateDatabaseEntry, notionQueryDatabase } from "./proxy";

@@ -199,6 +199,8 @@ The tool execution context is separate from the iOS service layer — tools are 
 
 Post-M19 the backend registry is profile-driven rather than fully always-on. The base registry is intentionally small (`load_skill`, `list_skills`, `search_chats`, `fetch_image`). Document tools, scheduled jobs, persona tools, skill-management mutators, connected-app tools, runtime tools, analytics, and subagents are added later through progressive skill/profile expansion. The `search_chats` tool uses the full-text search index on `messages` with `userId` in `filterFields`, while `spawn_subagents` now sits behind the `subagents` profile instead of the base registry.
 
+Post-M43, provider and analyzer-fragile document tools are registered through lightweight proxy descriptors. Gmail, Google Drive/Calendar, Microsoft, Notion, Slack, Cloze, PPTX generate/edit, and DOCX tracked-change proposal tools keep their public tool names and schemas, but execution crosses a dedicated internal action boundary before importing the real implementation. Live uncached PDF extraction from `read_document` is also isolated in `documents/pdf_extraction_actions.ts`. Workspace, analytics, VM, and PDF runtime-profile tools remain direct on the dedicated Node participant path so same-generation `workspaceSandbox` state is preserved without pulling runtime packages into ordinary `chat/actions` initialization.
+
 Post-M14 added **tool capability gating** (`convex/lib/tool_capability.ts`): `assertToolCapableModelIds()` validates that selected models support tool calling before building the tool registry. `assertParticipantsSupportIntegrations()` checks that participants with enabled integrations use tool-capable models. Returns `TOOL_CAPABLE_MODEL_REQUIRED` error code for actionable client-side recovery. iOS counterparts: `ModelToolRequirement.swift` and `ModelCatalogQuery.swift`.
 
 See `docs/architecture.md` (M10 and M13 sections) for the full tool execution flow.
@@ -250,7 +252,7 @@ Audio messages follow the same thin-service pattern. No dedicated AudioService c
 - `chat/audio_actions.ts` — `generateAudioForMessage` internal action: calls OpenRouter with `gpt-audio-mini` model, receives PCM16 response, encodes to WAV via `pcmToWav()`, stores in Convex `_storage`, patches message fields
 - `chat/audio_actions.ts` — `previewVoice` internal action: generates short TTS samples for voice selection UI
 - `chat/audio_shared.ts` — Audio constants, PCM→WAV encoder, 6-voice catalog (`alloy`, `echo`, `fable`, `nova`, `onyx`, `shimmer`)
-- `chat/audio_trigger.ts` — Auto-audio trigger wired into `finalizeGenerationHandler`
+- `chat/mutations_internal_handlers.ts` — Resolves auto-audio preferences after finalization and schedules `generateAudioForMessage`
 - `chat/audio_public_handlers.ts` — Public mutation (`requestAudioGeneration`) and query (`getMessageAudioUrl`) handlers
 
 ## Context Compaction Engine (M13)
@@ -567,4 +569,4 @@ ViewModels catch these and present user-facing error states. The `AppError` enum
 
 ---
 
-*Last updated: 2026-04-07 — Structured ConvexError contract: all backend mutations/actions throw ConvexError({ code, message }), cross-platform error extractors (ConvexErrorExtractor on iOS/Android, convexErrorMessage on web). M26 Lyria music generation: AudioPlayerView.swift (iOS AVPlayer inline player with speed/seek/download), LyriaAudioPlayer.kt (Android MediaPlayer Compose player), enhanced AudioMessageBubble.tsx (Web). Server-side MP3 storage in generateForParticipant() eliminates client audio handling. M20 audio messages: ChatViewModel+Attachments handles recording, transcription (SFSpeechRecognizer), playback (AVPlayer), auto-audio TTS generation. Backend audio pipeline: gpt-audio-mini TTS + Lyria MP3 via OpenRouter, Convex \_storage blobs.*
+*Last updated: 2026-06-14 — M43 Convex action/tool-registry boundary hardening documented: restored Gmail/PPTX/DOCX/PDF/runtime functionality behind proxy/internal-action or dedicated Node runtime boundaries. Structured ConvexError contract, M26 Lyria music generation, and M20 audio message details remain current.*

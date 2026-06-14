@@ -10,7 +10,6 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { ToolCall, ToolDefinition } from "../lib/openrouter_types";
-import type { Sandbox } from "just-bash";
 
 // ---------------------------------------------------------------------------
 // Tool definition types
@@ -81,7 +80,7 @@ export interface ToolExecutionContext {
    *
    * Callers MUST call `workspaceSandboxCleanup()` when the generation ends.
    */
-  workspaceSandbox?: Sandbox;
+  workspaceSandbox?: unknown;
   /**
    * Cleanup function that stops the workspace sandbox. Must be called in a
    * finally block when the generation run completes (success or error).

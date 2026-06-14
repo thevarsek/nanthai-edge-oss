@@ -143,18 +143,18 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `chat/queries` | listChats, getMessages, getChat, getAttachmentUrl, listModelSummaries, listKnowledgeBaseFiles, isJobCancelled | Reactive data subscriptions + generation job cancellation polling (pure read, `internalQuery`) |
 | `chat/audio_actions` | generateAudioForMessage, previewVoice | TTS generation via `gpt-audio-mini`, PCM→WAV encoding, Convex storage (M20) |
 | `chat/audio_shared` | constants, pcmToWav, voice helpers, isLyriaModel, parseMp3DurationMs | Audio constants, encoder, 6-voice catalog (M20), Lyria model IDs + MP3 frame parser (M26) |
-| `chat/audio_trigger` | autoAudioTrigger | Wired into finalizeGenerationHandler for auto-audio responses (M20) |
+| `chat/mutations_internal_handlers` | auto-audio scheduling after finalization | Resolves auto-audio preferences and schedules `generateAudioForMessage` when an assistant message completes without inline Lyria audio |
 | `chat/audio_public_handlers` | requestAudioGeneration, getMessageAudioUrl | Public mutation/query handlers for audio (M20) |
-| `tools/` | registry, execute_loop, progressive_registry, profile registries, index | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. |
+| `tools/` | registry, execute_loop, progressive_registry, profile registries, action proxies, index | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. M43 provider/document proxies keep analyzer-fragile implementations out of ordinary chat action initialization. |
 | `runtime/` | just-bash client, Pyodide/Vercel Sandbox analytics, chart helpers | Per-generation workspace, notebook-style Python analytics, artifact export (M19, rewritten M27). |
 | `capabilities/` | queries, mutations, shared helpers | Account capability model layered on top of purchase entitlements (M19). |
 | `skills/tool_profiles.ts` | skill profile normalization helpers | Derives `requiredToolProfiles`, runtime mode, and capability consistency for built-in and user-authored skills (post-M19). |
 | `lib/` | auth, compaction_constants, openrouter_*, tool_capability (post-M14) | Shared backend utilities — Pro gating, compaction config, OpenRouter streaming, tool capability model assertions |
-| `tools/google/` | auth, gmail manual client, drive (4), calendar (3), index | Google integration — Drive/Calendar use narrowed Google OAuth; Gmail uses `gmail_manual` IMAP/SMTP app-password credentials (M24) |
-| `tools/microsoft/` | auth, outlook (6), onedrive (4), calendar (3), index | Microsoft 365 integration — 14 OAuth-gated tools (M10 Phase C) |
-| `tools/notion/` | auth, pages (7), index | Notion integration — 7 OAuth-gated tools (M10 Phase D) |
-| `tools/slack/` | auth, channels, messages, index | Slack integration — OAuth-gated messaging tools |
-| `tools/cloze/` | auth, contacts, companies, projects, index | Cloze CRM integration — API-key-gated tools |
+| `tools/google/` | auth, gmail manual client, drive, calendar, proxy, actions, index | Google integration — Drive/Calendar use narrowed Google OAuth; Gmail uses `gmail_manual` IMAP/SMTP app-password credentials (M24). Registry exports lightweight proxies; real implementations load inside provider actions. |
+| `tools/microsoft/` | auth, outlook, onedrive, calendar, proxy, actions, index | Microsoft 365 integration. Registry exports lightweight proxies; real Outlook/OneDrive/Calendar implementations load inside provider actions. |
+| `tools/notion/` | auth, pages, proxy, actions, index | Notion integration. Registry exports lightweight proxies; real implementation loads inside provider actions. |
+| `tools/slack/` | auth, hosted MCP wrappers, proxy, actions, drift snapshot, index | Slack integration — OAuth-gated hosted MCP wrappers behind lightweight registry proxies. |
+| `tools/cloze/` | auth, people, projects, timeline, proxy, actions, index | Cloze CRM integration — API-key-gated tools behind lightweight registry proxies. |
 | `oauth/google.ts` | exchangeGoogleCode, refreshGoogleToken, disconnectGoogle | Google OAuth PKCE token exchange + management |
 | `oauth/microsoft.ts` | exchangeMicrosoftCode, refreshMicrosoftToken, disconnectMicrosoft | Microsoft OAuth PKCE token exchange + management |
 | `oauth/notion.ts` | exchangeNotionCode, refreshNotionToken, disconnectNotion | Notion OAuth token exchange (HTTP Basic Auth) + management |
@@ -206,7 +206,7 @@ Cross-platform UI parity now treats shared meaning separately from platform-nati
 
 ### Skill Catalog Seed Contract
 
-The built-in system skill catalog is consolidated to 66 seeded skills. `skills/actions:seedSystemCatalog` upserts active system skills and then hard-deletes removed system skills only after pruning their IDs from all persisted override locations:
+The built-in system skill catalog currently seeds 67 skills. `skills/actions:seedSystemCatalog` upserts active system skills and then hard-deletes removed system skills only after pruning their IDs from all persisted override locations:
 
 - `userPreferences.skillDefaults`
 - `personas.skillOverrides`
@@ -275,70 +275,23 @@ For a product-facing summary of which tiers expose which skills and tool familie
 
 ### Tool Infrastructure
 
-```
-┌─────────────────────────────────────────────────┐
-│         Entry Points (3 callers)                 │
-│  runGeneration · paperPhase · regeneratePaper    │
-├─────────────────────────────────────────────────┤
-│           buildToolRegistry()                    │
-│   (convex/tools/index.ts — single source)        │
-├─────────────────────────────────────────────────┤
-│              ToolRegistry                        │
-│   .register(tools)  .getDefinitions()            │
-│   .executeTool(name, args, ctx)                  │
-├─────────────────────────────────────────────────┤
-│         runToolCallLoop()                        │
-│   Up to 20 rounds: execute → feed results →      │
-│   re-call OpenRouter → stream response           │
-├─────────────────────────────────────────────────┤
-│          61 Total Tools                           │
-│                                                  │
-│   ALWAYS-ON / Tier 1 (15):                       │
-│   OOXML (9):                                     │
-│     generate_docx · read_docx · edit_docx        │
-│     generate_pptx · read_pptx · edit_pptx        │
-│     generate_xlsx · read_xlsx · edit_xlsx         │
-│   Text/Email (4):                                │
-│     generate_text_file · read_text_file           │
-│     generate_eml · read_eml                       │
-│   Utility (1): fetch_image                       │
-│   Image Support: image_resolver (shared helper)  │
-│                                                  │
-│   GOOGLE / Tier 2:                               │
-│   Gmail manual (6): search · read · send ·       │
-│     reply · trash · batch_modify                 │
-│   Drive (4): picker-scoped search/read · upload  │
-│     · download · move via drive.file grants      │
-│   Calendar (3): list · create · delete via       │
-│     calendar.events                              │
-│   Barrel: convex/tools/google/index.ts           │
-│                                                  │
-│   MICROSOFT 365 / Tier 2 (14):                   │
-│   Outlook (6): search · read · send · reply ·    │
-│     delete · move                                │
-│   OneDrive (4): search · upload · download · move│
-│   MS Calendar (3): list · create · delete        │
-│   Barrel: convex/tools/microsoft/index.ts        │
-│                                                  │
-│   NOTION / Tier 2 (7):                           │
-│   Pages (5): search · read · create · update ·   │
-│     delete                                       │
-│   Database (2): query · update_entry             │
-│   Barrel: convex/tools/notion/index.ts           │
-│                                                  │
-│   APPLE CALENDAR / Tier 2 (4):                   │
-│   Calendar (4): list · create · update · delete  │
-│   CalDAV via tsdav — iCal format parse/build     │
-│   Barrel: convex/tools/apple/index.ts            │
-│                                                  │
-│   SCHEDULED JOBS + PERSONA + SEARCH / M13 (6):   │
-│   Scheduled (3): create · list · delete           │
-│   Persona (2): create · delete                    │
-│   Search (1): search_chats                        │
-│   Files: tools/scheduled_jobs.ts,                 │
-│     tools/persona.ts, tools/search_chats.ts       │
-└─────────────────────────────────────────────────┘
-```
+Current tool registration is progressive rather than always-on:
+
+| Layer | Role |
+|---|---|
+| Base registry | `load_skill`, `list_skills`, `search_chats`, `fetch_image`, plus direct document tools only when attachments require them. |
+| Profile registries | Add docs, scheduled jobs, personas, skill-management mutators, connected apps, analytics, workspace/runtime, and subagents after loaded skills or explicit context require those profiles. |
+| Lightweight proxies | Provider and analyzer-fragile document tools expose stable names/descriptions/schemas without importing their real implementation modules into ordinary chat action initialization. |
+| Internal action dispatchers | Provider/document action modules reconstruct a serializable `ToolExecutionContext`, validate the requested tool name, dynamically import the real implementation, and return the existing `ToolResult` shape. |
+| Dedicated Node participant path | Runtime/workspace tools stay direct on the Node generation path so same-generation `workspaceSandbox` state remains in memory; ordinary `chat/actions` stays free of `just-bash`, Vercel sandbox, PDF runtime, and provider SDK imports. |
+
+M43 restored the previously disabled heavy tool families with this boundary:
+
+- Gmail manual tools: `gmail_*` proxies -> `tools/google/gmail_actions:executeGmailTool`
+- Google Drive/Calendar: `drive_*` and `google_calendar_*` proxies -> `tools/google/actions:executeGoogleTool`
+- Microsoft 365, Notion, Slack, and Cloze: provider proxy barrels -> provider `actions.ts` dispatchers
+- PPTX generate/edit and DOCX tracked-change proposals: document authoring proxies -> `tools/pptx_actions.ts` / `tools/docx_edit_actions.ts`
+- Uncached PDF extraction from `read_document`: isolated through `documents/pdf_extraction_actions.ts`
 
 ### Tool Execution Flow
 
@@ -411,11 +364,11 @@ Google, Microsoft, Notion, and Slack follow the same general iOS → Convex toke
 - **Google** uses PKCE + `client_secret` in token exchange (iOS client type)
 - **Microsoft** uses PKCE but does NOT send `client_secret` (public/native client — AADSTS90023 error if included)
 - **Notion** uses HTTP Basic Auth (`base64(client_id:client_secret)`) for token exchange — no PKCE. JSON request body (not form-encoded). OAuth redirect goes through HTTPS relay page at `nanthai.tech` since Notion requires `https://` redirect URIs. No scopes — access is page-level (user chooses during OAuth consent).
-- **Apple Calendar** is not OAuth-based in the current design. iOS collects the Apple Account email that owns the iCloud calendar plus an Apple app-specific password. Convex stores those credentials, discovers the user's CalDAV calendars, and executes server-side event CRUD through a thin `tsdav` wrapper.
+- **Apple Calendar** is not OAuth-based in the current design. iOS collects the Apple Account email that owns the iCloud calendar plus an Apple app-specific password. Convex stores those credentials, discovers the user's CalDAV calendars, and executes server-side event CRUD through a direct CalDAV client isolated behind the Apple action boundary.
 - **Slack** uses OAuth 2.0 with `client_secret` in token exchange. Workspace-level authorization — user selects channels during OAuth consent. User token (`xoxp-`) stored in `oauthConnections`. Slack tool calls go through Slack's hosted **Model Context Protocol endpoint** (`https://mcp.slack.com/mcp`), not the Web API — a weekly `checkSlackMcpDrift` cron diffs Slack's live `tools/list` against a committed snapshot (`convex/tools/slack/mcp_tools_snapshot.ts`) to detect upstream schema changes. See [`tool-skill-access.md`](tool-skill-access.md#slack-mcp-tools--hosted-mcp-and-drift-detection) for details.
 - **Cloze** uses API key authentication (no OAuth). User provides their Cloze API key directly; Convex stores it in `oauthConnections` (reusing the same table with `provider: "cloze"`).
 
-**API call pattern:** Google, Microsoft, Notion, and Cloze API calls use raw `fetch()` against provider REST APIs — no Node.js SDKs (`googleapis`, `@microsoft/microsoft-graph-client`). Slack uses raw `fetch()` against Slack's hosted MCP JSON-RPC endpoint instead of the Web API. Apple Calendar is the intentional exception: a thin `tsdav` wrapper handles CalDAV discovery and event CRUD while the rest of the tool stack stays in native Convex TypeScript.
+**API call pattern:** Google, Microsoft, Notion, and Cloze API calls use raw `fetch()` against provider REST APIs — no Node.js SDKs (`googleapis`, `@microsoft/microsoft-graph-client`). Slack uses raw `fetch()` against Slack's hosted MCP JSON-RPC endpoint instead of the Web API. Apple Calendar uses the repo's direct CalDAV client. Provider implementations load through internal action dispatchers instead of through the progressive registry import graph.
 
 ### File Storage & Download
 
@@ -1107,4 +1060,4 @@ Android routes the Drive-picker deeplink callback through an app-wide `DrivePick
 
 ---
 
-*Last updated: 2026-05-07 — M35/M36 architecture notes added for client ownership boundaries, UI parity semantics, and 66-skill catalog seed cleanup. M24 Phase 6 Drive-in-KB remains the latest KB architecture change.*
+*Last updated: 2026-06-14 — M35/M36 architecture notes, 67-skill catalog seed state, current audio scheduling module references, M38/M38.5 context assembly, and M43 tool-boundary behavior are reflected. M24 Phase 6 Drive-in-KB remains the latest KB architecture change.*

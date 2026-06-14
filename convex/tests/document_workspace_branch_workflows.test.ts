@@ -30,6 +30,7 @@ function toolCtx(options: {
   version?: Record<string, unknown> | null;
   storage?: Record<string, Blob | null>;
   mutationCalls?: MutationCall[];
+  runAction?: (name: unknown, args: Record<string, unknown>) => Promise<unknown>;
 } = {}) {
   const mutationCalls = options.mutationCalls ?? [];
   const storage = options.storage ?? {
@@ -60,6 +61,7 @@ function toolCtx(options: {
           extractionStatus: "ready",
           extractionTextStorageId: "storage_text",
         },
+      runAction: options.runAction,
       storage: {
         get: async (storageId: string) => storage[storageId] ?? null,
         store: async () => "stored_extraction",
@@ -206,6 +208,55 @@ test("readDocument records string extraction failures from storage writes", asyn
   assert.equal(result.error, "store exploded");
   assert.equal(mutationCalls.at(-1)?.args.status, "error");
   assert.equal(mutationCalls.at(-1)?.args.extractionError, "store exploded");
+});
+
+test("readDocument extracts uncached PDFs through the isolated PDF action", async () => {
+  const mutationCalls: MutationCall[] = [];
+  const actionCalls: Array<Record<string, unknown>> = [];
+  const result = await readDocument.execute(toolCtx({
+    mutationCalls,
+    docs: [scopedDoc({
+      filename: "Brief.pdf",
+      mimeType: "application/pdf",
+      extractionStatus: "pending",
+      extractionTextStorageId: undefined,
+    })],
+    version: {
+      _id: "version_1",
+      documentId: "document_1",
+      userId: "user_1",
+      storageId: "storage_source",
+      filename: "Brief.pdf",
+      mimeType: "application/pdf",
+      versionNumber: 2,
+      extractionStatus: "pending",
+    },
+    runAction: async (_name, args) => {
+      actionCalls.push(args);
+      return {
+        text: "PDF text content",
+        markdown: "PDF text content",
+        pageCount: 3,
+        wordCount: 3,
+      };
+    },
+  }), { doc_id: "doc-0", format: "text" });
+
+  assert.equal(result.success, true);
+  assert.equal((result.data as any).content, "PDF text content");
+  assert.equal((result.data as any).pageCount, 3);
+  assert.deepEqual(actionCalls, [{
+    storageId: "storage_source",
+    filename: "Brief.pdf",
+    toolContext: {
+      userId: "user_1",
+      chatId: "chat_1",
+    },
+  }]);
+  const readyPatch = mutationCalls.find((call) => call.args.status === "ready")?.args;
+  assert.equal(readyPatch?.extractionByteLength, 16);
+  assert.equal(readyPatch?.pageCount, 3);
+  assert.equal(readyPatch?.wordCount, 3);
 });
 
 test("findInDocument validates scope and missing normalized queries before extracting", async () => {
