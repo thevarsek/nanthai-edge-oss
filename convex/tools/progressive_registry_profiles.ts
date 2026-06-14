@@ -1,6 +1,4 @@
 "use node";
-
-import { ConvexError } from "convex/values";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import { ToolRegistry, type RegisteredTool } from "./registry";
 import { fetchImage } from "./fetch_image";
@@ -24,10 +22,9 @@ import { spawnSubagents } from "./spawn_subagents";
 import { generateDocx } from "./generate_docx";
 import { readDocx } from "./read_docx";
 import { editDocx } from "./edit_docx";
-import { proposeDocxEdits } from "./propose_docx_edits";
-import { generatePptx } from "./generate_pptx";
+import { proposeDocxEdits } from "./docx_edit_unavailable";
 import { readPptx } from "./read_pptx";
-import { editPptx } from "./edit_pptx";
+import { generatePptx, editPptx } from "./pptx_unavailable";
 import { generateXlsx } from "./generate_xlsx";
 import { readXlsx } from "./read_xlsx";
 import { editXlsx } from "./edit_xlsx";
@@ -85,7 +82,7 @@ import {
   appleCalendarCreate,
   appleCalendarUpdate,
   appleCalendarDelete,
-} from "./apple/index";
+} from "./apple/proxy";
 import {
   clozePersonFind,
   clozePersonCount,
@@ -112,11 +109,10 @@ import {
   slackReadUserProfile,
 } from "./slack/index";
 import {
-  registerAnalyticsTools,
-  registerPersistentRuntimeTools,
-  registerWorkspaceProfileTools,
-  registerAllRuntimeTools,
-} from "./workspace_registry";
+  analyticsProfileTools,
+  persistentRuntimeProfileTools,
+  workspaceProfileTools,
+} from "./runtime_profile_unavailable";
 import type { ProgressiveToolRegistryOptions } from "./progressive_registry";
 
 const DOC_TOOLS: RegisteredTool[] = [
@@ -163,13 +159,13 @@ export function registerProfileTools(
       registerToolsIfMissing(registry, DOC_TOOLS);
       break;
     case "analytics":
-      registerWorkspaceSubset(registry, registerAnalyticsTools);
+      registerToolsIfMissing(registry, analyticsProfileTools);
       break;
     case "workspace":
-      registerWorkspaceSubset(registry, registerWorkspaceProfileTools);
+      registerToolsIfMissing(registry, workspaceProfileTools);
       break;
     case "persistentRuntime":
-      registerWorkspaceSubset(registry, registerPersistentRuntimeTools);
+      registerToolsIfMissing(registry, persistentRuntimeProfileTools);
       break;
     case "subagents":
       if (options.allowSubagents) {
@@ -298,28 +294,4 @@ function registerDirectToolsIfMissing(
     }
     registry.register(tool);
   }
-}
-
-function registerWorkspaceSubset(
-  registry: ToolRegistry,
-  registerSubset: (registry: ToolRegistry) => void,
-): void {
-  const temp = new ToolRegistry();
-  const scratch = new ToolRegistry();
-  registerSubset(temp);
-  registerAllRuntimeTools(scratch);
-
-  registerToolsIfMissing(
-    registry,
-    temp.getDefinitions().map((definition) => {
-      if (definition.type !== "function") {
-        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `Expected function tool but got "${definition.type}" server tool.` });
-      }
-      const tool = scratch.get(definition.function.name);
-      if (!tool) {
-        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `Workspace tool "${definition.function.name}" was not found in the full registry.` });
-      }
-      return tool;
-    }),
-  );
 }

@@ -5,6 +5,6 @@
 // Barrel export for all Google Workspace tools.
 // =============================================================================
 
-export { gmailSend, gmailCreateDraft, gmailRead, gmailSearch, gmailDelete, gmailModifyLabels, gmailListLabels } from "./gmail";
+export { gmailSend, gmailCreateDraft, gmailRead, gmailSearch, gmailDelete, gmailModifyLabels, gmailListLabels } from "./gmail_unavailable";
 export { driveUpload, driveList, driveRead, driveMove } from "./drive";
 export { calendarList, calendarCreate, calendarDelete } from "./calendar";

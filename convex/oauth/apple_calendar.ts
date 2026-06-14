@@ -1,5 +1,9 @@
 import { v, ConvexError } from "convex/values";
 import {
+  makeFunctionReference,
+  type FunctionReference,
+} from "convex/server";
+import {
   action,
   internalMutation,
   internalQuery,
@@ -8,9 +12,31 @@ import {
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
 import { encryptSecret } from "../lib/secret_crypto";
-import { discoverAppleCalendars } from "../tools/apple/client";
 
 const NON_EXPIRING_MS = 10 * 365 * 24 * 60 * 60 * 1000;
+type DiscoverAppleCalendarSummariesArgs = {
+  username: string;
+  appSpecificPassword: string;
+};
+type AppleCalendarSummary = {
+  id: string;
+  displayName?: string;
+  timezone?: string;
+  color?: string;
+};
+
+const discoverAppleCalendarSummariesRef = makeFunctionReference<
+  "action",
+  DiscoverAppleCalendarSummariesArgs,
+  AppleCalendarSummary[]
+>(
+  "tools/apple/actions:discoverAppleCalendarSummaries",
+) as unknown as FunctionReference<
+  "action",
+  "internal",
+  DiscoverAppleCalendarSummariesArgs,
+  AppleCalendarSummary[]
+>;
 
 export const connectAppleCalendar = action({
   args: {
@@ -28,7 +54,7 @@ export const connectAppleCalendar = action({
 
     let calendars;
     try {
-      calendars = await discoverAppleCalendars({
+      calendars = await ctx.runAction(discoverAppleCalendarSummariesRef, {
         username: appleId,
         appSpecificPassword,
       });

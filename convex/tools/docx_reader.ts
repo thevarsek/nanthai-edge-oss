@@ -12,7 +12,6 @@
 
 import { ConvexError } from "convex/values";
 import JSZip from "jszip";
-import { extractAcceptedDocxParagraphs } from "../documents/docx_tracked_changes";
 
 export interface DocxParagraph {
   style: string; // "Title", "Heading1", "Heading2", "Normal", etc.
@@ -72,7 +71,6 @@ export async function extractDocxContent(
     });
   }
 
-  const accepted = await extractAcceptedDocxParagraphs(data);
   const xml = await docFile.async("string");
 
   // Match each <w:p> paragraph element (non-greedy within body).
@@ -106,13 +104,13 @@ export async function extractDocxContent(
     markdown = buildMarkdown(paragraphs);
   }
 
-  const plainText = accepted.text || textLines.join("\n");
-  const wordCount = accepted.wordCount || plainText.split(/\s+/).filter(Boolean).length;
+  const plainText = textLines.join("\n");
+  const wordCount = plainText.split(/\s+/).filter(Boolean).length;
 
   return {
-    paragraphs: accepted.paragraphs.length > 0 ? accepted.paragraphs : paragraphs,
+    paragraphs,
     text: plainText,
-    markdown: accepted.paragraphs.length > 0 ? buildMarkdown(accepted.paragraphs) : markdown.trim(),
+    markdown: markdown.trim(),
     wordCount,
   };
 }

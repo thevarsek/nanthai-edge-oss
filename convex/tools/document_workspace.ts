@@ -2,7 +2,6 @@
 
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { readPdfBlob } from "../runtime/service_pdf";
 import { extractDocxContent } from "./docx_reader";
 import { createTool, ToolExecutionContext } from "./registry";
 import {
@@ -127,15 +126,10 @@ async function extractVersion(
     let payload: ExtractionPayload;
 
     if (mime === "application/pdf" || filename.endsWith(".pdf")) {
-      const blob = await toolCtx.ctx.storage.get(version.storageId);
-      if (!blob) throw new Error("Document bytes not found.");
-      const pdf = await readPdfBlob(toolCtx, blob, version.filename);
-      payload = {
-        text: pdf.text,
-        markdown: pdf.text,
-        pageCount: pdf.pageCount,
-        wordCount: pdf.text.split(/\s+/).filter(Boolean).length,
-      };
+      unsupported = true;
+      throw new Error(
+        "PDF extraction is available only for documents with precomputed text while runtime tools are isolated.",
+      );
     } else if (
       mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       filename.endsWith(".docx")

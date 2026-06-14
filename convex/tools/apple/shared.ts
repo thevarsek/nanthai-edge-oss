@@ -1,15 +1,15 @@
 import { ConvexError } from "convex/values";
-import type { DAVCalendar, DAVCalendarObject } from "tsdav";
 import type { ToolExecutionContext } from "../registry";
 import { getAppleCalendarCredentials } from "./auth";
 import { createAppleCalendarClient, findCalendarById } from "./client";
 import { parseAppleCalendarEvent } from "./ical";
+import type { AppleDAVCalendar, AppleDAVCalendarObject } from "./types";
 
 export type AppleCalendarClient = Awaited<
   ReturnType<typeof createAppleCalendarClient>
 >;
 
-export function serializeCalendar(calendar: DAVCalendar) {
+export function serializeCalendar(calendar: AppleDAVCalendar) {
   return {
     id: calendar.url,
     name:
@@ -22,8 +22,8 @@ export function serializeCalendar(calendar: DAVCalendar) {
 }
 
 export function serializeEvent(
-  calendar: DAVCalendar,
-  event: DAVCalendarObject,
+  calendar: AppleDAVCalendar,
+  event: AppleDAVCalendarObject,
 ) {
   const parsed = parseAppleCalendarEvent(event.data ?? "");
   return {
@@ -73,9 +73,9 @@ export async function loadAppleCalendars(toolCtx: ToolExecutionContext) {
 }
 
 export function selectAppleCalendars(
-  calendars: DAVCalendar[],
+  calendars: AppleDAVCalendar[],
   calendarId?: string,
-): DAVCalendar[] {
+): AppleDAVCalendar[] {
   if (!calendarId) {
     return calendars;
   }
@@ -84,9 +84,9 @@ export function selectAppleCalendars(
 
 export async function findAppleCalendarEventByUrl(
   client: AppleCalendarClient,
-  calendars: DAVCalendar[],
+  calendars: AppleDAVCalendar[],
   eventUrl: string,
-): Promise<{ calendar: DAVCalendar; event: DAVCalendarObject }> {
+): Promise<{ calendar: AppleDAVCalendar; event: AppleDAVCalendarObject }> {
   for (const calendar of calendars) {
     const objects = await client.fetchCalendarObjects({
       calendar,
