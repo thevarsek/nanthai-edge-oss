@@ -11,6 +11,7 @@ import rehypeKatex from "rehype-katex";
 import { useTranslation } from "react-i18next";
 import type { Components } from "react-markdown";
 import type { PluggableList } from "unified";
+import { copyToClipboard } from "@/lib/clipboard";
 
 export interface MarkdownDocumentCitationLink {
   ref: number;
@@ -144,25 +145,6 @@ function preprocessDefinitionLists(content: string): string {
   return output.join("\n");
 }
 
-// ─── Copy helper ──────────────────────────────────────────────────────────────
-
-async function copyText(text: string): Promise<void> {
-  try {
-    await navigator.clipboard.writeText(text);
-  } catch {
-    // Fallback for non-secure contexts
-    const ta = document.createElement("textarea");
-    ta.value = text;
-    ta.style.position = "fixed";
-    ta.style.opacity = "0";
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    document.execCommand("copy");
-    document.body.removeChild(ta);
-  }
-}
-
 // ─── Code block with copy button ─────────────────────────────────────────────
 
 function CodeBlock({
@@ -180,7 +162,7 @@ function CodeBlock({
 
   const handleCopy = useCallback(async () => {
     if (copied.current) return;
-    await copyText(children);
+    await copyToClipboard(children);
     copied.current = true;
     if (btnRef.current) {
       btnRef.current.textContent = t("copied_code");
@@ -243,7 +225,7 @@ function MarkdownTable({
   content: string;
 }) {
   const { t } = useTranslation();
-  const handleCopy = useCallback(() => copyText(content), [content]);
+  const handleCopy = useCallback(() => copyToClipboard(content), [content]);
 
   return (
     <div className="relative my-3 group">

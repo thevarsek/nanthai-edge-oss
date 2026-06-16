@@ -35,6 +35,7 @@ import { convexErrorMessage } from "@/lib/convexErrors";
 import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 import { getAssistantDisplayIdentity } from "./MessageBubble.assistantIdentity";
 import { captureFeatureUsage, captureResponseCopied } from "@/lib/featureAnalytics";
+import { copyToClipboard } from "@/lib/clipboard";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -312,7 +313,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const hasFocusedMatch = messageMatches.some((m) => m.globalIndex === searchCtx.focusedGlobalIndex);
 
   const handleCopy = useCallback(async () => {
-    await navigator.clipboard.writeText(copyText);
+    await copyToClipboard(copyText);
     captureResponseCopied({
       message_id: String(message._id),
       model_id: message.modelId ?? null,

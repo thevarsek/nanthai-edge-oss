@@ -76,6 +76,23 @@ describe("UserMessage", () => {
     expect(screen.getByTestId("copy-icon")).toBeInTheDocument();
   });
 
+  it("falls back when browser clipboard writes are blocked", async () => {
+    const writeText = vi.fn().mockRejectedValue(new DOMException("Denied", "NotAllowedError"));
+    const execCommand = vi.fn(() => true);
+    Object.assign(navigator, { clipboard: { writeText } });
+    Object.assign(document, { execCommand });
+    renderUserMessage();
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+      await Promise.resolve();
+    });
+
+    expect(writeText).toHaveBeenCalledWith("hello");
+    expect(execCommand).toHaveBeenCalledWith("copy");
+    expect(screen.getByTestId("copy-success-icon")).toBeInTheDocument();
+  });
+
   it("does not render copy for attachment-only user messages", () => {
     renderUserMessage({
       ...baseMessage,

@@ -9,6 +9,7 @@ import { AudioMessageBubble } from "./AudioMessageBubble";
 import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import { MessageAttachments } from "./MessageAttachments";
 import { IconButton } from "@/components/shared/IconButton";
+import { copyToClipboard } from "@/lib/clipboard";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,7 +40,7 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
 
   const handleCopy = useCallback(async () => {
     if (!hasCopyableContent) return;
-    await navigator.clipboard.writeText(message.content);
+    await copyToClipboard(message.content);
     setCopied(true);
     if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
     copyResetTimer.current = setTimeout(() => {
