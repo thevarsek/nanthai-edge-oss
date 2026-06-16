@@ -202,3 +202,64 @@ test("continueParentAfterSubagentsHandler maps terminal failed and cancelled par
     assert.equal(scheduled.some((call) => call.assistantMessageIds), false);
   }
 });
+
+test("continueParentAfterSubagentsHandler continues when parent analytics were already marked", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  let batchQueryCount = 0;
+  let jobQueryCount = 0;
+  let userScopedQueryCount = 0;
+  let sawAlreadyMarkedGuard = false;
+  let sawMutationAfterAlreadyMarkedGuard = false;
+  const ctx = {
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if (sawAlreadyMarkedGuard) {
+        sawMutationAfterAlreadyMarkedGuard = true;
+      }
+      if ("batchId" in args && !("status" in args) && !("generatedFiles" in args)) {
+        return true;
+      }
+      if ("jobId" in args && Object.keys(args).length === 1) {
+        sawAlreadyMarkedGuard = true;
+        return false;
+      }
+      return true;
+    },
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("batchId" in args && "limit" in args) {
+        return {
+          artifactRefs: [],
+          memoryRefs: [],
+          childPrivateArtifactCount: 0,
+          promotedArtifactCount: 0,
+          childPrivateMemoryCount: 0,
+          promotedMemoryCount: 0,
+        };
+      }
+      if ("batchId" in args) {
+        batchQueryCount += 1;
+        return batchQueryCount === 1 ? activeBatch() : [];
+      }
+      if ("messageId" in args) return { _id: "parent_msg_1", status: "streaming" };
+      if ("jobId" in args) {
+        jobQueryCount += 1;
+        return jobQueryCount === 1 ? { _id: "job_1", status: "streaming" } : false;
+      }
+      if ("userId" in args) {
+        userScopedQueryCount += 1;
+        if (userScopedQueryCount === 1) return { isPro: true };
+        if (userScopedQueryCount === 2) return "sk-test";
+        return null;
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    scheduler: {
+      runAfter: async () => "sched_1",
+    },
+  } as any;
+
+  await continueParentAfterSubagentsHandler(ctx, { batchId: "batch_1" } as any);
+
+  assert.equal(sawAlreadyMarkedGuard, true);
+  assert.equal(sawMutationAfterAlreadyMarkedGuard, true);
+});

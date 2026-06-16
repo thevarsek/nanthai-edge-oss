@@ -363,6 +363,7 @@ export async function runGenerationParticipantRuntimeHandler(
     const toolRegistry = buildRuntimeBaseToolRegistry({
       isPro: effectiveArgs.isPro,
       disabled: effectiveArgs.disableTools === true,
+      allowSubagents: effectiveArgs.allowSubagents,
       webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
     });
 
@@ -376,7 +377,7 @@ export async function runGenerationParticipantRuntimeHandler(
       toolRegistry,
       progressiveTools: {
         enabledIntegrations: effectiveArgs.effectiveIntegrations,
-        allowSubagents: false,
+        allowSubagents: effectiveArgs.allowSubagents,
         directToolNames: [],
       },
       isPro: effectiveArgs.isPro,

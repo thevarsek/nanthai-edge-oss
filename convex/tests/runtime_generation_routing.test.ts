@@ -43,8 +43,18 @@ test("buildRuntimeBaseToolRegistry exposes only the always-on runtime-safe base 
   assert.ok(registry.get("search_chats"));
   assert.ok(registry.get("load_skill"));
   assert.ok(registry.get("list_skills"));
+  assert.equal(registry.get("spawn_subagents"), undefined);
   assert.equal(registry.get("workspace_exec"), undefined);
   assert.equal(registry.get("generate_docx"), undefined);
+});
+
+test("buildRuntimeBaseToolRegistry exposes spawn_subagents for subagent-enabled turns", () => {
+  const registry = buildRuntimeBaseToolRegistry({
+    isPro: true,
+    allowSubagents: true,
+  });
+
+  assert.ok(registry.get("spawn_subagents"));
 });
 
 test("runtime safety classification stays conservative", () => {

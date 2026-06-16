@@ -40,6 +40,7 @@ import {
   buildNanthAIPrelude,
   buildRuntimeGuard,
   buildSkillCatalogFromResolved,
+  forceAlwaysSkillBySlug,
   formatAlwaysSkillInstructions,
   formatSkillCatalogXml,
   SKILL_DISCOVERY_INSTRUCTION,
@@ -85,6 +86,8 @@ import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "./loaded_skill_prompt";
 import type { Doc } from "../_generated/dataModel";
 import type { ContextMessage } from "./helpers_types";
+
+const PARALLEL_SUBAGENTS_SKILL_SLUG = "parallel-subagents";
 
 type GenerationMessage = {
   _id: string;
@@ -515,7 +518,7 @@ export async function generateForParticipant(
           turnOverrides: args.turnSkillOverrides,
         });
 
-        const { catalog, alwaysSkills } = buildSkillCatalogFromResolved(
+        let { catalog, alwaysSkills } = buildSkillCatalogFromResolved(
           resolved,
           {
             availableCapabilities: [],
@@ -529,6 +532,14 @@ export async function generateForParticipant(
               : undefined,
           },
         );
+        if (progressiveTools?.allowSubagents === true) {
+          ({ catalog, alwaysSkills } = forceAlwaysSkillBySlug({
+            catalog,
+            alwaysSkills,
+            allSkills: [...systemSkills, ...userSkills],
+            slug: PARALLEL_SUBAGENTS_SKILL_SLUG,
+          }));
+        }
 
         const hasCatalog = catalog.length > 0;
         const hasAlways = alwaysSkills.length > 0;

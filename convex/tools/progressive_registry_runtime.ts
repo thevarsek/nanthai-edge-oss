@@ -2,12 +2,14 @@ import { fetchImage } from "./fetch_image";
 import { loadSkill } from "./load_skill";
 import { searchChats } from "./search_chats";
 import { listSkills } from "./skill_management";
+import { spawnSubagents } from "./spawn_subagents";
 import { webSearch } from "./web_search";
 import { ToolRegistry } from "./registry";
 
 export interface RuntimeBaseToolRegistryOptions {
   isPro: boolean;
   disabled?: boolean;
+  allowSubagents?: boolean;
   webSearchToolEnabled?: boolean;
 }
 
@@ -27,6 +29,9 @@ export function buildRuntimeBaseToolRegistry(
   }
 
   registry.register(...RUNTIME_BASE_TOOLS);
+  if (options.allowSubagents === true) {
+    registry.register(spawnSubagents);
+  }
   if (options.webSearchToolEnabled === true) {
     registry.register(webSearch);
   }

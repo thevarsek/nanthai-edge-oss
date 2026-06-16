@@ -278,6 +278,13 @@ test("buildProgressiveToolRegistry: integration profiles only add enabled integr
 });
 
 test("buildProgressiveToolRegistry: subagents profile adds spawn_subagents only when allowed", () => {
+  const turnEnabled = buildProgressiveToolRegistry({
+    isPro: true,
+    enabledIntegrations: [],
+    allowSubagents: true,
+  });
+  assert.ok(turnEnabled.get("spawn_subagents"));
+
   const allowed = buildProgressiveToolRegistry({
     isPro: true,
     enabledIntegrations: [],

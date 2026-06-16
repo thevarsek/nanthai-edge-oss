@@ -456,27 +456,26 @@ export async function continueParentAfterSubagentsHandler(
       });
       shouldCaptureStarted = true;
     }
-    if (!shouldCaptureStarted) {
-      return;
+    if (shouldCaptureStarted) {
+      await captureAssistantResponseStartedEvent(ctx, {
+        userId: participantSnapshot.userId,
+        chatId: String(participantSnapshot.chatId),
+        messageId: String(batch.parentMessageId),
+        jobId: String(batch.parentJobId),
+        modelId: participantSnapshot.participant.modelId,
+        source: "subagent_parent_resume",
+        analytics: paramsSnapshot.analytics,
+        participantCount: 1,
+        webSearchEnabled: webSearchToolEnabled,
+        integrationCount: paramsSnapshot.enabledIntegrations?.length ?? 0,
+        isResume: true,
+        properties: {
+          subagent_batch_id: String(batch._id),
+          request_message_count: requestMessages.length,
+          request_token_estimate: resumeTokenEstimate,
+        },
+      });
     }
-    await captureAssistantResponseStartedEvent(ctx, {
-      userId: participantSnapshot.userId,
-      chatId: String(participantSnapshot.chatId),
-      messageId: String(batch.parentMessageId),
-      jobId: String(batch.parentJobId),
-      modelId: participantSnapshot.participant.modelId,
-      source: "subagent_parent_resume",
-      analytics: paramsSnapshot.analytics,
-      participantCount: 1,
-      webSearchEnabled: webSearchToolEnabled,
-      integrationCount: paramsSnapshot.enabledIntegrations?.length ?? 0,
-      isResume: true,
-      properties: {
-        subagent_batch_id: String(batch._id),
-        request_message_count: requestMessages.length,
-        request_token_estimate: resumeTokenEstimate,
-      },
-    });
     const generationResult = await generateForParticipant({
       ctx,
       args: {

@@ -174,6 +174,29 @@ export function buildSkillCatalogFromResolved(
   return { catalog, alwaysSkills };
 }
 
+export function forceAlwaysSkillBySlug(args: {
+  catalog: SkillCatalogEntry[];
+  alwaysSkills: Doc<"skills">[];
+  allSkills: Doc<"skills">[];
+  slug: string;
+}): { catalog: SkillCatalogEntry[]; alwaysSkills: Doc<"skills">[] } {
+  const forcedSkill = args.allSkills.find(
+    (skill) => skill.slug === args.slug && skill.status === "active",
+  );
+  if (!forcedSkill) {
+    return { catalog: args.catalog, alwaysSkills: args.alwaysSkills };
+  }
+
+  const forcedSkillId = String(forcedSkill._id);
+  const alwaysIds = new Set(args.alwaysSkills.map((skill) => String(skill._id)));
+  const alwaysSkills = alwaysIds.has(forcedSkillId)
+    ? args.alwaysSkills
+    : [...args.alwaysSkills, forcedSkill];
+  const catalog = args.catalog.filter((skill) => String(skill._id) !== forcedSkillId);
+
+  return { catalog, alwaysSkills };
+}
+
 /**
  * Format the skill catalog as XML for system prompt injection.
  *

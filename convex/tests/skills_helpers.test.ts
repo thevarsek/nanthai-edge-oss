@@ -5,6 +5,7 @@ import {
   buildNanthAIPrelude,
   buildSkillCatalogFromDocs,
   buildSkillCatalogFromResolved,
+  forceAlwaysSkillBySlug,
   formatAlwaysSkillInstructions,
   formatSkillCatalogXml,
   buildRuntimeGuard,
@@ -35,6 +36,20 @@ function makeSkillDoc(overrides: Partial<Record<string, unknown>> = {}): any {
     status: overrides.status ?? "active",
     scope: overrides.scope ?? "system",
     ...overrides,
+  };
+}
+
+function catalogEntry(skill: ReturnType<typeof makeSkillDoc>): SkillCatalogEntry {
+  return {
+    _id: skill._id,
+    slug: skill.slug,
+    name: skill.name,
+    summary: skill.summary,
+    runtimeMode: skill.runtimeMode,
+    requiredToolIds: skill.requiredToolIds,
+    requiredToolProfiles: skill.requiredToolProfiles,
+    requiredIntegrationIds: skill.requiredIntegrationIds,
+    requiredCapabilities: skill.requiredCapabilities,
   };
 }
 
@@ -395,6 +410,37 @@ test("buildSkillCatalogFromResolved: filters always skills by capability", () =>
     availableCapabilities: [],
   });
   assert.equal(alwaysSkills.length, 0);
+});
+
+test("forceAlwaysSkillBySlug: promotes a catalog skill into always instructions", () => {
+  const subagents = makeSkillDoc({ _id: "subagents", slug: "parallel-subagents" });
+  const docx = makeSkillDoc({ _id: "docx", slug: "docx" });
+  const result = forceAlwaysSkillBySlug({
+    catalog: [catalogEntry(subagents), catalogEntry(docx)],
+    alwaysSkills: [],
+    allSkills: [subagents, docx],
+    slug: "parallel-subagents",
+  });
+
+  assert.deepEqual(result.catalog.map((skill) => skill.slug), ["docx"]);
+  assert.deepEqual(result.alwaysSkills.map((skill) => skill.slug), ["parallel-subagents"]);
+});
+
+test("forceAlwaysSkillBySlug: keeps inactive or missing skills out of always instructions", () => {
+  const inactive = makeSkillDoc({
+    _id: "subagents",
+    slug: "parallel-subagents",
+    status: "archived",
+  });
+  const result = forceAlwaysSkillBySlug({
+    catalog: [catalogEntry(inactive)],
+    alwaysSkills: [],
+    allSkills: [inactive],
+    slug: "parallel-subagents",
+  });
+
+  assert.deepEqual(result.catalog.map((skill) => skill.slug), ["parallel-subagents"]);
+  assert.deepEqual(result.alwaysSkills, []);
 });
 
 // =============================================================================

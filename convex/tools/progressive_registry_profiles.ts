@@ -138,11 +138,14 @@ const BASE_TOOLS: RegisteredTool[] = [
 
 export function registerBaseTools(
   registry: ToolRegistry,
-  _allowSubagents: boolean,
+  allowSubagents: boolean,
   directToolNames: string[] = [],
   webSearchToolEnabled = false,
 ): void {
   registerToolsIfMissing(registry, BASE_TOOLS);
+  if (allowSubagents) {
+    registerToolsIfMissing(registry, [spawnSubagents]);
+  }
   if (webSearchToolEnabled) {
     registerToolsIfMissing(registry, [webSearch]);
   }
