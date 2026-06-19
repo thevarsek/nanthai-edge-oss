@@ -4,6 +4,7 @@ import { useAuth } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Menu, X } from "lucide-react";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
+import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 
 type EdgeSiteHeaderProps = {
   activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing";
@@ -23,7 +24,17 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
   const { t } = useTranslation();
 
   const appHref = isLoaded && isSignedIn ? "/app" : isLoaded ? "/sign-in" : undefined;
-  const appLabel = isLoaded && isSignedIn ? t("edge_go_to_app") : isLoaded ? t("sign_in") : t("loading");
+  const appLabel = isLoaded && isSignedIn ? t("edge_go_to_app") : isLoaded ? t("edge_start_free") : t("loading");
+  const authState = ctaAuthState(isLoaded, isSignedIn);
+  const captureHeaderCta = () => {
+    if (!appHref) return;
+    captureCtaClick({
+      location: "header",
+      label: appLabel,
+      destination: appHref,
+      authState,
+    });
+  };
 
   return (
     <header className="sticky top-0 z-50 eborder-04 border-b backdrop-blur-2xl" style={{ backgroundColor: `rgba(var(--edge-fg), 0) `, background: `color-mix(in srgb, var(--edge-bg) 70%, transparent)` }}>
@@ -67,6 +78,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
             <Link
               to={appHref}
               className="group/btn inline-flex items-center gap-1 rounded-full px-4 py-2 text-[0.8rem] efg-40 transition-colors hover:efg-80"
+              onClick={captureHeaderCta}
             >
               {appLabel}
               <ArrowUpRight className="h-3 w-3 transition-transform group-hover/btn:-translate-y-0.5 group-hover/btn:translate-x-0.5" />
@@ -112,7 +124,10 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
               <Link
                 to={appHref}
                 className="rounded-lg px-4 py-3 text-[0.9rem] efg-60 transition-colors"
-                onClick={() => setIsMenuOpen(false)}
+                onClick={() => {
+                  captureHeaderCta();
+                  setIsMenuOpen(false);
+                }}
               >
                 {appLabel}
               </Link>

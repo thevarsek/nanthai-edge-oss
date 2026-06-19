@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
+import { useAuth } from "@clerk/react";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
+import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 import { cn } from "@/lib/utils";
 import { getRelatedFeatures, localizeFeature, type FeatureMeta, type FeatureTier } from "./featureData";
 import { AnimateOnScroll } from "./illustrations/IllustrationPrimitives";
@@ -158,8 +160,16 @@ export function FeaturePageLayout({
   seoDescription,
 }: FeaturePageLayoutProps) {
   const { t } = useTranslation();
+  const { isLoaded, isSignedIn } = useAuth();
   const localizedMeta = localizeFeature(meta, t);
   const related = getRelatedFeatures(meta.related).map((feature) => localizeFeature(feature, t));
+  const appHref = isLoaded && isSignedIn ? "/app" : "/sign-in";
+  const authState = ctaAuthState(isLoaded, isSignedIn);
+  const ctaLabel = isLoaded && isSignedIn
+    ? t("edge_go_to_app")
+    : meta.tier === "pro" || meta.tier === "free-pro"
+      ? t("edge_start_free_upgrade_later")
+      : t("edge_start_free");
 
   return (
     <EdgeSiteLayout activePage="features">
@@ -293,14 +303,35 @@ export function FeaturePageLayout({
               </p>
               <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
                 <Link
-                  to="/sign-in"
-                  className="ecta inline-flex items-center gap-2 rounded-full px-6 py-3 text-[0.85rem] font-semibold"
+                  to={appHref}
+                  aria-disabled={!isLoaded}
+                  onClick={(event) => {
+                    if (!isLoaded) {
+                      event.preventDefault();
+                      return;
+                    }
+                    captureCtaClick({
+                      location: "feature_footer",
+                      label: ctaLabel,
+                      destination: appHref,
+                      authState,
+                    });
+                  }}
+                  className={`ecta inline-flex items-center gap-2 rounded-full px-6 py-3 text-[0.85rem] font-semibold ${!isLoaded ? "pointer-events-none opacity-60" : ""}`}
                 >
-                  {t("edge_get_started_free")}
+                  {ctaLabel}
                   <ArrowUpRight size={14} />
                 </Link>
                 <Link
                   to="/features"
+                  onClick={() => {
+                    captureCtaClick({
+                      location: "feature_footer_all_features",
+                      label: t("edge_see_all_features"),
+                      destination: "/features",
+                      authState,
+                    });
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-full px-5 py-3 text-[0.82rem] font-medium efg-40 transition-colors hover:efg-70"
                 >
                   {t("edge_see_all_features")} <ArrowRight size={13} />

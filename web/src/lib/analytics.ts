@@ -43,7 +43,8 @@ export type AnalyticsEvent =
   | "artifact_downloaded"
   | "setting_changed"
   | "generation_cancelled"
-  | "feature_used";
+  | "feature_used"
+  | "cta_clicked";
 
 export type AnalyticsProperties = Properties;
 

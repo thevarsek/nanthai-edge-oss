@@ -2,12 +2,16 @@ import {
   Brain,
   CalendarClock,
   Drama,
+  FileText,
   FileStack,
   Globe,
+  Image as ImageIcon,
   Key,
   Layers,
   LayoutGrid,
   MessagesSquare,
+  Music,
+  Film,
   Zap,
 } from "lucide-react";
 
@@ -90,6 +94,30 @@ export function getCapabilityCards(t: (k: string) => string) {
       detail: t("home_cap_free_pro"),
     },
     {
+      icon: FileText,
+      title: t("home_cap_documents_title"),
+      body: t("home_cap_documents_body"),
+      detail: t("pro_2"),
+    },
+    {
+      icon: ImageIcon,
+      title: t("home_cap_image_title"),
+      body: t("home_cap_image_body"),
+      detail: t("free"),
+    },
+    {
+      icon: Film,
+      title: t("home_cap_video_title"),
+      body: t("home_cap_video_body"),
+      detail: t("free"),
+    },
+    {
+      icon: Music,
+      title: t("home_cap_audio_title"),
+      body: t("home_cap_audio_body"),
+      detail: t("free"),
+    },
+    {
       icon: Layers,
       title: t("home_cap_ideascapes_title"),
       body: t("home_cap_ideascapes_body"),
@@ -164,4 +192,3 @@ export function getProFeatures(t: (k: string) => string) {
     t("home_pro_12"),
   ];
 }
-

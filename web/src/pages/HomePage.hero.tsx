@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { HeroSpotlight } from "@/components/edge-site/HeroSpotlight";
 import { HeroVantaNet } from "@/components/edge-site/HeroVantaNet";
 import { HeroOutlineText } from "@/components/edge-site/HeroOutlineText";
+import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 import { StoreUrls } from "@/lib/constants";
 import { getHeadlinePoints } from "./HomePage.data";
 
@@ -17,6 +18,7 @@ export function HomeHeroSection() {
   const { isLoaded, isSignedIn } = useAuth();
   const appHref = isLoaded && isSignedIn ? "/app" : "/sign-in";
   const appLabel = isLoaded && isSignedIn ? t("home_go_to_app") : t("home_get_started_free");
+  const authState = ctaAuthState(isLoaded, isSignedIn);
   const hero2Ref = useRef<HTMLDivElement>(null);
   const [hero2Visible, setHero2Visible] = useState(false);
 
@@ -39,31 +41,59 @@ export function HomeHeroSection() {
         {/* Two Vanta nets stacked — orange masked to top, teal masked to bottom. */}
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           <div
-            className="absolute inset-0"
+            className="absolute inset-x-0 -top-[10svh] bottom-0 md:-top-[8vh]"
             style={{
-              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 30%, transparent 65%)",
-              maskImage: "linear-gradient(to bottom, black 0%, black 30%, transparent 65%)",
+              WebkitMaskImage: "linear-gradient(to bottom, black 0%, black 38%, transparent 74%)",
+              maskImage: "linear-gradient(to bottom, black 0%, black 38%, transparent 74%)",
             }}
           >
-            <HeroVantaNet color={0xff6b3d} opacity={0.25} />
+            <HeroVantaNet
+              color={0xff6b3d}
+              lightColor={0xff6b3d}
+              lightBackgroundColor={0xffd7c8}
+              opacity={0.42}
+              lightOpacity={0.82}
+              maxDistance={22}
+              lightMaxDistance={22}
+              mobileMaxDistance={14.5}
+              lightMobileMaxDistance={14.5}
+              scale={1.75}
+              scaleMobile={1.85}
+              lightLineColor={0xb64f38}
+              lightLineOpacity={0.52}
+            />
           </div>
           <div
             className="absolute inset-0"
             style={{
-              WebkitMaskImage: "linear-gradient(to bottom, transparent 35%, black 70%, black 100%)",
-              maskImage: "linear-gradient(to bottom, transparent 35%, black 70%, black 100%)",
+              WebkitMaskImage: "linear-gradient(to bottom, transparent 28%, black 58%, black 100%)",
+              maskImage: "linear-gradient(to bottom, transparent 28%, black 58%, black 100%)",
             }}
           >
-            <HeroVantaNet color={0x00e0d0} opacity={0.2} />
+            <HeroVantaNet
+              color={0x00e0d0}
+              lightColor={0x00a7a0}
+              lightBackgroundColor={0xc7eeee}
+              opacity={0.36}
+              lightOpacity={0.78}
+              maxDistance={22}
+              lightMaxDistance={22}
+              mobileMaxDistance={14.5}
+              lightMobileMaxDistance={14.5}
+              scale={1.75}
+              scaleMobile={1.85}
+              lightLineColor={0x087b78}
+              lightLineOpacity={0.46}
+            />
           </div>
         </div>
 
         {/* Screen 1 — solid, left-aligned */}
-        <section className="relative flex min-h-[100vh] items-center">
+        <section className="relative flex min-h-[50svh] items-start pt-[15svh] md:min-h-[100vh] md:items-center md:pt-0">
           <HeroSpotlight color="255, 107, 61" size={800} opacity={0.08} />
 
           <div className="container relative">
-            <h1 className="edge-display-xl edge-materialize uppercase text-[clamp(3.5rem,11vw,10rem)] efg-heading">
+            <h1 className="edge-display-xl edge-materialize uppercase text-[clamp(4rem,17vw,5.3rem)] leading-[0.86] efg-heading md:text-[clamp(3.5rem,11vw,10rem)] md:leading-[0.9]">
               {t("home_hero1_line1")}
               <br />
               {t("home_hero1_line2")}<span className="edge-accent">.</span>
@@ -72,7 +102,7 @@ export function HomeHeroSection() {
         </section>
 
         {/* Screen 2 — outline, right-aligned */}
-        <section ref={hero2Ref} className="relative flex min-h-[100vh] items-center">
+        <section ref={hero2Ref} className="relative flex min-h-[58svh] items-start pt-0 md:min-h-[100vh] md:items-center">
           <HeroSpotlight color="0, 224, 208" size={800} opacity={0.07} />
 
         <div className="container relative">
@@ -88,12 +118,12 @@ export function HomeHeroSection() {
             />
           </div>
 
-          <div className="ml-auto mt-12 max-w-xl text-right">
+          <div className="ml-auto mt-6 max-w-xl text-right md:mt-12">
             <p className={`edge-sans edge-materialize-scroll edge-mat-delay-1 ${vis} text-[1.05rem] font-light leading-[1.75] efg-60`}>
               {t("home_hero2_desc")}
             </p>
 
-            <div className={`edge-materialize-scroll edge-mat-delay-2 ${vis} mt-8 flex flex-wrap items-center justify-end gap-2.5`}>
+            <div className={`edge-materialize-scroll edge-mat-delay-2 ${vis} mt-5 flex flex-wrap items-center justify-end gap-2.5 md:mt-8`}>
               {headlinePoints.map((point) => (
                 <span
                   key={point}
@@ -104,11 +134,22 @@ export function HomeHeroSection() {
               ))}
             </div>
 
-            <div className={`edge-materialize-scroll edge-mat-delay-3 ${vis} mt-8 flex flex-col items-end gap-5`}>
+            <div className={`edge-materialize-scroll edge-mat-delay-3 ${vis} mt-6 flex flex-col items-end gap-5 md:mt-8`}>
               <Link
                 to={appHref}
                 aria-disabled={!isLoaded}
-                onClick={(event) => { if (!isLoaded) event.preventDefault(); }}
+                onClick={(event) => {
+                  if (!isLoaded) {
+                    event.preventDefault();
+                    return;
+                  }
+                  captureCtaClick({
+                    location: "home_hero",
+                    label: appLabel,
+                    destination: appHref,
+                    authState,
+                  });
+                }}
                 className={`group relative inline-flex items-center gap-2.5 rounded-full ecta px-8 py-4 text-[0.92rem] font-medium transition-all ${!isLoaded ? "pointer-events-none opacity-60" : ""}`}
               >
                 {appLabel}

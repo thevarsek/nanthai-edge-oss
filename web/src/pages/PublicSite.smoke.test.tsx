@@ -61,7 +61,7 @@ describe("public site smoke coverage", () => {
     renderPublicPage(<HomePage />);
 
     expect(screen.getByRole("heading", { name: /home_hero1_line1/i })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /sign_in/i })).toHaveAttribute("href", "/sign-in");
+    expect(screen.getAllByRole("link", { name: /edge_start_free/i })[0]).toHaveAttribute("href", "/sign-in");
     expect(screen.getAllByRole("link", { name: /home_get_started_free/i })[0]).toHaveAttribute("href", "/sign-in");
     expect(screen.getAllByText("free").length).toBeGreaterThan(0);
     expect(screen.getAllByText("pro_2").length).toBeGreaterThan(0);
@@ -96,7 +96,7 @@ describe("public site smoke coverage", () => {
     expect(screen.getByRole("heading", { name: /Search & Research/i })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /edge_nav_features/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: /GitHub/i })).toHaveAttribute("href", "https://github.com/thevarsek/nanthai-edge-oss");
-    expect(screen.getByRole("link", { name: /edge_get_started_free/i })).toHaveAttribute("href", "/sign-in");
+    expect(screen.getByRole("link", { name: /edge_start_free_upgrade_later/i })).toHaveAttribute("href", "/sign-in");
     expect(screen.getByRole("link", { name: /edge_see_all_features/i })).toHaveAttribute("href", "/features");
     expect(canonicalHref()).toBe("https://nanthai.tech/features/search");
   });

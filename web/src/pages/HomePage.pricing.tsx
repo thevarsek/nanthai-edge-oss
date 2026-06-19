@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 
+import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 import { StoreUrls } from "@/lib/constants";
 import { getFreeFeatures, getProFeatures } from "./HomePage.data";
 
@@ -10,8 +11,22 @@ import { getFreeFeatures, getProFeatures } from "./HomePage.data";
 
 export function HomePricingSection() {
   const { t } = useTranslation();
+  const { isLoaded, isSignedIn } = useAuth();
   const freeFeatures = getFreeFeatures(t);
   const proFeatures = getProFeatures(t);
+  const appHref = isLoaded && isSignedIn ? "/app" : "/sign-in";
+  const authState = ctaAuthState(isLoaded, isSignedIn);
+  const freeCtaLabel = isLoaded && isSignedIn ? t("home_go_to_app") : t("edge_start_free");
+  const proCtaLabel = isLoaded && isSignedIn ? t("home_go_to_app") : t("edge_start_free_upgrade_later");
+
+  const capturePricingCta = (location: "pricing_free" | "pricing_pro", label: string) => {
+    captureCtaClick({
+      location,
+      label,
+      destination: appHref,
+      authState,
+    });
+  };
 
   return (
     <section className="relative">
@@ -61,6 +76,21 @@ export function HomePricingSection() {
                 </li>
               ))}
             </ul>
+            <Link
+              to={appHref}
+              aria-disabled={!isLoaded}
+              onClick={(event) => {
+                if (!isLoaded) {
+                  event.preventDefault();
+                  return;
+                }
+                capturePricingCta("pricing_free", freeCtaLabel);
+              }}
+              className={`mt-8 inline-flex items-center gap-2 rounded-full eborder-08 border px-5 py-3 text-[0.82rem] font-medium efg-60 transition-colors hover:efg-heading ${!isLoaded ? "pointer-events-none opacity-60" : ""}`}
+            >
+              {freeCtaLabel}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
 
           {/* Pro tier */}
@@ -100,6 +130,21 @@ export function HomePricingSection() {
                 </li>
               ))}
             </ul>
+            <Link
+              to={appHref}
+              aria-disabled={!isLoaded}
+              onClick={(event) => {
+                if (!isLoaded) {
+                  event.preventDefault();
+                  return;
+                }
+                capturePricingCta("pricing_pro", proCtaLabel);
+              }}
+              className={`ecta mt-8 inline-flex items-center gap-2 rounded-full px-5 py-3 text-[0.82rem] font-medium ${!isLoaded ? "pointer-events-none opacity-60" : ""}`}
+            >
+              {proCtaLabel}
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
         </div>
 
@@ -130,6 +175,7 @@ export function HomeFinalCTA() {
   const { isLoaded, isSignedIn } = useAuth();
   const appHref = isLoaded && isSignedIn ? "/app" : "/sign-in";
   const appLabel = isLoaded && isSignedIn ? t("home_go_to_app") : t("home_get_started_free");
+  const authState = ctaAuthState(isLoaded, isSignedIn);
 
   return (
     <section className="relative">
@@ -149,7 +195,18 @@ export function HomeFinalCTA() {
             <Link
               to={appHref}
               aria-disabled={!isLoaded}
-              onClick={(event) => { if (!isLoaded) event.preventDefault(); }}
+              onClick={(event) => {
+                if (!isLoaded) {
+                  event.preventDefault();
+                  return;
+                }
+                captureCtaClick({
+                  location: "home_final",
+                  label: appLabel,
+                  destination: appHref,
+                  authState,
+                });
+              }}
               className={`ecta group relative inline-flex items-center gap-2.5 rounded-full px-8 py-4 text-[0.92rem] font-medium transition-all ${!isLoaded ? "pointer-events-none opacity-60" : ""}`}
             >
               {appLabel}

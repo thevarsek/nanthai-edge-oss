@@ -141,12 +141,56 @@ describe("edge-site hero visuals", () => {
       mouseControls: true,
       touchControls: true,
       backgroundAlpha: 0,
+      backgroundColor: 0x050507,
+      maxDistance: 22,
     }));
-    const options = vi.mocked(vanta.default).mock.calls[0][0] as Record<string, unknown>;
-    expect(options).not.toHaveProperty("backgroundColor");
 
     unmount();
     expect(destroy).toHaveBeenCalled();
+  });
+
+  it("uses higher-contrast Vanta settings in light mode", async () => {
+    document.documentElement.setAttribute("data-theme", "light");
+    stubMotionPreference(false);
+    const vanta = await import("vanta/dist/vanta.net.min");
+    const material = {
+      vertexColors: true,
+      color: { set: vi.fn() },
+      opacity: 1,
+      transparent: true,
+      blending: undefined,
+      needsUpdate: false,
+    };
+    const vantaInstance = {
+      destroy: vi.fn(),
+      linesMesh: { material },
+    } as unknown as ReturnType<typeof vanta.default>;
+    vi.mocked(vanta.default).mockReturnValue(vantaInstance);
+    const { HeroVantaNet } = await import("./HeroVantaNet");
+
+    const { container } = render(
+      <HeroVantaNet
+        color={0x00e0d0}
+        lightColor={0x00a7a0}
+        opacity={0.2}
+        lightOpacity={0.68}
+        lightMaxDistance={30}
+        lightLineColor={0x087b78}
+        lightLineOpacity={0.46}
+      />,
+    );
+
+    expect(vanta.default).toHaveBeenCalledWith(expect.objectContaining({
+      color: 0x00a7a0,
+      backgroundColor: 0x050507,
+      maxDistance: 30,
+    }));
+    expect(container.firstElementChild).toHaveStyle({ opacity: "0.68" });
+    expect(material.vertexColors).toBe(false);
+    expect(material.color.set).toHaveBeenCalledWith(0x087b78);
+    expect(material.opacity).toBe(0.46);
+    expect(material.transparent).toBe(true);
+    expect(material.needsUpdate).toBe(true);
   });
 
   it("destroys the Vanta background when reduced motion is enabled after mount", async () => {
