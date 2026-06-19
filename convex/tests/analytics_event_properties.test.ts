@@ -143,6 +143,49 @@ test("assistantResponseFailureDetails preserves stable failure categories", () =
     }),
     {
       failure_category: "cancelled",
+      cancellation_category: "unknown_cancelled",
+      error_type: "cancelled",
+      error_label: "cancelled",
+    },
+  );
+
+  assert.deepEqual(
+    assistantResponseFailureDetails({
+      cancelled: true,
+      properties: { terminal_error_code: "cancelled_by_retry" },
+      source: "chat_generation",
+    }),
+    {
+      failure_category: "cancelled",
+      cancellation_category: "cancelled_by_retry",
+      error_type: "cancelled",
+      error_label: "cancelled",
+    },
+  );
+
+  assert.deepEqual(
+    assistantResponseFailureDetails({
+      cancelled: true,
+      properties: { terminal_error_code: "cancelled_by_user" },
+      source: "web_search",
+    }),
+    {
+      failure_category: "cancelled",
+      cancellation_category: "cancelled_by_user",
+      error_type: "cancelled",
+      error_label: "cancelled",
+    },
+  );
+
+  assert.deepEqual(
+    assistantResponseFailureDetails({
+      cancelled: true,
+      properties: { setup_phase: "cancelled_before_start" },
+      source: "chat_generation",
+    }),
+    {
+      failure_category: "cancelled",
+      cancellation_category: "cancelled_before_start",
       error_type: "cancelled",
       error_label: "cancelled",
     },

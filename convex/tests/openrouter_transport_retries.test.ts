@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ConvexError } from "convex/values";
 
 import {
   callOpenRouterNonStreaming,
@@ -172,6 +173,32 @@ test("callOpenRouterNonStreaming switches to the fallback model after a wrapped 
 
   assert.deepEqual(models, ["model_primary", "model_fallback"]);
   assert.equal(result.content, "fallback ok");
+});
+
+test("callOpenRouterNonStreaming surfaces insufficient credits as a structured user-facing error", async () => {
+  const deps = createOpenRouterNonStreamingDepsForTest({
+    fetch: async () => jsonResponse(402, {
+      error: { message: "Insufficient credits. Add credit balance to continue." },
+    }) as any,
+  });
+
+  await assert.rejects(
+    () => callOpenRouterNonStreaming(
+      "key",
+      "openai/gpt-5.5",
+      [{ role: "user", content: "hi" }],
+      {},
+      {},
+      deps,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof ConvexError);
+      const details = error.data as { code?: string; message?: string };
+      assert.equal(details.code, "INSUFFICIENT_CREDITS");
+      assert.match(details.message ?? "", /OpenRouter balance is too low/);
+      return true;
+    },
+  );
 });
 
 test("callOpenRouterStreaming retries transient network failures and uses text-stream fallback when no body is available", async () => {

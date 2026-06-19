@@ -8,7 +8,7 @@ import {
   sleep,
   X_TITLE,
 } from "./openrouter_constants";
-import { extractErrorMessage } from "./openrouter_error";
+import { extractErrorMessage, openRouterErrorDetails } from "./openrouter_error";
 import {
   extractContentFromNonStreamingPayload,
 } from "./openrouter_sse";
@@ -189,10 +189,7 @@ export async function callOpenRouterNonStreaming(
           model: currentModel, status: response.status, durationMs: Date.now() - startTime,
           msgCount, error: errorMessage,
         });
-        throw new ConvexError({
-          code: "INTERNAL_ERROR" as const,
-          message: `OpenRouter API error (${response.status}): ${errorMessage}`,
-        });
+        throw new ConvexError(openRouterErrorDetails(response.status, errorMessage));
       }
 
       // Parse response
@@ -242,7 +239,7 @@ export async function callOpenRouterNonStreaming(
           model: currentModel, durationMs: Date.now() - startTime, msgCount,
           error: errorMessage,
         });
-        throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: `OpenRouter API error (200-wrapped): ${errorMessage}` });
+        throw new ConvexError(openRouterErrorDetails(200, errorMessage));
       }
 
       const extracted = deps.extractContentFromNonStreamingPayload(parsed);

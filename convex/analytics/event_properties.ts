@@ -15,6 +15,14 @@ export type OpenRouterFailureCategory =
   | "provider_error"
   | "unknown_error";
 
+export type CancellationCategory =
+  | "cancelled_by_user"
+  | "cancelled_by_retry"
+  | "cancelled_before_start"
+  | "workflow_cancelled"
+  | "provider_cancelled"
+  | "unknown_cancelled";
+
 export function openRouterUsageAnalyticsProperties(
   usage?: OpenRouterUsage | null,
 ): AnalyticsProperties {
@@ -128,4 +136,53 @@ export function openRouterFailureCategory(error: unknown): OpenRouterFailureCate
   }
 
   return "unknown_error";
+}
+
+export function cancellationCategory(args: {
+  error?: unknown;
+  properties?: Record<string, unknown>;
+  source?: string;
+}): CancellationCategory {
+  const terminalCode = stringProperty(args.properties, "terminal_error_code")
+    ?? stringProperty(args.properties, "terminalErrorCode");
+  if (terminalCode === "cancelled_by_user" || terminalCode === "cancelled_by_retry") {
+    return terminalCode;
+  }
+
+  const setupPhase = stringProperty(args.properties, "setup_phase");
+  if (setupPhase === "cancelled_before_start") {
+    return "cancelled_before_start";
+  }
+
+  const message = (args.error instanceof Error ? args.error.message : String(args.error ?? "")).toLowerCase();
+  if (message.includes("retry")) {
+    return "cancelled_by_retry";
+  }
+  if (message.includes("user")) {
+    return "cancelled_by_user";
+  }
+  if (message.includes("provider") || message.includes("upstream")) {
+    return "provider_cancelled";
+  }
+
+  if (
+    args.source === "web_search" ||
+    args.source === "research_paper" ||
+    args.source === "subagent_child" ||
+    args.source === "subagent_parent_resume" ||
+    args.source === "autonomous_discussion" ||
+    args.source === "video_generation"
+  ) {
+    return "workflow_cancelled";
+  }
+
+  return "unknown_cancelled";
+}
+
+function stringProperty(
+  properties: Record<string, unknown> | undefined,
+  key: string,
+): string | null {
+  const value = properties?.[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : null;
 }

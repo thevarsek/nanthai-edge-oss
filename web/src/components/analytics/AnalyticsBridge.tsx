@@ -23,6 +23,7 @@ export function AnalyticsBridge() {
   );
   const identifiedAnalyticsId = useRef<string | null>(null);
   const identifiedClerkUserId = useRef<string | null>(null);
+  const capturedSignInCompletionClerkUserId = useRef<string | null>(null);
   const lastPageViewKey = useRef<string | null>(null);
   const capturedAppOpened = useRef(false);
   const capturedAppReady = useRef(false);
@@ -44,6 +45,7 @@ export function AnalyticsBridge() {
         resetAnalyticsUser();
         identifiedAnalyticsId.current = null;
         identifiedClerkUserId.current = null;
+        capturedSignInCompletionClerkUserId.current = null;
       }
       shouldCaptureNextSignInCompletion.current = true;
       return;
@@ -57,6 +59,7 @@ export function AnalyticsBridge() {
       }
       identifiedAnalyticsId.current = null;
       identifiedClerkUserId.current = null;
+      capturedSignInCompletionClerkUserId.current = null;
       return;
     }
 
@@ -71,6 +74,7 @@ export function AnalyticsBridge() {
       resetAnalyticsUser();
       identifiedAnalyticsId.current = null;
       identifiedClerkUserId.current = null;
+      capturedSignInCompletionClerkUserId.current = null;
       lastPageViewKey.current = null;
     }
 
@@ -80,11 +84,15 @@ export function AnalyticsBridge() {
       (identifiedAnalyticsId.current === null && !isAnalyticsUserIdentified())
     ) {
       identifyAnalyticsUser(analyticsId);
-      if (shouldCaptureNextSignInCompletion.current) {
+      if (capturedSignInCompletionClerkUserId.current !== clerkUserId) {
         captureAnalytics("sign_in_completed", {
           feature_area: "auth",
+          auth_completion_source: shouldCaptureNextSignInCompletion.current
+            ? "interactive"
+            : "restored_session",
         });
         shouldCaptureNextSignInCompletion.current = false;
+        capturedSignInCompletionClerkUserId.current = clerkUserId;
       }
       identifiedAnalyticsId.current = analyticsId;
       identifiedClerkUserId.current = clerkUserId;

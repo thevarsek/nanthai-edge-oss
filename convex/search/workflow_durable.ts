@@ -189,23 +189,25 @@ export async function handlePhaseError(
         pre_handoff_failure: true,
       },
     });
-    await captureAssistantResponseFailure(ctx, {
-      userId: args.userId,
-      chatId: String(args.chatId),
-      messageId: String(args.assistantMessageId),
-      jobId: String(args.jobId),
-      modelId: args.modelId,
-      source: args.analyticsSource ?? "research_paper",
-      error,
-      analytics: args.analytics,
-      durationMs,
-      properties: {
-        search_session_id: String(args.sessionId),
-        complexity: args.complexity,
-        pre_handoff_failure: true,
-      },
-    });
   }
+  await captureAssistantResponseFailure(ctx, {
+    userId: args.userId,
+    chatId: String(args.chatId),
+    messageId: String(args.assistantMessageId),
+    jobId: String(args.jobId),
+    modelId: args.modelId,
+    source: args.analyticsSource ?? "research_paper",
+    error,
+    analytics: args.analytics,
+    cancelled: wasCancelled,
+    durationMs,
+    properties: {
+      search_session_id: String(args.sessionId),
+      complexity: args.complexity,
+      pre_handoff_failure: true,
+      terminal_error_code: wasCancelled ? "cancelled_by_user" : undefined,
+    },
+  });
 
   try {
     await updateSession(ctx, args.sessionId, {

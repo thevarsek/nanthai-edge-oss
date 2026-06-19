@@ -8,9 +8,11 @@ import {
   type AnalyticsClientMetadata,
 } from "../analytics/client_metadata";
 import {
+  cancellationCategory,
   openRouterFailureCategory,
   openRouterUsageAnalyticsProperties,
   type OpenRouterFailureCategory,
+  type CancellationCategory,
 } from "../analytics/event_properties";
 import type { OpenRouterUsage } from "../lib/openrouter_types";
 import type {
@@ -104,15 +106,24 @@ type AssistantResponseContinuedCaptureArgs = {
 };
 
 export function assistantResponseFailureDetails(
-  result: Pick<AssistantResponseAnalyticsResult, "cancelled" | "error">,
+  result: Pick<AssistantResponseAnalyticsResult, "cancelled" | "error"> & {
+    properties?: Record<string, unknown>;
+    source?: string;
+  },
 ): {
   failure_category: OpenRouterFailureCategory;
+  cancellation_category?: CancellationCategory;
   error_type: string;
   error_label: string;
 } {
   if (result.cancelled) {
     return {
       failure_category: "cancelled",
+      cancellation_category: cancellationCategory({
+        error: result.error,
+        properties: result.properties,
+        source: result.source,
+      }),
       error_type: "cancelled",
       error_label: "cancelled",
     };
@@ -263,7 +274,10 @@ export async function captureAssistantResponseTerminal(
       model_id: args.participant.modelId,
       source: assistantResponseSource(args, continuationState),
       duration_ms: durationMs,
-      ...assistantResponseFailureDetails(result),
+      ...assistantResponseFailureDetails({
+        ...result,
+        source: assistantResponseSource(args, continuationState),
+      }),
       ...result.latencies,
       ...analyticsClientProperties(args.analytics),
     });
@@ -322,6 +336,8 @@ export async function captureAssistantResponseFailure(
     ...assistantResponseFailureDetails({
       cancelled: args.cancelled === true,
       error: args.error,
+      properties: args.properties,
+      source: args.source,
     }),
     ...args.properties,
     ...analyticsClientProperties(args.analytics),

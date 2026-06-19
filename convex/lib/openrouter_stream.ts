@@ -8,7 +8,7 @@ import {
   sleep,
   X_TITLE,
 } from "./openrouter_constants";
-import { extractErrorMessage } from "./openrouter_error";
+import { extractErrorMessage, openRouterErrorDetails } from "./openrouter_error";
 import { buildRequestBody } from "./openrouter_request";
 import {
   normalizeUnsupportedParameterName,
@@ -358,10 +358,7 @@ async function streamOnce(
           continue;
         }
 
-        throw new ConvexError({
-          code: "INTERNAL_ERROR" as const,
-          message: `OpenRouter API error (${response.status}): ${errorMessage}`,
-        });
+        throw new ConvexError(openRouterErrorDetails(response.status, errorMessage));
       }
 
       // Process SSE stream and stop as soon as [DONE] arrives instead of

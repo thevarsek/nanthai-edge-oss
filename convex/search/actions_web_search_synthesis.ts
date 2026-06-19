@@ -252,6 +252,9 @@ export async function synthesizeWithStreaming(
         search_result_count: searchResults.length,
         request_message_count: requestMessages.length,
         legacy_streaming_synthesis: true,
+        terminal_error_code: error instanceof GenerationCancelledError
+          ? "cancelled_by_user"
+          : undefined,
       },
     });
     throw error;

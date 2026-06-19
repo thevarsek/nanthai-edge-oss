@@ -174,6 +174,33 @@ test("streaming transport preserves structured ConvexError failures for non-retr
   );
 });
 
+test("streaming transport surfaces insufficient credits as a structured user-facing error", async () => {
+  const deps = createOpenRouterStreamingDepsForTest({
+    fetch: async () => response(402, JSON.stringify({
+      error: { message: "Insufficient credits. Add credit balance to continue." },
+    })),
+  });
+
+  await assert.rejects(
+    () => callOpenRouterStreaming(
+      "key",
+      "openai/gpt-5.5",
+      [{ role: "user", content: "hello" }],
+      {},
+      {},
+      {},
+      deps,
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof ConvexError);
+      const details = error.data as { code?: string; message?: string };
+      assert.equal(details.code, "INSUFFICIENT_CREDITS");
+      assert.match(details.message ?? "", /OpenRouter balance is too low/);
+      return true;
+    },
+  );
+});
+
 test("streaming transport returns the final empty result after configured retries are exhausted", async () => {
   const sleeps: number[] = [];
   const requestBodies: Array<Record<string, unknown>> = [];

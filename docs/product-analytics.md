@@ -82,7 +82,7 @@ Backend analytics require Convex environment variables:
 
 - Scope: `chat_id`, `message_id`, `job_id`, `model_id`.
 - Client metadata: same client fields and app/build aliases as completion events.
-- Failure taxonomy: `failure_category` with one of `missing_api_key`, `invalid_api_key`, `insufficient_credits`, `model_unavailable`, `rate_limited`, `context_length_exceeded`, `timeout`, `cancelled`, `provider_error`, or `unknown_error`.
+- Failure taxonomy: `failure_category` with one of `missing_api_key`, `invalid_api_key`, `insufficient_credits`, `model_unavailable`, `rate_limited`, `context_length_exceeded`, `timeout`, `cancelled`, `provider_error`, or `unknown_error`. Cancelled failures also include `cancellation_category`: `cancelled_by_user`, `cancelled_by_retry`, `cancelled_before_start`, `workflow_cancelled`, `provider_cancelled`, or `unknown_cancelled`.
 - Debug context: coarse `error_type` and `error_label` only. Raw provider/user-facing error text is intentionally not sent to analytics.
 
 ## Remaining High-Value Additions

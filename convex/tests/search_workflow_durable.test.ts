@@ -287,10 +287,19 @@ test("handlePhaseError finalizes with cancelled status on GenerationCancelledErr
   assert.equal(
     scheduled.some((entry) => {
       const analyticsArgs = entry.args as Record<string, unknown>;
-      return analyticsArgs.event === "assistant_response_started" ||
-        analyticsArgs.event === "assistant_response_failed";
+      return analyticsArgs.event === "assistant_response_started";
     }),
     false,
+  );
+  const failureAnalytics = scheduled.find((entry) => {
+    const analyticsArgs = entry.args as Record<string, unknown>;
+    return analyticsArgs.event === "assistant_response_failed";
+  });
+  assert.equal(
+    ((failureAnalytics?.args as Record<string, unknown> | undefined)?.properties as
+      | Record<string, unknown>
+      | undefined)?.cancellation_category,
+    "cancelled_by_user",
   );
 });
 

@@ -79,8 +79,26 @@ function stripQueryAndHash(value: unknown): string | undefined {
   return value.slice(0, Math.min(...candidates));
 }
 
+const SENSITIVE_ROUTE_PROPERTY_KEYS = new Set([
+  "$current_url",
+  "$initial_current_url",
+  "$referrer",
+  "$initial_referrer",
+  "current_url",
+  "initial_current_url",
+  "referrer",
+  "initial_referrer",
+  "url",
+  "path",
+  "pathname",
+  "route",
+  "route_or_screen",
+  "routeOrScreen",
+  "client_route_or_screen",
+]);
+
 function sanitizeAutomaticUrlProperties(properties: Properties) {
-  for (const key of ["$current_url", "$initial_current_url", "$referrer", "$initial_referrer"]) {
+  for (const key of SENSITIVE_ROUTE_PROPERTY_KEYS) {
     const sanitized = stripQueryAndHash(properties[key]);
     if (sanitized !== undefined) {
       properties[key] = sanitized;
@@ -88,10 +106,17 @@ function sanitizeAutomaticUrlProperties(properties: Properties) {
   }
 }
 
+function sanitizeAnalyticsProperties(properties: AnalyticsProperties): AnalyticsProperties {
+  const sanitized = { ...properties };
+  sanitizeAutomaticUrlProperties(sanitized);
+  return sanitized;
+}
+
 export function createAnalyticsClientMetadata(
   event: AnalyticsEvent,
   routeOrScreen?: string,
 ): AnalyticsClientMetadata {
+  const sanitizedRouteOrScreen = stripQueryAndHash(routeOrScreen);
   return {
     platform: APP_PLATFORM,
     surface: "web_app",
@@ -99,7 +124,7 @@ export function createAnalyticsClientMetadata(
     clientSentAt: Date.now(),
     ...(APP_VERSION ? { appVersion: APP_VERSION } : {}),
     ...(BUILD_NUMBER ? { buildNumber: BUILD_NUMBER } : {}),
-    ...(routeOrScreen ? { routeOrScreen } : {}),
+    ...(sanitizedRouteOrScreen ? { routeOrScreen: sanitizedRouteOrScreen } : {}),
   };
 }
 
@@ -192,6 +217,7 @@ export function captureAnalytics(
   properties: AnalyticsProperties = {},
 ) {
   if (!initialized) return;
+  const sanitizedProperties = sanitizeAnalyticsProperties(properties);
   posthog.capture(event, {
     platform: APP_PLATFORM,
     app_surface: "web_app",
@@ -199,10 +225,10 @@ export function captureAnalytics(
     app_version: APP_VERSION,
     build_number: BUILD_NUMBER,
     environment: import.meta.env.MODE,
-    feature_area: properties.feature_area ?? "unknown",
+    feature_area: sanitizedProperties.feature_area ?? "unknown",
     client_event_id: makeClientEventId(event),
     client_sent_at: Date.now(),
-    ...properties,
+    ...sanitizedProperties,
   });
 }
 
@@ -211,6 +237,7 @@ export function captureAnalyticsException(
   properties: AnalyticsProperties = {},
 ) {
   if (!initialized) return;
+  const sanitizedProperties = sanitizeAnalyticsProperties(properties);
   const sanitizedError = new Error("redacted");
   sanitizedError.name = error instanceof Error && error.name.trim().length > 0
     ? error.name.trim()
@@ -222,8 +249,8 @@ export function captureAnalyticsException(
     app_version: APP_VERSION,
     build_number: BUILD_NUMBER,
     environment: import.meta.env.MODE,
-    feature_area: properties.feature_area ?? "error",
-    ...properties,
+    feature_area: sanitizedProperties.feature_area ?? "error",
+    ...sanitizedProperties,
     error_label: analyticsErrorLabel(error),
   });
 }

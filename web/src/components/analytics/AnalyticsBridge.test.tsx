@@ -89,7 +89,7 @@ describe("AnalyticsBridge", () => {
     expect(events.indexOf("app_opened")).toBeLessThan(events.indexOf("page_viewed"));
   });
 
-  it("identifies restored signed-in users with a Convex analytics ID before capture events", async () => {
+  it("identifies restored signed-in users and captures a restored sign-in completion before lifecycle events", async () => {
     analytics.isAnalyticsUserIdentified.mockReturnValue(false);
     authState.clerk = {
       isLoaded: true,
@@ -112,6 +112,13 @@ describe("AnalyticsBridge", () => {
     await waitFor(() => {
       expect(analytics.identifyAnalyticsUser).toHaveBeenCalledWith("aid_test_123");
       expect(analytics.captureAnalytics).toHaveBeenCalledWith(
+        "sign_in_completed",
+        expect.objectContaining({
+          auth_completion_source: "restored_session",
+          feature_area: "auth",
+        }),
+      );
+      expect(analytics.captureAnalytics).toHaveBeenCalledWith(
         "page_viewed",
         expect.objectContaining({ path: "/chat/abc" }),
       );
@@ -122,7 +129,7 @@ describe("AnalyticsBridge", () => {
     expect(JSON.stringify(analytics.identifyAnalyticsUser.mock.calls)).not.toContain("Ada Lovelace");
 
     const events = analytics.captureAnalytics.mock.calls.map(([event]) => event);
-    expect(events).not.toContain("sign_in_completed");
+    expect(events.indexOf("sign_in_completed")).toBeLessThan(events.indexOf("app_opened"));
     expect(events.indexOf("app_opened")).toBeLessThan(events.indexOf("page_viewed"));
   });
 
@@ -158,6 +165,13 @@ describe("AnalyticsBridge", () => {
     await waitFor(() => {
       expect(analytics.identifyAnalyticsUser).toHaveBeenCalledTimes(1);
       expect(analytics.captureAnalytics.mock.calls.filter(([event]) => event === "sign_in_completed")).toHaveLength(1);
+      expect(analytics.captureAnalytics).toHaveBeenCalledWith(
+        "sign_in_completed",
+        expect.objectContaining({
+          auth_completion_source: "interactive",
+          feature_area: "auth",
+        }),
+      );
     });
 
     view.rerender(bridgeElement("/chat/abc"));

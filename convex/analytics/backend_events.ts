@@ -4,6 +4,7 @@ import {
   type FunctionReference,
 } from "convex/server";
 import {
+  cancellationCategory,
   openRouterFailureCategory,
   openRouterUsageAnalyticsProperties,
 } from "./event_properties";
@@ -167,6 +168,13 @@ export async function captureBackendAIOperationFailed(
     failure_category: args.cancelled === true
       ? "cancelled"
       : openRouterFailureCategory(args.error),
+    cancellation_category: args.cancelled === true
+      ? cancellationCategory({
+        error: args.error,
+        properties: args.properties,
+        source: args.source,
+      })
+      : undefined,
     error_type: args.cancelled === true
       ? "cancelled"
       : args.error instanceof ConvexError

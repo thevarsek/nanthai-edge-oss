@@ -349,11 +349,15 @@ test("runWebSearch finalizes cancelled searches before generation handoff", asyn
     false,
   );
   assert.equal(
-    ctxState.scheduled.some((entry) =>
-      entry.event === "assistant_response_started" ||
-      entry.event === "assistant_response_failed"
-    ),
+    ctxState.scheduled.some((entry) => entry.event === "assistant_response_started"),
     false,
+  );
+  const failureAnalytics = ctxState.scheduled.find((entry) =>
+    entry.event === "assistant_response_failed"
+  );
+  assert.equal(
+    (failureAnalytics?.properties as Record<string, unknown> | undefined)?.cancellation_category,
+    "cancelled_by_user",
   );
   assert.equal(finalizeRef.length > 0, true);
   const lastSessionPatch = ctxState.mutations

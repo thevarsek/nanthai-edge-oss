@@ -201,18 +201,20 @@ export const regeneratePaperAction = internalAction({
         error: errorMessage,
         userId: args.userId,
       });
-      if (!wasCancelled) {
-        await captureAssistantResponseFailure(ctx, {
-          userId: args.userId,
-          chatId: String(args.chatId),
-          messageId: String(args.assistantMessageId),
-          jobId: String(args.jobId),
-          modelId: args.modelId,
-          source: "research_paper",
-          error,
-          analytics: args.analytics,
-        });
-      }
+      await captureAssistantResponseFailure(ctx, {
+        userId: args.userId,
+        chatId: String(args.chatId),
+        messageId: String(args.assistantMessageId),
+        jobId: String(args.jobId),
+        modelId: args.modelId,
+        source: "research_paper",
+        error,
+        analytics: args.analytics,
+        cancelled: wasCancelled,
+        properties: {
+          terminal_error_code: wasCancelled ? "cancelled_by_user" : undefined,
+        },
+      });
       try {
         await ctx.runMutation(internal.search.mutations.updateSearchSession, {
           sessionId: args.sessionId,

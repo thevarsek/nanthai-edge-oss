@@ -52,3 +52,27 @@ export function extractErrorMessage(data: unknown): string {
 
   return "Unknown OpenRouter error.";
 }
+
+export function openRouterErrorDetails(
+  status: number,
+  message: string,
+): { code: "INSUFFICIENT_CREDITS" | "INTERNAL_ERROR"; message: string } {
+  const normalized = message.toLowerCase();
+  if (
+    status === 402 ||
+    normalized.includes("insufficient_credits") ||
+    normalized.includes("insufficient credits") ||
+    normalized.includes("payment required") ||
+    normalized.includes("credit balance")
+  ) {
+    return {
+      code: "INSUFFICIENT_CREDITS",
+      message: "Your OpenRouter balance is too low for this model. Top up your OpenRouter account or choose a cheaper model in Settings.",
+    };
+  }
+
+  return {
+    code: "INTERNAL_ERROR",
+    message: `OpenRouter API error (${status}): ${message}`,
+  };
+}

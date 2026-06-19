@@ -42,7 +42,7 @@ const COST_INFO: Record<SearchModeTab, Record<SearchComplexity, { tier: string; 
   paper: {
     1: { tier: "$$", cost: "~$0.01–$0.02", detailKey: "search_footer_research" },
     2: { tier: "$$$", cost: "~$0.08–$0.12", detailKey: "search_footer_research" },
-    3: { tier: "$$$$$", cost: "~$18–$21", detailKey: "search_footer_research" },
+    3: { tier: "$$$$", cost: "~$6–$8", detailKey: "search_footer_research" },
   },
 };
 
