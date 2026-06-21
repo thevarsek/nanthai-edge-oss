@@ -63,7 +63,7 @@ Backend analytics require Convex environment variables:
 ## Implemented Coverage
 
 - Web: PostHog initialization, identify/reset, route views, app open, onboarding/OpenRouter events, chat create/open, send attempt/success/failure, retry/cancel client metadata, error boundary exception capture, feature navigation/send signals, response copy/regenerate/delete, branch create/switch, generated artifact open/download, audio play/request, chat-default setting changes, and session replay with text masked by default.
-- Convex: backend PostHog helper and client metadata propagation through chat send/retry/generation paths, including assistant response success/failure, continuation handoff, video generation request events, sanitized OpenRouter usage/cost aggregates, stable failure categories, and latency breakdowns.
+- Convex: backend PostHog helper and client metadata propagation through chat send/retry/generation paths, including assistant response success/failure, continuation handoff, video generation request events, sanitized OpenRouter usage/cost aggregates, stable failure categories, latency breakdowns, and sanitized `$ai_generation` mirrors for PostHog AI Observability.
 - iOS: PostHog SDK initialization, identify/reset, lifecycle/auth/onboarding/OpenRouter events, chat create/open, send/retry/cancel, stream latency/cadence events, branch create/switch, response regeneration, and `feature_used` for major navigation surfaces plus send-time feature flags.
 - Android: PostHog SDK initialization, identify/reset, lifecycle/auth/navigation/onboarding/OpenRouter events, chat create/open/subscription-ready, send/retry/cancel, branch create/switch, response regeneration, Convex client metadata propagation, and `feature_used` for major navigation surfaces plus send-time feature flags.
 
@@ -84,6 +84,12 @@ Backend analytics require Convex environment variables:
 - Client metadata: same client fields and app/build aliases as completion events.
 - Failure taxonomy: `failure_category` with one of `missing_api_key`, `invalid_api_key`, `insufficient_credits`, `model_unavailable`, `rate_limited`, `context_length_exceeded`, `timeout`, `cancelled`, `provider_error`, or `unknown_error`. Cancelled failures also include `cancellation_category`: `cancelled_by_user`, `cancelled_by_retry`, `cancelled_before_start`, `workflow_cancelled`, `provider_cancelled`, or `unknown_cancelled`.
 - Debug context: coarse `error_type` and `error_label` only. Raw provider/user-facing error text is intentionally not sent to analytics.
+
+## PostHog AI Observability
+
+Terminal assistant response events are also mirrored to PostHog's `$ai_generation` event for AI Observability dashboards.
+
+The mirror is backend-only and sanitized. It includes model, provider, trace/span IDs, token counts, total cost, latency, TTFT, failure category, and platform metadata. It intentionally does not include `$ai_input`, `$ai_output_choices`, prompt text, assistant output, tool arguments, provider payloads, API keys, OAuth tokens, or raw error text.
 
 ## Remaining High-Value Additions
 
