@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 
 import { getCapabilityCards, getHowItWorksSteps, getIntegrations } from "./HomePage.data";
 
+const wideCapabilityIndexes = new Set([0, 3, 6, 11]);
+const rightAnchoredWideCapabilityIndexes = new Set([3, 11]);
+
 // ── How it works (BYOK) ─────────────────────────────────────────────
 
 export function HomeHowItWorksSection() {
@@ -88,13 +91,13 @@ export function HomeCapabilitiesSection() {
           </p>
         </div>
 
-        <div className="mt-16 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-16 grid grid-flow-row-dense gap-3 md:grid-cols-2 xl:grid-cols-4">
           {capabilityCards.map((item, index) => {
             const Icon = item.icon;
             return (
               <div
                 key={index}
-                className="edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8"
+                className={`edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8 ${wideCapabilityIndexes.has(index) ? "md:col-span-2 xl:col-span-2" : ""} ${rightAnchoredWideCapabilityIndexes.has(index) ? "xl:col-start-3" : ""}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl eborder-05 border ebg-glass-02">
@@ -187,4 +190,3 @@ export function HomeIntegrationsSection() {
     </section>
   );
 }
-

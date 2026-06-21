@@ -65,6 +65,7 @@ describe("public site smoke coverage", () => {
     expect(screen.getAllByRole("link", { name: /home_get_started_free/i })[0]).toHaveAttribute("href", "/sign-in");
     expect(screen.getAllByText("free").length).toBeGreaterThan(0);
     expect(screen.getAllByText("pro_2").length).toBeGreaterThan(0);
+    expect(screen.getByText("home_proof_label")).toBeInTheDocument();
     expect(screen.getByText("home_byok_title")).toBeInTheDocument();
     expect(canonicalHref()).toBe("https://nanthai.tech");
   });

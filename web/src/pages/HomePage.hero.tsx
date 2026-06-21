@@ -94,7 +94,7 @@ export function HomeHeroSection() {
 
           <div className="container relative">
             <h1 className="edge-display-xl edge-materialize uppercase text-[clamp(4rem,17vw,5.3rem)] leading-[0.86] efg-heading md:text-[clamp(3.5rem,11vw,10rem)] md:leading-[0.9]">
-              {t("home_hero1_line1")}
+              {t("home_hero1_line1")}{" "}
               <br />
               {t("home_hero1_line2")}<span className="edge-accent">.</span>
             </h1>

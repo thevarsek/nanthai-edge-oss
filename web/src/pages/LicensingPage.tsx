@@ -27,7 +27,7 @@ export function LicensingPage() {
         <header className="edge-card edge-fade-up edge-stagger-1 rounded-2xl p-8 md:p-10">
           <span className="edge-label efg-25">{t("lic_label")}</span>
           <h1 className="edge-display mt-6 text-[clamp(2.4rem,5vw,4rem)] efg-heading">
-            {t("lic_hero_title")}
+            {t("lic_hero_title")}{" "}
             <br />
             <span className="edge-accent">{t("lic_hero_title_2")}</span>
           </h1>
@@ -59,7 +59,7 @@ export function LicensingPage() {
           </p>
         </div>
 
-        <article className="edge-legal edge-card edge-fade-up edge-stagger-3 mt-4 rounded-2xl p-8 md:p-10">
+        <article className="edge-legal edge-document edge-fade-up edge-stagger-3 mx-auto mt-10 px-1 pb-8 pt-8 md:mt-12 md:px-0 md:pt-10">
           <h2>{t("lic_s1_title")}</h2>
           <p>{t("lic_s1_body")}</p>
 

@@ -28,7 +28,7 @@ export function SupportPage() {
         <header className="edge-card edge-fade-up edge-stagger-1 rounded-2xl p-8 md:p-10">
           <span className="edge-label efg-25">{t("sp_label")}</span>
           <h1 className="edge-display mt-6 text-[clamp(2.4rem,5vw,4rem)] efg-heading">
-            {t("sp_hero_title")}
+            {t("sp_hero_title")}{" "}
             <br />
              <span className="edge-accent">{t("sp_hero_title_accent")}</span>
           </h1>
@@ -38,8 +38,8 @@ export function SupportPage() {
         </header>
 
         {/* Two-column cards */}
-        <div className="mt-4 grid gap-4 lg:grid-cols-[0.95fr_1.05fr]">
-          <section className="edge-card edge-fade-up edge-stagger-2 rounded-2xl p-8">
+        <div className="mt-10 grid gap-6 border-t border-[rgba(var(--edge-fg),0.08)] pt-8 md:mt-12 md:grid-cols-[0.95fr_1.05fr] md:pt-10">
+          <section className="edge-fade-up edge-stagger-2">
             <span className="edge-label efg-20">{t("sp_primary_contact")}</span>
             <a
               href={`mailto:${supportEmail}`}
@@ -52,7 +52,7 @@ export function SupportPage() {
             </p>
           </section>
 
-          <section className="edge-card edge-fade-up edge-stagger-3 rounded-2xl p-8">
+          <section className="edge-card edge-fade-up edge-stagger-3 rounded-2xl p-6 md:p-8">
             <span className="edge-label efg-20">{t("sp_what_to_include")}</span>
             <ul className="edge-sans mt-5 space-y-3 text-[0.88rem] font-light leading-[1.8] efg-55">
               <li>{t("sp_include_1")}</li>

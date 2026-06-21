@@ -114,7 +114,7 @@ function RelatedCard({ feature }: { feature: FeatureMeta }) {
   return (
     <Link
       to={`/features/${feature.slug}`}
-      className="group flex min-w-[220px] flex-col gap-3 rounded-xl border border-[rgba(var(--edge-fg),0.06)] bg-[rgba(var(--edge-fg),0.02)] p-5 transition-all hover:border-[rgba(var(--edge-fg),0.12)] hover:bg-[rgba(var(--edge-fg),0.04)]"
+      className="group flex min-w-0 flex-col gap-3 rounded-xl border border-[rgba(var(--edge-fg),0.06)] bg-[rgba(var(--edge-fg),0.02)] p-5 transition-all hover:border-[rgba(var(--edge-fg),0.12)] hover:bg-[rgba(var(--edge-fg),0.04)]"
     >
       <Icon size={20} className={cn("transition-colors", feature.accentClass)} />
       <div>
@@ -170,6 +170,12 @@ export function FeaturePageLayout({
     : meta.tier === "pro" || meta.tier === "free-pro"
       ? t("edge_start_free_upgrade_later")
       : t("edge_start_free");
+  const navItems = [
+    steps.length > 0 ? { id: "feature-how", label: t("edge_how_it_works") } : null,
+    capabilities.length > 0 ? { id: "feature-capabilities", label: t("edge_what_you_can_do") } : null,
+    scenarios.length > 0 ? { id: "feature-scenarios", label: t("edge_perfect_for") } : null,
+    related.length > 0 ? { id: "feature-related", label: t("edge_related_features") } : null,
+  ].filter((item): item is { id: string; label: string } => item !== null);
 
   return (
     <EdgeSiteLayout activePage="features">
@@ -214,74 +220,109 @@ export function FeaturePageLayout({
           </section>
         )}
 
-        {/* ── How It Works ──────────────────────────────────────── */}
-        {steps.length > 0 && (
-          <section className="container pb-20 md:pb-28">
-            <AnimateOnScroll>
-              <h2 className="edge-display text-[1.5rem] md:text-[1.8rem] efg-heading text-center mb-12 md:mb-16">
-                {t("edge_how_it_works")}
-              </h2>
-            </AnimateOnScroll>
-            <div className="mx-auto grid max-w-3xl gap-10 md:gap-12">
-              {steps.map((step) => (
-                <StepCard key={step.number} step={step} />
-              ))}
-            </div>
-          </section>
-        )}
+        <div className="container grid min-w-0 gap-12 pb-20 md:pb-28 lg:grid-cols-[220px_1fr] lg:gap-16">
+          {navItems.length > 0 && (
+            <aside className="hidden lg:block">
+              <nav className="sticky top-28 border-l border-[rgba(var(--edge-fg),0.08)] pl-5">
+                <p className="edge-label efg-20">{t("edge_nav_features")}</p>
+                <div className="mt-5 flex flex-col gap-3">
+                  {navItems.map((item) => (
+                    <a
+                      key={item.id}
+                      href={`#${item.id}`}
+                      className="text-[0.82rem] efg-35 transition-colors hover:efg-70"
+                    >
+                      {item.label}
+                    </a>
+                  ))}
+                </div>
+              </nav>
+            </aside>
+          )}
 
-        {/* ── What You Can Do ───────────────────────────────────── */}
-        {capabilities.length > 0 && (
-          <section className="container pb-20 md:pb-28">
-            <AnimateOnScroll>
-              <h2 className="edge-display text-[1.5rem] md:text-[1.8rem] efg-heading text-center mb-12 md:mb-16">
-                {t("edge_what_you_can_do")}
-              </h2>
-            </AnimateOnScroll>
-            <div className="mx-auto grid max-w-4xl gap-4 sm:grid-cols-2">
-              {capabilities.map((cap, i) => (
-                <CapabilityCard key={cap.title} cap={cap} index={i} />
-              ))}
-            </div>
-          </section>
-        )}
-
-        {/* ── Perfect For ───────────────────────────────────────── */}
-        {scenarios.length > 0 && (
-          <section className="container pb-20 md:pb-28">
-            <AnimateOnScroll>
-              <h2 className="edge-display text-[1.5rem] md:text-[1.8rem] efg-heading text-center mb-10 md:mb-14">
-                {t("edge_perfect_for")}
-              </h2>
-            </AnimateOnScroll>
-            <div className="mx-auto max-w-2xl flex flex-col gap-4">
-              {scenarios.map((s, i) => (
-                <AnimateOnScroll key={i} delay={i * 0.06}>
-                  <div className="flex items-start gap-3 rounded-xl border border-[rgba(var(--edge-fg),0.05)] bg-[rgba(var(--edge-fg),0.02)] px-5 py-4">
-                    <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--edge-cyan)]" />
-                    <p className="text-[0.88rem] leading-relaxed efg-55">{s}</p>
+          <div className="grid min-w-0 gap-20 md:gap-24">
+            {/* ── How It Works ──────────────────────────────────────── */}
+            {steps.length > 0 && (
+              <section id="feature-how" className="scroll-mt-28">
+                <AnimateOnScroll>
+                  <div className="mb-10 grid gap-4 md:grid-cols-[0.8fr_1.2fr] md:items-end">
+                    <h2 className="edge-display text-[1.65rem] md:text-[2rem] efg-heading">
+                      {t("edge_how_it_works")}
+                    </h2>
+                    <div className="hidden h-px bg-[rgba(var(--edge-fg),0.08)] md:block" />
                   </div>
                 </AnimateOnScroll>
-              ))}
-            </div>
-          </section>
-        )}
+                <div className="grid gap-10 md:gap-12">
+                  {steps.map((step) => (
+                    <StepCard key={step.number} step={step} />
+                  ))}
+                </div>
+              </section>
+            )}
 
-        {/* ── Related Features ──────────────────────────────────── */}
-        {related.length > 0 && (
-          <section className="container pb-20 md:pb-28">
-            <AnimateOnScroll>
-              <h2 className="edge-display text-[1.5rem] md:text-[1.8rem] efg-heading text-center mb-10 md:mb-14">
-                {t("edge_related_features")}
-              </h2>
-            </AnimateOnScroll>
-            <div className="mx-auto flex max-w-4xl gap-4 overflow-x-auto pb-4 sm:grid sm:grid-cols-3 sm:overflow-visible">
-              {related.map((f) => (
-                <RelatedCard key={f.slug} feature={f} />
-              ))}
-            </div>
-          </section>
-        )}
+            {/* ── What You Can Do ───────────────────────────────────── */}
+            {capabilities.length > 0 && (
+              <section id="feature-capabilities" className="scroll-mt-28">
+                <AnimateOnScroll>
+                  <div className="mb-10 grid gap-4 md:grid-cols-[0.8fr_1.2fr] md:items-end">
+                    <h2 className="edge-display text-[1.65rem] md:text-[2rem] efg-heading">
+                      {t("edge_what_you_can_do")}
+                    </h2>
+                    <div className="hidden h-px bg-[rgba(var(--edge-fg),0.08)] md:block" />
+                  </div>
+                </AnimateOnScroll>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {capabilities.map((cap, i) => (
+                    <CapabilityCard key={cap.title} cap={cap} index={i} />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* ── Perfect For ───────────────────────────────────────── */}
+            {scenarios.length > 0 && (
+              <section id="feature-scenarios" className="scroll-mt-28">
+                <AnimateOnScroll>
+                  <div className="mb-8 grid gap-4 md:grid-cols-[0.8fr_1.2fr] md:items-end">
+                    <h2 className="edge-display text-[1.65rem] md:text-[2rem] efg-heading">
+                      {t("edge_perfect_for")}
+                    </h2>
+                    <div className="hidden h-px bg-[rgba(var(--edge-fg),0.08)] md:block" />
+                  </div>
+                </AnimateOnScroll>
+                <div className="grid gap-4 md:grid-cols-2">
+                  {scenarios.map((s, i) => (
+                    <AnimateOnScroll key={i} delay={i * 0.06}>
+                      <div className="flex h-full items-start gap-3 rounded-xl border border-[rgba(var(--edge-fg),0.05)] bg-[rgba(var(--edge-fg),0.02)] px-5 py-4">
+                        <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-[var(--edge-cyan)]" />
+                        <p className="text-[0.88rem] leading-relaxed efg-55">{s}</p>
+                      </div>
+                    </AnimateOnScroll>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {/* ── Related Features ──────────────────────────────────── */}
+            {related.length > 0 && (
+              <section id="feature-related" className="scroll-mt-28">
+                <AnimateOnScroll>
+                  <div className="mb-8 grid gap-4 md:grid-cols-[0.8fr_1.2fr] md:items-end">
+                    <h2 className="edge-display text-[1.65rem] md:text-[2rem] efg-heading">
+                      {t("edge_related_features")}
+                    </h2>
+                    <div className="hidden h-px bg-[rgba(var(--edge-fg),0.08)] md:block" />
+                  </div>
+                </AnimateOnScroll>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  {related.map((f) => (
+                    <RelatedCard key={f.slug} feature={f} />
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
 
         {/* ── CTA ───────────────────────────────────────────────── */}
         <section className="container pb-24 md:pb-32">

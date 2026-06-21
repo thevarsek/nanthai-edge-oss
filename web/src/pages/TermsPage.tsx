@@ -29,7 +29,7 @@ export function TermsPage() {
         <header className="edge-card edge-fade-up edge-stagger-1 rounded-2xl p-8 md:p-10">
           <span className="edge-label efg-25">{t("tos_label")}</span>
           <h1 className="edge-display mt-6 text-[clamp(2.4rem,5vw,4rem)] efg-heading">
-            {t("tos_hero_title")}
+            {t("tos_hero_title")}{" "}
             <br />
              <span className="edge-accent">NanthAI Edge.</span>
           </h1>
@@ -41,7 +41,7 @@ export function TermsPage() {
           </p>
         </header>
 
-        <article className="edge-legal edge-card edge-fade-up edge-stagger-2 mt-4 rounded-2xl p-8 md:p-10">
+        <article className="edge-legal edge-document edge-fade-up edge-stagger-2 mx-auto mt-10 px-1 pb-8 pt-8 md:mt-12 md:px-0 md:pt-10">
           <h2>{t("tos_s1_title")}</h2>
           <p>{t("tos_s1_body")}</p>
 

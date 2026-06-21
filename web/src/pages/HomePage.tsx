@@ -11,6 +11,7 @@ import {
 } from "./HomePage.sections";
 import { HomeHeroSection } from "./HomePage.hero";
 import { HomeFinalCTA, HomePricingSection } from "./HomePage.pricing";
+import { HomeWorkflowProofSection } from "./HomePage.proof";
 
 export function HomePage() {
   return (
@@ -74,6 +75,7 @@ export function HomePage() {
 
       <HomeHeroSection />
       <HomeHowItWorksSection />
+      <HomeWorkflowProofSection />
       <HomeCapabilitiesSection />
       <HomeIntegrationsSection />
       <HomePricingSection />

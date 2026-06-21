@@ -75,9 +75,114 @@ function FeatureCard({ feature, index }: { feature: FeatureMeta; index: number }
   );
 }
 
+const heroFeatureSlugs = ["multi-model-chat", "search", "byok"];
+
+const heroFeatureTitleOverrides: Record<string, string> = {
+  byok: "B.Y.O.K.",
+  search: "Search & research",
+};
+
+const featureGroups = [
+  {
+    title: "Chat foundation",
+    description: "The primitives for choosing models, branching work, and keeping conversations organised.",
+    slugs: ["participant-options", "branching", "chat-defaults", "folders", "themes"],
+  },
+  {
+    title: "Generated media",
+    description: "Audio, image, and video creation without leaving the same workspace.",
+    slugs: ["audio-generation", "image-generation", "video-generation"],
+  },
+  {
+    title: "Knowledge and context",
+    description: "Persistent memory, reference material, and spatial thinking tools for longer-running work.",
+    slugs: ["personas", "memories", "knowledge-base", "ideascapes"],
+  },
+  {
+    title: "Automation and connected work",
+    description: "Scheduled jobs and connected services for work that should continue outside one chat.",
+    slugs: ["automated-tasks", "integrations"],
+  },
+  {
+    title: "Cost control",
+    description: "Clear pricing and plan boundaries for choosing how Edge should spend.",
+    slugs: ["price-transparency", "pro-vs-free"],
+  },
+];
+
+function FeatureHeroCard({ feature, index }: { feature: FeatureMeta; index: number }) {
+  const { t } = useTranslation();
+  const Icon = feature.icon;
+  const title = heroFeatureTitleOverrides[feature.slug] ?? feature.title;
+
+  return (
+    <AnimateOnScroll delay={index * 0.06}>
+      <Link
+        to={`/features/${feature.slug}`}
+        className="group grid h-full min-h-[260px] grid-rows-[2rem_4.75rem_1fr_auto] gap-4 rounded-[1.4rem] border border-[rgba(var(--edge-fg),0.08)] bg-[rgba(var(--edge-fg),0.035)] p-7 transition-all hover:border-[rgba(var(--edge-fg),0.16)] hover:bg-[rgba(var(--edge-fg),0.055)]"
+      >
+        <div className="flex h-8 items-start justify-between gap-4">
+          <Icon size={24} className={cn("transition-transform group-hover:scale-110", feature.accentClass)} />
+          <TierPill tier={feature.tier} />
+        </div>
+        <h2 className="edge-display self-end text-[clamp(1.5rem,2.2vw,2.05rem)] leading-[1.06] [text-wrap:balance] efg-heading">
+          {title}
+        </h2>
+        <p className="max-w-[42ch] text-[0.9rem] leading-[1.62] efg-55">
+          {feature.indexDescription}
+        </p>
+        <span className="inline-flex items-center gap-1.5 text-[0.78rem] font-medium efg-40 transition-colors group-hover:efg-70">
+          {t("edge_learn_more")} <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+        </span>
+      </Link>
+    </AnimateOnScroll>
+  );
+}
+
+function FeatureGroupSection({
+  title,
+  description,
+  features: groupFeatures,
+  offset,
+}: {
+  title: string;
+  description: string;
+  features: FeatureMeta[];
+  offset: number;
+}) {
+  return (
+    <section className="grid gap-6 border-t border-[rgba(var(--edge-fg),0.06)] pt-8 lg:grid-cols-[0.75fr_1.45fr]">
+      <div>
+        <h2 className="edge-display text-[clamp(1.35rem,2vw,1.75rem)] efg-heading">
+          {title}
+        </h2>
+        <p className="mt-3 max-w-sm text-[0.86rem] leading-relaxed efg-45">
+          {description}
+        </p>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {groupFeatures.map((feature, i) => (
+          <FeatureCard key={feature.slug} feature={feature} index={offset + i} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function FeaturesIndexPage() {
   const { t } = useTranslation();
   const localizedFeatures = features.map((feature) => localizeFeature(feature, t));
+  const bySlug = new Map(localizedFeatures.map((feature) => [feature.slug, feature]));
+  const heroFeatures = heroFeatureSlugs
+    .map((slug) => bySlug.get(slug))
+    .filter((feature): feature is FeatureMeta => feature !== undefined);
+  const groupedFeatures = featureGroups.map((group) => ({
+    ...group,
+    features: group.slugs
+      .map((slug) => bySlug.get(slug))
+      .filter((feature): feature is FeatureMeta => feature !== undefined),
+  }));
+
   return (
     <EdgeSiteLayout activePage="features">
       <Seo
@@ -105,11 +210,26 @@ export function FeaturesIndexPage() {
           </div>
         </section>
 
-        {/* Feature Grid */}
+        {/* Featured workflows */}
+        <section className="container pb-16 md:pb-24">
+          <div className="mx-auto grid max-w-6xl gap-4 lg:grid-cols-[1.18fr_1.08fr_1fr]">
+            {heroFeatures.map((feature, i) => (
+              <FeatureHeroCard key={feature.slug} feature={feature} index={i} />
+            ))}
+          </div>
+        </section>
+
+        {/* Feature groups */}
         <section className="container pb-24 md:pb-32">
-          <div className="mx-auto max-w-5xl grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {localizedFeatures.map((feature, i) => (
-              <FeatureCard key={feature.slug} feature={feature} index={i} />
+          <div className="mx-auto grid max-w-6xl gap-12 md:gap-16">
+            {groupedFeatures.map((group, i) => (
+              <FeatureGroupSection
+                key={group.title}
+                title={group.title}
+                description={group.description}
+                features={group.features}
+                offset={i * 4}
+              />
             ))}
           </div>
         </section>

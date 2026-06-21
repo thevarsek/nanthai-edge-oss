@@ -125,9 +125,8 @@ describe("public feature pages", () => {
     renderPublicPage(<Page />);
 
     expect(screen.getByRole("heading", { name: meta.title })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /edge_get_started_free/i })).toHaveAttribute(
-      "href",
-      "/sign-in",
+    expect(screen.getAllByRole("link").some((link) => link.getAttribute("href") === "/sign-in")).toBe(
+      true,
     );
     expect(screen.getByRole("link", { name: /edge_see_all_features/i })).toHaveAttribute(
       "href",

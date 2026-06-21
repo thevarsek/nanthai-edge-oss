@@ -18,6 +18,7 @@ describe("EdgeSiteLayout", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Feature page body" })).toBeInTheDocument();
+    expect(container.querySelector(".edge-site-shell")).toBeInTheDocument();
     expect(container.querySelector("main")).toHaveClass("custom-main");
     expect(screen.getAllByRole("link", { name: /features/i }).length).toBeGreaterThan(0);
     expect(screen.getByRole("contentinfo")).toBeInTheDocument();

@@ -251,6 +251,7 @@ code, pre, .nanth-mono {
 
   background: var(--edge-bg);
   color: var(--edge-fg-solid);
+  overflow-x: clip;
 }
 
 /* ── Light-mode overrides ───────────────────────────────────────── */
@@ -305,17 +306,17 @@ code, pre, .nanth-mono {
 .edge-site-shell .efg-80  { color: rgba(var(--edge-fg), 0.80); }
 .edge-site-shell .efg-70  { color: rgba(var(--edge-fg), 0.70); }
 .edge-site-shell .efg-65  { color: rgba(var(--edge-fg), 0.65); }
-.edge-site-shell .efg-60  { color: rgba(var(--edge-fg), 0.60); }
-.edge-site-shell .efg-55  { color: rgba(var(--edge-fg), 0.55); }
-.edge-site-shell .efg-50  { color: rgba(var(--edge-fg), 0.50); }
+.edge-site-shell .efg-60  { color: rgba(var(--edge-fg), 0.68); }
+.edge-site-shell .efg-55  { color: rgba(var(--edge-fg), 0.64); }
+.edge-site-shell .efg-50  { color: rgba(var(--edge-fg), 0.58); }
 .edge-site-shell .efg-45  { color: rgba(var(--edge-fg), 0.45); }
 .edge-site-shell .efg-40  { color: rgba(var(--edge-fg), 0.40); }
-.edge-site-shell .efg-35  { color: rgba(var(--edge-fg), 0.35); }
-.edge-site-shell .efg-30  { color: rgba(var(--edge-fg), 0.30); }
-.edge-site-shell .efg-25  { color: rgba(var(--edge-fg), 0.25); }
-.edge-site-shell .efg-20  { color: rgba(var(--edge-fg), 0.20); }
-.edge-site-shell .efg-15  { color: rgba(var(--edge-fg), 0.15); }
-.edge-site-shell .efg-10  { color: rgba(var(--edge-fg), 0.10); }
+.edge-site-shell .efg-35  { color: rgba(var(--edge-fg), 0.46); }
+.edge-site-shell .efg-30  { color: rgba(var(--edge-fg), 0.42); }
+.edge-site-shell .efg-25  { color: rgba(var(--edge-fg), 0.38); }
+.edge-site-shell .efg-20  { color: rgba(var(--edge-fg), 0.32); }
+.edge-site-shell .efg-15  { color: rgba(var(--edge-fg), 0.26); }
+.edge-site-shell .efg-10  { color: rgba(var(--edge-fg), 0.20); }
 .edge-site-shell .efg-heading { color: var(--edge-fg-heading); }
 
 /* Hover variants — escaped colon matches Tailwind JIT class names */
@@ -353,6 +354,98 @@ code, pre, .nanth-mono {
 /* CTA button */
 .edge-site-shell .ecta { background: var(--edge-cta-bg); color: var(--edge-cta-fg); }
 .edge-site-shell .ecta:hover { box-shadow: 0 0 50px var(--edge-cta-shadow); }
+
+/* Product proof panel */
+.edge-proof-panel {
+  border: 1px solid rgba(0, 224, 208, 0.18);
+  --edge-proof-lane-bg: rgba(var(--edge-fg), 0.035);
+  --edge-proof-lane-border: rgba(var(--edge-fg), 0.08);
+  --edge-proof-row-bg: rgba(0, 0, 0, 0.20);
+  --edge-proof-row-border: rgba(255, 255, 255, 0.10);
+  --edge-proof-brief-bg: rgba(0, 0, 0, 0.25);
+  --edge-proof-brief-border: rgba(255, 255, 255, 0.10);
+  --edge-proof-mini-bg: rgba(255, 255, 255, 0.045);
+  --edge-proof-output-bg: rgba(255, 255, 255, 0.035);
+  --edge-proof-icon-bg: rgba(255, 255, 255, 0.055);
+  --edge-proof-estimate-bg: rgba(0, 224, 208, 0.075);
+  --edge-proof-estimate-border: rgba(0, 224, 208, 0.20);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(0, 224, 208, 0.16), transparent 28%),
+    radial-gradient(circle at 84% 18%, rgba(255, 107, 61, 0.16), transparent 26%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.065), rgba(255, 255, 255, 0.018));
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+}
+
+.edge-proof-lane {
+  border: 1px solid var(--edge-proof-lane-border);
+  background: var(--edge-proof-lane-bg);
+}
+
+.edge-proof-model-row,
+.edge-proof-output-row {
+  border: 1px solid var(--edge-proof-row-border);
+  background: var(--edge-proof-row-bg);
+}
+
+.edge-proof-brief {
+  border: 1px solid var(--edge-proof-brief-border);
+  background: var(--edge-proof-brief-bg);
+}
+
+.edge-proof-context-card {
+  background: var(--edge-proof-mini-bg);
+}
+
+.edge-proof-icon-box {
+  background: var(--edge-proof-icon-bg);
+}
+
+.edge-proof-estimate {
+  border: 1px solid var(--edge-proof-estimate-border);
+  background: var(--edge-proof-estimate-bg);
+}
+
+.edge-proof-chip {
+  border: 1px solid rgba(0, 224, 208, 0.22);
+  background: rgba(0, 224, 208, 0.075);
+  color: rgba(var(--edge-fg), 0.82);
+}
+
+.edge-proof-chip-warm {
+  border-color: rgba(255, 107, 61, 0.24);
+  background: rgba(255, 107, 61, 0.09);
+}
+
+[data-theme="light"] .edge-proof-panel {
+  border-color: rgba(0, 167, 160, 0.24);
+  --edge-proof-lane-bg: rgba(255, 255, 255, 0.68);
+  --edge-proof-lane-border: rgba(20, 20, 40, 0.10);
+  --edge-proof-row-bg: rgba(255, 255, 255, 0.74);
+  --edge-proof-row-border: rgba(20, 20, 40, 0.09);
+  --edge-proof-brief-bg: rgba(255, 255, 255, 0.82);
+  --edge-proof-brief-border: rgba(20, 20, 40, 0.10);
+  --edge-proof-mini-bg: rgba(0, 167, 160, 0.055);
+  --edge-proof-output-bg: rgba(255, 255, 255, 0.78);
+  --edge-proof-icon-bg: rgba(20, 20, 40, 0.045);
+  --edge-proof-estimate-bg: rgba(0, 167, 160, 0.075);
+  --edge-proof-estimate-border: rgba(0, 167, 160, 0.24);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(0, 224, 208, 0.13), transparent 30%),
+    radial-gradient(circle at 84% 16%, rgba(255, 107, 61, 0.11), transparent 28%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.92), rgba(245, 246, 248, 0.78));
+  box-shadow: 0 28px 80px rgba(20, 20, 40, 0.10);
+}
+
+[data-theme="light"] .edge-proof-chip {
+  background: rgba(0, 167, 160, 0.08);
+  border-color: rgba(0, 167, 160, 0.26);
+  color: rgba(20, 20, 40, 0.78);
+}
+
+[data-theme="light"] .edge-proof-chip-warm {
+  background: rgba(255, 107, 61, 0.08);
+  border-color: rgba(255, 107, 61, 0.26);
+}
 
 /* Grain overlay — finer, more cinematic */
 .edge-site-shell::before {
@@ -444,22 +537,6 @@ code, pre, .nanth-mono {
   letter-spacing: 0.06em;
 }
 
-/* ── Brand gradient text ─────────────────────────────────────────── */
-
-.edge-gradient-text {
-  background: linear-gradient(135deg, var(--edge-cyan) 0%, var(--edge-amber) 55%, var(--edge-coral) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-.edge-gradient-text-subtle {
-  background: linear-gradient(135deg, rgba(0, 224, 208, 0.85) 0%, rgba(255, 190, 118, 0.85) 55%, rgba(255, 107, 107, 0.85) 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
 /* Outline / stroke text — transparent fill with white stroke.
    Stroke width scaled to match the visual weight of the solid display text.
    For large hero headlines, prefer the SVG <text> approach (HeroOutlineText)
@@ -484,16 +561,6 @@ code, pre, .nanth-mono {
   .edge-text-outline {
     -webkit-text-stroke-width: 4px;
   }
-}
-
-/* Monochrome shimmer for elegant emphasis */
-.edge-shimmer-text {
-  background: linear-gradient(90deg, var(--edge-shimmer-from) 0%, var(--edge-shimmer-mid) 50%, var(--edge-shimmer-from) 100%);
-  background-size: 200% 100%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: edgeShimmer 4s ease-in-out infinite;
 }
 
 /* ── Brand gradient line (decorative) ────────────────────────────── */
@@ -617,8 +684,7 @@ code, pre, .nanth-mono {
   .edge-fade-up,
   .edge-drift-up,
   .edge-scale-in,
-  .edge-materialize,
-  .edge-shimmer-text { animation: none; }
+  .edge-materialize { animation: none; }
   .edge-materialize-scroll { opacity: 1; transition: none; }
 }
 
@@ -670,6 +736,16 @@ code, pre, .nanth-mono {
 }
 
 /* ── Legal pages ─────────────────────────────────────────────────── */
+
+.edge-document {
+  border-top: 1px solid rgba(var(--edge-fg), 0.08);
+  background:
+    linear-gradient(180deg, rgba(var(--edge-fg), 0.018), transparent 18rem);
+}
+
+.edge-legal {
+  max-width: 72ch;
+}
 
 .edge-legal h2 {
   margin-top: 2.5rem;

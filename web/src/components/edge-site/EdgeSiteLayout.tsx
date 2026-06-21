@@ -14,12 +14,12 @@ export function EdgeSiteLayout({
   mainClassName,
 }: EdgeSiteLayoutProps) {
   return (
-    <div className="edge-site-shell min-h-screen">
+    <div className="edge-site-shell min-h-screen overflow-x-clip">
       {/* Cinematic light cone — single dramatic top-center wash */}
       <div className="pointer-events-none fixed inset-0" aria-hidden="true">
         {/* Primary light cone — top center, large elliptical wash */}
         <div
-          className="absolute left-1/2 top-0 h-[80vh] w-[140vw] -translate-x-1/2 rounded-[50%] opacity-[0.07]"
+          className="absolute inset-x-0 top-0 h-[80vh] rounded-[50%] opacity-[0.07]"
           style={{
             background:
               "radial-gradient(ellipse at 50% 0%, #00E0D0 0%, transparent 60%)",
