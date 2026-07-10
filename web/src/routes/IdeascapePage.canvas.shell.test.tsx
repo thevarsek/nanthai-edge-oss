@@ -4,6 +4,32 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import { CanvasView } from "./IdeascapePage.canvas";
 
+const advisorMocks = vi.hoisted(() => ({
+  captureQueuedSnapshot: vi.fn(() => ({
+    advisorSelections: [{ personaId: "advisor_queued", allowWebSearch: false, keepAvailable: false }],
+    advisorBrief: "queued brief",
+  })),
+  canSendCurrentSelection: true,
+  canCaptureQueuedSnapshot: true,
+  restoreQueuedSnapshot: vi.fn(),
+  completeSuccessfulSend: vi.fn(),
+}));
+
+vi.mock("@/hooks/useAdvisorComposer", () => ({
+  useAdvisorComposer: () => ({
+    state: { chatKey: "chat_canvas", surface: "closed", selections: [], brief: "", defaultAllowWebSearch: false, defaultKeepAvailable: false, saveError: null, isSaving: false, isHydrated: true }, participantCount: 1,
+    isHydrated: true, unavailablePersonaIds: new Set(), selectedPersonas: [], persistedPersonaIds: new Set(), participantPersonaIds: new Set(),
+    advisorSelections: [{ personaId: "advisor_live", allowWebSearch: true, keepAvailable: false }], advisorBrief: "live brief",
+    open: vi.fn(), close: vi.fn(), togglePersona: vi.fn(), updateSelection: vi.fn(), remove: vi.fn(),
+    setBrief: vi.fn(), setDefaultAllowWebSearch: vi.fn(), setDefaultKeepAvailable: vi.fn(), save: vi.fn(),
+    captureQueuedSnapshot: advisorMocks.captureQueuedSnapshot,
+    canSendCurrentSelection: advisorMocks.canSendCurrentSelection,
+    canCaptureQueuedSnapshot: advisorMocks.canCaptureQueuedSnapshot,
+    restoreQueuedSnapshot: advisorMocks.restoreQueuedSnapshot,
+    completeSuccessfulSend: advisorMocks.completeSuccessfulSend,
+  }),
+}));
+
 const {
   state,
   cancelGeneration,
@@ -158,8 +184,22 @@ vi.mock("@/components/ideascape/IdeascapeCanvas", () => ({
 }));
 
 vi.mock("@/components/chat/MessageInput", () => ({
-  MessageInput: ({ disabled, onSend }: { disabled: boolean; onSend: (args: { text: string }) => Promise<boolean> }) => (
-    <button type="button" disabled={disabled} onClick={() => void onSend({ text: "continue" })}>send-from-canvas</button>
+  MessageInput: ({ disabled, onSend, captureQueuedAdvisorSnapshot, restoreQueuedAdvisorSnapshot }: {
+    disabled: boolean;
+    onSend: (args: { text: string; advisorSnapshot?: ReturnType<typeof advisorMocks.captureQueuedSnapshot> }) => Promise<boolean>;
+    captureQueuedAdvisorSnapshot?: typeof advisorMocks.captureQueuedSnapshot;
+    restoreQueuedAdvisorSnapshot?: typeof advisorMocks.restoreQueuedSnapshot;
+  }) => (
+    <div>
+      <button type="button" disabled={disabled} onClick={() => void onSend({ text: "continue" })}>send-from-canvas</button>
+      <button
+        type="button"
+        disabled={disabled || !captureQueuedAdvisorSnapshot || !restoreQueuedAdvisorSnapshot}
+        onClick={() => void onSend({ text: "queued", advisorSnapshot: captureQueuedAdvisorSnapshot?.() })}
+      >
+        send-queued-from-canvas
+      </button>
+    </div>
   ),
 }));
 
@@ -181,6 +221,9 @@ describe("CanvasView shell branches", () => {
     state.prefs = { defaultModelId: "openai/gpt-4.1", hasSeenIdeascapeHelp: true, webSearchEnabledByDefault: false };
     state.searchMode = { mode: "none", complexity: 1 };
     updateChat.mockResolvedValue({ activeBranchLeafApplied: true });
+    advisorMocks.captureQueuedSnapshot.mockClear();
+    advisorMocks.restoreQueuedSnapshot.mockClear();
+    advisorMocks.completeSuccessfulSend.mockClear();
   });
 
   it("renders loading and empty message states", () => {
@@ -251,5 +294,21 @@ describe("CanvasView shell branches", () => {
     expect(sendMessage).not.toHaveBeenCalled();
     expect(clearKBFiles).toHaveBeenCalled();
     expect(clearTurnOverrides).toHaveBeenCalled();
+  });
+
+  it("uses the queued Advisor snapshot instead of live Ideascape state", async () => {
+    const user = userEvent.setup();
+    state.messages = [{ _id: "msg_root", role: "user", content: "Root prompt", status: "completed", createdAt: 1 }];
+    render(<CanvasView chatId={chatId} />);
+    await user.click(screen.getByRole("button", { name: "focus-root" }));
+    await user.click(screen.getByRole("button", { name: "send-queued-from-canvas" }));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      text: "queued",
+      advisorSelections: [{ personaId: "advisor_queued", allowWebSearch: false, keepAvailable: false }],
+      advisorBrief: "queued brief",
+    })));
+    expect(advisorMocks.captureQueuedSnapshot).toHaveBeenCalledTimes(1);
+    expect(advisorMocks.completeSuccessfulSend).not.toHaveBeenCalled();
   });
 });

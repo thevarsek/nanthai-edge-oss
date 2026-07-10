@@ -63,4 +63,21 @@ describe("useChatSearch", () => {
     expect(result.current.currentIndex).toBe(0);
     expect(result.current.currentMessageId).toBe("msg_1");
   });
+
+  it("searches the same friendly failed-assistant content that is rendered", () => {
+    const messages = [{
+      _id: "msg_1" as never,
+      role: "assistant",
+      status: "failed",
+      content: "Error: {\"code\":\"INTERNAL_ERROR\",\"message\":\"Provider unavailable\"}",
+    }];
+    const { result } = renderHook(() => useChatSearch(messages));
+
+    act(() => result.current.setQuery("provider"));
+    expect(result.current.matches).toHaveLength(1);
+    expect(result.current.matches[0]?.startOffset).toBe(0);
+
+    act(() => result.current.setQuery("internal_error"));
+    expect(result.current.matches).toHaveLength(0);
+  });
 });

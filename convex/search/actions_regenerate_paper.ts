@@ -16,6 +16,10 @@ import {
   formatResearchPaperFailureMessage,
 } from "./workflow_shared";
 import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
+import {
+  assertModelAvailable,
+  assertTextGenerationModel,
+} from "../lib/openrouter_modality";
 
 const CANCEL_CHECK_INTERVAL_EVENTS = 10;
 
@@ -98,6 +102,21 @@ export const regeneratePaperAction = internalAction({
 
     let scheduledRunGeneration = false;
     try {
+      const capabilities = await ctx.runQuery(
+        internal.chat.queries.getModelCapabilities,
+        { modelId: args.modelId },
+      );
+      assertModelAvailable({
+        modelId: args.modelId,
+        capabilities,
+        feature: "Research paper regeneration",
+      });
+      assertTextGenerationModel({
+        feature: "Research paper regeneration",
+        hasImageGeneration: capabilities?.hasImageGeneration,
+        hasVideoGeneration: capabilities?.hasVideoGeneration,
+        hasAudioOutput: capabilities?.hasAudioOutput,
+      });
       const sourceSessionId = args.sourceSessionId ?? args.sessionId;
       const synthesisData = await resolveRegenerationSynthesisData(ctx, sourceSessionId);
 

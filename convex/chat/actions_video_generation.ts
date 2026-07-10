@@ -45,6 +45,7 @@ import {
   markGenerationJobAnalyticsStarted,
   markGenerationJobStreamingIfActive,
 } from "./generation_start_guard";
+import { resolveVideoAudioParameter } from "./video_generation_capabilities";
 
 // -- Constants ----------------------------------------------------------------
 
@@ -380,12 +381,18 @@ export async function submitVideoGenerationHandler(
       prompt: userMessage.content,
       duration: finalDuration,
       aspect_ratio: finalAspectRatio,
-      generate_audio: vc?.generateAudio ?? true,
       provider: {
         ...OPENROUTER_DEFAULT_PROVIDER_SORT,
         ...(requireZdr ? { zdr: true } : {}),
       },
     };
+    const generateAudio = resolveVideoAudioParameter(
+      videoCaps?.generateAudio,
+      vc?.generateAudio,
+    );
+    if (generateAudio !== undefined) {
+      request.generate_audio = generateAudio;
+    }
     let outputUploadToken: string | undefined;
     if (modelRequiresOutputUploadUrl(participant.modelId)) {
       outputUploadToken = crypto.randomUUID();

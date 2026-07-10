@@ -61,6 +61,13 @@ function buildFakeCtx(options: {
         if (name.includes("getPersona")) {
           return null;
         }
+        if ("modelId" in _args) {
+          return {
+            hasImageGeneration: false,
+            hasVideoGeneration: false,
+            hasAudioOutput: false,
+          };
+        }
         // Fallback for standalone helper tests that don't use real references
         if ("personaId" in _args) return null;
         if ("userId" in _args && !("sessionId" in _args)) return options.apiKey ?? "sk-test";
@@ -315,8 +322,12 @@ test("handlePhaseError handles non-Error thrown values gracefully", async () => 
   assert.ok(finalize);
   assert.match(
     (finalize.args as Record<string, unknown>).error as string,
-    /Unknown research paper error/,
+    /string error/,
   );
+  const advisorTerminalization = mutations.find((mutation) =>
+    fnName(mutation.fn).includes("completeBatchForMessage")
+  );
+  assert.deepEqual(advisorTerminalization?.args, { messageId: "assistant_1" });
 });
 
 // -- Phase action chaining ----------------------------------------------------
@@ -611,6 +622,13 @@ test("researchPaperPipeline entry point schedules runPlanningAction with phaseOr
   await (researchPaperPipeline as any)._handler({
     runMutation: async () => undefined,
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return {
+          hasImageGeneration: false,
+          hasVideoGeneration: false,
+          hasAudioOutput: false,
+        };
+      }
       if ("userId" in args) return "sk-test";
       if ("sessionId" in args) return { status: "searching" };
       return null;
@@ -706,6 +724,6 @@ test("researchPaperPipeline entry point fails fast when API key is missing", asy
 
   assert.ok(mutations.some((m) => m.args.status === "failed"));
   assert.ok(mutations.some((m) =>
-    typeof m.args.error === "string" && /MISSING_API_KEY/.test(m.args.error),
+    typeof m.args.error === "string" && /No OpenRouter API key/.test(m.args.error),
   ));
 });

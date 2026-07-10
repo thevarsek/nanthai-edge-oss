@@ -31,6 +31,26 @@ import {
 import { upsertImageModelsBatch } from "../models/image_sync";
 import { upsertVideoModelsBatch } from "../models/video_sync";
 
+function preparedImageModel(modelId: string, imageOnly: boolean, pricePerImage: number) {
+  const provider = modelId.split("/")[0] ?? "unknown";
+  return {
+    modelId,
+    imageOnly,
+    name: modelId,
+    provider,
+    canonicalSlug: modelId,
+    supportedParameters: [],
+    architecture: { modality: imageOnly ? "text->image" : "text->text+image" },
+    imageCapabilities: {
+      pricePerImage,
+      supportedParameters: {},
+      supportsStreaming: false,
+      allowedPassthroughParameters: [],
+      pricing: [],
+    },
+  };
+}
+
 test("OpenRouter extraction helpers cover text, images, recursive values, and usage detail branches", () => {
   const base64 = "a".repeat(68);
   assert.equal(normalizeImageUrl("  https://example.com/a.png  "), "https://example.com/a.png");
@@ -203,7 +223,7 @@ test("progressive registry helpers parse loaded skills and patch same-round tool
   assert.deepEqual(mergeLoadedSkills([{ ...loadedData, skill: "docx", instructions: "old", requiredToolProfiles: ["docs"] as any }], [{ ...loadedData, skill: "docx", instructions: "new" } as any])[0]?.instructions, "new");
 });
 
-test("model media batch mutations cover existing, created, pricing-only, and skipped paths", async () => {
+test("model media batch mutations cover existing and created paths", async () => {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const existing = new Map<string, any>([
@@ -250,13 +270,22 @@ test("model media batch mutations cover existing, created, pricing-only, and ski
 
   const imageResult = await (upsertImageModelsBatch as any)._handler(ctx, {
     models: [
-      { modelId: "image/existing", imageOnly: true, name: "Image Existing", provider: "image", supportedParameters: [], pricePerImage: 0.1, pricingSkus: { imageToken: "1" } },
-      { modelId: "image/new", imageOnly: true, name: "Image New", provider: "image", supportedParameters: [], pricePerImage: 0.2 },
-      { modelId: "multi/existing", imageOnly: false, name: "Multi Existing", provider: "multi", supportedParameters: [], pricePerImage: 0.3 },
-      { modelId: "multi/missing", imageOnly: false, name: "Multi Missing", provider: "multi", supportedParameters: [], pricePerImage: 0.4 },
+      preparedImageModel("image/existing", true, 0.1),
+      preparedImageModel("image/new", true, 0.2),
+      preparedImageModel("multi/existing", false, 0.3),
+      preparedImageModel("multi/missing", false, 0.4),
     ],
   });
-  assert.deepEqual(imageResult, { createdOrPatched: 2, pricingOnly: 1, skipped: 1 });
+  assert.deepEqual(imageResult, { upserted: 4, created: 2 });
   assert.ok(patches.some((entry) => entry.id === "multi_existing" && entry.patch.imageCapabilities));
   assert.ok(inserts.some((entry) => entry.value.modelId === "image/new"));
+  const insertedHybrid = inserts.find((entry) =>
+    entry.value.modelId === "multi/missing"
+  )?.value;
+  assert.ok(insertedHybrid);
+  assert.equal(
+    (insertedHybrid.imageCapabilities as { managedByImageSync?: boolean })
+      .managedByImageSync,
+    false,
+  );
 });

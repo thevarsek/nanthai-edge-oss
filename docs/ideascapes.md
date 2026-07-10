@@ -98,6 +98,9 @@ struct ConvexNodePosition: Codable {
 3. Optionally expands multi-model siblings (`expandMultiModelGroups`).
 4. Deduplicates shared ancestors naturally through visited IDs.
 5. Filters to contextual messages only, preventing cross-branch contamination.
+6. Pins the nearest valid image from each explicitly selected parent lineage to
+   the merge user turn. This preserves same-model image branches and gives the
+   dedicated Images API deterministic, selection-ordered input references.
 
 iOS-side context resolution is extracted into `IdeascapeContextResolver.swift` (post-M14).
 

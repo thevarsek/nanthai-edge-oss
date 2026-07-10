@@ -6,6 +6,9 @@ import {
   dedupeImageCandidates,
   detectStandaloneBase64Image,
   extractInlineImagePayloads,
+  generatedImageEncodedLengthFitsStorage,
+  generatedImagePayloadFitsStorage,
+  MAX_INLINE_IMAGE_BYTES,
   hydrateAttachmentsForRequest,
   persistGeneratedImageUrls,
 } from "../chat/action_image_helpers";
@@ -52,7 +55,7 @@ test("detectStandaloneBase64Image and dedupeImageCandidates normalize inline ima
   ]);
 });
 
-test("persistGeneratedImageUrls stores inline payloads, dedupes URLs, and skips oversized images", async () => {
+test("persistGeneratedImageUrls stores inline payloads and dedupes URLs", async () => {
   const storedBlobs: Blob[] = [];
 
   const result = await persistGeneratedImageUrls(
@@ -69,7 +72,6 @@ test("persistGeneratedImageUrls stores inline payloads, dedupes URLs, and skips 
     [
       "https://example.com/direct.png",
       "data:image/png;base64,AAEC",
-      "data:image/png;base64," + "A".repeat(30_000_000),
       "https://example.com/direct.png",
     ],
   );
@@ -81,7 +83,7 @@ test("persistGeneratedImageUrls stores inline payloads, dedupes URLs, and skips 
   ]);
 });
 
-test("persistGeneratedImageUrls keeps SVG data URLs renderable while still storing metadata", async () => {
+test("persistGeneratedImageUrls stores SVGs and returns the storage URL", async () => {
   const storedBlobs: Blob[] = [];
   const svg = "data:image/svg+xml;base64,PHN2Zy8+";
 
@@ -101,7 +103,18 @@ test("persistGeneratedImageUrls keeps SVG data URLs renderable while still stori
 
   assert.equal(storedBlobs.length, 1);
   assert.equal(storedBlobs[0].type, "image/svg+xml");
-  assert.deepEqual(result, [svg]);
+  assert.deepEqual(result, ["https://cdn.example/storage_svg"]);
+});
+
+test("generated image payload limit admits large 4K files without unbounded memory", () => {
+  assert.equal(generatedImagePayloadFitsStorage(MAX_INLINE_IMAGE_BYTES), true);
+  assert.equal(generatedImagePayloadFitsStorage(MAX_INLINE_IMAGE_BYTES + 1), false);
+});
+
+test("generated image base64 limit rejects oversized items before decoding", () => {
+  const maxEncodedChars = Math.ceil(MAX_INLINE_IMAGE_BYTES / 3) * 4;
+  assert.equal(generatedImageEncodedLengthFitsStorage(maxEncodedChars), true);
+  assert.equal(generatedImageEncodedLengthFitsStorage(maxEncodedChars + 1), false);
 });
 
 test("hydrateAttachmentsForRequest refreshes image URLs and inlines document blobs as data URLs", async () => {

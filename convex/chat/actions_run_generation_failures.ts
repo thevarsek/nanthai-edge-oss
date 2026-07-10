@@ -6,14 +6,14 @@ import {
 import { RunGenerationArgs } from "./actions_run_generation_types";
 import { classifyTerminalErrorCode } from "./terminal_error";
 import { captureAssistantResponseFailure } from "./generation_analytics";
+import { normalizeGenerationError } from "./generation_error";
 
 export async function failPendingParticipants(
   ctx: ActionCtx,
   args: RunGenerationArgs,
   rawError: unknown,
 ): Promise<void> {
-  const errorMessage =
-    rawError instanceof Error ? rawError.message : "Unknown generation error";
+  const errorMessage = normalizeGenerationError(rawError).message;
   const wasCancelled = isGenerationCancelledError(rawError);
   const finalStatus = wasCancelled ? "cancelled" : "failed";
   const finalContent = wasCancelled

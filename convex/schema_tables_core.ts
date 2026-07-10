@@ -167,6 +167,13 @@ export const coreSchemaTables = {
     reasoning: v.optional(v.string()),
     usage: v.optional(usageObject),
     imageUrls: v.optional(v.array(v.string())),
+    imageMimeTypes: v.optional(v.array(v.string())),
+    imageGenerationExpectedCount: v.optional(v.number()),
+    imageGenerationResult: v.optional(v.object({
+      requestedCount: v.number(),
+      generatedCount: v.number(),
+      failedCount: v.number(),
+    })),
     // M29 — Video generation: parallel to imageUrls
     videoUrls: v.optional(v.array(v.string())),
     audioStorageId: v.optional(v.id("_storage")),
@@ -235,6 +242,7 @@ export const coreSchemaTables = {
     documentEditAnnotations: v.optional(v.array(documentEditAnnotation)),
     subagentsEnabled: v.optional(v.boolean()),
     subagentBatchId: v.optional(v.id("subagentBatches")),
+    advisorBatchId: v.optional(v.id("advisorBatches")),
     drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
     // Autonomous moderator — directive injected before this turn
     moderatorDirective: v.optional(v.string()),
@@ -254,6 +262,7 @@ export const coreSchemaTables = {
     .index("by_chat_group", ["chatId", "multiModelGroupId"])
     .index("by_chat_status", ["chatId", "status"])
     .index("by_audio_storage", ["audioStorageId"])
+    .index("by_advisor_batch", ["advisorBatchId"])
     .searchIndex("search_content", {
       searchField: "content",
       filterFields: ["chatId", "userId"],
@@ -933,6 +942,7 @@ export const coreSchemaTables = {
     durationSeconds: v.optional(v.number()),
     model: v.optional(v.string()),
     prompt: v.optional(v.string()),
+    referenceTrackingVersion: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_userId", ["userId"])

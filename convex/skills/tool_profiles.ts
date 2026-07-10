@@ -123,13 +123,7 @@ export function validateToolProfileIds(ids: string[]): string[] {
   return ids.filter((id) => !known.has(id as SkillToolProfileId));
 }
 
-/**
- * Lightweight inference: derive tool profiles purely from requiredToolIds and
- * requiredIntegrationIds. Does NOT validate integration availability or throw.
- *
- * Used as a runtime fallback when `requiredToolProfiles` is missing from
- * the database record (e.g. skills seeded before the field was added).
- */
+/** Infer profiles from tool IDs without validating integration availability. */
 export function inferProfilesFromToolIds(
   requiredToolIds: string[],
   requiredIntegrationIds: string[] = [],
@@ -252,13 +246,7 @@ export function normalizeSkillMetadata(
   };
 }
 
-/**
- * Auto-remove integration profiles that have no backing integration IDs
- * selected. This can happen when the instruction text mentions an integration
- * keyword (e.g. "outlook") but the user explicitly deselected all integrations
- * for that provider. Instead of blocking the save, we silently drop the
- * orphaned profile and add a metadata warning so the user knows what happened.
- */
+/** Remove inferred integration profiles with no selected backing integration. */
 function pruneOrphanedIntegrationProfiles(
   inferredProfiles: Set<SkillToolProfileId>,
   requiredIntegrationIds: string[],

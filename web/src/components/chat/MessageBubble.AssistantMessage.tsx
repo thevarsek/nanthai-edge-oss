@@ -9,12 +9,15 @@ import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { ToolCallAccordion } from "./ToolCallAccordion";
 import { SubagentBatchPanel } from "./SubagentBatchPanel";
+import { AdvisorBatchPanel } from "./AdvisorBatchPanel";
 import { GeneratedFilesCard, type GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 import { GeneratedChartsCard } from "./GeneratedChartsCard";
 import { ResearchProgressPanel } from "./ResearchProgressPanel";
 import { SearchSessionBadge } from "./SearchSessionBadge";
 import { AudioMessageBubble } from "./AudioMessageBubble";
 import { VideoGenerationProgress } from "./VideoGenerationProgress";
+import { ImageGenerationPlaceholder } from "./ImageGenerationPlaceholder";
+import { ImageGenerationPartialSummary } from "./ImageGenerationPartialSummary";
 import { MessageAttachments } from "./MessageAttachments";
 import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import { useChatSearchContext } from "./ChatSearchContext";
@@ -36,6 +39,8 @@ import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSur
 import { getAssistantDisplayIdentity } from "./MessageBubble.assistantIdentity";
 import { captureFeatureUsage, captureResponseCopied } from "@/lib/featureAnalytics";
 import { copyToClipboard } from "@/lib/clipboard";
+import { displayMessageContent } from "@/lib/persistedGenerationError";
+import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -251,6 +256,7 @@ export interface AssistantMessageProps {
   onFork: () => void;
   messageCost?: number;
   showAdvancedStats?: boolean;
+  suppressAdvisorPanel?: boolean;
   onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
   onOpenDocumentEdit?: (annotation: DocumentEditAnnotation, message: Message) => void;
 }
@@ -260,6 +266,7 @@ export interface AssistantMessageProps {
 export const AssistantMessage = memo(function AssistantMessage({
   message, isStreaming, participants, onRetry, onRetryWithDifferentModel, onFork,
   messageCost, showAdvancedStats, onOpenGeneratedFile, onOpenDocumentEdit,
+  suppressAdvisorPanel = false,
 }: AssistantMessageProps) {
   const { t } = useTranslation();
   const modelSummaries = useModelSummaries();
@@ -269,18 +276,24 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
   const hasImageUrls = !!message.imageUrls?.length;
   const hasVideoUrls = !!message.videoUrls?.length;
-  const isImagePlaceholder = hasImageUrls && message.content === "[Generated image]";
-  const isVideoPlaceholder = hasVideoUrls && message.content === "[Generated video]";
+  const projectedContent = displayMessageContent(message);
+  const isImagePlaceholder = hasImageUrls && projectedContent === "[Generated image]";
+  const isVideoPlaceholder = hasVideoUrls && projectedContent === "[Generated video]";
   const mediaCopyText = [...(message.imageUrls ?? []), ...(message.videoUrls ?? [])].join("\n");
-  const visibleContent = isImagePlaceholder || isVideoPlaceholder ? "" : message.content;
+  const visibleContent = isImagePlaceholder || isVideoPlaceholder ? "" : projectedContent;
   const copyText = (!visibleContent.trim())
     ? mediaCopyText
     : visibleContent;
   const { displayed } = useStreaming(visibleContent, isStreaming && message.status === "streaming");
   const isPending = message.status === "pending";
+  const isAwaitingImage = !hasImageUrls && (isPending || isStreaming) && message.modelId != null &&
+    modelSummaries?.some((model) =>
+      model.modelId === message.modelId && modelHasImageOutput(model)
+    );
   const isAwaitingVideo = !hasVideoUrls && (isPending || isStreaming) && message.modelId != null &&
     modelSummaries?.some((model) => model.modelId === message.modelId && model.supportsVideo === true);
-  const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder && !isAwaitingVideo;
+  const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder &&
+    !isAwaitingImage && !isAwaitingVideo;
   const [copied, setCopied] = useState(false);
   const [resolvingEditId, setResolvingEditId] = useState<string | null>(null);
   const [documentEditError, setDocumentEditError] = useState<{ editId: string; message: string } | null>(null);
@@ -390,7 +403,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   }, [undoDocumentEditResolution, t]);
 
   const isCompleted = message.status === "completed";
-  const showActions = isCompleted && (!!message.content || hasImageUrls || hasVideoUrls);
+  const showActions = isCompleted && (!!projectedContent || hasImageUrls || hasVideoUrls);
   const hasDocumentTools = (message.toolCalls ?? []).some((toolCall) =>
     toolCall.name === "list_documents" || toolCall.name === "read_document" || toolCall.name === "find_in_document"
   );
@@ -471,6 +484,10 @@ export const AssistantMessage = memo(function AssistantMessage({
         {/* Subagent work */}
         {message.subagentBatchId && <SubagentBatchPanel messageId={message._id} batchId={message.subagentBatchId} />}
 
+        {message.advisorBatchId && !suppressAdvisorPanel && (
+          <AdvisorBatchPanel batchId={message.advisorBatchId} showAdvancedStats={showAdvancedStats} />
+        )}
+
         {/* Content */}
         {(renderedContent || showWaitingPlaceholder) && (
           <div className="max-w-none">
@@ -498,6 +515,13 @@ export const AssistantMessage = memo(function AssistantMessage({
               <InlineImagePreview key={`${message._id}-img-${i}`} url={url} />
             ))}
           </div>
+        )}
+        <ImageGenerationPartialSummary result={message.imageGenerationResult} />
+
+        {isAwaitingImage && (
+          <ImageGenerationPlaceholder
+            count={message.imageGenerationExpectedCount}
+          />
         )}
 
         {/* Video generation status/error (hide only once the video has arrived or the message fully completed) */}

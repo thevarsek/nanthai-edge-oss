@@ -183,7 +183,7 @@ test("submitVideoGeneration handles missing prompts and default config failure p
     await submitVideoGenerationHandler(successCtx, submitArgs);
     assert.equal(requests[0].duration, 5);
     assert.equal(requests[0].aspect_ratio, "16:9");
-    assert.equal(requests[0].generate_audio, true);
+    assert.equal("generate_audio" in requests[0], false);
     assert.equal("frame_images" in requests[0], false);
     assert.equal(successMutations.some((entry) => entry.openRouterJobId === "video_provider_1"), true);
 

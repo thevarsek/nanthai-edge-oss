@@ -1,4 +1,5 @@
 import { ConvexError } from "convex/values";
+import { structuredErrorMessage } from "./persistedGenerationError";
 
 function isOpaqueServerErrorMessage(message: string): boolean {
   return message === "Server Error" ||
@@ -20,14 +21,8 @@ function isOpaqueServerErrorMessage(message: string): boolean {
  */
 export function convexErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof ConvexError) {
-    const data = error.data;
-    // Structured object: { code, message }
-    if (data && typeof data === "object" && "message" in data) {
-      const msg = (data as { message?: string }).message;
-      if (typeof msg === "string" && msg.length > 0) return msg;
-    }
-    // Bare string payload: new ConvexError("some text")
-    if (typeof data === "string" && data.length > 0) return data;
+    const message = structuredErrorMessage(error.data);
+    if (message) return message;
   }
   // Fall through: generic Error or unknown
   if (error instanceof Error && error.message) {

@@ -3,6 +3,8 @@ import {
   filterAndSortModels,
   isProviderAllowedForGoogle,
   matchesFilter,
+  modelHasTextOnlyOutput,
+  modelIsZdrEligible,
   modelSupportsVisionInput,
   sortMetric,
   type CapFilter,
@@ -39,9 +41,54 @@ describe("ModelPickerShared", () => {
     expect(matchesFilter(textToVideo, "vision" satisfies CapFilter)).toBe(false);
   });
 
+  it("treats dedicated image editing references as image input capability", () => {
+    const imageEditor = model({
+      modelId: "openai/gpt-image-2",
+      supportsImages: true,
+      architecture: { modality: "text->image" },
+      mediaCapabilities: {
+        image: {
+          aspectRatios: [],
+          resolutions: [],
+          sizes: [],
+          qualities: [],
+          backgrounds: [],
+          outputFormats: [],
+          maxInputReferences: 4,
+          supportsStreaming: false,
+        },
+      },
+    });
+
+    expect(modelSupportsVisionInput(imageEditor)).toBe(true);
+    expect(matchesFilter(imageEditor, "vision" satisfies CapFilter)).toBe(true);
+  });
+
   it("allows Google Workspace models by OpenRouter slug when provider label differs", () => {
     expect(isProviderAllowedForGoogle("google/gemini-2.5-pro", "google-ai-studio")).toBe(true);
     expect(isProviderAllowedForGoogle("meta-llama/llama-4", "google-ai-studio")).toBe(false);
+  });
+
+  it("treats every image or video output model as unsafe for text-only pickers", () => {
+    expect(modelHasTextOnlyOutput(model({ architecture: { modality: "text->text" } }))).toBe(true);
+    expect(modelHasTextOnlyOutput(model({
+      supportsImages: true,
+      architecture: { modality: "text->text+image" },
+    }))).toBe(false);
+    expect(modelHasTextOnlyOutput(model({ architecture: { modality: "text->image" } }))).toBe(false);
+    expect(modelHasTextOnlyOutput(model({ supportsVideo: true }))).toBe(false);
+    expect(modelHasTextOnlyOutput(model({ architecture: { modality: "text->audio" } }))).toBe(false);
+    expect(modelHasTextOnlyOutput(model({ architecture: undefined }))).toBe(true);
+  });
+
+  it("never treats image output as ZDR eligible from a cached endpoint flag", () => {
+    expect(modelIsZdrEligible(model({ hasZdrEndpoint: true }))).toBe(true);
+    expect(modelIsZdrEligible(model({ hasZdrEndpoint: false }))).toBe(false);
+    expect(modelIsZdrEligible(model({ supportsImages: true, hasZdrEndpoint: true }))).toBe(false);
+    expect(modelIsZdrEligible(model({
+      architecture: { modality: "text->text+image" },
+      hasZdrEndpoint: true,
+    }))).toBe(false);
   });
 
   it("sorts by trend and price fallbacks across video, image, text, and missing metrics", () => {
@@ -70,11 +117,23 @@ describe("ModelPickerShared", () => {
       supportsVideo: true,
       videoPricing: { perVideoTokenNoAudio: 0.000002 },
     });
-    const image = model({
-      modelId: "image/model",
-      name: "Image",
+    const imageDirect = model({
+      modelId: "image/direct",
+      name: "Image Direct",
       supportsImages: true,
-      imagePricing: { perImageOutput: 0.0001 },
+      imagePricing: { perImage: 0.04, perMegapixel: 0.01, perImageOutput: 0.0001 },
+    });
+    const imageMegapixel = model({
+      modelId: "image/megapixel",
+      name: "Image Megapixel",
+      supportsImages: true,
+      imagePricing: { perMegapixel: 0.06, perImageOutput: 0.0001 },
+    });
+    const imageToken = model({
+      modelId: "image/token",
+      name: "Image Token",
+      supportsImages: true,
+      imagePricing: { perImageOutput: 0.00002, perImageToken: 0.00001 },
     });
     const unknown = model({ modelId: "unknown/model", name: "Unknown" });
 
@@ -85,11 +144,19 @@ describe("ModelPickerShared", () => {
     expect(sortMetric(videoBySecond1080p, "price")).toBe(0.8);
     expect(sortMetric(videoByTokenWithAudio, "price")).toBe(3);
     expect(sortMetric(videoByToken, "price")).toBe(2);
-    expect(sortMetric(image, "price")).toBeCloseTo(0.4096);
+    expect(sortMetric(imageDirect, "price")).toBe(0.04);
+    expect(sortMetric(imageMegapixel, "price")).toBe(0.06);
+    expect(sortMetric(imageToken, "price")).toBeCloseTo(0.08192);
     expect(sortMetric(unknown, "price")).toBeNull();
 
     expect(filterAndSortModels([unknown, videoByToken, free], "", "price", new Set()).map((m) => m.name))
       .toEqual(["Free", "Video Token", "Unknown"]);
+    expect(filterAndSortModels(
+      [imageToken, imageMegapixel, imageDirect],
+      "",
+      "price",
+      new Set(),
+    ).map((m) => m.name)).toEqual(["Image Direct", "Image Megapixel", "Image Token"]);
   });
 
   it("filters by provider search and keeps free filters mutually exclusive", () => {

@@ -147,6 +147,12 @@ export function ChatHeader({
                         <span className="text-[--nanth-foreground]">{formatCost(breakdown!.search)}</span>
                       </div>
                     )}
+                    {breakdown!.advisors > 0 && (
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-[--nanth-muted]">{t("cost_breakdown_advisors")}</span>
+                        <span className="text-[--nanth-foreground]">{formatCost(breakdown!.advisors)}</span>
+                      </div>
+                    )}
                     {breakdown!.other > 0 && (
                       <div className="flex justify-between text-[12px]">
                         <span className="text-[--nanth-muted]">{t("cost_breakdown_other")}</span>

@@ -46,6 +46,74 @@ Examples:
 - branch pill switching belongs in Convex (`chat/manage:switchBranchAtFork`), not per-client leaf-selection heuristics
 - video generation progress, terminal status, and provider-facing failure details come from the shared `videoJobs` contract and message payloads, not per-client heuristics that suppress failed states or rewrite backend errors
 
+## OpenRouter Image and Advisor Contract
+
+- Convex owns dedicated image discovery (`/images/models` plus endpoint details),
+  generation (`/images`), storage, stale-row pruning, and error normalization.
+  Clients consume `listModelSummaries` and shared message/media payloads only.
+- Image-output models never use chat completions. Text-only orchestration rejects
+  media-output models; configurable title and memory helpers fall back to known
+  text defaults for image, video, audio-output, or missing selections.
+- Convex owns branch-aware image-reference projection. Current attachments and
+  explicitly selected Ideascape parents take precedence, same-model branches
+  remain distinct, older branch-local generated images survive intervening text
+  turns, and cancelled/failed or inactive-branch images are excluded. Clients
+  must not rebuild or resend generated images as ordinary attachments.
+- Forked and duplicated chats retain assistant `imageUrls` and the backend-owned
+  retry snapshot, including `imageConfig`, so copied image turns keep their
+  original retry behavior.
+- Successful image arrays are index-aligned: `imageMimeTypes[index]` describes
+  `imageUrls[index]`. Clients prefer that explicit MIME value over URL suffix
+  inference, including for SVG served from opaque storage URLs. The optional
+  message-level `imageGenerationExpectedCount` is the model-capability-adapted
+  request count used by every pending placeholder; clients must not display the
+  raw global default as an executable count. The optional
+  `imageGenerationResult` contains backend-authored `requestedCount`,
+  `generatedCount`, and `failedCount`; all clients render the same localized
+  partial-success state when at least one, but not every, requested image was
+  stored.
+- A saved/retry model ID missing from the authoritative catalog fails with
+  `MODEL_UNAVAILABLE` before transport instead of being guessed as a text model.
+- `listModels`, `getModel`, and `listModelSummaries` expose one canonical
+  `mediaCapabilities` projection for image and video generation. Clients render
+  these backend-authored arrays and booleans instead of re-deriving support from
+  provider names. Image count enums are exposed as the exact `image.counts`
+  array. `countMin`/`countMax` describe true continuous ranges and remain as a
+  compatibility envelope for discrete enums so older clients keep rendering
+  useful count information. New clients prefer `counts` when it is non-empty.
+  Convex resolves a saved generic count to an advertised value before transport.
+  Explicit image `isAvailable: false` overrides legacy
+  `supportsImages`/architecture metadata; hybrid models retain only their
+  remaining text role. Image capabilities are the safe intersection across all
+  current OpenRouter endpoints. Full endpoint records remain retained for
+  future routing, but clients use only the canonical projection until OpenRouter
+  documents Images request endpoint pinning.
+- Persona Advisors are a shared Pro orchestration contract, not a Skill or tool
+  profile. Convex owns kept assignments, eligibility, Persona resolution,
+  Responses API runs, streaming state, branch-aware history, the completion
+  barrier, hidden-note injection, retry reuse, and cost accounting. Clients send
+  only Persona selections, keep/web toggles, and an optional brief; all sibling
+  text participants share the assistant message `advisorBatchId` and consume
+  the same batch exactly once. ZDR, Google-protected, scheduled, autonomous,
+  and media-output turns cannot consult Advisors. An omitted
+  `advisorSelections` field inherits kept assignments, while any supplied array
+  is the exact turn snapshot (`[]` means no Advisors); clients must preserve
+  that distinction for queued sends. A kept assignment's canonical
+  `isAvailable`/`unavailableReasonCode` state remains visible and removable but
+  unavailable Personas are excluded from turn snapshots. A full-replacement
+  save may retain an already-kept unavailable assignment but may not introduce
+  a new one. `cancelBatch` stops unfinished consultations only; completed notes
+  remain usable and the main response continues. Clients show Stop only while
+  at least one consultation is unfinished, not during synthesis or after a
+  terminal batch. Advisor SDK/provider errors are sanitized before persistence
+  and again in the public projection. Clients never render raw request,
+  transcript, Persona, memory, brief, or tool payloads; an omitted unsafe
+  `errorMessage` uses the platform's localized terminal fallback.
+- Clients persist only the seven generic `defaultImage*` preferences through
+  `preferences:upsertPreferences` (`null` clears a field). Convex resolves them
+  against the selected model's cached image capabilities. Ordinary sends and
+  retries never send a client-composed `imageConfig`.
+
 ## What Belongs In Clients
 
 Keep client code limited to:
@@ -182,6 +250,12 @@ Each client has a dedicated extractor that unwraps the nested `ConvexError` JSON
 
 All three extractors handle the same nested JSON shape (`data.data.message` or `data.message`) and fall back to the raw error string when the structured payload is absent.
 
+Thrown action/mutation errors and persisted failed assistant messages are
+separate seams. Convex now normalizes new generation failures before storing
+assistant `content`/`error`. Clients recursively unwrap historical
+`message`/`error`/`data` JSON only when rendering failed assistants, and must
+preserve the raw value for unknown or malformed legacy formats.
+
 ## Retry Contract
 
 ### What it is
@@ -198,13 +272,14 @@ Every assistant message stores a `retryContract` field — a read-only snapshot 
   turnSkillOverrides?: { skillId: string, state: string }[],
   turnIntegrationOverrides?: { integrationId: string, enabled: boolean }[],
   videoConfig?: RetryVideoConfig,
+  imageConfig?: RetryImageConfig,          // backend-owned default snapshot
 }
 ```
 
 ### Client rules
 
 1. **Read-only.** Clients must not write to or mutate `retryContract`. It is a backend-generated snapshot.
-2. **Use as base config for retry.** When a user retries a failed message, clients should use the `retryContract` from the failed assistant message as the starting config — not reconstruct participants from current chat state. This prevents retries from silently inheriting chat-level changes made after the original send.
+2. **Use as base config for retry.** When a user retries a failed message, clients should use the `retryContract` from the failed assistant message as the starting config — not reconstruct participants from current chat state. This prevents retries from silently inheriting chat-level changes made after the original send. `imageConfig` remains backend-owned and is replayed by Convex; clients do not copy it into retry arguments.
 3. **Do not re-derive failure state from `message.status` alone.** Use `message.terminalErrorCode` for the canonical failure reason:
    - `"stream_timeout"` — generation exceeded the timeout budget
    - `"provider_error"` — upstream provider returned a hard error

@@ -16,6 +16,7 @@ import {
   createAnalyticsClientMetadata,
 } from "@/lib/analytics";
 import { captureSendFeatureUsage } from "@/lib/featureAnalytics";
+import type { AdvisorSelection } from "@/advisors/types";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,15 @@ export interface RetryContract {
     aspectRatio?: string;
     resolution?: string;
     generateAudio?: boolean;
+  };
+  imageConfig?: {
+    count?: number;
+    aspectRatio?: string;
+    resolution?: string;
+    quality?: string;
+    background?: string;
+    outputFormat?: string;
+    outputCompression?: number;
   };
 }
 
@@ -100,12 +110,20 @@ export interface Message {
   multiModelGroupId?: string;
   isMultiModelResponse?: boolean;
   subagentBatchId?: Id<"subagentBatches">;
+  advisorBatchId?: Id<"advisorBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
   moderatorDirective?: string;
   searchSessionId?: Id<"searchSessions">;
   loadedSkillIds?: Id<"skills">[];
   usedIntegrationIds?: string[];
   imageUrls?: string[];
+  imageMimeTypes?: string[];
+  imageGenerationExpectedCount?: number;
+  imageGenerationResult?: {
+    requestedCount: number;
+    generatedCount: number;
+    failedCount: number;
+  };
   videoUrls?: string[];
   attachments?: Array<{
     type: string;
@@ -258,6 +276,8 @@ export interface SendMessageArgs extends Record<string, unknown> {
   /** M30: turn-level integration overrides (from slash chips) */
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
+  advisorSelections?: AdvisorSelection[];
+  advisorBrief?: string;
   videoConfig?: {
     duration?: number;
     aspectRatio?: string;
@@ -402,6 +422,8 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
         skill_override_count: args.turnSkillOverrides?.length ?? 0,
         integration_override_count: args.turnIntegrationOverrides?.length ?? 0,
         subagents_enabled: args.subagentsEnabled === true,
+        advisor_count: args.advisorSelections?.length ?? 0,
+        advisor_web_search_count: args.advisorSelections?.filter((advisor) => advisor.allowWebSearch).length ?? 0,
         has_video_config: args.videoConfig !== undefined,
         client_event_id: analytics.clientEventId,
       };

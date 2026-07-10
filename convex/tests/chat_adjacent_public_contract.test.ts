@@ -141,7 +141,9 @@ test("update persona deletes replaced avatar storage ids", async () => {
       query: (table: string) => ({
         withIndex: () => ({
           first: async () =>
-            table === "purchaseEntitlements"
+            table === "advisorRuns"
+              ? null
+              : table === "purchaseEntitlements"
               ? { userId: "user_1", status: "active" }
               : { modelId: "openai/gpt-5.2", supportsTools: true },
           collect: async () => [],
@@ -172,9 +174,12 @@ test("remove persona requires ownership and deletes avatar storage", async () =>
         id === "persona_1"
           ? { _id: "persona_1", userId: "user_1", avatarImageStorageId: "storage_1" }
           : null,
-      query: () => ({
+      query: (table: string) => ({
         withIndex: () => ({
-          first: async () => ({ userId: "user_1", status: "active" }),
+          first: async () => table === "purchaseEntitlements"
+            ? { userId: "user_1", status: "active" }
+            : null,
+          collect: async () => [],
         }),
       }),
       delete: async () => {},

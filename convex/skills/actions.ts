@@ -9,14 +9,42 @@
 // is always set to "compiled" on create/seed. See M18 milestone notes.
 // =============================================================================
 
-import { internalAction } from "../_generated/server";
+import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { FunctionReference } from "convex/server";
+import type { Id } from "../_generated/dataModel";
 
-type DeleteRemovedSystemSkillsRef = FunctionReference<
+type CleanupPageResult = {
+  continueCursor: string;
+  isDone: boolean;
+  patchedCount: number;
+};
+
+type LegacyCleanupPageRef = FunctionReference<
   "mutation",
   "internal",
+  { cursor?: string },
+  CleanupPageResult
+>;
+
+type ReferenceCleanupPageRef = FunctionReference<
+  "mutation",
+  "internal",
+  { skillIds: Id<"skills">[]; cursor?: string },
+  CleanupPageResult
+>;
+
+type FindRemovedSkillsRef = FunctionReference<
+  "query",
+  "internal",
   { slugs: string[] },
+  Id<"skills">[]
+>;
+
+type DeleteRemovedSkillsRef = FunctionReference<
+  "mutation",
+  "internal",
+  { skillIds: Id<"skills">[] },
   { deletedCount: number }
 >;
 
@@ -39,17 +67,19 @@ export const seedSystemCatalog = internalAction({
       });
     }
 
+    const cleanup = cleanupReferences();
+    await drainLegacyProfileCleanup(ctx, cleanup.cleanupLegacyAdvisorSkillProfilePage);
+
     if (REMOVED_SYSTEM_SKILL_SLUGS.length > 0) {
-      const internalWithRemovedSeedCleanup = internal as unknown as {
-        skills: {
-          mutations_seed: {
-            deleteRemovedSystemSkills: DeleteRemovedSystemSkillsRef;
-          };
-        };
-      };
-      await ctx.runMutation(internalWithRemovedSeedCleanup.skills.mutations_seed.deleteRemovedSystemSkills, {
+      const skillIds = await ctx.runQuery(cleanup.findRemovedSystemSkillIds, {
         slugs: [...REMOVED_SYSTEM_SKILL_SLUGS],
       });
+      if (skillIds.length > 0) {
+        for (const cleanupPage of cleanup.referencePages) {
+          await drainReferenceCleanup(ctx, cleanupPage, skillIds);
+        }
+        await ctx.runMutation(cleanup.deleteRemovedSystemSkillRows, { skillIds });
+      }
     }
 
     console.info(
@@ -57,3 +87,60 @@ export const seedSystemCatalog = internalAction({
     );
   },
 });
+
+function cleanupReferences(): {
+  cleanupLegacyAdvisorSkillProfilePage: LegacyCleanupPageRef;
+  findRemovedSystemSkillIds: FindRemovedSkillsRef;
+  referencePages: ReferenceCleanupPageRef[];
+  deleteRemovedSystemSkillRows: DeleteRemovedSkillsRef;
+} {
+  const cleanup = (internal as unknown as {
+    skills: {
+      mutations_seed_cleanup: {
+        cleanupLegacyAdvisorSkillProfilePage: LegacyCleanupPageRef;
+        findRemovedSystemSkillIds: FindRemovedSkillsRef;
+        cleanupRemovedSkillPreferencesPage: ReferenceCleanupPageRef;
+        cleanupRemovedSkillPersonasPage: ReferenceCleanupPageRef;
+        cleanupRemovedSkillChatsPage: ReferenceCleanupPageRef;
+        cleanupRemovedSkillScheduledJobsPage: ReferenceCleanupPageRef;
+        deleteRemovedSystemSkillRows: DeleteRemovedSkillsRef;
+      };
+    };
+  }).skills.mutations_seed_cleanup;
+  return {
+    cleanupLegacyAdvisorSkillProfilePage: cleanup.cleanupLegacyAdvisorSkillProfilePage,
+    findRemovedSystemSkillIds: cleanup.findRemovedSystemSkillIds,
+    referencePages: [
+      cleanup.cleanupRemovedSkillPreferencesPage,
+      cleanup.cleanupRemovedSkillPersonasPage,
+      cleanup.cleanupRemovedSkillChatsPage,
+      cleanup.cleanupRemovedSkillScheduledJobsPage,
+    ],
+    deleteRemovedSystemSkillRows: cleanup.deleteRemovedSystemSkillRows,
+  };
+}
+
+async function drainLegacyProfileCleanup(
+  ctx: ActionCtx,
+  cleanupPage: LegacyCleanupPageRef,
+): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const result = await ctx.runMutation(cleanupPage, { cursor });
+    cursor = result.isDone ? undefined : result.continueCursor;
+    if (result.isDone) return;
+  } while (cursor);
+}
+
+async function drainReferenceCleanup(
+  ctx: ActionCtx,
+  cleanupPage: ReferenceCleanupPageRef,
+  skillIds: Id<"skills">[],
+): Promise<void> {
+  let cursor: string | undefined;
+  do {
+    const result = await ctx.runMutation(cleanupPage, { skillIds, cursor });
+    cursor = result.isDone ? undefined : result.continueCursor;
+    if (result.isDone) return;
+  } while (cursor);
+}

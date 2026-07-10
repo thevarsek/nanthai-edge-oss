@@ -1,16 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { deleteRemovedSystemSkills, upsertSystemSkill } from "../skills/mutations_seed";
+import { upsertSystemSkill } from "../skills/mutations_seed";
+import {
+  cleanupRemovedSkillChatsPage,
+  cleanupRemovedSkillPersonasPage,
+  cleanupRemovedSkillPreferencesPage,
+  cleanupRemovedSkillScheduledJobsPage,
+  deleteRemovedSystemSkillRows,
+  findRemovedSystemSkillIds,
+} from "../skills/mutations_seed_cleanup";
 
-const deleteRemovedSystemSkillsHandler = (
-  deleteRemovedSystemSkills as unknown as {
-    _handler: (
-      ctx: { db: MockDb },
-      args: { slugs: string[] },
-    ) => Promise<{ deletedCount: number }>;
-  }
-)._handler;
+type CleanupPageResult = { continueCursor: string; isDone: boolean; patchedCount: number };
+type CleanupHandler = (
+  ctx: unknown,
+  args: { skillIds: string[]; cursor?: string },
+) => Promise<CleanupPageResult>;
+
+const findRemovedHandler = (findRemovedSystemSkillIds as unknown as {
+  _handler: (ctx: unknown, args: { slugs: string[] }) => Promise<string[]>;
+})._handler;
+const cleanupHandlers = [
+  cleanupRemovedSkillPreferencesPage,
+  cleanupRemovedSkillPersonasPage,
+  cleanupRemovedSkillChatsPage,
+  cleanupRemovedSkillScheduledJobsPage,
+].map((fn) => (fn as unknown as { _handler: CleanupHandler })._handler);
+const deleteRemovedHandler = (deleteRemovedSystemSkillRows as unknown as {
+  _handler: (ctx: unknown, args: { skillIds: string[] }) => Promise<{ deletedCount: number }>;
+})._handler;
 
 const upsertSystemSkillHandler = (
   upsertSystemSkill as unknown as {
@@ -25,9 +43,26 @@ interface MockDb {
   query: (table: string) => {
     withIndex: () => { collect: () => Promise<Array<Record<string, unknown>>> };
     collect: () => Promise<Array<Record<string, unknown>>>;
+    paginate?: () => Promise<{
+      page: Array<Record<string, unknown>>;
+      continueCursor: string;
+      isDone: boolean;
+    }>;
   };
+  get?: (id: string) => Promise<Record<string, unknown> | null>;
   patch: (id: string, value: Record<string, unknown>) => Promise<void>;
   delete: (id: string) => Promise<void>;
+}
+
+async function runRemovedCleanup(
+  ctx: { db: MockDb },
+  slugs: string[],
+): Promise<{ deletedCount: number }> {
+  const skillIds = await findRemovedHandler(ctx, { slugs });
+  for (const cleanup of cleanupHandlers) {
+    await cleanup(ctx, { skillIds });
+  }
+  return await deleteRemovedHandler(ctx, { skillIds });
 }
 
 test("deleteRemovedSystemSkills removes active config references before hard delete", async () => {
@@ -77,14 +112,21 @@ test("deleteRemovedSystemSkills removes active config references before hard del
     }],
   };
 
-  const result = await deleteRemovedSystemSkillsHandler({
+  const result = await runRemovedCleanup({
     db: {
       query: (table: string) => ({
         withIndex: () => ({
           collect: async () => rows[table] ?? [],
         }),
         collect: async () => rows[table] ?? [],
+        paginate: async () => ({
+          page: rows[table] ?? [],
+          continueCursor: "done",
+          isDone: true,
+        }),
       }),
+      get: async (id: string) =>
+        Object.values(rows).flat().find((row) => row._id === id) ?? null,
       patch: async (id: string, value: Record<string, unknown>) => {
         patches.push({ id, value });
       },
@@ -92,7 +134,7 @@ test("deleteRemovedSystemSkills removes active config references before hard del
         deleted.push(id);
       },
     },
-  }, { slugs: ["removed-skill"] });
+  }, ["removed-skill"]);
 
   assert.deepEqual(result, { deletedCount: 1 });
   assert.deepEqual(deleted, [removed]);
@@ -180,7 +222,7 @@ test("upsertSystemSkill inserts missing system skills and patches existing syste
 test("deleteRemovedSystemSkills exits without patches when removed slugs have no system matches", async () => {
   const patches: Array<Record<string, unknown>> = [];
   const deleted: string[] = [];
-  const result = await deleteRemovedSystemSkillsHandler({
+  const result = await runRemovedCleanup({
     db: {
       query: (table: string) => ({
         withIndex: () => ({
@@ -189,6 +231,7 @@ test("deleteRemovedSystemSkills exits without patches when removed slugs have no
             : [],
         }),
         collect: async () => [],
+        paginate: async () => ({ page: [], continueCursor: "done", isDone: true }),
       }),
       patch: async (_id: string, value: Record<string, unknown>) => {
         patches.push(value);
@@ -197,7 +240,7 @@ test("deleteRemovedSystemSkills exits without patches when removed slugs have no
         deleted.push(id);
       },
     },
-  }, { slugs: ["removed-skill"] });
+  }, ["removed-skill"]);
 
   assert.deepEqual(result, { deletedCount: 0 });
   assert.deepEqual(patches, []);
@@ -231,14 +274,21 @@ test("deleteRemovedSystemSkills deletes removed skills without touching unrelate
     }],
   };
 
-  const result = await deleteRemovedSystemSkillsHandler({
+  const result = await runRemovedCleanup({
     db: {
       query: (table: string) => ({
         withIndex: () => ({
           collect: async () => rows[table] ?? [],
         }),
         collect: async () => rows[table] ?? [],
+        paginate: async () => ({
+          page: rows[table] ?? [],
+          continueCursor: "done",
+          isDone: true,
+        }),
       }),
+      get: async (id: string) =>
+        Object.values(rows).flat().find((row) => row._id === id) ?? null,
       patch: async (id: string, value: Record<string, unknown>) => {
         patches.push({ id, value });
       },
@@ -246,7 +296,7 @@ test("deleteRemovedSystemSkills deletes removed skills without touching unrelate
         deleted.push(id);
       },
     },
-  }, { slugs: ["removed-skill"] });
+  }, ["removed-skill"]);
 
   assert.deepEqual(result, { deletedCount: 1 });
   assert.deepEqual(deleted, ["skill_removed"]);

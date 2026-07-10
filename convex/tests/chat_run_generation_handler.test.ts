@@ -33,6 +33,7 @@ function buildGenCtx(overrides: Partial<GenerationContext> = {}): GenerationCont
     currentUserMessage: { _id: "msg_user", attachments: [] },
     chatDoc: { _id: "chat_1", integrationOverrides: [] },
     skillIntegrationDefaults: { skillDefaults: undefined, integrationDefaults: undefined },
+    imageConfig: { count: 3 },
     connectedIntegrationIds: [],
     personasById: {},
     ...overrides,
@@ -113,6 +114,7 @@ test("runGenerationHandler intersects enabled integrations and schedules per-par
     searchSessionId: undefined,
     resumeExpected: false,
     videoConfig: undefined,
+    imageConfig: { count: 3 },
     chatSkillOverrides: undefined,
     chatIntegrationOverrides: [],
     personaSkillOverrides: undefined,
@@ -393,7 +395,7 @@ test("runGenerationHandler disallows subagents when multiple participants even i
   assert.equal(scheduledCalls[1].allowSubagents, false);
 });
 
-test("runGenerationHandler passes videoConfig and turnIntegrationOverrides through to participants", async () => {
+test("runGenerationHandler sanitizes media config and passes turn overrides", async () => {
   const scheduledCalls: Array<Record<string, unknown>> = [];
 
   const deps = createRunGenerationHandlerDepsForTest({
@@ -422,12 +424,18 @@ test("runGenerationHandler passes videoConfig and turnIntegrationOverrides throu
       { modelId: "openai/gpt-5", messageId: "msg_assistant_1", jobId: "job_1" },
     ],
     videoConfig: { resolution: "1080p", aspectRatio: "16:9" },
+    imageConfig: { count: 99, outputCompression: -3, quality: " HIGH " },
     turnIntegrationOverrides: [{ integrationId: "drive", enabled: false }],
     enabledIntegrations: undefined,
   } as any, deps);
 
   assert.equal(scheduledCalls.length, 1);
   assert.deepEqual(scheduledCalls[0].videoConfig, { resolution: "1080p", aspectRatio: "16:9" });
+  assert.deepEqual(scheduledCalls[0].imageConfig, {
+    count: 10,
+    outputCompression: 0,
+    quality: "high",
+  });
   const effective = scheduledCalls[0].effectiveIntegrations as string[];
   assert.ok(!effective.includes("drive"), "drive should be disabled by turn override");
 });

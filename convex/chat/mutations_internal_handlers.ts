@@ -2,6 +2,7 @@ import { Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ConvexError } from "convex/values";
+import { GENERATED_MEDIA_REFERENCE_TRACKING_VERSION } from "../lib/generated_media_reference_tracking";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
 import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
@@ -130,6 +131,12 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   };
   reasoning?: string;
   imageUrls?: string[];
+  imageMimeTypes?: string[];
+  imageGenerationResult?: {
+    requestedCount: number;
+    generatedCount: number;
+    failedCount: number;
+  };
   videoUrls?: string[];
   userId: string;
   // M10 — Tool execution metadata
@@ -404,6 +411,10 @@ export async function finalizeGenerationHandler(
   const finalReasoning = args.reasoning ?? streamingMessage?.reasoning;
   if (finalReasoning) msgPatch.reasoning = finalReasoning;
   if (args.imageUrls) msgPatch.imageUrls = args.imageUrls;
+  if (args.imageMimeTypes) msgPatch.imageMimeTypes = args.imageMimeTypes;
+  if (args.imageGenerationResult) {
+    msgPatch.imageGenerationResult = args.imageGenerationResult;
+  }
   if (args.videoUrls) msgPatch.videoUrls = args.videoUrls;
   const finalToolCalls = args.toolCalls ?? streamingMessage?.toolCalls;
   if (finalToolCalls) msgPatch.toolCalls = finalToolCalls;
@@ -1388,6 +1399,7 @@ export async function insertGeneratedMediaHandler(
     durationSeconds: args.durationSeconds,
     model: args.model,
     prompt: args.prompt,
+    referenceTrackingVersion: GENERATED_MEDIA_REFERENCE_TRACKING_VERSION,
     createdAt: Date.now(),
   });
 }

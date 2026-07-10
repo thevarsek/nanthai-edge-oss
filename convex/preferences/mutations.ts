@@ -11,6 +11,7 @@ import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
+import { validateImagePreferenceWrite } from "./image_defaults";
 
 
 // Batch size for paginating chat subagent-override resets. Kept small enough
@@ -199,6 +200,13 @@ export const upsertPreferences = mutation({
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),
     showAdvancedStats: v.optional(v.boolean()),
+    defaultImageCount: v.optional(v.union(v.number(), v.null())),
+    defaultImageAspectRatio: v.optional(v.union(v.string(), v.null())),
+    defaultImageResolution: v.optional(v.union(v.string(), v.null())),
+    defaultImageQuality: v.optional(v.union(v.string(), v.null())),
+    defaultImageBackground: v.optional(v.union(v.string(), v.null())),
+    defaultImageOutputFormat: v.optional(v.union(v.string(), v.null())),
+    defaultImageOutputCompression: v.optional(v.union(v.number(), v.null())),
     defaultVideoAspectRatio: v.optional(v.union(v.string(), v.null())),
     defaultVideoDuration: v.optional(v.union(v.number(), v.null())),
     defaultVideoResolution: v.optional(v.union(v.string(), v.null())),
@@ -208,8 +216,12 @@ export const upsertPreferences = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     const now = Date.now();
+    const normalizedArgs = {
+      ...args,
+      ...validateImagePreferenceWrite(args),
+    };
 
-    if (args.subagentsEnabledByDefault === true) {
+    if (normalizedArgs.subagentsEnabledByDefault === true) {
       await requirePro(ctx, userId);
     }
 
@@ -219,8 +231,8 @@ export const upsertPreferences = mutation({
       .first();
     const currentPreferenceWriteEpoch = existing?.preferenceWriteEpoch ?? 0;
     if (
-      args.expectedPreferenceWriteEpoch !== undefined
-      && args.expectedPreferenceWriteEpoch !== currentPreferenceWriteEpoch
+      normalizedArgs.expectedPreferenceWriteEpoch !== undefined
+      && normalizedArgs.expectedPreferenceWriteEpoch !== currentPreferenceWriteEpoch
     ) {
       throw new ConvexError({
         code: "STALE_PREFERENCE_WRITE",
@@ -232,17 +244,17 @@ export const upsertPreferences = mutation({
     // For optional schema fields, `null` from the client means "clear field".
     // Convex optional fields are cleared by patching with `undefined`.
     const patch: Record<string, unknown> = { updatedAt: now };
-    for (const [key, value] of Object.entries(args)) {
+    for (const [key, value] of Object.entries(normalizedArgs)) {
       if (key === "clearDefaultPersona") continue;
       if (key === "expectedPreferenceWriteEpoch") continue;
       if (value === undefined) continue;
       patch[key] = value === null ? undefined : value;
     }
     // Explicit clear flag avoids relying on client-side null transport details.
-    if (args.clearDefaultPersona === true) {
+    if (normalizedArgs.clearDefaultPersona === true) {
       patch.defaultPersonaId = undefined;
     }
-    if (args.zdrEnabled === true) {
+    if (normalizedArgs.zdrEnabled === true) {
       patch.titleModelId = undefined;
       patch.memoryExtractionModelId = undefined;
     }
@@ -255,56 +267,63 @@ export const upsertPreferences = mutation({
     // Create with defaults
     return await ctx.db.insert("userPreferences", {
       ...buildDefaultUserPreferencesInsert(userId, now),
-      defaultModelId: args.defaultModelId,
+      defaultModelId: normalizedArgs.defaultModelId,
       defaultPersonaId:
-        args.clearDefaultPersona === true
+        normalizedArgs.clearDefaultPersona === true
           ? undefined
-          : (args.defaultPersonaId ?? undefined),
-      sendOnEnter: args.sendOnEnter ?? true,
-      showReasoning: args.showReasoning ?? true,
-      hapticFeedback: args.hapticFeedback ?? true,
-      appearanceMode: args.appearanceMode ?? "light",
-      colorTheme: args.colorTheme ?? undefined,
-      defaultTemperature: args.defaultTemperature ?? undefined,
-      defaultMaxTokens: args.defaultMaxTokens ?? undefined,
-      includeReasoning: args.includeReasoning ?? undefined,
-      reasoningEffort: args.reasoningEffort ?? undefined,
-      pickerFilterFree: args.pickerFilterFree ?? false,
-      pickerFilterExcludeFree: args.pickerFilterExcludeFree ?? false,
-      pickerFilterVision: args.pickerFilterVision ?? false,
-      pickerFilterImageGen: args.pickerFilterImageGen ?? false,
-      pickerFilterVideoGen: args.pickerFilterVideoGen ?? false,
-      pickerFilterTools: args.pickerFilterTools ?? false,
-      pickerSortPrimaryKey: args.pickerSortPrimaryKey ?? undefined,
-      pickerSortPrimaryDirection: args.pickerSortPrimaryDirection ?? undefined,
-      pickerSortSecondaryKey: args.pickerSortSecondaryKey ?? undefined,
-      pickerSortSecondaryDirection: args.pickerSortSecondaryDirection ?? undefined,
-      webSearchEnabledByDefault: args.webSearchEnabledByDefault ?? true,
-      subagentsEnabledByDefault: args.subagentsEnabledByDefault ?? false,
-      chatCompletionNotificationsEnabled: args.chatCompletionNotificationsEnabled ?? false,
-      defaultSearchMode: args.defaultSearchMode ?? undefined,
-      defaultSearchComplexity: args.defaultSearchComplexity ?? undefined,
-      autoAudioResponse: args.autoAudioResponse ?? false,
-      preferredVoice: args.preferredVoice ?? "nova",
-      defaultAudioSpeed: args.defaultAudioSpeed ?? 1,
-      isMemoryEnabled: args.isMemoryEnabled ?? true,
-      memoryGatingMode: args.memoryGatingMode ?? "automatic",
-      memoryExtractionModelId: args.zdrEnabled === true
+          : (normalizedArgs.defaultPersonaId ?? undefined),
+      sendOnEnter: normalizedArgs.sendOnEnter ?? true,
+      showReasoning: normalizedArgs.showReasoning ?? true,
+      hapticFeedback: normalizedArgs.hapticFeedback ?? true,
+      appearanceMode: normalizedArgs.appearanceMode ?? "light",
+      colorTheme: normalizedArgs.colorTheme ?? undefined,
+      defaultTemperature: normalizedArgs.defaultTemperature ?? undefined,
+      defaultMaxTokens: normalizedArgs.defaultMaxTokens ?? undefined,
+      includeReasoning: normalizedArgs.includeReasoning ?? undefined,
+      reasoningEffort: normalizedArgs.reasoningEffort ?? undefined,
+      pickerFilterFree: normalizedArgs.pickerFilterFree ?? false,
+      pickerFilterExcludeFree: normalizedArgs.pickerFilterExcludeFree ?? false,
+      pickerFilterVision: normalizedArgs.pickerFilterVision ?? false,
+      pickerFilterImageGen: normalizedArgs.pickerFilterImageGen ?? false,
+      pickerFilterVideoGen: normalizedArgs.pickerFilterVideoGen ?? false,
+      pickerFilterTools: normalizedArgs.pickerFilterTools ?? false,
+      pickerSortPrimaryKey: normalizedArgs.pickerSortPrimaryKey ?? undefined,
+      pickerSortPrimaryDirection: normalizedArgs.pickerSortPrimaryDirection ?? undefined,
+      pickerSortSecondaryKey: normalizedArgs.pickerSortSecondaryKey ?? undefined,
+      pickerSortSecondaryDirection: normalizedArgs.pickerSortSecondaryDirection ?? undefined,
+      webSearchEnabledByDefault: normalizedArgs.webSearchEnabledByDefault ?? true,
+      subagentsEnabledByDefault: normalizedArgs.subagentsEnabledByDefault ?? false,
+      chatCompletionNotificationsEnabled: normalizedArgs.chatCompletionNotificationsEnabled ?? false,
+      defaultSearchMode: normalizedArgs.defaultSearchMode ?? undefined,
+      defaultSearchComplexity: normalizedArgs.defaultSearchComplexity ?? undefined,
+      autoAudioResponse: normalizedArgs.autoAudioResponse ?? false,
+      preferredVoice: normalizedArgs.preferredVoice ?? "nova",
+      defaultAudioSpeed: normalizedArgs.defaultAudioSpeed ?? 1,
+      isMemoryEnabled: normalizedArgs.isMemoryEnabled ?? true,
+      memoryGatingMode: normalizedArgs.memoryGatingMode ?? "automatic",
+      memoryExtractionModelId: normalizedArgs.zdrEnabled === true
         ? undefined
-        : args.memoryExtractionModelId ?? undefined,
-      titleModelId: args.zdrEnabled === true
+        : normalizedArgs.memoryExtractionModelId ?? undefined,
+      titleModelId: normalizedArgs.zdrEnabled === true
         ? undefined
-        : args.titleModelId ?? undefined,
-      disabledProviders: args.disabledProviders ?? undefined,
-      hasSeenIdeascapeHelp: args.hasSeenIdeascapeHelp ?? undefined,
-      hasSeenMainWalkthrough: args.hasSeenMainWalkthrough ?? undefined,
-      showBalanceInChat: args.showBalanceInChat ?? undefined,
-      showAdvancedStats: args.showAdvancedStats ?? undefined,
-      defaultVideoAspectRatio: args.defaultVideoAspectRatio ?? undefined,
-      defaultVideoDuration: args.defaultVideoDuration ?? undefined,
-      defaultVideoResolution: args.defaultVideoResolution ?? undefined,
-      defaultVideoGenerateAudio: args.defaultVideoGenerateAudio ?? undefined,
-      zdrEnabled: args.zdrEnabled ?? undefined,
+        : normalizedArgs.titleModelId ?? undefined,
+      disabledProviders: normalizedArgs.disabledProviders ?? undefined,
+      hasSeenIdeascapeHelp: normalizedArgs.hasSeenIdeascapeHelp ?? undefined,
+      hasSeenMainWalkthrough: normalizedArgs.hasSeenMainWalkthrough ?? undefined,
+      showBalanceInChat: normalizedArgs.showBalanceInChat ?? undefined,
+      showAdvancedStats: normalizedArgs.showAdvancedStats ?? undefined,
+      defaultImageCount: normalizedArgs.defaultImageCount ?? undefined,
+      defaultImageAspectRatio: normalizedArgs.defaultImageAspectRatio ?? undefined,
+      defaultImageResolution: normalizedArgs.defaultImageResolution ?? undefined,
+      defaultImageQuality: normalizedArgs.defaultImageQuality ?? undefined,
+      defaultImageBackground: normalizedArgs.defaultImageBackground ?? undefined,
+      defaultImageOutputFormat: normalizedArgs.defaultImageOutputFormat ?? undefined,
+      defaultImageOutputCompression: normalizedArgs.defaultImageOutputCompression ?? undefined,
+      defaultVideoAspectRatio: normalizedArgs.defaultVideoAspectRatio ?? undefined,
+      defaultVideoDuration: normalizedArgs.defaultVideoDuration ?? undefined,
+      defaultVideoResolution: normalizedArgs.defaultVideoResolution ?? undefined,
+      defaultVideoGenerateAudio: normalizedArgs.defaultVideoGenerateAudio ?? undefined,
+      zdrEnabled: normalizedArgs.zdrEnabled ?? undefined,
       preferenceWriteEpoch: currentPreferenceWriteEpoch,
       updatedAt: now,
     });

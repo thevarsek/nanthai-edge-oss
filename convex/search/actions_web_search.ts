@@ -40,6 +40,11 @@ import {
   captureBackendAIOperationFailed,
   captureBackendAIOperationStarted,
 } from "../analytics/backend_events";
+import {
+  assertModelAvailable,
+  assertTextGenerationModel,
+} from "../lib/openrouter_modality";
+import { normalizeGenerationError } from "../chat/generation_error";
 
 export const runWebSearch = internalAction({
   args: runWebSearchArgs,
@@ -71,20 +76,22 @@ async function runWebSearchHandler(
   args: WebSearchActionArgs,
 ): Promise<void> {
   const workflowStartedAt = Date.now();
-  await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
-    jobId: args.jobId,
-    status: "streaming",
-    startedAt: Date.now(),
-  });
-  const alreadyCancelled = await ctx.runQuery(
-    internal.chat.queries.isJobCancelled,
-    { jobId: args.jobId },
-  );
-  if (alreadyCancelled) {
-    return;
-  }
-
   try {
+    await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
+      jobId: args.jobId,
+      status: "streaming",
+      startedAt: Date.now(),
+    });
+    const alreadyCancelled = await ctx.runQuery(
+      internal.chat.queries.isJobCancelled,
+      { jobId: args.jobId },
+    );
+    if (alreadyCancelled) {
+      await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
+        messageId: args.assistantMessageId,
+      });
+      return;
+    }
     const [apiKey, preferences] = await Promise.all([
       getRequiredUserOpenRouterApiKey(ctx, args.userId),
       ctx.runQuery(internal.chat.queries.getUserPreferences, {
@@ -92,6 +99,21 @@ async function runWebSearchHandler(
       }),
     ]);
     const requireZdr = isZdrEnabled(preferences);
+    const synthesisCapabilities = await ctx.runQuery(
+      internal.chat.queries.getModelCapabilities,
+      { modelId: args.modelId },
+    );
+    assertModelAvailable({
+      modelId: args.modelId,
+      capabilities: synthesisCapabilities,
+      feature: "Web search synthesis",
+    });
+    assertTextGenerationModel({
+      feature: "Web search synthesis",
+      hasImageGeneration: synthesisCapabilities?.hasImageGeneration,
+      hasVideoGeneration: synthesisCapabilities?.hasVideoGeneration,
+      hasAudioOutput: synthesisCapabilities?.hasAudioOutput,
+    });
     const preset = resolveComplexityPreset("web", args.complexity);
     let searchResults: SearchResult[];
 
@@ -179,6 +201,7 @@ async function runWebSearchHandler(
       enabledIntegrations: args.enabledIntegrations,
       turnIntegrationOverrides: args.turnIntegrationOverrides,
       subagentsEnabled: args.subagentsEnabled,
+      imageConfig: args.imageConfig,
       searchSessionId: args.sessionId,
       analytics: args.analytics,
       analyticsSource: args.analyticsSource ?? "web_search",
@@ -198,8 +221,7 @@ async function runWebSearchHandler(
     // Note: postProcess is now handled by runGeneration, so we don't schedule
     // it here (would cause a duplicate).
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown search error";
+    const errorMessage = normalizeGenerationError(error).message;
     const wasCancelled = isGenerationCancelledError(error);
 
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
@@ -210,6 +232,9 @@ async function runWebSearchHandler(
       status: wasCancelled ? "cancelled" : "failed",
       error: errorMessage,
       userId: args.userId,
+    });
+    await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
+      messageId: args.assistantMessageId,
     });
     if (!wasCancelled) {
       await captureAssistantResponseStartedEvent(ctx, {

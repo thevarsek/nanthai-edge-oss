@@ -167,6 +167,16 @@ vi.mock("@/hooks/useAutonomous", () => ({
 
 vi.mock("@/hooks/useSearchSessions", () => ({ useSearchSessions: () => ({ sessionMap: new Map() }) }));
 vi.mock("@/hooks/useChatCosts", () => ({ useChatCosts: () => ({ messageCosts: {}, totalCost: 1.23, breakdown: [] }) }));
+vi.mock("@/hooks/useAdvisorComposer", () => ({
+  useAdvisorComposer: () => ({
+    state: { surface: "closed", selections: [], brief: "", defaultAllowWebSearch: false, defaultKeepAvailable: false, saveError: null }, participantCount: 1,
+    selectedPersonas: [], persistedPersonaIds: new Set(), participantPersonaIds: new Set(), advisorSelections: undefined, advisorBrief: undefined,
+    open: vi.fn(), close: vi.fn(), togglePersona: vi.fn(), updateSelection: vi.fn(), remove: vi.fn(),
+    setBrief: vi.fn(), setDefaultAllowWebSearch: vi.fn(), setDefaultKeepAvailable: vi.fn(), save: vi.fn(),
+    canSendCurrentSelection: true, canCaptureQueuedSnapshot: true,
+    captureQueuedSnapshot: vi.fn(() => ({ advisorSelections: [] })), restoreQueuedSnapshot: vi.fn(), completeSuccessfulSend: vi.fn(),
+  }),
+}));
 vi.mock("@/routes/ChatPage.helpers", () => ({
   useChatScroll: () => undefined,
   useChatSearchWiring: () => ({ scrollContainerRef: { current: null }, searchCtx: { query: "", queryLength: 0, matches: [], focusedGlobalIndex: -1 }, isOpen: false, query: "", setQuery: vi.fn(), matches: [], currentIndex: 0, next: vi.fn(), prev: vi.fn(), close: vi.fn() }),

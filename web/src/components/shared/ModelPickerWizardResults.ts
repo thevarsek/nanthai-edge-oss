@@ -1,4 +1,8 @@
-import { isProviderAllowedForGoogle } from "@/components/shared/ModelPickerShared";
+import {
+  isProviderAllowedForGoogle,
+  modelHasImageOutput,
+  modelIsZdrEligible,
+} from "@/components/shared/ModelPickerShared";
 import { wizardScore, type WizardPriority, type WizardTask } from "@/components/shared/ModelPickerHelpers.utils";
 import type { ModelSummary } from "@/components/shared/ModelPickerHelpers";
 
@@ -9,9 +13,10 @@ export function isWizardModelDisabled(
   zdrEnforced?: boolean,
   googleIntegrationsActive?: boolean,
 ): boolean {
-  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
+  const isZdrDisabled = zdrEnforced === true && !modelIsZdrEligible(model);
   const isGoogleBlocked = googleIntegrationsActive === true && (
     !model.hasZdrEndpoint ||
+    modelHasImageOutput(model) ||
     !isProviderAllowedForGoogle(model.modelId, model.provider)
   );
   return isZdrDisabled || isGoogleBlocked;

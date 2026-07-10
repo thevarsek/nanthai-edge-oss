@@ -105,6 +105,7 @@ import { CREATE_SKILL_SKILL } from "./create_skill";
 export const REMOVED_SYSTEM_SKILL_SLUGS = [
   "conditions-precedent-checklist",
   "credit-agreement-summary",
+  "openrouter-advisor",
   "release-notes",
   "shareholder-agreement-summary",
   "solo-founder-gtm",

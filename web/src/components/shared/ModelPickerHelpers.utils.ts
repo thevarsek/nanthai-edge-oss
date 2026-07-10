@@ -45,24 +45,58 @@ export function formatVideoPrice(price?: number, unit?: string): string {
   return `$${price.toFixed(2)}/${unit ?? "unit"}`;
 }
 
-/**
- * Format image-gen pricing as dollars-per-megapixel.
- *
- * OpenRouter's `image_output` SKU is dollars-per-image-token, where
- * 1 megapixel = 4096 image tokens across providers (BFL, Google, OpenAI).
- * This matches how providers advertise pricing (e.g. FLUX.2 = $0.06/MP,
- * Gemini 3 Pro Image ~ $0.49/MP). Displaying per-token would be opaque
- * (e.g. `$0.0000146/tok`); per-megapixel is the unit users recognize.
- */
 const IMAGE_TOKENS_PER_MEGAPIXEL = 4096;
 
+export interface ImagePricing {
+  /** Direct dollars per generated image from the dedicated Image API. */
+  perImage?: number;
+  /** Direct dollars per megapixel from the dedicated Image API. */
+  perMegapixel?: number;
+  /** Legacy dollars per image input token. */
+  perImageToken?: number;
+  /** Legacy dollars per image output token. */
+  perImageOutput?: number;
+}
+
+export interface ResolvedImagePrice {
+  amount: number;
+  unit: "image" | "megapixel";
+}
+
+/** Prefer direct Image API units, falling back to 4096 image tokens per MP. */
+export function resolveImagePrice(pricing?: ImagePricing): ResolvedImagePrice | null {
+  if (pricing?.perImage != null && pricing.perImage > 0) {
+    return { amount: pricing.perImage, unit: "image" };
+  }
+  if (pricing?.perMegapixel != null && pricing.perMegapixel > 0) {
+    return { amount: pricing.perMegapixel, unit: "megapixel" };
+  }
+  const tokenPrice = pricing?.perImageOutput != null && pricing.perImageOutput > 0
+    ? pricing.perImageOutput
+    : pricing?.perImageToken != null && pricing.perImageToken > 0
+      ? pricing.perImageToken
+      : null;
+  return tokenPrice == null
+    ? null
+    : { amount: tokenPrice * IMAGE_TOKENS_PER_MEGAPIXEL, unit: "megapixel" };
+}
+
+export function formatResolvedImagePrice(price?: ResolvedImagePrice | null): string {
+  if (price == null) return "—";
+  const suffix = price.unit === "image" ? "image" : "MP";
+  if (price.amount === 0) return `$0.00/${suffix}`;
+  if (price.amount < 0.01) return `$${price.amount.toFixed(4)}/${suffix}`;
+  if (price.amount < 1) return `$${price.amount.toFixed(3)}/${suffix}`;
+  return `$${price.amount.toFixed(2)}/${suffix}`;
+}
+
+/** Format a legacy token-only image rate as dollars per megapixel. */
 export function formatImagePrice(perImageToken?: number): string {
   if (perImageToken == null) return "—";
-  const perMP = perImageToken * IMAGE_TOKENS_PER_MEGAPIXEL;
-  if (perMP === 0) return "$0.00/MP";
-  if (perMP < 0.01) return `$${perMP.toFixed(4)}/MP`;
-  if (perMP < 1) return `$${perMP.toFixed(3)}/MP`;
-  return `$${perMP.toFixed(2)}/MP`;
+  return formatResolvedImagePrice({
+    amount: perImageToken * IMAGE_TOKENS_PER_MEGAPIXEL,
+    unit: "megapixel",
+  });
 }
 
 /**
@@ -72,7 +106,7 @@ export function formatImagePrice(perImageToken?: number): string {
  * Android `listRowPriceLabel` so the three clients surface cost identically:
  *
  *   - Video models: per-second when available, else per-1M video tokens
- *   - Image-gen models: per-megapixel (4096 image tokens per MP)
+ *   - Image-gen models: direct per-image, direct per-MP, then token × 4096
  *   - Text models: combined prompt+completion per-1M tokens
  */
 export function listRowPriceLabel(model: {
@@ -86,7 +120,7 @@ export function listRowPriceLabel(model: {
     perVideoTokenNoAudio?: number;
   };
   supportsImages?: boolean;
-  imagePricing?: { perImageOutput?: number; perImageToken?: number };
+  imagePricing?: ImagePricing;
   inputPricePer1M?: number;
   outputPricePer1M?: number;
 }): string | null {
@@ -105,9 +139,9 @@ export function listRowPriceLabel(model: {
       return formatVideoPrice(model.videoPricing.perVideoTokenNoAudio, "tok");
     }
   }
-  const imageTokenPrice = model.imagePricing?.perImageOutput ?? model.imagePricing?.perImageToken;
-  if (model.supportsImages && imageTokenPrice != null && imageTokenPrice > 0) {
-    return formatImagePrice(imageTokenPrice);
+  const imagePrice = resolveImagePrice(model.imagePricing);
+  if (model.supportsImages && imagePrice) {
+    return formatResolvedImagePrice(imagePrice);
   }
   const combined = (model.inputPricePer1M ?? 0) + (model.outputPricePer1M ?? 0);
   return combined > 0 ? formatPrice(combined) : null;

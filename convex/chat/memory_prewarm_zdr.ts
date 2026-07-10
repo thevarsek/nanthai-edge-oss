@@ -1,5 +1,5 @@
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { hasGoogleIntegrations } from "../models/google_data_providers";
 import { deriveGoogleCapabilityFlags } from "../oauth/google_capabilities";
 import {
@@ -13,6 +13,8 @@ const GOOGLE_ZDR_OAUTH_PROVIDERS = [
   "gmail_manual",
 ] as const;
 
+type ZdrResolutionCtx = MutationCtx | QueryCtx;
+
 function explicitTurnIntegrationOverrides(
   enabledIntegrations: string[] | undefined,
   turnIntegrationOverrides: IntegrationOverrideEntry[] | undefined,
@@ -25,7 +27,7 @@ function explicitTurnIntegrationOverrides(
 }
 
 async function loadUserIntegrationDefaults(
-  ctx: MutationCtx,
+  ctx: ZdrResolutionCtx,
   userId: string,
 ): Promise<IntegrationOverrideEntry[] | undefined> {
   const prefs = await ctx.db
@@ -37,7 +39,7 @@ async function loadUserIntegrationDefaults(
 }
 
 async function loadConnectedIntegrationIds(
-  ctx: MutationCtx,
+  ctx: ZdrResolutionCtx,
   userId: string,
 ): Promise<string[]> {
   const connectionEntries = await Promise.all(
@@ -73,7 +75,7 @@ async function loadConnectedIntegrationIds(
 }
 
 async function loadPersonaIntegrationOverrides(
-  ctx: MutationCtx,
+  ctx: ZdrResolutionCtx,
   userId: string,
   personaId: Id<"personas">,
 ): Promise<IntegrationOverrideEntry[] | undefined> {
@@ -95,7 +97,7 @@ async function loadPersonaIntegrationOverrides(
 }
 
 export async function shouldRequireZdrForMemoryPrewarm(
-  ctx: MutationCtx,
+  ctx: ZdrResolutionCtx,
   args: {
     userId: string;
     chat: Pick<Doc<"chats">, "integrationOverrides">;

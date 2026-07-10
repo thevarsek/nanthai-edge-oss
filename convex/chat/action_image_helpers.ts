@@ -1,38 +1,29 @@
-import { Id } from "../_generated/dataModel";
+import {
+  persistGeneratedImagePayload,
+  type PersistedImageInfo,
+} from "./action_generated_image_storage";
+import type { AttachmentStorageContext } from "./action_attachment_hydration";
+
+export {
+  hydrateAttachmentsForRequest,
+  type MessageWithStoredAttachments,
+} from "./action_attachment_hydration";
+
+export {
+  generatedImageBase64FitsStorage,
+  generatedImageEncodedLengthFitsStorage,
+  generatedImagePayloadFitsStorage,
+  MAX_INLINE_IMAGE_BYTES,
+  persistGeneratedImagePayload,
+  type PersistedImageInfo,
+  type PersistedImagePayload,
+} from "./action_generated_image_storage";
 
 const MAX_STREAMING_CONTENT_CHARS = 300_000;
-const MAX_INLINE_IMAGE_BYTES = 20 * 1024 * 1024;
 const INLINE_DATA_IMAGE_REGEX =
   /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/gi;
 
-interface StoredAttachment {
-  type: string;
-  url?: string;
-  storageId?: Id<"_storage">;
-  name?: string;
-  mimeType?: string;
-  sizeBytes?: number;
-}
-
-export interface MessageWithStoredAttachments {
-  _id: Id<"messages">;
-  role: string;
-  content: string;
-  attachments?: StoredAttachment[];
-  [key: string]: unknown;
-}
-
-interface StorageContext {
-  storage: {
-    store: (blob: Blob) => Promise<Id<"_storage">>;
-    get: (storageId: Id<"_storage">) => Promise<Blob | null>;
-    getUrl: (storageId: Id<"_storage">) => Promise<string | null>;
-  };
-}
-
-interface HydrateAttachmentsForRequestOptions {
-  inlineStoredNonImageAttachments?: boolean;
-}
+type StorageContext = AttachmentStorageContext;
 
 function parseDataUrl(
   value: string,
@@ -145,53 +136,12 @@ function isLikelyBase64(value: string): boolean {
   return compact.length >= 64 && /^[A-Za-z0-9+/=]+$/.test(compact);
 }
 
-function decodeBase64ToBytes(base64: string): Uint8Array {
-  const normalized = base64.replace(/\s+/g, "");
-  const runtimeBuffer = (globalThis as {
-    Buffer?: { from: (value: string, encoding: string) => Uint8Array };
-  }).Buffer;
-  if (runtimeBuffer) {
-    return new Uint8Array(runtimeBuffer.from(normalized, "base64"));
-  }
-  const binary = atob(normalized);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function encodeBytesToBase64(bytes: Uint8Array): string {
-  const runtimeBuffer = (globalThis as {
-    Buffer?: {
-      from: (value: Uint8Array) => { toString: (encoding: string) => string };
-    };
-  }).Buffer;
-  if (runtimeBuffer) {
-    return runtimeBuffer.from(bytes).toString("base64");
-  }
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    const chunk = bytes.subarray(i, i + chunkSize);
-    binary += String.fromCharCode(...chunk);
-  }
-  return btoa(binary);
-}
-
 export async function persistGeneratedImageUrls(
   ctx: StorageContext,
   urls: string[],
 ): Promise<string[]> {
   const result = await persistGeneratedImageUrlsWithTracking(ctx, urls);
   return result.urls;
-}
-
-/** Metadata for a generated image that was stored in Convex storage. */
-export interface PersistedImageInfo {
-  storageId: Id<"_storage">;
-  mimeType: string;
-  sizeBytes: number;
 }
 
 /**
@@ -201,10 +151,11 @@ export interface PersistedImageInfo {
 export async function persistGeneratedImageUrlsWithTracking(
   ctx: StorageContext,
   urls: string[],
-): Promise<{ urls: string[]; stored: PersistedImageInfo[] }> {
-  if (urls.length === 0) return { urls: [], stored: [] };
+): Promise<{ urls: string[]; mimeTypes: string[]; stored: PersistedImageInfo[] }> {
+  if (urls.length === 0) return { urls: [], mimeTypes: [], stored: [] };
 
   const persisted: string[] = [];
+  const mimeTypes: string[] = [];
   const stored: PersistedImageInfo[] = [];
 
   for (const url of urls) {
@@ -213,6 +164,9 @@ export async function persistGeneratedImageUrlsWithTracking(
 
     if (/^https?:\/\//i.test(trimmed)) {
       persisted.push(trimmed);
+      mimeTypes.push(trimmed.toLowerCase().includes(".svg")
+        ? "image/svg+xml"
+        : "image/url");
       continue;
     }
 
@@ -227,86 +181,40 @@ export async function persistGeneratedImageUrlsWithTracking(
       isInlineBinaryPayload = true;
     } else if (!isLikelyBase64(trimmed)) {
       persisted.push(trimmed);
+      mimeTypes.push("image/url");
       continue;
     } else {
       isInlineBinaryPayload = true;
     }
 
     try {
-      const bytes = decodeBase64ToBytes(base64Payload);
-      if (bytes.length === 0) continue;
-      if (bytes.length > MAX_INLINE_IMAGE_BYTES) {
-        continue;
-      }
-      const inlineBytes = bytes.slice();
-      const blob = new Blob([inlineBytes], {
-        type: mimeType,
+      const image = await persistGeneratedImagePayload(ctx, {
+        base64: base64Payload,
+        mimeType,
       });
-      const storageId = await ctx.storage.store(blob);
-      const storageUrl = await ctx.storage.getUrl(storageId);
-      if (storageUrl) {
-        persisted.push(mimeType === "image/svg+xml" && parsedDataUrl ? trimmed : storageUrl);
-        stored.push({ storageId, mimeType, sizeBytes: inlineBytes.length });
+      if (image) {
+        persisted.push(image.url);
+        mimeTypes.push(image.stored.mimeType);
+        stored.push(image.stored);
       }
     } catch {
       if (!isInlineBinaryPayload) {
         persisted.push(trimmed);
+        mimeTypes.push("image/url");
       }
     }
   }
 
-  return { urls: Array.from(new Set(persisted)), stored };
-}
+  const deduplicatedUrls: string[] = [];
+  const deduplicatedMimeTypes: string[] = [];
+  const seen = new Set<string>();
+  for (let index = 0; index < persisted.length; index += 1) {
+    const url = persisted[index];
+    if (seen.has(url)) continue;
+    seen.add(url);
+    deduplicatedUrls.push(url);
+    deduplicatedMimeTypes.push(mimeTypes[index] ?? "image/url");
+  }
 
-export async function hydrateAttachmentsForRequest(
-  ctx: StorageContext,
-  messages: MessageWithStoredAttachments[],
-  options: HydrateAttachmentsForRequestOptions = {},
-): Promise<MessageWithStoredAttachments[]> {
-  const inlineStoredNonImageAttachments = options.inlineStoredNonImageAttachments !== false;
-  const hydrated = await Promise.all(
-    messages.map(async (message) => {
-      if (!message.attachments || message.attachments.length === 0) {
-        return message;
-      }
-
-      const attachments = await Promise.all(
-        message.attachments.map(async (attachment) => {
-          if (!attachment.storageId) {
-            return attachment;
-          }
-
-          if (attachment.type === "image") {
-            const imageUrl = await ctx.storage.getUrl(attachment.storageId);
-            if (!imageUrl) return attachment;
-            return { ...attachment, url: imageUrl };
-          }
-
-          if (!inlineStoredNonImageAttachments) {
-            return attachment;
-          }
-
-          try {
-            const stored = await ctx.storage.get(attachment.storageId);
-            if (!stored) {
-              return attachment;
-            }
-            const bytes = new Uint8Array(await stored.arrayBuffer());
-            const mimeType = attachment.mimeType ?? "application/octet-stream";
-            return {
-              ...attachment,
-              url: `data:${mimeType};base64,${encodeBytesToBase64(bytes)}`,
-              sizeBytes: attachment.sizeBytes ?? bytes.length,
-            };
-          } catch {
-            return attachment;
-          }
-        }),
-      );
-
-      return { ...message, attachments };
-    }),
-  );
-
-  return hydrated;
+  return { urls: deduplicatedUrls, mimeTypes: deduplicatedMimeTypes, stored };
 }

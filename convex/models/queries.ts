@@ -13,6 +13,7 @@ import {
   isExcludedOpenRouterProvider,
   isEligibleModel,
 } from "./model_filters";
+import { projectModelMediaContract } from "./media_capabilities";
 
 /**
  * Safety cap for unfiltered model catalog queries. The OpenRouter catalog
@@ -33,7 +34,9 @@ export const listModels = query({
           .withIndex("by_provider", (q) => q.eq("provider", args.provider!))
           .collect()
       : await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP);
-    return filterExcludedOpenRouterProviders(raw).filter(isEligibleModel);
+    return filterExcludedOpenRouterProviders(raw)
+      .map(projectModelMediaContract)
+      .filter(isEligibleModel);
   },
 });
 
@@ -46,7 +49,7 @@ export const getModel = query({
       .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
       .first();
     if (isExcludedOpenRouterProvider(model?.provider)) return null;
-    return model;
+    return model ? projectModelMediaContract(model) : null;
   },
 });
 
@@ -64,6 +67,7 @@ export const listModelSummaries = query({
       : await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP);
 
     return filterExcludedOpenRouterProviders(raw)
+      .map(projectModelMediaContract)
       .filter(isEligibleModel)
       .map((m) => ({
         _id: m._id,
@@ -123,19 +127,23 @@ export const listModelSummaries = query({
         // pricing. Undefined for image-only models unless populated via the
         // OpenRouter `/endpoints` pass below.
         pricePerImage: m.imageCapabilities?.pricePerImage,
+        pricePerMegapixel: m.imageCapabilities?.pricePerMegapixel,
         // Image SKU pricing from OpenRouter's /api/v1/models/{id}/endpoints.
         // These are the real per-image-token / per-image-output rates; the
         // listing endpoint reports $0 for image-only models.
-        imagePricing: m.imageCapabilities?.pricingSkus
+        imagePricing: m.mediaCapabilities.image && m.imageCapabilities
           ? {
-              perImageToken: m.imageCapabilities.pricingSkus.imageToken
+              perImageToken: m.imageCapabilities.pricingSkus?.imageToken
                 ? parseFloat(m.imageCapabilities.pricingSkus.imageToken)
                 : undefined,
-              perImageOutput: m.imageCapabilities.pricingSkus.imageOutput
+              perImageOutput: m.imageCapabilities.pricingSkus?.imageOutput
                 ? parseFloat(m.imageCapabilities.pricingSkus.imageOutput)
                 : undefined,
+              perImage: m.imageCapabilities.pricePerImage,
+              perMegapixel: m.imageCapabilities.pricePerMegapixel,
             }
           : undefined,
+        mediaCapabilities: m.mediaCapabilities,
         // Guidance data (optional)
         derivedGuidance: m.derivedGuidance
           ? {

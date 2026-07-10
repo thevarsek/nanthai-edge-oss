@@ -702,6 +702,7 @@ export interface GetChatCostSummaryArgs extends Record<string, unknown> {
 
 export interface CostBreakdown {
   responses: number;
+  advisors: number;
   memory: number;
   search: number;
   other: number;
@@ -747,7 +748,7 @@ export async function getChatCostSummaryHandler(
 
   let totalCost = 0;
   const messageCosts: Record<string, number> = {};
-  const breakdown = { responses: 0, memory: 0, search: 0, other: 0 };
+  const breakdown = { responses: 0, advisors: 0, memory: 0, search: 0, other: 0 };
 
   for (const r of records) {
     // When the user brings their own API key (BYOK), OpenRouter's `cost`
@@ -768,6 +769,8 @@ export async function getChatCostSummaryHandler(
       const mid = r.messageId as string;
       messageCosts[mid] = (messageCosts[mid] ?? 0) + cost;
       breakdown.responses += cost;
+    } else if (src === "advisor") {
+      breakdown.advisors += cost;
     } else if (MEMORY_SOURCES.has(src)) {
       breakdown.memory += cost;
     } else if (SEARCH_SOURCES.has(src)) {

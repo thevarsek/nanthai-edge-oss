@@ -38,6 +38,11 @@ test("buildCopiedMessageInsert preserves participant and reasoning metadata", ()
       totalTokens: 22,
     },
     imageUrls: ["https://example.com/image.png"],
+    retryContract: {
+      participants: [{ modelId: "openai/gpt-image-2" }],
+      searchMode: "none",
+      imageConfig: { count: 2, quality: "high" },
+    },
     attachments: [
       {
         type: "image",
@@ -60,6 +65,11 @@ test("buildCopiedMessageInsert preserves participant and reasoning metadata", ()
   assert.equal(copied.isMultiModelResponse, true);
   assert.equal(copied.status, "completed");
   assert.deepEqual(copied.parentMessageIds, ["parent_new"]);
+  assert.deepEqual(copied.imageUrls, ["https://example.com/image.png"]);
+  assert.deepEqual(copied.retryContract?.imageConfig, {
+    count: 2,
+    quality: "high",
+  });
 });
 
 test("deriveCopiedChatMetadata respects preferred leaf and latest preview", () => {

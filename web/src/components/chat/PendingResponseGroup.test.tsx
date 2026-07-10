@@ -79,4 +79,20 @@ describe("PendingResponseGroup", () => {
     expect(screen.getAllByText("Reviewer")).toHaveLength(2);
     expect(screen.queryByTestId("provider-logo")).not.toBeInTheDocument();
   });
+
+  it("shows image cards only for image participants in a mixed pending group", () => {
+    render(
+      <PendingResponseGroup
+        participants={[
+          { modelId: "openai/gpt-image-2" },
+          { modelId: "anthropic/claude-sonnet-4" },
+        ]}
+        imageGenerationModelIds={new Set(["openai/gpt-image-2"])}
+      />,
+    );
+
+    const placeholder = screen.getByRole("status", { name: "Generating image..." });
+    expect(placeholder.firstElementChild).toHaveClass("aspect-square");
+    expect(screen.getByText("...")).toBeInTheDocument();
+  });
 });

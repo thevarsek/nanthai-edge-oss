@@ -5,13 +5,14 @@
 
 import { useState, useMemo, useCallback } from "react";
 import type { Id } from "@convex/_generated/dataModel";
+import { displayMessageContent } from "@/lib/persistedGenerationError";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 /** A single highlighted match inside a message. */
 export interface SearchMatch {
   messageId: Id<"messages">;
-  /** Character offset within message.content where the match starts. */
+  /** Character offset within the projected display content where the match starts. */
   startOffset: number;
   /** Global index across all matches (0-based). */
   globalIndex: number;
@@ -47,6 +48,7 @@ interface MessageLike {
   _id: Id<"messages">;
   content: string;
   role: string;
+  status?: string;
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
@@ -68,7 +70,11 @@ export function useChatSearch(messages: MessageLike[]): ChatSearchState & ChatSe
     for (const msg of messages) {
       // Search both user and assistant content
       if (msg.role !== "user" && msg.role !== "assistant") continue;
-      const haystack = msg.content.toLowerCase();
+      const haystack = displayMessageContent({
+        role: msg.role,
+        status: msg.status ?? "completed",
+        content: msg.content,
+      }).toLowerCase();
       let pos = 0;
       while (pos < haystack.length) {
         const found = haystack.indexOf(needle, pos);

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { retryMessageHandler } from "../chat/mutations_retry_handler";
+import type { Id } from "../_generated/dataModel";
 
 function buildRetryCtx(options: {
   isPro?: boolean;
@@ -132,6 +133,44 @@ test("retryMessageHandler falls back from malformed stored contracts and skips m
   assert.equal(generation.args.expandMultiModelGroups, false);
   assert.equal(generation.args.webSearchEnabled, false);
   assert.equal(state.scheduled.some((entry) => "queryText" in entry.args), false);
+});
+
+test("retryMessageHandler rejects mixed output modalities before cancelling the original", async () => {
+  const state = buildRetryCtx({
+    assistant: {
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-5.2" }],
+        searchMode: "none",
+      },
+    },
+    cachedModels: {
+      "openai/gpt-5.2": {
+        modelId: "openai/gpt-5.2",
+        architecture: { modality: "text+image->text" },
+      },
+      "openai/gpt-image-2": {
+        modelId: "openai/gpt-image-2",
+        supportsImages: true,
+        architecture: { modality: "text+image->image" },
+        imageCapabilities: { isAvailable: true },
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => retryMessageHandler(state.ctx, {
+      messageId: "assistant_1" as Id<"messages">,
+      participants: [
+        { modelId: "openai/gpt-5.2" },
+        { modelId: "openai/gpt-image-2" },
+      ],
+    }),
+    /cannot be mixed in the same group/,
+  );
+
+  assert.equal(state.patches.some((entry) => entry.id === "assistant_1"), false);
+  assert.equal(state.inserts.length, 0);
+  assert.equal(state.scheduled.length, 0);
 });
 
 test("retryMessageHandler enforces Google Workspace compatible models on explicit stored-contract retries", async () => {

@@ -4,6 +4,7 @@ import test from "node:test";
 import type { Id } from "../_generated/dataModel";
 import { buildRequestMessages } from "../chat/helpers";
 import type { ContextMessage } from "../chat/helpers_types";
+import { buildImageGenerationRequest } from "../chat/image_generation_request";
 import type { ContentPart, OpenRouterMessage } from "../lib/openrouter";
 
 function messageParts(message: OpenRouterMessage): ContentPart[] {
@@ -126,4 +127,118 @@ test("ideascape explicit parents keep selected non-immediate assistant images in
     .map((part) => part.text ?? "")
     .join("\n");
   assert.equal(allText.includes("Unrelated output"), false);
+});
+
+test("ideascape merges retain nearest images from same-model selected branches", () => {
+  const chatId = "chat_same_model_merge" as unknown as Id<"chats">;
+  const messages: ContextMessage[] = [
+    {
+      _id: "root" as unknown as Id<"messages">,
+      chatId,
+      role: "user",
+      content: "Create concepts",
+      parentMessageIds: [],
+      status: "completed",
+      createdAt: 1,
+    },
+    {
+      _id: "image_a" as unknown as Id<"messages">,
+      chatId,
+      role: "assistant",
+      content: "",
+      modelId: "openai/gpt-image-2",
+      parentMessageIds: ["root" as unknown as Id<"messages">],
+      status: "completed",
+      imageUrls: ["https://example.com/a.png"],
+      createdAt: 2,
+    },
+    {
+      _id: "user_a" as unknown as Id<"messages">,
+      chatId,
+      role: "user",
+      content: "Explain A",
+      parentMessageIds: ["image_a" as unknown as Id<"messages">],
+      status: "completed",
+      createdAt: 3,
+    },
+    {
+      _id: "text_a" as unknown as Id<"messages">,
+      chatId,
+      role: "assistant",
+      content: "Branch A notes",
+      modelId: "openai/gpt-5",
+      parentMessageIds: ["user_a" as unknown as Id<"messages">],
+      status: "completed",
+      createdAt: 4,
+    },
+    {
+      _id: "image_b" as unknown as Id<"messages">,
+      chatId,
+      role: "assistant",
+      content: "",
+      modelId: "openai/gpt-image-2",
+      parentMessageIds: ["root" as unknown as Id<"messages">],
+      status: "completed",
+      imageUrls: ["https://example.com/b.png"],
+      createdAt: 5,
+    },
+    {
+      _id: "user_b" as unknown as Id<"messages">,
+      chatId,
+      role: "user",
+      content: "Explain B",
+      parentMessageIds: ["image_b" as unknown as Id<"messages">],
+      status: "completed",
+      createdAt: 6,
+    },
+    {
+      _id: "text_b" as unknown as Id<"messages">,
+      chatId,
+      role: "assistant",
+      content: "Branch B notes",
+      modelId: "openai/gpt-5",
+      parentMessageIds: ["user_b" as unknown as Id<"messages">],
+      status: "completed",
+      createdAt: 7,
+    },
+    {
+      _id: "merge_user" as unknown as Id<"messages">,
+      chatId,
+      role: "user",
+      content: "Blend the selected concepts",
+      parentMessageIds: [
+        "text_a" as unknown as Id<"messages">,
+        "text_b" as unknown as Id<"messages">,
+      ],
+      status: "completed",
+      createdAt: 8,
+    },
+    {
+      _id: "merge_pending" as unknown as Id<"messages">,
+      chatId,
+      role: "assistant",
+      content: "",
+      modelId: "openai/gpt-image-2",
+      parentMessageIds: ["merge_user" as unknown as Id<"messages">],
+      status: "pending",
+      createdAt: 9,
+    },
+  ];
+
+  const requestMessages = buildRequestMessages({
+    messages,
+    excludeMessageId: "merge_pending" as unknown as Id<"messages">,
+    expandMultiModelGroups: false,
+  });
+  const request = buildImageGenerationRequest({
+    model: "openai/gpt-image-2",
+    prompt: "Blend the selected concepts",
+    messages: requestMessages,
+    maxInputReferences: 2,
+  });
+
+  assert.deepEqual(request.inputReferences, [
+    { type: "image_url", image_url: { url: "https://example.com/a.png" } },
+    { type: "image_url", image_url: { url: "https://example.com/b.png" } },
+  ]);
 });

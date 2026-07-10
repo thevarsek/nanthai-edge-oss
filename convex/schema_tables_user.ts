@@ -109,6 +109,13 @@ export const userSchemaTables = {
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),
     showAdvancedStats: v.optional(v.boolean()), // M23: per-message cost display
+    defaultImageCount: v.optional(v.number()),
+    defaultImageAspectRatio: v.optional(v.string()),
+    defaultImageResolution: v.optional(v.string()),
+    defaultImageQuality: v.optional(v.string()),
+    defaultImageBackground: v.optional(v.string()),
+    defaultImageOutputFormat: v.optional(v.string()),
+    defaultImageOutputCompression: v.optional(v.number()),
     defaultVideoAspectRatio: v.optional(v.string()), // "16:9" | "9:16" | "1:1"
     defaultVideoDuration: v.optional(v.number()),     // seconds
     defaultVideoResolution: v.optional(v.string()),   // "480p" | "720p" | "1080p" | "4K"

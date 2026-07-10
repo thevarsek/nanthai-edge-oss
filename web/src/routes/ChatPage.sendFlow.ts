@@ -3,6 +3,7 @@ import type { Participant, SendMessageArgs } from "@/hooks/useChat";
 import type { SharedPreferences } from "@/lib/chatRequestResolution";
 import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } from "@/lib/analytics";
 import { captureSendFeatureUsage } from "@/lib/featureAnalytics";
+import type { AdvisorSelection } from "@/advisors/types";
 
 export type ChatVideoRole = "first_frame" | "last_frame" | "reference";
 
@@ -51,6 +52,8 @@ export interface ChatSendOrchestrationState {
   isResearchPaper: boolean;
   isVideoMode: boolean;
   prefs: SharedPreferences | undefined;
+  advisorSelections?: AdvisorSelection[];
+  advisorBrief?: string;
 }
 
 export interface ChatSendOrchestrationDeps {
@@ -162,6 +165,8 @@ export function buildSendMessageArgs(args: {
   convexComplexity?: number;
   isVideoMode: boolean;
   prefs: SharedPreferences | undefined;
+  advisorSelections?: AdvisorSelection[];
+  advisorBrief?: string;
 }): SendMessageArgs {
   return {
     chatId: args.chatId,
@@ -178,6 +183,8 @@ export function buildSendMessageArgs(args: {
     ...(args.convexSearchMode ? { searchMode: args.convexSearchMode } : {}),
     ...(args.convexComplexity ? { complexity: args.convexComplexity } : {}),
     ...(args.isVideoMode ? { videoConfig: buildVideoConfig(true, args.prefs) } : {}),
+    ...(args.advisorSelections !== undefined ? { advisorSelections: args.advisorSelections } : {}),
+    ...(args.advisorBrief ? { advisorBrief: args.advisorBrief } : {}),
   };
 }
 
@@ -206,6 +213,8 @@ export function buildResearchPaperArgs(args: {
   attachments: ChatAttachment[];
   recordedAudio?: RecordedAudioPayload;
   enabledIntegrations: ReadonlySet<string>;
+  advisorSelections?: AdvisorSelection[];
+  advisorBrief?: string;
 }) {
   return {
     chatId: args.chatId,
@@ -217,6 +226,8 @@ export function buildResearchPaperArgs(args: {
     ...(args.enabledIntegrations.size > 0
       ? { enabledIntegrations: Array.from(args.enabledIntegrations) }
       : {}),
+    ...(args.advisorSelections !== undefined ? { advisorSelections: args.advisorSelections } : {}),
+    ...(args.advisorBrief ? { advisorBrief: args.advisorBrief } : {}),
     analytics: createAnalyticsClientMetadata("message_send_attempted", window.location.pathname),
   };
 }
@@ -229,6 +240,7 @@ function researchPaperAnalyticsProperties(args: {
   recordedAudio?: RecordedAudioPayload;
   complexity: number;
   enabledIntegrations: ReadonlySet<string>;
+  advisorSelections?: AdvisorSelection[];
   analytics: ReturnType<typeof createAnalyticsClientMetadata>;
 }) {
   const hasAudioAttachment = args.attachments.some(attachmentIsAudio);
@@ -251,6 +263,8 @@ function researchPaperAnalyticsProperties(args: {
     skill_override_count: 0,
     integration_override_count: 0,
     subagents_enabled: false,
+    advisor_count: args.advisorSelections?.length ?? 0,
+    advisor_web_search_count: args.advisorSelections?.filter((advisor) => advisor.allowWebSearch).length ?? 0,
     has_video_config: false,
     client_event_id: args.analytics.clientEventId,
   };
@@ -289,6 +303,8 @@ async function startResearchPaperWithAnalytics(args: {
   attachments: ChatAttachment[];
   recordedAudio?: RecordedAudioPayload;
   enabledIntegrations: ReadonlySet<string>;
+  advisorSelections?: AdvisorSelection[];
+  advisorBrief?: string;
   deps: ChatSendOrchestrationDeps;
 }) {
   const mutationArgs = buildResearchPaperArgs(args);
@@ -533,6 +549,8 @@ export async function executeChatSend(
       complexity: state.convexComplexity ?? 1,
       attachments: mergedAttachments,
       enabledIntegrations: state.enabledIntegrations,
+      advisorSelections: state.advisorSelections,
+      advisorBrief: state.advisorBrief,
       deps,
     });
   } else {
@@ -549,6 +567,8 @@ export async function executeChatSend(
       convexComplexity: state.convexComplexity,
       isVideoMode: state.isVideoMode,
       prefs: state.prefs,
+      advisorSelections: state.advisorSelections,
+      advisorBrief: state.advisorBrief,
     }));
   }
 
@@ -636,6 +656,8 @@ export async function executeRecordedAudioSend(
       attachments: mergedAttachments,
       recordedAudio,
       enabledIntegrations: state.enabledIntegrations,
+      advisorSelections: state.advisorSelections,
+      advisorBrief: state.advisorBrief,
       deps,
     });
   } else {
@@ -653,6 +675,8 @@ export async function executeRecordedAudioSend(
       convexComplexity: state.convexComplexity,
       isVideoMode: state.isVideoMode,
       prefs: state.prefs,
+      advisorSelections: state.advisorSelections,
+      advisorBrief: state.advisorBrief,
     }));
   }
 

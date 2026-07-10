@@ -47,6 +47,7 @@ test("runGenerationParticipantHandler resumes from continuation state and finali
   const mutationCalls: Array<Record<string, unknown>> = [];
   let claimCount = 0;
   let jobQueryCount = 0;
+  let messageQueryCount = 0;
   const continuationState = {
     group: {
       chatId: "chat_1",
@@ -105,7 +106,12 @@ test("runGenerationParticipantHandler resumes from continuation state and finali
         };
       }
       if ("userId" in args) return "sk-test";
-      if ("messageId" in args) return { _id: "msg_assistant_resume", status: "completed" };
+      if ("messageId" in args) {
+        messageQueryCount += 1;
+        return messageQueryCount === 1
+          ? null
+          : { _id: "msg_assistant_resume", status: "completed" };
+      }
       return null;
     },
     scheduler: {

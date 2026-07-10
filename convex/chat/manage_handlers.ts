@@ -4,6 +4,8 @@ import { internal } from "../_generated/api";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import { safeDeleteAudioBlob } from "./manage_delete_helpers";
+import { copyAdvisorData } from "../advisors/copy";
+import { deleteAdvisorDataForMessage } from "../advisors/deletion";
 import {
   copyChatParticipants,
   copyMessagesWithIdMap,
@@ -16,6 +18,10 @@ import {
   deriveCopiedChatMetadata,
   resolveSwitchedBranchLeaf,
 } from "./manage_helpers";
+import {
+  copyGeneratedMediaForMessages,
+  deleteGeneratedMediaForMessage,
+} from "./manage_generated_media_helpers";
 
 export interface UpdateChatArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
@@ -446,6 +452,8 @@ export async function deleteMessageHandler(
     await ctx.db.delete(file._id);
   }
 
+  await deleteGeneratedMediaForMessage(ctx, args.messageId);
+
   // Clean up generated charts
   const generatedCharts = await ctx.db
     .query("generatedCharts")
@@ -488,6 +496,7 @@ export async function deleteMessageHandler(
     await ctx.db.delete(job._id);
   }
 
+  await deleteAdvisorDataForMessage(ctx, message);
   await ctx.db.delete(args.messageId);
 }
 
@@ -532,9 +541,16 @@ export async function forkChatHandler(
     forkMessages,
     newChatId,
   );
+  await copyGeneratedMediaForMessages(ctx, args.chatId, newChatId, idMap);
 
   await copyChatParticipants(ctx, args.chatId, newChatId);
   await copyNodePositions(ctx, args.chatId, newChatId, userId, idMap);
+  await copyAdvisorData(ctx, {
+    sourceChatId: args.chatId,
+    targetChatId: newChatId,
+    userId,
+    messageIdMap: idMap,
+  });
 
   const forkLeafId = idMap.get(args.atMessageId as string) as
     | Id<"messages">
@@ -595,9 +611,16 @@ export async function duplicateChatHandler(
     messages,
     newChatId,
   );
+  await copyGeneratedMediaForMessages(ctx, args.chatId, newChatId, idMap);
 
   await copyChatParticipants(ctx, args.chatId, newChatId);
   await copyNodePositions(ctx, args.chatId, newChatId, userId, idMap);
+  await copyAdvisorData(ctx, {
+    sourceChatId: args.chatId,
+    targetChatId: newChatId,
+    userId,
+    messageIdMap: idMap,
+  });
 
   const mappedLeafId = chat.activeBranchLeafId
     ? (idMap.get(chat.activeBranchLeafId as string) as

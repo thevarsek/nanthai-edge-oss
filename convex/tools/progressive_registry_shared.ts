@@ -380,7 +380,7 @@ export async function retrySameRoundProgressiveToolCalls(
   }
 }
 
-function isSkillToolProfileId(value: string): value is SkillToolProfileId {
+export function isSkillToolProfileId(value: string): value is SkillToolProfileId {
   return [
     "docs",
     "analytics",

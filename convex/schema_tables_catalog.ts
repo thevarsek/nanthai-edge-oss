@@ -1,5 +1,6 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
+import { cachedModelsTable } from "./schema_table_cached_models";
 import {
   memoryRetrievalMode,
   memoryScopeType,
@@ -11,7 +12,7 @@ import {
   skillRuntimeMode,
   skillScope,
   skillStatus,
-  skillToolProfile,
+  storedSkillToolProfile,
   skillVisibility,
   skillOverrideEntry,
   integrationOverrideEntry,
@@ -162,185 +163,7 @@ export const catalogSchemaTables = {
     updatedAt: v.number(),
   }).index("by_message", ["messageId"]),
 
-  cachedModels: defineTable({
-    modelId: v.string(),
-    name: v.string(),
-    description: v.optional(v.string()),
-    provider: v.optional(v.string()),
-    contextLength: v.optional(v.number()),
-    maxCompletionTokens: v.optional(v.number()),
-    inputPricePer1M: v.optional(v.number()),
-    outputPricePer1M: v.optional(v.number()),
-    supportsImages: v.optional(v.boolean()),
-    supportsTools: v.optional(v.boolean()),
-    supportedParameters: v.optional(v.array(v.string())),
-    architecture: v.optional(
-      v.object({
-        tokenizer: v.optional(v.string()),
-        instructType: v.optional(v.string()),
-        modality: v.optional(v.string()),
-      }),
-    ),
-    canonicalSlug: v.optional(v.string()),
-    // M29 — Video generation
-    supportsVideo: v.optional(v.boolean()),
-    videoCapabilities: v.optional(v.object({
-      supportedResolutions: v.array(v.string()),
-      supportedAspectRatios: v.array(v.string()),
-      supportedDurations: v.array(v.number()),
-      supportedFrameImages: v.array(v.string()),
-      supportedSizes: v.array(v.string()),
-      generateAudio: v.boolean(),
-      seed: v.boolean(),
-      pricingSkus: v.optional(v.object({
-        videoTokens: v.optional(v.string()),
-        videoTokensWithoutAudio: v.optional(v.string()),
-        perVideoSecond: v.optional(v.string()),
-        perVideoSecond1080p: v.optional(v.string()),
-      })),
-      // Full raw pricing_skus map from /api/v1/videos/models, preserved
-      // verbatim. OpenRouter ships heterogeneous SKU keys across providers
-      // (e.g. `duration_seconds_with_audio_4k`, `text_to_video_duration_seconds_1080p`,
-      // `duration_seconds_720p`) that the narrow `pricingSkus` object above
-      // cannot represent. Clients that want resolution/audio-aware pricing
-      // read this map directly; the narrow object remains for back-compat.
-      pricingSkusMap: v.optional(v.record(v.string(), v.string())),
-      allowedPassthroughParameters: v.optional(v.array(v.string())),
-      syncedAt: v.number(),
-    })),
-    // Image generation — marker + pricing hint for models whose output
-    // modality includes `image`. Presence of this object is also used by
-    // `pruneStaleModels` to skip rows managed by `image_sync.ts` (image-only
-    // models like FLUX/Sourceful/Seedream are not in the general
-    // /api/v1/models endpoint). Multimodal image models (Gemini, GPT-5 Image)
-    // are owned by main sync; they get their `pricePerImage` patched here but
-    // are NOT skipped by prune because they also appear in /api/v1/models.
-    imageCapabilities: v.optional(v.object({
-      // Per-image cost from OpenRouter `pricing.image` (dollars, not per 1M).
-      // Only present for a subset of providers; image-only models typically
-      // charge via completion `image_tokens` instead.
-      pricePerImage: v.optional(v.number()),
-      // Per-SKU image pricing from /api/v1/models/{id}/endpoints (the main
-      // /api/v1/models listing reports $0 for all image models — real pricing
-      // is only exposed on the per-model endpoints route). Strings because
-      // OpenRouter returns fractional dollar amounts as JSON strings.
-      //   `imageToken`  — $/image-completion-token (what usage.image_tokens counts)
-      //   `imageOutput` — $/image output unit (same value as imageToken for
-      //                   image-only models; differs for multimodal image models
-      //                   where it represents the per-image billing hint).
-      pricingSkus: v.optional(v.object({
-        imageToken: v.optional(v.string()),
-        imageOutput: v.optional(v.string()),
-      })),
-      // True if this row was created by image_sync (i.e. not in the general
-      // /api/v1/models endpoint). Used by pruneStaleModels to skip.
-      managedByImageSync: v.boolean(),
-      syncedAt: v.number(),
-    })),
-    // ZDR (Zero Data Retention) — true if model has a ZDR endpoint on OpenRouter
-    hasZdrEndpoint: v.optional(v.boolean()),
-    lastSyncedAt: v.number(),
-
-    // ── Model Guidance: Artificial Analysis benchmarks ──────────────
-    benchmarkLlm: v.optional(
-      v.object({
-        source: v.literal("artificial_analysis"),
-        externalId: v.string(),
-        slug: v.string(),
-        creatorSlug: v.optional(v.string()),
-        creatorName: v.optional(v.string()),
-        intelligenceIndex: v.optional(v.number()),
-        codingIndex: v.optional(v.number()),
-        mathIndex: v.optional(v.number()),
-        agenticIndex: v.optional(v.number()),
-        speedTokensPerSecond: v.optional(v.number()),
-        timeToFirstTokenSeconds: v.optional(v.number()),
-        aaInputPricePer1M: v.optional(v.number()),
-        aaOutputPricePer1M: v.optional(v.number()),
-        aaBlendedPricePer1M: v.optional(v.number()),
-        syncedAt: v.number(),
-      }),
-    ),
-
-    // ── Model Guidance: Artificial Analysis text-to-image benchmarks ─
-    benchmarkMedia: v.optional(
-      v.object({
-        textToImage: v.optional(
-          v.object({
-            source: v.literal("artificial_analysis"),
-            externalId: v.string(),
-            slug: v.string(),
-            elo: v.optional(v.number()),
-            rank: v.optional(v.number()),
-            releaseDate: v.optional(v.string()),
-            syncedAt: v.number(),
-          }),
-        ),
-      }),
-    ),
-
-    // ── Model Guidance: OpenRouter category result sets (trend hints) ─
-    openRouterUseCases: v.optional(
-      v.array(
-        v.object({
-          category: v.string(),
-          returnedRank: v.number(),
-          syncedAt: v.number(),
-        }),
-      ),
-    ),
-
-    // ── Model Guidance: match metadata ──────────────────────────────
-    guidanceMatch: v.optional(
-      v.object({
-        source: v.literal("artificial_analysis"),
-        strategy: v.union(
-          v.literal("manual"),
-          v.literal("exact_slug"),
-          v.literal("canonical_slug_minus_date"),
-          v.literal("display_name_exact"),
-          v.literal("family_plus_variant_resolution"),
-          v.literal("canonical_family"),
-          // Legacy values (kept for backward compat with existing data)
-          v.literal("normalized_name"),
-        ),
-        confidence: v.number(),
-      }),
-    ),
-
-    // ── Model Guidance: derived scores, ranks, and labels ────────────
-    derivedGuidance: v.optional(
-      v.object({
-        labels: v.array(v.string()),
-        primaryLabel: v.optional(v.string()),
-        supportedIntents: v.array(v.string()),
-        scores: v.object({
-          recommended: v.optional(v.number()),
-          coding: v.optional(v.number()),
-          research: v.optional(v.number()),
-          fast: v.optional(v.number()),
-          value: v.optional(v.number()),
-          image: v.optional(v.number()),
-        }),
-        // Per-category rank (1-based, competition ranking: 1,1,3,4,…)
-        ranks: v.optional(
-          v.object({
-            recommended: v.optional(v.number()),
-            coding: v.optional(v.number()),
-            research: v.optional(v.number()),
-            fast: v.optional(v.number()),
-            value: v.optional(v.number()),
-            image: v.optional(v.number()),
-          }),
-        ),
-        // Total number of scored models (denominator for "#3 of 168")
-        totalRanked: v.optional(v.number()),
-        lastDerivedAt: v.number(),
-      }),
-    ),
-  })
-    .index("by_modelId", ["modelId"])
-    .index("by_provider", ["provider"]),
+  cachedModels: cachedModelsTable,
 
   usageRecords: defineTable({
     userId: v.string(),
@@ -393,7 +216,7 @@ export const catalogSchemaTables = {
     status: skillStatus,
     runtimeMode: skillRuntimeMode,
     requiredToolIds: v.array(v.string()),
-    requiredToolProfiles: v.optional(v.array(skillToolProfile)),
+    requiredToolProfiles: v.optional(v.array(storedSkillToolProfile)),
     requiredIntegrationIds: v.array(v.string()),
     requiredCapabilities: v.optional(v.array(v.string())),
     unsupportedCapabilityCodes: v.array(v.string()),

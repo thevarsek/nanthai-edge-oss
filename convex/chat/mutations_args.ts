@@ -13,7 +13,13 @@ import {
   terminalErrorCode,
 } from "../schema_validators";
 import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
-import { analyticsSourceValidator, participantConfigValidator, videoConfigValidator } from "./actions_args";
+import { advisorSelection } from "../advisors/validators";
+import {
+  analyticsSourceValidator,
+  imageConfigValidator,
+  participantConfigValidator,
+  videoConfigValidator,
+} from "./actions_args";
 
 export const attachmentValidator = v.object({
   type: v.string(),
@@ -85,6 +91,8 @@ export const sendMessageArgs = {
   // M30 — Turn-level skill & integration overrides (slash chips)
   turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+  advisorSelections: v.optional(v.array(advisorSelection)),
+  advisorBrief: v.optional(v.string()),
   analytics: v.optional(analyticsClientMetadataValidator),
 } satisfies PropertyValidators;
 
@@ -176,6 +184,12 @@ export const finalizeGenerationArgs = {
   ),
   reasoning: v.optional(v.string()),
   imageUrls: v.optional(v.array(v.string())),
+  imageMimeTypes: v.optional(v.array(v.string())),
+  imageGenerationResult: v.optional(v.object({
+    requestedCount: v.number(),
+    generatedCount: v.number(),
+    failedCount: v.number(),
+  })),
   videoUrls: v.optional(v.array(v.string())),
   userId: v.string(),
   // M10 — Tool execution metadata
@@ -295,6 +309,7 @@ export const saveGenerationContinuationArgs = {
       searchSessionId: v.optional(v.id("searchSessions")),
       subagentBatchId: v.optional(v.id("subagentBatches")),
       drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
+      imageConfig: v.optional(imageConfigValidator),
       // Pre-resolved overrides preserved across continuations (M30 skill tri-state + preflight consolidation)
       chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),
       chatIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),

@@ -26,6 +26,7 @@ import {
   RetryConfig,
 } from "./openrouter_types";
 import { DeepPartial, mergeTestDeps } from "./test_deps";
+import { assertChatCompletionsRequest } from "./openrouter_modality";
 
 const defaultOpenRouterNonStreamingDeps = {
   fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
@@ -74,6 +75,7 @@ export async function callOpenRouterNonStreaming(
   retryConfig: RetryConfig = {},
   deps: OpenRouterNonStreamingDeps = defaultOpenRouterNonStreamingDeps,
 ): Promise<NonStreamResult> {
+  assertChatCompletionsRequest(params);
   const { fallbackModel, retryOnUnsupportedParam = true } = retryConfig;
 
   let currentParams = { ...params };

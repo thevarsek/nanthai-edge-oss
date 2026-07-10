@@ -3,6 +3,7 @@
 // Extracted to avoid duplication — both pickers import from here.
 
 import type { ModelSummary } from "./ModelPickerHelpers";
+import { resolveImagePrice } from "./ModelPickerHelpers.utils";
 
 // ─── Sort keys (matches iOS ModelPickerSortKey — 9 keys) ─────────────────────
 
@@ -60,12 +61,33 @@ export function matchesFilter(m: ModelSummary, f: CapFilter): boolean {
 }
 
 export function modelSupportsVisionInput(m: ModelSummary): boolean {
+  if ((m.mediaCapabilities?.image?.maxInputReferences ?? 0) > 0) {
+    return true;
+  }
   if (m.supportsVideo) {
     return (m.supportedFrameImages?.length ?? 0) > 0;
   }
   const modality = m.architecture?.modality ?? "";
   const inputSide = modality.split("->")[0] ?? "";
   return inputSide.includes("image");
+}
+
+export function modelHasImageOutput(m: ModelSummary): boolean {
+  const outputSide = (m.architecture?.modality ?? "").split("->")[1] ?? "";
+  return m.supportsImages === true || outputSide.includes("image");
+}
+
+export function modelIsZdrEligible(m: ModelSummary): boolean {
+  return m.hasZdrEndpoint === true && !modelHasImageOutput(m);
+}
+
+/** Models safe for text-only ancillary work such as titles and memory extraction. */
+export function modelHasTextOnlyOutput(m: ModelSummary): boolean {
+  const outputSide = (m.architecture?.modality ?? "").split("->")[1] ?? "";
+  return !modelHasImageOutput(m) &&
+    m.supportsVideo !== true &&
+    !outputSide.includes("video") &&
+    !outputSide.includes("audio");
 }
 
 export function modelProviderIdentifiers(modelId: string, provider?: string | null): Set<string> {
@@ -98,8 +120,6 @@ export function sortMetric(m: ModelSummary, key: SortKey): number | null {
   }
 }
 
-const IMAGE_TOKENS_PER_MEGAPIXEL = 4096;
-
 function priceSortMetric(m: ModelSummary): number | null {
   if (m.isFree ?? m.modelId.endsWith(":free")) return 0;
   if (m.supportsVideo && m.videoPricing) {
@@ -116,9 +136,9 @@ function priceSortMetric(m: ModelSummary): number | null {
       return m.videoPricing.perVideoTokenNoAudio * 1_000_000;
     }
   }
-  const imageTokenPrice = m.imagePricing?.perImageOutput ?? m.imagePricing?.perImageToken;
-  if (m.supportsImages && imageTokenPrice != null && imageTokenPrice > 0) {
-    return imageTokenPrice * IMAGE_TOKENS_PER_MEGAPIXEL;
+  const imagePrice = resolveImagePrice(m.imagePricing);
+  if (m.supportsImages && imagePrice) {
+    return imagePrice.amount;
   }
   return (m.inputPricePer1M ?? 0) + (m.outputPricePer1M ?? 0) || null;
 }

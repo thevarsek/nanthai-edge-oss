@@ -9,6 +9,7 @@ import type {
   ParticipantConfig,
   VideoConfig,
 } from "./actions_run_generation_types";
+import type { ImageGenerationConfig } from "../preferences/image_defaults";
 
 export const GENERATION_CONTINUATION_LEASE_MS = 12 * 60 * 1000;
 
@@ -40,6 +41,7 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   resumeExpected?: boolean;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
+  imageConfig?: ImageGenerationConfig;
   // Pre-resolved overrides from coordinator (eliminates duplicate queries)
   chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
@@ -68,6 +70,7 @@ export interface GenerationContinuationGroupSnapshot {
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
+  imageConfig?: ImageGenerationConfig;
   // Pre-resolved overrides preserved across continuations
   chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;

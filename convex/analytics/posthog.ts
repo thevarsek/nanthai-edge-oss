@@ -25,6 +25,11 @@ export type BackendAnalyticsEvent =
   | "assistant_response_failed"
   | "message_continued"
   | "video_generation_requested"
+  | "advisor_consultation_started"
+  | "advisor_consultation_completed"
+  | "advisor_consultation_failed"
+  | "advisor_kept_for_chat"
+  | "advisor_removed_from_chat"
   | "backend_ai_operation_started"
   | "backend_ai_operation_completed"
   | "backend_ai_operation_failed";
@@ -143,7 +148,7 @@ function aiGenerationEventProperties(
     "$ai_total_cost_usd": numberProperty(properties, "cost_usd"),
     "$ai_latency": secondsProperty(properties, "duration_ms"),
     "$ai_time_to_first_token": secondsProperty(properties, "ttft_ms"),
-    "$ai_stream": true,
+    "$ai_stream": booleanProperty(properties, "stream") ?? true,
     "$ai_is_error": event === "assistant_response_failed",
     "$ai_error": event === "assistant_response_failed"
       ? stringProperty(properties, "failure_category")
@@ -156,6 +161,26 @@ function aiGenerationEventProperties(
     job_id: stringProperty(properties, "job_id"),
     openrouter_generation_id: stringProperty(properties, "openrouter_generation_id"),
     source: stringProperty(properties, "source"),
+    origin_source: stringProperty(properties, "origin_source"),
+    modality: stringProperty(properties, "modality"),
+    endpoint: stringProperty(properties, "endpoint"),
+    requested_image_count: numberProperty(properties, "requested_image_count"),
+    image_count: numberProperty(properties, "image_count"),
+    image_failed_count: numberProperty(properties, "image_failed_count"),
+    image_partial_success: booleanProperty(properties, "image_partial_success"),
+    image_config_present: booleanProperty(properties, "image_config_present"),
+    image_config_applied: booleanProperty(properties, "image_config_applied"),
+    image_config_count: numberProperty(properties, "image_config_count"),
+    image_config_aspect_ratio: stringProperty(properties, "image_config_aspect_ratio"),
+    image_config_resolution: stringProperty(properties, "image_config_resolution"),
+    image_config_size: stringProperty(properties, "image_config_size"),
+    image_config_quality: stringProperty(properties, "image_config_quality"),
+    image_config_background: stringProperty(properties, "image_config_background"),
+    image_config_output_format: stringProperty(properties, "image_config_output_format"),
+    image_config_output_compression: numberProperty(
+      properties,
+      "image_config_output_compression",
+    ),
     failure_category: stringProperty(properties, "failure_category"),
     client_platform: stringProperty(properties, "client_platform"),
     client_surface: stringProperty(properties, "client_surface"),
@@ -186,6 +211,11 @@ function firstStringProperty(
 function numberProperty(properties: PostHogProperties, key: string): number | undefined {
   const value = properties[key];
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function booleanProperty(properties: PostHogProperties, key: string): boolean | undefined {
+  const value = properties[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function secondsProperty(properties: PostHogProperties, key: string): number | undefined {

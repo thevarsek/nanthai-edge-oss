@@ -4,6 +4,7 @@ import { ActionCtx } from "../_generated/server";
 import { GenerationCancelledError } from "../chat/generation_helpers";
 import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import type { GenerationAnalyticsSource } from "../chat/actions_run_generation_types";
+import { normalizeGenerationError } from "../chat/generation_error";
 
 export interface PipelineArgs extends Record<string, unknown> {
   sessionId: Id<"searchSessions">;
@@ -57,9 +58,7 @@ export function clampResearchPaperReasoningEffort(
 }
 
 export function formatResearchPaperFailureMessage(error: unknown): string {
-  const rawMessage = error instanceof Error
-    ? error.message
-    : "Unknown research paper error";
+  const rawMessage = normalizeGenerationError(error).message;
   const lower = rawMessage.toLowerCase();
   if (
     lower.includes("openrouter non-stream timeout") ||

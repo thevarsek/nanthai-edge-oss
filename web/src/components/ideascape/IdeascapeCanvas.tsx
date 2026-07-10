@@ -41,6 +41,7 @@ interface IdeascapeCanvasProps {
   focusedId: Id<"messages"> | null;
   activeBranchIds: Set<string>;
   contextBranchIds: Set<string>;
+  imageGenerationModelIds?: ReadonlySet<string>;
   onViewportChange: (vp: CanvasViewport) => void;
   onNodeDragEnd: (messageId: Id<"messages">, x: number, y: number) => void;
   onNodeResizeEnd: (messageId: Id<"messages">, width: number, height: number) => void;
@@ -58,6 +59,7 @@ const MAX_SCALE = 3;
 
 export function IdeascapeCanvas({
   messages, positions, viewport, selectedIds, focusedId, activeBranchIds, contextBranchIds,
+  imageGenerationModelIds,
   onViewportChange, onNodeDragEnd, onNodeResizeEnd, onSelectNode, onFocusNode, onClearSelection,
 }: IdeascapeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -119,6 +121,21 @@ export function IdeascapeCanvas({
   const displayGeometry = useMemo(() => {
     return computeIdeascapeDisplayGeometry(logicalPosMap, effectiveSizeMap);
   }, [logicalPosMap, effectiveSizeMap]);
+  const canonicalAdvisorMessageIds = useMemo(() => {
+    const seenPanelKeys = new Set<string>();
+    const canonical = new Set<string>();
+    for (const message of [...messages].sort((left, right) => left.createdAt - right.createdAt)) {
+      if (message.role !== "assistant" || !message.advisorBatchId) continue;
+      const batchId = String(message.advisorBatchId);
+      const panelKey = message.isMultiModelResponse && message.multiModelGroupId
+        ? `${batchId}:group:${String(message.multiModelGroupId)}`
+        : `${batchId}:message:${String(message._id)}`;
+      if (seenPanelKeys.has(panelKey)) continue;
+      seenPanelKeys.add(panelKey);
+      canonical.add(String(message._id));
+    }
+    return canonical;
+  }, [messages]);
 
   // ── Zoom ──────────────────────────────────────────────────────────────────
 
@@ -382,6 +399,8 @@ export function IdeascapeCanvas({
                 width={size.width}
                 height={size.height}
                 visualState={getVisualState(msg._id)}
+                isImageGeneration={msg.modelId != null && imageGenerationModelIds?.has(msg.modelId)}
+                showAdvisorPanel={canonicalAdvisorMessageIds.has(String(msg._id))}
                 onPointerDown={onNodePointerDown}
                 onResizePointerDown={onNodeResizePointerDown}
                 shouldSuppressClick={shouldSuppressNodeClick}

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { syncImageModels, upsertImageModelsBatch } from "../models/image_sync";
 import { syncVideoModels, upsertVideoModelsBatch } from "../models/video_sync";
 
 type ModelDoc = {
@@ -47,61 +46,6 @@ function buildModelCtx(existingModels: ModelDoc[]) {
 
   return { ctx, inserts, patches };
 }
-
-test("upsertImageModelsBatch creates image-only rows and patches multimodal pricing hints", async () => {
-  const { ctx, inserts, patches } = buildModelCtx([
-    { _id: "model_existing", modelId: "google/gemini-image", name: "Gemini Image" },
-  ]);
-
-  const result = await (upsertImageModelsBatch as any)._handler(ctx, {
-    models: [
-      {
-        modelId: "black-forest-labs/flux-kontext",
-        imageOnly: true,
-        name: "FLUX Kontext",
-        provider: "black-forest-labs",
-        supportedParameters: ["prompt"],
-        architecture: { modality: "text+image->image" },
-        pricePerImage: 0.04,
-        pricingSkus: { imageToken: "0.000001", imageOutput: "0.02" },
-      },
-      {
-        modelId: "google/gemini-image",
-        imageOnly: false,
-        name: "Gemini Image",
-        provider: "google",
-        supportedParameters: ["tools"],
-        pricePerImage: 0.03,
-      },
-      {
-        modelId: "openai/gpt-image-missing-main-sync-row",
-        imageOnly: false,
-        name: "GPT Image",
-        provider: "openai",
-        supportedParameters: [],
-      },
-    ],
-  });
-
-  assert.deepEqual(result, { createdOrPatched: 1, pricingOnly: 1, skipped: 1 });
-  assert.equal(inserts.length, 1);
-  assert.equal(inserts[0]?.table, "cachedModels");
-  assert.equal(inserts[0]?.value.supportsImages, true);
-  assert.equal((inserts[0]?.value.imageCapabilities as any).managedByImageSync, true);
-  assert.deepEqual(patches, [
-    {
-      id: "model_existing",
-      value: {
-        imageCapabilities: {
-          pricePerImage: 0.03,
-          pricingSkus: undefined,
-          managedByImageSync: false,
-          syncedAt: (patches[0]?.value.imageCapabilities as any).syncedAt,
-        },
-      },
-    },
-  ]);
-});
 
 test("upsertVideoModelsBatch patches existing rows and creates video-only rows", async () => {
   const { ctx, inserts, patches } = buildModelCtx([
@@ -215,81 +159,5 @@ test("syncVideoModels maps OpenRouter video payloads into batch mutation args", 
     perVideoSecond: "0.01",
     perVideoSecond1080p: "0.02",
     videoTokensWithoutAudio: undefined,
-  });
-});
-
-test("syncImageModels fetches endpoint SKU pricing before batching model updates", async () => {
-  const originalFetch = globalThis.fetch;
-  const mutationCalls: Array<Record<string, any>> = [];
-  const urls: string[] = [];
-
-  try {
-    globalThis.fetch = (async (url: string | URL) => {
-      const textUrl = String(url);
-      urls.push(textUrl);
-      if (textUrl.endsWith("output_modalities=image")) {
-        return {
-          ok: true,
-          json: async () => ({
-            data: [
-              {
-                id: "black-forest-labs/flux-kontext",
-                name: "FLUX Kontext",
-                canonical_slug: "black-forest-labs/flux-kontext",
-                architecture: {
-                  modality: "text+image->image",
-                  tokenizer: "other",
-                  instruct_type: null,
-                },
-                pricing: { prompt: "0.000001", completion: "0.000002" },
-                supported_parameters: ["prompt"],
-              },
-            ],
-          }),
-        } as Response;
-      }
-
-      assert.equal(
-        textUrl,
-        "https://openrouter.ai/api/v1/models/black-forest-labs/flux-kontext/endpoints",
-      );
-      return {
-        ok: true,
-        json: async () => ({
-          data: {
-            endpoints: [
-              {
-                pricing: {
-                  image_token: "0.0000005",
-                  image_output: "0.03",
-                },
-              },
-            ],
-          },
-        }),
-      } as Response;
-    }) as typeof fetch;
-
-    await (syncImageModels as any)._handler({
-      runMutation: async (_ref: unknown, args: Record<string, any>) => {
-        mutationCalls.push(args);
-        return { createdOrPatched: 1, pricingOnly: 0, skipped: 0 };
-      },
-    }, {});
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
-
-  assert.deepEqual(urls, [
-    "https://openrouter.ai/api/v1/models?output_modalities=image",
-    "https://openrouter.ai/api/v1/models/black-forest-labs/flux-kontext/endpoints",
-  ]);
-  const model = mutationCalls[0]?.models[0];
-  assert.equal(model.imageOnly, true);
-  assert.equal(model.inputPricePer1M, 1.0);
-  assert.equal(model.outputPricePer1M, 2.0);
-  assert.deepEqual(model.pricingSkus, {
-    imageToken: "0.0000005",
-    imageOutput: "0.03",
   });
 });

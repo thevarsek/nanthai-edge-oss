@@ -1,5 +1,6 @@
 import { Id } from "../_generated/dataModel";
 import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
+import type { ImageGenerationConfig } from "../preferences/image_defaults";
 
 export interface VideoConfig {
   resolution?: string;
@@ -52,6 +53,8 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   drivePickerBatchId?: Id<"drivePickerBatches">;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
+  // Backend-owned image preference snapshot for this turn.
+  imageConfig?: ImageGenerationConfig;
   // M30 — Turn-level overrides (slash chips)
   turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
@@ -74,6 +77,7 @@ export interface VideoCapabilities {
 export interface ModelCapabilities {
   provider?: string;
   supportedParameters?: string[];
+  hasImageInput?: boolean;
   hasAudioInput?: boolean;
   hasAudioOutput?: boolean;
   hasVideoInput?: boolean;
@@ -82,5 +86,10 @@ export interface ModelCapabilities {
   hasReasoning?: boolean;
   hasZdrEndpoint?: boolean;
   contextLength?: number;
+  imageCapabilities?: {
+    supportsStreaming?: boolean;
+    maxInputReferences?: number;
+    supportedParameters?: Record<string, unknown>;
+  };
   videoCapabilities?: VideoCapabilities;
 }

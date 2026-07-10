@@ -42,6 +42,11 @@ const participant: Participant = {
   modelId: "openai/gpt-5.2",
   personaId: null,
 };
+const advisorSelection = {
+  personaId: "persona_advisor" as Id<"personas">,
+  keepAvailable: false,
+  allowWebSearch: true,
+};
 
 const imageAttachment: ChatAttachment = {
   type: "image",
@@ -206,6 +211,8 @@ describe("ChatPage send flow helpers", () => {
         turnSkillOverrides: [{ skillId: "skill_1" as Id<"skills">, state: "always" }],
       },
       enabledIntegrations: new Set(["gmail", "drive"]),
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Review the evidence",
       subagentsEnabled: true,
       webSearchEnabled: true,
       convexSearchMode: "web",
@@ -219,6 +226,8 @@ describe("ChatPage send flow helpers", () => {
       text: "hello",
       participants: [participant],
       enabledIntegrations: ["gmail", "drive"],
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Review the evidence",
       webSearchEnabled: true,
       searchMode: "web",
       complexity: 2,
@@ -261,8 +270,35 @@ describe("ChatPage send flow helpers", () => {
     expect(args.searchMode).toBeUndefined();
     expect(args.complexity).toBeUndefined();
     expect(args.videoConfig).toBeUndefined();
+    expect(args.advisorSelections).toBeUndefined();
+    expect(args.advisorBrief).toBeUndefined();
     expect(args.turnSkillOverrides).toEqual([]);
     expect(args.turnIntegrationOverrides).toEqual([{ integrationId: "drive", enabled: false }]);
+  });
+
+  it("preserves an explicit empty Advisor snapshot for a queued turn", () => {
+    const common = {
+      chatId,
+      text: "queued without Advisors",
+      participants: [participant],
+      attachments: [],
+      enabledIntegrations: new Set<string>(),
+      advisorSelections: [],
+    };
+
+    expect(buildSendMessageArgs({
+      ...common,
+      turnOverrideArgs: {},
+      subagentsEnabled: false,
+      webSearchEnabled: false,
+      isVideoMode: false,
+      prefs: undefined,
+    }).advisorSelections).toEqual([]);
+    expect(buildResearchPaperArgs({
+      ...common,
+      participant,
+      complexity: 1,
+    }).advisorSelections).toEqual([]);
   });
 
   it("omits optional send fields entirely when the current turn has no active overrides", () => {
@@ -305,6 +341,8 @@ describe("ChatPage send flow helpers", () => {
       complexity: 3,
       attachments: [imageAttachment],
       enabledIntegrations: new Set(["gmail", "drive"]),
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Review the evidence",
     });
 
     expect(args).toMatchObject({
@@ -323,6 +361,8 @@ describe("ChatPage send flow helpers", () => {
       },
       complexity: 3,
       enabledIntegrations: ["gmail", "drive"],
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Review the evidence",
     });
     expect(args.participant).not.toHaveProperty("id");
     expect(args.attachments?.[0]).not.toHaveProperty("videoRole");
@@ -339,6 +379,8 @@ describe("ChatPage send flow helpers", () => {
           turnSkillOverrides: [{ skillId: "skill_1" as Id<"skills">, state: "always" }],
         },
         enabledIntegrations: new Set(["drive"]),
+        advisorSelections: [advisorSelection],
+        advisorBrief: "Challenge the sources",
         webSearchEnabled: true,
         convexSearchMode: "web",
         convexComplexity: 2,
@@ -596,6 +638,8 @@ describe("ChatPage send flow helpers", () => {
         convexComplexity: 2,
         kbAttachmentsForDisplay: [imageAttachment],
         enabledIntegrations: new Set(["drive"]),
+        advisorSelections: [advisorSelection],
+        advisorBrief: "Challenge the sources",
       }),
       deps,
     })).rejects.toThrow("research failed");
@@ -603,6 +647,10 @@ describe("ChatPage send flow helpers", () => {
     expect(deps.sendMessage).not.toHaveBeenCalled();
     expect(deps.clearKBFiles).not.toHaveBeenCalled();
     expect(deps.clearTurnOverrides).not.toHaveBeenCalled();
+    expect(deps.startResearchPaper).toHaveBeenCalledWith(expect.objectContaining({
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Challenge the sources",
+    }));
   });
 
   it("marks research paper sends with audio attachments as audio feature usage", async () => {
@@ -614,6 +662,8 @@ describe("ChatPage send flow helpers", () => {
         isResearchPaper: true,
         convexComplexity: 2,
         selectedAttachments: [audioAttachment],
+        advisorSelections: [advisorSelection],
+        advisorBrief: "Check the conclusion",
       }),
       deps,
     })).resolves.toBe(true);
@@ -624,6 +674,8 @@ describe("ChatPage send flow helpers", () => {
         has_audio: true,
         attachment_count: 1,
         search_mode: "paper",
+        advisor_count: 1,
+        advisor_web_search_count: 1,
       }),
     );
     expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
@@ -637,6 +689,36 @@ describe("ChatPage send flow helpers", () => {
     expect(featureAnalyticsMocks.captureSendFeatureUsage).toHaveBeenCalledWith(
       expect.objectContaining({ has_audio: true }),
     );
+    expect(deps.startResearchPaper).toHaveBeenCalledWith(expect.objectContaining({
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Check the conclusion",
+    }));
+  });
+
+  it("threads Advisors through recorded-audio Research sends", async () => {
+    const deps = baseRecordingDeps();
+    await expect(executeRecordedAudioSend({
+      recording: {
+        blob: new Blob(["voice"], { type: "audio/webm" }),
+        mimeType: "audio/webm",
+        durationMs: 800,
+        transcript: "research by voice",
+      },
+      state: baseState({
+        isResearchPaper: true,
+        convexComplexity: 2,
+        advisorSelections: [advisorSelection],
+        advisorBrief: "Verify the claims",
+      }),
+      deps,
+    })).resolves.toBe(true);
+
+    expect(deps.startResearchPaper).toHaveBeenCalledWith(expect.objectContaining({
+      recordedAudio: expect.objectContaining({ transcript: "research by voice" }),
+      advisorSelections: [advisorSelection],
+      advisorBrief: "Verify the claims",
+    }));
+    expect(deps.clearTurnOverrides).toHaveBeenCalledTimes(1);
   });
 
   it("does not silently drop one-turn state when recorded audio upload fails", async () => {

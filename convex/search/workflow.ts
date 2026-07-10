@@ -23,6 +23,7 @@ import {
 } from "../chat/generation_analytics";
 import {
   checkCancellation,
+  formatResearchPaperFailureMessage,
   PipelineArgs,
   updateSession,
 } from "./workflow_shared";
@@ -30,6 +31,10 @@ import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { integrationOverrideEntry } from "../schema_validators";
 import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
 import { analyticsSourceValidator } from "../chat/actions_args";
+import {
+  assertModelAvailable,
+  assertTextGenerationModel,
+} from "../lib/openrouter_modality";
 
 const researchPaperPipelineArgs = {
   sessionId: v.id("searchSessions"),
@@ -73,22 +78,39 @@ async function researchPaperPipelineHandler(
   args: PipelineArgs,
 ): Promise<void> {
   const workflowStartedAt = Date.now();
-  await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
-    jobId: args.jobId,
-    status: "streaming",
-    startedAt: Date.now(),
-  });
-  const alreadyCancelled = await ctx.runQuery(
-    internal.chat.queries.isJobCancelled,
-    { jobId: args.jobId },
-  );
-  if (alreadyCancelled) {
-    return;
-  }
-
   try {
+    await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
+      jobId: args.jobId,
+      status: "streaming",
+      startedAt: Date.now(),
+    });
+    const alreadyCancelled = await ctx.runQuery(
+      internal.chat.queries.isJobCancelled,
+      { jobId: args.jobId },
+    );
+    if (alreadyCancelled) {
+      await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
+        messageId: args.assistantMessageId,
+      });
+      return;
+    }
     // Validate API key early so we fail fast before scheduling anything
     await getRequiredUserOpenRouterApiKey(ctx, args.userId);
+    const capabilities = await ctx.runQuery(
+      internal.chat.queries.getModelCapabilities,
+      { modelId: args.modelId },
+    );
+    assertModelAvailable({
+      modelId: args.modelId,
+      capabilities,
+      feature: "Research paper generation",
+    });
+    assertTextGenerationModel({
+      feature: "Research paper generation",
+      hasImageGeneration: capabilities?.hasImageGeneration,
+      hasVideoGeneration: capabilities?.hasVideoGeneration,
+      hasAudioOutput: capabilities?.hasAudioOutput,
+    });
 
     await checkCancellation(ctx, args.sessionId);
 
@@ -102,8 +124,7 @@ async function researchPaperPipelineHandler(
       },
     );
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown research paper error";
+    const errorMessage = formatResearchPaperFailureMessage(error);
     const wasCancelled = isGenerationCancelledError(error);
 
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
@@ -116,6 +137,9 @@ async function researchPaperPipelineHandler(
       status: wasCancelled ? "cancelled" : "failed",
       error: errorMessage,
       userId: args.userId,
+    });
+    await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
+      messageId: args.assistantMessageId,
     });
     if (!wasCancelled) {
       await captureAssistantResponseStartedEvent(ctx, {

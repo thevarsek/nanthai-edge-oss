@@ -1,4 +1,5 @@
 "use node";
+
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import { ToolRegistry, type RegisteredTool } from "./registry";
 import { fetchImage } from "./fetch_image";
@@ -114,7 +115,6 @@ import {
   workspaceProfileTools,
 } from "./workspace_registry";
 import type { ProgressiveToolRegistryOptions } from "./progressive_registry";
-
 const DOC_TOOLS: RegisteredTool[] = [
   listDocuments, readDocument, findInDocument,
   generateDocx, readDocx, editDocx,
@@ -129,12 +129,7 @@ const DIRECT_TOOL_REGISTRY = new Map<string, RegisteredTool>(
   DOC_TOOLS.map((tool) => [tool.name, tool]),
 );
 
-const BASE_TOOLS: RegisteredTool[] = [
-  fetchImage,
-  searchChats,
-  loadSkill,
-  listSkills,
-];
+const BASE_TOOLS: RegisteredTool[] = [fetchImage, searchChats, loadSkill, listSkills];
 
 export function registerBaseTools(
   registry: ToolRegistry,

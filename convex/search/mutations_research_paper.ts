@@ -1,15 +1,22 @@
-import { mutation, MutationCtx } from "../_generated/server";
+import { mutation } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { isAudioAttachment } from "../chat/audio_shared";
 import {
   normalizeMessageAttachments,
   resolveParentMessageIdsForSend,
-  scheduleCancelledAssistantResponseAnalytics,
 } from "../chat/mutation_send_helpers";
 import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
+import { createAdvisorBatchForTurn } from "../advisors/batch_creation";
+import { advisorSelection } from "../advisors/validators";
+import type { PipelineArgs } from "./workflow_shared";
+import {
+  cancelResearchPaperHandler,
+  cancellationPlaceholderForMode,
+} from "./mutations_research_paper_cancel";
+
+export { cancelResearchPaperHandler, cancellationPlaceholderForMode };
 
 export const startResearchPaper = mutation({
   args: {
@@ -51,6 +58,8 @@ export const startResearchPaper = mutation({
     expandMultiModelGroups: v.optional(v.boolean()),
     enabledIntegrations: v.optional(v.array(v.string())),
     subagentsEnabled: v.optional(v.boolean()),
+    advisorSelections: v.optional(v.array(advisorSelection)),
+    advisorBrief: v.optional(v.string()),
     analytics: v.optional(analyticsClientMetadataValidator),
   },
   returns: v.object({
@@ -173,31 +182,45 @@ export const startResearchPaper = mutation({
       activeBranchLeafFocusOrder: undefined,
     });
 
-    await ctx.scheduler.runAfter(
-      0,
-      internal.search.workflow.researchPaperPipeline,
-      {
-        sessionId,
-        assistantMessageId,
-        jobId,
-        chatId: args.chatId,
-        userMessageId,
-        userId,
-        query: trimmedText,
-        complexity,
-        expandMultiModelGroups,
-        modelId: args.participant.modelId,
-        personaId: args.participant.personaId ?? undefined,
-        systemPrompt: args.participant.systemPrompt ?? undefined,
-        temperature: args.participant.temperature,
-        maxTokens: args.participant.maxTokens,
-        includeReasoning: args.participant.includeReasoning,
-        reasoningEffort: args.participant.reasoningEffort ?? undefined,
-        enabledIntegrations: args.enabledIntegrations,
-        subagentsEnabled: false,
-        analytics: args.analytics,
-      },
-    );
+    const pipelineArgs: PipelineArgs = {
+      sessionId,
+      assistantMessageId,
+      jobId,
+      chatId: args.chatId,
+      userMessageId,
+      userId,
+      query: trimmedText,
+      complexity,
+      expandMultiModelGroups,
+      modelId: args.participant.modelId,
+      personaId: args.participant.personaId ?? undefined,
+      systemPrompt: args.participant.systemPrompt ?? undefined,
+      temperature: args.participant.temperature,
+      maxTokens: args.participant.maxTokens,
+      includeReasoning: args.participant.includeReasoning,
+      reasoningEffort: args.participant.reasoningEffort ?? undefined,
+      enabledIntegrations: args.enabledIntegrations,
+      subagentsEnabled: false,
+      analytics: args.analytics,
+    };
+    const advisorBatchId = await createAdvisorBatchForTurn(ctx, {
+      userId,
+      chat,
+      userMessageId,
+      assistantMessageIds: [assistantMessageId],
+      participants: [args.participant],
+      selections: args.advisorSelections,
+      brief: args.advisorBrief,
+      enabledIntegrations: args.enabledIntegrations,
+      generationSnapshot: { kind: "research_paper", request: pipelineArgs },
+    });
+    if (!advisorBatchId) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.search.workflow.researchPaperPipeline,
+        pipelineArgs,
+      );
+    }
 
     if ((chat.messageCount ?? 0) === 0 && trimmedText.length > 0) {
       const prefs = await ctx.db
@@ -227,73 +250,3 @@ export const cancelResearchPaper = mutation({
   },
   handler: cancelResearchPaperHandler,
 });
-
-export function cancellationPlaceholderForMode(
-  mode: "paper" | "web" | undefined,
-): string {
-  if (mode === "web") {
-    return "[Web search cancelled]";
-  }
-  if (mode === "paper") {
-    return "[Research paper cancelled]";
-  }
-  return "[Generation cancelled]";
-}
-
-export async function cancelResearchPaperHandler(
-  ctx: MutationCtx,
-  args: { sessionId: Id<"searchSessions"> },
-): Promise<void> {
-  const { userId } = await requireAuth(ctx);
-  const session = await ctx.db.get(args.sessionId);
-  if (!session || session.userId !== userId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Search session not found" });
-  }
-
-  if (
-    session.status === "completed" ||
-    session.status === "failed" ||
-    session.status === "cancelled"
-  ) {
-    return;
-  }
-
-  const now = Date.now();
-  await ctx.db.patch(args.sessionId, {
-    status: "cancelled",
-    completedAt: now,
-  });
-
-  const message = await ctx.db.get(session.assistantMessageId);
-  if (!message) {
-    return;
-  }
-
-  const jobs = await ctx.db
-    .query("generationJobs")
-    .withIndex("by_message", (q) => q.eq("messageId", session.assistantMessageId))
-    .collect();
-  for (const job of jobs) {
-    if (
-      job.status !== "completed" &&
-      job.status !== "failed" &&
-      job.status !== "cancelled" &&
-      job.status !== "timedOut"
-    ) {
-      await ctx.db.patch(job._id, {
-        status: "cancelled",
-        completedAt: now,
-        terminalErrorCode: "cancelled_by_user",
-      });
-      await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
-    }
-  }
-
-  if (message.status !== "completed") {
-    await ctx.db.patch(session.assistantMessageId, {
-      status: "cancelled",
-      content: message.content || cancellationPlaceholderForMode(session.mode),
-      terminalErrorCode: "cancelled_by_user",
-    });
-  }
-}

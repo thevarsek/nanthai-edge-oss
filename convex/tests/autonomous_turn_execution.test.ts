@@ -469,6 +469,72 @@ test("runParticipantTurn preserves multimodal parts when converting autonomous c
   });
 });
 
+test("autonomous text participants without vision never receive prior image output", async () => {
+  const { ctx } = createAutonomousCtx();
+  const streamCalls: Array<{ messages: any[] }> = [];
+
+  const deps = createRunParticipantTurnDepsForTest({
+    getRequiredUserOpenRouterApiKey: async () => "key",
+    loadMemoryContext: async () => undefined,
+    buildRequestMessages: () => [
+      { role: "user", content: "Create a launch image" },
+      {
+        role: "assistant",
+        name: "Image participant",
+        content: [
+          {
+            type: "text",
+            text: "[Generated image context for the next response]",
+          },
+          {
+            type: "image_url",
+            image_url: { url: "https://files.example/generated.png" },
+          },
+        ],
+      },
+    ],
+    promoteLatestUserVideoUrls: (messages: any) => ({ messages, events: [] }),
+    gateParameters: () => ({}),
+    createStreamWriter: () => ({
+      handleContentDeltaBoundary: async () => undefined,
+      appendContent: async () => undefined,
+      patchContentIfNeeded: async () => undefined,
+      appendReasoning: async () => undefined,
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+      totalReasoning: "",
+      hasSeenContentDelta: false,
+    }) as any,
+    callOpenRouterStreaming: async (_apiKey, _model, messages) => {
+      streamCalls.push({ messages: messages as any[] });
+      return {
+        content: "My turn.",
+        reasoning: "",
+        usage: null,
+        finishReason: "stop",
+        imageUrls: [],
+        audioBase64: "",
+        audioTranscript: "",
+        toolCalls: [],
+        annotations: [],
+        generationId: null,
+      };
+    },
+  });
+
+  const result = await runParticipantTurn({
+    ...buildParams(),
+    ctx,
+  }, deps);
+
+  assert.deepEqual(result, { kind: "completed", messageId: "msg_new" });
+  assert.equal(JSON.stringify(streamCalls[0]?.messages).includes("image_url"), false);
+  assert.equal(
+    JSON.stringify(streamCalls[0]?.messages).includes("files.example/generated.png"),
+    false,
+  );
+});
+
 test("runParticipantTurn finalizes upstream errors as visible failed messages", async () => {
   const { ctx, mutations, scheduled } = createAutonomousCtx();
   const deps = createRunParticipantTurnDepsForTest({

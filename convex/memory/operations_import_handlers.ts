@@ -26,6 +26,7 @@ import {
   normalizeMemoryRetrievalMode,
 } from "./shared";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import { resolveTextAncillaryModel } from "../lib/openrouter_modality";
 
 const defaultMemoryImportDeps = {
   callOpenRouterNonStreaming,
@@ -172,6 +173,20 @@ export async function extractImportCandidatesHandler(
     }),
   ]);
   const requireZdr = isZdrEnabled(prefs);
+  const selectedModel = selectAncillaryModelForZdr({
+    requestedModel: args.extractionModel,
+    defaultModel: MODEL_IDS.memoryImportExtraction,
+    requireZdr,
+  });
+  const modelId = await resolveTextAncillaryModel({
+    selectedModel,
+    defaultModel: MODEL_IDS.memoryImportExtraction,
+    feature: "Memory import",
+    getCapabilities: (candidateModelId) => ctx.runQuery(
+      internal.chat.queries.getModelCapabilities,
+      { modelId: candidateModelId },
+    ),
+  });
   const candidates: Array<Record<string, unknown>> = [];
   const exclusionRules = args.allowContactDetails
     ? { excludePhone: false, excludeEmail: false }
@@ -182,11 +197,6 @@ export async function extractImportCandidatesHandler(
     if (!blob) continue;
 
     const messages = await buildImportMessages(file, blob, deps);
-    const modelId = selectAncillaryModelForZdr({
-      requestedModel: args.extractionModel,
-      defaultModel: MODEL_IDS.memoryImportExtraction,
-      requireZdr,
-    });
     const result = await deps.callOpenRouterNonStreaming(
       apiKey,
       modelId,

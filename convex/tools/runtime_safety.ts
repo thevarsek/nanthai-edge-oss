@@ -10,7 +10,7 @@ export const RUNTIME_SAFE_TOOL_NAMES = new Set<string>([
   "web_search",
 ]);
 
-const RUNTIME_SAFE_PROFILE_IDS = new Set<SkillToolProfileId>([]);
+const RUNTIME_SAFE_PROFILE_IDS = new Set<SkillToolProfileId>();
 
 export function classifyToolRuntimeSafety(toolName: string): RuntimeSafety {
   return RUNTIME_SAFE_TOOL_NAMES.has(toolName) ? "runtime-safe" : "node-required";

@@ -21,6 +21,26 @@ describe("MemoryPage shell behavior", () => {
     expect(mockState.navigate).toHaveBeenCalledWith("/app/settings");
   });
 
+  it("opens memory extraction with a text-output-only model catalog", () => {
+    mockState.page = "memory";
+    mockState.queryData.memories = [];
+    mockState.sharedData.prefs = {
+      isMemoryEnabled: true,
+      memoryExtractionModelId: "image/free:free",
+    };
+    mockState.modelSummaries = [
+      { modelId: "openai/gpt-4o", name: "GPT 4o" },
+      { modelId: "image/free:free", name: "Free Image", supportsImages: true },
+    ];
+
+    renderRoute(<MemoryPage />);
+    fireEvent.click(screen.getByText("memory_model_label"));
+
+    expect(screen.getByText("GPT 4o")).toBeInTheDocument();
+    expect(screen.queryByText("Free Image")).not.toBeInTheDocument();
+    expect(screen.queryByText("selected")).not.toBeInTheDocument();
+  });
+
   it("filters saved and pending memories and dispatches row actions with scoped ids", async () => {
     mockState.page = "memory";
     mockState.queryData.memories = [

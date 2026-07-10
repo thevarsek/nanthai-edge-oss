@@ -14,6 +14,12 @@ vi.mock("@/components/shared/ProviderLogo", () => ({
   ProviderLogo: ({ modelId }: { modelId: string }) => <span>logo-{modelId}</span>,
 }));
 
+vi.mock("@/components/chat/AdvisorBatchPanel", () => ({
+  AdvisorBatchPanel: ({ batchId, compact }: { batchId: string; compact?: boolean }) => (
+    <div data-testid="advisor-panel">{batchId}-{String(compact)}</div>
+  ),
+}));
+
 function baseMessage(overrides: Record<string, unknown> = {}) {
   return {
     _id: "message_1",
@@ -114,11 +120,13 @@ describe("MessageNode", () => {
       content: "",
       status: "streaming",
       imageUrls: ["https://example.com/1.png", "https://example.com/2.png", "https://example.com/3.png", "https://example.com/4.png"],
+      imageGenerationResult: { requestedCount: 5, generatedCount: 4, failedCount: 1 },
       videoUrls: ["https://example.com/video.mp4"],
     }, "selected");
 
     expect(screen.getAllByAltText("Generated")).toHaveLength(3);
     expect(screen.getByText("+1")).toBeInTheDocument();
+    expect(screen.getByText("Generated 4 of 5 images.")).toBeInTheDocument();
     expect(screen.getByText("Video")).toBeInTheDocument();
     expect(screen.getByText("...")).toBeInTheDocument();
     expect(screen.getByText("Context")).toBeInTheDocument();
@@ -129,6 +137,84 @@ describe("MessageNode", () => {
 
     fireEvent.pointerDown(screen.getByTitle("Resize card"), { pointerId: 1 });
     expect(onResizePointerDown).toHaveBeenCalledWith(expect.anything(), "message_1");
+  });
+
+  it("uses friendly persisted generation errors in node previews", () => {
+    renderNode({
+      content: 'Error: {"code":"INTERNAL_ERROR","message":"Provider failed cleanly"}',
+      status: "failed",
+    });
+
+    expect(screen.getByText("Provider failed cleanly")).toBeInTheDocument();
+    expect(screen.queryByText(/"code":"INTERNAL_ERROR"/)).not.toBeInTheDocument();
+  });
+
+  it("shows a compact image placeholder for pending image-generation nodes", () => {
+    render(
+      <MessageNode
+        message={baseMessage({ content: "", status: "pending", modelId: "openai/gpt-image-2" })}
+        x={0}
+        y={0}
+        width={220}
+        height={160}
+        visualState="default"
+        isImageGeneration
+        onPointerDown={vi.fn()}
+        onResizePointerDown={vi.fn()}
+        onSelect={vi.fn()}
+        onFocus={vi.fn()}
+      />,
+    );
+
+    const placeholder = screen.getByRole("status", { name: "Generating image..." });
+    expect(placeholder).toHaveClass("w-20");
+    expect(placeholder.firstElementChild).toHaveClass("aspect-square");
+    expect(screen.queryByText("...")).not.toBeInTheDocument();
+  });
+
+  it("uses the backend-adapted pending image count in Ideascape", () => {
+    render(
+      <MessageNode
+        message={baseMessage({
+          content: "",
+          status: "pending",
+          modelId: "openai/gpt-image-2",
+          imageGenerationExpectedCount: 2,
+          retryContract: {
+            participants: [{ modelId: "openai/gpt-image-2" }],
+            searchMode: "none",
+            imageConfig: { count: 10 },
+          },
+        })}
+        x={0} y={0} width={220} height={160} visualState="default"
+        isImageGeneration
+        onPointerDown={vi.fn()} onResizePointerDown={vi.fn()} onSelect={vi.fn()} onFocus={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("status", { name: "Generating 2 images..." })).toBeInTheDocument();
+  });
+
+  it("shows Advisor details only on the canonical Ideascape node", () => {
+    const { rerender } = render(
+      <MessageNode
+        message={baseMessage({ advisorBatchId: "advisor_batch_1" })}
+        x={0} y={0} width={220} height={160} visualState="default"
+        showAdvisorPanel
+        onPointerDown={vi.fn()} onResizePointerDown={vi.fn()} onSelect={vi.fn()} onFocus={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("advisor-panel")).toHaveTextContent("advisor_batch_1-true");
+
+    rerender(
+      <MessageNode
+        message={baseMessage({ advisorBatchId: "advisor_batch_1" })}
+        x={0} y={0} width={220} height={160} visualState="default"
+        showAdvisorPanel={false}
+        onPointerDown={vi.fn()} onResizePointerDown={vi.fn()} onSelect={vi.fn()} onFocus={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("advisor-panel")).not.toBeInTheDocument();
   });
 
   it("toggles selection with modifiers and suppresses post-drag clicks", () => {

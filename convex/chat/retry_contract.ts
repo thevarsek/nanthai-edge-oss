@@ -1,4 +1,5 @@
 import { Id } from "../_generated/dataModel";
+import type { ImageGenerationConfig } from "../preferences/image_defaults";
 
 export type RetrySearchMode = "none" | "normal" | "web";
 
@@ -37,6 +38,7 @@ export interface RetryContract {
     enabled: boolean;
   }>;
   videoConfig?: RetryVideoConfig;
+  imageConfig?: ImageGenerationConfig;
 }
 
 function cloneParticipant(
@@ -72,6 +74,7 @@ export function cloneRetryContract(contract: RetryContract): RetryContract {
       ? contract.turnIntegrationOverrides.map((entry) => ({ ...entry }))
       : undefined,
     videoConfig: contract.videoConfig ? { ...contract.videoConfig } : undefined,
+    imageConfig: contract.imageConfig ? { ...contract.imageConfig } : undefined,
   };
 }
 

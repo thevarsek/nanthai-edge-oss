@@ -33,8 +33,13 @@ export interface NormalizedRunCycleArgs extends Record<string, unknown> {
 export interface ModelCapabilities {
   provider?: string;
   supportedParameters?: string[];
+  hasImageInput?: boolean;
   hasVideoInput?: boolean;
   hasImageGeneration?: boolean;
+  imageCapabilities?: {
+    maxInputReferences?: number;
+    supportedParameters?: Record<string, unknown>;
+  };
   hasReasoning?: boolean;
   hasZdrEndpoint?: boolean;
   contextLength?: number;

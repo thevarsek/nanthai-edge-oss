@@ -65,4 +65,14 @@ describe("ChatPlusMenu", () => {
 
     expect(screen.queryByRole("button", { name: /autonomous_discussion/i })).not.toBeInTheDocument();
   });
+
+  it("keeps Advisors discoverable for free users with a Pro badge", () => {
+    const onSelect = vi.fn();
+    render(<ChatPlusMenu onSelect={onSelect} onClose={vi.fn()} isPro={false} />);
+
+    const advisors = screen.getByRole("button", { name: /advisors/i });
+    expect(advisors).toHaveTextContent("PRO");
+    fireEvent.click(advisors);
+    expect(onSelect).toHaveBeenCalledWith("advisors");
+  });
 });

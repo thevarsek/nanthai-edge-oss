@@ -1,98 +1,64 @@
-import {
-  UserCircle,
-} from "lucide-react";
-import {
-  MockPanel,
-  MockProviderAvatar,
-  IconSlot,
-} from "./IllustrationPrimitives";
+import { Check, Globe2, LockKeyhole, Sparkles } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import { MockPanel } from "./IllustrationPrimitives";
 
-/* ------------------------------------------------------------------ */
-/*  Personas Illustration                                              */
-/*  Shows persona cards with avatar, model, and personality traits.    */
-/* ------------------------------------------------------------------ */
-
-function MockPersonaCard({
-  emoji,
-  name,
-  model,
-  modelColor,
-  traits,
-  active,
-}: {
+function PersonaChip({ emoji, name, active, online }: {
   emoji: string;
   name: string;
-  model: string;
-  modelColor: string;
-  traits: string[];
   active?: boolean;
+  online?: boolean;
 }) {
   return (
-    <div
-      className={`rounded-xl border px-3.5 py-3 transition-colors ${
-        active
-          ? "border-[var(--edge-coral)]/30 bg-[var(--edge-coral)]/5"
-          : "border-[rgba(var(--edge-fg),0.06)] bg-[rgba(var(--edge-fg),0.02)]"
-      }`}
-    >
-      <div className="flex items-center gap-2.5 mb-2">
-        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[rgba(var(--edge-fg),0.06)] text-base">
-          {emoji}
-        </div>
-        <div>
-          <div className="text-[11px] font-semibold efg-70">{name}</div>
-          <div className="flex items-center gap-1 mt-0.5">
-            <MockProviderAvatar label={model[0]} color={modelColor} size={14} />
-            <span className="text-[9px] efg-30">{model}</span>
-          </div>
-        </div>
-      </div>
-      <div className="flex flex-wrap gap-1.5">
-        {traits.map((t, i) => (
-          <span
-            key={i}
-            className="rounded-full bg-[rgba(var(--edge-fg),0.05)] px-2 py-0.5 text-[8px] font-medium efg-35"
-          >
-            {t}
-          </span>
-        ))}
-      </div>
+    <div className={`flex items-center gap-1.5 rounded-full border px-2 py-1 ${active ? "border-[var(--edge-coral)]/35 bg-[var(--edge-coral)]/8" : "border-[rgba(var(--edge-fg),0.08)] bg-[rgba(var(--edge-fg),0.025)]"}`}>
+      <span className="text-[11px]">{emoji}</span>
+      <span className="text-[9px] font-semibold efg-55">{name}</span>
+      {online && <Globe2 size={8} className="text-[var(--edge-cyan)]" />}
+      {active && <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--edge-coral)]" />}
     </div>
   );
 }
 
 export function PersonasIllustration() {
+  const { t } = useTranslation();
   return (
-    <MockPanel showDots title="Personas" className="max-w-sm mx-auto">
-      <div className="space-y-2.5">
-        <MockPersonaCard
-          emoji="🧑‍💻"
-          name="Code Reviewer"
-          model="Claude"
-          modelColor="var(--edge-coral)"
-          traits={["Precise", "Security-focused", "TypeScript"]}
-          active
-        />
-        <MockPersonaCard
-          emoji="✍️"
-          name="Writing Coach"
-          model="ChatGPT"
-          modelColor="var(--edge-cyan)"
-          traits={["Encouraging", "Concise", "AP Style"]}
-        />
-        <MockPersonaCard
-          emoji="📊"
-          name="Data Analyst"
-          model="Gemini"
-          modelColor="var(--edge-amber)"
-          traits={["Structured", "Charts", "SQL"]}
-        />
+    <MockPanel showDots title={t("advisors")} className="mx-auto max-w-sm">
+      <div className="rounded-xl border border-[rgba(var(--edge-fg),0.07)] bg-[rgba(var(--edge-fg),0.02)] p-3">
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] efg-35">
+            <LockKeyhole size={10} />
+            {t("private_advice")}
+          </div>
+          <span className="text-[8px] efg-25">2 / 3</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <PersonaChip emoji="🧑‍💻" name="Code Reviewer" active />
+          <PersonaChip emoji="📊" name="Data Analyst" online />
+          <PersonaChip emoji="🛡️" name="Risk Lead" />
+        </div>
+        <div className="mt-3 space-y-1.5 rounded-lg bg-[rgba(var(--edge-fg),0.025)] p-2.5">
+          <div className="h-1.5 w-[86%] animate-pulse rounded-full bg-[rgba(var(--edge-fg),0.10)]" />
+          <div className="h-1.5 w-[68%] animate-pulse rounded-full bg-[rgba(var(--edge-fg),0.07)]" />
+          <div className="h-1.5 w-[76%] rounded-full bg-[rgba(var(--edge-fg),0.05)]" />
+        </div>
       </div>
 
-      {/* Create button */}
-      <div className="flex items-center gap-2 mt-3 rounded-xl border border-dashed border-[rgba(var(--edge-fg),0.10)] px-3.5 py-3 efg-25 hover:efg-40 transition-colors">
-        <IconSlot icon={UserCircle} size={16} />
-        <span className="text-[11px] font-medium">Create new persona</span>
+      <div className="mx-auto h-4 w-px bg-[rgba(var(--edge-fg),0.10)]" />
+
+      <div className="rounded-xl border border-[var(--edge-cyan)]/20 bg-[var(--edge-cyan)]/5 p-3">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--edge-cyan)]/12">
+            <Sparkles size={12} className="text-[var(--edge-cyan)]" />
+          </span>
+          <div>
+            <p className="text-[10px] font-semibold efg-65">{t("advisor_synthesizing")}</p>
+            <p className="text-[8px] efg-25">{t("advisor_responded_count", { completed: 3, total: 3 })}</p>
+          </div>
+          <Check size={12} className="ml-auto text-[var(--edge-cyan)]" />
+        </div>
+        <div className="space-y-1.5">
+          <div className="h-1.5 w-full rounded-full bg-[rgba(var(--edge-fg),0.10)]" />
+          <div className="h-1.5 w-[88%] rounded-full bg-[rgba(var(--edge-fg),0.07)]" />
+        </div>
       </div>
     </MockPanel>
   );

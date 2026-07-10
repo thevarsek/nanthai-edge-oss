@@ -25,6 +25,7 @@ import {
   StreamResult,
 } from "./openrouter_types";
 import { DeepPartial, mergeTestDeps } from "./test_deps";
+import { assertChatCompletionsRequest } from "./openrouter_modality";
 
 const defaultOpenRouterStreamingDeps = {
   fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
@@ -66,6 +67,7 @@ export async function callOpenRouterStreaming(
   retryConfig: RetryConfig = {},
   deps: OpenRouterStreamingDeps = defaultOpenRouterStreamingDeps,
 ): Promise<StreamResult> {
+  assertChatCompletionsRequest(params);
   const {
     emptyStreamRetries = 2,
     emptyStreamBackoffs = [500, 1500],

@@ -26,6 +26,14 @@ describe("convexErrors", () => {
     )).toBe("Fallback");
   });
 
+  it("recursively extracts nested Convex data messages", () => {
+    const error = new ConvexError({
+      data: JSON.stringify({ data: { message: "Nested backend message" } }),
+    });
+
+    expect(convexErrorMessage(error, "Fallback")).toBe("Nested backend message");
+  });
+
   it("falls back for empty payloads and preserves Convex stringified object errors", () => {
     expect(convexErrorMessage(new ConvexError(""), "Fallback")).toBe("Fallback");
     expect(convexErrorMessage(new ConvexError({ code: "BAD" }), "Fallback")).toBe("{\"code\":\"BAD\"}");

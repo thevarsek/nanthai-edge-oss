@@ -414,7 +414,7 @@ test("persistGeneratedImageUrlsWithTracking returns empty arrays for empty input
     } as any,
     [],
   );
-  assert.deepEqual(result, { urls: [], stored: [] });
+  assert.deepEqual(result, { urls: [], mimeTypes: [], stored: [] });
 });
 
 test("persistGeneratedImageUrlsWithTracking passes through HTTP URLs without storing", async () => {
@@ -519,23 +519,6 @@ test("persistGeneratedImageUrlsWithTracking deduplicates URLs", async () => {
   );
 
   assert.equal(result.urls.length, 1);
-  assert.equal(result.stored.length, 0);
-});
-
-test("persistGeneratedImageUrlsWithTracking skips oversized images", async () => {
-  const result = await persistGeneratedImageUrlsWithTracking(
-    {
-      storage: {
-        store: async () => { throw new Error("should not store oversized"); },
-        get: async () => null,
-        getUrl: async () => null,
-      },
-    } as any,
-    // 30MB base64 payload (over 20MB limit)
-    ["data:image/png;base64," + "A".repeat(30_000_000)],
-  );
-
-  assert.equal(result.urls.length, 0);
   assert.equal(result.stored.length, 0);
 });
 

@@ -11,6 +11,17 @@ export const videoConfigValidator = v.object({
   generateAudio: v.optional(v.boolean()),   // whether to generate audio track
 });
 
+/** Internal-only image preference snapshot; public sends never accept this. */
+export const imageConfigValidator = v.object({
+  count: v.optional(v.number()),
+  aspectRatio: v.optional(v.string()),
+  resolution: v.optional(v.string()),
+  quality: v.optional(v.string()),
+  background: v.optional(v.string()),
+  outputFormat: v.optional(v.string()),
+  outputCompression: v.optional(v.number()),
+});
+
 export const analyticsSourceValidator = v.union(
   v.literal("chat_generation"),
   v.literal("web_search"),
@@ -58,6 +69,7 @@ export const runGenerationArgs = {
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
+  imageConfig: v.optional(imageConfigValidator),
   // M30 — Turn-level skill & integration overrides (slash chips)
   turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
@@ -88,6 +100,7 @@ export const runGenerationParticipantArgs = {
   resumeExpected: v.optional(v.boolean()),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
+  imageConfig: v.optional(imageConfigValidator),
   // Pre-resolved overrides from coordinator (eliminates duplicate queries in participant)
   chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),
   chatIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),

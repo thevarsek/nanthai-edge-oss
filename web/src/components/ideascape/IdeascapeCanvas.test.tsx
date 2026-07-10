@@ -2,6 +2,7 @@ import { fireEvent, render } from "@testing-library/react";
 import type { PointerEvent as ReactPointerEvent } from "react";
 import { describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
+import type { Message } from "@/hooks/useChat";
 import { IdeascapeCanvas } from "./IdeascapeCanvas";
 import { computeIdeascapeDisplayGeometry } from "./IdeascapeCanvasGeometry";
 
@@ -9,13 +10,14 @@ vi.mock("./IdeascapeNodes", async () => {
   const actual = await vi.importActual<typeof import("./IdeascapeNodes")>("./IdeascapeNodes");
   return {
     ...actual,
-    MessageNode: ({ message, x, y, width, height, visualState, onPointerDown, onResizePointerDown, shouldSuppressClick, onSelect, onFocus }: {
+    MessageNode: ({ message, x, y, width, height, visualState, showAdvisorPanel, onPointerDown, onResizePointerDown, shouldSuppressClick, onSelect, onFocus }: {
       message: { _id: Id<"messages">; content?: string };
       x: number;
       y: number;
       width: number;
       height: number;
       visualState: string;
+      showAdvisorPanel?: boolean;
       onPointerDown: (event: ReactPointerEvent, id: Id<"messages">) => void;
       onResizePointerDown: (event: ReactPointerEvent, id: Id<"messages">) => void;
       shouldSuppressClick?: (id: Id<"messages">) => boolean;
@@ -25,6 +27,7 @@ vi.mock("./IdeascapeNodes", async () => {
       <div
         data-node-shell
         data-visual-state={visualState}
+        data-advisor-panel={String(showAdvisorPanel)}
         style={{ position: "absolute", left: x, top: y, width, height }}
         onPointerDown={(event) => onPointerDown(event, message._id)}
         onClick={(event) => {
@@ -44,14 +47,17 @@ vi.mock("./IdeascapeNodes", async () => {
   };
 });
 
-function message(id: string, parentMessageIds?: string[]) {
+function message(id: string, parentMessageIds?: string[]): Message {
   return {
     _id: id as Id<"messages">,
+    _creationTime: 1,
+    chatId: "chat_1" as Id<"chats">,
     role: "assistant",
     content: id,
     status: "completed",
-    parentMessageIds,
-  } as never;
+    createdAt: 1,
+    parentMessageIds: parentMessageIds?.map((parentId) => parentId as Id<"messages">),
+  };
 }
 
 function renderCanvas(overrides: Partial<Parameters<typeof IdeascapeCanvas>[0]> = {}) {
@@ -247,6 +253,41 @@ describe("IdeascapeCanvas pointer interactions", () => {
 
     fireEvent.click(container.querySelector("button")!);
     expect(onSelectNode).toHaveBeenCalledWith("selected", true);
+  });
+
+  it("marks one multi-model node per group while keeping retry and single-turn panels", () => {
+    const sharedBatchId = "advisor_batch_1" as Id<"advisorBatches">;
+    const { container } = renderCanvas({
+      messages: [
+        { ...message("first"), createdAt: 1, advisorBatchId: sharedBatchId },
+        { ...message("second"), createdAt: 2, advisorBatchId: sharedBatchId },
+        {
+          ...message("third"),
+          createdAt: 3,
+          advisorBatchId: "advisor_batch_2" as Id<"advisorBatches">,
+          isMultiModelResponse: true,
+          multiModelGroupId: "group_1",
+        },
+        {
+          ...message("fourth"),
+          createdAt: 4,
+          advisorBatchId: "advisor_batch_2" as Id<"advisorBatches">,
+          isMultiModelResponse: true,
+          multiModelGroupId: "group_1",
+        },
+        {
+          ...message("fifth"),
+          createdAt: 5,
+          advisorBatchId: "advisor_batch_2" as Id<"advisorBatches">,
+          isMultiModelResponse: true,
+          multiModelGroupId: "group_2",
+        },
+      ],
+      positions: [],
+    });
+
+    expect(Array.from(container.querySelectorAll("[data-node-shell]"), (node) => node.getAttribute("data-advisor-panel")))
+      .toEqual(["true", "true", "true", "false", "true"]);
   });
 
   it("cancels drag and resize interactions without persisting on pointer cancel", () => {

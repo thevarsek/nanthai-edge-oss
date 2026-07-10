@@ -31,11 +31,13 @@ import {
   markGenerationJobAnalyticsStarted,
   markGenerationJobStreamingIfActive,
 } from "./generation_start_guard";
+import { dedicatedImageGenerationAnalytics } from "./image_generation_analytics";
 import {
   RunGenerationParticipantArgs,
   TERMINAL_GENERATION_JOB_STATUSES,
 } from "./generation_continuation_shared";
 import { classifyTerminalErrorCode } from "./terminal_error";
+import { normalizeGenerationError } from "./generation_error";
 
 function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -120,6 +122,7 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     drivePickerBatchId: args.drivePickerBatchId,
     analytics: args.analytics,
     analyticsSource: args.analyticsSource,
+    imageConfig: args.imageConfig,
   };
   if (args.requireZdrOverride === true) {
     generationArgs.requireZdrOverride = true;
@@ -132,7 +135,7 @@ async function finalizeParticipantSetupFailure(
   args: RunGenerationParticipantArgs,
   error: unknown,
 ): Promise<void> {
-  const errorMessage = error instanceof Error ? error.message : "Unknown generation error";
+  const errorMessage = normalizeGenerationError(error).message;
   await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
     messageId: args.participant.messageId,
     jobId: args.participant.jobId,
@@ -208,6 +211,7 @@ export async function runGenerationParticipantHandler(
         integrationDefaults: continuationState.group.integrationDefaults,
         analytics: continuationState.group.analytics,
         analyticsSource: continuationState.group.analyticsSource,
+        imageConfig: continuationState.group.imageConfig,
         resumeExpected: true,
       }
     : args;
@@ -232,11 +236,13 @@ export async function runGenerationParticipantHandler(
   // Video models use a completely separate API (POST /api/v1/videos) with
   // async polling, so we divert here before entering the streaming/tool loop.
   // Continuations never apply to video — video jobs are self-scheduling.
-  if (!continuationState) {
-    const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
+  const initialCapabilities = !continuationState
+    ? await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
       modelId: effectiveArgs.participant.modelId,
-    });
-    if (caps?.hasVideoGeneration) {
+    })
+    : null;
+  if (!continuationState) {
+    if (initialCapabilities?.hasVideoGeneration) {
       const videoAnalyticsCapture = captureVideoGenerationRequested(ctx, effectiveArgs);
       try {
         await ctx.scheduler.runAfter(
@@ -301,6 +307,15 @@ export async function runGenerationParticipantHandler(
     }
   }
 
+  const imageTerminalAnalytics = initialCapabilities?.hasImageGeneration === true
+    ? dedicatedImageGenerationAnalytics({
+        config: effectiveArgs.imageConfig,
+        supportedParameters: initialCapabilities.imageCapabilities?.supportedParameters,
+        originSource: effectiveArgs.analyticsSource
+          ?? (effectiveArgs.subagentBatchId ? "subagent_parent_resume" : "chat_generation"),
+      })
+    : undefined;
+
   let startedAnalyticsCapture: Promise<void> | undefined;
   try {
     const preflightStartedAt = Date.now();
@@ -330,7 +345,7 @@ export async function runGenerationParticipantHandler(
         schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
           ? Date.now() - effectiveArgs.enqueuedAt
           : null,
-      });
+      }, imageTerminalAnalytics);
     }
     ttftLog("[generation] participant preflight started", {
       chatId: effectiveArgs.chatId,
@@ -514,7 +529,7 @@ export async function runGenerationParticipantHandler(
     await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
     await Promise.all([
       startedAnalyticsCapture,
-      captureAssistantResponseThrown(ctx, effectiveArgs, error),
+      captureAssistantResponseThrown(ctx, effectiveArgs, error, imageTerminalAnalytics),
     ]);
     throw error;
   }

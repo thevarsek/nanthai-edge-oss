@@ -689,6 +689,7 @@ function MemoryPageContent() {
                 updatePreferenceImmediate({ memoryExtractionModelId: value });
               }}
               onClose={() => setShowModelPicker(false)}
+              textOutputOnly
             />
           </div>
         </div>

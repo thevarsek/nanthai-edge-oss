@@ -43,6 +43,10 @@ import {
   runSynthesisPhase,
 } from "./workflow_nonstream_phases";
 import { runPaperGenerationPhase } from "./workflow_paper_phase";
+import {
+  assertModelAvailable,
+  assertTextGenerationModel,
+} from "../lib/openrouter_modality";
 
 // -- Shared args for every phase action ----------------------------------------
 
@@ -171,6 +175,9 @@ export async function handlePhaseError(
     error: errorMessage,
     userId: args.userId,
   });
+  await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
+    messageId: args.assistantMessageId,
+  });
   if (!wasCancelled) {
     await captureAssistantResponseStartedEvent(ctx, {
       userId: args.userId,
@@ -247,17 +254,25 @@ async function buildArgsWithApiKeyAndPolicy(
   };
 }
 
-async function assertPhaseModelSupportsZdr(
+async function assertPhaseModelPolicy(
   ctx: ActionCtx,
   modelId: string,
   feature: string,
   requireZdr: boolean,
 ): Promise<void> {
-  if (!requireZdr) return;
   const capabilities = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
     modelId,
   });
-  assertModelSupportsZdr({ modelId, capabilities, feature });
+  assertModelAvailable({ modelId, capabilities, feature });
+  assertTextGenerationModel({
+    feature,
+    hasImageGeneration: capabilities?.hasImageGeneration,
+    hasVideoGeneration: capabilities?.hasVideoGeneration,
+    hasAudioOutput: capabilities?.hasAudioOutput,
+  });
+  if (requireZdr) {
+    assertModelSupportsZdr({ modelId, capabilities, feature });
+  }
 }
 
 // -- Phase 1: Planning --------------------------------------------------------
@@ -271,7 +286,7 @@ export const runPlanningAction = internalAction({
         await buildArgsWithApiKeyAndPolicy(ctx, args);
       const preset = resolveComplexityPreset("paper", args.complexity);
 
-      await assertPhaseModelSupportsZdr(
+      await assertPhaseModelPolicy(
         ctx,
         args.modelId,
         "Research planning",
@@ -309,7 +324,7 @@ export const runInitialSearchAction = internalAction({
         throw new Error("No queries found from planning phase");
       }
 
-      await assertPhaseModelSupportsZdr(
+      await assertPhaseModelPolicy(
         ctx,
         preset.searchModel,
         "Research search",
@@ -362,7 +377,7 @@ export const runAnalysisAction = internalAction({
       // Reconstruct all search results accumulated so far
       const allSearchResults = await reconstructSearchResults(ctx, args.sessionId);
 
-      await assertPhaseModelSupportsZdr(
+      await assertPhaseModelPolicy(
         ctx,
         args.modelId,
         "Research analysis",
@@ -413,7 +428,7 @@ export const runDepthSearchAction = internalAction({
         throw new Error(`No queries found from analysis phase iteration ${iteration}`);
       }
 
-      await assertPhaseModelSupportsZdr(
+      await assertPhaseModelPolicy(
         ctx,
         preset.searchModel,
         "Research search",
@@ -466,7 +481,7 @@ export const runSynthesisAction = internalAction({
       // Reconstruct all accumulated search results (with citations)
       const allSearchResults = await reconstructSearchResults(ctx, args.sessionId);
 
-      await assertPhaseModelSupportsZdr(
+      await assertPhaseModelPolicy(
         ctx,
         args.modelId,
         "Research synthesis",
@@ -513,7 +528,7 @@ export const runPaperArchitectureAction = internalAction({
         throw new Error("No synthesis phase found — cannot build paper architecture");
       }
 
-      await assertPhaseModelSupportsZdr(
+      await assertPhaseModelPolicy(
         ctx,
         args.modelId,
         "Research paper architecture",

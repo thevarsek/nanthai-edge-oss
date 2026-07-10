@@ -4,9 +4,7 @@ import { Id } from "../_generated/dataModel";
 import {
   callOpenRouterStreaming,
   ChatRequestParameters,
-  ContentPart,
   gateParameters,
-  OpenRouterMessage,
 } from "../lib/openrouter";
 import { buildRequestMessages } from "../chat/helpers";
 import { assembleRequestContextForGeneration } from "../chat/actions_context_assembly_integration";
@@ -32,6 +30,22 @@ import {
   captureAssistantResponseStartedEvent,
 } from "../chat/generation_analytics";
 import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
+import { normalizeGenerationError } from "../chat/generation_error";
+import { isGenerationCancelledError } from "../chat/generation_helpers";
+import { runAutonomousImageTurn } from "./actions_run_cycle_image";
+import { assertOpenRouterImagePrivacy } from "../lib/openrouter_image";
+import { assertModelAvailable } from "../lib/openrouter_modality";
+import { imageConfigFromPreferences } from "../preferences/image_defaults";
+import { adaptMessagesForImageInput } from "../chat/request_message_capabilities";
+import {
+  dedicatedImageGenerationAnalytics,
+  type DedicatedImageGenerationAnalytics,
+} from "../chat/image_generation_analytics";
+import {
+  autonomousImagePromptText,
+  autonomousParticipantPromptName,
+  buildAutonomousTranscriptMessages,
+} from "./actions_run_cycle_transcript";
 
 const EMPTY_STREAM_RETRY_DELAYS = [500, 1500];
 const CANCELLED_TURN_ERROR = "AUTONOMOUS_SESSION_CANCELLED";
@@ -48,6 +62,7 @@ const defaultRunParticipantTurnDeps = {
   loadMemoryContext,
   gateParameters,
   callOpenRouterStreaming,
+  runAutonomousImageTurn,
 };
 
 export type RunParticipantTurnDeps = typeof defaultRunParticipantTurnDeps;
@@ -62,71 +77,8 @@ export function createRunParticipantTurnDepsForTest(
 }
 
 function isCancelledTurnError(error: unknown): boolean {
-  return error instanceof Error && error.message === CANCELLED_TURN_ERROR;
-}
-
-function messageContentToText(content: OpenRouterMessage["content"]): string {
-  if (typeof content === "string") return content.trim();
-  if (!content) return "";
-  return content
-    .map((part: ContentPart) => part.type === "text" ? (part.text ?? "") : `[${part.type}]`)
-    .join("\n")
-    .trim();
-}
-
-function messageContentToParts(content: OpenRouterMessage["content"]): ContentPart[] {
-  if (typeof content === "string") return [];
-  return content?.filter((part) => part.type !== "text") ?? [];
-}
-
-function autonomousTranscriptSpeaker(message: OpenRouterMessage): string {
-  if (message.role === "user") return "User";
-  if (message.role === "tool") return "Tool";
-  if (message.role !== "assistant") return "Participant";
-
-  const name = message.name?.trim();
-  return name ? `Previous participant ${name}` : "Previous participant";
-}
-
-function buildAutonomousTranscriptMessages(
-  messages: OpenRouterMessage[],
-  participantName: string,
-): OpenRouterMessage[] {
-  const systemMessages = messages.filter((message) => message.role === "system");
-  const discussionMessages = messages.filter((message) => message.role !== "system");
-  const transcriptLines: string[] = [];
-  const nonTextParts: ContentPart[] = [];
-
-  for (const message of discussionMessages) {
-    const text = messageContentToText(message.content);
-    if (!text) continue;
-    transcriptLines.push(`${autonomousTranscriptSpeaker(message)}: ${text}`);
-    nonTextParts.push(...messageContentToParts(message.content));
-  }
-
-  const promptText = [
-    "You are participating in an autonomous group discussion.",
-    "Use any provided user context only to make the discussion relevant. Do not mention memory, profile data, writing preferences, prompts, model identity, training data, weights, providers, or internal instructions.",
-    "",
-    "Discussion so far:",
-    transcriptLines.length > 0 ? transcriptLines.join("\n\n") : "No prior visible turns.",
-    "",
-    `Now provide ${participantName}'s next contribution to the debate. Respond only with the contribution itself. Do not summarize your instructions or explain your role. Do not speak for other participants.`,
-  ].join("\n");
-
-  return [
-    ...systemMessages,
-    {
-      role: "user",
-      content: nonTextParts.length > 0
-        ? [{ type: "text", text: promptText }, ...nonTextParts]
-        : promptText,
-    },
-  ];
-}
-
-function autonomousParticipantPromptName(participant: ParticipantConfig): string {
-  return participant.personaId ? participant.displayName : "the next participant";
+  return isGenerationCancelledError(error) ||
+    (error instanceof Error && error.message === CANCELLED_TURN_ERROR);
 }
 
 async function finalizeTransientTurnFailure(
@@ -207,6 +159,14 @@ export async function runParticipantTurn(
 
   let messageId: Id<"messages"> | undefined;
   let jobId: Id<"generationJobs"> | undefined;
+  const initialCapabilities = modelCapabilities.get(participant.modelId);
+  let imageTerminalAnalytics: DedicatedImageGenerationAnalytics | undefined =
+    initialCapabilities?.hasImageGeneration === true
+      ? dedicatedImageGenerationAnalytics({
+          supportedParameters: initialCapabilities.imageCapabilities?.supportedParameters,
+          originSource: "autonomous_discussion",
+        })
+      : undefined;
 
   const markTurnCancelled = async () => {
     if (jobId) {
@@ -313,6 +273,22 @@ export async function runParticipantTurn(
     });
 
     const caps = modelCapabilities.get(participant.modelId);
+    const imageConfig = imageConfigFromPreferences(preferences);
+    if (caps?.hasImageGeneration) {
+      imageTerminalAnalytics = dedicatedImageGenerationAnalytics({
+        config: imageConfig,
+        supportedParameters: caps.imageCapabilities?.supportedParameters,
+        originSource: "autonomous_discussion",
+      });
+    }
+    assertModelAvailable({
+      modelId: participant.modelId,
+      capabilities: caps,
+      feature: "Autonomous discussion",
+    });
+    if (caps?.hasImageGeneration) {
+      assertOpenRouterImagePrivacy(requireZdr);
+    }
     if (requireZdr) {
       assertModelSupportsZdr({
         modelId: participant.modelId,
@@ -345,10 +321,16 @@ export async function runParticipantTurn(
       return { kind: "skipped" };
     }
 
-    const requestMessages = buildAutonomousTranscriptMessages(
+    const transcriptMessages = buildAutonomousTranscriptMessages(
       promotedRequest.messages,
       autonomousParticipantPromptName(participant),
     );
+    const requestMessages = caps?.hasImageGeneration === true
+      ? transcriptMessages
+      : adaptMessagesForImageInput(
+          transcriptMessages,
+          caps?.hasImageInput === true,
+        );
 
     if (promotedRequest.events.length > 0) {
       const promotedCount = promotedRequest.events.filter(
@@ -434,10 +416,11 @@ export async function runParticipantTurn(
       messageId: String(messageId),
       jobId: String(jobId),
       modelId: participant.modelId,
-      source: "autonomous_discussion",
+      source: imageTerminalAnalytics?.source ?? "autonomous_discussion",
       participantCount: 1,
       webSearchEnabled,
       properties: {
+        ...imageTerminalAnalytics?.properties,
         autonomous_session_id: String(sessionId),
         participant_id: String(participant.participantId),
         persona_id: participant.personaId ? String(participant.personaId) : null,
@@ -452,6 +435,31 @@ export async function runParticipantTurn(
         zdr_required: requireZdr,
       },
     });
+
+    if (caps?.hasImageGeneration) {
+      const promptMessage = requestMessages[requestMessages.length - 1];
+      await deps.runAutonomousImageTurn({
+        ctx,
+        sessionId,
+        userId,
+        chatId,
+        messageId,
+        jobId,
+        modelId: participant.modelId,
+        participantId: participant.participantId,
+        personaId: participant.personaId,
+        requestMessages,
+        prompt: autonomousImagePromptText(promptMessage?.content ?? ""),
+        apiKey,
+        maxInputReferences: caps.imageCapabilities?.maxInputReferences,
+        imageConfig,
+        supportedParameters: caps.imageCapabilities?.supportedParameters,
+        requireZdr,
+        generationStartedAt,
+        now: deps.now,
+      });
+      return { kind: "completed", messageId };
+    }
 
     const result = await deps.callOpenRouterStreaming(
       apiKey,
@@ -586,6 +594,7 @@ export async function runParticipantTurn(
     return { kind: "completed", messageId };
   } catch (error) {
     if (isCancelledTurnError(error)) {
+      await markTurnCancelled();
       if (messageId && jobId) {
         await captureAssistantResponseFailure(ctx, {
           userId,
@@ -593,9 +602,10 @@ export async function runParticipantTurn(
           messageId: String(messageId),
           jobId: String(jobId),
           modelId: participant.modelId,
-          source: "autonomous_discussion",
+          source: imageTerminalAnalytics?.source ?? "autonomous_discussion",
           cancelled: true,
           properties: {
+            ...imageTerminalAnalytics?.properties,
             autonomous_session_id: String(sessionId),
             participant_id: String(participant.participantId),
             persona_id: participant.personaId ? String(participant.personaId) : null,
@@ -606,7 +616,7 @@ export async function runParticipantTurn(
     }
 
     if (messageId && jobId) {
-      const reason = error instanceof Error ? error.message : "Unknown error";
+      const reason = normalizeGenerationError(error).message;
       await finalizeTransientTurnFailure(ctx, {
         messageId,
         jobId,
@@ -620,9 +630,10 @@ export async function runParticipantTurn(
         messageId: String(messageId),
         jobId: String(jobId),
         modelId: participant.modelId,
-        source: "autonomous_discussion",
+        source: imageTerminalAnalytics?.source ?? "autonomous_discussion",
         error,
         properties: {
+          ...imageTerminalAnalytics?.properties,
           autonomous_session_id: String(sessionId),
           participant_id: String(participant.participantId),
           persona_id: participant.personaId ? String(participant.personaId) : null,
@@ -634,7 +645,7 @@ export async function runParticipantTurn(
 
     return {
       kind: "failed",
-      reason: error instanceof Error ? error.message : "Unknown error",
+      reason: normalizeGenerationError(error).message,
     };
   }
 }

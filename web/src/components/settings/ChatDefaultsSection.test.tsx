@@ -23,6 +23,13 @@ const state = vi.hoisted(() => {
     defaultVideoDuration: 5,
     defaultVideoResolution: "720p",
     defaultVideoGenerateAudio: true,
+    defaultImageCount: 2,
+    defaultImageAspectRatio: "1:1",
+    defaultImageResolution: "1K",
+    defaultImageQuality: "medium",
+    defaultImageBackground: "auto",
+    defaultImageOutputFormat: "png",
+    defaultImageOutputCompression: 80,
     zdrEnabled: false,
     sendOnEnter: true,
   });
@@ -89,12 +96,13 @@ vi.mock("@/components/shared/ProviderLogo", () => ({
 }));
 
 vi.mock("@/components/shared/ModelPicker", () => ({
-  ModelPicker: ({ selectedModelId, onSelect, onClose }: {
+  ModelPicker: ({ selectedModelId, onSelect, onClose, textOutputOnly }: {
     selectedModelId: string;
     onSelect: (modelId: string) => void;
     onClose: () => void;
+    textOutputOnly?: boolean;
   }) => (
-    <div data-testid="model-picker">
+    <div data-testid="model-picker" data-text-output-only={textOutputOnly ? "true" : "false"}>
       <span>{selectedModelId}</span>
       <button onClick={() => onSelect("google/gemini-2.5-pro")}>pick-title-model</button>
       <button onClick={onClose}>close-title-model</button>
@@ -121,12 +129,13 @@ vi.mock("./ChatDefaultsSection.ParticipantPicker", () => ({
 }));
 
 vi.mock("@/components/shared/MenuSelect", () => ({
-  MenuSelect: ({ value, options, onChange }: {
+  MenuSelect: ({ value, options, onChange, ariaLabel }: {
     value: string;
     options: Array<{ value: string; label: string }>;
     onChange: (value: string) => void;
+    ariaLabel?: string;
   }) => (
-    <select aria-label={`select-${value}`} value={value} onChange={(event) => onChange(event.target.value)}>
+    <select aria-label={ariaLabel ?? `select-${value}`} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
   ),
@@ -231,6 +240,7 @@ describe("ChatDefaultsSection", () => {
     });
 
     fireEvent.click(screen.getByText("Claude Sonnet"));
+    expect(screen.getByTestId("model-picker")).toHaveAttribute("data-text-output-only", "true");
     fireEvent.click(screen.getByText("pick-title-model"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ titleModelId: "google/gemini-2.5-pro" });
     expect(screen.queryByTestId("model-picker")).not.toBeInTheDocument();
@@ -245,7 +255,7 @@ describe("ChatDefaultsSection", () => {
     fireEvent.change(screen.getByDisplayValue("0.7"), { target: { value: "1.2" } });
     expect(state.updatePreference).toHaveBeenCalledWith({ defaultTemperature: 1.2 });
 
-    fireEvent.change(screen.getByLabelText("select-medium"), { target: { value: "high" } });
+    fireEvent.change(screen.getAllByLabelText("select-medium")[0]!, { target: { value: "high" } });
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ reasoningEffort: "high" });
 
     fireEvent.click(screen.getByText("segment-1.5x"));
@@ -257,6 +267,45 @@ describe("ChatDefaultsSection", () => {
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultVideoResolution: "1080p" });
     fireEvent.click(screen.getByText("segment-10s"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultVideoDuration: 10 });
+
+    fireEvent.change(within(screen.getByTestId("image-default-count")).getByRole("combobox"), {
+      target: { value: "4" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageCount: 4 });
+    expect(screen.getByRole("combobox", { name: "image_defaults_count" })).toBeInTheDocument();
+    fireEvent.change(within(screen.getByTestId("image-default-aspect-ratio")).getByRole("combobox"), {
+      target: { value: "3:2" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageAspectRatio: "3:2" });
+    fireEvent.change(within(screen.getByTestId("image-default-resolution")).getByRole("combobox"), {
+      target: { value: "2K" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageResolution: "2K" });
+    fireEvent.change(within(screen.getByTestId("image-default-quality")).getByRole("combobox"), {
+      target: { value: "high" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageQuality: "high" });
+    fireEvent.change(within(screen.getByTestId("image-default-background")).getByRole("combobox"), {
+      target: { value: "transparent" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageBackground: "transparent" });
+    fireEvent.change(within(screen.getByTestId("image-default-output-format")).getByRole("combobox"), {
+      target: { value: "webp" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageOutputFormat: "webp" });
+    fireEvent.change(within(screen.getByTestId("image-default-compression")).getByRole("spinbutton"), {
+      target: { value: "65" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageOutputCompression: 65 });
+    fireEvent.change(within(screen.getByTestId("image-default-compression")).getByRole("spinbutton"), {
+      target: { value: "" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageOutputCompression: null });
+    fireEvent.change(within(screen.getByTestId("image-default-quality")).getByRole("combobox"), {
+      target: { value: "__model_default__" },
+    });
+    expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageQuality: null });
+    expect(screen.getByText("image_defaults_adaptation_hint")).toBeInTheDocument();
 
     fireEvent.click(settingSwitch("include_reasoning"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ includeReasoning: false });

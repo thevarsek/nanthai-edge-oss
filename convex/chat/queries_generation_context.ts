@@ -14,6 +14,10 @@ import type {
   SkillOverrideEntry,
 } from "../skills/resolver";
 import type { ContextAttachment } from "./helpers_types";
+import {
+  imageConfigFromPreferences,
+  type ImageGenerationConfig,
+} from "../preferences/image_defaults";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -32,6 +36,7 @@ export interface GenerationContext {
     skillDefaults: SkillOverrideEntry[] | undefined;
     integrationDefaults: IntegrationOverrideEntry[] | undefined;
   } | null;
+  imageConfig: ImageGenerationConfig;
   connectedIntegrationIds: string[];
   personasById: Record<string, (Record<string, unknown> & {
     skillOverrides?: SkillOverrideEntry[];
@@ -170,6 +175,7 @@ export async function getGenerationContextHandler(
       skillDefaults: prefsDoc?.skillDefaults ?? undefined,
       integrationDefaults: prefsDoc?.integrationDefaults ?? undefined,
     },
+    imageConfig: imageConfigFromPreferences(prefsDoc),
     connectedIntegrationIds,
     personasById,
   };

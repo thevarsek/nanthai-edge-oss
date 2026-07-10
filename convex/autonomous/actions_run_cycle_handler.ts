@@ -19,6 +19,7 @@ import {
 import { runParticipantTurn } from "./actions_run_cycle_turn";
 import { RunCycleArgs } from "./actions_run_cycle_types";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import { normalizeGenerationError } from "../chat/generation_error";
 
 export type { RunCycleArgs } from "./actions_run_cycle_types";
 
@@ -192,8 +193,7 @@ export async function runCycleHandler(
       });
     }
   } catch (error) {
-    const reason =
-      error instanceof Error ? error.message : "Unknown autonomous error";
+    const reason = normalizeGenerationError(error).message;
     console.error("Autonomous cycle failed:", reason);
     await deps.completeSessionFailedIfRunning(
       ctx,

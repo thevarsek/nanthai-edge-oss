@@ -75,12 +75,16 @@ test("mapBatchTerminalStatus maps all status combinations correctly", () => {
   assert.equal(mapBatchTerminalStatus("streaming", "streaming"), "completed");
 });
 
-test("requiresNodeWorker returns true for video, audio, node tools, or node profiles", () => {
+test("requiresNodeWorker returns true for media generation, node tools, or node profiles", () => {
   assert.equal(requiresNodeWorker({
     directToolNames: [], activeProfiles: [], hasVideoGeneration: true, hasAudioOutput: false,
   }), true);
   assert.equal(requiresNodeWorker({
     directToolNames: [], activeProfiles: [], hasVideoGeneration: false, hasAudioOutput: true,
+  }), true);
+  assert.equal(requiresNodeWorker({
+    directToolNames: [], activeProfiles: [], hasVideoGeneration: false, hasAudioOutput: false,
+    hasImageGeneration: true,
   }), true);
   assert.equal(requiresNodeWorker({
     directToolNames: ["workspace_exec"], activeProfiles: [], hasVideoGeneration: false, hasAudioOutput: false,

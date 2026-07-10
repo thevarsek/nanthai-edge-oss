@@ -9,6 +9,7 @@ import {
   withZdrProvider,
 } from "../lib/openrouter_zdr";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
+import { resolveTextAncillaryModel } from "../lib/openrouter_modality";
 
 export interface ParticipantConfig {
   participantId: string;
@@ -91,10 +92,19 @@ export async function generateModeratorDirective(
       ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
     ]);
     const requireZdr = isZdrEnabled(preferences);
-    const primaryModelId = selectAncillaryModelForZdr({
+    const selectedPrimaryModelId = selectAncillaryModelForZdr({
       requestedModel: moderator.modelId,
       defaultModel: MODEL_IDS.appDefault,
       requireZdr,
+    });
+    const primaryModelId = await resolveTextAncillaryModel({
+      selectedModel: selectedPrimaryModelId,
+      defaultModel: MODEL_IDS.appDefault,
+      feature: "Autonomous moderation",
+      getCapabilities: (modelId) => ctx.runQuery(
+        internal.chat.queries.getModelCapabilities,
+        { modelId },
+      ),
     });
     if (requireZdr && !(await modelSupportsZdr(ctx, primaryModelId))) {
       return fallbackModeratorDirective();

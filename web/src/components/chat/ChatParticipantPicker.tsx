@@ -19,7 +19,7 @@ import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import {
   type SortKey, type CapFilter, CAP_FILTERS,
   filterAndSortModels, toggleCapFilter,
-  getModelOutputModality, type OutputModalityCategory,
+  getModelOutputModality, modelIsZdrEligible, type OutputModalityCategory,
 } from "@/components/shared/ModelPickerShared";
 import {
   type PersonaItem, SelectedSection, SectionHeader,
@@ -121,7 +121,7 @@ export function ChatParticipantPicker({
     [modelSummaries],
   );
   const modelZdrMap = useMemo(
-    () => new Map(models.map((m) => [m.modelId, m.hasZdrEndpoint === true])),
+    () => new Map(models.map((m) => [m.modelId, modelIsZdrEligible(m)])),
     [models],
   );
   const modelProviderMap = useMemo(

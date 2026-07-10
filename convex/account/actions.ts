@@ -32,6 +32,9 @@ const PURGE_ORDER = [
   // Subagent children before parents: runs (with inline storage) → batches
   "subagentRuns",    // cascade via subagentBatches; inline generatedFiles need blob cleanup
   "subagentBatches", // has by_user index
+  // Advisor runs before batches; both cancel any delayed functions on deletion.
+  "advisorRuns",
+  "advisorBatches",
   // Sandbox children before parent: events & artifacts → sessions
   "sandboxEvents",    // has by_user index
   "sandboxArtifacts", // cascade via sandboxSessions; storageId needs blob cleanup
@@ -42,6 +45,7 @@ const PURGE_ORDER = [
   "scheduledJobTriggerTokens",
   "generationJobs",
   "chatParticipants",
+  "chatAdvisors",
   "searchContexts",
   "searchSessions",
   "autonomousSessions",

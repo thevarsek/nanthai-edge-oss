@@ -109,9 +109,9 @@ export const features: FeatureMeta[] = [
   {
     slug: "personas",
     title: "Personas",
-    tagline: "Create AI identities with their own personality, model, and tools.",
+    tagline: "Create once. Chat, advise privately, automate, and compare.",
     indexDescription:
-      "Build specialised AI assistants with a custom name, avatar, system prompt, model, temperature, and tool access. Assign them to chats, scheduled jobs, or autonomous sessions.",
+      "Create a Persona once, then use it as a chat participant, a private Advisor, a scheduled-task specialist, or part of a multi-model discussion.",
     tier: "pro",
     icon: UserCircle,
     accentClass: "text-[var(--edge-coral)]",

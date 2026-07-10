@@ -1,5 +1,9 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+import {
+  isImageGenerationAvailable,
+  projectModelMediaContract,
+} from "../models/media_capabilities";
 
 type MemoryQueryResult = Partial<Doc<"memories">> & {
   _id: Id<"memories">;
@@ -55,6 +59,8 @@ export async function getModelCapabilitiesHandler(
   | {
       provider?: string;
       supportedParameters?: string[];
+      hasImageInput?: boolean;
+      hasFileInput?: boolean;
       hasAudioInput?: boolean;
       hasAudioOutput?: boolean;
       hasVideoInput?: boolean;
@@ -63,6 +69,11 @@ export async function getModelCapabilitiesHandler(
       hasReasoning?: boolean;
       hasZdrEndpoint?: boolean;
       contextLength?: number;
+      imageCapabilities?: {
+        supportsStreaming?: boolean;
+        maxInputReferences?: number;
+        supportedParameters?: Record<string, unknown>;
+      };
       videoCapabilities?: {
         supportedResolutions: string[];
         supportedAspectRatios: string[];
@@ -81,31 +92,44 @@ export async function getModelCapabilitiesHandler(
     .first();
 
   if (!model) return null;
+  const projectedModel = projectModelMediaContract(model);
 
   return {
-    provider: model.provider,
-    supportedParameters: model.supportedParameters,
+    provider: projectedModel.provider,
+    supportedParameters: projectedModel.supportedParameters,
+    hasImageInput:
+      projectedModel.architecture?.modality?.split("->")[0]?.includes("image") ?? false,
+    hasFileInput:
+      projectedModel.architecture?.modality?.split("->")[0]?.includes("file") === true ||
+      projectedModel.supportedParameters?.includes("file") === true,
     hasAudioInput:
-      model.architecture?.modality?.split("->")[0]?.includes("audio") ?? false,
+      projectedModel.architecture?.modality?.split("->")[0]?.includes("audio") ?? false,
     hasAudioOutput:
-      model.architecture?.modality?.split("->")[1]?.includes("audio") ?? false,
+      projectedModel.architecture?.modality?.split("->")[1]?.includes("audio") ?? false,
     hasVideoInput:
-      model.architecture?.modality?.split("->")[0]?.includes("video") ?? false,
-    hasImageGeneration: model.supportsImages ?? false,
-    hasVideoGeneration: model.supportsVideo ?? false,
+      projectedModel.architecture?.modality?.split("->")[0]?.includes("video") ?? false,
+    hasImageGeneration: isImageGenerationAvailable(projectedModel),
+    hasVideoGeneration: projectedModel.supportsVideo ?? false,
     hasReasoning:
-      model.supportedParameters?.includes("include_reasoning") ?? false,
-    hasZdrEndpoint: model.hasZdrEndpoint ?? false,
-    contextLength: model.contextLength,
-    videoCapabilities: model.videoCapabilities
+      projectedModel.supportedParameters?.includes("include_reasoning") ?? false,
+    hasZdrEndpoint: projectedModel.hasZdrEndpoint ?? false,
+    contextLength: projectedModel.contextLength,
+    imageCapabilities: isImageGenerationAvailable(projectedModel) && projectedModel.imageCapabilities
       ? {
-          supportedResolutions: model.videoCapabilities.supportedResolutions,
-          supportedAspectRatios: model.videoCapabilities.supportedAspectRatios,
-          supportedDurations: model.videoCapabilities.supportedDurations,
-          supportedFrameImages: model.videoCapabilities.supportedFrameImages,
-          supportedSizes: model.videoCapabilities.supportedSizes,
-          generateAudio: model.videoCapabilities.generateAudio,
-          seed: model.videoCapabilities.seed,
+          supportsStreaming: projectedModel.imageCapabilities.supportsStreaming,
+          maxInputReferences: projectedModel.imageCapabilities.maxInputReferences,
+          supportedParameters: projectedModel.imageCapabilities.supportedParameters,
+        }
+      : undefined,
+    videoCapabilities: projectedModel.videoCapabilities
+      ? {
+          supportedResolutions: projectedModel.videoCapabilities.supportedResolutions,
+          supportedAspectRatios: projectedModel.videoCapabilities.supportedAspectRatios,
+          supportedDurations: projectedModel.videoCapabilities.supportedDurations,
+          supportedFrameImages: projectedModel.videoCapabilities.supportedFrameImages,
+          supportedSizes: projectedModel.videoCapabilities.supportedSizes,
+          generateAudio: projectedModel.videoCapabilities.generateAudio,
+          seed: projectedModel.videoCapabilities.seed,
         }
       : undefined,
   };

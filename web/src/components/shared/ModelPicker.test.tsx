@@ -81,8 +81,43 @@ describe("ModelPicker", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it("excludes image and video outputs from opt-in text-only pickers", () => {
+    mockState.models.push(
+      {
+        modelId: "image/hybrid",
+        name: "Hybrid Image",
+        supportsImages: true,
+        architecture: { modality: "text->text+image" },
+      },
+      {
+        modelId: "video/model",
+        name: "Video Model",
+        supportsVideo: true,
+        architecture: { modality: "text->video" },
+      },
+    );
+
+    render(
+      <ModelPicker
+        selectedModelId="image/free:free"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        textOutputOnly
+      />,
+    );
+
+    expect(screen.getByText("GPT 4o")).toBeInTheDocument();
+    expect(screen.getByText("Haiku")).toBeInTheDocument();
+    expect(screen.queryByText("Free Image")).not.toBeInTheDocument();
+    expect(screen.queryByText("Hybrid Image")).not.toBeInTheDocument();
+    expect(screen.queryByText("Video Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Selected")).not.toBeInTheDocument();
+  });
+
   it("filters, resets, blocks ZDR-disabled rows, and keeps info-sheet clicks separate from selection", () => {
     mockState.prefs = { zdrEnabled: true };
+    const imageModel = mockState.models.find((model) => model.modelId === "image/free:free");
+    if (imageModel) imageModel.hasZdrEndpoint = true;
     const onSelect = vi.fn();
     const onClose = vi.fn();
     render(<ModelPicker selectedModelId="" onSelect={onSelect} onClose={onClose} />);
@@ -132,6 +167,33 @@ describe("ModelPicker", () => {
 
     expect(onSelect).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("adds the compact media summary to the visible row and accessible name", () => {
+    const imageModel = mockState.models.find((model) => model.modelId === "image/free:free");
+    if (imageModel) {
+      imageModel.mediaCapabilities = {
+        image: {
+          countMin: 1,
+          countMax: 4,
+          aspectRatios: [],
+          resolutions: ["2K"],
+          sizes: [],
+          qualities: [],
+          backgrounds: [],
+          outputFormats: [],
+          maxInputReferences: 2,
+          supportsStreaming: false,
+        },
+      };
+    }
+
+    render(<ModelPicker selectedModelId="" onSelect={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getByText("Up to 4 images • Image editing • 2K")).toBeInTheDocument();
+    expect(screen.getByRole("button", {
+      name: "Free Image. Up to 4 images, Image editing, 2K",
+    })).toBeInTheDocument();
   });
 
   it("routes wizard recommendations through the picker selection contract", () => {

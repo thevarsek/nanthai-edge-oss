@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Users,
   Brain,
+  MessageCircleQuestion,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getFeature } from "./featureData";
@@ -37,11 +38,12 @@ function getCapabilities(t: (k: string) => string): Capability[] {
     { icon: <Users size={18} />, title: t("pe_cap_compare_title"), description: t("pe_cap_compare_desc") },
     { icon: <CalendarClock size={18} />, title: t("pe_cap_tasks_title"), description: t("pe_cap_tasks_desc") },
     { icon: <Brain size={18} />, title: t("pe_cap_memory_title"), description: t("pe_cap_memory_desc") },
+    { icon: <MessageCircleQuestion size={18} />, title: t("pe_cap_advisors_title"), description: t("pe_cap_advisors_desc") },
   ];
 }
 
 function getScenarios(t: (k: string) => string): string[] {
-  return [t("pe_scenario_1"), t("pe_scenario_2"), t("pe_scenario_3"), t("pe_scenario_4")];
+  return [t("pe_scenario_1"), t("pe_scenario_2"), t("pe_scenario_3"), t("pe_scenario_4"), t("pe_scenario_5")];
 }
 
 export function PersonasPage() {

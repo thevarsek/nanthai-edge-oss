@@ -5,10 +5,16 @@ import {
   deleteDriveGrantCacheForStorage,
   storageHasOtherFileAttachmentReferences,
 } from "../lib/file_attachments";
+import { deleteChatAdvisorDataBatch } from "./manage_advisor_delete_helpers";
+import { deleteGeneratedMediaForChatBatch } from "./manage_generated_media_helpers";
 
 // Maximum deletes per batch to stay well within Convex transaction limits.
 // Each row deletion touches at most ~2 documents (the row + index entries).
 const DELETE_BATCH_SIZE = 200;
+// Generated-media deletion also drains canonical document/version state and
+// performs shared-storage reference checks per row, so keep this batch much
+// smaller than simple row-only tables.
+const GENERATED_MEDIA_DELETE_BATCH_SIZE = 25;
 
 /**
  * Deletes a Convex storage blob for an audio message only if no other message
@@ -45,6 +51,8 @@ export async function deleteChatGraph(
   // If any table had remaining rows, schedule a continuation mutation
   // to keep draining until the chat graph is fully removed.
   let hasMore = false;
+
+  hasMore = await deleteChatAdvisorDataBatch(ctx, chatId, DELETE_BATCH_SIZE);
 
   // --- Messages (heaviest table — likely to hit limits first) ---
   const messages = await ctx.db
@@ -138,6 +146,14 @@ export async function deleteChatGraph(
     await ctx.db.delete(context._id);
   }
   if (searchContexts.length === DELETE_BATCH_SIZE) hasMore = true;
+
+  // --- Generated media (images/videos + shared storage blobs) ---
+  const generatedMediaCount = await deleteGeneratedMediaForChatBatch(
+    ctx,
+    chatId,
+    GENERATED_MEDIA_DELETE_BATCH_SIZE,
+  );
+  if (generatedMediaCount === GENERATED_MEDIA_DELETE_BATCH_SIZE) hasMore = true;
 
   // --- Canonical documents + extracted text blobs ---
   const documents = await ctx.db

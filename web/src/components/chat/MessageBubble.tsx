@@ -23,6 +23,7 @@ interface MessageBubbleProps {
   onRetryWithDifferentModel?: (messageId: Id<"messages">) => void;
   messageCost?: number;
   showAdvancedStats?: boolean;
+  suppressAdvisorPanel?: boolean;
   onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
   onOpenDocumentEdit?: (annotation: DocumentEditAnnotation, message: Message) => void;
 }
@@ -33,6 +34,7 @@ export const MessageBubble = memo(function MessageBubble({
   message, isStreaming, participants,
   onRetry, onFork, onRetryWithDifferentModel,
   messageCost, showAdvancedStats,
+  suppressAdvisorPanel,
   onOpenGeneratedFile, onOpenDocumentEdit,
 }: MessageBubbleProps) {
   const handleRetry = useCallback(() => onRetry(message._id), [message._id, onRetry]);
@@ -53,6 +55,7 @@ export const MessageBubble = memo(function MessageBubble({
         onRetry={handleRetry} onFork={handleFork}
         onRetryWithDifferentModel={onRetryWithDifferentModel ? handleRetryDifferent : undefined}
         messageCost={messageCost} showAdvancedStats={showAdvancedStats}
+        suppressAdvisorPanel={suppressAdvisorPanel}
         onOpenGeneratedFile={onOpenGeneratedFile}
         onOpenDocumentEdit={onOpenDocumentEdit}
       />

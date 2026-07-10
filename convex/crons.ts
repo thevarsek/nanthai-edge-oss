@@ -80,10 +80,8 @@ crons.interval(
   internal.models.video_sync.syncVideoModels,
 );
 
-// Sync image-generation-capable models every 4 hours. The main
-// /api/v1/models endpoint silently omits image-only models (FLUX, Sourceful,
-// Seedream, etc.); this job targets ?output_modalities=image to pick them up.
-// See convex/models/image_sync.ts for full rationale.
+// Sync the authoritative dedicated image catalog and endpoint capabilities
+// every 4 hours. See convex/models/image_sync.ts for pruning safeguards.
 crons.interval(
   "syncImageModels",
   { hours: 4 },

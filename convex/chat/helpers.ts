@@ -16,6 +16,7 @@ import {
   resolveAllowedImageMessageIds,
   splitMessageAttachmentParts,
 } from "./helpers_attachment_utils";
+import { selectedParentImageContext } from "./helpers_image_projection";
 import {
   branchPathIds,
   consolidateConsecutiveRoles,
@@ -33,8 +34,6 @@ export function buildCurrentDatePrompt(now: Date = new Date()): string {
   }).format(now);
   return `Today is ${date}. Current date/time: ${now.toISOString()} (UTC). Use this to resolve relative dates such as today, yesterday, last week, and this week.`;
 }
-
-// -- Main entry point ---------------------------------------------------------
 
 /**
  * Build the OpenRouter request messages for a generation call.
@@ -91,6 +90,13 @@ export function buildRequestMessages(
   const allowedAssistantImageMessageIds = resolveAllowedImageMessageIds(
     branchMessages,
   );
+  const selectedParentImages = selectedParentImageContext(
+    excludedMsg,
+    messagesById,
+  );
+  for (const messageId of selectedParentImages.assistantMessageIds) {
+    allowedAssistantImageMessageIds.add(messageId);
+  }
 
   const result: OpenRouterMessage[] = [];
   let pendingAssistantImageParts: ContentPart[] = [];
@@ -118,7 +124,8 @@ export function buildRequestMessages(
     if (msg.role === "assistant") {
       if (
         imageParts.length > 0 &&
-        allowedAssistantImageMessageIds.has(msg._id)
+        allowedAssistantImageMessageIds.has(msg._id) &&
+        !selectedParentImages.assistantMessageIds.has(msg._id)
       ) {
         // Keep generated assistant images pending until the next user turn.
         // This aligns image-editing context with the user's follow-up prompt.
@@ -139,7 +146,10 @@ export function buildRequestMessages(
         parts.push({ type: "text", text: content });
       }
       parts.push(...nonImageParts);
-      parts.push(...imageParts);
+      if (!selectedParentImages.sourceMessageIds.has(msg._id)) {
+        parts.push(...imageParts);
+      }
+      parts.push(...(selectedParentImages.partsByUserId.get(msg._id) ?? []));
       if (pendingAssistantImageParts.length > 0) {
         parts.push(...pendingAssistantImageParts);
         pendingAssistantImageParts = [];
@@ -159,6 +169,20 @@ export function buildRequestMessages(
     }
 
     result.push(orMsg);
+  }
+
+  // Preserve visual context across autonomous assistant-to-assistant edges.
+  if (pendingAssistantImageParts.length > 0) {
+    result.push({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: "[Generated image context for the next response]",
+        },
+        ...pendingAssistantImageParts,
+      ],
+    });
   }
 
   const consolidated = consolidateConsecutiveRoles(result);

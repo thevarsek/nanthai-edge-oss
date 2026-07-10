@@ -11,6 +11,7 @@ import type { Message, Participant } from "@/hooks/useChat";
 import { MessageBubble } from "./MessageBubble";
 import { formatCost } from "@/hooks/useChatCosts";
 import type { GeneratedFileOpenRequest } from "./GeneratedFilesCard";
+import { AdvisorBatchPanel } from "./AdvisorBatchPanel";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export const MultiModelResponseGroup = memo(function MultiModelResponseGroup({
   const groupTotal = showAdvancedStats
     ? messages.reduce((sum, m) => sum + (messageCosts?.[m._id] ?? 0), 0)
     : 0;
+  const advisorBatchId = messages.find((message) => message.advisorBatchId)?.advisorBatchId;
 
   return (
     <div className="space-y-0">
@@ -73,6 +75,7 @@ export const MultiModelResponseGroup = memo(function MultiModelResponseGroup({
               onRetryWithDifferentModel={onRetryWithDifferentModel}
               messageCost={messageCosts?.[message._id]}
               showAdvancedStats={showAdvancedStats}
+              suppressAdvisorPanel={advisorBatchId !== undefined}
               onOpenGeneratedFile={onOpenGeneratedFile}
               onOpenDocumentEdit={onOpenDocumentEdit}
             />
@@ -83,6 +86,11 @@ export const MultiModelResponseGroup = memo(function MultiModelResponseGroup({
             <span className="text-[10px] font-mono text-muted">
               {t("total_label")}: {formatCost(groupTotal)}
             </span>
+          </div>
+        )}
+        {advisorBatchId && (
+          <div className="px-2 pb-1">
+            <AdvisorBatchPanel batchId={advisorBatchId} showAdvancedStats={showAdvancedStats} />
           </div>
         )}
       </div>

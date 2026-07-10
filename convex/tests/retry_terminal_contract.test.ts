@@ -8,7 +8,7 @@ import {
 } from "../chat/retry_contract";
 import { classifyTerminalErrorCode } from "../chat/terminal_error";
 
-test("retry contracts deep-clone participant snapshots, overrides, integrations, and video config", () => {
+test("retry contracts deep-clone participant snapshots, overrides, and media config", () => {
   const original: RetryContract = {
     participants: [
       {
@@ -31,6 +31,7 @@ test("retry contracts deep-clone participant snapshots, overrides, integrations,
     turnSkillOverrides: [{ skillId: "skill_1" as any, state: "always" }],
     turnIntegrationOverrides: [{ integrationId: "slack", enabled: false }],
     videoConfig: { resolution: "1080p", aspectRatio: "16:9", duration: 8 },
+    imageConfig: { count: 2, quality: "high", outputCompression: 0 },
   };
 
   const cloned = cloneRetryContract(original);
@@ -41,6 +42,7 @@ test("retry contracts deep-clone participant snapshots, overrides, integrations,
     original.turnIntegrationOverrides[0].enabled = true;
   }
   original.videoConfig!.duration = 4;
+  original.imageConfig!.count = 9;
 
   assert.deepEqual(cloned, {
     participants: [
@@ -76,6 +78,7 @@ test("retry contracts deep-clone participant snapshots, overrides, integrations,
     turnSkillOverrides: [{ skillId: "skill_1", state: "always" }],
     turnIntegrationOverrides: [{ integrationId: "slack", enabled: false }],
     videoConfig: { resolution: "1080p", aspectRatio: "16:9", duration: 8 },
+    imageConfig: { count: 2, quality: "high", outputCompression: 0 },
   });
 });
 

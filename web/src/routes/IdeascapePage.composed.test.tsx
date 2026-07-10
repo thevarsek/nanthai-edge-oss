@@ -6,6 +6,16 @@ import type { Id } from "@convex/_generated/dataModel";
 import { clearChatDraft } from "@/stores/chatDraftStore";
 import { CanvasView } from "./IdeascapePage.canvas";
 
+vi.mock("@/hooks/useAdvisorComposer", () => ({
+  useAdvisorComposer: () => ({
+    state: { surface: "closed", selections: [], brief: "", defaultAllowWebSearch: false, defaultKeepAvailable: false, saveError: null }, participantCount: 1,
+    selectedPersonas: [], persistedPersonaIds: new Set(), participantPersonaIds: new Set(), advisorSelections: undefined, advisorBrief: undefined,
+    canSendCurrentSelection: true, canCaptureQueuedSnapshot: true,
+    open: vi.fn(), close: vi.fn(), togglePersona: vi.fn(), updateSelection: vi.fn(), remove: vi.fn(),
+    setBrief: vi.fn(), setDefaultAllowWebSearch: vi.fn(), setDefaultKeepAvailable: vi.fn(), save: vi.fn(), completeSuccessfulSend: vi.fn(),
+  }),
+}));
+
 const {
   cancelGeneration,
   clearKBFiles,

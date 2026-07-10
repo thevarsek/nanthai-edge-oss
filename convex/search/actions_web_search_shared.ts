@@ -4,8 +4,9 @@ import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { integrationOverrideEntry } from "../schema_validators";
 import { analyticsClientMetadataValidator, type AnalyticsClientMetadata } from "../analytics/client_metadata";
-import { analyticsSourceValidator } from "../chat/actions_args";
+import { analyticsSourceValidator, imageConfigValidator } from "../chat/actions_args";
 import type { GenerationAnalyticsSource } from "../chat/actions_run_generation_types";
+import type { ImageGenerationConfig } from "../preferences/image_defaults";
 
 export const runWebSearchArgs = {
   sessionId: v.id("searchSessions"),
@@ -31,6 +32,7 @@ export const runWebSearchArgs = {
   enabledIntegrations: v.optional(v.array(v.string())),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   subagentsEnabled: v.optional(v.boolean()),
+  imageConfig: v.optional(imageConfigValidator),
   analytics: v.optional(analyticsClientMetadataValidator),
   analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
@@ -56,6 +58,7 @@ export interface WebSearchActionArgs extends Record<string, unknown> {
   enabledIntegrations?: string[];
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   subagentsEnabled?: boolean;
+  imageConfig?: ImageGenerationConfig;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
 }

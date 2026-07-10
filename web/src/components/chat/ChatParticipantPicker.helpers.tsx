@@ -10,9 +10,16 @@ import type { KeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
-import { isProviderAllowedForGoogle, sortMetric, type SortKey } from "@/components/shared/ModelPickerShared";
+import {
+  isProviderAllowedForGoogle,
+  modelHasImageOutput,
+  modelIsZdrEligible,
+  sortMetric,
+  type SortKey,
+} from "@/components/shared/ModelPickerShared";
 import { type ModelSummary } from "@/components/shared/ModelPickerHelpers";
 import { listRowPriceLabel } from "@/components/shared/ModelPickerHelpers.utils";
+import { compactMediaSummary } from "@/components/shared/ModelMediaCapabilities.utils";
 import type { ParticipantEntry } from "@/hooks/useParticipants";
 import type { Id } from "@convex/_generated/dataModel";
 import { getModelDisplayName } from "@/lib/modelDisplay";
@@ -293,15 +300,17 @@ export function ParticipantModelRow({
   const score = sortMetric(model, sortKey);
   const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
   const primaryLabel = model.derivedGuidance?.primaryLabel;
-  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
+  const isZdrDisabled = zdrEnforced === true && !modelIsZdrEligible(model);
   const isGoogleBlocked = googleIntegrationsActive === true && (
     !model.hasZdrEndpoint ||
+    modelHasImageOutput(model) ||
     !isProviderAllowedForGoogle(model.modelId, model.provider)
   );
   const isDisabled = disabled || isZdrDisabled || isGoogleBlocked;
   const disabledReason = isZdrDisabled ? t("zdr_model_not_supported") : isGoogleBlocked ? t("zdr_model_not_available_google") : null;
   // Always-on price label — parity with iOS / Android and with ModelPicker row.
   const priceLabel = listRowPriceLabel(model);
+  const mediaSummary = compactMediaSummary(t, model.mediaCapabilities);
   const canToggle = !isDisabled || isSelected;
 
   return (
@@ -310,6 +319,9 @@ export function ParticipantModelRow({
       tabIndex={canToggle ? 0 : -1}
       aria-disabled={!canToggle}
       aria-pressed={isSelected}
+      aria-label={mediaSummary.length > 0
+        ? `${model.name}. ${mediaSummary.join(", ")}`
+        : model.name}
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors ${
         isDisabled && !isSelected ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"
       } ${isSelected ? "bg-primary/8" : ""}`}
@@ -340,6 +352,11 @@ export function ParticipantModelRow({
           {primaryLabel && <GuidanceTag label={primaryLabel} />}
           <TrendBadge model={model} />
         </div>
+        {mediaSummary.length > 0 && (
+          <p className="text-[10px] text-muted mt-0.5 truncate">
+            {mediaSummary.join(" • ")}
+          </p>
+        )}
         {disabledReason && <p className="text-[10px] text-muted mt-0.5">{disabledReason}</p>}
       </div>
 

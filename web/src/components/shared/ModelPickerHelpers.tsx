@@ -13,13 +13,20 @@ import {
 import {
   formatPrice,
   formatVideoPrice,
-  formatImagePrice,
+  formatResolvedImagePrice,
   guidanceLabelText,
+  resolveImagePrice,
+  type ImagePricing,
   type WizardTask,
   type WizardPriority,
 } from "@/components/shared/ModelPickerHelpers.utils";
 import { ModelSettingsEditor } from "@/components/shared/ModelSettingsEditor";
 import { isWizardModelDisabled, selectWizardResults } from "@/components/shared/ModelPickerWizardResults";
+import {
+  ModelMediaCapabilitiesSection,
+} from "@/components/shared/ModelMediaCapabilities";
+import type { ModelMediaCapabilities } from "@/components/shared/ModelMediaCapabilities.utils";
+import { modelSupportsVisionInput } from "@/components/shared/ModelPickerShared";
 
 // ─── Types (shared with ModelPicker.tsx) ─────────────────────────────────────
 
@@ -50,11 +57,10 @@ export interface ModelSummary {
     perVideoSecond?: number;
     perVideoSecond1080p?: number;
   };
-  /** Image-specific pricing (image-gen models charge per image instead of per token). */
-  imagePricing?: {
-    perImageToken?: number;
-    perImageOutput?: number;
-  };
+  /** Dedicated Image API pricing plus token-only legacy fallbacks. */
+  imagePricing?: ImagePricing;
+  /** Canonical backend projection of model-specific image/video options. */
+  mediaCapabilities?: ModelMediaCapabilities;
   derivedGuidance?: {
     labels?: string[];
     primaryLabel?: string;
@@ -146,10 +152,10 @@ export function ModelInfoSheet({
   const hasAudio = model.supportedParameters?.includes("audio") ?? false;
   const hasFileInput = model.architecture?.modality?.includes("file") ?? false;
   const inputModality = model.architecture?.modality?.split("->")[0] ?? "";
-  const hasVision = inputModality.includes("image");
+  const hasVision = modelSupportsVisionInput(model);
   const hasVideoInput = inputModality.includes("video");
   const hasFrameSupport = (model.supportedFrameImages?.length ?? 0) > 0;
-  const imageMegapixelPrice = model.imagePricing?.perImageOutput ?? model.imagePricing?.perImageToken;
+  const imagePrice = resolveImagePrice(model.imagePricing);
 
   const SCORE_KEYS: { key: string; label: string; icon: React.ReactNode }[] = [
     { key: "recommended", label: t("guidance_score_recommended"), icon: <Star size={12} /> },
@@ -286,11 +292,13 @@ export function ModelInfoSheet({
             </div>
           ) : model.supportsVideo ? (
             <p className="text-xs text-muted italic">Pricing not yet published by provider</p>
-          ) : model.imagePricing && imageMegapixelPrice != null ? (
+          ) : model.supportsImages && imagePrice ? (
             <div className="rounded-xl bg-surface-2 divide-y divide-border/50">
               <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-xs text-muted">Per megapixel</span>
-                <span className="text-xs font-mono">{formatImagePrice(imageMegapixelPrice)}</span>
+                <span className="text-xs text-muted">
+                  {t(imagePrice.unit === "image" ? "image_price_per_image" : "image_price_per_megapixel")}
+                </span>
+                <span className="text-xs font-mono">{formatResolvedImagePrice(imagePrice)}</span>
               </div>
               {(model.inputPricePer1M ?? 0) > 0 && (
                 <div className="flex items-center justify-between px-3 py-2">
@@ -338,6 +346,8 @@ export function ModelInfoSheet({
             )}
           </div>
         </div>
+
+        <ModelMediaCapabilitiesSection capabilities={model.mediaCapabilities} />
 
         {/* Details */}
         <div className="space-y-1">
@@ -506,7 +516,7 @@ export function ModelWizard({
                 {results.map((m, i) => {
                   const taskObj = TASKS.find((taskOption) => taskOption.value === task);
                   const orMatch = m.openRouterUseCases?.find((uc) => uc.category === taskObj?.orCategory);
-                  const isZdrDisabled = zdrEnforced === true && !m.hasZdrEndpoint;
+                  const isZdrDisabled = isWizardModelDisabled(m, zdrEnforced, false);
                   const isGoogleBlocked = isWizardModelDisabled(m, false, googleIntegrationsActive);
                   const isDisabled = isZdrDisabled || isGoogleBlocked;
                   return (

@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { useQueuedFollowUp } from "./MessageInput.queue.hook";
 import type { AttachmentPreview } from "./MessageInput.attachments.types";
+import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 
 function Harness({
   chatId = "chat_1",
@@ -9,12 +10,24 @@ function Harness({
   isGenerating = true,
   queuedAttachments = [],
   onSend = vi.fn(),
+  onQueueCommitted = vi.fn(),
+  canCaptureQueuedAdvisorSnapshot = true,
+  captureQueuedAdvisorSnapshot,
+  restoreQueuedAdvisorSnapshot,
 }: {
   chatId?: string;
   text: string;
   isGenerating?: boolean;
   queuedAttachments?: AttachmentPreview[];
-  onSend?: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
+  onSend?: (args: {
+    text: string;
+    attachments?: AttachmentPreview[];
+    advisorSnapshot?: QueuedAdvisorSnapshot;
+  }) => boolean | void | Promise<boolean | void>;
+  onQueueCommitted?: () => void;
+  canCaptureQueuedAdvisorSnapshot?: boolean;
+  captureQueuedAdvisorSnapshot?: () => QueuedAdvisorSnapshot | null;
+  restoreQueuedAdvisorSnapshot?: (snapshot: QueuedAdvisorSnapshot) => void;
 }) {
   const queue = useQueuedFollowUp({
     chatId,
@@ -27,21 +40,46 @@ function Harness({
     disabled: false,
     onSend,
     onCancel: vi.fn(),
-    onQueueCommitted: vi.fn(),
+    onQueueCommitted,
     onEditCommitted: vi.fn(),
+    canCaptureQueuedAdvisorSnapshot,
+    captureQueuedAdvisorSnapshot,
+    restoreQueuedAdvisorSnapshot,
   });
 
   return (
     <div>
       <button type="button" onClick={queue.queueFollowUp}>queue</button>
       {queue.queuedFollowUps.map((queued) => (
-        <p key={queued.id}>{queued.text}</p>
+        <div key={queued.id}>
+          <p>{queued.text}</p>
+          <button type="button" onClick={() => queue.editQueuedFollowUp(queued.id)}>edit-{queued.text}</button>
+          <button type="button" onClick={() => queue.removeQueuedFollowUp(queued.id)}>remove-{queued.text}</button>
+        </div>
       ))}
     </div>
   );
 }
 
 describe("useQueuedFollowUp", () => {
+  it("does not queue or clear the composer when Advisor hydration cannot provide an exact snapshot", () => {
+    const onQueueCommitted = vi.fn();
+    const captureQueuedAdvisorSnapshot = vi.fn(() => null);
+    render(
+      <Harness
+        text="wait for Advisors"
+        onQueueCommitted={onQueueCommitted}
+        captureQueuedAdvisorSnapshot={captureQueuedAdvisorSnapshot}
+      />,
+    );
+
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+
+    expect(captureQueuedAdvisorSnapshot).toHaveBeenCalledTimes(1);
+    expect(onQueueCommitted).not.toHaveBeenCalled();
+    expect(screen.queryByText("wait for Advisors")).not.toBeInTheDocument();
+  });
+
   it("appends multiple queued follow-ups for the same chat", () => {
     const { rerender } = render(<Harness text=" first " />);
 
@@ -106,6 +144,112 @@ describe("useQueuedFollowUp", () => {
       text: "use this context",
       attachments: [extraAttachment],
     });
+  });
+
+  it("freezes and sends the queued Advisor snapshot", async () => {
+    const advisorSnapshot: QueuedAdvisorSnapshot = {
+      advisorSelections: [{
+        personaId: "persona_1" as never,
+        allowWebSearch: true,
+        keepAvailable: false,
+      }],
+      advisorBrief: "Challenge the premise",
+    };
+    const onSend = vi.fn();
+    const captureQueuedAdvisorSnapshot = vi.fn(() => advisorSnapshot);
+    const { rerender } = render(
+      <Harness
+        text="queued with Advisor"
+        isGenerating
+        onSend={onSend}
+        captureQueuedAdvisorSnapshot={captureQueuedAdvisorSnapshot}
+      />,
+    );
+
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+    rerender(
+      <Harness
+        text=""
+        isGenerating={false}
+        onSend={onSend}
+        captureQueuedAdvisorSnapshot={() => ({ advisorSelections: [] })}
+      />,
+    );
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(captureQueuedAdvisorSnapshot).toHaveBeenCalledTimes(1);
+    expect(onSend).toHaveBeenCalledWith({
+      text: "queued with Advisor",
+      attachments: [],
+      advisorSnapshot,
+    });
+  });
+
+  it("keeps an explicit no-Advisor snapshot when the live composer later changes", async () => {
+    const capturedSnapshot: QueuedAdvisorSnapshot = { advisorSelections: [] };
+    const onSend = vi.fn();
+    const { rerender } = render(
+      <Harness
+        text="queued without Advisor"
+        isGenerating
+        onSend={onSend}
+        captureQueuedAdvisorSnapshot={() => capturedSnapshot}
+      />,
+    );
+
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+    capturedSnapshot.advisorSelections.push({
+      personaId: "persona_later" as never,
+      allowWebSearch: true,
+      keepAvailable: true,
+    });
+    rerender(
+      <Harness
+        text=""
+        isGenerating={false}
+        onSend={onSend}
+        captureQueuedAdvisorSnapshot={() => capturedSnapshot}
+      />,
+    );
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onSend).toHaveBeenCalledWith({
+      text: "queued without Advisor",
+      attachments: [],
+      advisorSnapshot: { advisorSelections: [] },
+    });
+  });
+
+  it("restores a queued Advisor snapshot when the message is edited or removed", () => {
+    const advisorSnapshot: QueuedAdvisorSnapshot = {
+      advisorSelections: [{
+        personaId: "persona_1" as never,
+        allowWebSearch: false,
+        keepAvailable: false,
+      }],
+    };
+    const restoreQueuedAdvisorSnapshot = vi.fn();
+    const { rerender } = render(
+      <Harness
+        text="edit me"
+        captureQueuedAdvisorSnapshot={() => advisorSnapshot}
+        restoreQueuedAdvisorSnapshot={restoreQueuedAdvisorSnapshot}
+      />,
+    );
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+    act(() => screen.getByRole("button", { name: "edit-edit me" }).click());
+    expect(restoreQueuedAdvisorSnapshot).toHaveBeenLastCalledWith(advisorSnapshot);
+
+    rerender(
+      <Harness
+        text="remove me"
+        captureQueuedAdvisorSnapshot={() => advisorSnapshot}
+        restoreQueuedAdvisorSnapshot={restoreQueuedAdvisorSnapshot}
+      />,
+    );
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+    act(() => screen.getByRole("button", { name: "remove-remove me" }).click());
+    expect(restoreQueuedAdvisorSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it("keeps queued follow-up when validation prevents send", async () => {

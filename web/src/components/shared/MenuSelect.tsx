@@ -15,9 +15,10 @@ interface MenuSelectProps {
   value: string;
   options: MenuSelectOption[];
   onChange: (v: string) => void;
+  ariaLabel?: string;
 }
 
-export function MenuSelect({ value, options, onChange }: MenuSelectProps) {
+export function MenuSelect({ value, options, onChange, ariaLabel }: MenuSelectProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -93,6 +94,7 @@ export function MenuSelect({ value, options, onChange }: MenuSelectProps) {
       <button
         ref={triggerRef}
         type="button"
+        aria-label={ariaLabel}
         onClick={() => setOpen(!open)}
         className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-3 text-sm border border-border/50 hover:border-border transition-colors"
       >

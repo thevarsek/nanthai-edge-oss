@@ -27,6 +27,7 @@ import { PaywallModal } from "@/components/shared/PaywallModal";
 import { SectionHeader, SectionFooter } from "./ChatDefaultsSection.helpers";
 import { isOwnedVoicePreview, useOptimistic, shortModelName, VOICE_OPTIONS } from "./ChatDefaultsSection.utils";
 import { ParticipantPicker } from "./ChatDefaultsSection.ParticipantPicker";
+import { ChatDefaultsImageGenerationSection } from "./ChatDefaultsImageGenerationSection";
 import { captureSettingChanged } from "@/lib/featureAnalytics";
 
 const VIDEO_DURATION_OPTIONS = [4, 5, 6, 8, 10, 12, 15, 20].map((value) => ({
@@ -59,6 +60,13 @@ const SETTING_ANALYTICS_AREAS: Record<string, SettingArea> = {
   defaultVideoResolution: "image_video",
   defaultVideoDuration: "image_video",
   defaultVideoGenerateAudio: "image_video",
+  defaultImageCount: "image_video",
+  defaultImageAspectRatio: "image_video",
+  defaultImageResolution: "image_video",
+  defaultImageQuality: "image_video",
+  defaultImageBackground: "image_video",
+  defaultImageOutputFormat: "image_video",
+  defaultImageOutputCompression: "image_video",
   zdrEnabled: "settings",
   sendOnEnter: "settings",
 };
@@ -365,6 +373,11 @@ export function ChatDefaultsSection() {
       </div>
       <SectionFooter>{t("audio_section_footer")}</SectionFooter>
 
+      <ChatDefaultsImageGenerationSection
+        prefs={prefs}
+        onChange={updatePreferenceImmediate}
+      />
+
       {/* ── Video Generation ── */}
       <SectionHeader><div className="flex items-center gap-1.5"><Video size={14} />{t("video_generation")}</div></SectionHeader>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
@@ -423,7 +436,12 @@ export function ChatDefaultsSection() {
       {showTitleModelPicker && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60" onClick={(e) => { if (e.target === e.currentTarget) setShowTitleModelPicker(false); }}>
           <div className="w-full max-w-2xl bg-surface-1 rounded-t-2xl sm:rounded-2xl overflow-hidden" style={{ maxHeight: "80vh" }}>
-            <ModelPicker selectedModelId={titleModelId} onSelect={handleSelectTitleModel} onClose={() => setShowTitleModelPicker(false)} />
+            <ModelPicker
+              selectedModelId={titleModelId}
+              onSelect={handleSelectTitleModel}
+              onClose={() => setShowTitleModelPicker(false)}
+              textOutputOnly
+            />
           </div>
         </div>
       )}

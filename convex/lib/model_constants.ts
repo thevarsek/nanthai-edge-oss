@@ -7,6 +7,7 @@
 
 export const MODEL_IDS = {
   appDefault: "openai/gpt-5.5",
+  advisorDispatcher: "openai/gpt-4.1-mini",
   titleGeneration: "openai/gpt-4.1-mini",
   memoryExtraction: "openai/gpt-4.1-mini",
   memoryExtractionFallback: "openai/gpt-4.1",

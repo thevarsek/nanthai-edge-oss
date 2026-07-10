@@ -37,6 +37,7 @@ import {
   captureBackendAIOperationStarted,
 } from "../analytics/backend_events";
 import type { OpenRouterUsage } from "../lib/openrouter";
+import { resolveTextAncillaryModel } from "../lib/openrouter_modality";
 
 const DEFAULT_MEMORY_MODEL = MODEL_IDS.memoryExtraction;
 const MEMORY_FALLBACK_MODEL = MODEL_IDS.memoryExtractionFallback;
@@ -166,10 +167,19 @@ export async function extractMemoriesHandler(
   try {
     const messages = buildMemoryExtractionMessages(args, existingContext);
     requireZdr = isZdrEnabled(prefs);
-    memoryModel = selectAncillaryModelForZdr({
+    const selectedMemoryModel = selectAncillaryModelForZdr({
       requestedModel: args.extractionModel,
       defaultModel: DEFAULT_MEMORY_MODEL,
       requireZdr,
+    });
+    memoryModel = await resolveTextAncillaryModel({
+      selectedModel: selectedMemoryModel,
+      defaultModel: DEFAULT_MEMORY_MODEL,
+      feature: "Memory extraction",
+      getCapabilities: (modelId) => ctx.runQuery(
+        internal.chat.queries.getModelCapabilities,
+        { modelId },
+      ),
     });
     operationStartedAt = Date.now();
     await captureBackendAIOperationStarted(ctx, {

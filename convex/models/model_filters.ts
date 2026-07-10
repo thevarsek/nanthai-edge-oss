@@ -55,6 +55,7 @@ export function isEligibleModel(model: {
   outputPricePer1M?: number;
   supportsVideo?: boolean;
   supportsImages?: boolean;
+  imageCapabilities?: { isAvailable?: boolean };
   architecture?: { modality?: string } | undefined;
 }): boolean {
   // Provider exclusion is handled separately (filterExcludedOpenRouterProviders)
@@ -72,7 +73,11 @@ export function isEligibleModel(model: {
   // tokens, not text. Exempt any model whose output modality includes
   // `image` from both context-length and price filters.
   const outputModality = (model.architecture?.modality ?? "").split("->")[1] ?? "";
-  if (model.supportsImages && outputModality.includes("image")) return true;
+  if (
+    model.imageCapabilities?.isAvailable !== false &&
+    model.supportsImages &&
+    outputModality.includes("image")
+  ) return true;
 
   return (
     meetsMinContext(model.contextLength, model.provider ?? undefined) &&

@@ -8,7 +8,7 @@
 // =============================================================================
 
 import { v, ConvexError } from "convex/values";
-import { mutation, internalMutation } from "../_generated/server";
+import { mutation, internalMutation, type MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
@@ -152,7 +152,10 @@ export const update = mutation({
     });
 
     if (previousAvatarStorageId && previousAvatarStorageId !== nextAvatarStorageId) {
-      await ctx.storage.delete(previousAvatarStorageId);
+      await deletePersonaAvatarUnlessHistoricallyReferenced(ctx, {
+        _id: persona._id,
+        avatarImageStorageId: previousAvatarStorageId,
+      });
     }
   },
 });
@@ -167,9 +170,8 @@ export const remove = mutation({
     if (!persona || persona.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Persona not found or unauthorized" });
     }
-    if (persona.avatarImageStorageId) {
-      await ctx.storage.delete(persona.avatarImageStorageId);
-    }
+    await removePersonaAdvisorAssignments(ctx, args.personaId, userId);
+    await deletePersonaAvatarUnlessHistoricallyReferenced(ctx, persona);
     await ctx.db.delete(args.personaId);
   },
 });
@@ -224,9 +226,38 @@ export const removePersonaInternal = internalMutation({
     if (!persona || persona.userId !== args.userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found or unauthorized" });
     }
-    if (persona.avatarImageStorageId) {
-      await ctx.storage.delete(persona.avatarImageStorageId);
-    }
+    await removePersonaAdvisorAssignments(ctx, args.personaId, args.userId);
+    await deletePersonaAvatarUnlessHistoricallyReferenced(ctx, persona);
     await ctx.db.delete(args.personaId);
   },
 });
+
+async function removePersonaAdvisorAssignments(
+  ctx: MutationCtx,
+  personaId: Id<"personas">,
+  userId: string,
+): Promise<void> {
+  const assignments = await ctx.db
+    .query("chatAdvisors")
+    .withIndex("by_persona", (query) => query.eq("personaId", personaId))
+    .collect();
+  for (const assignment of assignments) {
+    if (assignment.userId === userId) await ctx.db.delete(assignment._id);
+  }
+}
+
+async function deletePersonaAvatarUnlessHistoricallyReferenced(
+  ctx: MutationCtx,
+  persona: { _id: Id<"personas">; avatarImageStorageId?: Id<"_storage"> },
+): Promise<void> {
+  if (!persona.avatarImageStorageId) return;
+  const historicalRun = await ctx.db
+    .query("advisorRuns")
+    .withIndex("by_persona_avatar_storage", (query) =>
+      query
+        .eq("personaId", persona._id)
+        .eq("personaAvatarStorageId", persona.avatarImageStorageId)
+    )
+    .first();
+  if (!historicalRun) await ctx.storage.delete(persona.avatarImageStorageId);
+}

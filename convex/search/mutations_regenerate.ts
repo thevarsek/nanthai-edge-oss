@@ -7,6 +7,7 @@ import {
   analyticsClientMetadataValidator,
   type AnalyticsClientMetadata,
 } from "../analytics/client_metadata";
+import { reuseAdvisorBatchForRetry } from "../advisors/retry";
 
 const REGENERATE_REUSED_PHASE_TYPES = new Set([
   "planning",
@@ -105,6 +106,11 @@ export async function regeneratePaperHandler(
       parentMessageIds: originalMessage.parentMessageIds,
       status: "pending",
       createdAt: now,
+    });
+    await reuseAdvisorBatchForRetry(ctx, {
+      sourceMessage: originalMessage,
+      targetMessageIds: [assistantMessageId],
+      userId,
     });
 
     const jobId = await ctx.db.insert("generationJobs", {

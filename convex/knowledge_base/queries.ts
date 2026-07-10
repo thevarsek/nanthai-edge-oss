@@ -76,6 +76,26 @@ export interface GetKnowledgeBaseFilesByStorageIdsArgs extends Record<string, un
   storageIds: Id<"_storage">[];
 }
 
+export function generatedMediaFilename(
+  type: "image" | "video",
+  mimeType: string,
+): string {
+  const normalized = mimeType.trim().toLowerCase();
+  const knownExtensions: Record<string, string> = {
+    "image/avif": "avif",
+    "image/gif": "gif",
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/svg+xml": "svg",
+    "image/webp": "webp",
+    "video/mp4": "mp4",
+    "video/quicktime": "mov",
+    "video/webm": "webm",
+  };
+  const extension = knownExtensions[normalized] ?? (type === "video" ? "mp4" : "png");
+  return `generated-${type}.${extension}`;
+}
+
 /**
  * List all files belonging to the authenticated user.
  *
@@ -146,7 +166,7 @@ export async function listKnowledgeBaseFilesHandler(
           .take(200);
         for (const m of media) {
           if (m.userId !== auth.userId) continue;
-          const filename = m.type === "video" ? "generated-video.mp4" : "generated-image.png";
+          const filename = generatedMediaFilename(m.type, m.mimeType);
           if (searchLower && !filename.toLowerCase().includes(searchLower)) continue;
           results.push({
             storageId: m.storageId,
@@ -234,7 +254,7 @@ export async function listKnowledgeBaseFilesHandler(
       .take(fetchCap);
 
     for (const m of media) {
-      const filename = m.type === "video" ? "generated-video.mp4" : "generated-image.png";
+      const filename = generatedMediaFilename(m.type, m.mimeType);
       if (searchLower && !filename.toLowerCase().includes(searchLower)) {
         continue;
       }
@@ -417,7 +437,7 @@ export async function getKnowledgeBaseFilesByStorageIdsHandler(
       .first();
     if (media?.userId === auth.userId && !seen.has(media.storageId)) {
       seen.add(media.storageId);
-      const filename = media.type === "video" ? "generated-video.mp4" : "generated-image.png";
+      const filename = generatedMediaFilename(media.type, media.mimeType);
       results.push({
         storageId: media.storageId,
         filename,

@@ -166,6 +166,7 @@ test("video job and generated-media handlers persist lifecycle metadata", async 
   assert.equal(state.patches[0].patch.error, "provider failed");
   assert.equal(state.patches[1].patch.pollCount, 3);
   assert.equal(state.inserts[1].value.durationSeconds, 8);
+  assert.equal(state.inserts[1].value.referenceTrackingVersion, 1);
 });
 
 test("streaming message content updates patch explicit rows or create fallback rows", async () => {

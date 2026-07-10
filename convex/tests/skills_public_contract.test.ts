@@ -308,9 +308,15 @@ test("seedSystemCatalog upserts every system skill", async () => {
   const deleted: string[] = [];
 
   await (seedSystemCatalog as any)._handler({
-    runMutation: async (_ref: unknown, args: { slug?: string; slugs?: string[] }) => {
+    runMutation: async (_ref: unknown, args: { slug?: string }) => {
       if (args.slug) seeded.push(args.slug);
-      if (args.slugs) deleted.push(...args.slugs);
+      return args.slug
+        ? undefined
+        : { continueCursor: "done", isDone: true, patchedCount: 0 };
+    },
+    runQuery: async (_ref: unknown, args: { slugs: string[] }) => {
+      deleted.push(...args.slugs);
+      return [];
     },
   }, {});
 

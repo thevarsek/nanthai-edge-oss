@@ -90,7 +90,8 @@ test("model queries filter excluded providers and summarize free models", async 
   assert.deepEqual(list.map((model: any) => model._id), ["m1", "m2"]);
   assert.equal(list[0]?.isFree, true);
   assert.equal(list[1]?.isFree, false);
-  assert.equal(hidden, models[1]);
+  assert.equal(hidden?.modelId, models[1].modelId);
+  assert.deepEqual(hidden?.mediaCapabilities, {});
   assert.deepEqual(internal, models);
 });
 

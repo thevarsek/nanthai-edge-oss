@@ -20,6 +20,7 @@ import { PendingFollowUpCard } from "@/components/chat/PendingFollowUpCard";
 import { useQueuedFollowUp } from "@/components/chat/MessageInput.queue.hook";
 import { useAttachments } from "@/components/chat/MessageInput.attachments.hook";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
+import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import { getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
 
 export type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
@@ -28,7 +29,11 @@ interface Props {
   chatId: Id<"chats">;
   participants: Participant[];
   isGenerating: boolean;
-  onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
+  onSend: (args: {
+    text: string;
+    attachments?: AttachmentPreview[];
+    advisorSnapshot?: QueuedAdvisorSnapshot;
+  }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
   onCreateUploadUrl: () => Promise<string>;
   onPlusMenuSelect?: (item: PlusMenuItem) => void;
@@ -60,6 +65,9 @@ interface Props {
   onChangeExtraRole?: (index: number, role: NonNullable<AttachmentPreview["videoRole"]>) => void;
   /** Suggested generated document that can be staged into the next message. */
   generatedDocumentSuggestion?: AttachmentPreview;
+  canCaptureQueuedAdvisorSnapshot?: boolean;
+  captureQueuedAdvisorSnapshot?: () => QueuedAdvisorSnapshot | null;
+  restoreQueuedAdvisorSnapshot?: (snapshot: QueuedAdvisorSnapshot) => void;
 }
 
 export function MessageInput({
@@ -75,6 +83,9 @@ export function MessageInput({
   onRemoveExtra,
   onChangeExtraRole,
   generatedDocumentSuggestion,
+  canCaptureQueuedAdvisorSnapshot = true,
+  captureQueuedAdvisorSnapshot,
+  restoreQueuedAdvisorSnapshot,
 }: Props) {
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -201,6 +212,9 @@ export function MessageInput({
         textareaRef.current?.focus();
       });
     },
+    canCaptureQueuedAdvisorSnapshot,
+    captureQueuedAdvisorSnapshot,
+    restoreQueuedAdvisorSnapshot,
   });
 
   const handlePaste = useCallback(

@@ -11,6 +11,7 @@
 // =============================================================================
 
 import { QueryCtx } from "../_generated/server";
+import { isImageGenerationAvailable } from "../models/media_capabilities";
 
 export type OutputModalityCategory = "text" | "image" | "video";
 
@@ -53,8 +54,11 @@ export async function getModelModalityCategory(
   // pricing metadata for image-output models even when OpenRouter's main
   // catalog row is late/missing modality details.
   if (model.supportsVideo) return "video";
-  if ("imageCapabilities" in model && model.imageCapabilities != null) return "image";
-  if (model.supportsImages && !model.architecture?.modality?.split("->")[1]?.includes("text")) {
+  if (model.imageCapabilities && isImageGenerationAvailable(model)) return "image";
+  if (
+    isImageGenerationAvailable(model) &&
+    !model.architecture?.modality?.split("->")[1]?.includes("text")
+  ) {
     return "image";
   }
 

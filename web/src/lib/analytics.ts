@@ -43,6 +43,14 @@ export type AnalyticsEvent =
   | "artifact_downloaded"
   | "setting_changed"
   | "generation_cancelled"
+  | "advisor_picker_opened"
+  | "advisor_selected"
+  | "advisor_consultation_started"
+  | "advisor_consultation_completed"
+  | "advisor_consultation_failed"
+  | "advisor_kept_for_chat"
+  | "advisor_removed_from_chat"
+  | "advisor_advice_expanded"
   | "feature_used"
   | "cta_clicked";
 

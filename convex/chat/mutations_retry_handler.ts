@@ -5,8 +5,10 @@ import { ConvexError } from "convex/values";
 import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { getIsProUnlocked, requireAuth, requirePro } from "../lib/auth";
 import { MODEL_IDS } from "../lib/model_constants";
+import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
 import { hasGoogleIntegrations, isGoogleDataAllowedModel } from "../models/google_data_providers";
+import { validateSameModality } from "../lib/modality_utils";
 import { shouldRequireZdrForMemoryPrewarm } from "./memory_prewarm_zdr";
 import {
   cancelGenerationJobsForMessage,
@@ -14,6 +16,7 @@ import {
   mapParticipantsForGeneration,
   SendParticipantConfig,
 } from "./mutation_send_helpers";
+import { reuseAdvisorBatchForRetry } from "../advisors/retry";
 import {
   buildRetryContract,
   cloneRetryContract,
@@ -259,8 +262,15 @@ export async function retryMessageHandler(
   let effectiveRetryContract: RetryContract;
 
   if (storedRetryContract) {
+    const imageConfig = storedRetryContract.imageConfig ?? imageConfigFromPreferences(
+      await ctx.db
+        .query("userPreferences")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .first(),
+    );
     effectiveRetryContract = buildRetryContract({
       ...storedRetryContract,
+      imageConfig,
       participants: mergeStoredRetryParticipants(
         storedRetryContract,
         args.participants,
@@ -284,7 +294,13 @@ export async function retryMessageHandler(
       });
     }
 
-    const legacySearch = await resolveLegacySearchConfig(ctx, originalMsg);
+    const [legacySearch, preferences] = await Promise.all([
+      resolveLegacySearchConfig(ctx, originalMsg),
+      ctx.db
+        .query("userPreferences")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .first(),
+    ]);
     const legacySearchMode =
       args.searchMode ?? (legacySearch.searchMode === "web" ? "web" : undefined);
     const legacyContractSearchMode: RetrySearchMode =
@@ -304,6 +320,7 @@ export async function retryMessageHandler(
       turnSkillOverrides: args.turnSkillOverrides,
       turnIntegrationOverrides: args.turnIntegrationOverrides,
       videoConfig: args.videoConfig,
+      imageConfig: imageConfigFromPreferences(preferences),
     });
 
     const legacyToolFilter = await filterParticipantToolOptions(ctx, {
@@ -327,6 +344,21 @@ export async function retryMessageHandler(
   }
 
   const participants = effectiveRetryContract.participants;
+  if (participants.length > 1) {
+    try {
+      await validateSameModality(
+        ctx,
+        participants.map((participant) => participant.modelId),
+      );
+    } catch (error) {
+      throw new ConvexError({
+        code: "VALIDATION" as const,
+        message: error instanceof Error
+          ? error.message
+          : "Models must share the same output modality.",
+      });
+    }
+  }
   const hasPersona = participants.some((p) => p.personaId);
   const requestedSubagents =
     effectiveRetryContract.subagentsEnabled === true && participants.length === 1;
@@ -375,6 +407,12 @@ export async function retryMessageHandler(
           ? "video_generation"
           : undefined,
     });
+
+  await reuseAdvisorBatchForRetry(ctx, {
+    sourceMessage: originalMsg,
+    targetMessageIds: assistantMessageIds,
+    userId,
+  });
 
   await ctx.db.patch(chat._id, {
     updatedAt: now,
@@ -440,6 +478,7 @@ export async function retryMessageHandler(
       enabledIntegrations: effectiveRetryContract.enabledIntegrations,
       subagentsEnabled: effectiveSubagentsEnabled,
       videoConfig: effectiveRetryContract.videoConfig,
+      imageConfig: effectiveRetryContract.imageConfig,
       turnSkillOverrides: effectiveRetryContract.turnSkillOverrides,
       turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
       enqueuedAt: Date.now(),
@@ -503,6 +542,7 @@ export async function retryMessageHandler(
           enabledIntegrations: effectiveRetryContract.enabledIntegrations,
           turnIntegrationOverrides: effectiveRetryContract.turnIntegrationOverrides,
           subagentsEnabled: effectiveSubagentsEnabled,
+          imageConfig: effectiveRetryContract.imageConfig,
           analytics: args.analytics,
         },
       );

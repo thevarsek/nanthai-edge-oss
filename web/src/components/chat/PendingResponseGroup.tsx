@@ -1,12 +1,19 @@
 import type { Participant } from "@/hooks/useChat";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
+import { ImageGenerationPlaceholder } from "./ImageGenerationPlaceholder";
 
 function getParticipantLabel(participant: Participant): string {
   return participant.personaName ?? participant.modelId.split("/").pop() ?? participant.modelId;
 }
 
-function PendingResponseRow({ participant }: { participant: Participant }) {
+function PendingResponseRow({
+  participant,
+  isImageGeneration,
+}: {
+  participant: Participant;
+  isImageGeneration: boolean;
+}) {
   const label = getParticipantLabel(participant);
   const hasPersonaAvatar = !!(
     participant.personaId ||
@@ -38,22 +45,37 @@ function PendingResponseRow({ participant }: { participant: Participant }) {
         <div className="flex items-center gap-2 mb-1">
           <p className="text-xs text-muted">{label}</p>
         </div>
-        <span
-          className="inline-block text-base leading-6 font-medium tracking-[0.18em] animate-pulse"
-          style={{ color: "hsl(var(--nanth-foreground) / 0.72)" }}
-        >
-          ...
-        </span>
+        {isImageGeneration ? (
+          <ImageGenerationPlaceholder />
+        ) : (
+          <span
+            className="inline-block text-base leading-6 font-medium tracking-[0.18em] animate-pulse"
+            style={{ color: "hsl(var(--nanth-foreground) / 0.72)" }}
+          >
+            ...
+          </span>
+        )}
       </div>
     </div>
   );
 }
 
-export function PendingResponseGroup({ participants }: { participants: Participant[] }) {
+export function PendingResponseGroup({
+  participants,
+  imageGenerationModelIds = new Set<string>(),
+}: {
+  participants: Participant[];
+  imageGenerationModelIds?: ReadonlySet<string>;
+}) {
   if (participants.length <= 1) {
     const participant = participants[0];
     if (!participant) return null;
-    return <PendingResponseRow participant={participant} />;
+    return (
+      <PendingResponseRow
+        participant={participant}
+        isImageGeneration={imageGenerationModelIds.has(participant.modelId)}
+      />
+    );
   }
 
   return (
@@ -64,7 +86,10 @@ export function PendingResponseGroup({ participants }: { participants: Participa
             {index > 0 && (
               <div className="ml-11 my-1.5 border-t border-border/20" />
             )}
-            <PendingResponseRow participant={participant} />
+            <PendingResponseRow
+              participant={participant}
+              isImageGeneration={imageGenerationModelIds.has(participant.modelId)}
+            />
           </div>
         ))}
       </div>

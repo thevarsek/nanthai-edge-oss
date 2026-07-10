@@ -30,6 +30,10 @@ import {
   captureAssistantResponseStartedEvent,
 } from "../chat/generation_analytics";
 import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
+import {
+  assertModelAvailable,
+  assertTextGenerationModel,
+} from "../lib/openrouter_modality";
 
 function createStreamWriter(
   args: ConstructorParameters<typeof StreamWriter>[0],
@@ -104,6 +108,11 @@ export async function synthesizeWithStreaming(
   const caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, {
     modelId: args.modelId,
   });
+  assertModelAvailable({
+    modelId: args.modelId,
+    capabilities: caps,
+    feature: "Search synthesis",
+  });
   if (requireZdr) {
     assertModelSupportsZdr({
       modelId: args.modelId,
@@ -111,6 +120,12 @@ export async function synthesizeWithStreaming(
       feature: "Search synthesis",
     });
   }
+  assertTextGenerationModel({
+    feature: "Search synthesis",
+    hasImageGeneration: caps?.hasImageGeneration,
+    hasVideoGeneration: caps?.hasVideoGeneration,
+    hasAudioOutput: caps?.hasAudioOutput,
+  });
 
   const rawParams: ChatRequestParameters = {
     temperature: args.temperature ?? 0.7,

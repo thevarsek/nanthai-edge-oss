@@ -47,7 +47,7 @@ test("video model sync covers failed, empty, array payload, and alternate pricin
   assert.deepEqual(capabilities.supportedFrameImages, ["first_frame"]);
 });
 
-test("image model sync covers failed, empty, endpoint failure, transport error, and multimodal branches", async () => {
+test("image model sync uses dedicated discovery and preserves failed enrichments", async () => {
   const originalFetch = globalThis.fetch;
   const calls: Array<Record<string, any>> = [];
   try {
@@ -59,15 +59,35 @@ test("image model sync covers failed, empty, endpoint failure, transport error, 
 
     globalThis.fetch = (async (url: string | URL) => {
       const textUrl = String(url);
-      if (textUrl.endsWith("output_modalities=image")) {
+      if (textUrl.endsWith("/images/models")) {
         return {
           ok: true,
           json: async () => ({
             data: [
-              { id: "openai/gpt-image", architecture: { modality: "text+image->text+image" }, pricing: { image: "0.04" } },
-              { id: "bad/provider", architecture: { modality: "text->image" }, pricing: { prompt: "bad", completion: "0" } },
-              { id: "throw/provider", architecture: {}, pricing: {} },
+              {
+                id: "openai/gpt-image",
+                architecture: {
+                  input_modalities: ["text", "image"],
+                  output_modalities: ["text", "image"],
+                },
+              },
+              { id: "bad/provider" },
+              { id: "throw/provider" },
             ],
+          }),
+        } as Response;
+      }
+      if (textUrl.includes("openai/gpt-image")) {
+        return {
+          ok: true,
+          json: async () => ({
+            endpoints: [{
+              pricing: [{
+                billable: "output_image",
+                unit: "image",
+                cost_usd: 0.04,
+              }],
+            }],
           }),
         } as Response;
       }
@@ -77,16 +97,20 @@ test("image model sync covers failed, empty, endpoint failure, transport error, 
     await (syncImageModels as any)._handler({
       runMutation: async (_ref: unknown, args: Record<string, any>) => {
         calls.push(args);
-        return { createdOrPatched: 1, pricingOnly: 1, skipped: 1 };
+        if ("activeModelIds" in args) return { deleted: 0 };
+        return { upserted: args.models.length, created: 1 };
       },
     }, {});
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
   assert.equal(calls[0].models[0].imageOnly, false);
-  assert.equal(calls[0].models[0].pricePerImage, 0.04);
-  assert.equal(calls[0].models[1].inputPricePer1M, undefined);
-  assert.equal(calls[0].models[2].provider, "throw");
+  assert.equal(calls[0].models[0].imageCapabilities.pricePerImage, 0.04);
+  assert.deepEqual(calls[1].activeModelIds, [
+    "openai/gpt-image",
+    "bad/provider",
+    "throw/provider",
+  ]);
 });

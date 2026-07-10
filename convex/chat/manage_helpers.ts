@@ -1,5 +1,10 @@
 import { Doc, Id } from "../_generated/dataModel";
 
+export {
+  buildCopiedMessageInsert,
+  normalizeCopiedStatus,
+} from "./manage_message_copy_projection";
+
 export type CopiedMessageSummary = {
   messageId: Id<"messages">;
   createdAt: number;
@@ -10,48 +15,6 @@ type BranchMessage = Pick<
   Doc<"messages">,
   "_id" | "createdAt" | "parentMessageIds" | "multiModelGroupId"
 >;
-
-type CopiedMessageInsert = Omit<Doc<"messages">, "_id" | "_creationTime">;
-
-export function normalizeCopiedStatus(
-  status: Doc<"messages">["status"],
-): Doc<"messages">["status"] {
-  return status === "streaming" || status === "pending"
-    ? "completed"
-    : status;
-}
-
-export function buildCopiedMessageInsert(
-  message: Doc<"messages">,
-  chatId: Id<"chats">,
-  parentMessageIds: Id<"messages">[],
-): CopiedMessageInsert {
-  return {
-    chatId,
-    role: message.role,
-    content: message.content,
-    modelId: message.modelId,
-    participantId: message.participantId,
-    participantName: message.participantName,
-    participantEmoji: message.participantEmoji,
-    participantAvatarImageUrl: message.participantAvatarImageUrl,
-    autonomousParticipantId: message.autonomousParticipantId,
-    parentMessageIds,
-    multiModelGroupId: message.multiModelGroupId,
-    isMultiModelResponse: message.isMultiModelResponse,
-    status: normalizeCopiedStatus(message.status),
-    reasoning: message.reasoning,
-    usage: message.usage,
-    imageUrls: message.imageUrls,
-    audioStorageId: message.audioStorageId,
-    audioTranscript: message.audioTranscript,
-    audioDurationMs: message.audioDurationMs,
-    audioVoice: message.audioVoice,
-    audioGeneratedAt: message.audioGeneratedAt,
-    attachments: message.attachments,
-    createdAt: message.createdAt,
-  };
-}
 
 export function deriveCopiedChatMetadata(
   copiedMessages: CopiedMessageSummary[],

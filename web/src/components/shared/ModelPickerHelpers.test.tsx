@@ -4,11 +4,13 @@ import { ModelInfoSheet, ModelWizard, type ModelSummary } from "./ModelPickerHel
 import {
   formatImagePrice,
   formatPrice,
+  formatResolvedImagePrice,
   formatVideoPrice,
   listRowPriceLabel,
+  resolveImagePrice,
   wizardScore,
 } from "./ModelPickerHelpers.utils";
-import { selectWizardResults } from "./ModelPickerWizardResults";
+import { isWizardModelDisabled, selectWizardResults } from "./ModelPickerWizardResults";
 
 vi.mock("@/components/shared/ModelSettingsEditor", () => ({
   ModelSettingsEditor: () => null,
@@ -75,6 +77,17 @@ describe("ModelInfoSheet pricing", () => {
     expect(screen.queryByText(/Pricing not yet published/i)).not.toBeInTheDocument();
   });
 
+  it("prefers dedicated per-image pricing in the image pricing row", () => {
+    renderSheet({
+      supportsImages: true,
+      imagePricing: { perImage: 0.04, perMegapixel: 0.06, perImageOutput: 0.00002 },
+    });
+
+    expect(screen.getByText("Per image")).toBeInTheDocument();
+    expect(screen.getByText("$0.040/image")).toBeInTheDocument();
+    expect(screen.queryByText("Per megapixel")).not.toBeInTheDocument();
+  });
+
   it("shows 1080p-only video pricing", () => {
     renderSheet({
       supportsVideo: true,
@@ -93,6 +106,33 @@ describe("ModelInfoSheet pricing", () => {
 
     expect(screen.getByText("Per token (no audio)")).toBeInTheDocument();
     expect(screen.queryByText(/Pricing not yet published/i)).not.toBeInTheDocument();
+  });
+
+  it("composes canonical generation options into the model info sheet", () => {
+    renderSheet({
+      supportsImages: true,
+      mediaCapabilities: {
+        image: {
+          countMin: 1,
+          countMax: 4,
+          aspectRatios: ["1:1", "16:9"],
+          resolutions: ["2K"],
+          sizes: [],
+          qualities: ["high"],
+          backgrounds: ["opaque"],
+          outputFormats: ["png"],
+          maxInputReferences: 2,
+          supportsStreaming: false,
+        },
+      },
+    });
+
+    expect(screen.getByText("Generation options")).toBeInTheDocument();
+    expect(screen.getByText("1–4")).toBeInTheDocument();
+    expect(screen.getByText("1:1, 16:9")).toBeInTheDocument();
+    expect(screen.getByText("PNG")).toBeInTheDocument();
+    const visionRow = screen.getByText("Vision").parentElement?.parentElement;
+    expect(visionRow?.querySelector("svg.text-emerald-500")).not.toBeNull();
   });
 });
 
@@ -145,6 +185,21 @@ describe("wizardScore", () => {
 });
 
 describe("ModelWizard", () => {
+  it("blocks image output under protected compatibility despite cached ZDR", () => {
+    const imageModel = {
+      ...codingModel({
+        modelId: "openai/image",
+        name: "Image",
+        score: 1,
+        hasZdrEndpoint: true,
+      }),
+      supportsImages: true,
+    };
+
+    expect(isWizardModelDisabled(imageModel, true, false)).toBe(true);
+    expect(isWizardModelDisabled(imageModel, false, true)).toBe(true);
+  });
+
   it("keeps selectable recommendations visible when blocked models score higher", () => {
     const models = [
       codingModel({ modelId: "blocked/top", name: "Blocked Top", score: 1, hasZdrEndpoint: false }),
@@ -265,6 +320,9 @@ describe("model picker price helpers", () => {
     expect(formatImagePrice(0.0001)).toBe("$0.410/MP");
     expect(formatImagePrice(0.001)).toBe("$4.10/MP");
 
+    expect(formatResolvedImagePrice({ amount: 0.04, unit: "image" })).toBe("$0.040/image");
+    expect(formatResolvedImagePrice({ amount: 0.06, unit: "megapixel" })).toBe("$0.060/MP");
+
     expect(formatVideoPrice()).toBe("—");
     expect(formatVideoPrice(0, "sec")).toBe("$0.00");
     expect(formatVideoPrice(0.00001, "sec")).toBe("$1.0e-5/sec");
@@ -302,6 +360,21 @@ describe("model picker price helpers", () => {
     })).toBe("$4.00/M tok");
 
     expect(listRowPriceLabel({
+      modelId: "image/direct",
+      supportsImages: true,
+      imagePricing: {
+        perImage: 0.04,
+        perMegapixel: 0.06,
+        perImageOutput: 0.00002,
+        perImageToken: 0.00001,
+      },
+    })).toBe("$0.040/image");
+    expect(listRowPriceLabel({
+      modelId: "image/megapixel",
+      supportsImages: true,
+      imagePricing: { perMegapixel: 0.06, perImageOutput: 0.00002 },
+    })).toBe("$0.060/MP");
+    expect(listRowPriceLabel({
       modelId: "image/output",
       supportsImages: true,
       imagePricing: { perImageOutput: 0.0001, perImageToken: 0.001 },
@@ -311,5 +384,20 @@ describe("model picker price helpers", () => {
       supportsImages: true,
       imagePricing: { perImageToken: 0.0002 },
     })).toBe("$0.819/MP");
+  });
+
+  it("resolves a live-shaped double pricing payload with unit precedence", () => {
+    const pricing = JSON.parse(`{
+      "perImage": 0.04,
+      "perMegapixel": 0.06,
+      "perImageOutput": 0.00002,
+      "perImageToken": 0.00001
+    }`) as ModelSummary["imagePricing"];
+
+    expect(resolveImagePrice(pricing)).toEqual({ amount: 0.04, unit: "image" });
+    expect(resolveImagePrice({ perMegapixel: 0.06, perImageOutput: 0.00002 }))
+      .toEqual({ amount: 0.06, unit: "megapixel" });
+    expect(resolveImagePrice({ perImageOutput: 0.00002, perImageToken: 0.00001 }))
+      .toEqual({ amount: 0.08192, unit: "megapixel" });
   });
 });

@@ -38,7 +38,7 @@ describe("useChatCosts", () => {
     queryState.result = {
       totalCost: 0.12345,
       messageCosts: { msg_1: 0.02 },
-      breakdown: { responses: 0.1, memory: 0.01, search: 0, other: 0 },
+      breakdown: { responses: 0.1, memory: 0.01, search: 0, advisors: 0.02, other: 0 },
     };
 
     const { result } = renderHook(() => useChatCosts("chat_1" as Id<"chats">, true));

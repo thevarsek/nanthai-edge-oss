@@ -19,6 +19,7 @@ import type {
   GenerationContinuationState,
   RunGenerationParticipantArgs,
 } from "./generation_continuation_shared";
+import type { DedicatedImageGenerationAnalytics } from "./image_generation_analytics";
 
 type AssistantResponseSource =
   | "chat_generation"
@@ -28,6 +29,7 @@ type AssistantResponseSource =
   | "web_search"
   | "research_paper"
   | "scheduled_job"
+  | "image_generation"
   | "video_generation";
 
 type ContinuationAnalyticsState = Pick<GenerationContinuationState, "assembledCheckpoint"> | null;
@@ -41,6 +43,7 @@ type AssistantResponseAnalyticsResult = {
   usage?: OpenRouterUsage | null;
   latencies?: Record<string, number | undefined>;
   error?: unknown;
+  terminalAnalytics?: DedicatedImageGenerationAnalytics;
 };
 
 type AssistantResponseFailureCaptureArgs = {
@@ -153,6 +156,15 @@ function assistantResponseSource(
     ?? (args.subagentBatchId ? "subagent_parent_resume" : "chat_generation");
 }
 
+function terminalAssistantResponseSource(
+  args: RunGenerationParticipantArgs,
+  continuationState: ContinuationAnalyticsState,
+  result: AssistantResponseAnalyticsResult,
+): AssistantResponseSource {
+  return result.terminalAnalytics?.source
+    ?? assistantResponseSource(args, continuationState);
+}
+
 function errorLabel(error: unknown): string {
   if (error instanceof ConvexError) {
     const data = error.data;
@@ -176,6 +188,7 @@ export async function captureAssistantResponseStarted(
   ctx: BackendAnalyticsSchedulingCtx,
   args: RunGenerationParticipantArgs,
   options: { isResume: boolean; schedulerHop2Ms: number | null },
+  terminalAnalytics?: DedicatedImageGenerationAnalytics,
 ): Promise<void> {
   await scheduleBackendAnalytics(ctx, args.userId, "assistant_response_started", {
     chat_id: String(args.chatId),
@@ -183,12 +196,13 @@ export async function captureAssistantResponseStarted(
     job_id: String(args.participant.jobId),
     model_id: args.participant.modelId,
     participant_count: args.assistantMessageIds.length,
-    source: assistantResponseSource(args, null),
+    source: terminalAnalytics?.source ?? assistantResponseSource(args, null),
     web_search_enabled: args.webSearchEnabled === true,
     integration_count: args.effectiveIntegrations.length,
     subagents_enabled: args.allowSubagents === true,
     is_resume: options.isResume,
     scheduler_hop_2_ms: options.schedulerHop2Ms,
+    ...terminalAnalytics?.properties,
     ...analyticsClientProperties(args.analytics),
   });
 }
@@ -234,6 +248,9 @@ export async function captureAssistantResponseTerminal(
   result: AssistantResponseAnalyticsResult,
   durationMs: number,
 ): Promise<void> {
+  const source = terminalAssistantResponseSource(args, continuationState, result);
+  const terminalProperties = result.terminalAnalytics?.properties ?? {};
+
   if (result.continued) {
     await scheduleBackendAnalytics(ctx, args.userId, "message_continued", {
       chat_id: String(args.chatId),
@@ -241,10 +258,11 @@ export async function captureAssistantResponseTerminal(
       job_id: String(args.participant.jobId),
       model_id: args.participant.modelId,
       participant_count: args.assistantMessageIds.length,
-      source: assistantResponseSource(args, continuationState),
+      source,
       openrouter_generation_id: result.generationId ?? null,
       ...openRouterUsageAnalyticsProperties(result.usage),
       ...result.latencies,
+      ...terminalProperties,
       ...analyticsClientProperties(args.analytics),
     });
   }
@@ -256,12 +274,13 @@ export async function captureAssistantResponseTerminal(
       job_id: String(args.participant.jobId),
       model_id: args.participant.modelId,
       participant_count: args.assistantMessageIds.length,
-      source: assistantResponseSource(args, continuationState),
+      source,
       openrouter_generation_id: result.generationId ?? null,
       deferred_for_subagents: true,
       duration_ms: durationMs,
       ...openRouterUsageAnalyticsProperties(result.usage),
       ...result.latencies,
+      ...terminalProperties,
       ...analyticsClientProperties(args.analytics),
     });
   }
@@ -272,13 +291,15 @@ export async function captureAssistantResponseTerminal(
       message_id: String(args.participant.messageId),
       job_id: String(args.participant.jobId),
       model_id: args.participant.modelId,
-      source: assistantResponseSource(args, continuationState),
+      source,
       duration_ms: durationMs,
       ...assistantResponseFailureDetails({
         ...result,
-        source: assistantResponseSource(args, continuationState),
+        properties: terminalProperties,
+        source,
       }),
       ...result.latencies,
+      ...terminalProperties,
       ...analyticsClientProperties(args.analytics),
     });
   }
@@ -294,11 +315,12 @@ export async function captureAssistantResponseTerminal(
       integration_count: args.effectiveIntegrations.length,
       subagents_enabled: args.allowSubagents === true,
       continued: false,
-      source: assistantResponseSource(args, continuationState),
+      source,
       openrouter_generation_id: result.generationId ?? null,
       duration_ms: durationMs,
       ...openRouterUsageAnalyticsProperties(result.usage),
       ...result.latencies,
+      ...terminalProperties,
       ...analyticsClientProperties(args.analytics),
     });
   }
@@ -308,16 +330,18 @@ export async function captureAssistantResponseThrown(
   ctx: BackendAnalyticsSchedulingCtx,
   args: RunGenerationParticipantArgs,
   error: unknown,
+  terminalAnalytics?: DedicatedImageGenerationAnalytics,
 ): Promise<void> {
   await scheduleBackendAnalytics(ctx, args.userId, "assistant_response_failed", {
     chat_id: String(args.chatId),
     message_id: String(args.participant.messageId),
     job_id: String(args.participant.jobId),
     model_id: args.participant.modelId,
-    source: assistantResponseSource(args, null),
+    source: terminalAnalytics?.source ?? assistantResponseSource(args, null),
     error_type: error instanceof ConvexError ? "convex" : "unknown",
     failure_category: openRouterFailureCategory(error),
     error_label: errorLabel(error),
+    ...terminalAnalytics?.properties,
     ...analyticsClientProperties(args.analytics),
   });
 }

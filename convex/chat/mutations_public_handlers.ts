@@ -3,6 +3,10 @@ import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
+import { createAdvisorBatchForTurn } from "../advisors/batch_creation";
+import { cancelAdvisorBatchRows } from "../advisors/lifecycle";
+import type { AdvisorSelectionInput } from "../advisors/types";
+import type { WebSearchActionArgs } from "../search/actions_web_search_shared";
 import { requireAuth, requirePro, getIsProUnlocked } from "../lib/auth";
 import {
   insertFileAttachment,
@@ -12,6 +16,7 @@ import { assertRateLimit } from "../lib/rate_limit";
 import { validateSameModality } from "../lib/modality_utils";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
 import { MODEL_IDS } from "../lib/model_constants";
+import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { isTerminalSubagentStatus } from "../subagents/shared";
 import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./audio_public_handlers";
 import { isAudioAttachment } from "./audio_shared";
@@ -130,6 +135,8 @@ export interface SendMessageArgs extends Record<string, unknown> {
   // M30 — Turn-level skill & integration overrides (slash chips)
   turnSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
+  advisorSelections?: AdvisorSelectionInput[];
+  advisorBrief?: string;
   analytics?: AnalyticsClientMetadata;
 }
 
@@ -154,10 +161,14 @@ export async function sendMessageHandler(
 
   // Parallel batch 1: rate-limit check, chat fetch, and attachment normalization
   // are independent after auth — run concurrently to reduce sequential reads.
-  const [, chat, normalizedAttachments] = await Promise.all([
+  const [, chat, normalizedAttachments, userPreferences] = await Promise.all([
     assertRateLimit(ctx, userId),
     ctx.db.get(args.chatId),
     normalizeMessageAttachments(ctx, args.attachments),
+    ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .first(),
   ]);
   if (!chat || chat.userId !== userId) {
     throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
@@ -248,6 +259,7 @@ export async function sendMessageHandler(
     turnSkillOverrides: args.turnSkillOverrides,
     turnIntegrationOverrides: args.turnIntegrationOverrides,
     videoConfig: args.videoConfig,
+    imageConfig: imageConfigFromPreferences(userPreferences),
   });
 
   const audioAttachmentCount = normalizedAttachments?.filter((attachment) =>
@@ -368,11 +380,7 @@ export async function sendMessageHandler(
   await ctx.db.patch(chat._id, chatPatch);
 
   if ((chat.messageCount ?? 0) === 0 && trimmedText.length > 0) {
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .first();
-    const configuredTitleModel = prefs?.titleModelId?.trim() || undefined;
+    const configuredTitleModel = userPreferences?.titleModelId?.trim() || undefined;
 
     await ctx.scheduler.runAfter(0, internal.chat.actions.generateTitle, {
       chatId: args.chatId,
@@ -393,7 +401,7 @@ export async function sendMessageHandler(
     const forceWebSearch =
       effectiveSearchMode === "normal" ? true : (args.webSearchEnabled ?? false);
 
-    const runGenerationScheduledAt = await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
+    const generationArgs = {
       chatId: args.chatId,
       userMessageId,
       assistantMessageIds,
@@ -410,19 +418,39 @@ export async function sendMessageHandler(
       enabledIntegrations: effectiveIntegrations,
       subagentsEnabled: effectiveSubagents,
       videoConfig: args.videoConfig,
+      imageConfig: retryContract.imageConfig,
       turnSkillOverrides: args.turnSkillOverrides,
       turnIntegrationOverrides: args.turnIntegrationOverrides,
       // Phase 1 TTFT: scheduler hop #1 measurement
       enqueuedAt: Date.now(),
       analytics: args.analytics,
-    });
-    ttftLog("[generation] runGeneration enqueued", {
-      chatId: args.chatId,
+    };
+    const advisorBatchId = await createAdvisorBatchForTurn(ctx, {
       userId,
-      scheduledFunctionId: runGenerationScheduledAt,
-      jobIds: generationJobIds,
-      participantCount: participants.length,
+      chat,
+      userMessageId,
+      assistantMessageIds,
+      participants,
+      selections: args.advisorSelections,
+      brief: args.advisorBrief,
+      enabledIntegrations: effectiveIntegrations,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
+      generationSnapshot: { kind: "generation", args: generationArgs },
     });
+    if (!advisorBatchId) {
+      const runGenerationScheduledAt = await ctx.scheduler.runAfter(
+        0,
+        internal.chat.actions_runtime.runGeneration,
+        generationArgs,
+      );
+      ttftLog("[generation] runGeneration enqueued", {
+        chatId: args.chatId,
+        userId,
+        scheduledFunctionId: runGenerationScheduledAt,
+        jobIds: generationJobIds,
+        participantCount: participants.length,
+      });
+    }
   } else if (effectiveSearchMode === "web") {
     // Path C: Web Search — create searchSession + schedule runWebSearch per participant
     const mappedParticipants = mapParticipantsForGeneration(
@@ -433,6 +461,7 @@ export async function sendMessageHandler(
     );
     const trimmedQuery = args.text.trim();
 
+    const searchRequests: WebSearchActionArgs[] = [];
     for (const participant of mappedParticipants) {
       const sessionId = await ctx.db.insert("searchSessions", {
         chatId: args.chatId,
@@ -452,10 +481,7 @@ export async function sendMessageHandler(
       // Link assistant message to search session
       await ctx.db.patch(participant.messageId, { searchSessionId: sessionId });
 
-      await ctx.scheduler.runAfter(
-        0,
-        internal.search.actions.runWebSearch,
-        {
+      searchRequests.push({
           sessionId,
           assistantMessageId: participant.messageId,
           jobId: participant.jobId,
@@ -477,9 +503,26 @@ export async function sendMessageHandler(
           enabledIntegrations: effectiveIntegrations,
           turnIntegrationOverrides: args.turnIntegrationOverrides,
           subagentsEnabled: effectiveSubagents,
+          imageConfig: retryContract.imageConfig,
           analytics: args.analytics,
-        },
-      );
+        });
+    }
+    const advisorBatchId = await createAdvisorBatchForTurn(ctx, {
+      userId,
+      chat,
+      userMessageId,
+      assistantMessageIds,
+      participants,
+      selections: args.advisorSelections,
+      brief: args.advisorBrief,
+      enabledIntegrations: effectiveIntegrations,
+      turnIntegrationOverrides: args.turnIntegrationOverrides,
+      generationSnapshot: { kind: "advanced_search", requests: searchRequests },
+    });
+    if (!advisorBatchId) {
+      for (const request of searchRequests) {
+        await ctx.scheduler.runAfter(0, internal.search.actions.runWebSearch, request);
+      }
     }
   }
 
@@ -523,6 +566,7 @@ export async function cancelGenerationHandler(
   });
 
   const message = await ctx.db.get(job.messageId);
+  await cancelAdvisorBatchForMessage(ctx, message);
   await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
   if (message && message.status !== "completed") {
     await ctx.db.patch(job.messageId, {
@@ -617,6 +661,7 @@ export async function cancelActiveGenerationHandler(
       terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
+    await cancelAdvisorBatchForMessage(ctx, message);
     await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
     if (message && message.status !== "completed") {
       await ctx.db.patch(job.messageId, {
@@ -668,6 +713,7 @@ export async function cancelActiveGenerationHandler(
       terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
+    await cancelAdvisorBatchForMessage(ctx, message);
     await scheduleCancelledAssistantResponseAnalytics(ctx, job, message);
     if (message && message.status !== "completed") {
       await ctx.db.patch(job.messageId, {
@@ -717,7 +763,32 @@ export async function cancelActiveGenerationHandler(
     }
   }
 
+  // Advisor work starts before normal generation and may still be active even
+  // when no generation job has reached queued/streaming yet.
+  const advisorBatches = (await Promise.all(
+    (["queued", "running", "synthesizing"] as const).map((status) =>
+      ctx.db
+        .query("advisorBatches")
+        .withIndex("by_chat_status", (query) =>
+          query.eq("chatId", args.chatId).eq("status", status)
+        )
+        .collect()
+    ),
+  )).flat();
+  for (const batch of advisorBatches) {
+    await cancelAdvisorBatchRows(ctx, batch);
+  }
+
   return { cancelledCount };
+}
+
+async function cancelAdvisorBatchForMessage(
+  ctx: MutationCtx,
+  message: { advisorBatchId?: Id<"advisorBatches"> } | null,
+): Promise<void> {
+  if (!message?.advisorBatchId) return;
+  const batch = await ctx.db.get(message.advisorBatchId);
+  if (batch) await cancelAdvisorBatchRows(ctx, batch);
 }
 
 // MARK: - Knowledge Base

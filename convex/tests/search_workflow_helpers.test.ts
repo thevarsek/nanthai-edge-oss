@@ -201,6 +201,13 @@ test("researchPaperPipeline finalizes cancelled sessions cleanly", async () => {
       mutations.push({ args });
     },
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return {
+          hasImageGeneration: false,
+          hasVideoGeneration: false,
+          hasAudioOutput: false,
+        };
+      }
       if ("userId" in args) return "sk-test";
       if ("sessionId" in args) return { status: "cancelled" };
       return null;
@@ -233,6 +240,9 @@ test("researchPaperPipeline finalizes cancelled sessions cleanly", async () => {
       (entry.args.patch as Record<string, unknown> | undefined)?.status === "cancelled",
     ),
   );
+  assert.ok(mutations.some((entry) =>
+    entry.args.messageId === "assistant_1" && Object.keys(entry.args).length === 1
+  ));
 });
 
 test("researchPaperPipeline finalizes failures when required API key is missing", async () => {
@@ -263,7 +273,7 @@ test("researchPaperPipeline finalizes failures when required API key is missing"
   assert.ok(mutations.some((entry) => entry.args.status === "failed"));
   assert.ok(
     mutations.some((entry) =>
-      typeof entry.args.error === "string" && /MISSING_API_KEY/.test(entry.args.error),
+      typeof entry.args.error === "string" && /No OpenRouter API key/.test(entry.args.error),
     ),
   );
   assert.ok(
@@ -271,4 +281,7 @@ test("researchPaperPipeline finalizes failures when required API key is missing"
       (entry.args.patch as Record<string, unknown> | undefined)?.status === "failed",
     ),
   );
+  assert.ok(mutations.some((entry) =>
+    entry.args.messageId === "assistant_1" && Object.keys(entry.args).length === 1
+  ));
 });

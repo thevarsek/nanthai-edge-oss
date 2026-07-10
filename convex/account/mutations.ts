@@ -4,6 +4,10 @@
 
 import { internalMutation } from "../_generated/server";
 import { v } from "convex/values";
+import {
+  deleteUserAdvisorBatchesBatch,
+  deleteUserAdvisorRunsBatch,
+} from "./mutations_advisor_cleanup";
 
 const BATCH_SIZE = 200;
 
@@ -179,6 +183,11 @@ export const deleteUserTableBatch = internalMutation({
       return { deleted };
     }
 
+    if (tableName === "advisorRuns") {
+      deleted = await deleteUserAdvisorRunsBatch(ctx, userId, BATCH_SIZE);
+      return { deleted };
+    }
+
     if (tableName === "sandboxArtifacts") {
       // sandboxArtifacts → keyed by sandboxSessionId; cascade via user's sessions.
       // storageId needs blob cleanup before row deletion.
@@ -279,6 +288,25 @@ export const deleteUserTableBatch = internalMutation({
       return { deleted };
     }
 
+    if (tableName === "personas") {
+      const rows = await ctx.db
+        .query("personas")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        if (row.avatarImageStorageId) {
+          try {
+            await ctx.storage.delete(row.avatarImageStorageId);
+          } catch {
+            // Historical Advisor cleanup may already have reclaimed the blob.
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
     // ---------------------------------------------------------------
     // scheduledJobs: cancel pending functions before deleting
     // ---------------------------------------------------------------
@@ -299,6 +327,11 @@ export const deleteUserTableBatch = internalMutation({
         await ctx.db.delete(job._id);
         deleted++;
       }
+      return { deleted };
+    }
+
+    if (tableName === "advisorBatches") {
+      deleted = await deleteUserAdvisorBatchesBatch(ctx, userId, BATCH_SIZE);
       return { deleted };
     }
 

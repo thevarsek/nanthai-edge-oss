@@ -12,6 +12,7 @@ import { analyticsClientProperties } from "../analytics/client_metadata";
 import { resolveEffectiveIntegrations } from "../skills/resolver";
 import type { GenerationContext } from "./queries_generation_context";
 import type { ContextAttachment } from "./helpers_types";
+import { sanitizeImageGenerationConfig } from "../preferences/image_defaults";
 
 export type { RunGenerationArgs } from "./actions_run_generation_types";
 
@@ -87,6 +88,9 @@ export async function runGenerationHandler(
     const connectedIntegrationIds = genCtx.connectedIntegrationIds;
     const chatDoc = genCtx.chatDoc;
     const userDefaults = genCtx.skillIntegrationDefaults;
+    const imageConfig = args.imageConfig === undefined
+      ? genCtx.imageConfig
+      : (sanitizeImageGenerationConfig(args.imageConfig) ?? {});
 
     // Turn-level integration overrides. New clients send the structured
     // `turnIntegrationOverrides: [{integrationId, enabled}]` shape. Legacy
@@ -144,6 +148,7 @@ export async function runGenerationHandler(
           searchSessionId: args.searchSessionId,
           resumeExpected: false,
           videoConfig: args.videoConfig,
+          imageConfig,
           // Pre-resolved overrides to eliminate duplicate queries in participant
           chatSkillOverrides: chatDoc?.skillOverrides,
           chatIntegrationOverrides: chatDoc?.integrationOverrides,

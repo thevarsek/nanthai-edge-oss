@@ -28,6 +28,7 @@ import { AutoAudioWatcher } from "@/components/chat/AutoAudioWatcher";
 import { RenameChatDialog } from "@/components/chat-list/SidebarSections";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ParticipantPicker } from "@/components/settings/ChatDefaultsSection.ParticipantPicker";
+import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
 import { useToast } from "@/components/shared/Toast.context";
 import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } from "@/lib/analytics";
 import { captureFeatureUsage } from "@/lib/featureAnalytics";
@@ -83,6 +84,13 @@ import {
 } from "@/routes/ChatPage.retryFlow";
 import { useChatParticipantsConfig } from "@/routes/ChatPage.participantsConfig";
 import { ChatPageView } from "@/routes/ChatPage.view";
+import { useAdvisorComposer } from "@/hooks/useAdvisorComposer";
+import { AdvisorComposerChips } from "@/components/chat/AdvisorComposerChips";
+import { AdvisorPicker } from "@/components/chat/AdvisorPicker";
+import { PaywallModal } from "@/components/shared/PaywallModal";
+import type { PlusMenuItem } from "@/components/chat/ChatPlusMenu";
+import type { PersonaItem } from "@/components/chat/ChatParticipantPicker.helpers";
+import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 
 export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
@@ -270,6 +278,10 @@ export function ChatPage() {
   const regeneratePaper = useMutation(api.search.mutations.regeneratePaper);
 
   const modelSummaries = useModelSummaries();
+  const imageGenerationModelIds = useMemo(
+    () => new Set((modelSummaries ?? []).filter(modelHasImageOutput).map((model) => model.modelId)),
+    [modelSummaries],
+  );
   const {
     participants,
     paramDefaults,
@@ -370,6 +382,27 @@ export function ChatPage() {
     ...(overrides.turnSkillOverrideEntries.length > 0 ? { turnSkillOverrides: overrides.turnSkillOverrideEntries } : {}),
     ...(overrides.turnIntegrationOverrideEntries.length > 0 ? { turnIntegrationOverrides: overrides.turnIntegrationOverrideEntries } : {}),
   }), [overrides.turnSkillOverrideEntries, overrides.turnIntegrationOverrideEntries]);
+  const advisors = useAdvisorComposer({
+    chatId: typedChatId,
+    participants,
+    turnIntegrationOverrides: overrides.turnIntegrationOverrideEntries,
+    personas: personas as PersonaItem[] | undefined,
+    isPro,
+    effectiveWebSearch: webSearchEnabled,
+    modelSummaries: modelSummaries ?? undefined,
+    defaultModelId: typedPrefs?.defaultModelId,
+  });
+  const handlePlusMenuSelect = useCallback((item: PlusMenuItem) => {
+    if (item === "advisors") {
+      advisors.open();
+      return;
+    }
+    overrides.handlePlusMenuSelect(item);
+  }, [advisors, overrides]);
+  const plusMenuBadges = useMemo(() => ({
+    ...overrides.badges,
+    ...(advisors.state.selections.length > 0 ? { advisors: advisors.state.selections.length } : {}),
+  }), [advisors.state.selections.length, overrides.badges]);
   const handleCancelSession = useCallback(
     (sessionId: string) => {
       void cancelSession({ sessionId: sessionId as Id<"searchSessions"> }).then(() => {
@@ -491,8 +524,20 @@ export function ChatPage() {
   }, [convexComplexity, isResearchPaper, participants.length, toast]);
 
   const handleSend = useCallback(
-    async ({ text, attachments }: { text: string; attachments?: ChatAttachment[] }) => {
-      return executeChatSend({
+    async ({ text, attachments, advisorSnapshot }: {
+      text: string;
+      attachments?: ChatAttachment[];
+      advisorSnapshot?: QueuedAdvisorSnapshot;
+    }) => {
+      if (advisorSnapshot === undefined && !advisors.canSendCurrentSelection) {
+        toast({ message: t("advisor_loading"), variant: "error" });
+        return false;
+      }
+      const advisorSelections = advisorSnapshot?.advisorSelections ?? advisors.advisorSelections;
+      const advisorBrief = advisorSnapshot === undefined
+        ? advisors.advisorBrief
+        : advisorSnapshot.advisorBrief;
+      const sent = await executeChatSend({
         text,
         state: {
           chatId: chatId ?? undefined,
@@ -507,6 +552,8 @@ export function ChatPage() {
           isResearchPaper,
           isVideoMode,
           prefs: typedPrefs,
+          advisorSelections,
+          advisorBrief,
         },
         deps: {
           validateAttachmentCount: validateSendState,
@@ -518,8 +565,12 @@ export function ChatPage() {
           clearTurnOverrides: overrides.clearTurnOverrides,
         },
       });
+      if (sent && advisorSnapshot === undefined && (advisorSelections?.length || advisorBrief)) {
+        advisors.completeSuccessfulSend();
+      }
+      return sent;
     },
-    [chatId, ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState],
+    [chatId, ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState, advisors, t, toast],
   );
 
   useDrivePickerContinuation({
@@ -533,8 +584,12 @@ export function ChatPage() {
 
   const handleSendRecording = useCallback(
     async (result: RecordingResult) => {
+      if (!advisors.canSendCurrentSelection) {
+        toast({ message: t("advisor_loading"), variant: "error" });
+        return;
+      }
       try {
-        await executeRecordedAudioSend({
+        const sent = await executeRecordedAudioSend({
           recording: result,
           state: {
             chatId: chatId ?? undefined,
@@ -550,6 +605,8 @@ export function ChatPage() {
             isResearchPaper,
             isVideoMode,
             prefs: typedPrefs,
+            advisorSelections: advisors.advisorSelections,
+            advisorBrief: advisors.advisorBrief,
           },
           deps: {
             validateAttachmentCount: validateSendState,
@@ -563,6 +620,9 @@ export function ChatPage() {
             clearTurnOverrides: overrides.clearTurnOverrides,
           },
         });
+        if (sent && (advisors.advisorSelections?.length || advisors.advisorBrief)) {
+          advisors.completeSuccessfulSend();
+        }
       } catch (error) {
         toast({
           message: convexErrorMessage(error, t("upload_failed_arg", { var1: t("something_went_wrong") })),
@@ -570,7 +630,7 @@ export function ChatPage() {
         });
       }
     },
-    [chatId, ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t],
+    [chatId, ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t, advisors],
   );
 
   const retryTargetMessage = useMemo(
@@ -747,7 +807,10 @@ export function ChatPage() {
               ),
             )}
             {showPendingResponsePlaceholder && visibleMessages.length > 0 && (
-              <PendingResponseGroup participants={participants} />
+              <PendingResponseGroup
+                participants={participants}
+                imageGenerationModelIds={imageGenerationModelIds}
+              />
             )}
             <div ref={messagesEndRef} />
           </div>
@@ -762,13 +825,16 @@ export function ChatPage() {
       ) : null}
       autonomousToolbar={<AutonomousToolbar state={autonomous.state} onPause={autonomous.pause} onResume={autonomous.resume} onStop={autonomous.stop} onDismiss={autonomous.dismissEnded} />}
       balanceIndicator={typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}
-      turnOverrideChips={<TurnOverrideChips
-        turnSkillOverrides={overrides.turnSkillOverrides}
-        turnIntegrationOverrides={overrides.turnIntegrationOverrides}
-        onRemoveSkill={overrides.removeTurnSkillOverride}
-        onRemoveIntegration={overrides.removeTurnIntegrationOverride}
-        skillNames={slashSkillNames}
-      />}
+      turnOverrideChips={<>
+        <TurnOverrideChips
+          turnSkillOverrides={overrides.turnSkillOverrides}
+          turnIntegrationOverrides={overrides.turnIntegrationOverrides}
+          onRemoveSkill={overrides.removeTurnSkillOverride}
+          onRemoveIntegration={overrides.removeTurnIntegrationOverride}
+          skillNames={slashSkillNames}
+        />
+        <AdvisorComposerChips owner={advisors} />
+      </>}
       composerPalette={showSlashPalette ? (
           <SlashCommandPalette
             onSelectSkill={handleSlashSelectSkill}
@@ -782,7 +848,7 @@ export function ChatPage() {
       composer={<MessageInput
         chatId={typedChatId ?? ("" as Id<"chats">)} participants={participants} isGenerating={isGenerating}
         onSend={handleSend} onCancel={handleCancel} onCreateUploadUrl={() => createUploadUrl({})}
-        onPlusMenuSelect={overrides.handlePlusMenuSelect} plusMenuBadges={overrides.badges} isPro={isPro}
+        onPlusMenuSelect={handlePlusMenuSelect} plusMenuBadges={plusMenuBadges} isPro={isPro}
         hasConnectedIntegrations={hasConnectedIntegrations} participantCount={participants.length} hasMessages={hasMessages}
         mentionSuggestions={mentionSuggestions} disabled={!!typedChatId && isLoading} isAutonomousActive={isAutonomousActive}
         onIntervene={autonomous.intervene} onSendRecording={handleSendRecording}
@@ -791,6 +857,9 @@ export function ChatPage() {
         supportsFrameImages={supportsFrameImages}
         onTextChange={handleComposerTextChange}
         extraAttachments={kbAttachmentsForDisplay}
+        canCaptureQueuedAdvisorSnapshot={advisors.canCaptureQueuedSnapshot}
+        captureQueuedAdvisorSnapshot={advisors.captureQueuedSnapshot}
+        restoreQueuedAdvisorSnapshot={advisors.restoreQueuedSnapshot}
         generatedDocumentSuggestion={generatedDocumentSuggestion}
         onRemoveExtra={(i) => {
           const sid = kbAttachmentsForDisplay[i]?.storageId;
@@ -801,20 +870,28 @@ export function ChatPage() {
           if (sid) setKbVideoRoles((prev) => ({ ...prev, [sid]: role }));
         }}
       />}
-      modalPanels={<ChatModalPanels
-        activePanel={overrides.activePanel} closePanel={overrides.closePanel}
-        paramOverrides={overrides.paramOverrides} setParamOverrides={overrides.setParamOverrides} paramDefaults={paramDefaults}
-        enabledIntegrations={overrides.enabledIntegrations} toggleIntegration={(key) => { void handleIntegrationToggle(key); }} connectedProviders={connectedProviders} googleIntegrationsBlocked={googleIntegrationsBlocked}
-        enabledSkillIds={overrides.enabledSkillIds} toggleSkill={overrides.toggleSkill}
-        skillOverrides={overrides.skillOverrides} cycleSkill={overrides.cycleSkill}
-        selectedKBFileIds={overrides.selectedKBFileIds} toggleKBFile={overrides.toggleKBFile}
-        chatId={typedChatId} convexParticipants={convexParticipants}
-        addParticipant={addParticipant} removeParticipant={removeParticipantMut} setParticipants={setParticipantsMut}
-        subagentOverride={subagentOverride} effectiveSubagentsEnabled={effectiveSubagentsEnabled}
-        isPro={isPro} handleSubagentOverrideChange={handleSubagentOverrideChange}
-        autonomousSettings={autonomous.settings} onAutonomousSettingsChange={autonomous.setSettings}
-        participants={participants} hasMessages={hasMessages} onAutonomousStart={autonomous.start}
-      />}
+      modalPanels={<>
+        <ChatModalPanels
+          activePanel={overrides.activePanel} closePanel={overrides.closePanel}
+          paramOverrides={overrides.paramOverrides} setParamOverrides={overrides.setParamOverrides} paramDefaults={paramDefaults}
+          enabledIntegrations={overrides.enabledIntegrations} toggleIntegration={(key) => { void handleIntegrationToggle(key); }} connectedProviders={connectedProviders} googleIntegrationsBlocked={googleIntegrationsBlocked}
+          enabledSkillIds={overrides.enabledSkillIds} toggleSkill={overrides.toggleSkill}
+          skillOverrides={overrides.skillOverrides} cycleSkill={overrides.cycleSkill}
+          selectedKBFileIds={overrides.selectedKBFileIds} toggleKBFile={overrides.toggleKBFile}
+          chatId={typedChatId} convexParticipants={convexParticipants}
+          addParticipant={addParticipant} removeParticipant={removeParticipantMut} setParticipants={setParticipantsMut}
+          subagentOverride={subagentOverride} effectiveSubagentsEnabled={effectiveSubagentsEnabled}
+          isPro={isPro} handleSubagentOverrideChange={handleSubagentOverrideChange}
+          autonomousSettings={autonomous.settings} onAutonomousSettingsChange={autonomous.setSettings}
+          participants={participants} hasMessages={hasMessages} onAutonomousStart={autonomous.start}
+        />
+        {advisors.state.surface === "picker" && (
+          <AdvisorPicker owner={advisors} personas={(personas as PersonaItem[] | undefined) ?? []} />
+        )}
+        {advisors.state.surface === "paywall" && (
+          <PaywallModal feature={t("advisors")} onClose={advisors.close} />
+        )}
+      </>}
       renameDialog={<RenameChatDialog isOpen={showRename} currentTitle={chat?.title ?? ""} onClose={() => setShowRename(false)} onRename={handleRename} />}
       retryPicker={retryDifferentMessageId ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

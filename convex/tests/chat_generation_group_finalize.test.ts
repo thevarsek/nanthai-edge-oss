@@ -85,7 +85,8 @@ test("maybeFinalizeGenerationGroup schedules postProcess once and completes mixe
     assistantMessageIds: ["msg_assistant_1", "msg_assistant_2"],
     userId: "user_1",
   });
-  assert.deepEqual(mutationCalls[1], {
+  assert.deepEqual(mutationCalls[1], { messageId: "msg_assistant_1" });
+  assert.deepEqual(mutationCalls[2], {
     sessionId: "search_1",
     patch: {
       status: "completed",
@@ -130,14 +131,17 @@ test("maybeFinalizeGenerationGroup marks fully cancelled groups as cancelled wit
   }));
 
   assert.equal(scheduledCalls.length, 0);
-  assert.deepEqual(mutationCalls, [{
-    sessionId: "search_1",
-    patch: {
-      status: "cancelled",
-      currentPhase: "cancelled",
-      completedAt: 555,
+  assert.deepEqual(mutationCalls, [
+    { messageId: "msg_assistant_1" },
+    {
+      sessionId: "search_1",
+      patch: {
+        status: "cancelled",
+        currentPhase: "cancelled",
+        completedAt: 555,
+      },
     },
-  }]);
+  ]);
 });
 
 test("maybeFinalizeGenerationGroup marks failed and timed-out groups as failed without postProcess", async () => {
@@ -174,13 +178,16 @@ test("maybeFinalizeGenerationGroup marks failed and timed-out groups as failed w
   }));
 
   assert.equal(scheduledCalls.length, 0);
-  assert.deepEqual(mutationCalls, [{
-    sessionId: "search_1",
-    patch: {
-      status: "failed",
-      currentPhase: "failed",
-      errorMessage: "All generation participants failed",
-      completedAt: 777,
+  assert.deepEqual(mutationCalls, [
+    { messageId: "msg_assistant_1" },
+    {
+      sessionId: "search_1",
+      patch: {
+        status: "failed",
+        currentPhase: "failed",
+        errorMessage: "All generation participants failed",
+        completedAt: 777,
+      },
     },
-  }]);
+  ]);
 });

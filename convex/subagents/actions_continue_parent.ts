@@ -29,6 +29,7 @@ import { estimatePromptTokens } from "../chat/runtime_graph";
 import type { OpenRouterMessage } from "../lib/openrouter";
 import { scheduleContextAssemblyLog } from "../chat/context_assembly_log_scheduler";
 import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
+import { normalizeGenerationError } from "../chat/generation_error";
 
 type ParentContinuationRun = Parameters<typeof buildParentContinuationPayload>[0][number];
 type ChildGeneratedFile = NonNullable<ParentContinuationRun["generatedFiles"]>[number];
@@ -136,7 +137,7 @@ async function finalizeParentResumeFailure(
   },
   error: unknown,
 ): Promise<void> {
-  const errorMessage = error instanceof Error ? error.message : "Unknown error";
+  const errorMessage = normalizeGenerationError(error).message;
   await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
     messageId: batch.parentMessageId,
     jobId: batch.parentJobId,

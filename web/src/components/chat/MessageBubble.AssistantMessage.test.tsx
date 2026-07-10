@@ -44,7 +44,12 @@ vi.mock("./AudioMessageBubble", () => ({
   ),
 }));
 
-let mockModelSummaries: Array<{ modelId: string; supportsVideo?: boolean }> = [];
+let mockModelSummaries: Array<{
+  modelId: string;
+  supportsImages?: boolean;
+  supportsVideo?: boolean;
+  mediaCapabilities?: { image?: object };
+}> = [];
 vi.mock("@/hooks/useSharedData", () => ({
   useModelSummaries: () => mockModelSummaries,
 }));
@@ -164,6 +169,44 @@ describe("AssistantMessage", () => {
     });
   });
 
+  it("renders a multi-image gallery and copies every generated image URL", async () => {
+    const writeText = vi.fn(async () => undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const urls = [
+      "https://example.com/image-one.png",
+      "https://example.com/image-two.png",
+      "https://example.com/image-three.png",
+    ];
+
+    renderAssistant({
+      content: "[Generated image]",
+      imageUrls: urls,
+    });
+
+    expect(screen.getAllByAltText("Generated image")).toHaveLength(3);
+    fireEvent.click(screen.getAllByAltText("Generated image")[1]!);
+    expect(screen.getAllByAltText("Generated image")).toHaveLength(4);
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(urls.join("\n"));
+    });
+  });
+
+  it("reports partial image-generation success when some requested images fail", () => {
+    renderAssistant({
+      content: "[Generated image]",
+      imageUrls: ["https://example.com/image-one.png"],
+      imageGenerationResult: {
+        requestedCount: 2,
+        generatedCount: 1,
+        failedCount: 1,
+      },
+    });
+
+    expect(screen.getByRole("status")).toHaveTextContent("Generated 1 of 2 images.");
+  });
+
   it("copies generated video URLs instead of hidden placeholder text", async () => {
     const writeText = vi.fn(async () => undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -192,6 +235,74 @@ describe("AssistantMessage", () => {
     expect(screen.getByText("Generating video...")).toBeInTheDocument();
   });
 
+  it("shows a square image placeholder instead of waiting dots for pending image generations", () => {
+    mockModelSummaries = [{ modelId: "openai/gpt-image-2", supportsImages: true }];
+
+    renderAssistant({
+      content: "",
+      status: "pending",
+      modelId: "openai/gpt-image-2",
+    });
+
+    const placeholder = screen.getByRole("status", { name: "Generating image..." });
+    expect(placeholder.firstElementChild).toHaveClass("aspect-square");
+    expect(screen.queryByText("...")).not.toBeInTheDocument();
+  });
+
+  it("uses the backend-adapted image count instead of the raw saved default", () => {
+    mockModelSummaries = [{ modelId: "openai/gpt-image-2", supportsImages: true }];
+
+    renderAssistant({
+      content: "",
+      status: "pending",
+      modelId: "openai/gpt-image-2",
+      imageGenerationExpectedCount: 1,
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-image-2" }],
+        searchMode: "none",
+        imageConfig: { count: 10 },
+      },
+    });
+
+    expect(screen.getByRole("status", { name: "Generating image..." })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Generating 10 images..." })).not.toBeInTheDocument();
+  });
+
+  it("falls back to one placeholder while the backend-adapted count is absent", () => {
+    mockModelSummaries = [{ modelId: "openai/gpt-image-2", supportsImages: true }];
+
+    renderAssistant({
+      content: "",
+      status: "pending",
+      modelId: "openai/gpt-image-2",
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-image-2" }],
+        searchMode: "none",
+        imageConfig: { count: 10 },
+      },
+    });
+
+    expect(screen.getByRole("status", { name: "Generating image..." })).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "Generating 10 images..." })).not.toBeInTheDocument();
+  });
+
+  it("replaces the image placeholder when generated image URLs arrive", () => {
+    mockModelSummaries = [{
+      modelId: "openai/gpt-image-2",
+      mediaCapabilities: { image: {} },
+    }];
+
+    renderAssistant({
+      content: "[Generated image]",
+      status: "completed",
+      modelId: "openai/gpt-image-2",
+      imageUrls: ["https://example.com/generated.png"],
+    });
+
+    expect(screen.queryByRole("status", { name: "Generating image..." })).not.toBeInTheDocument();
+    expect(screen.getByAltText("Generated image")).toBeInTheDocument();
+  });
+
   it("does not render unsafe generated media URLs", () => {
     renderAssistant({
       content: "[Generated image]",
@@ -215,6 +326,16 @@ describe("AssistantMessage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry with different model" }));
     expect(onRetry).toHaveBeenCalledTimes(1);
     expect(onRetryWithDifferentModel).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a structured persisted generation error as friendly text", () => {
+    renderAssistant({
+      content: 'Error:\n{"code":"INTERNAL_ERROR","message":"OpenRouter API error (500): Internal Server Error"}',
+      status: "failed",
+    });
+
+    expect(screen.getByText("OpenRouter API error (500): Internal Server Error")).toBeInTheDocument();
+    expect(screen.queryByText(/"code":"INTERNAL_ERROR"/)).not.toBeInTheDocument();
   });
 
   it("renders parent-owned generated artifacts, tools, subagents, attachments, audio, and advanced cost", async () => {

@@ -272,5 +272,19 @@ describe("ChatParticipantPicker helper rows", () => {
     expect(disabledRow).toHaveAttribute("tabindex", "-1");
     fireEvent.keyDown(disabledRow, { key: "Enter" });
     expect(onToggle).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ParticipantModelRow
+        model={model({ supportsImages: true, hasZdrEndpoint: true })}
+        isSelected={false}
+        disabled={false}
+        sortKey="coding"
+        onToggle={onToggle}
+        onInfo={vi.fn()}
+        zdrEnforced
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /GPT 5\.2/ })).toHaveAttribute("aria-disabled", "true");
   });
 });

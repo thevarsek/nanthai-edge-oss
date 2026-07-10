@@ -8,7 +8,12 @@ import { Video } from "lucide-react";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { MarkdownRenderer } from "@/components/chat/MarkdownRenderer";
-import { TREE_NODE_W, TREE_NODE_H } from "./treeLayout";
+import { ImageGenerationPlaceholder } from "@/components/chat/ImageGenerationPlaceholder";
+import { ImageGenerationPartialSummary } from "@/components/chat/ImageGenerationPartialSummary";
+import { displayMessageContent } from "@/lib/persistedGenerationError";
+import { AdvisorBatchPanel } from "@/components/chat/AdvisorBatchPanel";
+
+export { Connectors } from "./IdeascapeConnectors";
 
 // ─── Constants ─────────────────────────────────────────────────────────────
 
@@ -49,6 +54,8 @@ export function MessageNode({
   width,
   height,
   visualState,
+  isImageGeneration,
+  showAdvisorPanel,
   onPointerDown,
   onResizePointerDown,
   shouldSuppressClick,
@@ -61,12 +68,18 @@ export function MessageNode({
   width: number;
   height: number;
   visualState: NodeVisualState;
+  isImageGeneration?: boolean;
+  showAdvisorPanel?: boolean;
   onPointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   onResizePointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   shouldSuppressClick?: (id: Id<"messages">) => boolean;
   onSelect: (id: Id<"messages">, multi: boolean) => void;
   onFocus: (id: Id<"messages">) => void;
 }) {
+  const projectedContent = displayMessageContent(message);
+  const isAwaitingImage = isImageGeneration === true &&
+    !message.imageUrls?.length &&
+    (message.status === "pending" || message.status === "streaming");
   const roleColor =
     message.role === "user"
       ? "bg-surface-2"
@@ -179,6 +192,12 @@ export function MessageNode({
           onWheel={(e) => e.stopPropagation()}
         >
           <div className="space-y-2">
+            {isAwaitingImage && (
+              <ImageGenerationPlaceholder
+                compact
+                count={message.imageGenerationExpectedCount}
+              />
+            )}
             {!!message.imageUrls?.length && (
               <div className="flex flex-wrap gap-1.5">
                 {message.imageUrls.slice(0, 3).map((url, index) => (
@@ -191,6 +210,7 @@ export function MessageNode({
                 )}
               </div>
             )}
+            <ImageGenerationPartialSummary result={message.imageGenerationResult} compact />
             {!!message.videoUrls?.length && (
               <div className="space-y-2">
                 {message.videoUrls.slice(0, 1).map((url, index) => (
@@ -199,16 +219,19 @@ export function MessageNode({
               </div>
             )}
             <div className="text-foreground/80 break-words text-xs">
-              {message.content ? (
-                <MarkdownRenderer content={message.content} compact />
+              {projectedContent ? (
+                <MarkdownRenderer content={projectedContent} compact />
               ) : (
                 <p className="leading-snug">
-                  {(message.status === "pending" || message.status === "streaming")
+                  {(message.status === "pending" || message.status === "streaming") && !isAwaitingImage
                     ? <span className="text-muted animate-pulse">...</span>
-                    : <span className="italic text-muted">empty</span>}
+                    : !isAwaitingImage && <span className="italic text-muted">empty</span>}
                 </p>
               )}
             </div>
+            {showAdvisorPanel && message.advisorBatchId && (
+              <AdvisorBatchPanel batchId={message.advisorBatchId} compact />
+            )}
           </div>
         </div>
 
@@ -237,84 +260,5 @@ export function MessageNode({
         </svg>
       </button>
     </div>
-  );
-}
-
-// ─── Connectors (SVG bezier curves between parent and child) ────────────────
-
-export function Connectors({
-  messages,
-  posMap,
-  sizeMap,
-  activeBranchIds,
-  contextBranchIds,
-  width,
-  height,
-}: {
-  messages: Message[];
-  posMap: Map<string, { x: number; y: number }>;
-  sizeMap: Map<string, { width: number; height: number }>;
-  activeBranchIds: Set<string>;
-  contextBranchIds: Set<string>;
-  width: number;
-  height: number;
-}) {
-  const lines: {
-    x1: number; y1: number;
-    x2: number; y2: number;
-    key: string;
-    emphasis: "active" | "context" | "default";
-  }[] = [];
-
-  for (const msg of messages) {
-    if (!msg.parentMessageIds?.length) continue;
-    const childPos = posMap.get(msg._id as string);
-    if (!childPos) continue;
-    const childId = msg._id as string;
-
-    for (const parentId of msg.parentMessageIds) {
-      const parentPos = posMap.get(parentId as string);
-      if (!parentPos) continue;
-      const parentSize = sizeMap.get(parentId as string) ?? { width: TREE_NODE_W, height: TREE_NODE_H };
-      const childSize = sizeMap.get(childId) ?? { width: TREE_NODE_W, height: TREE_NODE_H };
-      const isActive = activeBranchIds.has(childId) && activeBranchIds.has(parentId as string);
-      const isContext = contextBranchIds.has(childId) && contextBranchIds.has(parentId as string);
-      lines.push({
-        x1: parentPos.x + parentSize.width / 2,
-        y1: parentPos.y + parentSize.height,
-        x2: childPos.x + childSize.width / 2,
-        y2: childPos.y,
-        key: `${parentId}-${msg._id}`,
-        emphasis: isActive ? "active" : isContext ? "context" : "default",
-      });
-    }
-  }
-
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      style={{ position: "absolute", inset: 0, overflow: "visible", pointerEvents: "none", zIndex: 0 }}
-    >
-      {lines.map((l) => (
-        <path
-          key={l.key}
-          d={`M ${l.x1} ${l.y1} L ${l.x1} ${(l.y1 + l.y2) / 2} L ${l.x2} ${(l.y1 + l.y2) / 2} L ${l.x2} ${l.y2}`}
-          fill="none"
-          stroke={
-            l.emphasis === "active"
-              ? "hsl(var(--nanth-primary) / 0.7)"
-              : l.emphasis === "context"
-                ? "hsl(var(--nanth-primary) / 0.42)"
-                : "hsl(var(--nanth-muted) / 0.65)"
-          }
-          strokeWidth={l.emphasis === "active" ? 1.8 : l.emphasis === "context" ? 1.4 : 1.5}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          opacity={1}
-        />
-      ))}
-    </svg>
   );
 }

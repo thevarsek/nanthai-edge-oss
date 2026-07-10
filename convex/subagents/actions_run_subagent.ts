@@ -52,6 +52,11 @@ import {
 } from "../chat/generation_analytics";
 import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { scheduleContextAssemblyLog } from "../chat/context_assembly_log_scheduler";
+import { normalizeGenerationError } from "../chat/generation_error";
+import {
+  assertModelAvailable,
+  assertTextGenerationModel,
+} from "../lib/openrouter_modality";
 
 interface SubagentConversationSnapshot {
   messages: OpenRouterMessage[];
@@ -315,6 +320,8 @@ export async function runSubagentRunHandler(
   let caps: {
     supportedParameters?: string[];
     hasImageGeneration?: boolean;
+    hasVideoGeneration?: boolean;
+    hasAudioOutput?: boolean;
     hasReasoning?: boolean;
     contextLength?: number;
   } | null;
@@ -327,7 +334,7 @@ export async function runSubagentRunHandler(
       { userId: participantSnapshot.userId },
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = normalizeGenerationError(error).message;
     const status = isGenerationCancelledError(error) ? "cancelled" : "failed";
     const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
@@ -376,9 +383,9 @@ export async function runSubagentRunHandler(
           content: buildSubagentTaskPrompt({ title: run.title, prompt: run.taskPrompt }),
         },
       ];
+  const requireZdr = resolveSnapshotRequireZdr(paramsSnapshot);
   const restoredProfiles = extractProfilesFromConversation(messages);
   const webSearchToolEnabled = resolveWebSearchToolIntent(paramsSnapshot);
-  const requireZdr = resolveSnapshotRequireZdr(paramsSnapshot);
   const modelSupportsTools = caps?.supportedParameters?.includes("tools") ?? false;
   let loadedSkills = mergeLoadedSkills(
     snapshot?.loadedSkills,
@@ -431,6 +438,17 @@ export async function runSubagentRunHandler(
   };
 
   try {
+    assertModelAvailable({
+      modelId,
+      capabilities: caps,
+      feature: "Subagent execution",
+    });
+    assertTextGenerationModel({
+      feature: "Subagent execution",
+      hasImageGeneration: caps?.hasImageGeneration,
+      hasVideoGeneration: caps?.hasVideoGeneration,
+      hasAudioOutput: caps?.hasAudioOutput,
+    });
     const requestTokenEstimate = estimatePromptTokens(normalizedMessages);
     await scheduleContextAssemblyLog(ctx, {
       userId: batch.userId,
@@ -815,7 +833,7 @@ export async function runSubagentRunHandler(
       }
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = normalizeGenerationError(error).message;
     const status = isGenerationCancelledError(error) ? "cancelled" : "failed";
     const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,

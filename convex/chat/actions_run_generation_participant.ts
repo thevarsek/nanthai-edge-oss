@@ -20,6 +20,7 @@ import {
   isGenerationCancelledError,
 } from "./generation_helpers";
 import { classifyTerminalErrorCode } from "./terminal_error";
+import { normalizeGenerationError } from "./generation_error";
 import {
   clampMessageContent,
   dedupeImageCandidates,
@@ -35,6 +36,7 @@ import {
   RunGenerationArgs,
 } from "./actions_run_generation_types";
 import { appendCurrentTurnAudioInput } from "./audio_input_request";
+import { runDedicatedImageGeneration } from "./action_image_generation";
 import { CITATION_SYSTEM_PROMPT_SUFFIX } from "../search/helpers";
 import {
   buildNanthAIPrelude,
@@ -61,6 +63,10 @@ import {
   isZdrEnabled,
   mergeZdrProvider,
 } from "../lib/openrouter_zdr";
+import { assertOpenRouterImagePrivacy } from "../lib/openrouter_image";
+import { assertModelAvailable } from "../lib/openrouter_modality";
+import { injectAdvisorNotes } from "../advisors/notes";
+import { adaptMessagesForImageInput } from "./request_message_capabilities";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { captureToolRoundArtifacts } from "../tools/artifact_writer";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
@@ -78,6 +84,7 @@ import {
   extractLoadedSkillsFromLoadSkillResults,
   extractProfilesFromConversation,
   extractProfilesFromLoadSkillResults,
+  isSkillToolProfileId,
   mergeLoadedSkills,
 } from "../tools/progressive_registry_shared";
 import { hasNodeRequiredProfiles } from "../tools/runtime_safety";
@@ -86,6 +93,14 @@ import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "./loaded_skill_prompt";
 import type { Doc } from "../_generated/dataModel";
 import type { ContextMessage } from "./helpers_types";
+import {
+  imageConfigFromPreferences,
+  sanitizeImageGenerationConfig,
+} from "../preferences/image_defaults";
+import {
+  dedicatedImageGenerationAnalytics,
+  type DedicatedImageGenerationAnalytics,
+} from "./image_generation_analytics";
 
 const PARALLEL_SUBAGENTS_SKILL_SLUG = "parallel-subagents";
 
@@ -296,6 +311,7 @@ export async function generateForParticipant(
   generationId?: string | null;
   latencies?: GenerationLatencyMetrics;
   error?: unknown;
+  terminalAnalytics?: DedicatedImageGenerationAnalytics;
 }> {
   const {
     ctx,
@@ -404,6 +420,23 @@ export async function generateForParticipant(
   });
   latencyMetrics.participant_preflight_duration_ms = Date.now() - preflightStartedAt;
 
+  const dedicatedImageConfig = caps?.hasImageGeneration === true
+    ? args.imageConfig === undefined
+      ? imageConfigFromPreferences(userPrefs)
+      : (sanitizeImageGenerationConfig(args.imageConfig) ?? {})
+    : undefined;
+  const imageOriginSource = args.analyticsSource
+    ?? ((args as RunGenerationArgs & RunGenerationContinuationExtras).subagentBatchId
+      ? "subagent_parent_resume"
+      : "chat_generation");
+  const imageTerminalAnalytics = caps?.hasImageGeneration === true
+    ? dedicatedImageGenerationAnalytics({
+        config: dedicatedImageConfig,
+        supportedParameters: caps.imageCapabilities?.supportedParameters,
+        originSource: imageOriginSource,
+      })
+    : undefined;
+
   // Pre-start cancellation check: if the job was cancelled (e.g. by the user
   // while the scheduler.runAfter was pending), bail out immediately. We still
   // issued the other preflight queries in parallel — they're cheap reads and
@@ -415,8 +448,19 @@ export async function generateForParticipant(
       cancelled: true,
       failed: false,
       continued: false,
+      ...(imageTerminalAnalytics ? { terminalAnalytics: imageTerminalAnalytics } : {}),
     };
   }
+
+  // Resolve privacy constraints before skill availability. Advisor uses an
+  // inner model call whose API currently exposes no nested ZDR routing knob,
+  // so its profile must be unavailable for all protected turns.
+  const userWantsZdr = isZdrEnabled(userPrefs);
+  const googleActive = hasGoogleIntegrations(
+    progressiveTools?.enabledIntegrations,
+  );
+  const requireZdr =
+    params.requireZdrOverride === true || userWantsZdr || googleActive;
 
   // Shared tool execution context — workspace sandbox is lazily created on
   // first workspace tool call and persists across all tool calls within this
@@ -432,6 +476,11 @@ export async function generateForParticipant(
   };
 
   try {
+    assertModelAvailable({
+      modelId: participant.modelId,
+      capabilities: caps,
+      feature: "Generation",
+    });
     const requestAssemblyStartedAt = Date.now();
     const systemPrompt = await resolveSystemPrompt(
       ctx,
@@ -498,6 +547,7 @@ export async function generateForParticipant(
     // Progressive disclosure: model sees lightweight catalog XML for `available` skills,
     // calls load_skill on demand. `always` skills get full instructions injected.
     let skillAugmentedPrompt = effectiveSystemPrompt;
+    const alwaysSkillProfiles = new Set<SkillToolProfileId>();
     if (shouldBuildSkillCatalog && modelSupportsTools) {
       const skillCatalogStartedAt = Date.now();
       try {
@@ -540,6 +590,11 @@ export async function generateForParticipant(
             slug: PARALLEL_SUBAGENTS_SKILL_SLUG,
           }));
         }
+        for (const skill of alwaysSkills) {
+          for (const profile of skill.requiredToolProfiles ?? []) {
+            if (isSkillToolProfileId(profile)) alwaysSkillProfiles.add(profile);
+          }
+        }
 
         const hasCatalog = catalog.length > 0;
         const hasAlways = alwaysSkills.length > 0;
@@ -580,14 +635,6 @@ export async function generateForParticipant(
         console.warn("[skills] Failed to build skill catalog:", e instanceof Error ? e.message : String(e));
       }
     }
-
-    // ZDR + Google data protection decision is needed before memory context
-    // assembly because contextual memory embeddings call OpenRouter too.
-    const userWantsZdr = isZdrEnabled(userPrefs);
-    const googleActive = hasGoogleIntegrations(
-      progressiveTools?.enabledIntegrations,
-    );
-    const requireZdr = params.requireZdrOverride === true || userWantsZdr || googleActive;
 
     const memoryContextStartedAt = Date.now();
     const resolvedMemoryContext = requestMessagesOverride
@@ -646,6 +693,11 @@ export async function generateForParticipant(
         providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,
       });
     }
+    const advisorNotes = await ctx.runQuery(
+      internal.advisors.queries.getAdvisorNotesForMessage,
+      { messageId: participant.messageId },
+    );
+    baseRequestMessages = injectAdvisorNotes(baseRequestMessages, advisorNotes);
 
     const promotedRequest = promoteLatestUserVideoUrls(baseRequestMessages, {
       modelId: participant.modelId,
@@ -661,6 +713,7 @@ export async function generateForParticipant(
       ? Array.from(new Set([
           ...extractProfilesFromConversation(requestMessages),
           ...(params.restoredActiveProfiles ?? []),
+          ...alwaysSkillProfiles,
         ]))
       : (params.restoredActiveProfiles ?? []);
     let loadedSkills = mergeLoadedSkills(
@@ -748,6 +801,9 @@ export async function generateForParticipant(
       caps?.hasImageGeneration,
       caps?.hasReasoning,
     );
+    if (caps?.hasImageGeneration) {
+      assertOpenRouterImagePrivacy(requireZdr);
+    }
 
     if (requireZdr) {
       if (!(caps?.hasZdrEndpoint)) {
@@ -779,6 +835,48 @@ export async function generateForParticipant(
       materializedWebSearch: shouldUseMaterializedWebSearch,
     });
     latencyMetrics.provider_constraints_duration_ms = Date.now() - providerConstraintsStartedAt;
+
+    if (caps?.hasImageGeneration) {
+      const imageRequestStartedAt = Date.now();
+      const imageConfig = dedicatedImageConfig ?? {};
+      const userPrompt = allMessages.find(
+        (message) => message._id === args.userMessageId,
+      )?.content ?? "";
+      const generated = await runDedicatedImageGeneration({
+        ctx,
+        generation: { ...args, imageConfig },
+        participant,
+        requestMessages: normalizedRequestMessages,
+        prompt: userPrompt,
+        apiKey,
+        maxInputReferences: caps.imageCapabilities?.maxInputReferences,
+        supportedParameters: caps.imageCapabilities?.supportedParameters,
+        requireZdr,
+      });
+      latencyMetrics.openrouter_round_trip_duration_ms =
+        Date.now() - imageRequestStartedAt;
+      return {
+        deferredForSubagents: false,
+        cancelled: false,
+        failed: false,
+        continued: false,
+        usage: generated.usage,
+        generationId: generated.generationId,
+        latencies: latencyMetrics,
+        terminalAnalytics: dedicatedImageGenerationAnalytics({
+          config: imageConfig,
+          supportedParameters: caps.imageCapabilities?.supportedParameters,
+          generatedImageCount: generated.imageCount,
+          requestedImageCount: generated.requestedCount,
+          originSource: imageOriginSource,
+        }),
+      };
+    }
+
+    const chatRequestMessages = adaptMessagesForImageInput(
+      normalizedRequestMessages,
+      caps?.hasImageInput === true,
+    );
 
     let hasLoggedFirstDelta = false;
     let hasLoggedFirstReasoningDelta = false;
@@ -939,7 +1037,7 @@ export async function generateForParticipant(
     const genResult = await runGenerationWithCompaction({
       apiKey,
       model: participant.modelId,
-      messages: normalizedRequestMessages,
+      messages: chatRequestMessages,
       params: effectiveParams,
       callbacks: streamCallbacks,
       retryConfig,
@@ -1050,9 +1148,7 @@ export async function generateForParticipant(
         if (expanded?.registry) {
           effectiveToolRegistry = expanded.registry;
         }
-        if (expanded?.params) {
-          effectiveParams = expanded.params;
-        }
+        if (expanded?.params) effectiveParams = expanded.params;
         const shouldStopForV8Guard =
           params.v8RuntimeHandoffGuards === true &&
           continuationHandoff != null &&
@@ -1243,6 +1339,7 @@ export async function generateForParticipant(
           searchSessionId: args.searchSessionId,
           subagentBatchId: groupArgs.subagentBatchId,
           drivePickerBatchId: groupArgs.drivePickerBatchId,
+          imageConfig: args.imageConfig,
           chatSkillOverrides: preResolvedOverrides?.chatSkillOverrides,
           chatIntegrationOverrides: groupArgs.chatIntegrationOverrides,
           personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides,
@@ -1453,6 +1550,10 @@ export async function generateForParticipant(
       usage: usageToStore,
       reasoning: writer.totalReasoning || result.reasoning || undefined,
       imageUrls: persistedImageUrls.length > 0 ? persistedImageUrls : undefined,
+      imageMimeTypes: imageResult.mimeTypes.length === persistedImageUrls.length &&
+          persistedImageUrls.length > 0
+        ? imageResult.mimeTypes
+        : undefined,
       userId: args.userId,
       // M10: Structured tool data
       toolCalls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
@@ -1479,8 +1580,7 @@ export async function generateForParticipant(
       latencies: latencyMetrics,
     };
   } catch (error) {
-    const errorMessage =
-      error instanceof Error ? error.message : "Unknown generation error";
+    const errorMessage = normalizeGenerationError(error).message;
     const wasCancelled = isGenerationCancelledError(error);
 
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
@@ -1505,6 +1605,7 @@ export async function generateForParticipant(
       continued: false,
       latencies: latencyMetrics,
       error,
+      ...(imageTerminalAnalytics ? { terminalAnalytics: imageTerminalAnalytics } : {}),
     };
   } finally {
     // Stop the workspace (just-bash) sandbox — it is per-generation, not persistent.

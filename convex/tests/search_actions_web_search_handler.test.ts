@@ -36,6 +36,13 @@ function createCtx(
     scheduled,
     ctx: {
       runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+        if ("modelId" in args) {
+          return {
+            hasImageGeneration: false,
+            hasVideoGeneration: false,
+            hasAudioOutput: false,
+          };
+        }
         if ("personaId" in args) {
           return options.personaPrompt ? { systemPrompt: options.personaPrompt } : null;
         }
@@ -344,6 +351,9 @@ test("runWebSearch finalizes cancelled searches before generation handoff", asyn
     (entry) => entry.messageId === baseArgs.assistantMessageId && entry.status === "cancelled",
   );
   assert.equal(finalizeCall?.content, "[Search cancelled]");
+  assert.ok(ctxState.mutations.some((entry) =>
+    entry.messageId === baseArgs.assistantMessageId && Object.keys(entry).length === 1
+  ));
   assert.equal(
     ctxState.scheduled.some((entry) => Array.isArray(entry.assistantMessageIds)),
     false,
@@ -389,6 +399,9 @@ test("runWebSearch finalizes failed sessions when search fails", async (t) => {
     (entry) => entry.messageId === baseArgs.assistantMessageId && entry.status === "failed",
   );
   assert.match(String(finalizeCall?.content ?? ""), /scheduler unavailable/);
+  assert.ok(ctxState.mutations.some((entry) =>
+    entry.messageId === baseArgs.assistantMessageId && Object.keys(entry).length === 1
+  ));
 
   const lastSessionPatch = ctxState.mutations
     .filter((entry) => "patch" in entry)

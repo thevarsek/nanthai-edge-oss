@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
+import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 
 interface QueuedFollowUp {
   id: string;
   chatId: string;
   text: string;
   attachments: AttachmentPreview[];
+  advisorSnapshot?: QueuedAdvisorSnapshot;
 }
 
 interface Args {
@@ -17,10 +19,27 @@ interface Args {
   queuedAttachments?: AttachmentPreview[];
   isUploading: boolean;
   disabled: boolean;
-  onSend: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
+  onSend: (args: {
+    text: string;
+    attachments?: AttachmentPreview[];
+    advisorSnapshot?: QueuedAdvisorSnapshot;
+  }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
   onQueueCommitted: () => void;
   onEditCommitted: (queuedText: string) => void;
+  canCaptureQueuedAdvisorSnapshot?: boolean;
+  captureQueuedAdvisorSnapshot?: () => QueuedAdvisorSnapshot | null;
+  restoreQueuedAdvisorSnapshot?: (snapshot: QueuedAdvisorSnapshot) => void;
+}
+
+function copyAdvisorSnapshot(
+  snapshot: QueuedAdvisorSnapshot | undefined,
+): QueuedAdvisorSnapshot | undefined {
+  if (!snapshot) return undefined;
+  return {
+    advisorSelections: snapshot.advisorSelections.map((selection) => ({ ...selection })),
+    ...(snapshot.advisorBrief !== undefined ? { advisorBrief: snapshot.advisorBrief } : {}),
+  };
 }
 
 export function useQueuedFollowUp({
@@ -36,6 +55,9 @@ export function useQueuedFollowUp({
   onCancel,
   onQueueCommitted,
   onEditCommitted,
+  canCaptureQueuedAdvisorSnapshot = true,
+  captureQueuedAdvisorSnapshot,
+  restoreQueuedAdvisorSnapshot,
 }: Args) {
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [queuedActionState, setQueuedActionState] = useState<"idle" | "draining" | "interrupting">("idle");
@@ -74,24 +96,35 @@ export function useQueuedFollowUp({
     text.trim().length > 0 &&
     attachmentCount === 0 &&
     !isUploading &&
+    canCaptureQueuedAdvisorSnapshot &&
     queuedActionState === "idle";
 
   const queueFollowUp = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || disabled || attachmentCount > 0 || isUploading) return;
+    if (!trimmed || disabled || attachmentCount > 0 || isUploading || !canCaptureQueuedAdvisorSnapshot) return;
+    const capturedAdvisorSnapshot = captureQueuedAdvisorSnapshot?.();
+    if (capturedAdvisorSnapshot === null) return;
+    const advisorSnapshot = copyAdvisorSnapshot(capturedAdvisorSnapshot);
     setQueuedFollowUps((current) => [
       ...current,
-      { id: crypto.randomUUID(), chatId, text: trimmed, attachments: queuedAttachments },
+      {
+        id: crypto.randomUUID(),
+        chatId,
+        text: trimmed,
+        attachments: queuedAttachments,
+        advisorSnapshot,
+      },
     ]);
     onQueueCommitted();
-  }, [attachmentCount, chatId, disabled, isUploading, onQueueCommitted, queuedAttachments, text]);
+  }, [attachmentCount, canCaptureQueuedAdvisorSnapshot, captureQueuedAdvisorSnapshot, chatId, disabled, isUploading, onQueueCommitted, queuedAttachments, text]);
 
   const editQueuedFollowUp = useCallback((id?: string) => {
     const queued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];
     if (!queued || disabled) return;
     onEditCommitted(queued.text);
+    if (queued.advisorSnapshot) restoreQueuedAdvisorSnapshot?.(queued.advisorSnapshot);
     setQueuedFollowUps((current) => current.filter((item) => item.id !== queued.id));
-  }, [activeQueuedFollowUps, disabled, onEditCommitted]);
+  }, [activeQueuedFollowUps, disabled, onEditCommitted, restoreQueuedAdvisorSnapshot]);
 
   const waitForGenerationToStop = useCallback(async () => {
     const deadline = Date.now() + 3_000;
@@ -103,7 +136,11 @@ export function useQueuedFollowUp({
 
   const sendQueuedFollowUp = useCallback(async (queued: QueuedFollowUp) => {
     if (chatIdRef.current !== queued.chatId) return false;
-    const result = await onSend({ text: queued.text, attachments: queued.attachments });
+    const result = await onSend({
+      text: queued.text,
+      attachments: queued.attachments,
+      ...(queued.advisorSnapshot ? { advisorSnapshot: queued.advisorSnapshot } : {}),
+    });
     return result !== false;
   }, [onSend]);
 
@@ -164,10 +201,10 @@ export function useQueuedFollowUp({
     editQueuedFollowUp,
     sendQueuedNow,
     removeQueuedFollowUp: (id?: string) => {
-      setQueuedFollowUps((current) => current.filter((queued) => {
-        if (queued.chatId !== chatId) return true;
-        return id != null ? queued.id !== id : false;
-      }));
+      const queued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];
+      if (!queued) return;
+      if (queued.advisorSnapshot) restoreQueuedAdvisorSnapshot?.(queued.advisorSnapshot);
+      setQueuedFollowUps((current) => current.filter((item) => item.id !== queued.id));
     },
   };
 }

@@ -541,6 +541,17 @@ export const retryVideoConfig = v.object({
   generateAudio: v.optional(v.boolean()),
 });
 
+/** Backend-owned image defaults captured when the original turn was sent. */
+export const retryImageConfig = v.object({
+  count: v.optional(v.number()),
+  aspectRatio: v.optional(v.string()),
+  resolution: v.optional(v.string()),
+  quality: v.optional(v.string()),
+  background: v.optional(v.string()),
+  outputFormat: v.optional(v.string()),
+  outputCompression: v.optional(v.number()),
+});
+
 /** Canonical retry snapshot persisted on assistant messages. */
 export const retryContract = v.object({
   participants: v.array(retryParticipantSnapshot),
@@ -551,6 +562,7 @@ export const retryContract = v.object({
   turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   videoConfig: v.optional(retryVideoConfig),
+  imageConfig: v.optional(retryImageConfig),
 });
 
 // M38 — Durable tool artifacts and context assembly v2.
@@ -749,6 +761,14 @@ export const skillToolProfile = v.union(
   v.literal("scheduledJobs"),
   v.literal("skillsManagement"),
   v.literal("personas"),
+);
+
+// Transitional storage compatibility for rows created by the retired generic
+// Advisor Skill. Public/internal write args continue to use skillToolProfile,
+// so no new `advisor` profile can be written while the paginated cleanup runs.
+export const storedSkillToolProfile = v.union(
+  v.literal("advisor"),
+  skillToolProfile,
 );
 
 /** Scheduled job step definition. */

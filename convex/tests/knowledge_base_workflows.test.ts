@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import type { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 import {
   addUploadToKnowledgeBase,
   bindKnowledgeBaseUploadSession,
@@ -218,7 +220,7 @@ test("deleteKnowledgeBaseFile removes message references but preserves shared st
 test("deleteKnowledgeBaseFile cleans generated media documents, extraction blobs, grant cache, and storage", async () => {
   const rows: Record<string, any[]> = {
     generatedFiles: [],
-    generatedMedia: [{ _id: "media_1", userId: "user_1", storageId: "storage_media", type: "video", mimeType: "video/mp4" }],
+    generatedMedia: [{ _id: "media_1", userId: "user_1", storageId: "storage_media", type: "video", mimeType: "video/mp4", referenceTrackingVersion: 1 }],
     fileAttachments: [],
     generatedMediaRefs: [],
     googleDriveFileGrants: [{ _id: "grant_1", userId: "user_1", cachedStorageId: "storage_media" }],
@@ -232,7 +234,10 @@ test("deleteKnowledgeBaseFile cleans generated media documents, extraction blobs
     auth: buildAuth(),
     db: buildDb(rows, events),
     storage: { delete: async (id: string) => storageDeletes.push(id) },
-  } as any, { source: "generated", storageId: "storage_media" as any });
+  } as unknown as MutationCtx, {
+    source: "generated",
+    storageId: "storage_media" as Id<"_storage">,
+  });
 
   assert.deepEqual(storageDeletes, ["storage_version", "text_1", "md_1", "storage_media"]);
   assert.deepEqual(events.filter((event) => event.op === "delete").map((event) => event.id), [
@@ -241,6 +246,44 @@ test("deleteKnowledgeBaseFile cleans generated media documents, extraction blobs
     "media_1",
     "grant_1",
   ]);
+});
+
+test("deleteKnowledgeBaseFile removes copied image references before deleting shared storage", async () => {
+  const imageUrl = "https://cdn.example/storage_media";
+  const rows: Record<string, Array<Record<string, unknown>>> = {
+    generatedFiles: [],
+    generatedMedia: [
+      { _id: "media_1", _creationTime: 1, userId: "user_1", chatId: "chat_1", messageId: "message_1", storageId: "storage_media", type: "image", mimeType: "image/webp", referenceTrackingVersion: 1, createdAt: 1 },
+      { _id: "media_2", _creationTime: 2, userId: "user_1", chatId: "chat_2", messageId: "message_2", storageId: "storage_media", type: "image", mimeType: "image/webp", referenceTrackingVersion: 1, createdAt: 1 },
+    ],
+    fileAttachments: [],
+    googleDriveFileGrants: [],
+    documents: [],
+    messages: [
+      { _id: "message_1", imageUrls: [imageUrl], imageMimeTypes: ["image/webp"] },
+      { _id: "message_2", imageUrls: [imageUrl], imageMimeTypes: ["image/webp"] },
+    ],
+  };
+  const storageDeletes: string[] = [];
+
+  await deleteKnowledgeBaseFileHandler({
+    auth: buildAuth(),
+    db: buildDb(rows),
+    storage: {
+      getUrl: async () => imageUrl,
+      delete: async (id: string) => storageDeletes.push(id),
+    },
+  } as unknown as MutationCtx, {
+    source: "generated",
+    storageId: "storage_media" as Id<"_storage">,
+  });
+
+  assert.deepEqual(rows.messages[0].imageUrls, []);
+  assert.deepEqual(rows.messages[0].imageMimeTypes, []);
+  assert.deepEqual(rows.messages[1].imageUrls, []);
+  assert.deepEqual(rows.messages[1].imageMimeTypes, []);
+  assert.deepEqual(rows.generatedMedia, []);
+  assert.deepEqual(storageDeletes, ["storage_media"]);
 });
 
 test("listKnowledgeBaseFiles hydrates folder metadata and unfiled filters across upload and Drive rows", async () => {
@@ -280,7 +323,7 @@ test("listKnowledgeBaseFiles hydrates folder metadata and unfiled filters across
 test("storage-id KB lookup returns owned generated media and Drive attachments once", async () => {
   const rows: Record<string, any[]> = {
     generatedFiles: [],
-    generatedMedia: [{ _id: "gm_1", userId: "user_1", storageId: "storage_media", type: "image", mimeType: "image/png", createdAt: 20 }],
+    generatedMedia: [{ _id: "gm_1", userId: "user_1", storageId: "storage_media", type: "image", mimeType: "image/webp", createdAt: 20 }],
     fileAttachments: [{ _id: "fa_1", userId: "user_1", storageId: "storage_drive", filename: "drive.pdf", mimeType: "application/pdf", driveFileId: "drive_1", createdAt: 10 }],
   };
   const result = await getKnowledgeBaseFilesByStorageIdsHandler({
@@ -290,7 +333,7 @@ test("storage-id KB lookup returns owned generated media and Drive attachments o
   } as any, { storageIds: ["storage_media", "storage_drive", "storage_media"] as any });
 
   assert.deepEqual(result.map((file) => file.source), ["generated", "drive"]);
-  assert.equal(result[0].filename, "generated-image.png");
+  assert.equal(result[0].filename, "generated-image.webp");
   assert.equal(result[1].driveFileId, "drive_1");
 });
 

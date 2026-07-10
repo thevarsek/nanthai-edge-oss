@@ -2,11 +2,16 @@
 
 > API endpoints, OAuth PKCE flow, request/response formats, SSE streaming, and required headers for NanthAI Edge's OpenRouter integration.
 
+See also [OpenRouter Images API](./openrouter-image-api.md) and [OpenRouter Advisor](./openrouter-advisor.md).
+
 ## Endpoints
 
 | Method | URL | Purpose |
 |--------|-----|---------|
 | `GET` | `https://openrouter.ai/api/v1/models` | List available models |
+| `GET` | `https://openrouter.ai/api/v1/images/models` | List image-output models |
+| `GET` | `https://openrouter.ai/api/v1/images/models/{id}/endpoints` | Image capabilities and pricing |
+| `POST` | `https://openrouter.ai/api/v1/images` | Dedicated buffered image generation |
 | `POST` | `https://openrouter.ai/api/v1/chat/completions` | Chat completions (streaming) |
 | `GET` | `https://openrouter.ai/api/v1/credits` | Check user credits/balance |
 | `POST` | `https://openrouter.ai/api/v1/auth/keys` | Exchange OAuth code for API key |

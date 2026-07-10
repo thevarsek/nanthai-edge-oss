@@ -74,7 +74,7 @@ test("runGenerationParticipantHandler finalizes and clears state before rethrowi
       && args.jobId === "job_1"
       && args.status === "failed"
       && typeof args.error === "string"
-      && args.error.includes("\"code\":\"MISSING_API_KEY\"")
+      && args.error.includes("No OpenRouter API key")
     ),
   );
 });

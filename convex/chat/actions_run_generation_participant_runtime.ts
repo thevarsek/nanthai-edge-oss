@@ -21,6 +21,7 @@ import {
 } from "../tools/runtime_safety";
 import { patchDeferredProgressiveToolErrors } from "../tools/progressive_registry_shared";
 import { classifyTerminalErrorCode } from "./terminal_error";
+import { normalizeGenerationError } from "./generation_error";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import {
   captureAssistantResponseStarted,
@@ -31,6 +32,7 @@ import {
   markGenerationJobAnalyticsStarted,
   markGenerationJobStreamingIfActive,
 } from "./generation_start_guard";
+import { dedicatedImageGenerationAnalytics } from "./image_generation_analytics";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -127,7 +129,7 @@ async function finalizeParticipantSetupFailure(
   args: RunGenerationParticipantArgs,
   error: unknown,
 ): Promise<void> {
-  const errorMessage = error instanceof Error ? error.message : "Unknown generation error";
+  const errorMessage = normalizeGenerationError(error).message;
   await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
     messageId: args.participant.messageId,
     jobId: args.participant.jobId,
@@ -168,10 +170,12 @@ export function requiresNodeWorker(args: {
   activeProfiles: string[];
   hasVideoGeneration: boolean;
   hasAudioOutput: boolean;
+  hasImageGeneration?: boolean;
 }): boolean {
   return (
     args.hasVideoGeneration ||
     args.hasAudioOutput ||
+    args.hasImageGeneration === true ||
     hasNodeRequiredDirectTools(args.directToolNames) ||
     hasNodeRequiredProfiles(args.activeProfiles as SkillToolProfileId[])
   );
@@ -226,6 +230,7 @@ export async function runGenerationParticipantRuntimeHandler(
     activeProfiles: continuationPreview?.activeProfiles ?? [],
     hasVideoGeneration: caps?.hasVideoGeneration === true,
     hasAudioOutput: caps?.hasAudioOutput === true,
+    hasImageGeneration: caps?.hasImageGeneration === true,
   })) {
     await ctx.runAction(internal.chat.actions_node.runGenerationParticipantNode, args);
     return;
@@ -270,6 +275,14 @@ export async function runGenerationParticipantRuntimeHandler(
         resumeExpected: true,
       }
     : args;
+  const imageTerminalAnalytics = caps?.hasImageGeneration === true
+    ? dedicatedImageGenerationAnalytics({
+        config: effectiveArgs.imageConfig,
+        supportedParameters: caps.imageCapabilities?.supportedParameters,
+        originSource: effectiveArgs.analyticsSource
+          ?? (effectiveArgs.subagentBatchId ? "subagent_parent_resume" : "chat_generation"),
+      })
+    : undefined;
 
   const generationArgs = toRunGenerationArgs(effectiveArgs);
   const job = await ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
@@ -314,7 +327,7 @@ export async function runGenerationParticipantRuntimeHandler(
       startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
         isResume: false,
         schedulerHop2Ms,
-      });
+      }, imageTerminalAnalytics);
     }
     ttftLog("[generation] participant preflight started", {
       chatId: effectiveArgs.chatId,
@@ -448,7 +461,7 @@ export async function runGenerationParticipantRuntimeHandler(
     await maybeFinalizeDrivePickerBatch(ctx, effectiveArgs);
     await Promise.all([
       startedAnalyticsCapture,
-      captureAssistantResponseThrown(ctx, effectiveArgs, error),
+      captureAssistantResponseThrown(ctx, effectiveArgs, error, imageTerminalAnalytics),
     ]);
     throw error;
   }

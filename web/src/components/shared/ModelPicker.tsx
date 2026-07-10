@@ -15,9 +15,10 @@ import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
 import { ProviderLogo } from "./ProviderLogo";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "./ModelPickerHelpers";
 import { guidanceLabelText, listRowPriceLabel } from "./ModelPickerHelpers.utils";
+import { compactMediaSummary } from "./ModelMediaCapabilities.utils";
 import {
   type SortKey, type CapFilter, SORT_KEYS, CAP_FILTERS,
-  sortMetric, filterAndSortModels, toggleCapFilter,
+  sortMetric, filterAndSortModels, modelHasTextOnlyOutput, modelIsZdrEligible, toggleCapFilter,
 } from "./ModelPickerShared";
 
 // ─── Icon maps (React elements can't live in .ts shared file) ────────────────
@@ -71,10 +72,14 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   onSelect: () => void; onInfo: () => void; zdrEnforced?: boolean;
 }) {
   const { t } = useTranslation();
-  const isZdrDisabled = zdrEnforced === true && !model.hasZdrEndpoint;
+  const isZdrDisabled = zdrEnforced === true && !modelIsZdrEligible(model);
   const score = sortMetric(model, sortKey);
   const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
   const primaryLabel = model.derivedGuidance?.primaryLabel;
+  const mediaSummary = compactMediaSummary(t, model.mediaCapabilities);
+  const accessibleLabel = mediaSummary.length > 0
+    ? `${model.name}. ${mediaSummary.join(", ")}`
+    : model.name;
 
   // Always show a price label for non-free models so users see real cost at a
   // glance, matching iOS ModelCompatibilitySummaryView and Android
@@ -91,7 +96,7 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
   return (
     <div
       role="button"
-      aria-label={model.name}
+      aria-label={accessibleLabel}
       aria-disabled={isZdrDisabled}
       tabIndex={isZdrDisabled ? undefined : 0}
       className={`flex items-center gap-3 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${isZdrDisabled ? "opacity-45 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"} ${selected ? "bg-primary/8" : ""}`}
@@ -122,6 +127,11 @@ function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
           {primaryLabel && <GuidanceTag label={primaryLabel} />}
           <TrendBadge model={model} />
         </div>
+        {mediaSummary.length > 0 && (
+          <p className="text-[10px] text-muted mt-0.5 truncate">
+            {mediaSummary.join(" • ")}
+          </p>
+        )}
         {isZdrDisabled && <p className="text-[10px] text-muted mt-0.5">{t("zdr_model_not_supported")}</p>}
       </div>
 
@@ -224,9 +234,16 @@ interface Props {
   onSelect: (modelId: string) => void;
   onClose: () => void;
   title?: string;
+  textOutputOnly?: boolean;
 }
 
-export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props) {
+export function ModelPicker({
+  selectedModelId,
+  onSelect,
+  onClose,
+  title,
+  textOutputOnly = false,
+}: Props) {
   const { t } = useTranslation();
   const modelSummaries = useModelSummaries();
   const [search, setSearch] = useState("");
@@ -237,9 +254,13 @@ export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props
   const { prefs } = useSharedData();
   const zdrEnforced = prefs?.zdrEnabled === true;
 
-  const models = useMemo(
+  const allModels = useMemo(
     () => (modelSummaries as ModelSummary[] | undefined) ?? [],
     [modelSummaries],
+  );
+  const models = useMemo(
+    () => textOutputOnly ? allModels.filter(modelHasTextOnlyOutput) : allModels,
+    [allModels, textOutputOnly],
   );
 
   const toggleFilter = useCallback((f: CapFilter) => {
@@ -336,7 +357,7 @@ export function ModelPicker({ selectedModelId, onSelect, onClose, title }: Props
         )}
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-32 text-sm text-muted gap-2">
-            {models.length === 0 ? t("loading_models") : t("no_models_match")}
+            {allModels.length === 0 ? t("loading_models") : t("no_models_match")}
             {activeFilters.size > 0 && (
               <button type="button" onClick={() => setActiveFilters(new Set())} className="text-xs text-primary hover:underline">{t("clear_filters")}</button>
             )}

@@ -56,6 +56,10 @@ export async function maybeFinalizeGenerationGroup(
   const allCancelled = statuses.every((status: GenerationJobStatus) => status === "cancelled");
   const allCancelledOrFailed = statuses.every((status: GenerationJobStatus) => failureStatuses.has(status));
 
+  await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
+    messageId: args.assistantMessageIds[0],
+  });
+
   if (!allCancelledOrFailed) {
     const didMark = await ctx.runMutation(
       internal.chat.mutations.markPostProcessScheduled,

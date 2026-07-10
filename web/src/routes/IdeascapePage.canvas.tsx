@@ -37,6 +37,15 @@ import {
 } from "@/lib/chatRequestResolution";
 import { dedupeChatAttachments, serializeResearchParticipant } from "@/routes/ChatPage.sendFlow";
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
+import { displayMessageContent } from "@/lib/persistedGenerationError";
+import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
+import { useAdvisorComposer } from "@/hooks/useAdvisorComposer";
+import { AdvisorComposerChips } from "@/components/chat/AdvisorComposerChips";
+import { AdvisorPicker } from "@/components/chat/AdvisorPicker";
+import { PaywallModal } from "@/components/shared/PaywallModal";
+import type { PlusMenuItem } from "@/components/chat/ChatPlusMenu";
+import type { PersonaItem } from "@/components/chat/ChatParticipantPicker.helpers";
+import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import {
   collectIdeascapeBranchIds,
   nextActiveBranchFocusOrder,
@@ -80,12 +89,12 @@ interface ContextSummary {
   showsBreakdown: boolean;
 }
 
-function summarizeMessage(message: { _id: Id<"messages">; role: string; content: string; participantName?: string; modelId?: string }, t: (key: string) => string): ContextSummaryItem {
+function summarizeMessage(message: { _id: Id<"messages">; role: string; status: string; content: string; participantName?: string; modelId?: string }, t: (key: string) => string): ContextSummaryItem {
   const title =
     message.role === "user"
       ? t("context_you")
       : message.participantName || message.modelId?.split("/").pop() || "Assistant";
-  const trimmed = message.content.trim();
+  const trimmed = displayMessageContent(message).trim();
   const subtitle = trimmed ? trimmed.slice(0, 56) : message.role === "user" ? t("context_user_message") : t("context_assistant_message");
   return { id: message._id as string, title, subtitle };
 }
@@ -272,6 +281,14 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const { participants: convexParticipants, addParticipant, removeParticipant, setParticipants: setParticipantsMut } = useParticipants(chatId);
   const { prefs, modelSettings, proStatus, personas } = useSharedData();
   const modelSummaries = useModelSummaries();
+  const imageGenerationModelIds = useMemo(
+    () => new Set(
+      (modelSummaries ?? [])
+        .filter(modelHasImageOutput)
+        .map((model) => model.modelId),
+    ),
+    [modelSummaries],
+  );
   const { googleConnection, gmailManualConnection, microsoftConnection, notionConnection, slackConnection, appleCalendarConnection, clozeConnection } = useConnectedAccounts();
   const rawPositions = useQuery(api.nodePositions.queries.listByChat, { chatId });
   const upsertPosition = useMutation(api.nodePositions.mutations.upsert);
@@ -405,6 +422,27 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       overrides: overrides.paramOverrides,
     });
   }, [baseParticipants, modelSettings, overrides.paramOverrides, personas, typedPrefs]);
+  const advisors = useAdvisorComposer({
+    chatId,
+    participants,
+    turnIntegrationOverrides: overrides.turnIntegrationOverrideEntries,
+    personas: personas as PersonaItem[] | undefined,
+    isPro,
+    effectiveWebSearch: webSearchEnabled,
+    modelSummaries: modelSummaries ?? undefined,
+    defaultModelId: typedPrefs?.defaultModelId,
+  });
+  const handlePlusMenuSelect = useCallback((item: PlusMenuItem) => {
+    if (item === "advisors") {
+      advisors.open();
+      return;
+    }
+    overrides.handlePlusMenuSelect(item);
+  }, [advisors, overrides]);
+  const plusMenuBadges = useMemo(() => ({
+    ...overrides.badges,
+    ...(advisors.state.selections.length > 0 ? { advisors: advisors.state.selections.length } : {}),
+  }), [advisors.state.selections.length, overrides.badges]);
   const isVideoMode = useMemo(() => {
     if (!modelSummaries) return false;
     return participants.some((participant) => {
@@ -627,7 +665,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   }, [chat?.activeBranchLeafFocusOrder, chat?.activeBranchLeafId, chatId, messages, updateChat]);
 
   const handleSendComposer = useCallback(
-    async ({ text, attachments, recordedAudio }: {
+    async ({ text, attachments, recordedAudio, advisorSnapshot }: {
       text: string;
       attachments?: Array<{
         type: string;
@@ -646,7 +684,16 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         durationMs?: number;
         mimeType?: string;
       };
+      advisorSnapshot?: QueuedAdvisorSnapshot;
     }) => {
+      if (advisorSnapshot === undefined && !advisors.canSendCurrentSelection) {
+        toast({ message: t("advisor_loading"), variant: "error" });
+        return false;
+      }
+      const advisorSelections = advisorSnapshot?.advisorSelections ?? advisors.advisorSelections;
+      const advisorBrief = advisorSnapshot === undefined
+        ? advisors.advisorBrief
+        : advisorSnapshot.advisorBrief;
       const explicitParentIds = selectedIds.size > 0
         ? Array.from(selectedIds)
         : focusedId
@@ -675,6 +722,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           subagentsEnabled: effectiveSubagentsEnabled,
           explicitParentIds,
           expandMultiModelGroups: false,
+          advisorSelections,
+          advisorBrief,
         });
       } else {
         await sendMessage({
@@ -688,6 +737,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           enabledIntegrations: Array.from(overrides.enabledIntegrations),
           subagentsEnabled: effectiveSubagentsEnabled,
           webSearchEnabled,
+          advisorSelections,
+          advisorBrief,
           ...(isVideoMode ? { videoConfig: {
             aspectRatio: typedPrefs?.defaultVideoAspectRatio ?? "16:9",
             duration: typedPrefs?.defaultVideoDuration ?? 5,
@@ -698,11 +749,14 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           ...(convexComplexity ? { complexity: convexComplexity } : {}),
         });
       }
+      if (advisorSnapshot === undefined && (advisorSelections?.length || advisorBrief)) {
+        advisors.completeSuccessfulSend();
+      }
       overrides.clearKBFiles();
       overrides.clearTurnOverrides();
       return true;
     },
-    [chatId, selectedIds, focusedId, participants, kbAttachmentsForDisplay, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast],
+    [chatId, selectedIds, focusedId, participants, kbAttachmentsForDisplay, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast, advisors, t],
   );
 
   const dismissHelp = useCallback(() => {
@@ -752,6 +806,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       <IdeascapeCanvas messages={messages} positions={positions} viewport={viewport}
         selectedIds={selectedIds} focusedId={focusedId}
         activeBranchIds={activeBranchIds} contextBranchIds={contextBranchIds}
+        imageGenerationModelIds={imageGenerationModelIds}
         onViewportChange={handleViewportChange}
         onNodeDragEnd={handleNodeDragEnd} onNodeResizeEnd={handleNodeResizeEnd} onSelectNode={handleSelectNode}
         onFocusNode={handleFocusNode} onClearSelection={handleClearSelection} />
@@ -771,14 +826,19 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         {focusedId && (
           <p className="px-4 pt-2 text-[10px] text-muted">{t("replying_to_focused")}</p>
         )}
+        <AdvisorComposerChips owner={advisors} />
         <MessageInput
           chatId={chatId}
           participants={participants}
           isGenerating={isGenerating}
-          onSend={({ text, attachments }) => handleSendComposer({ text, attachments })}
+          onSend={({ text, attachments, advisorSnapshot }) => handleSendComposer({ text, attachments, advisorSnapshot })}
           onCancel={() => void cancelGeneration({ chatId })}
           onCreateUploadUrl={() => createUploadUrl({})}
           onSendRecording={async (result: RecordingResult) => {
+            if (!advisors.canSendCurrentSelection) {
+              toast({ message: t("advisor_loading"), variant: "error" });
+              return;
+            }
             const validationError = validateChatSendState({
               participantCount: participants.length,
               isResearchPaper,
@@ -803,8 +863,11 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
               },
             });
           }}
-          onPlusMenuSelect={overrides.handlePlusMenuSelect}
-          plusMenuBadges={overrides.badges}
+          onPlusMenuSelect={handlePlusMenuSelect}
+          plusMenuBadges={plusMenuBadges}
+          canCaptureQueuedAdvisorSnapshot={advisors.canCaptureQueuedSnapshot}
+          captureQueuedAdvisorSnapshot={advisors.captureQueuedSnapshot}
+          restoreQueuedAdvisorSnapshot={advisors.restoreQueuedSnapshot}
           disabled={!focusedId}
           isPro={isPro}
           hasConnectedIntegrations={hasConnectedIntegrations}
@@ -856,6 +919,12 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         hasMessages={messages.length > 0}
         onAutonomousStart={autonomous.start}
       />
+      {advisors.state.surface === "picker" && (
+        <AdvisorPicker owner={advisors} personas={(personas as PersonaItem[] | undefined) ?? []} />
+      )}
+      {advisors.state.surface === "paywall" && (
+        <PaywallModal feature={t("advisors")} onClose={advisors.close} />
+      )}
     </div>
   );
 }

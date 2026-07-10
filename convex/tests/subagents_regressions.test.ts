@@ -107,6 +107,12 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
             }),
           };
         }
+        if (table === "advisorBatches") {
+          return { withIndex: () => ({ first: async () => null }) };
+        }
+        if (table === "chatAdvisors") {
+          return { withIndex: () => ({ collect: async () => [] }) };
+        }
         throw new Error(`Unexpected table query: ${table}`);
       },
     },
@@ -328,6 +334,9 @@ test("cancelActiveGenerationHandler preserves timedOut subagent runs", async () 
               first: async () => null,
             }),
           };
+        }
+        if (table === "advisorBatches") {
+          return { withIndex: () => ({ collect: async () => [] }) };
         }
         throw new Error(`Unexpected table query: ${table}`);
       },

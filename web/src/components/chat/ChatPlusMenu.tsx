@@ -16,6 +16,7 @@ import {
   Bot,
   Zap,
   ClipboardPaste,
+  MessageCircleQuestion,
 } from "lucide-react";
 
 // ─── Menu items ─────────────────────────────────────────────────────────────
@@ -30,6 +31,7 @@ export type PlusMenuItem =
   | "camera"
   | "pasteImage"
   | "participants"
+  | "advisors"
   | "subagents"
   | "autonomous";
 
@@ -93,6 +95,13 @@ export function ChatPlusMenu({
       id: "participants",
       label: t("participants"),
       icon: <Users size={16} />,
+    },
+    {
+      id: "advisors",
+      label: t("advisors"),
+      icon: <MessageCircleQuestion size={16} />,
+      badge: badges.advisors,
+      requiresPro: true,
     },
     {
       id: "parameters",
@@ -198,6 +207,11 @@ export function ChatPlusMenu({
               {item.badge != null && item.badge > 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
                   {item.badge}
+                </span>
+              )}
+              {item.requiresPro && !isPro && (
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold text-primary">
+                  PRO
                 </span>
               )}
             </button>

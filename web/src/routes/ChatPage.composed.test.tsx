@@ -54,6 +54,7 @@ const {
   toast: vi.fn(),
   updateChat: vi.fn(async () => null),
   testState: {
+    isLoading: false,
     kbFiles: [] as Array<{
       storageId: string;
       filename: string;
@@ -172,7 +173,7 @@ vi.mock("@/hooks/useChat", () => ({
       createdAt: 1,
     },
     messages: testState.messages,
-    isLoading: false,
+    isLoading: testState.isLoading,
     isGenerating: false,
     sendMessage,
     cancelGeneration,
@@ -282,6 +283,17 @@ vi.mock("@/hooks/useChatCosts", () => ({
   useChatCosts: () => ({ messageCosts: {}, totalCost: null, breakdown: null }),
 }));
 
+vi.mock("@/hooks/useAdvisorComposer", () => ({
+  useAdvisorComposer: () => ({
+    state: { surface: "closed", selections: [], brief: "", defaultAllowWebSearch: false, defaultKeepAvailable: false, saveError: null }, participantCount: 1,
+    selectedPersonas: [], persistedPersonaIds: new Set(), participantPersonaIds: new Set(), advisorSelections: undefined, advisorBrief: undefined,
+    open: vi.fn(), close: vi.fn(), togglePersona: vi.fn(), updateSelection: vi.fn(), remove: vi.fn(),
+    setBrief: vi.fn(), setDefaultAllowWebSearch: vi.fn(), setDefaultKeepAvailable: vi.fn(), save: vi.fn(),
+    canSendCurrentSelection: true, canCaptureQueuedSnapshot: true,
+    captureQueuedSnapshot: vi.fn(() => ({ advisorSelections: [] })), restoreQueuedSnapshot: vi.fn(), completeSuccessfulSend: vi.fn(),
+  }),
+}));
+
 vi.mock("@/routes/ChatPage.header", () => ({
   ChatHeader: () => <div>chat-header</div>,
   ChatModalPanels: () => null,
@@ -350,6 +362,7 @@ describe("ChatPage composed send behavior", () => {
   beforeEach(() => {
     Element.prototype.scrollIntoView = vi.fn();
     routeState.chatId = "chat_1";
+    testState.isLoading = false;
     testState.kbFiles = [];
     testState.overrides.enabledIntegrations = new Set();
     testState.overrides.selectedKBFileIds = new Set();
@@ -367,6 +380,18 @@ describe("ChatPage composed send behavior", () => {
   afterEach(() => {
     vi.clearAllMocks();
     clearChatDraft("chat_1");
+  });
+
+  it("keeps a stable hook order while an existing chat hydrates", () => {
+    testState.isLoading = true;
+    const view = render(<ChatPage />);
+
+    expect(screen.getByText("loading")).toBeInTheDocument();
+
+    testState.isLoading = false;
+    view.rerender(<ChatPage />);
+
+    expect(screen.getByText("empty-chat-state")).toBeInTheDocument();
   });
 
   it("sends selected Drive context, clears one-turn state, and does not leak it into the next send", async () => {

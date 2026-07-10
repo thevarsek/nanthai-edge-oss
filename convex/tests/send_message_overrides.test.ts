@@ -144,6 +144,12 @@ function buildMockCtx(overrides: {
             }),
           };
         }
+        if (table === "advisorBatches") {
+          return { withIndex: () => ({ first: async () => null }) };
+        }
+        if (table === "chatAdvisors") {
+          return { withIndex: () => ({ collect: async () => [] }) };
+        }
         if (table === "cachedModels") {
           return {
             withIndex: (_index: string, apply: (query: any) => any) => {
@@ -301,7 +307,14 @@ test("createAssistantMessagesAndJobs omits overrides when not provided (backward
 // =============================================================================
 
 test("sendMessageHandler passes turnSkillOverrides to runGeneration scheduler", async () => {
-  const { ctx, scheduled } = buildMockCtx();
+  const { ctx, scheduled, inserts } = buildMockCtx({
+    userPreferences: {
+      userId: "user_1",
+      defaultImageCount: 3,
+      defaultImageQuality: "high",
+      defaultImageOutputCompression: 0,
+    },
+  });
   const skillOv = [{ skillId: "skill_1" as any, state: "available" as const }];
 
   await sendMessageHandler(ctx, {
@@ -316,6 +329,17 @@ test("sendMessageHandler passes turnSkillOverrides to runGeneration scheduler", 
   const genCall = scheduled.find((entry) => entry.args.assistantMessageIds);
   assert.ok(genCall);
   assert.deepEqual(genCall.args.turnSkillOverrides, skillOv);
+  assert.deepEqual(genCall.args.imageConfig, {
+    count: 3,
+    quality: "high",
+    outputCompression: 0,
+  });
+  const assistant = inserts.find((entry) => entry.value.role === "assistant");
+  assert.deepEqual((assistant?.value.retryContract as any)?.imageConfig, {
+    count: 3,
+    quality: "high",
+    outputCompression: 0,
+  });
 });
 
 test("sendMessageHandler passes turnIntegrationOverrides to runGeneration scheduler", async () => {
@@ -597,6 +621,11 @@ test("retryMessageHandler replays stored retry contracts for plain retry", async
   const storedSkillOverrides = [{ skillId: "skill_saved" as any, state: "always" as const }];
   const storedIntegrationOverrides = [{ integrationId: "gmail", enabled: true }];
   const { ctx, scheduled, inserts } = buildMockCtx({
+    userPreferences: {
+      userId: "user_1",
+      defaultImageCount: 9,
+      defaultImageQuality: "low",
+    },
     originalAssistantMessage: {
       retryContract: {
         participants: [{
@@ -613,6 +642,11 @@ test("retryMessageHandler replays stored retry contracts for plain retry", async
         videoConfig: {
           duration: 5,
           resolution: "720p",
+        },
+        imageConfig: {
+          count: 2,
+          quality: "high",
+          outputCompression: 0,
         },
       },
     },
@@ -638,6 +672,11 @@ test("retryMessageHandler replays stored retry contracts for plain retry", async
     duration: 5,
     resolution: "720p",
   });
+  assert.deepEqual(genCall.args.imageConfig, {
+    count: 2,
+    quality: "high",
+    outputCompression: 0,
+  });
   assert.equal(participants[0]?.systemPrompt, "Keep it terse");
   assert.equal(participants[0]?.temperature, 0.2);
   assert.equal(participants[0]?.maxTokens, 512);
@@ -645,6 +684,11 @@ test("retryMessageHandler replays stored retry contracts for plain retry", async
 
 test("retryMessageHandler merges stored participant settings with explicit model overrides", async () => {
   const { ctx, scheduled } = buildMockCtx({
+    userPreferences: {
+      userId: "user_1",
+      defaultImageCount: 4,
+      defaultImageOutputFormat: "webp",
+    },
     originalAssistantMessage: {
       retryContract: {
         participants: [{
@@ -674,6 +718,10 @@ test("retryMessageHandler merges stored participant settings with explicit model
   assert.equal(participants[0]?.maxTokens, 512);
   assert.equal(participants[0]?.includeReasoning, true);
   assert.equal(participants[0]?.reasoningEffort, "high");
+  assert.deepEqual(genCall.args.imageConfig, {
+    count: 4,
+    outputFormat: "webp",
+  });
 });
 
 test("retryMessageHandler rejects incompatible explicit participants for stored retry contracts", async () => {

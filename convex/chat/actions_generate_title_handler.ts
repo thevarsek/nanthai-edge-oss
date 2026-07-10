@@ -20,6 +20,7 @@ import {
   captureBackendAIOperationFailed,
   captureBackendAIOperationStarted,
 } from "../analytics/backend_events";
+import { resolveTextAncillaryModel } from "../lib/openrouter_modality";
 
 const DEFAULT_TITLE_MODEL = MODEL_IDS.titleGeneration;
 
@@ -118,10 +119,19 @@ export async function generateTitleHandler(
   ];
 
   const requireZdr = isZdrEnabled(prefs);
-  const model = selectAncillaryModelForZdr({
+  const selectedModel = selectAncillaryModelForZdr({
     requestedModel: args.titleModel,
     defaultModel: DEFAULT_TITLE_MODEL,
     requireZdr,
+  });
+  const model = await resolveTextAncillaryModel({
+    selectedModel,
+    defaultModel: DEFAULT_TITLE_MODEL,
+    feature: "Title generation",
+    getCapabilities: (modelId) => ctx.runQuery(
+      internal.chat.queries.getModelCapabilities,
+      { modelId },
+    ),
   });
   const operationStartedAt = Date.now();
 
