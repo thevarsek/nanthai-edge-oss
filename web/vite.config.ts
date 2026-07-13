@@ -40,6 +40,11 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // `injectRegister: false` means vite-plugin-pwa does not infer these
+        // from `registerType: "autoUpdate"`. Set them explicitly so a newly
+        // deployed worker replaces the previous PWA shell immediately.
+        skipWaiting: true,
+        clientsClaim: true,
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5 MiB — covers brand images
         globPatterns: ["**/*.{js,css,html,ico,svg,woff2,png,webmanifest}"],
         globIgnores: ["**/edge-brand/**", "**/screenshots/**"],
@@ -55,14 +60,6 @@ export default defineConfig({
           /^\/stripe-webhook/,
         ],
         runtimeCaching: [
-          {
-            urlPattern: ({ request }) => request.mode === "navigate",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "app-pages",
-              networkTimeoutSeconds: 3,
-            },
-          },
           {
             // Cache Convex API requests. Matches any *.convex.cloud origin so
             // self-hosters don't need to edit this. Note: if the browser somehow
