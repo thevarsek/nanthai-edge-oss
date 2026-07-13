@@ -5,13 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run typecheck && vite build",
+    "build": "npm run typecheck && vite build && node scripts/generate-seo-shells.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit --project tsconfig.app.json",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:seo": "npm run build && node scripts/verify-seo-build.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

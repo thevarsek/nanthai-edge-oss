@@ -22,7 +22,18 @@ export const SUPPORTED_LANGUAGES = [
 
 export type SupportedLanguageCode = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 
-i18n
+export function syncDocumentLanguage(language: string | undefined) {
+  if (typeof document === "undefined") return;
+
+  const baseLanguage = language?.toLowerCase().split("-")[0];
+  const supportedLanguage = baseLanguage
+    && SUPPORTED_LANGUAGES.some(({ code }) => code === baseLanguage)
+    ? baseLanguage
+    : "en";
+  document.documentElement.lang = supportedLanguage;
+}
+
+const initialization = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
@@ -48,5 +59,10 @@ i18n
       escapeValue: false,
     },
   });
+
+i18n.on("languageChanged", syncDocumentLanguage);
+void initialization.then(() => {
+  syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language);
+});
 
 export default i18n;

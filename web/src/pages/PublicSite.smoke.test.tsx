@@ -67,6 +67,10 @@ describe("public site smoke coverage", () => {
     expect(screen.getAllByText("pro_2").length).toBeGreaterThan(0);
     expect(screen.getByText("home_proof_label")).toBeInTheDocument();
     expect(screen.getByText("home_byok_title")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /edge_footer_web_app/i })).toHaveAttribute(
+      "href",
+      "https://nanthai.tech/app",
+    );
     expect(canonicalHref()).toBe("https://nanthai.tech");
   });
 
@@ -99,6 +103,7 @@ describe("public site smoke coverage", () => {
     expect(screen.getByRole("link", { name: /GitHub/i })).toHaveAttribute("href", "https://github.com/thevarsek/nanthai-edge-oss");
     expect(screen.getByRole("link", { name: /edge_start_free_upgrade_later/i })).toHaveAttribute("href", "/sign-in");
     expect(screen.getByRole("link", { name: /edge_see_all_features/i })).toHaveAttribute("href", "/features");
+    expect(document.title).toBe("Search & Research — NanthAI Edge");
     expect(canonicalHref()).toBe("https://nanthai.tech/features/search");
   });
 });

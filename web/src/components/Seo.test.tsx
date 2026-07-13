@@ -59,4 +59,31 @@ describe("Seo", () => {
       ],
     });
   });
+
+  it("replaces the build-time SEO shell metadata without leaving duplicates", () => {
+    document.head.innerHTML = `
+      <meta name="description" content="Build-time description" data-rh="true" data-seo-shell="true" />
+      <meta property="og:title" content="Build-time title" data-rh="true" data-seo-shell="true" />
+      <link rel="canonical" href="https://nanthai.tech/features" data-rh="true" data-seo-shell="true" />
+    `;
+
+    render(
+      <HelmetProvider>
+        <Seo
+          title="Search & Research — NanthAI Edge"
+          description="Localized client description"
+          url="https://nanthai.tech/features/search"
+        />
+      </HelmetProvider>,
+    );
+
+    expect(document.querySelectorAll('meta[name="description"]')).toHaveLength(1);
+    expect(document.querySelectorAll('meta[property="og:title"]')).toHaveLength(1);
+    expect(document.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
+    expect(metaContent('meta[name="description"]')).toBe("Localized client description");
+    expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      "https://nanthai.tech/features/search",
+    );
+  });
 });

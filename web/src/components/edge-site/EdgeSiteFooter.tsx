@@ -52,7 +52,7 @@ export function EdgeSiteFooter() {
                 {t("edge_nav_features")}
               </Link>
               <a
-                href="https://chat.nanthai.tech"
+                href="https://nanthai.tech/app"
                 target="_blank"
                 rel="noreferrer"
                 className="text-[0.84rem] efg-40 transition-colors hover:efg-80"

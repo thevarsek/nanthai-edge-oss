@@ -3,8 +3,16 @@
 
 [build]
   base = "web"
-  command = "npm install && npx vite build"
+  command = "npm install && npm run build"
   publish = "dist"
+
+# Preserve the closest current destination for the only legacy content URL
+# still receiving Google impressions. Keep this before the catch-all host move.
+[[redirects]]
+  from = "https://chat.nanthai.tech/blog/ai-pdf-analysis-guide"
+  to = "https://nanthai.tech/features/knowledge-base"
+  status = 301
+  force = true
 
 [[redirects]]
   from = "https://chat.nanthai.tech/*"
@@ -33,12 +41,20 @@
   to = "/support.html"
   status = 200
 
-# ── SPA fallback — serve index.html for app routes ──
+# ── Public feature SEO shells ──
+# The build emits both pretty-URL and directory-index variants. Explicit rewrites
+# ensure an extensionless crawler request receives the route-specific document.
 [[redirects]]
-  from = "/features/*"
-  to = "/index.html"
+  from = "/features"
+  to = "/features.html"
   status = 200
 
+[[redirects]]
+  from = "/features/:slug"
+  to = "/features/:slug.html"
+  status = 200
+
+# ── SPA fallback — serve index.html for private app routes ──
 [[redirects]]
   from = "/app/*"
   to = "/index.html"
@@ -89,6 +105,58 @@
   for = "/manifest.webmanifest"
   [headers.values]
     Cache-Control = "no-cache"
+
+# Authenticated and callback routes must never enter a search index. Header-level
+# noindex works even when the shared SPA document initially says index/follow.
+[[headers]]
+  for = "/app"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/app/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/sign-in"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/sign-in/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/sign-up"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/sign-up/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/onboarding"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/oauth/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/openrouter/*"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
+
+[[headers]]
+  for = "/mobile-drive-picker"
+  [headers.values]
+    X-Robots-Tag = "noindex, nofollow"
 
 # Security headers
 # /mobile-drive-picker is opened top-level by native Safari/Custom Tabs, not

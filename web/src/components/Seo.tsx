@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { Helmet } from "react-helmet-async";
 
 type SeoProps = {
@@ -23,6 +24,10 @@ export function Seo({
 }: SeoProps) {
   const keywordsStr = Array.isArray(keywords) ? keywords.join(", ") : keywords;
   const canonicalUrl = canonical ?? url;
+
+  useLayoutEffect(() => {
+    document.head.querySelectorAll("[data-seo-shell]").forEach((element) => element.remove());
+  }, []);
 
   return (
     <Helmet>
