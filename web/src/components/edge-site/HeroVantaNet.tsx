@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from "react";
-import * as THREE from "three";
-import VANTA_NET from "vanta/dist/vanta.net.min";
 
 /**
  * Vanta.js NET effect scoped to a container (not full-page).
@@ -127,9 +125,11 @@ export function HeroVantaNet({
         return;
       }
 
-      try {
-        if (!vantaRef.current && containerRef.current) {
-          const instance = VANTA_NET({
+      void loadVantaModules()
+        .then(({ THREE, createNet }) => {
+          if (cancelled || mq.matches || vantaRef.current || !containerRef.current) return;
+
+          const instance = createNet({
             THREE,
             el: containerRef.current,
             mouseControls: true,
@@ -146,13 +146,20 @@ export function HeroVantaNet({
             backgroundAlpha: 0,
             showDots: true,
             points: 7,
-          });
-          applyUniformLineMaterial(instance, resolvedLineColor, resolvedLineOpacity);
+          }) as VantaNetInstance;
+          applyUniformLineMaterial(
+            instance,
+            resolvedLineColor,
+            resolvedLineOpacity,
+            THREE.NormalBlending,
+          );
           vantaRef.current = instance;
-        }
-      } catch (err) {
-        console.error("Vanta hero background failed to initialize", err);
-      }
+        })
+        .catch((error: unknown) => {
+          if (!cancelled) {
+            console.error("Vanta hero background failed to initialize", error);
+          }
+        });
     };
 
     syncVanta();
@@ -201,14 +208,39 @@ function resolveIsNarrowViewport(): boolean {
 type VantaNetInstance = {
   destroy: () => void;
   linesMesh?: {
-    material?: THREE.LineBasicMaterial | THREE.LineBasicMaterial[];
+    material?: LineMaterial | LineMaterial[];
   };
 };
+
+type LineMaterial = {
+  vertexColors: boolean;
+  color: { set: (color: number) => void };
+  opacity: number;
+  transparent: boolean;
+  blending: unknown;
+  needsUpdate: boolean;
+};
+
+type VantaModules = {
+  THREE: typeof import("three");
+  createNet: typeof import("vanta/dist/vanta.net.min").default;
+};
+
+let vantaModulesPromise: Promise<VantaModules> | undefined;
+
+function loadVantaModules(): Promise<VantaModules> {
+  vantaModulesPromise ??= Promise.all([
+    import("three"),
+    import("vanta/dist/vanta.net.min"),
+  ]).then(([THREE, vanta]) => ({ THREE, createNet: vanta.default }));
+  return vantaModulesPromise;
+}
 
 function applyUniformLineMaterial(
   instance: VantaNetInstance,
   color: number | undefined,
   opacity: number,
+  normalBlending: unknown,
 ) {
   if (color === undefined) return;
   const materials = instance.linesMesh?.material;
@@ -219,7 +251,7 @@ function applyUniformLineMaterial(
     material.color.set(color);
     material.opacity = Math.max(0, Math.min(1, opacity));
     material.transparent = material.opacity < 1;
-    material.blending = THREE.NormalBlending;
+    material.blending = normalBlending;
     material.needsUpdate = true;
   });
 }

@@ -208,8 +208,19 @@
   for = "/llms.txt"
   [headers.values]
     Cache-Control = "public, max-age=3600, must-revalidate"
+    Content-Type = "text/plain; charset=utf-8"
+    X-Robots-Tag = "noindex, follow"
+
+[[headers]]
+  for = "/llms-full.txt"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+    Content-Type = "text/plain; charset=utf-8"
+    X-Robots-Tag = "noindex, follow"
 
 [[headers]]
   for = "/llms/*"
   [headers.values]
     Cache-Control = "public, max-age=3600, must-revalidate"
+    Content-Type = "text/markdown; charset=utf-8"
+    X-Robots-Tag = "noindex, follow"

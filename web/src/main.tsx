@@ -12,7 +12,7 @@ import { ToastProvider } from "./components/shared/Toast";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import { AnalyticsBridge } from "./components/analytics/AnalyticsBridge";
 import { removeBuildTimeSeoShell } from "./lib/seoShell";
-import "./i18n"; // initializes i18next (side-effect import)
+import { initialization as i18nInitialization } from "./i18n";
 import "./index.css";
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
@@ -28,27 +28,32 @@ if (typeof window !== "undefined") {
   registerSW({ immediate: true });
 }
 
-createRoot(document.getElementById("root")!).render(
-  <StrictMode>
-    <HelmetProvider>
-      <ClerkProvider
-        publishableKey={CLERK_KEY}
-        afterSignOutUrl="/"
-        signInForceRedirectUrl="/app"
-      >
-        <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-          <BrowserRouter>
-            <AnalyticsBridge />
-            <SharedDataProvider>
-              <ToastProvider>
-                <ErrorBoundary level="app">
-                  <App />
-                </ErrorBoundary>
-              </ToastProvider>
-            </SharedDataProvider>
-          </BrowserRouter>
-        </ConvexProviderWithClerk>
-      </ClerkProvider>
-    </HelmetProvider>
-  </StrictMode>,
-);
+async function renderApp() {
+  await i18nInitialization;
+  createRoot(document.getElementById("root")!).render(
+    <StrictMode>
+      <HelmetProvider>
+        <ClerkProvider
+          publishableKey={CLERK_KEY}
+          afterSignOutUrl="/"
+          signInForceRedirectUrl="/app"
+        >
+          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+            <BrowserRouter>
+              <AnalyticsBridge />
+              <SharedDataProvider>
+                <ToastProvider>
+                  <ErrorBoundary level="app">
+                    <App />
+                  </ErrorBoundary>
+                </ToastProvider>
+              </SharedDataProvider>
+            </BrowserRouter>
+          </ConvexProviderWithClerk>
+        </ClerkProvider>
+      </HelmetProvider>
+    </StrictMode>,
+  );
+}
+
+void renderApp();

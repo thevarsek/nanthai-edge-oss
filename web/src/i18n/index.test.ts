@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { syncDocumentLanguage } from "./index";
+import i18n, { initialization, syncDocumentLanguage } from "./index";
 
 describe("syncDocumentLanguage", () => {
   afterEach(() => {
@@ -18,5 +18,16 @@ describe("syncDocumentLanguage", () => {
 
     syncDocumentLanguage(undefined);
     expect(document.documentElement.lang).toBe("en");
+  });
+
+  it("loads a non-English translation bundle when that language is selected", async () => {
+    await initialization;
+    expect(i18n.hasResourceBundle("it", "translation")).toBe(false);
+
+    await i18n.changeLanguage("it");
+
+    expect(i18n.hasResourceBundle("it", "translation")).toBe(true);
+    expect(document.documentElement.lang).toBe("it");
+    await i18n.changeLanguage("en");
   });
 });

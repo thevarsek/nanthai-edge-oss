@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -136,14 +136,16 @@ describe("edge-site hero visuals", () => {
     const { HeroVantaNet } = await import("./HeroVantaNet");
 
     const { unmount } = render(<HeroVantaNet opacity={0.2} />);
-    expect(vanta.default).toHaveBeenCalledWith(expect.objectContaining({
-      el: expect.any(HTMLDivElement),
-      mouseControls: true,
-      touchControls: true,
-      backgroundAlpha: 0,
-      backgroundColor: 0x050507,
-      maxDistance: 22,
-    }));
+    await waitFor(() => {
+      expect(vanta.default).toHaveBeenCalledWith(expect.objectContaining({
+        el: expect.any(HTMLDivElement),
+        mouseControls: true,
+        touchControls: true,
+        backgroundAlpha: 0,
+        backgroundColor: 0x050507,
+        maxDistance: 22,
+      }));
+    });
 
     unmount();
     expect(destroy).toHaveBeenCalled();
@@ -180,11 +182,13 @@ describe("edge-site hero visuals", () => {
       />,
     );
 
-    expect(vanta.default).toHaveBeenCalledWith(expect.objectContaining({
-      color: 0x00a7a0,
-      backgroundColor: 0x050507,
-      maxDistance: 30,
-    }));
+    await waitFor(() => {
+      expect(vanta.default).toHaveBeenCalledWith(expect.objectContaining({
+        color: 0x00a7a0,
+        backgroundColor: 0x050507,
+        maxDistance: 30,
+      }));
+    });
     expect(container.firstElementChild).toHaveStyle({ opacity: "0.68" });
     expect(material.vertexColors).toBe(false);
     expect(material.color.set).toHaveBeenCalledWith(0x087b78);
@@ -201,7 +205,9 @@ describe("edge-site hero visuals", () => {
     const { HeroVantaNet } = await import("./HeroVantaNet");
 
     render(<HeroVantaNet />);
-    expect(vanta.default).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(vanta.default).toHaveBeenCalledTimes(1);
+    });
 
     act(() => motionPreference.dispatch(true));
 

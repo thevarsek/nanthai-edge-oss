@@ -1,14 +1,9 @@
 import i18n from "i18next";
+import type { BackendModule } from "i18next";
 import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
 import en from "./locales/en.json";
-import es from "./locales/es.json";
-import fr from "./locales/fr.json";
-import de from "./locales/de.json";
-import it from "./locales/it.json";
-import ja from "./locales/ja.json";
-import zh from "./locales/zh.json";
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English" },
@@ -22,6 +17,34 @@ export const SUPPORTED_LANGUAGES = [
 
 export type SupportedLanguageCode = (typeof SUPPORTED_LANGUAGES)[number]["code"];
 
+const localeLoaders = {
+  es: () => import("./locales/es.json"),
+  fr: () => import("./locales/fr.json"),
+  de: () => import("./locales/de.json"),
+  it: () => import("./locales/it.json"),
+  ja: () => import("./locales/ja.json"),
+  zh: () => import("./locales/zh.json"),
+};
+
+const lazyLocaleBackend: BackendModule = {
+  type: "backend",
+  init() {},
+  read(language, _namespace, callback) {
+    const baseLanguage = language.toLowerCase().split("-")[0];
+    const loader = localeLoaders[baseLanguage as keyof typeof localeLoaders];
+    if (!loader) {
+      callback(new Error(`No translation bundle is available for ${language}`), false);
+      return;
+    }
+
+    void loader()
+      .then((module) => callback(null, module.default))
+      .catch((error: unknown) => {
+        callback(error instanceof Error ? error : new Error(String(error)), false);
+      });
+  },
+};
+
 export function syncDocumentLanguage(language: string | undefined) {
   if (typeof document === "undefined") return;
 
@@ -33,19 +56,15 @@ export function syncDocumentLanguage(language: string | undefined) {
   document.documentElement.lang = supportedLanguage;
 }
 
-const initialization = i18n
+export const initialization = i18n
+  .use(lazyLocaleBackend)
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
     resources: {
       en: { translation: en },
-      es: { translation: es },
-      fr: { translation: fr },
-      de: { translation: de },
-      it: { translation: it },
-      ja: { translation: ja },
-      zh: { translation: zh },
     },
+    partialBundledLanguages: true,
     fallbackLng: "en",
     supportedLngs: ["en", "es", "fr", "de", "it", "ja", "zh"],
     detection: {
