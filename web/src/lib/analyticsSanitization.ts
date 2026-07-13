@@ -1,10 +1,12 @@
 import type { Properties } from "posthog-js";
+import { analyticsRouteTemplate } from "@/lib/analyticsException";
 
 const SENSITIVE_ROUTE_PROPERTY_KEYS = new Set([
   "$current_url",
   "$initial_current_url",
   "$referrer",
   "$initial_referrer",
+  "$pathname",
   "current_url",
   "initial_current_url",
   "referrer",
@@ -33,6 +35,27 @@ export function stripQueryAndHash(value: unknown): string | undefined {
 export function sanitizeAutomaticUrlProperties(properties: Properties) {
   for (const key of SENSITIVE_ROUTE_PROPERTY_KEYS) {
     const sanitized = stripQueryAndHash(properties[key]);
+    if (sanitized !== undefined) properties[key] = sanitized;
+  }
+}
+
+function templateRouteValue(value: unknown): string | undefined {
+  const stripped = stripQueryAndHash(value);
+  if (!stripped) return stripped;
+  try {
+    const url = new URL(stripped);
+    url.pathname = analyticsRouteTemplate(url.pathname) ?? url.pathname;
+    url.search = "";
+    url.hash = "";
+    return url.toString();
+  } catch {
+    return analyticsRouteTemplate(stripped);
+  }
+}
+
+export function sanitizeExceptionUrlProperties(properties: Properties) {
+  for (const key of SENSITIVE_ROUTE_PROPERTY_KEYS) {
+    const sanitized = templateRouteValue(properties[key]);
     if (sanitized !== undefined) properties[key] = sanitized;
   }
 }

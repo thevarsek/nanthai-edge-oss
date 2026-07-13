@@ -73,13 +73,20 @@ describe("analytics", () => {
     });
   });
 
-  it("redacts raw exception messages before sending them to PostHog", async () => {
+  it("sends structured exception diagnostics without raw messages", async () => {
     const { captureAnalyticsException, initAnalytics } = await import("./analytics");
 
+    const originalError = new TypeError("secret prompt fragment");
+    originalError.stack = [
+      "TypeError: secret prompt fragment",
+      "    at renderWidget (https://nanthai.tech/assets/app.js?secret=value:10:2)",
+    ].join("\n");
     await initAnalytics();
-    captureAnalyticsException(new Error("secret prompt fragment"), {
-      boundary_level: "app",
-      error_label: "caller supplied secret prompt fragment",
+    captureAnalyticsException(originalError, {
+      boundaryLevel: "app",
+      featureArea: "error_boundary",
+      hasComponentStack: true,
+      operation: "react_render",
     });
 
     await vi.waitFor(() => expect(posthog.captureException).toHaveBeenCalledTimes(1));
@@ -87,9 +94,20 @@ describe("analytics", () => {
       Error,
       Record<string, unknown>,
     ];
-    expect(error).toMatchObject({ name: "Error", message: "redacted" });
-    expect(properties).toMatchObject({ boundary_level: "app", error_label: "error" });
+    expect(error).toMatchObject({ name: "TypeError", message: "react_render.type_error" });
+    expect(error.stack).toContain("at renderWidget (https://nanthai.tech/assets/app.js");
+    expect(properties).toMatchObject({
+      boundary_level: "app",
+      error_category: "type_error",
+      error_label: "type_error",
+      error_message_redacted: true,
+      error_type: "TypeError",
+      feature_area: "error_boundary",
+      has_component_stack: true,
+      operation: "react_render",
+    });
     expect(JSON.stringify(posthog.captureException.mock.calls)).not.toContain("secret prompt fragment");
+    expect(JSON.stringify(posthog.captureException.mock.calls)).not.toContain("secret=value");
   });
 
   it("keeps session replay disabled unless it has separate consent", async () => {

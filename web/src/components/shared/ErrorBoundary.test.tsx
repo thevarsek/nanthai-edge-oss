@@ -35,8 +35,10 @@ describe("ErrorBoundary", () => {
     expect(analytics.captureAnalyticsException).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Error" }),
       expect.objectContaining({
-        boundary_level: "test",
-        has_component_stack: true,
+        boundaryLevel: "test",
+        featureArea: "error_boundary",
+        hasComponentStack: true,
+        operation: "react_render",
       }),
     );
     expect(JSON.stringify(analytics.captureAnalyticsException.mock.calls)).not.toContain(

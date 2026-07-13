@@ -32,8 +32,10 @@ export class ErrorBoundary extends Component<Props, State> {
       hasComponentStack: Boolean(info.componentStack),
     });
     captureAnalyticsException(_error, {
-      boundary_level: this.props.level ?? "unknown",
-      has_component_stack: Boolean(info.componentStack),
+      boundaryLevel: this.props.level ?? "unknown",
+      featureArea: "error_boundary",
+      hasComponentStack: Boolean(info.componentStack),
+      operation: "react_render",
     });
   }
 

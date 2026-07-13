@@ -1,9 +1,15 @@
 import type { Properties } from "posthog-js";
 import { getAnalyticsConsent } from "@/lib/analyticsConsent";
 import {
+  analyticsErrorTypeLabel,
+  buildAnalyticsExceptionDiagnostic,
+  type AnalyticsExceptionContext,
+} from "@/lib/analyticsException";
+import {
   isAllowedAnalyticsEnvironment,
   sanitizeAnalyticsProperties,
   sanitizeAutomaticUrlProperties,
+  sanitizeExceptionUrlProperties,
   sanitizedPageUrl,
   stripQueryAndHash,
 } from "@/lib/analyticsSanitization";
@@ -147,7 +153,8 @@ export async function initAnalytics(): Promise<boolean> {
           delete event.properties.$el_text;
           delete event.properties.$element_text;
           delete event.properties.$external_click_url;
-          sanitizeAutomaticUrlProperties(event.properties);
+          if (event.event === "$exception") sanitizeExceptionUrlProperties(event.properties);
+          else sanitizeAutomaticUrlProperties(event.properties);
         }
         return event;
       },
@@ -205,8 +212,7 @@ export function createAnalyticsClientMetadata(
 }
 
 export function analyticsErrorLabel(error: unknown): string {
-  if (error instanceof Error && error.name.trim().length > 0) return error.name.trim().toLowerCase();
-  return "unknown_error";
+  return analyticsErrorTypeLabel(error);
 }
 
 export function isAnalyticsUserIdentified(): boolean {
@@ -256,15 +262,16 @@ export function captureAnalytics(event: AnalyticsEvent, properties: AnalyticsPro
   })));
 }
 
-export function captureAnalyticsException(error: unknown, properties: AnalyticsProperties = {}) {
-  const sanitized = sanitizeAnalyticsProperties(properties);
-  const sanitizedError = new Error("redacted");
-  sanitizedError.name = error instanceof Error && error.name.trim().length > 0
-    ? error.name.trim()
-    : "UnknownError";
-  enqueue((posthog) => posthog.captureException(sanitizedError, commonProperties("app_ready", {
-    feature_area: sanitized.feature_area ?? "error",
-    ...sanitized,
-    error_label: analyticsErrorLabel(error),
-  })));
+export function captureAnalyticsException(
+  error: unknown,
+  context: AnalyticsExceptionContext = {},
+) {
+  const diagnostic = buildAnalyticsExceptionDiagnostic(error, {
+    ...context,
+    route: context.route ?? (typeof window !== "undefined" ? window.location.pathname : undefined),
+  });
+  enqueue((posthog) => posthog.captureException(
+    diagnostic.error,
+    commonProperties("app_ready", diagnostic.properties),
+  ));
 }
