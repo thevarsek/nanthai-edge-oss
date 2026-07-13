@@ -2,7 +2,11 @@ import { Helmet } from "react-helmet-async";
 
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
-import { buildBreadcrumbsJsonLd, buildOrganizationJsonLd } from "@/lib/seo";
+import {
+  buildBreadcrumbsJsonLd,
+  buildOrganizationJsonLd,
+  NANTHAI_SOCIALS,
+} from "@/lib/seo";
 import { StoreUrls } from "@/lib/constants";
 import {
   HomeCapabilitiesSection,
@@ -44,6 +48,7 @@ export function HomePage() {
               name: "NanthAI",
               url: "https://nanthai.tech",
               logoUrl: "https://nanthai.tech/apple-touch-icon.png",
+              sameAs: NANTHAI_SOCIALS,
             }),
           )}
         </script>

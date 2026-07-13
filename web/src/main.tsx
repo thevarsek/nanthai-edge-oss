@@ -11,6 +11,7 @@ import { SharedDataProvider } from "./hooks/SharedDataProvider";
 import { ToastProvider } from "./components/shared/Toast";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import { AnalyticsBridge } from "./components/analytics/AnalyticsBridge";
+import { ConsentBridge } from "./components/analytics/ConsentBridge";
 import { removeBuildTimeSeoShell } from "./lib/seoShell";
 import { initialization as i18nInitialization } from "./i18n";
 import "./index.css";
@@ -40,6 +41,7 @@ async function renderApp() {
         >
           <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
             <BrowserRouter>
+              <ConsentBridge />
               <AnalyticsBridge />
               <SharedDataProvider>
                 <ToastProvider>

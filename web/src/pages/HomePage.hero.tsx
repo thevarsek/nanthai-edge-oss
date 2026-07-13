@@ -9,6 +9,7 @@ import { HeroVantaNet } from "@/components/edge-site/HeroVantaNet";
 import { HeroOutlineText } from "@/components/edge-site/HeroOutlineText";
 import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 import { StoreUrls } from "@/lib/constants";
+import { TrackedOutboundLink } from "@/components/analytics/TrackedOutboundLink";
 import { getHeadlinePoints } from "./HomePage.data";
 
 // ── Hero ─────────────────────────────────────────────────────────────
@@ -158,20 +159,20 @@ export function HomeHeroSection() {
 
               {/* Official store badges — Apple first per App Store guidelines */}
               <div className="flex items-center gap-3">
-                <a href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" className="transition-opacity hover:opacity-80">
+                <TrackedOutboundLink href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" destination="app_store" location="home_hero" className="transition-opacity hover:opacity-80">
                   <img
                     src="/edge-brand/download-on-app-store.svg"
                     alt="Download on the App Store"
                     className="h-[40px] w-auto"
                   />
-                </a>
-                <a href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" className="transition-opacity hover:opacity-80">
+                </TrackedOutboundLink>
+                <TrackedOutboundLink href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" destination="play_store" location="home_hero" className="transition-opacity hover:opacity-80">
                   <img
                     src="/edge-brand/get-it-on-google-play.png"
                     alt="Get it on Google Play"
                     className="h-[60px] w-auto"
                   />
-                </a>
+                </TrackedOutboundLink>
               </div>
             </div>
           </div>

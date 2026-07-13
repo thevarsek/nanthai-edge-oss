@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 
 import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 import { StoreUrls } from "@/lib/constants";
+import { TrackedOutboundLink } from "@/components/analytics/TrackedOutboundLink";
 import { getFreeFeatures, getProFeatures } from "./HomePage.data";
 
 // ── Pricing ─────────────────────────────────────────────────────────
@@ -214,20 +215,20 @@ export function HomeFinalCTA() {
             </Link>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-            <a href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" className="transition-opacity hover:opacity-80">
+            <TrackedOutboundLink href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" destination="app_store" location="home_final" className="transition-opacity hover:opacity-80">
               <img
                 src="/edge-brand/download-on-app-store.svg"
                 alt="Download on the App Store"
                 className="h-[40px] w-auto"
               />
-            </a>
-            <a href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" className="transition-opacity hover:opacity-80">
+            </TrackedOutboundLink>
+            <TrackedOutboundLink href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" destination="play_store" location="home_final" className="transition-opacity hover:opacity-80">
               <img
                 src="/edge-brand/get-it-on-google-play.png"
                 alt="Get it on Google Play"
                 className="h-[60px] w-auto"
               />
-            </a>
+            </TrackedOutboundLink>
           </div>
         </div>
       </div>

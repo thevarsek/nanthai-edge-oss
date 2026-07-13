@@ -2,7 +2,7 @@ import { useTranslation } from "react-i18next";
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 
-const lastUpdatedDate = "March 7, 2026";
+const lastUpdatedDate = "July 13, 2026";
 
 export function PrivacyPage() {
   const { t } = useTranslation();
@@ -82,6 +82,11 @@ function PrivacyBody() {
 
       <h3>{t("priv_s2d_title")}</h3>
       <p>{t("priv_s2d_body")}</p>
+
+      <h3>{t("priv_s2e_title")}</h3>
+      <p>{t("priv_s2e_body1")}</p>
+      <p>{t("priv_s2e_body2")}</p>
+      <p>{t("priv_s2e_body3")}</p>
 
       <h2>{t("priv_s3_title")}</h2>
       <ul>

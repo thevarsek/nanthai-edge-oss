@@ -37,9 +37,11 @@ export function buildBreadcrumbsJsonLd(items: BreadcrumbItem[]) {
   };
 }
 
-export const NANTHAI_SOCIALS: string[] = [
-  "https://x.com/nanth_ai",
-  "https://www.facebook.com/profile.php?id=61576915574765",
-  "https://www.instagram.com/nanth.ai/",
-  "https://www.linkedin.com/company/107890980/",
-];
+export const NANTHAI_SOCIAL_LINKS = [
+  { destination: "x", label: "X", url: "https://x.com/nanth_ai" },
+  { destination: "facebook", label: "Facebook", url: "https://www.facebook.com/profile.php?id=61576915574765" },
+  { destination: "instagram", label: "Instagram", url: "https://www.instagram.com/nanth.ai/" },
+  { destination: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/company/107890980/" },
+] as const;
+
+export const NANTHAI_SOCIALS: string[] = NANTHAI_SOCIAL_LINKS.map((social) => social.url);

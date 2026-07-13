@@ -2,6 +2,9 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Github, Smartphone, TabletSmartphone } from "lucide-react";
 import { StoreUrls } from "../../lib/constants";
+import { TrackedOutboundLink } from "@/components/analytics/TrackedOutboundLink";
+import { showConsentPreferences } from "@/lib/consentEvents";
+import { NANTHAI_SOCIAL_LINKS } from "@/lib/seo";
 
 const footerLinks = [
   { to: "/privacy", labelKey: "edge_nav_privacy" },
@@ -40,8 +43,8 @@ export function EdgeSiteFooter() {
             </p>
           </div>
 
-          {/* Links — two columns */}
-          <div className="flex gap-16">
+          {/* Links */}
+          <div className="flex flex-wrap gap-10 md:gap-16">
             <div className="flex flex-col gap-3">
               <span className="edge-label efg-20">{t("edge_footer_product")}</span>
 
@@ -59,33 +62,55 @@ export function EdgeSiteFooter() {
               >
                 {t("edge_footer_web_app")}
               </a>
-              <a
+              <TrackedOutboundLink
                 href="https://github.com/thevarsek/nanthai-edge-oss"
                 target="_blank"
                 rel="noreferrer"
+                destination="github"
+                location="footer"
                 className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
               >
                 <Github className="h-3.5 w-3.5" />
                 GitHub
-              </a>
-              <a
+              </TrackedOutboundLink>
+              <TrackedOutboundLink
                 href={StoreUrls.ios}
                 target="_blank"
                 rel="noreferrer"
+                destination="app_store"
+                location="footer"
                 className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
               >
                 <Smartphone className="h-3.5 w-3.5" />
                 iOS App
-              </a>
-              <a
+              </TrackedOutboundLink>
+              <TrackedOutboundLink
                 href={StoreUrls.android}
                 target="_blank"
                 rel="noreferrer"
+                destination="play_store"
+                location="footer"
                 className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
               >
                 <TabletSmartphone className="h-3.5 w-3.5" />
                 Android App
-              </a>
+              </TrackedOutboundLink>
+            </div>
+            <div className="flex flex-col gap-3">
+              <span className="edge-label efg-20">{t("edge_footer_social")}</span>
+              {NANTHAI_SOCIAL_LINKS.map((social) => (
+                <TrackedOutboundLink
+                  key={social.destination}
+                  href={social.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  destination={social.destination}
+                  location="footer"
+                  className="text-[0.84rem] efg-40 transition-colors hover:efg-80"
+                >
+                  {social.label}
+                </TrackedOutboundLink>
+              ))}
             </div>
             <div className="flex flex-col gap-3">
               <span className="edge-label efg-20">{t("legal")}</span>
@@ -98,6 +123,13 @@ export function EdgeSiteFooter() {
                   {t(link.labelKey)}
                 </Link>
               ))}
+              <button
+                type="button"
+                onClick={showConsentPreferences}
+                className="text-left text-[0.84rem] efg-40 transition-colors hover:efg-80"
+              >
+                {t("cookie_preferences")}
+              </button>
             </div>
           </div>
         </div>

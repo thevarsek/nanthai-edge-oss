@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 
 import { Seo } from "@/components/Seo";
+import { TrackedOutboundLink } from "@/components/analytics/TrackedOutboundLink";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 
 export function LicensingPage() {
@@ -48,14 +49,16 @@ export function LicensingPage() {
             </Link>
           </p>
           <p className="edge-sans mt-3 text-[0.85rem] font-light leading-[1.8] efg-50">
-            <a
+            <TrackedOutboundLink
               href="https://github.com/thevarsek/nanthai-edge-oss"
               target="_blank"
               rel="noreferrer"
+              destination="github"
+              location="licensing_page"
               className="text-[#91efff] hover:underline"
             >
               {t("lic_note_github")}
-            </a>
+            </TrackedOutboundLink>
           </p>
         </div>
 

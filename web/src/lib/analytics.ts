@@ -1,5 +1,12 @@
-import posthog from "posthog-js";
 import type { Properties } from "posthog-js";
+import { getAnalyticsConsent } from "@/lib/analyticsConsent";
+import {
+  isAllowedAnalyticsEnvironment,
+  sanitizeAnalyticsProperties,
+  sanitizeAutomaticUrlProperties,
+  sanitizedPageUrl,
+  stripQueryAndHash,
+} from "@/lib/analyticsSanitization";
 
 const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY as string | undefined;
 const POSTHOG_HOST = (import.meta.env.VITE_POSTHOG_HOST as string | undefined) ?? "https://eu.i.posthog.com";
@@ -7,11 +14,12 @@ const APP_VERSION = import.meta.env.VITE_APP_VERSION as string | undefined;
 const BUILD_NUMBER = import.meta.env.VITE_BUILD_NUMBER as string | undefined;
 const APP_PLATFORM = "web";
 
-let initialized = false;
+type PostHogClient = typeof import("posthog-js").default;
+type PostHogIdentityState = PostHogClient & { _isIdentified?: () => boolean };
 
-type PostHogIdentityState = typeof posthog & {
-  _isIdentified?: () => boolean;
-};
+let client: PostHogClient | null = null;
+let initialization: Promise<PostHogClient | null> | null = null;
+let operationQueue = Promise.resolve();
 
 export type AnalyticsEvent =
   | "app_opened"
@@ -52,7 +60,8 @@ export type AnalyticsEvent =
   | "advisor_removed_from_chat"
   | "advisor_advice_expanded"
   | "feature_used"
-  | "cta_clicked";
+  | "cta_clicked"
+  | "outbound_clicked";
 
 export type AnalyticsProperties = Properties;
 
@@ -66,59 +75,117 @@ export interface AnalyticsClientMetadata {
   clientSentAt: number;
 }
 
-function makeClientEventId(event: AnalyticsEvent): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${event}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
-
 function hasConfiguredPostHogKey(key: string | undefined): key is string {
   if (!key) return false;
   const normalized = key.trim().toLowerCase();
   return normalized.startsWith("phc_") && !normalized.includes("your");
 }
 
-function stripQueryAndHash(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const queryIndex = value.indexOf("?");
-  const hashIndex = value.indexOf("#");
-  const candidates = [queryIndex, hashIndex].filter((index) => index >= 0);
-  if (candidates.length === 0) return value;
-  return value.slice(0, Math.min(...candidates));
+function makeClientEventId(event: AnalyticsEvent | "$pageview"): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `${event}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-const SENSITIVE_ROUTE_PROPERTY_KEYS = new Set([
-  "$current_url",
-  "$initial_current_url",
-  "$referrer",
-  "$initial_referrer",
-  "current_url",
-  "initial_current_url",
-  "referrer",
-  "initial_referrer",
-  "url",
-  "path",
-  "pathname",
-  "route",
-  "route_or_screen",
-  "routeOrScreen",
-  "client_route_or_screen",
-]);
+function applyReplayPreference(posthog: PostHogClient) {
+  if (getAnalyticsConsent().sessionReplay) posthog.startSessionRecording();
+  else posthog.stopSessionRecording();
+}
 
-function sanitizeAutomaticUrlProperties(properties: Properties) {
-  for (const key of SENSITIVE_ROUTE_PROPERTY_KEYS) {
-    const sanitized = stripQueryAndHash(properties[key]);
-    if (sanitized !== undefined) {
-      properties[key] = sanitized;
-    }
+export async function initAnalytics(): Promise<boolean> {
+  if (client) {
+    applyReplayPreference(client);
+    return true;
   }
+  if (initialization) return (await initialization) !== null;
+  if (
+    !getAnalyticsConsent().analytics
+    || !hasConfiguredPostHogKey(POSTHOG_KEY)
+    || !isAllowedAnalyticsEnvironment()
+  ) return false;
+
+  initialization = import("posthog-js").then(({ default: posthog }) => {
+    if (!getAnalyticsConsent().analytics || !isAllowedAnalyticsEnvironment()) return null;
+    posthog.init(POSTHOG_KEY, {
+      api_host: POSTHOG_HOST,
+      ui_host: "https://eu.posthog.com",
+      defaults: "2026-05-30",
+      person_profiles: "identified_only",
+      capture_pageview: false,
+      capture_pageleave: true,
+      autocapture: false,
+      capture_performance: { web_vitals: true },
+      disable_session_recording: !getAnalyticsConsent().sessionReplay,
+      mask_all_text: true,
+      mask_all_element_attributes: true,
+      session_recording: {
+        maskAllInputs: true,
+        maskTextSelector: ".ph-mask, [data-ph-mask]",
+        blockSelector: ".ph-block, [data-ph-block]",
+        recordBody: false,
+        recordHeaders: false,
+        maskCapturedNetworkRequestFn: (request) => {
+          const url = request.name.toLowerCase();
+          if (url.includes("openrouter.ai") || url.includes("convex.cloud") || url.includes("/api/")) {
+            return undefined;
+          }
+          return {
+            ...request,
+            name: stripQueryAndHash(request.name) ?? request.name,
+            requestBody: undefined,
+            responseBody: undefined,
+            requestHeaders: undefined,
+            responseHeaders: undefined,
+          };
+        },
+      },
+      enable_recording_console_log: false,
+      before_send: (event) => {
+        if (!event || !getAnalyticsConsent().analytics || !isAllowedAnalyticsEnvironment()) return null;
+        if (event.properties) {
+          delete event.properties.$elements;
+          delete event.properties.$elements_chain;
+          delete event.properties.$el_text;
+          delete event.properties.$element_text;
+          delete event.properties.$external_click_url;
+          sanitizeAutomaticUrlProperties(event.properties);
+        }
+        return event;
+      },
+    });
+    if (posthog.has_opted_out_capturing()) posthog.opt_in_capturing();
+    applyReplayPreference(posthog);
+    client = posthog;
+    return posthog;
+  }).finally(() => {
+    initialization = null;
+  });
+
+  return (await initialization) !== null;
 }
 
-function sanitizeAnalyticsProperties(properties: AnalyticsProperties): AnalyticsProperties {
-  const sanitized = { ...properties };
-  sanitizeAutomaticUrlProperties(sanitized);
-  return sanitized;
+function enqueue(operation: (posthog: PostHogClient) => void) {
+  if (!getAnalyticsConsent().analytics) return;
+  operationQueue = operationQueue.then(async () => {
+    if (!getAnalyticsConsent().analytics) return;
+    if (!await initAnalytics() || !client) return;
+    operation(client);
+  });
+}
+
+export async function applyAnalyticsConsent(consent = getAnalyticsConsent()) {
+  if (!consent.analytics) {
+    if (client) {
+      client.stopSessionRecording();
+      client.reset();
+      client.opt_out_capturing();
+    }
+    return;
+  }
+
+  if (await initAnalytics() && client) {
+    if (client.has_opted_out_capturing()) client.opt_in_capturing();
+    applyReplayPreference(client);
+  }
 }
 
 export function createAnalyticsClientMetadata(
@@ -138,128 +205,66 @@ export function createAnalyticsClientMetadata(
 }
 
 export function analyticsErrorLabel(error: unknown): string {
-  if (error instanceof Error && error.name.trim().length > 0) {
-    return error.name.trim().toLowerCase();
-  }
+  if (error instanceof Error && error.name.trim().length > 0) return error.name.trim().toLowerCase();
   return "unknown_error";
 }
 
-export function initAnalytics() {
-  if (initialized || !hasConfiguredPostHogKey(POSTHOG_KEY) || typeof window === "undefined") return;
-
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
-    ui_host: "https://eu.posthog.com",
-    person_profiles: "identified_only",
-    capture_pageview: false,
-    capture_pageleave: true,
-    autocapture: true,
-    capture_performance: {
-      web_vitals: true,
-    },
-    mask_all_text: true,
-    mask_all_element_attributes: true,
-    session_recording: {
-      maskAllInputs: true,
-      maskTextSelector: ".ph-mask, [data-ph-mask]",
-      blockSelector: ".ph-block, [data-ph-block]",
-      recordBody: false,
-      recordHeaders: false,
-      maskCapturedNetworkRequestFn: (request) => {
-        const url = request.name.toLowerCase();
-        if (
-          url.includes("openrouter.ai") ||
-          url.includes("convex.cloud") ||
-          url.includes("/api/")
-        ) {
-          return undefined;
-        }
-        return {
-          ...request,
-          name: stripQueryAndHash(request.name) ?? request.name,
-          requestBody: undefined,
-          responseBody: undefined,
-          requestHeaders: undefined,
-          responseHeaders: undefined,
-        };
-      },
-    },
-    enable_recording_console_log: false,
-    before_send: (event) => {
-      if (!event) return event;
-      if (event.properties) {
-        delete event.properties.$elements;
-        delete event.properties.$elements_chain;
-        delete event.properties.$el_text;
-        delete event.properties.$element_text;
-        delete event.properties.$external_click_url;
-        sanitizeAutomaticUrlProperties(event.properties);
-      }
-      return event;
-    },
-  });
-
-  initialized = true;
-}
-
 export function isAnalyticsUserIdentified(): boolean {
-  if (!initialized) return false;
-  const identityState = posthog as PostHogIdentityState;
-  return identityState._isIdentified?.() === true;
+  const identityState = client as PostHogIdentityState | null;
+  return identityState?._isIdentified?.() === true;
 }
 
 export function identifyAnalyticsUser(analyticsId: string) {
-  if (!initialized) return;
-  posthog.identify(analyticsId, {
-    platform: APP_PLATFORM,
-    surface: "web_app",
-  });
+  enqueue((posthog) => posthog.identify(analyticsId, { platform: APP_PLATFORM, surface: "web_app" }));
 }
 
 export function resetAnalyticsUser() {
-  if (!initialized) return;
-  posthog.reset();
+  enqueue((posthog) => posthog.reset());
 }
 
-export function captureAnalytics(
-  event: AnalyticsEvent,
-  properties: AnalyticsProperties = {},
-) {
-  if (!initialized) return;
-  const sanitizedProperties = sanitizeAnalyticsProperties(properties);
-  posthog.capture(event, {
+function commonProperties(event: AnalyticsEvent | "$pageview", properties: Properties) {
+  return {
     platform: APP_PLATFORM,
     app_surface: "web_app",
     surface: "web_app",
     app_version: APP_VERSION,
     build_number: BUILD_NUMBER,
     environment: import.meta.env.MODE,
-    feature_area: sanitizedProperties.feature_area ?? "unknown",
     client_event_id: makeClientEventId(event),
     client_sent_at: Date.now(),
-    ...sanitizedProperties,
-  });
+    ...properties,
+  };
 }
 
-export function captureAnalyticsException(
-  error: unknown,
-  properties: AnalyticsProperties = {},
-) {
-  if (!initialized) return;
-  const sanitizedProperties = sanitizeAnalyticsProperties(properties);
+export function capturePageview(pathname: string, searchPresent: boolean) {
+  const path = stripQueryAndHash(pathname) ?? "/";
+  enqueue((posthog) => posthog.capture("$pageview", commonProperties("$pageview", {
+    $current_url: sanitizedPageUrl(path),
+    $pathname: path,
+    feature_area: "navigation",
+    path,
+    pathname: path,
+    search_present: searchPresent,
+  })));
+}
+
+export function captureAnalytics(event: AnalyticsEvent, properties: AnalyticsProperties = {}) {
+  const sanitized = sanitizeAnalyticsProperties(properties);
+  enqueue((posthog) => posthog.capture(event, commonProperties(event, {
+    feature_area: sanitized.feature_area ?? "unknown",
+    ...sanitized,
+  })));
+}
+
+export function captureAnalyticsException(error: unknown, properties: AnalyticsProperties = {}) {
+  const sanitized = sanitizeAnalyticsProperties(properties);
   const sanitizedError = new Error("redacted");
   sanitizedError.name = error instanceof Error && error.name.trim().length > 0
     ? error.name.trim()
     : "UnknownError";
-  posthog.captureException(sanitizedError, {
-    platform: APP_PLATFORM,
-    app_surface: "web_app",
-    surface: "web_app",
-    app_version: APP_VERSION,
-    build_number: BUILD_NUMBER,
-    environment: import.meta.env.MODE,
-    feature_area: sanitizedProperties.feature_area ?? "error",
-    ...sanitizedProperties,
+  enqueue((posthog) => posthog.captureException(sanitizedError, commonProperties("app_ready", {
+    feature_area: sanitized.feature_area ?? "error",
+    ...sanitized,
     error_label: analyticsErrorLabel(error),
-  });
+  })));
 }

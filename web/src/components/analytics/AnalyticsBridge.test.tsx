@@ -12,10 +12,22 @@ type ClerkUser = {
 
 const analytics = vi.hoisted(() => ({
   captureAnalytics: vi.fn(),
+  capturePageview: vi.fn(),
   identifyAnalyticsUser: vi.fn(),
   initAnalytics: vi.fn(),
   isAnalyticsUserIdentified: vi.fn(),
   resetAnalyticsUser: vi.fn(),
+}));
+
+const analyticsConsent = vi.hoisted(() => ({
+  analytics: true,
+  decided: true,
+  sessionReplay: false,
+}));
+
+vi.mock("@/lib/analyticsConsent", () => ({
+  getAnalyticsConsent: () => analyticsConsent,
+  subscribeAnalyticsConsent: () => () => undefined,
 }));
 
 const authState = vi.hoisted(() => ({
@@ -55,6 +67,7 @@ function bridgeElement(path = "/app") {
 describe("AnalyticsBridge", () => {
   beforeEach(() => {
     analytics.captureAnalytics.mockReset();
+    analytics.capturePageview.mockReset();
     analytics.identifyAnalyticsUser.mockReset();
     analytics.initAnalytics.mockReset();
     analytics.isAnalyticsUserIdentified.mockReset();
@@ -82,6 +95,7 @@ describe("AnalyticsBridge", () => {
         "page_viewed",
         expect.objectContaining({ path: "/app" }),
       );
+      expect(analytics.capturePageview).toHaveBeenCalledWith("/app", false);
     });
 
     const events = analytics.captureAnalytics.mock.calls.map(([event]) => event);
@@ -118,6 +132,7 @@ describe("AnalyticsBridge", () => {
           feature_area: "auth",
         }),
       );
+      expect(analytics.capturePageview).toHaveBeenCalledWith("/chat/abc", false);
       expect(analytics.captureAnalytics).toHaveBeenCalledWith(
         "page_viewed",
         expect.objectContaining({ path: "/chat/abc" }),

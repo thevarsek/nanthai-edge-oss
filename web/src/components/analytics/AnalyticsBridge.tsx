@@ -1,18 +1,28 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useSyncExternalStore } from "react";
 import { useUser } from "@clerk/react";
 import { useConvexAuth, useQuery } from "convex/react";
 import { useLocation } from "react-router-dom";
 import { api } from "@convex/_generated/api";
 import {
   captureAnalytics,
+  capturePageview,
   identifyAnalyticsUser,
   initAnalytics,
   isAnalyticsUserIdentified,
   resetAnalyticsUser,
 } from "@/lib/analytics";
+import {
+  getAnalyticsConsent,
+  subscribeAnalyticsConsent,
+} from "@/lib/analyticsConsent";
 
 export function AnalyticsBridge() {
   const location = useLocation();
+  const analyticsConsent = useSyncExternalStore(
+    subscribeAnalyticsConsent,
+    getAnalyticsConsent,
+    getAnalyticsConsent,
+  );
   const { isLoaded, isSignedIn, user } = useUser();
   const { isAuthenticated: isConvexAuthenticated, isLoading: isConvexLoading } = useConvexAuth();
   const analyticsIdentity = useQuery(
@@ -30,10 +40,11 @@ export function AnalyticsBridge() {
   const shouldCaptureNextSignInCompletion = useRef(false);
 
   useEffect(() => {
-    initAnalytics();
-  }, []);
+    if (analyticsConsent.analytics) void initAnalytics();
+  }, [analyticsConsent.analytics]);
 
   useEffect(() => {
+    if (!analyticsConsent.analytics) return;
     if (!isLoaded) return;
 
     if (!isSignedIn || !user) {
@@ -97,9 +108,10 @@ export function AnalyticsBridge() {
       identifiedAnalyticsId.current = analyticsId;
       identifiedClerkUserId.current = clerkUserId;
     }
-  }, [analyticsIdentity, isConvexAuthenticated, isLoaded, isSignedIn, user]);
+  }, [analyticsConsent.analytics, analyticsIdentity, isConvexAuthenticated, isLoaded, isSignedIn, user]);
 
   useEffect(() => {
+    if (!analyticsConsent.analytics) return;
     if (!isLifecycleReadyForAuth({
       analyticsIdentity,
       hasUser: Boolean(user),
@@ -113,9 +125,10 @@ export function AnalyticsBridge() {
     captureAnalytics("app_opened", {
       feature_area: "lifecycle",
     });
-  }, [analyticsIdentity, isLoaded, isSignedIn, user]);
+  }, [analyticsConsent.analytics, analyticsIdentity, isLoaded, isSignedIn, user]);
 
   useEffect(() => {
+    if (!analyticsConsent.analytics) return;
     if (!isLifecycleReadyForAuth({
       analyticsIdentity,
       hasUser: Boolean(user),
@@ -128,6 +141,7 @@ export function AnalyticsBridge() {
     const path = location.pathname;
     if (lastPageViewKey.current === path) return;
     lastPageViewKey.current = path;
+    capturePageview(path, location.search.length > 0);
     captureAnalytics("page_viewed", {
       feature_area: "navigation",
       path,
@@ -144,9 +158,10 @@ export function AnalyticsBridge() {
         pathname: location.pathname,
       });
     }
-  }, [analyticsIdentity, isLoaded, isSignedIn, location.key, location.pathname, location.search, user]);
+  }, [analyticsConsent.analytics, analyticsIdentity, isLoaded, isSignedIn, location.key, location.pathname, location.search, user]);
 
   useEffect(() => {
+    if (!analyticsConsent.analytics) return;
     if (
       capturedAppReady.current ||
       isConvexLoading ||
@@ -166,7 +181,7 @@ export function AnalyticsBridge() {
       signed_in: isSignedIn === true,
       convex_authenticated: isConvexAuthenticated === true,
     });
-  }, [analyticsIdentity, isConvexAuthenticated, isConvexLoading, isLoaded, isSignedIn, user]);
+  }, [analyticsConsent.analytics, analyticsIdentity, isConvexAuthenticated, isConvexLoading, isLoaded, isSignedIn, user]);
 
   return null;
 }
