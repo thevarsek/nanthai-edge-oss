@@ -3,6 +3,7 @@ import { HelmetProvider } from "react-helmet-async";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Seo } from "./Seo";
 import { buildBreadcrumbsJsonLd, buildOrganizationJsonLd } from "@/lib/seo";
+import { removeBuildTimeSeoShell } from "@/lib/seoShell";
 
 function metaContent(selector: string) {
   return document.querySelector(selector)?.getAttribute("content");
@@ -66,6 +67,7 @@ describe("Seo", () => {
       <meta property="og:title" content="Build-time title" data-rh="true" data-seo-shell="true" />
       <link rel="canonical" href="https://nanthai.tech/features" data-rh="true" data-seo-shell="true" />
     `;
+    removeBuildTimeSeoShell("/features/search");
 
     render(
       <HelmetProvider>

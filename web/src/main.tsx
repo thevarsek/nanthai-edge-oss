@@ -11,6 +11,7 @@ import { SharedDataProvider } from "./hooks/SharedDataProvider";
 import { ToastProvider } from "./components/shared/Toast";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import { AnalyticsBridge } from "./components/analytics/AnalyticsBridge";
+import { removeBuildTimeSeoShell } from "./lib/seoShell";
 import "./i18n"; // initializes i18next (side-effect import)
 import "./index.css";
 
@@ -23,6 +24,7 @@ if (!CONVEX_URL) throw new Error("VITE_CONVEX_URL is not set");
 const convex = new ConvexReactClient(CONVEX_URL);
 
 if (typeof window !== "undefined") {
+  removeBuildTimeSeoShell(window.location.pathname);
   registerSW({ immediate: true });
 }
 
