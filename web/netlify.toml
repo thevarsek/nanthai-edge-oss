@@ -3,7 +3,7 @@
 
 [build]
   base = "web"
-  command = "npm install && npm run build"
+  command = "npm install && npx vite build && node scripts/generate-seo-shells.mjs"
   publish = "dist"
 
 # Preserve the closest current destination for the only legacy content URL
