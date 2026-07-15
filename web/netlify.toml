@@ -55,6 +55,18 @@
   status = 200
 
 # ── SPA fallback — serve index.html for private app routes ──
+# OpenRouter returns directly to this route, including in fresh/private
+# browsing sessions where no service worker can provide the SPA fallback.
+[[redirects]]
+  from = "/openrouter/callback"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/openrouter/callback/"
+  to = "/index.html"
+  status = 200
+
 [[redirects]]
   from = "/app/*"
   to = "/index.html"

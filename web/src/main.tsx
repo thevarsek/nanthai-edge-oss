@@ -38,6 +38,7 @@ async function renderApp() {
           publishableKey={CLERK_KEY}
           afterSignOutUrl="/"
           signInForceRedirectUrl="/app"
+          signUpForceRedirectUrl="/app"
         >
           <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
             <BrowserRouter>
