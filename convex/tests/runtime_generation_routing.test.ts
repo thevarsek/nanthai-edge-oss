@@ -177,6 +177,42 @@ test("runGenerationParticipantRuntimeHandler delegates direct node-required runt
   assert.equal(delegatedArgs.length, 1);
 });
 
+test("runGenerationParticipantRuntimeHandler terminally fails an active job when the Node worker times out", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  let jobQueries = 0;
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return { hasVideoGeneration: true, hasAudioOutput: false };
+      }
+      if ("jobId" in args) {
+        jobQueries += 1;
+        return { status: jobQueries === 1 ? "streaming" : "failed" };
+      }
+      if ("messageId" in args) return { status: "failed" };
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runAction: async () => {
+      throw new Error("Your request couldn't be completed. Try again later.");
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+    },
+  });
+
+  await assert.rejects(
+    runGenerationParticipantRuntimeHandler(ctx, baseRuntimeArgs()),
+    /couldn't be completed/,
+  );
+
+  assert.ok(mutations.some((args) =>
+    args.messageId === "msg_assistant"
+    && args.jobId === "job_1"
+    && args.status === "failed"
+  ));
+  assert.ok(mutations.some((args) => args.jobId === "job_1"));
+});
+
 test("runGenerationParticipantRuntimeHandler exits when expected continuation cannot be claimed", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
   let jobQueryCount = 0;

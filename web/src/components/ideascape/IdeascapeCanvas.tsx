@@ -15,6 +15,7 @@ import type { Message } from "@/hooks/useChat";
 import { computeTreeLayout, TREE_NODE_W, TREE_NODE_H } from "./treeLayout";
 import { MessageNode, Connectors, type NodeVisualState } from "./IdeascapeNodes";
 import { computeIdeascapeDisplayGeometry } from "./IdeascapeCanvasGeometry";
+import type { IdeascapeArtifact } from "./IdeascapeArtifactList";
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
@@ -42,12 +43,14 @@ interface IdeascapeCanvasProps {
   activeBranchIds: Set<string>;
   contextBranchIds: Set<string>;
   imageGenerationModelIds?: ReadonlySet<string>;
+  artifactsByMessageId?: ReadonlyMap<string, IdeascapeArtifact[]>;
   onViewportChange: (vp: CanvasViewport) => void;
   onNodeDragEnd: (messageId: Id<"messages">, x: number, y: number) => void;
   onNodeResizeEnd: (messageId: Id<"messages">, width: number, height: number) => void;
   onSelectNode: (id: Id<"messages">, multi: boolean) => void;
   onFocusNode: (id: Id<"messages">) => void;
   onClearSelection: () => void;
+  onOpenArtifact?: (message: Message, artifact: IdeascapeArtifact) => void;
 }
 
 // ─── Constants ─────────────────────────────────────────────────────────────
@@ -60,7 +63,9 @@ const MAX_SCALE = 3;
 export function IdeascapeCanvas({
   messages, positions, viewport, selectedIds, focusedId, activeBranchIds, contextBranchIds,
   imageGenerationModelIds,
+  artifactsByMessageId,
   onViewportChange, onNodeDragEnd, onNodeResizeEnd, onSelectNode, onFocusNode, onClearSelection,
+  onOpenArtifact,
 }: IdeascapeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isPanning = useRef(false);
@@ -401,6 +406,8 @@ export function IdeascapeCanvas({
                 visualState={getVisualState(msg._id)}
                 isImageGeneration={msg.modelId != null && imageGenerationModelIds?.has(msg.modelId)}
                 showAdvisorPanel={canonicalAdvisorMessageIds.has(String(msg._id))}
+                artifacts={artifactsByMessageId?.get(String(msg._id))}
+                onOpenArtifact={onOpenArtifact}
                 onPointerDown={onNodePointerDown}
                 onResizePointerDown={onNodeResizePointerDown}
                 shouldSuppressClick={shouldSuppressNodeClick}

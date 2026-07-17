@@ -3,6 +3,8 @@
 import { ConvexError, v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { serializableToolContextValidator } from "./proxy_context";
+import { editPptx } from "./edit_pptx";
+import { generatePptx } from "./generate_pptx";
 import type {
   RegisteredTool,
   ToolExecutionContext,
@@ -10,17 +12,10 @@ import type {
 } from "./registry";
 
 const pptxToolNames = new Set<string>(["generate_pptx", "edit_pptx"]);
-
-async function pptxTools(): Promise<Map<string, RegisteredTool>> {
-  const [{ generatePptx }, { editPptx }] = await Promise.all([
-    import("./generate_pptx"),
-    import("./edit_pptx"),
-  ]);
-  return new Map<string, RegisteredTool>([
-    generatePptx,
-    editPptx,
-  ].map((tool) => [tool.name, tool]));
-}
+const pptxTools = new Map<string, RegisteredTool>([
+  generatePptx,
+  editPptx,
+].map((tool) => [tool.name, tool]));
 
 export const executePptxTool = internalAction({
   args: {
@@ -35,8 +30,7 @@ export const executePptxTool = internalAction({
         message: `Unknown PPTX tool: ${args.toolName}`,
       });
     }
-    const tools = await pptxTools();
-    const tool = tools.get(args.toolName);
+    const tool = pptxTools.get(args.toolName);
     if (!tool) {
       throw new ConvexError({
         code: "UNKNOWN_PPTX_TOOL" as const,

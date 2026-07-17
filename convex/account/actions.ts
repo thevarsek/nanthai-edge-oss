@@ -66,6 +66,14 @@ const PURGE_ORDER = [
   "documentEdits",
   "documentEditBatches",
   "documentVersions",
+  // Presentation leaves before their parent projects.
+  "presentationSlideCandidates",
+  "presentationCuratorTasks",
+  "presentationGenerationBatches",
+  "presentationGenerationRuns",
+  "presentationAssets",
+  "presentationSlides",
+  "presentationProjects",
   // User-scoped skills (scope="user", ownerUserId)
   "skills",
   // Storage-bearing tables (blobs cleaned up during batch delete)

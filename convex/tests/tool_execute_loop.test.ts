@@ -459,3 +459,116 @@ test("runToolCallLoop can stop after a tool round before the next model call", a
   assert.equal(result.exitedEarly, true);
   assert.equal(result.exitReason, "round_budget");
 });
+
+test("runToolCallLoop suppresses only a repeated successful skill load", async () => {
+  const registry = new ToolRegistry();
+  let loadCalls = 0;
+  let editCalls = 0;
+  registry.register(
+    createTool({
+      name: "load_skill",
+      description: "load skill",
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        loadCalls += 1;
+        return { success: true, data: { skill: "pptx" } };
+      },
+    }),
+    createTool({
+      name: "edit_presentation",
+      description: "edit presentation",
+      parameters: { type: "object", properties: {} },
+      execute: async () => {
+        editCalls += 1;
+        return { success: true, data: { edited: true } };
+      },
+    }),
+  );
+
+  const requestedToolNames: string[][] = [];
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async (_apiKey, _model, _messages, params) => {
+      streamCalls += 1;
+      requestedToolNames.push((params.tools ?? []).flatMap((tool) =>
+        "function" in tool ? [tool.function.name] : []
+      ));
+      if (streamCalls === 1) {
+        return makeStreamResult({
+          finishReason: "tool_calls",
+          toolCalls: [makeToolCall("edit_1", "edit_presentation", { slideId: "s1" })],
+        });
+      }
+      return makeStreamResult({ content: "done" });
+    },
+  });
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [makeToolCall("load_again", "load_skill", { name: "pptx" })],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "edit it" }],
+      params: { tools: registry.getDefinitions() },
+      callbacks: {},
+      registry,
+      loadedSkillSlugs: ["pptx"],
+      toolCtx: { ctx: {} as never, userId: "user_1" },
+    },
+    deps,
+  );
+
+  assert.equal(loadCalls, 0);
+  assert.equal(editCalls, 1);
+  assert.deepEqual(requestedToolNames[0], ["edit_presentation"]);
+  assert.deepEqual(requestedToolNames[1], ["load_skill", "edit_presentation"]);
+  assert.equal(result.streamResult.content, "done");
+});
+
+test("runToolCallLoop allows repeated presentation edits across tool rounds", async () => {
+  const registry = new ToolRegistry();
+  let editCalls = 0;
+  registry.register(createTool({
+    name: "edit_presentation",
+    description: "edit presentation",
+    parameters: { type: "object", properties: {} },
+    execute: async () => {
+      editCalls += 1;
+      return { success: true, data: { revision: editCalls } };
+    },
+  }));
+  let streamCalls = 0;
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async () => {
+      streamCalls += 1;
+      return streamCalls === 1
+        ? makeStreamResult({
+            finishReason: "tool_calls",
+            toolCalls: [makeToolCall("edit_2", "edit_presentation", { slideId: "s1" })],
+          })
+        : makeStreamResult({ content: "done" });
+    },
+  });
+
+  await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [makeToolCall("edit_1", "edit_presentation", { slideId: "s1" })],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "iterate" }],
+      params: { tools: registry.getDefinitions() },
+      callbacks: {},
+      registry,
+      toolCtx: { ctx: {} as never, userId: "user_1" },
+    },
+    deps,
+  );
+
+  assert.equal(editCalls, 2);
+});

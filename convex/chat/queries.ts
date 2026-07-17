@@ -13,6 +13,7 @@ import {
   getChatCostSummaryArgs,
   getChatInternalArgs,
   getGeneratedFilesByMessageArgs,
+  getGeneratedFilesByIdsArgs,
   getGenerationJobInternalArgs,
   getGenerationContinuationInternalArgs,
   getGenerationStatusArgs,
@@ -41,6 +42,7 @@ import {
   getChatCostSummaryHandler,
   getChatInternalHandler,
   getGeneratedFilesByMessageHandler,
+  getGeneratedFilesByIdsHandler,
   getGenerationJobInternalHandler,
   getGenerationContinuationInternalHandler,
   getGenerationStatusHandler,
@@ -170,6 +172,11 @@ export const getUserPreferences = internalQuery({
 export const getGeneratedFilesByMessage = query({
   args: getGeneratedFilesByMessageArgs,
   handler: getGeneratedFilesByMessageHandler,
+});
+
+export const getGeneratedFilesByIds = query({
+  args: getGeneratedFilesByIdsArgs,
+  handler: getGeneratedFilesByIdsHandler,
 });
 
 export const getGeneratedChartsByMessage = query({

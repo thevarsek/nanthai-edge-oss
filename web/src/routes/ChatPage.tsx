@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { useChat, type Message } from "@/hooks/useChat";
+import { useChat, type Message, type PresentationContext } from "@/hooks/useChat";
 import { useBranching } from "@/hooks/useBranching";
 import { useMessageGrouping, messageGroupKey } from "@/hooks/useMessageGrouping";
 import { useConnectedAccounts, useSharedData, useCreditBalance, useModelSummaries } from "@/hooks/useSharedData";
@@ -42,6 +42,7 @@ import { SlashCommandPalette, TurnOverrideChips } from "@/components/chat/SlashC
 import { ChatSearchContext } from "@/components/chat/ChatSearchContext";
 import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { DocumentPreviewPanel, type DocumentPreviewSelection } from "@/components/chat/DocumentPreviewPanel";
+import { PresentationArtifactPanel } from "@/components/chat/PresentationArtifactPanel";
 import type { GeneratedFileOpenRequest } from "@/components/chat/GeneratedFilesCard";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import {
@@ -142,6 +143,14 @@ export function ChatPage() {
   });
   const [showSlashPalette, setShowSlashPalette] = useState(false);
   const [documentPreview, setDocumentPreview] = useState<DocumentPreviewSelection | null>(null);
+  const [stagedPresentationTarget, setStagedPresentationTarget] = useState<{
+    chatId: string;
+    context: PresentationContext;
+    label: string;
+  } | null>(null);
+  const activePresentationTarget = stagedPresentationTarget?.chatId === chatId
+    ? stagedPresentationTarget
+    : null;
   const handleComposerTextChange = useCallback((text: string) => {
     setShowSlashPalette(text === "/");
   }, []);
@@ -524,10 +533,11 @@ export function ChatPage() {
   }, [convexComplexity, isResearchPaper, participants.length, toast]);
 
   const handleSend = useCallback(
-    async ({ text, attachments, advisorSnapshot }: {
+    async ({ text, attachments, advisorSnapshot, presentationContext }: {
       text: string;
       attachments?: ChatAttachment[];
       advisorSnapshot?: QueuedAdvisorSnapshot;
+      presentationContext?: PresentationContext;
     }) => {
       if (advisorSnapshot === undefined && !advisors.canSendCurrentSelection) {
         toast({ message: t("advisor_loading"), variant: "error" });
@@ -554,6 +564,7 @@ export function ChatPage() {
           prefs: typedPrefs,
           advisorSelections,
           advisorBrief,
+          presentationContext,
         },
         deps: {
           validateAttachmentCount: validateSendState,
@@ -567,6 +578,9 @@ export function ChatPage() {
       });
       if (sent && advisorSnapshot === undefined && (advisorSelections?.length || advisorBrief)) {
         advisors.completeSuccessfulSend();
+      }
+      if (sent && presentationContext) {
+        setStagedPresentationTarget((current) => current?.context === presentationContext ? null : current);
       }
       return sent;
     },
@@ -607,6 +621,7 @@ export function ChatPage() {
             prefs: typedPrefs,
             advisorSelections: advisors.advisorSelections,
             advisorBrief: advisors.advisorBrief,
+            presentationContext: activePresentationTarget?.context,
           },
           deps: {
             validateAttachmentCount: validateSendState,
@@ -623,6 +638,7 @@ export function ChatPage() {
         if (sent && (advisors.advisorSelections?.length || advisors.advisorBrief)) {
           advisors.completeSuccessfulSend();
         }
+        if (sent && activePresentationTarget) setStagedPresentationTarget(null);
       } catch (error) {
         toast({
           message: convexErrorMessage(error, t("upload_failed_arg", { var1: t("something_went_wrong") })),
@@ -630,7 +646,7 @@ export function ChatPage() {
         });
       }
     },
-    [chatId, ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t, advisors],
+    [chatId, ensureChatId, createUploadUrl, sendMessage, startResearchPaper, participants, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, kbAttachmentsForDisplay, validateSendState, turnOverrideArgs, toast, t, advisors, activePresentationTarget],
   );
 
   const retryTargetMessage = useMemo(
@@ -817,11 +833,18 @@ export function ChatPage() {
           </SearchSessionContext.Provider>
           </ChatSearchContext.Provider>
         </AudioPlaybackProvider>}
-      sidePanel={liveDocumentPreview ? (
-        <DocumentPreviewPanel
-          selection={liveDocumentPreview}
+      sidePanel={liveDocumentPreview?.file?.presentationProjectId ? (
+        <PresentationArtifactPanel
+          projectId={liveDocumentPreview.file.presentationProjectId}
+          filename={liveDocumentPreview.filename}
           onClose={() => setDocumentPreview(null)}
+          onStageContext={(target) => {
+            if (!typedChatId) return;
+            setStagedPresentationTarget({ chatId: String(typedChatId), ...target });
+          }}
         />
+      ) : liveDocumentPreview ? (
+        <DocumentPreviewPanel selection={liveDocumentPreview} onClose={() => setDocumentPreview(null)} />
       ) : null}
       autonomousToolbar={<AutonomousToolbar state={autonomous.state} onPause={autonomous.pause} onResume={autonomous.resume} onStop={autonomous.stop} onDismiss={autonomous.dismissEnded} />}
       balanceIndicator={typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}
@@ -861,6 +884,8 @@ export function ChatPage() {
         captureQueuedAdvisorSnapshot={advisors.captureQueuedSnapshot}
         restoreQueuedAdvisorSnapshot={advisors.restoreQueuedSnapshot}
         generatedDocumentSuggestion={generatedDocumentSuggestion}
+        presentationTarget={activePresentationTarget ?? undefined}
+        onRemovePresentationTarget={() => setStagedPresentationTarget(null)}
         onRemoveExtra={(i) => {
           const sid = kbAttachmentsForDisplay[i]?.storageId;
           if (sid) overrides.toggleKBFile(sid);

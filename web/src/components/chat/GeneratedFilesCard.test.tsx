@@ -3,7 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import { GeneratedFilesCard, type GeneratedFileForPreview } from "./GeneratedFilesCard";
 import type { Id } from "@convex/_generated/dataModel";
 
-let generatedFiles: GeneratedFileForPreview[] = [
+const initialGeneratedFiles: GeneratedFileForPreview[] = [
   {
     _id: "generatedFiles_doc" as Id<"generatedFiles">,
     filename: "Agreement.docx",
@@ -53,6 +53,7 @@ let generatedFiles: GeneratedFileForPreview[] = [
     downloadUrl: null,
   },
 ];
+let generatedFiles = initialGeneratedFiles.map((file) => ({ ...file }));
 
 vi.mock("convex/react", () => ({
   useQuery: () => generatedFiles,
@@ -60,7 +61,7 @@ vi.mock("convex/react", () => ({
 
 describe("GeneratedFilesCard", () => {
   beforeEach(() => {
-    generatedFiles = generatedFiles.map((file) => ({ ...file }));
+    generatedFiles = initialGeneratedFiles.map((file) => ({ ...file }));
   });
 
   test("renders generated document and image affordances from seeded Convex data", () => {
@@ -102,6 +103,47 @@ describe("GeneratedFilesCard", () => {
       "href",
       "https://example.test/download/agreement.docx",
     );
+  });
+
+  test("opens a project-backed presentation in the panel even before a download is available", () => {
+    generatedFiles = [{
+      _id: "generatedFiles_deck",
+      filename: "Launch plan.pptx",
+      mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      downloadUrl: null,
+      presentationProjectId: "presentation_1",
+      presentationRevision: 4,
+    }];
+    const onOpenFile = vi.fn();
+
+    render(<GeneratedFilesCard messageId={"messages_1" as Id<"messages">} onOpenFile={onOpenFile} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Launch plan.pptx/i }));
+    expect(onOpenFile).toHaveBeenCalledWith({
+      file: expect.objectContaining({
+        presentationProjectId: "presentation_1",
+        presentationRevision: 4,
+        downloadUrl: null,
+      }),
+    });
+    expect(screen.queryByRole("link", { name: /Download Launch plan.pptx/i })).not.toBeInTheDocument();
+  });
+
+  test("routes presentation downloads through the current-canvas side panel", () => {
+    generatedFiles = [{
+      _id: "generatedFiles_deck",
+      filename: "Launch plan.pptx",
+      mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      downloadUrl: "https://example.test/download/launch-plan.pptx",
+      presentationProjectId: "presentation_1",
+      presentationRevision: 4,
+    }];
+    const onOpenFile = vi.fn();
+
+    render(<GeneratedFilesCard messageId={"messages_1" as Id<"messages">} onOpenFile={onOpenFile} />);
+
+    expect(screen.getByRole("button", { name: /Launch plan.pptx/i })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Download Launch plan.pptx/i })).not.toBeInTheDocument();
   });
 
   test("image preview button does not submit an enclosing form", () => {

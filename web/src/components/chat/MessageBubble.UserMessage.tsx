@@ -10,6 +10,7 @@ import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import { MessageAttachments } from "./MessageAttachments";
 import { IconButton } from "@/components/shared/IconButton";
 import { copyToClipboard } from "@/lib/clipboard";
+import { PresentationMessageTarget } from "./PresentationMessageTarget";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -54,7 +55,7 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
   }, []);
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-1" data-testid="user-message" data-message-id={message._id}>
       {/* Bubble — iOS: RoundedRectangle(cornerRadius: 12), horizontal(14), vertical(10) */}
       {(hasCopyableContent || hasAudio) && (
         <div className="max-w-[75%] rounded-xl bg-primary px-3.5 py-2.5">
@@ -82,6 +83,10 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
           messageId={message._id}
           isUser
         />
+      )}
+
+      {message.presentationContext && (
+        <PresentationMessageTarget context={message.presentationContext} />
       )}
 
       {/* Action bar — iOS: right-aligned (Spacer on left), below bubble */}

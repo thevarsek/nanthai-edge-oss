@@ -692,6 +692,11 @@
   "research_paper": "Forschungsarbeit",
   "research_paper_arg": "Forschungsarbeit ({{var1}})",
   "research_paper_requires_a_single_participant": "Forschungsarbeit erfordert einen einzelnen Teilnehmer.",
+  "artifact_write_requires_single_participant": "Zum Bearbeiten einer Präsentation ist nur ein Teilnehmer erlaubt. Öffne + → Teilnehmer und entferne Teilnehmer, bis nur noch einer übrig ist. Danach kannst du die anderen wieder hinzufügen.",
+  "create_presentation": "Präsentation erstellen",
+  "load_skill": "Skill laden",
+  "presentation_target": "Präsentationsziel",
+  "remove_presentation_target": "Präsentationsziel entfernen",
   "research_papers": "Forschungsarbeiten",
   "reset": "Zurücksetzen",
   "reset_purchases": "Käufe zurücksetzen",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "Berater",
   "pe_cap_advisors_title": "Private Persona-Berater",
   "pe_cap_advisors_desc": "Bis zu drei Personas prüfen eine Anfrage privat; die finale Antwort fasst ihre gestreamte Beratung zusammen. Alle Text-Teilnehmer erhalten dieselben privaten Notizen.",
-  "pe_scenario_5": "Eine Produktentscheidung wird vor der finalen Antwort privat von Kundenvertretung, Technikleitung und Risikospezialist geprüft."
+  "pe_scenario_5": "Eine Produktentscheidung wird vor der finalen Antwort privat von Kundenvertretung, Technikleitung und Risikospezialist geprüft.",
+  "presentation_progress_queued": "Präsentation wird vorbereitet",
+  "presentation_progress_planning": "Folienstruktur wird geplant",
+  "presentation_progress_repairing_plan": "Folienplan wird repariert",
+  "presentation_progress_generating": "{{count}} Folien werden erstellt",
+  "presentation_progress_repairing_generation": "Folien werden repariert und geprüft",
+  "presentation_progress_exporting": "PowerPoint-Datei wird erstellt",
+  "presentation_progress_complete": "Präsentation ist bereit",
+  "presentation_progress_failed": "Präsentation konnte nicht erstellt werden"
 }

@@ -4,12 +4,14 @@ import type { Message, StreamingMessage } from "@/hooks/useChat";
 export interface ChatMergeCache {
   previousMessages: Message[];
   pendingFallbackMessages: Map<Id<"messages">, Message>;
+  latestOverlays: Map<Id<"messages">, StreamingMessage>;
 }
 
 export function createChatMergeCache(): ChatMergeCache {
   return {
     previousMessages: [],
     pendingFallbackMessages: new Map<Id<"messages">, Message>(),
+    latestOverlays: new Map<Id<"messages">, StreamingMessage>(),
   };
 }
 
@@ -20,6 +22,9 @@ export function mergeMessageWithFallback(previous: Message, current: Message): M
     status: previous.status,
     reasoning: previous.reasoning,
     toolCalls: previous.toolCalls,
+    activeToolCallIds: previous.activeToolCallIds,
+    toolResults: previous.toolResults,
+    presentationProgress: previous.presentationProgress,
   };
 }
 
@@ -48,7 +53,17 @@ export function reconcileStreamingMessages(
   base: Message[],
   streamingMessages: StreamingMessage[] | undefined,
 ): Message[] {
-  const overlays = new Map((streamingMessages ?? []).map((overlay) => [overlay.messageId, overlay]));
+  const incomingIds = new Set((streamingMessages ?? []).map((overlay) => overlay.messageId));
+  for (const messageId of cache.latestOverlays.keys()) {
+    if (!incomingIds.has(messageId)) cache.latestOverlays.delete(messageId);
+  }
+  for (const overlay of streamingMessages ?? []) {
+    const latest = cache.latestOverlays.get(overlay.messageId);
+    if (!latest || (overlay.updatedAt ?? 0) >= (latest.updatedAt ?? 0)) {
+      cache.latestOverlays.set(overlay.messageId, overlay);
+    }
+  }
+  const overlays = cache.latestOverlays;
   const merged = base.map((message) => {
     const overlay = overlays.get(message._id);
     if (!overlay) return message;
@@ -58,6 +73,9 @@ export function reconcileStreamingMessages(
       reasoning: overlay.reasoning,
       status: overlay.status,
       toolCalls: overlay.toolCalls ?? message.toolCalls,
+      toolResults: overlay.toolResults ?? message.toolResults,
+      activeToolCallIds: overlay.activeToolCallIds,
+      presentationProgress: overlay.presentationProgress,
     };
   });
 

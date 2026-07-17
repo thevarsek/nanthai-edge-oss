@@ -18,6 +18,11 @@
 
 import { ConvexError } from "convex/values";
 import JSZip from "jszip";
+import {
+  extractPptxReferenceTraits,
+  type PptxEmbeddedImage,
+  type PptxReferenceTraits,
+} from "./pptx_reference_traits";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -55,6 +60,8 @@ export interface PptxExtraction {
   markdown: string;
   slideCount: number;
   wordCount: number;
+  referenceTraits: PptxReferenceTraits;
+  embeddedImages: PptxEmbeddedImage[];
 }
 
 // ---------------------------------------------------------------------------
@@ -287,6 +294,7 @@ export async function extractPptxContent(
   const slides: PptxSlideExtraction[] = [];
   const allTextParts: string[] = [];
   let markdown = "";
+  const reference = await extractPptxReferenceTraits(zip, slidePaths);
 
   for (let i = 0; i < slidePaths.length; i++) {
     const slidePath = slidePaths[i];
@@ -397,5 +405,7 @@ export async function extractPptxContent(
     markdown: markdown.trim(),
     slideCount: slidePaths.length,
     wordCount,
+    referenceTraits: reference.traits,
+    embeddedImages: reference.embeddedImages,
   };
 }

@@ -314,6 +314,7 @@ export function availableProgressiveProfiles(options: {
   if (!options.isPro) return [];
 
   const profiles = new Set<SkillToolProfileId>([
+    "presentations",
     "docs",
     "analytics",
     "workspace",
@@ -382,6 +383,7 @@ export async function retrySameRoundProgressiveToolCalls(
 
 export function isSkillToolProfileId(value: string): value is SkillToolProfileId {
   return [
+    "presentations",
     "docs",
     "analytics",
     "workspace",

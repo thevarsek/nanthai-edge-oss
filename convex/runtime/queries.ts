@@ -81,6 +81,22 @@ export const resolveOwnedStorageFileInternal = internalQuery({
       };
     }
 
+    const presentationAsset = await ctx.db
+      .query("presentationAssets")
+      .withIndex("by_user_storage", (q) =>
+        q.eq("userId", args.userId).eq("storageId", args.storageId)
+      )
+      .first();
+    if (presentationAsset) {
+      return {
+        storageId: presentationAsset.storageId,
+        filename: presentationAsset.filename,
+        mimeType: presentationAsset.mimeType,
+        sizeBytes: presentationAsset.sizeBytes,
+        source: "upload" as const,
+      };
+    }
+
     return null;
   },
 });

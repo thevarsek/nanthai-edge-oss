@@ -1,5 +1,5 @@
 import type { Id } from "@convex/_generated/dataModel";
-import type { Participant, SendMessageArgs } from "@/hooks/useChat";
+import type { Participant, PresentationContext, SendMessageArgs } from "@/hooks/useChat";
 import type { SharedPreferences } from "@/lib/chatRequestResolution";
 import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } from "@/lib/analytics";
 import { captureSendFeatureUsage } from "@/lib/featureAnalytics";
@@ -54,6 +54,7 @@ export interface ChatSendOrchestrationState {
   prefs: SharedPreferences | undefined;
   advisorSelections?: AdvisorSelection[];
   advisorBrief?: string;
+  presentationContext?: PresentationContext;
 }
 
 export interface ChatSendOrchestrationDeps {
@@ -167,6 +168,7 @@ export function buildSendMessageArgs(args: {
   prefs: SharedPreferences | undefined;
   advisorSelections?: AdvisorSelection[];
   advisorBrief?: string;
+  presentationContext?: PresentationContext;
 }): SendMessageArgs {
   return {
     chatId: args.chatId,
@@ -185,6 +187,7 @@ export function buildSendMessageArgs(args: {
     ...(args.isVideoMode ? { videoConfig: buildVideoConfig(true, args.prefs) } : {}),
     ...(args.advisorSelections !== undefined ? { advisorSelections: args.advisorSelections } : {}),
     ...(args.advisorBrief ? { advisorBrief: args.advisorBrief } : {}),
+    ...(args.presentationContext ? { presentationContext: args.presentationContext } : {}),
   };
 }
 
@@ -569,6 +572,7 @@ export async function executeChatSend(
       prefs: state.prefs,
       advisorSelections: state.advisorSelections,
       advisorBrief: state.advisorBrief,
+      presentationContext: state.presentationContext,
     }));
   }
 
@@ -677,6 +681,7 @@ export async function executeRecordedAudioSend(
       prefs: state.prefs,
       advisorSelections: state.advisorSelections,
       advisorBrief: state.advisorBrief,
+      presentationContext: state.presentationContext,
     }));
   }
 

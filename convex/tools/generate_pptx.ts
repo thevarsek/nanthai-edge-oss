@@ -1,3 +1,5 @@
+"use node";
+
 // convex/tools/generate_pptx.ts
 // =============================================================================
 // Tool: generate_pptx — creates a PowerPoint presentation and stores it in
@@ -19,7 +21,7 @@
 // small. Legacy `data` (raw base64) is also accepted as a fallback.
 // =============================================================================
 
-import PptxGenJS from "pptxgenjs";
+import type PptxGenJS from "pptxgenjs";
 import { createTool } from "./registry";
 import {
   ImageInput,
@@ -27,6 +29,11 @@ import {
   resolveSlideImages,
 } from "./image_resolver";
 import { sanitizeFilename } from "./sanitize";
+
+// PptxGenJS 4.0.1 publishes an ESM entry with a .js extension but no
+// package-level module type, so Convex Node must select its valid CJS export.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PptxGenJSRuntime = require("pptxgenjs") as typeof PptxGenJS;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -594,6 +601,7 @@ export const generatePptx = createTool({
     const subtitle = (args.subtitle as string) || "";
     const slides = args.slides as PptxSlideInput[];
     const showSlideNumbers = (args.showSlideNumbers as boolean) ?? false;
+    const includeTitleSlide = args.includeTitleSlide !== false;
 
     if (!title || typeof title !== "string") {
       return { success: false, data: null, error: "Missing or invalid 'title'" };
@@ -604,7 +612,7 @@ export const generatePptx = createTool({
 
     const theme = resolveTheme(args.theme as PptxThemeInput | undefined);
 
-    const pptx = new PptxGenJS();
+  const pptx = new PptxGenJSRuntime();
     pptx.title = title;
     pptx.subject = subtitle || title;
     pptx.author = "NanthAI";
@@ -613,24 +621,26 @@ export const generatePptx = createTool({
     // -------------------------------------------------------------------
     // Title slide
     // -------------------------------------------------------------------
-    const titleSlide = pptx.addSlide();
-    titleSlide.background = { color: theme.titleBg };
-    titleSlide.addText(title, {
-      x: 0.5, y: 2.0, w: 12.33, h: 1.5,
-      fontSize: 36, fontFace: theme.titleFont,
-      bold: true, color: theme.titleText,
-      align: "center", valign: "middle",
-    });
-    if (subtitle) {
-      titleSlide.addText(subtitle, {
-        x: 0.5, y: 3.6, w: 12.33, h: 0.8,
-        fontSize: 18, fontFace: theme.bodyFont,
-        color: theme.titleText,
-        align: "center", valign: "top",
+    if (includeTitleSlide) {
+      const titleSlide = pptx.addSlide();
+      titleSlide.background = { color: theme.titleBg };
+      titleSlide.addText(title, {
+        x: 0.5, y: 2.0, w: 12.33, h: 1.5,
+        fontSize: 36, fontFace: theme.titleFont,
+        bold: true, color: theme.titleText,
+        align: "center", valign: "middle",
       });
-    }
-    if (showSlideNumbers) {
-      titleSlide.slideNumber = { x: 12.0, y: 7.0, fontFace: theme.bodyFont, fontSize: 10, color: theme.titleText };
+      if (subtitle) {
+        titleSlide.addText(subtitle, {
+          x: 0.5, y: 3.6, w: 12.33, h: 0.8,
+          fontSize: 18, fontFace: theme.bodyFont,
+          color: theme.titleText,
+          align: "center", valign: "top",
+        });
+      }
+      if (showSlideNumbers) {
+        titleSlide.slideNumber = { x: 12.0, y: 7.0, fontFace: theme.bodyFont, fontSize: 10, color: theme.titleText };
+      }
     }
 
     // -------------------------------------------------------------------
@@ -649,7 +659,10 @@ export const generatePptx = createTool({
       }
 
       // Resolve background image if provided
-      if (slide.backgroundImage) {
+      if (
+        slide.backgroundImage &&
+        (slide.backgroundImage.imageStorageId?.trim() || slide.backgroundImage.data?.trim())
+      ) {
         const { resolved: bgImages, warnings: bgWarn } = await resolveSlideImages(
           toolCtx.ctx,
           [slide.backgroundImage],
@@ -722,8 +735,9 @@ export const generatePptx = createTool({
       ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(filename)}`
       : await toolCtx.ctx.storage.getUrl(storageId);
 
+    const slideCount = slides.length + (includeTitleSlide ? 1 : 0);
     let message =
-      `Presentation generated with ${slides.length + 1} slides` +
+      `Presentation generated with ${slideCount} slides` +
       (totalImages > 0 ? ` and ${totalImages} embedded images` : "") +
       `. Present the download link to the user: [${filename}](${downloadUrl})`;
 
@@ -737,7 +751,7 @@ export const generatePptx = createTool({
         storageId,
         downloadUrl,
         filename,
-        slideCount: slides.length + 1,
+        slideCount,
         imageCount: totalImages,
         markdownLink: `[${filename}](${downloadUrl})`,
         message,

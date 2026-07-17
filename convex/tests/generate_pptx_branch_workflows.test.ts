@@ -146,6 +146,7 @@ test("generatePptx validates required args and falls back from invalid table and
         title: "Bad table",
         layout: "table",
         body: "Falls back to a text slide when table data is absent.",
+        backgroundImage: { imageStorageId: "", data: "", altText: "" },
       },
       {
         title: "Bad chart",
@@ -175,4 +176,5 @@ test("generatePptx validates required args and falls back from invalid table and
   assert.equal((result.data as any).downloadUrl, "https://storage.example/pptx_storage_1");
   assert.equal((result.data as any).slideCount, 5);
   assert.equal((result.data as any).imageCount, 0);
+  assert.doesNotMatch((result.data as any).message, /Warnings:/);
 });

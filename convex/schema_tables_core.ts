@@ -54,6 +54,7 @@ import {
   integrationOverrideEntry,
   retryContract,
 } from "./schema_validators";
+import { presentationContextValidator } from "./presentations/validators";
 
 const generationJobAnalyticsMetadata = v.object({
   platform: v.union(v.literal("web"), v.literal("ios"), v.literal("android")),
@@ -205,6 +206,7 @@ export const coreSchemaTables = {
         }),
       ),
     ),
+    presentationContext: v.optional(presentationContextValidator),
     enabledIntegrations: v.optional(v.array(v.string())),
     source: v.optional(messageSource),
     sourceJobId: v.optional(v.id("scheduledJobs")),
@@ -380,6 +382,13 @@ export const coreSchemaTables = {
       id: v.string(),
       name: v.string(),
       arguments: v.string(),
+    }))),
+    activeToolCallIds: v.optional(v.array(v.string())),
+    toolResults: v.optional(v.array(v.object({
+      toolCallId: v.string(),
+      toolName: v.string(),
+      result: v.string(),
+      isError: v.optional(v.boolean()),
     }))),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -700,6 +709,8 @@ export const coreSchemaTables = {
     toolName: v.string(),
     documentId: v.optional(v.id("documents")),
     documentVersionId: v.optional(v.id("documentVersions")),
+    presentationProjectId: v.optional(v.id("presentationProjects")),
+    presentationRevision: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -707,7 +718,8 @@ export const coreSchemaTables = {
     .index("by_message", ["messageId"])
     .index("by_storage", ["storageId"])
     .index("by_document", ["documentId"])
-    .index("by_document_version", ["documentVersionId"]),
+    .index("by_document_version", ["documentVersionId"])
+    .index("by_presentation_project", ["presentationProjectId", "createdAt"]),
 
   googleDriveFileGrants: defineTable({
     userId: v.string(),

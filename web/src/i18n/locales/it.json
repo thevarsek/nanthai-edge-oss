@@ -802,6 +802,11 @@
   "research_paper": "Articolo scientifico",
   "research_paper_arg": "Documento di ricerca ({{var1}})",
   "research_paper_requires_a_single_participant": "L'articolo scientifico richiede un singolo partecipante.",
+  "artifact_write_requires_single_participant": "Per modificare una presentazione deve essere attivo un solo partecipante. Apri + → Partecipanti e rimuovi i partecipanti finché ne rimane uno. Potrai aggiungere di nuovo gli altri in seguito.",
+  "create_presentation": "Crea presentazione",
+  "load_skill": "Carica skill",
+  "presentation_target": "Destinazione presentazione",
+  "remove_presentation_target": "Rimuovi destinazione presentazione",
   "research_papers": "Articoli scientifici",
   "reset": "Ripristina",
   "reset_purchases": "Ripristina acquisti",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "Consulenti",
   "pe_cap_advisors_title": "Consulenti Persona privati",
   "pe_cap_advisors_desc": "Fino a tre Persona esaminano un turno in privato e la risposta finale sintetizza i loro consigli. Tutti i partecipanti di testo ricevono le stesse note private.",
-  "pe_scenario_5": "Una decisione di prodotto esaminata in privato da un rappresentante dei clienti, un responsabile tecnico e uno specialista del rischio."
+  "pe_scenario_5": "Una decisione di prodotto esaminata in privato da un rappresentante dei clienti, un responsabile tecnico e uno specialista del rischio.",
+  "presentation_progress_queued": "Preparazione della presentazione",
+  "presentation_progress_planning": "Pianificazione della storia delle slide",
+  "presentation_progress_repairing_plan": "Correzione del piano delle slide",
+  "presentation_progress_generating": "Generazione di {{count}} slide",
+  "presentation_progress_repairing_generation": "Correzione e verifica delle slide",
+  "presentation_progress_exporting": "Creazione del file PowerPoint",
+  "presentation_progress_complete": "Presentazione pronta",
+  "presentation_progress_failed": "Creazione della presentazione non riuscita"
 }

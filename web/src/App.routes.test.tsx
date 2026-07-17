@@ -458,6 +458,13 @@ describe("App routes", () => {
     expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
   }, 15000);
 
+  it("does not expose a standalone presentation route", async () => {
+    renderAt("/app/presentations");
+
+    expect(await screen.findByText("404")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/app");
+  });
+
   it("renders a route error boundary for public lazy route failures", async () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     routeMocks.automatedTasksShouldThrow = true;

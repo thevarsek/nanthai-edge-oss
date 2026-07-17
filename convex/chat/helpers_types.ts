@@ -28,6 +28,24 @@ export interface ContextMessage {
     title?: string;
     summary?: string;
   }>;
+  presentationContext?: {
+    projectId: Id<"presentationProjects">;
+    projectRevision: number;
+    slideId?: string;
+    slideRevision?: number;
+    elementId?: string;
+  };
+  toolCalls?: Array<{
+    id: string;
+    name: string;
+    arguments: string;
+  }>;
+  toolResults?: Array<{
+    toolCallId: string;
+    toolName: string;
+    result: string;
+    isError?: boolean;
+  }>;
   attachments?: Array<{
     type: string;
     url?: string;

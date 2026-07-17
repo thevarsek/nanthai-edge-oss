@@ -409,6 +409,87 @@ export const deleteUserTableBatch = internalMutation({
       return { deleted };
     }
 
+    if (tableName === "presentationAssets") {
+      const rows = await ctx.db
+        .query("presentationAssets")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        const siblings = await ctx.db
+          .query("presentationAssets")
+          .withIndex("by_user_storage", (q) =>
+            q.eq("userId", userId).eq("storageId", row.storageId)
+          )
+          .take(2);
+        if (row.kind === "pptx_extracted" && siblings.length === 1) {
+          const [attachment, generatedFile] = await Promise.all([
+            ctx.db
+              .query("fileAttachments")
+              .withIndex("by_storage", (q) => q.eq("storageId", row.storageId))
+              .first(),
+            ctx.db
+              .query("generatedFiles")
+              .withIndex("by_storage", (q) => q.eq("storageId", row.storageId))
+              .first(),
+          ]);
+          if (!attachment && !generatedFile) {
+            try {
+              await ctx.storage.delete(row.storageId);
+            } catch {
+              // Storage blob may already be deleted.
+            }
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
+    if (tableName === "presentationGenerationBatches") {
+      const rows = await ctx.db
+        .query("presentationGenerationBatches")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        if (row.candidateStorageId) {
+          try {
+            await ctx.storage.delete(row.candidateStorageId);
+          } catch {
+            // Scheduled cleanup may already have removed the private candidate.
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
+    if (tableName === "presentationProjects") {
+      const rows = await ctx.db
+        .query("presentationProjects")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        if (row.snapshotStorageId) {
+          const generatedFile = await ctx.db
+            .query("generatedFiles")
+            .withIndex("by_storage", (q) => q.eq("storageId", row.snapshotStorageId!))
+            .first();
+          if (!generatedFile) {
+            try {
+              await ctx.storage.delete(row.snapshotStorageId);
+            } catch {
+              // Storage blob may already be deleted.
+            }
+          }
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
     if (tableName === "generatedMedia") {
       const rows = await ctx.db
         .query("generatedMedia")

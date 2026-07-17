@@ -179,7 +179,7 @@ test("progressive registry helpers parse loaded skills and patch same-round tool
     allowSubagents: true,
     enabledIntegrations: ["gmail", "outlook", "notion", "apple_calendar", "cloze", "slack"],
   }).sort(), [
-    "analytics", "appleCalendar", "cloze", "docs", "google", "microsoft",
+    "analytics", "appleCalendar", "cloze", "docs", "google", "microsoft", "presentations",
     "notion", "persistentRuntime", "scheduledJobs", "skillsManagement", "slack",
     "subagents", "workspace",
   ].sort());

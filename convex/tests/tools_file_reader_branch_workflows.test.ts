@@ -89,7 +89,9 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     assert.equal(missingArg.error, "Missing or invalid 'storageId'");
 
     const invalidId = await tool.execute({
+      userId: "user_1",
       ctx: {
+        ...(name === "pptx" ? { runQuery: async () => { throw new Error("bad id"); } } : {}),
         storage: {
           get: async () => {
             throw new Error("bad id");
@@ -101,13 +103,19 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     assert.match(String(invalidId.error), /Invalid storageId/);
 
     const missingFile = await tool.execute({
-      ctx: { storage: { get: async () => null } },
+      userId: "user_1",
+      ctx: {
+        ...(name === "pptx" ? { runQuery: async () => ({ storageId: `${name}_missing` }) } : {}),
+        storage: { get: async () => null },
+      },
     } as any, { storageId: `${name}_missing` });
     assert.equal(missingFile.success, false, name);
     assert.match(String(missingFile.error), /File not found/);
 
     const corrupt = await tool.execute({
+      userId: "user_1",
       ctx: {
+        ...(name === "pptx" ? { runQuery: async () => ({ storageId: `${name}_corrupt` }) } : {}),
         storage: {
           get: async () => new Blob(["not an office archive"], { type: "text/plain" }),
         },

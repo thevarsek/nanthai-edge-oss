@@ -178,6 +178,8 @@ export interface StreamResult {
 
 export interface NonStreamResult {
   content: string;
+  /** Effective model that produced this response after any explicit fallback. */
+  modelId?: string;
   usage: OpenRouterUsage | null;
   finishReason: string | null;
   audioBase64: string;
@@ -274,4 +276,8 @@ export interface RetryConfig {
   networkRetries?: number;
   /** Backoff delay in ms before a network retry. Default: 2000 */
   networkRetryDelayMs?: number;
+  /** Optional per-request timeout override for shorter action workflows. */
+  requestTimeoutMs?: number;
+  /** Optional non-streaming cumulative deadline across retries and fallback attempts. */
+  totalTimeoutMs?: number;
 }

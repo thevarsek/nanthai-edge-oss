@@ -104,6 +104,36 @@ test("deleteUserTableBatch deletes storage-bearing generated and uploaded files"
   ]);
 });
 
+test("deleteUserTableBatch removes private presentation batch candidates and blobs", async () => {
+  const deletedRows: string[] = [];
+  const deletedStorage: string[] = [];
+  const result = await (deleteUserTableBatch as any)._handler({
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          take: async () => table === "presentationGenerationBatches"
+            ? [
+              { _id: "batch_1", candidateStorageId: "candidate_1" },
+              { _id: "batch_2" },
+            ]
+            : [],
+        }),
+      }),
+      delete: async (id: string) => deletedRows.push(id),
+    },
+    storage: {
+      delete: async (id: string) => deletedStorage.push(id),
+    },
+  }, {
+    userId: "user_1",
+    tableName: "presentationGenerationBatches",
+  });
+
+  assert.equal(result.deleted, 2);
+  assert.deepEqual(deletedRows, ["batch_1", "batch_2"]);
+  assert.deepEqual(deletedStorage, ["candidate_1"]);
+});
+
 test("deleteUserTableBatch cleans inline subagent generated file storage", async () => {
   const deletedRows: string[] = [];
   const deletedStorage: string[] = [];

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import { MessageInput, type AttachmentPreview } from "./MessageInput";
+import type { PresentationContext } from "@/hooks/useChat";
 import { clearChatDraft, getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
 
 const generatedDocument: AttachmentPreview = {
@@ -17,11 +18,17 @@ function renderMessageInput({
   onSend = vi.fn(),
   onCreateUploadUrl = vi.fn(),
   extraAttachments = [],
+  presentationTarget,
+  onRemovePresentationTarget,
+  participantCount = 1,
 }: {
   chatId?: Id<"chats">;
   onSend?: (args: { text: string; attachments?: AttachmentPreview[] }) => boolean | void | Promise<boolean | void>;
   onCreateUploadUrl?: () => Promise<string>;
   extraAttachments?: AttachmentPreview[];
+  presentationTarget?: { context: PresentationContext; label: string };
+  onRemovePresentationTarget?: () => void;
+  participantCount?: number;
 } = {}) {
   return render(
     <MessageInput
@@ -33,6 +40,9 @@ function renderMessageInput({
       onCreateUploadUrl={onCreateUploadUrl}
       generatedDocumentSuggestion={generatedDocument}
       extraAttachments={extraAttachments}
+      presentationTarget={presentationTarget}
+      onRemovePresentationTarget={onRemovePresentationTarget}
+      participantCount={participantCount}
     />,
   );
 }
@@ -72,6 +82,33 @@ describe("MessageInput", () => {
     });
     expect(screen.getByRole("textbox")).toHaveValue("blocked send");
     expect(screen.getByText("Research notes.pdf")).toBeInTheDocument();
+  });
+
+  it("explains how to reduce participants and preserves a staged presentation edit", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn();
+    renderMessageInput({
+      onSend,
+      participantCount: 3,
+      presentationTarget: {
+        label: "Launch plan · Slide 2",
+        context: {
+          projectId: "project_1" as Id<"presentationProjects">,
+          projectRevision: 2,
+          slideId: "slide_2",
+          slideRevision: 1,
+        },
+      },
+    });
+
+    expect(screen.getByTestId("artifact-write-guidance")).toHaveTextContent(
+      "Open + → Participants and remove participants until only one remains",
+    );
+    await user.type(screen.getByRole("textbox"), "Make this title shorter");
+    expect(screen.getByTitle("Send (Enter)")).toBeDisabled();
+    await user.keyboard("{Enter}");
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByText("Launch plan · Slide 2")).toBeInTheDocument();
   });
 
   it("clears draft text and staged attachments when send succeeds", async () => {
@@ -328,5 +365,35 @@ describe("MessageInput", () => {
       text: "",
       attachments: [expect.objectContaining({ storageId: "storage_1" })],
     });
+  });
+
+  it("shows an ephemeral presentation target and carries it on the next send", async () => {
+    const user = userEvent.setup();
+    const onSend = vi.fn().mockResolvedValue(undefined);
+    const onRemovePresentationTarget = vi.fn();
+    const context: PresentationContext = {
+      projectId: "presentation_1",
+      projectRevision: 7,
+      slideId: "slide-2",
+      slideRevision: 3,
+      elementId: "headline",
+    };
+    renderMessageInput({
+      onSend,
+      presentationTarget: { context, label: "Launch plan.pptx · Slide 2 · headline" },
+      onRemovePresentationTarget,
+    });
+
+    expect(screen.getByTestId("presentation-context-chip")).toHaveTextContent("Slide 2");
+    await user.type(screen.getByRole("textbox"), "Make this headline more direct");
+    await user.click(screen.getByTitle("Send (Enter)"));
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith({
+      text: "Make this headline more direct",
+      attachments: [],
+      presentationContext: context,
+    }));
+    await user.click(screen.getByRole("button", { name: "Remove presentation target" }));
+    expect(onRemovePresentationTarget).toHaveBeenCalledTimes(1);
   });
 });

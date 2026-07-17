@@ -16,6 +16,7 @@ import { ResearchProgressPanel } from "./ResearchProgressPanel";
 import { SearchSessionBadge } from "./SearchSessionBadge";
 import { AudioMessageBubble } from "./AudioMessageBubble";
 import { VideoGenerationProgress } from "./VideoGenerationProgress";
+import { PresentationGenerationProgress } from "./PresentationGenerationProgress";
 import { ImageGenerationPlaceholder } from "./ImageGenerationPlaceholder";
 import { ImageGenerationPartialSummary } from "./ImageGenerationPartialSummary";
 import { MessageAttachments } from "./MessageAttachments";
@@ -41,6 +42,7 @@ import { captureFeatureUsage, captureResponseCopied } from "@/lib/featureAnalyti
 import { copyToClipboard } from "@/lib/clipboard";
 import { displayMessageContent } from "@/lib/persistedGenerationError";
 import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
+import { replaceInternalPresentationDownloadLinks } from "./presentationDownloadLinks";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -281,10 +283,17 @@ export const AssistantMessage = memo(function AssistantMessage({
   const isVideoPlaceholder = hasVideoUrls && projectedContent === "[Generated video]";
   const mediaCopyText = [...(message.imageUrls ?? []), ...(message.videoUrls ?? [])].join("\n");
   const visibleContent = isImagePlaceholder || isVideoPlaceholder ? "" : projectedContent;
-  const copyText = (!visibleContent.trim())
-    ? mediaCopyText
+  const hasPresentationArtifact = Boolean(message.generatedFileIds?.length) &&
+    (message.toolCalls ?? []).some((toolCall) =>
+      toolCall.name === "create_presentation" || toolCall.name === "edit_presentation"
+    );
+  const displaySafeContent = hasPresentationArtifact
+    ? replaceInternalPresentationDownloadLinks(visibleContent)
     : visibleContent;
-  const { displayed } = useStreaming(visibleContent, isStreaming && message.status === "streaming");
+  const copyText = (!displaySafeContent.trim())
+    ? mediaCopyText
+    : displaySafeContent;
+  const { displayed } = useStreaming(displaySafeContent, isStreaming && message.status === "streaming");
   const isPending = message.status === "pending";
   const isAwaitingImage = !hasImageUrls && (isPending || isStreaming) && message.modelId != null &&
     modelSummaries?.some((model) =>
@@ -425,7 +434,7 @@ export const AssistantMessage = memo(function AssistantMessage({
     : "flex gap-3 group";
 
   return (
-    <div className={outerClass}>
+    <div className={outerClass} data-testid="assistant-message" data-message-id={message._id}>
       {/* Avatar — iOS: 28x28 */}
       <div className="shrink-0 mt-1">
         {assistantIdentity.hasPersonaDisplay ? (
@@ -476,9 +485,14 @@ export const AssistantMessage = memo(function AssistantMessage({
             toolCalls={message.toolCalls ?? []}
             toolResults={message.toolResults}
             isStreaming={isStreaming}
+            activeToolCallIds={message.activeToolCallIds}
             loadedSkillIds={message.loadedSkillIds}
             usedIntegrationIds={message.usedIntegrationIds}
           />
+        )}
+
+        {message.presentationProgress && (
+          <PresentationGenerationProgress progress={message.presentationProgress} />
         )}
 
         {/* Subagent work */}

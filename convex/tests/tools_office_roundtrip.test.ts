@@ -29,7 +29,18 @@ function createStorageHarness() {
   return {
     files,
     storage,
-    toolCtx: { userId: "user_1", ctx: { storage } } as any,
+    toolCtx: {
+      userId: "user_1",
+      ctx: {
+        storage,
+        runQuery: async () => ({
+          storageId: "owned",
+          filename: "deck.pptx",
+          mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          source: "generated",
+        }),
+      },
+    } as any,
   };
 }
 

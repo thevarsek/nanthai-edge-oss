@@ -81,10 +81,19 @@ export default defineConfig({
     }),
   ],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@convex/_generated/api": path.resolve(__dirname, "./src/lib/convexApi.ts"),
-    },
+    alias: [
+      {
+        find: "@convex/_generated/api",
+        replacement: path.resolve(__dirname, "./src/lib/convexApi.ts"),
+      },
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      {
+        // dom-to-pptx imports a default export that opentype.js v2's ESM
+        // build does not expose. Its UMD build supplies the expected shape.
+        find: /^opentype\.js$/,
+        replacement: "opentype.js/dist/opentype.js",
+      },
+    ],
   },
   build: {
     // Raise warning threshold — ChatPage bundles markdown + syntax highlighting

@@ -310,6 +310,7 @@ test("availableProgressiveProfiles: reflects integrations and runtime capability
   });
 
   assert.ok(profiles.includes("docs"));
+  assert.ok(profiles.includes("presentations"));
   assert.ok(profiles.includes("analytics"));
   assert.ok(profiles.includes("workspace"));
   assert.ok(profiles.includes("persistentRuntime"));

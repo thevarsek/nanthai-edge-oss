@@ -90,6 +90,10 @@ export const getGeneratedFilesByMessageArgs = {
   messageId: v.id("messages"),
 } satisfies PropertyValidators;
 
+export const getGeneratedFilesByIdsArgs = {
+  fileIds: v.array(v.id("generatedFiles")),
+} satisfies PropertyValidators;
+
 export const getGeneratedChartsByMessageArgs = {
   messageId: v.id("messages"),
 } satisfies PropertyValidators;

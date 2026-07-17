@@ -69,7 +69,11 @@ const artifactInput = v.object({
   isError: v.optional(v.boolean()),
   errorCode: v.optional(v.string()),
   errorMessage: v.optional(v.string()),
-  deferredKind: v.optional(v.union(v.literal("spawn_subagents"), v.literal("drive_picker"))),
+  deferredKind: v.optional(v.union(
+    v.literal("spawn_subagents"),
+    v.literal("drive_picker"),
+    v.literal("presentation_workflow"),
+  )),
   provider: v.optional(v.string()),
   runtime: v.optional(v.string()),
   integrationId: v.optional(v.string()),

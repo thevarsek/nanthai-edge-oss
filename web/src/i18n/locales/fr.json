@@ -686,6 +686,11 @@
   "research_paper": "Article de recherche",
   "research_paper_arg": "Article de recherche ({{var1}})",
   "research_paper_requires_a_single_participant": "L'article de recherche nécessite un seul participant.",
+  "artifact_write_requires_single_participant": "La modification d’une présentation nécessite un seul participant. Ouvrez + → Participants et retirez des participants jusqu’à ce qu’il n’en reste qu’un. Vous pourrez les ajouter à nouveau ensuite.",
+  "create_presentation": "Créer une présentation",
+  "load_skill": "Charger la compétence",
+  "presentation_target": "Cible de présentation",
+  "remove_presentation_target": "Retirer la cible de présentation",
   "research_papers": "Articles de recherche",
   "reset": "Réinitialiser",
   "reset_purchases": "Réinitialiser les achats",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "Conseillers",
   "pe_cap_advisors_title": "Conseillers Persona privés",
   "pe_cap_advisors_desc": "Jusqu’à trois Personas examinent un tour en privé, puis la réponse finale synthétise leurs conseils. Tous les participants texte reçoivent les mêmes notes privées.",
-  "pe_scenario_5": "Une décision produit examinée en privé par un défenseur client, un responsable technique et un spécialiste des risques."
+  "pe_scenario_5": "Une décision produit examinée en privé par un défenseur client, un responsable technique et un spécialiste des risques.",
+  "presentation_progress_queued": "Préparation de la présentation",
+  "presentation_progress_planning": "Planification du récit des diapositives",
+  "presentation_progress_repairing_plan": "Réparation du plan des diapositives",
+  "presentation_progress_generating": "Génération de {{count}} diapositives",
+  "presentation_progress_repairing_generation": "Réparation et validation des diapositives",
+  "presentation_progress_exporting": "Création du fichier PowerPoint",
+  "presentation_progress_complete": "Présentation prête",
+  "presentation_progress_failed": "Échec de la génération de la présentation"
 }

@@ -115,6 +115,13 @@ export interface SendMessageArgs extends Record<string, unknown> {
     mimeType?: string;
   };
   attachments?: SendMessageAttachment[];
+  presentationContext?: {
+    projectId: Id<"presentationProjects">;
+    projectRevision: number;
+    slideId?: string;
+    slideRevision?: number;
+    elementId?: string;
+  };
   participants: SendParticipantConfig[];
   explicitParentIds?: Id<"messages">[];
   expandMultiModelGroups?: boolean;
@@ -283,6 +290,7 @@ export async function sendMessageHandler(
     audioTranscript,
     audioDurationMs: args.recordedAudio?.durationMs,
     attachments: normalizedAttachments,
+    presentationContext: args.presentationContext,
     createdAt: now,
   });
 

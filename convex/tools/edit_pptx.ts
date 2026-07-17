@@ -1,3 +1,5 @@
+"use node";
+
 // convex/tools/edit_pptx.ts
 // =============================================================================
 // Tool: edit_pptx — reads an existing .pptx from Convex storage, then generates
@@ -15,7 +17,7 @@
 // internally — keeping the conversation context small.
 // =============================================================================
 
-import PptxGenJS from "pptxgenjs";
+import type PptxGenJS from "pptxgenjs";
 import { extractPptxContent } from "./pptx_reader";
 import { createTool } from "./registry";
 import { sanitizeFilename } from "./sanitize";
@@ -25,6 +27,11 @@ import {
   resolveSlideImages,
 } from "./image_resolver";
 import type { Id } from "../_generated/dataModel";
+
+// PptxGenJS 4.0.1 publishes an ESM entry with a .js extension but no
+// package-level module type, so Convex Node must select its valid CJS export.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const PptxGenJSRuntime = require("pptxgenjs") as typeof PptxGenJS;
 
 // ---------------------------------------------------------------------------
 // Types (shared with generate_pptx)
@@ -459,7 +466,7 @@ export const editPptx = createTool({
     const theme = resolveTheme(args.theme as PptxThemeInput | undefined);
 
     // Step 2: Build the new presentation.
-    const pptx = new PptxGenJS();
+  const pptx = new PptxGenJSRuntime();
     pptx.title = title;
     pptx.subject = subtitle || title;
     pptx.author = "NanthAI";

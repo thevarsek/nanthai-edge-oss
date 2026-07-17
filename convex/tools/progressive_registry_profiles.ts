@@ -26,6 +26,8 @@ import { editDocx } from "./edit_docx";
 import { proposeDocxEdits } from "./docx_edit_proxy";
 import { readPptx } from "./read_pptx";
 import { generatePptx, editPptx } from "./pptx_proxy";
+import { createPresentation, editPresentation } from "./presentation_proxy";
+import { readPresentation } from "./read_presentation";
 import { generateXlsx } from "./generate_xlsx";
 import { readXlsx } from "./read_xlsx";
 import { editXlsx } from "./edit_xlsx";
@@ -120,9 +122,14 @@ const DOC_TOOLS: RegisteredTool[] = [
   generateDocx, readDocx, editDocx,
   proposeDocxEdits,
   generatePptx, readPptx, editPptx,
+  createPresentation, readPresentation, editPresentation,
   generateXlsx, readXlsx, editXlsx,
   generateTextFile, readTextFile,
   generateEml, readEml,
+];
+
+const PRESENTATION_TOOLS: RegisteredTool[] = [
+  createPresentation, readPresentation, editPresentation, readPptx,
 ];
 
 const DIRECT_TOOL_REGISTRY = new Map<string, RegisteredTool>(
@@ -153,6 +160,9 @@ export function registerProfileTools(
   options: ProgressiveToolRegistryOptions,
 ): void {
   switch (profile) {
+    case "presentations":
+      registerToolsIfMissing(registry, PRESENTATION_TOOLS);
+      break;
     case "docs":
       registerToolsIfMissing(registry, DOC_TOOLS);
       break;

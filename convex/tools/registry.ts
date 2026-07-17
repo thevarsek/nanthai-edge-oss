@@ -8,8 +8,10 @@
 // =============================================================================
 
 import { ConvexError } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { ToolCall, ToolDefinition } from "../lib/openrouter_types";
+import { artifactWriteBlockMessage } from "./artifact_write_policy";
 
 // ---------------------------------------------------------------------------
 // Tool definition types
@@ -46,8 +48,16 @@ export interface ToolResult {
 }
 
 export interface ToolDeferredPayload {
-  kind: "spawn_subagents" | "drive_picker";
+  kind: "spawn_subagents" | "drive_picker" | "presentation_workflow";
   data: unknown;
+}
+
+export interface PresentationToolContext {
+  projectId: Id<"presentationProjects">;
+  projectRevision: number;
+  slideId?: string;
+  slideRevision?: number;
+  elementId?: string;
 }
 
 /**
@@ -59,7 +69,17 @@ export interface ToolExecutionContext {
   userId: string;
   chatId?: string;
   messageId?: string;
+  /** User message that triggered the current assistant generation. */
+  userMessageId?: string;
+  /** Server-owned presentation target selected on that user message. */
+  presentationContext?: PresentationToolContext;
+  /** Number of assistant participants scheduled from the triggering user turn. */
+  turnParticipantCount?: number;
+  /** True when the turn used explicit Ideascape parents instead of chat expansion. */
+  isIdeascapeTurn?: boolean;
   jobId?: string;
+  /** Exact provider tool-call ID for the invocation currently being executed. */
+  toolCallId?: string;
   generationKey?: string;
   /** Current OpenRouter model for model-scoped helper tools. */
   modelId?: string;
@@ -222,6 +242,18 @@ export class ToolRegistry {
       };
     }
 
+    const artifactWriteBlock = artifactWriteBlockMessage(tool.name, toolCtx);
+    if (artifactWriteBlock) {
+      return {
+        toolCallId: toolCall.id,
+        result: {
+          success: false,
+          data: null,
+          error: artifactWriteBlock,
+        },
+      };
+    }
+
     let parsedArgs: Record<string, unknown>;
     try {
       parsedArgs = JSON.parse(toolCall.function.arguments);
@@ -237,7 +269,10 @@ export class ToolRegistry {
     }
 
     try {
-      const result = await tool.execute(toolCtx, parsedArgs);
+      const result = await tool.execute(
+        { ...toolCtx, toolCallId: toolCall.id },
+        parsedArgs,
+      );
       return { toolCallId: toolCall.id, result };
     } catch (e) {
       return {

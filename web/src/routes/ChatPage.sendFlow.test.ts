@@ -196,6 +196,13 @@ describe("ChatPage send flow helpers", () => {
   });
 
   it("builds sendMessage args without changing the Convex wire shape", () => {
+    const presentationContext = {
+      projectId: "presentation_1",
+      projectRevision: 5,
+      slideId: "slide-2",
+      slideRevision: 3,
+      elementId: "headline",
+    };
     const args = buildSendMessageArgs({
       chatId,
       text: "hello",
@@ -219,6 +226,7 @@ describe("ChatPage send flow helpers", () => {
       convexComplexity: 2,
       isVideoMode: true,
       prefs: undefined,
+      presentationContext,
     });
 
     expect(args).toMatchObject({
@@ -238,6 +246,7 @@ describe("ChatPage send flow helpers", () => {
         resolution: "720p",
         generateAudio: true,
       },
+      presentationContext,
     });
     expect(args.attachments?.[0]).toMatchObject({ videoRole: "first_frame" });
     expect(args.recordedAudio).toMatchObject({ transcript: "voice" });

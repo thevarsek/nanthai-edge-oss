@@ -7,6 +7,13 @@ export type StreamingToolCall = {
   arguments: string;
 };
 
+export type StreamingToolResult = {
+  toolCallId: string;
+  toolName: string;
+  result: string;
+  isError?: boolean;
+};
+
 type StreamingReader = Pick<QueryCtx | MutationCtx, "db">;
 
 type MinimalMessage = Pick<Doc<"messages">, "_id" | "chatId" | "status">;
@@ -90,6 +97,16 @@ function pickNewestMeaningfulToolCalls(
   return pickPrimaryStreamingMessage(candidates)?.toolCalls;
 }
 
+function pickNewestMeaningfulToolResults(
+  records: StreamingMessageRecord[],
+): StreamingToolResult[] | undefined {
+  const candidates = records.filter(
+    (record) => record.toolResults !== undefined && record.toolResults.length > 0,
+  );
+  if (candidates.length === 0) return undefined;
+  return pickPrimaryStreamingMessage(candidates)?.toolResults;
+}
+
 function pickMergedStreamingStatus(records: StreamingMessageRecord[]): Doc<"messages">["status"] {
   const terminalRecords = records.filter((record) => isTerminalMessageStatus(record.status));
   const preferred = pickPrimaryStreamingMessage(terminalRecords) ?? pickPrimaryStreamingMessage(records);
@@ -107,6 +124,7 @@ export function mergeStreamingMessageRecords(
   const mergedContent = pickNewestMeaningfulText(records, (record) => record.content);
   const mergedReasoning = pickNewestMeaningfulText(records, (record) => record.reasoning);
   const mergedToolCalls = pickNewestMeaningfulToolCalls(records);
+  const mergedToolResults = pickNewestMeaningfulToolResults(records);
 
   return {
     ...primary,
@@ -114,6 +132,7 @@ export function mergeStreamingMessageRecords(
     reasoning: mergedReasoning ?? primary.reasoning,
     status: pickMergedStreamingStatus(records),
     toolCalls: mergedToolCalls ?? primary.toolCalls,
+    toolResults: mergedToolResults ?? primary.toolResults,
   };
 }
 
@@ -145,7 +164,10 @@ export async function getStreamingMessageById(
 export async function patchStreamingMessageById(
   ctx: MutationCtx,
   streamingMessageId: Id<"streamingMessages">,
-  patch: Partial<Pick<StreamingMessageRecord, "content" | "reasoning" | "status" | "toolCalls">>,
+  patch: Partial<Pick<
+    StreamingMessageRecord,
+    "content" | "reasoning" | "status" | "toolCalls" | "toolResults" | "activeToolCallIds"
+  >>,
 ): Promise<void> {
   await ctx.db.patch(streamingMessageId, {
     ...patch,
@@ -161,6 +183,8 @@ export async function upsertStreamingMessage(
     reasoning?: string;
     status?: Doc<"messages">["status"];
     toolCalls?: StreamingToolCall[];
+    toolResults?: StreamingToolResult[];
+    activeToolCallIds?: string[];
   },
 ): Promise<void> {
   const records = await listStreamingMessagesByMessageId(ctx, message._id);
@@ -174,6 +198,11 @@ export async function upsertStreamingMessage(
       reasoning: patch.reasoning ?? mergedExisting?.reasoning ?? primary.reasoning,
       status: patch.status ?? mergedExisting?.status ?? primary.status,
       toolCalls: patch.toolCalls ?? mergedExisting?.toolCalls ?? primary.toolCalls,
+      toolResults: patch.toolResults ?? mergedExisting?.toolResults ?? primary.toolResults,
+      activeToolCallIds:
+        patch.activeToolCallIds
+        ?? mergedExisting?.activeToolCallIds
+        ?? primary.activeToolCallIds,
       updatedAt: now,
     });
     await Promise.all(duplicates.map((record) => ctx.db.delete(record._id)));
@@ -187,6 +216,8 @@ export async function upsertStreamingMessage(
     reasoning: patch.reasoning,
     status: patch.status ?? message.status,
     toolCalls: patch.toolCalls,
+    toolResults: patch.toolResults,
+    activeToolCallIds: patch.activeToolCallIds,
     createdAt: now,
     updatedAt: now,
   });
@@ -209,6 +240,7 @@ export async function patchStreamingMessageStatus(
     reasoning: mergedExisting?.reasoning ?? primary.reasoning,
     status,
     toolCalls: mergedExisting?.toolCalls ?? primary.toolCalls,
+    toolResults: mergedExisting?.toolResults ?? primary.toolResults,
     updatedAt: Date.now(),
   });
   await Promise.all(duplicates.map((record) => ctx.db.delete(record._id)));

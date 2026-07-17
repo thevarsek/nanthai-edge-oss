@@ -38,6 +38,7 @@ import {
 } from "./generation_continuation_shared";
 import { classifyTerminalErrorCode } from "./terminal_error";
 import { normalizeGenerationError } from "./generation_error";
+import { scheduleDeferredPresentationWorkflow } from "../presentations/deferred_workflow_scheduler";
 
 function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -494,6 +495,14 @@ export async function runGenerationParticipantHandler(
             continuationCount,
             onHandoff: async (checkpoint) => {
               await scheduleGenerationContinuation(ctx, effectiveArgs, checkpoint);
+            },
+            onDeferredPresentation: async (checkpoint, workflow) => {
+              await scheduleDeferredPresentationWorkflow(
+                ctx,
+                effectiveArgs,
+                checkpoint,
+                workflow,
+              );
             },
           },
     });

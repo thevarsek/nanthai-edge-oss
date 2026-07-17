@@ -49,7 +49,10 @@ import {
 } from "../skills/helpers";
 import { resolveEffectiveSkills, type SkillOverrideEntry } from "../skills/resolver";
 import { StreamWriter } from "./stream_writer";
-import { ToolRegistry } from "../tools/registry";
+import {
+  ToolRegistry,
+  type PresentationToolContext,
+} from "../tools/registry";
 import {
   documentCitationPromptSuffix,
   parseDocumentCitations,
@@ -71,6 +74,7 @@ import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { captureToolRoundArtifacts } from "../tools/artifact_writer";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
 import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_helpers";
+import { artifactTurnSystemGuidance } from "../tools/artifact_write_policy";
 import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
 // NOTE: `buildProgressiveToolRegistry` lives in a "use node" module and must
 // not be imported here — this file runs in the V8 runtime. When the registry
@@ -93,6 +97,8 @@ import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "./loaded_skill_prompt";
 import type { Doc } from "../_generated/dataModel";
 import type { ContextMessage } from "./helpers_types";
+import { restoredLoadedSkillsFromHistory } from "./loaded_skill_history";
+import { buildGenerationContinuationGroup } from "./generation_continuation_checkpoint";
 import {
   imageConfigFromPreferences,
   sanitizeImageGenerationConfig,
@@ -109,8 +115,19 @@ type GenerationMessage = {
   role: string;
   content: string;
   attachments?: MessageWithStoredAttachments["attachments"];
+  presentationContext?: PresentationToolContext;
   [key: string]: unknown;
 };
+
+export function presentationContextForToolExecution(
+  messages: GenerationMessage[],
+  userMessageId: Id<"messages">,
+): PresentationToolContext | undefined {
+  const message = messages.find((candidate) =>
+    candidate.role === "user" && String(candidate._id) === String(userMessageId)
+  );
+  return message?.presentationContext;
+}
 
 export type GenerationLatencyMetrics = {
   participant_preflight_duration_ms?: number;
@@ -224,6 +241,10 @@ export interface GenerateForParticipantParams {
   continuationHandoff?: {
     maxToolRoundsPerInvocation: number;
     onHandoff: (checkpoint: GenerationContinuationCheckpoint) => Promise<void>;
+    onDeferredPresentation?: (
+      checkpoint: GenerationContinuationCheckpoint,
+      workflow: { projectId: Id<"presentationProjects">; toolCallId: string },
+    ) => Promise<void>;
     continuationCount: number;
   };
   v8RuntimeHandoffGuards?: boolean;
@@ -265,13 +286,6 @@ export interface GenerateForParticipantParams {
     skillDefaults?: SkillOverrideEntry[];
   };
 }
-
-type RunGenerationContinuationExtras = {
-  subagentBatchId?: Id<"subagentBatches">;
-  drivePickerBatchId?: Id<"drivePickerBatches">;
-  chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
-  integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
-};
 
 async function resolveSystemPrompt(
   ctx: ActionCtx,
@@ -426,7 +440,7 @@ export async function generateForParticipant(
       : (sanitizeImageGenerationConfig(args.imageConfig) ?? {})
     : undefined;
   const imageOriginSource = args.analyticsSource
-    ?? ((args as RunGenerationArgs & RunGenerationContinuationExtras).subagentBatchId
+    ?? ((args as RunGenerationArgs & { subagentBatchId?: Id<"subagentBatches"> }).subagentBatchId
       ? "subagent_parent_resume"
       : "chat_generation");
   const imageTerminalAnalytics = caps?.hasImageGeneration === true
@@ -470,9 +484,21 @@ export async function generateForParticipant(
     userId: args.userId,
     chatId: String(args.chatId),
     messageId: String(participant.messageId),
+    userMessageId: String(args.userMessageId),
+    presentationContext: presentationContextForToolExecution(
+      allMessages,
+      args.userMessageId,
+    ),
+    turnParticipantCount: Math.max(
+      1,
+      args.participants?.length ?? 0,
+      args.assistantMessageIds?.length ?? 0,
+    ),
+    isIdeascapeTurn: args.expandMultiModelGroups === false,
     jobId: String(participant.jobId),
     generationKey: String(participant.jobId),
     modelId: participant.modelId,
+    requireZdr,
   };
 
   try {
@@ -542,12 +568,22 @@ export async function generateForParticipant(
         ? `${effectiveSystemPrompt}\n\n${documentCitationPrompt}`
         : documentCitationPrompt;
     }
+    const artifactGuidance = artifactTurnSystemGuidance({
+      turnParticipantCount: sharedToolCtx.turnParticipantCount,
+      isIdeascapeTurn: sharedToolCtx.isIdeascapeTurn,
+    });
+    if (artifactGuidance) {
+      effectiveSystemPrompt = effectiveSystemPrompt
+        ? `${effectiveSystemPrompt}\n\n${artifactGuidance}`
+        : artifactGuidance;
+    }
 
     // M18/M30: Build skill catalog using layered resolver and append to system prompt.
     // Progressive disclosure: model sees lightweight catalog XML for `available` skills,
     // calls load_skill on demand. `always` skills get full instructions injected.
     let skillAugmentedPrompt = effectiveSystemPrompt;
     const alwaysSkillProfiles = new Set<SkillToolProfileId>();
+    let effectiveSkillsForRestoration: Doc<"skills">[] = [];
     if (shouldBuildSkillCatalog && modelSupportsTools) {
       const skillCatalogStartedAt = Date.now();
       try {
@@ -590,6 +626,13 @@ export async function generateForParticipant(
             slug: PARALLEL_SUBAGENTS_SKILL_SLUG,
           }));
         }
+        const effectiveSkillIds = new Set([
+          ...catalog.map((skill) => String(skill._id)),
+          ...alwaysSkills.map((skill) => String(skill._id)),
+        ]);
+        effectiveSkillsForRestoration = [...systemSkills, ...userSkills].filter(
+          (skill) => effectiveSkillIds.has(String(skill._id)),
+        );
         for (const skill of alwaysSkills) {
           for (const profile of skill.requiredToolProfiles ?? []) {
             if (isSkillToolProfileId(profile)) alwaysSkillProfiles.add(profile);
@@ -663,11 +706,27 @@ export async function generateForParticipant(
     latencyMetrics.memory_lookup_duration_ms = Date.now() - memoryContextStartedAt;
 
     const requestMessagesStartedAt = Date.now();
+    const historicalLoadedSkills = requestMessagesOverride
+      ? []
+      : restoredLoadedSkillsFromHistory(
+          allMessages as unknown as ContextMessage[],
+          participant.messageId,
+          effectiveSkillsForRestoration,
+        );
+    const initiallyLoadedSkills = mergeLoadedSkills(
+      historicalLoadedSkills,
+      params.restoredLoadedSkills,
+    );
+    const initiallyRestoredProfiles = Array.from(new Set([
+      ...(params.restoredActiveProfiles ?? []),
+      ...initiallyLoadedSkills.flatMap((skill) => skill.requiredToolProfiles),
+      ...alwaysSkillProfiles,
+    ]));
     const shouldAddDateContext = requestMessagesOverride == null && shouldInjectDateContext({
       webSearchEnabled: args.webSearchEnabled,
       enabledIntegrations: progressiveTools?.enabledIntegrations,
-      activeProfiles: params.restoredActiveProfiles,
-      loadedSkills: params.restoredLoadedSkills,
+      activeProfiles: initiallyRestoredProfiles,
+      loadedSkills: initiallyLoadedSkills,
     });
     const legacyRequestMessages = requestMessagesOverride ?? buildRequestMessages({
       messages: allMessages as unknown as ContextMessage[],
@@ -712,20 +771,34 @@ export async function generateForParticipant(
     const restoredProfiles = progressiveTools
       ? Array.from(new Set([
           ...extractProfilesFromConversation(requestMessages),
-          ...(params.restoredActiveProfiles ?? []),
-          ...alwaysSkillProfiles,
+          ...initiallyRestoredProfiles,
         ]))
-      : (params.restoredActiveProfiles ?? []);
+      : initiallyRestoredProfiles;
     let loadedSkills = mergeLoadedSkills(
-      params.restoredLoadedSkills,
+      initiallyLoadedSkills,
       extractLoadedSkillsFromConversation(requestMessages),
     );
     const normalizedRequestMessages = normalizeMessagesForLoadedSkills(
       requestMessages,
       loadedSkills,
     );
+    const continuationGroup = buildGenerationContinuationGroup({
+      generation: args,
+      requireZdr,
+      enabledIntegrations: progressiveTools?.enabledIntegrations ?? [],
+      directToolNames: effectiveDirectToolNames,
+      isPro,
+      allowSubagents: progressiveTools?.allowSubagents ?? false,
+      chatSkillOverrides: preResolvedOverrides?.chatSkillOverrides,
+      personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides,
+      skillDefaults: preResolvedOverrides?.skillDefaults,
+    });
     let effectiveToolRegistry = toolRegistry;
-    if (progressiveTools && shouldRebuildRegistryForDocumentTools && onDocumentToolsScoped) {
+    if (
+      progressiveTools &&
+      onDocumentToolsScoped &&
+      (shouldRebuildRegistryForDocumentTools || restoredProfiles.length > 0)
+    ) {
       const rebuilt = await onDocumentToolsScoped({
         activeProfiles: restoredProfiles,
         directToolNames: effectiveDirectToolNames,
@@ -749,6 +822,44 @@ export async function generateForParticipant(
 
     if (normalizedRequestMessages.length === 0) {
       throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "No request messages to send" });
+    }
+
+    if (
+      params.v8RuntimeHandoffGuards === true &&
+      continuationHandoff &&
+      !forceToolChoiceNone &&
+      hasNodeRequiredProfiles(restoredProfiles)
+    ) {
+      await continuationHandoff.onHandoff({
+        participant,
+        group: continuationGroup,
+        checkpointVersion: "v2",
+        assembledCheckpoint: {
+          policyVersion: "m38.policy.v1",
+          assemblerVersion: "m38.assembler.v1",
+          artifactRefs: [],
+          memoryRefs: [],
+          rehydrationDirectives: [],
+          activeProfiles: restoredProfiles,
+          loadedSkills,
+        },
+        messages: normalizedRequestMessages,
+        usage: params.initialTotalUsage ?? undefined,
+        toolCalls: params.initialToolCalls ?? [],
+        toolResults: params.initialToolResults ?? [],
+        activeProfiles: restoredProfiles,
+        loadedSkills,
+        compactionCount: params.initialCompactionCount ?? 0,
+        continuationCount: continuationHandoff.continuationCount + 1,
+      });
+      return {
+        deferredForSubagents: false,
+        cancelled: false,
+        failed: false,
+        continued: true,
+        usage: params.initialTotalUsage,
+        latencies: latencyMetrics,
+      };
     }
 
     if (promotedRequest.events.length > 0) {
@@ -976,10 +1087,16 @@ export async function generateForParticipant(
       onToolCallStart: async (toolCall) => {
         // Write in-progress tool call to DB so clients can show it immediately
         // (before the full stream finishes and onToolRoundStart fires).
-        const stableId = toolCall.id || `pending-tool-${progressiveToolCalls.length}-${toolCall.index}`;
+        const pendingId = pendingProgressiveToolCallsByIndex.get(toolCall.index);
+        const stableId = toolCall.id
+          || pendingId
+          || `pending-tool-${progressiveToolCalls.length}-${toolCall.index}`;
         if (!toolCall.id) {
           pendingProgressiveToolCallsByIndex.set(toolCall.index, stableId);
+        } else if (pendingId && pendingId !== toolCall.id) {
+          activeProgressiveToolCallIDs.delete(pendingId);
         }
+        activeProgressiveToolCallIDs.add(stableId);
         const existingIndex = progressiveToolCalls.findIndex((tc) => tc.id === stableId);
         if (existingIndex >= 0) {
           progressiveToolCalls[existingIndex] = {
@@ -999,6 +1116,8 @@ export async function generateForParticipant(
             messageId: participant.messageId,
             streamingMessageId,
             toolCalls: progressiveToolCalls,
+            activeToolCallIds: Array.from(activeProgressiveToolCallIDs),
+            toolResults: progressiveToolResults,
           },
         );
       },
@@ -1027,7 +1146,16 @@ export async function generateForParticipant(
     // M13: Compaction-aware generation wrapper. Handles initial streaming,
     // tool-call loop, and automatic context compaction when the context
     // window or action timeout is approaching limits.
-    const progressiveToolCalls: RecordedToolCall[] = [];
+    // A continuation starts a fresh action, but the live transcript must not
+    // forget tools that completed in earlier actions. Seed the progressive
+    // projection from the durable checkpoint, then append this action's calls.
+    const progressiveToolCalls: RecordedToolCall[] = [
+      ...(params.initialToolCalls ?? []),
+    ];
+    const progressiveToolResults: RecordedToolResult[] = [
+      ...(params.initialToolResults ?? []),
+    ];
+    const activeProgressiveToolCallIDs = new Set<string>();
     const pendingProgressiveToolCallsByIndex = new Map<number, string>();
     const toolRoundStartedAtByRound = new Map<number, number>();
     const activeProfiles = new Set<SkillToolProfileId>(
@@ -1045,6 +1173,7 @@ export async function generateForParticipant(
       toolCtx: sharedToolCtx,
       onToolRoundStart: async (_round, toolCalls) => {
         toolRoundStartedAtByRound.set(_round, Date.now());
+        activeProgressiveToolCallIDs.clear();
         for (const [index, tc] of toolCalls.entries()) {
           const recordedToolCall = {
             id: tc.id,
@@ -1060,6 +1189,7 @@ export async function generateForParticipant(
           } else {
             progressiveToolCalls.push(recordedToolCall);
           }
+          activeProgressiveToolCallIDs.add(tc.id);
         }
         pendingProgressiveToolCallsByIndex.clear();
         await ctx.runMutation(
@@ -1068,6 +1198,44 @@ export async function generateForParticipant(
             messageId: participant.messageId,
             streamingMessageId,
             toolCalls: progressiveToolCalls,
+            activeToolCallIds: Array.from(activeProgressiveToolCallIDs),
+            toolResults: progressiveToolResults,
+          },
+        );
+      },
+      onToolRoundComplete: async (_round, results) => {
+        activeProgressiveToolCallIDs.clear();
+        for (const { toolCallId, result } of results) {
+          if (result.deferred?.kind === "presentation_workflow") {
+            activeProgressiveToolCallIDs.add(toolCallId);
+            continue;
+          }
+          const toolName = progressiveToolCalls.find((call) => call.id === toolCallId)?.name ?? "unknown";
+          const payload = result.success
+            ? result.data
+            : result.data && typeof result.data === "object"
+              ? { error: result.error, ...result.data as Record<string, unknown> }
+              : { error: result.error };
+          const recorded: RecordedToolResult = {
+            toolCallId,
+            toolName,
+            result: JSON.stringify(payload).slice(0, 50_000),
+            isError: result.success ? undefined : true,
+          };
+          const existingIndex = progressiveToolResults.findIndex(
+            (entry) => entry.toolCallId === toolCallId,
+          );
+          if (existingIndex >= 0) progressiveToolResults[existingIndex] = recorded;
+          else progressiveToolResults.push(recorded);
+        }
+        await ctx.runMutation(
+          internal.chat.mutations.updateMessageToolCalls,
+          {
+            messageId: participant.messageId,
+            streamingMessageId,
+            toolCalls: progressiveToolCalls,
+            activeToolCallIds: Array.from(activeProgressiveToolCallIDs),
+            toolResults: progressiveToolResults,
           },
         );
       },
@@ -1174,6 +1342,7 @@ export async function generateForParticipant(
       initialCompactionCount: params.initialCompactionCount ?? 0,
       maxToolRoundsPerInvocation: continuationHandoff?.maxToolRoundsPerInvocation,
       requireZdr,
+      loadedSkillSlugs: loadedSkills.map((skill) => skill.skill),
     });
 
     const result = genResult.streamResult;
@@ -1210,6 +1379,57 @@ export async function generateForParticipant(
       const drivePickerDeferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "drive_picker",
       );
+      const presentationDeferred = genResult.deferredToolRound.deferredResults.find(
+        (entry) => entry.payload.kind === "presentation_workflow",
+      );
+      if (presentationDeferred) {
+        const projectId = (presentationDeferred.payload.data as { projectId?: unknown } | undefined)?.projectId;
+        if (typeof projectId !== "string" || !continuationHandoff?.onDeferredPresentation) {
+          throw new ConvexError({
+            code: "INTERNAL_ERROR" as const,
+            message: "Presentation workflow paused without a durable continuation target.",
+          });
+        }
+        await continuationHandoff.onDeferredPresentation({
+          participant,
+          group: continuationGroup,
+          checkpointVersion: "v2",
+          assembledCheckpoint: {
+            policyVersion: "m38.policy.v1",
+            assemblerVersion: "m38.assembler.v1",
+            artifactRefs: [],
+            memoryRefs: [],
+            rehydrationDirectives: [],
+            activeProfiles: Array.from(activeProfiles),
+            loadedSkills,
+          },
+          messages: normalizeMessagesForLoadedSkills(
+            genResult.deferredToolRound.resumeConversationMessages,
+            loadedSkills,
+          ),
+          usage: genResult.totalUsage ?? undefined,
+          toolCalls: collectedToolCalls,
+          toolResults: collectedToolResults,
+          activeProfiles: Array.from(activeProfiles),
+          loadedSkills,
+          compactionCount: genResult.compactionCount,
+          continuationCount: continuationHandoff.continuationCount + 1,
+          partialContent: writer.totalContent || undefined,
+          partialReasoning: writer.totalReasoning || undefined,
+        }, {
+          projectId: projectId as Id<"presentationProjects">,
+          toolCallId: presentationDeferred.toolCallId,
+        });
+        return {
+          deferredForSubagents: false,
+          cancelled: false,
+          failed: false,
+          continued: true,
+          usage: genResult.totalUsage,
+          generationId: result.generationId,
+          latencies: latencyMetrics,
+        };
+      }
       if (!deferred && drivePickerDeferred) {
         const deferredToolCall = genResult.deferredToolRound.toolCalls.find(
           (entry) => entry.id === drivePickerDeferred.toolCallId,
@@ -1320,34 +1540,9 @@ export async function generateForParticipant(
         genResult.continuation.messages,
         loadedSkills,
       );
-      const groupArgs = args as RunGenerationArgs & RunGenerationContinuationExtras;
       await continuationHandoff.onHandoff({
         participant,
-        group: {
-          assistantMessageIds: args.assistantMessageIds,
-          generationJobIds: args.generationJobIds,
-          userMessageId: args.userMessageId,
-          userId: args.userId,
-          expandMultiModelGroups: args.expandMultiModelGroups,
-          webSearchEnabled: args.webSearchEnabled,
-          requireZdrOverride: requireZdr,
-          effectiveIntegrations: progressiveTools?.enabledIntegrations ?? [],
-          directToolNames: effectiveDirectToolNames,
-          isPro,
-          allowSubagents: progressiveTools?.allowSubagents ?? false,
-          disableTools: (args as { disableTools?: boolean }).disableTools,
-          searchSessionId: args.searchSessionId,
-          subagentBatchId: groupArgs.subagentBatchId,
-          drivePickerBatchId: groupArgs.drivePickerBatchId,
-          imageConfig: args.imageConfig,
-          chatSkillOverrides: preResolvedOverrides?.chatSkillOverrides,
-          chatIntegrationOverrides: groupArgs.chatIntegrationOverrides,
-          personaSkillOverrides: preResolvedOverrides?.personaSkillOverrides,
-          skillDefaults: preResolvedOverrides?.skillDefaults,
-          integrationDefaults: groupArgs.integrationDefaults,
-          analytics: groupArgs.analytics,
-          analyticsSource: groupArgs.analyticsSource,
-        },
+        group: continuationGroup,
         checkpointVersion: "v2",
         assembledCheckpoint: {
           policyVersion: "m38.policy.v1",

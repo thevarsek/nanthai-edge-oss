@@ -6,7 +6,7 @@ import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type Clip
 import { ArrowUp, Square, Plus, Mic, Video } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
-import type { Participant } from "@/hooks/useChat";
+import type { Participant, PresentationContext } from "@/hooks/useChat";
 import { useMentionAutocomplete, type MentionSuggestion } from "@/hooks/useMentionAutocomplete";
 import { useAudioRecorder, type RecordingResult } from "@/hooks/useAudioRecorder";
 import { ChatPlusMenu, type PlusMenuItem } from "@/components/chat/ChatPlusMenu";
@@ -22,6 +22,7 @@ import { useAttachments } from "@/components/chat/MessageInput.attachments.hook"
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import { getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
+import { PresentationContextChip } from "@/components/chat/PresentationContextChip";
 
 export type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 
@@ -33,6 +34,7 @@ interface Props {
     text: string;
     attachments?: AttachmentPreview[];
     advisorSnapshot?: QueuedAdvisorSnapshot;
+    presentationContext?: PresentationContext;
   }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
   onCreateUploadUrl: () => Promise<string>;
@@ -68,6 +70,12 @@ interface Props {
   canCaptureQueuedAdvisorSnapshot?: boolean;
   captureQueuedAdvisorSnapshot?: () => QueuedAdvisorSnapshot | null;
   restoreQueuedAdvisorSnapshot?: (snapshot: QueuedAdvisorSnapshot) => void;
+  /** Ephemeral slide/element target for the next successful normal chat send. */
+  presentationTarget?: {
+    context: PresentationContext;
+    label: string;
+  };
+  onRemovePresentationTarget?: () => void;
 }
 
 export function MessageInput({
@@ -86,6 +94,8 @@ export function MessageInput({
   canCaptureQueuedAdvisorSnapshot = true,
   captureQueuedAdvisorSnapshot,
   restoreQueuedAdvisorSnapshot,
+  presentationTarget,
+  onRemovePresentationTarget,
 }: Props) {
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -113,6 +123,10 @@ export function MessageInput({
     setUploadError(null);
     setDismissedSuggestionStorageIds(new Set());
   }, [chatId, setAttachments, setUploadError]);
+
+  useEffect(() => {
+    if (presentationTarget) textareaRef.current?.focus();
+  }, [presentationTarget]);
 
   // Write-through: every change to text or attachments is persisted.
   useEffect(() => {
@@ -158,12 +172,17 @@ export function MessageInput({
     const outgoingAttachments = [...attachments, ...extraAttachments];
     if (!trimmed && outgoingAttachments.length === 0) return;
     if (disabled || isGenerating || isUploading) return;
+    if (presentationTarget && participantCount > 1) return;
     if (isAutonomousActive && onIntervene && trimmed) {
       onIntervene(trimmed);
     } else {
       let result: boolean | void;
       try {
-        result = await onSend({ text: trimmed, attachments: outgoingAttachments });
+        result = await onSend({
+          text: trimmed,
+          attachments: outgoingAttachments,
+          ...(presentationTarget ? { presentationContext: presentationTarget.context } : {}),
+        });
       } catch {
         return;
       }
@@ -173,7 +192,7 @@ export function MessageInput({
     clearAttachments();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, extraAttachments, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, mention]);
+  }, [text, attachments, extraAttachments, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, mention, presentationTarget, participantCount]);
 
   const {
     queuedFollowUps,
@@ -213,6 +232,7 @@ export function MessageInput({
       });
     },
     canCaptureQueuedAdvisorSnapshot,
+    hasEphemeralContext: Boolean(presentationTarget),
     captureQueuedAdvisorSnapshot,
     restoreQueuedAdvisorSnapshot,
   });
@@ -282,8 +302,9 @@ export function MessageInput({
     [onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef, handlePasteFiles],
   );
 
-  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0) && !disabled && !isGenerating && !isUploading;
-  const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled;
+  const artifactWriteBlocked = Boolean(presentationTarget && participantCount > 1);
+  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0) && !disabled && !isGenerating && !isUploading && !artifactWriteBlocked;
+  const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled && !artifactWriteBlocked;
   const suggestionStorageId = generatedDocumentSuggestion?.storageId;
   const isSuggestionAlreadyAttached = !!suggestionStorageId && (
     attachments.some((attachment) => attachment.storageId === suggestionStorageId) ||
@@ -361,6 +382,14 @@ export function MessageInput({
             ×
           </button>
         </div>
+      )}
+
+      {presentationTarget && (
+        <PresentationContextChip
+          target={presentationTarget}
+          onRemove={onRemovePresentationTarget}
+          writeBlocked={artifactWriteBlocked}
+        />
       )}
 
       <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} isVideoMode={isVideoMode && supportsFrameImages} onChangeRole={changeAttachmentRole} />

@@ -14,6 +14,7 @@ const MIME_BY_EXT: Record<string, string> = {
 const FILE_PRODUCING_TOOLS = new Set([
   "generate_docx", "edit_docx",
   "generate_pptx", "edit_pptx",
+  "create_presentation", "edit_presentation",
   "generate_xlsx", "edit_xlsx",
   "generate_text_file",
   "generate_eml",
@@ -36,6 +37,8 @@ export function extractGeneratedFiles(
   toolName: string;
   title?: string;
   summary?: string;
+  presentationProjectId?: Id<"presentationProjects">;
+  presentationRevision?: number;
 }> {
   const files: Array<{
     storageId: Id<"_storage">;
@@ -46,6 +49,8 @@ export function extractGeneratedFiles(
     toolName: string;
     title?: string;
     summary?: string;
+    presentationProjectId?: Id<"presentationProjects">;
+    presentationRevision?: number;
   }> = [];
 
   for (const tr of toolResults) {
@@ -77,6 +82,14 @@ export function extractGeneratedFiles(
         }
         if (typeof candidate.summary === "string") {
           Object.assign(file, { summary: candidate.summary });
+        }
+        if (typeof candidate.presentationProjectId === "string") {
+          Object.assign(file, {
+            presentationProjectId: candidate.presentationProjectId as Id<"presentationProjects">,
+          });
+        }
+        if (typeof candidate.presentationRevision === "number") {
+          Object.assign(file, { presentationRevision: candidate.presentationRevision });
         }
         files.push(file);
       }

@@ -77,7 +77,9 @@ test("readPptx reports empty presentations and non-Error storage payload failure
   });
 
   const empty = await readPptx.execute({
+    userId: "user_1",
     ctx: {
+      runQuery: async () => ({ storageId: "deck_empty" }),
       storage: {
         get: async () => new Blob([emptyDeck]),
       },
@@ -88,7 +90,9 @@ test("readPptx reports empty presentations and non-Error storage payload failure
   assert.match((empty.data as any).message, /no extractable text/i);
 
   const badBytes = await readPptx.execute({
+    userId: "user_1",
     ctx: {
+      runQuery: async () => ({ storageId: "deck_bad_bytes" }),
       storage: {
         get: async () => ({
           arrayBuffer: async () => {
@@ -100,4 +104,16 @@ test("readPptx reports empty presentations and non-Error storage payload failure
   } as any, { storageId: "deck_bad_bytes" });
   assert.equal(badBytes.success, false);
   assert.match(String(badBytes.error), /bad bytes/);
+
+  const unauthorized = await readPptx.execute({
+    userId: "user_1",
+    ctx: {
+      runQuery: async () => null,
+      storage: {
+        get: async () => new Blob([emptyDeck]),
+      },
+    },
+  } as any, { storageId: "deck_foreign" });
+  assert.equal(unauthorized.success, false);
+  assert.match(String(unauthorized.error), /not available to this user/i);
 });

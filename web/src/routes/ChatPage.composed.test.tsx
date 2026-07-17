@@ -334,8 +334,34 @@ vi.mock("@/components/chat/MessageBubble", async () => {
     "@/components/chat/SearchSessionContext",
   );
   return {
-    MessageBubble: ({ message }: { message: { searchSessionId?: string } }) => {
+    MessageBubble: ({ message, onOpenGeneratedFile }: {
+      message: { _id: string; searchSessionId?: string; content?: string };
+      onOpenGeneratedFile?: (request: {
+        file: {
+          _id: string;
+          filename: string;
+          mimeType: string;
+          presentationProjectId: string;
+          presentationRevision: number;
+        };
+        message: unknown;
+      }) => void;
+    }) => {
       const { onCancel } = useSearchSessionContext();
+      if (message.content === "deck") {
+        return (
+          <button type="button" onClick={() => onOpenGeneratedFile?.({
+            file: {
+              _id: "generated_deck",
+              filename: "Launch plan.pptx",
+              mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+              presentationProjectId: "presentation_1",
+              presentationRevision: 7,
+            },
+            message,
+          })}>open-deck</button>
+        );
+      }
       if (!message.searchSessionId) return null;
       return (
         <button type="button" onClick={() => onCancel(message.searchSessionId!)}>
@@ -353,6 +379,31 @@ vi.mock("@/components/chat/BranchIndicator", () => ({
     onNavigate: (messageId: Id<"messages">, direction: "prev" | "next") => void;
   }) => (
     <button type="button" onClick={() => onNavigate(node.messageId, "next")}>branch-next</button>
+  ),
+}));
+vi.mock("@/components/chat/PresentationArtifactPanel", () => ({
+  PresentationArtifactPanel: ({ onStageContext }: {
+    onStageContext: (target: {
+      context: {
+        projectId: string;
+        projectRevision: number;
+        slideId: string;
+        slideRevision: number;
+        elementId: string;
+      };
+      label: string;
+    }) => void;
+  }) => (
+    <button type="button" onClick={() => onStageContext({
+      context: {
+        projectId: "presentation_1",
+        projectRevision: 7,
+        slideId: "slide-2",
+        slideRevision: 4,
+        elementId: "headline",
+      },
+      label: "Launch plan.pptx · Slide 2 · headline",
+    })}>stage-presentation</button>
   ),
 }));
 vi.mock("@/components/chat-list/SidebarSections", () => ({ RenameChatDialog: () => null }));
@@ -473,6 +524,38 @@ describe("ChatPage composed send behavior", () => {
     expect(screen.getByText("Drive notes.pdf")).toBeInTheDocument();
     expect(clearKBFiles).not.toHaveBeenCalled();
     expect(clearTurnOverrides).not.toHaveBeenCalled();
+  });
+
+  it("opens a generated deck in the existing side panel and sends its staged target once", async () => {
+    const user = userEvent.setup();
+    testState.messages = [{
+      _id: "msg_deck" as Id<"messages">,
+      chatId: "chat_1" as Id<"chats">,
+      role: "assistant",
+      content: "deck",
+      status: "completed",
+      createdAt: 1,
+    }];
+    render(<ChatPage />);
+
+    await user.click(screen.getByRole("button", { name: "open-deck" }));
+    await user.click(screen.getByRole("button", { name: "stage-presentation" }));
+    expect(screen.getByTestId("presentation-context-chip")).toHaveTextContent("Slide 2");
+
+    await user.type(screen.getByRole("textbox"), "Make the headline sharper");
+    await user.click(screen.getByTitle("Send (Enter)"));
+
+    await waitFor(() => expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      text: "Make the headline sharper",
+      presentationContext: {
+        projectId: "presentation_1",
+        projectRevision: 7,
+        slideId: "slide-2",
+        slideRevision: 4,
+        elementId: "headline",
+      },
+    })));
+    expect(screen.queryByTestId("presentation-context-chip")).not.toBeInTheDocument();
   });
 
   it("ignores stale branch switch completions that resolve out of order", async () => {

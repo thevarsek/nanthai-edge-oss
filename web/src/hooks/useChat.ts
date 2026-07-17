@@ -34,6 +34,15 @@ export interface Participant {
   reasoningEffort?: string | null;
 }
 
+/** Ephemeral target used to scope the next chat turn to a presentation artifact. */
+export interface PresentationContext {
+  projectId: string;
+  projectRevision: number;
+  slideId?: string;
+  slideRevision?: number;
+  elementId?: string;
+}
+
 export interface RetryContract {
   participants: Participant[];
   searchMode: "none" | "normal" | "web";
@@ -82,6 +91,15 @@ export interface ToolResult {
   isError?: boolean;
 }
 
+export interface PresentationGenerationProgress {
+  phase: "queued" | "planning" | "repairing_plan" | "generating" |
+    "repairing_generation" | "exporting" | "complete" | "failed";
+  progress: number;
+  title: string;
+  slideCount?: number;
+  error?: string;
+}
+
 export type MessageStatus =
   | "pending"
   | "streaming"
@@ -104,6 +122,9 @@ export interface Message {
   reasoning?: string;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
+  activeToolCallIds?: string[];
+  presentationProgress?: PresentationGenerationProgress;
+  presentationContext?: PresentationContext;
   generatedFileIds?: Id<"generatedFiles">[];
   generatedChartIds?: Id<"generatedCharts">[];
   parentMessageIds?: Id<"messages">[];
@@ -200,6 +221,10 @@ export interface StreamingMessage {
   reasoning?: string;
   status: MessageStatus;
   toolCalls?: ToolCall[];
+  toolResults?: ToolResult[];
+  activeToolCallIds?: string[];
+  presentationProgress?: PresentationGenerationProgress;
+  updatedAt?: number;
 }
 
 export interface Chat {
@@ -278,6 +303,7 @@ export interface SendMessageArgs extends Record<string, unknown> {
   subagentsEnabled?: boolean;
   advisorSelections?: AdvisorSelection[];
   advisorBrief?: string;
+  presentationContext?: PresentationContext;
   videoConfig?: {
     duration?: number;
     aspectRatio?: string;
@@ -433,6 +459,12 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
       try {
         const result = await sendMessageMutation({
           ...args,
+          presentationContext: args.presentationContext
+            ? {
+                ...args.presentationContext,
+                projectId: args.presentationContext.projectId as Id<"presentationProjects">,
+              }
+            : undefined,
           analytics,
           participants: args.participants.map(stripLocalParticipantFields),
         });

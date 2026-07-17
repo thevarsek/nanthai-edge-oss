@@ -12,6 +12,7 @@ import { skillToolProfile } from "../schema_validators";
 
 /** Union of valid skill tool profile values. */
 type SkillToolProfile =
+  | "presentations"
   | "docs"
   | "analytics"
   | "workspace"

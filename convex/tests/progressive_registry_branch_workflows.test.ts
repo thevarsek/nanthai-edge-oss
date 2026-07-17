@@ -203,6 +203,7 @@ test("registry params, profile availability, and merge helpers cover empty and g
       allowSubagents: false,
     }),
     [
+      "presentations",
       "docs",
       "analytics",
       "workspace",

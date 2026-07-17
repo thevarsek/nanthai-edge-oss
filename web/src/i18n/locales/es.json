@@ -686,6 +686,11 @@
   "research_paper": "Artículo de investigación",
   "research_paper_arg": "Documento de investigación ({{var1}})",
   "research_paper_requires_a_single_participant": "El artículo de investigación requiere un solo participante.",
+  "artifact_write_requires_single_participant": "Para editar una presentación debe haber un solo participante. Abre + → Participantes y elimina participantes hasta que quede uno. Puedes volver a añadirlos después.",
+  "create_presentation": "Crear presentación",
+  "load_skill": "Cargar habilidad",
+  "presentation_target": "Destino de presentación",
+  "remove_presentation_target": "Quitar objetivo de presentación",
   "research_papers": "Artículos de investigación",
   "reset": "Restablecer",
   "reset_purchases": "Restablecer compras",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "Asesores",
   "pe_cap_advisors_title": "Asesores Persona privados",
   "pe_cap_advisors_desc": "Hasta tres Personas revisan un turno en privado y la respuesta final sintetiza sus consejos en directo. Todos los participantes de texto reciben las mismas notas privadas.",
-  "pe_scenario_5": "Una decisión de producto revisada en privado por un defensor del cliente, un líder técnico y un especialista en riesgos."
+  "pe_scenario_5": "Una decisión de producto revisada en privado por un defensor del cliente, un líder técnico y un especialista en riesgos.",
+  "presentation_progress_queued": "Preparando la presentación",
+  "presentation_progress_planning": "Planificando la historia de las diapositivas",
+  "presentation_progress_repairing_plan": "Reparando el plan de diapositivas",
+  "presentation_progress_generating": "Generando {{count}} diapositivas",
+  "presentation_progress_repairing_generation": "Reparando y validando las diapositivas",
+  "presentation_progress_exporting": "Creando el archivo de PowerPoint",
+  "presentation_progress_complete": "Presentación lista",
+  "presentation_progress_failed": "No se pudo generar la presentación"
 }

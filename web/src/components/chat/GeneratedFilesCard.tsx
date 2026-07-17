@@ -22,6 +22,8 @@ export type GeneratedFileForPreview = {
   downloadUrl?: string | null;
   documentId?: Id<"documents"> | string;
   documentVersionId?: Id<"documentVersions"> | string;
+  presentationProjectId?: string;
+  presentationRevision?: number;
   toolName?: string;
 };
 
@@ -40,6 +42,7 @@ function isImage(mimeType: string): boolean {
 }
 
 function opensInDocumentPanel(file: GeneratedFileForPreview, downloadUrl: string | null): boolean {
+  if (file.presentationProjectId) return true;
   const name = file.filename.toLowerCase();
   const mimeType = file.mimeType.toLowerCase();
   if (mimeType.includes("pdf") || name.endsWith(".pdf")) return Boolean(downloadUrl);
@@ -194,7 +197,7 @@ export function GeneratedFilesCard({
 
       {/* Non-image file download links */}
       {others.map(({ file: f, downloadUrl }) => {
-        const canOpenInPanel = onOpenFile && opensInDocumentPanel(f, downloadUrl);
+        const canOpenInPanel = Boolean(onOpenFile && opensInDocumentPanel(f, downloadUrl));
         const content = (
           <>
           <div className={workspaceIconBlockClass()}>
@@ -209,7 +212,7 @@ export function GeneratedFilesCard({
           </div>
           </>
         );
-        if (!downloadUrl) {
+        if (!downloadUrl && !canOpenInPanel) {
           return (
             <div
               key={f._id}
@@ -222,7 +225,7 @@ export function GeneratedFilesCard({
             </div>
           );
         }
-        if (canOpenInPanel) {
+        if (canOpenInPanel && onOpenFile) {
           return (
             <div
               key={f._id}
@@ -240,28 +243,30 @@ export function GeneratedFilesCard({
               >
                 {content}
               </button>
-              <a
-                href={downloadUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                download={f.filename}
-                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-3 hover:text-foreground"
-                aria-label={t("download_filename", { filename: f.filename })}
-                title={t("download")}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  captureArtifact("downloaded", f);
-                }}
-              >
-                <Download size={16} />
-              </a>
+              {downloadUrl && !f.presentationProjectId && (
+                <a
+                  href={downloadUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={f.filename}
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-3 hover:text-foreground"
+                  aria-label={t("download_filename", { filename: f.filename })}
+                  title={t("download")}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    captureArtifact("downloaded", f);
+                  }}
+                >
+                  <Download size={16} />
+                </a>
+              )}
             </div>
           );
         }
         return (
           <a
             key={f._id}
-            href={downloadUrl}
+            href={downloadUrl ?? undefined}
             target="_blank"
             rel="noopener noreferrer"
             download={f.filename}

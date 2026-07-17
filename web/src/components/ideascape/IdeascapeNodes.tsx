@@ -12,6 +12,7 @@ import { ImageGenerationPlaceholder } from "@/components/chat/ImageGenerationPla
 import { ImageGenerationPartialSummary } from "@/components/chat/ImageGenerationPartialSummary";
 import { displayMessageContent } from "@/lib/persistedGenerationError";
 import { AdvisorBatchPanel } from "@/components/chat/AdvisorBatchPanel";
+import { IdeascapeArtifactList, type IdeascapeArtifact } from "./IdeascapeArtifactList";
 
 export { Connectors } from "./IdeascapeConnectors";
 
@@ -56,6 +57,8 @@ export function MessageNode({
   visualState,
   isImageGeneration,
   showAdvisorPanel,
+  artifacts = [],
+  onOpenArtifact,
   onPointerDown,
   onResizePointerDown,
   shouldSuppressClick,
@@ -70,6 +73,8 @@ export function MessageNode({
   visualState: NodeVisualState;
   isImageGeneration?: boolean;
   showAdvisorPanel?: boolean;
+  artifacts?: IdeascapeArtifact[];
+  onOpenArtifact?: (message: Message, artifact: IdeascapeArtifact) => void;
   onPointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   onResizePointerDown: (e: ReactPointerEvent, id: Id<"messages">) => void;
   shouldSuppressClick?: (id: Id<"messages">) => boolean;
@@ -211,6 +216,10 @@ export function MessageNode({
               </div>
             )}
             <ImageGenerationPartialSummary result={message.imageGenerationResult} compact />
+            <IdeascapeArtifactList
+              artifacts={artifacts}
+              onOpen={(artifact) => onOpenArtifact?.(message, artifact)}
+            />
             {!!message.videoUrls?.length && (
               <div className="space-y-2">
                 {message.videoUrls.slice(0, 1).map((url, index) => (

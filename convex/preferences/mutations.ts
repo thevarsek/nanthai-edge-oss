@@ -10,7 +10,7 @@ import { ConvexError, v } from "convex/values";
 import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
-import { requireAuth, requirePro } from "../lib/auth";
+import { optionalAuth, requireAuth, requirePro } from "../lib/auth";
 import { validateImagePreferenceWrite } from "./image_defaults";
 
 
@@ -357,7 +357,12 @@ export const invalidatePreferenceWriteSession = mutation({
   args: {},
   returns: v.number(),
   handler: async (ctx) => {
-    const { userId } = await requireAuth(ctx);
+    // This is best-effort session teardown. Clerk can finish signing out just
+    // before the client cleanup mutation reaches Convex; in that case there is
+    // no user whose data can be touched, so complete the cleanup as a no-op.
+    const identity = await optionalAuth(ctx);
+    if (!identity) return 0;
+    const { userId } = identity;
     const now = Date.now();
     const existing = await ctx.db
       .query("userPreferences")

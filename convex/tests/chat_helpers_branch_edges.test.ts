@@ -78,3 +78,41 @@ test("formatMemoryContext groups pinned preferences, profile facts, and contextu
   assert.match(memoryContext ?? "", /Use terse answers\. \[pinned\]/);
   assert.equal(formatMemoryContext([]), undefined);
 });
+
+test("buildRequestMessages injects exact presentation selection as hidden user context", () => {
+  const built = buildRequestMessages({
+    messages: [
+      {
+        _id: "user_1",
+        chatId: "chat_1",
+        role: "user",
+        content: "Make this headline shorter",
+        presentationContext: {
+          projectId: "project_1",
+          projectRevision: 7,
+          slideId: "slide_02",
+          slideRevision: 3,
+          elementId: "headline",
+        },
+        parentMessageIds: [],
+        status: "completed",
+        createdAt: 1,
+      },
+      {
+        _id: "assistant_1",
+        chatId: "chat_1",
+        role: "assistant",
+        content: "",
+        parentMessageIds: ["user_1"],
+        status: "streaming",
+        createdAt: 2,
+      },
+    ] as any,
+    excludeMessageId: "assistant_1" as any,
+  });
+  const content = JSON.stringify(built[0]?.content);
+  assert.match(content, /projectId project_1/);
+  assert.match(content, /projectRevision 7/);
+  assert.match(content, /slideId slide_02/);
+  assert.match(content, /elementId headline/);
+});

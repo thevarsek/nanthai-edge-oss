@@ -51,6 +51,7 @@ import {
   nextActiveBranchFocusOrder,
   resolveIdeascapeBranchLeafId,
 } from "@/routes/IdeascapePage.branchFocus";
+import { useIdeascapeArtifactPreview } from "@/routes/useIdeascapeArtifactPreview";
 
 // ─── Viewport persistence ───────────────────────────────────────────────────
 
@@ -278,6 +279,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { messages, chat, isLoading, sendMessage, cancelGeneration, updateChat, isGenerating } = useChat(chatId);
+  const artifactPreview = useIdeascapeArtifactPreview(messages);
   const { participants: convexParticipants, addParticipant, removeParticipant, setParticipants: setParticipantsMut } = useParticipants(chatId);
   const { prefs, modelSettings, proStatus, personas } = useSharedData();
   const modelSummaries = useModelSummaries();
@@ -794,7 +796,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full relative">
+    <div className="flex min-h-0 flex-1 h-full">
+      <div className="relative flex min-w-0 flex-1 flex-col h-full">
       <Toolbar chatTitle={chat?.title ?? t("ideascape_default_title")} viewport={viewport}
         onResetView={handleResetView} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut}
         showContext={showContext} onToggleContext={() => setShowContext((v) => !v)}
@@ -807,9 +810,11 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
         selectedIds={selectedIds} focusedId={focusedId}
         activeBranchIds={activeBranchIds} contextBranchIds={contextBranchIds}
         imageGenerationModelIds={imageGenerationModelIds}
+        artifactsByMessageId={artifactPreview.artifactsByMessageId}
         onViewportChange={handleViewportChange}
         onNodeDragEnd={handleNodeDragEnd} onNodeResizeEnd={handleNodeResizeEnd} onSelectNode={handleSelectNode}
-        onFocusNode={handleFocusNode} onClearSelection={handleClearSelection} />
+        onFocusNode={handleFocusNode} onClearSelection={handleClearSelection}
+        onOpenArtifact={artifactPreview.openArtifact} />
       {showHelp && <IdeascapeHelpDeck onDismiss={dismissHelp} />}
       {showContext && (
         <ContextPanel
@@ -925,6 +930,8 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       {advisors.state.surface === "paywall" && (
         <PaywallModal feature={t("advisors")} onClose={advisors.close} />
       )}
+      </div>
+      {artifactPreview.panel}
     </div>
   );
 }

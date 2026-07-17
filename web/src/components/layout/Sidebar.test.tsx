@@ -80,6 +80,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Research notes")).toBeInTheDocument();
     expect(screen.getByText("Generated agreement is ready")).toBeInTheDocument();
     expect(screen.getByText("Knowledge Base summary")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /presentations/i })).not.toBeInTheDocument();
   });
 
   test("ignores duplicate new-chat clicks and keyboard repeats while creation is pending", async () => {

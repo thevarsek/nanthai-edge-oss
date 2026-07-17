@@ -232,7 +232,19 @@ export async function runGenerationParticipantRuntimeHandler(
     hasAudioOutput: caps?.hasAudioOutput === true,
     hasImageGeneration: caps?.hasImageGeneration === true,
   })) {
-    await ctx.runAction(internal.chat.actions_node.runGenerationParticipantNode, args);
+    try {
+      await ctx.runAction(internal.chat.actions_node.runGenerationParticipantNode, args);
+    } catch (error) {
+      const nodeJob = await ctx.runQuery(
+        internal.chat.queries.getGenerationJobInternal,
+        { jobId: args.participant.jobId },
+      );
+      if (nodeJob && !TERMINAL_GENERATION_JOB_STATUSES.has(nodeJob.status)) {
+        await finalizeParticipantFailureAndCleanup(ctx, args, error);
+        await maybeFinalizeDrivePickerBatch(ctx, args);
+      }
+      throw error;
+    }
     return;
   }
 

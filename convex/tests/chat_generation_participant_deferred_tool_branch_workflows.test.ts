@@ -30,10 +30,17 @@ function streamToolCall(toolName: string, callId = "call_1") {
   } as any;
 }
 
-function registryWithDeferred(kind: "spawn_subagents" | "drive_picker", data: unknown) {
+function registryWithDeferred(
+  kind: "spawn_subagents" | "drive_picker" | "presentation_workflow",
+  data: unknown,
+) {
   const registry = new ToolRegistry();
   registry.register(createTool({
-    name: kind === "spawn_subagents" ? "spawn_subagents" : "drive_picker",
+    name: kind === "spawn_subagents"
+      ? "spawn_subagents"
+      : kind === "drive_picker"
+        ? "drive_picker"
+        : "create_presentation",
     description: "Deferred workflow test tool",
     parameters: { type: "object", properties: {} },
     execute: async () => ({
@@ -233,6 +240,41 @@ test("generateForParticipant stores deferred Drive picker batches without creati
   assert.deepEqual(scheduled, []);
 });
 
+test("generateForParticipant hands deferred presentations to a durable workflow checkpoint", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () =>
+    streamToolCall("create_presentation", "call_presentation")) as any;
+
+  const handoffs: Array<{ checkpoint: Record<string, any>; workflow: Record<string, unknown> }> = [];
+  const { result, mutations } = await runParticipant(
+    registryWithDeferred("presentation_workflow", { projectId: "project_1" }),
+    {
+      continuationHandoff: {
+        continuationCount: 2,
+        maxToolRoundsPerInvocation: 1,
+        onHandoff: async () => undefined,
+        onDeferredPresentation: async (
+          checkpoint: Record<string, any>,
+          workflow: Record<string, unknown>,
+        ) => {
+          handoffs.push({ checkpoint, workflow });
+        },
+      },
+    },
+  );
+
+  assert.equal(result.continued, true);
+  assert.equal(result.deferredForSubagents, false);
+  assert.equal(handoffs.length, 1);
+  assert.deepEqual(handoffs[0]?.workflow, {
+    projectId: "project_1",
+    toolCallId: "call_presentation",
+  });
+  assert.equal(handoffs[0]?.checkpoint.continuationCount, 3);
+  assert.equal(handoffs[0]?.checkpoint.messages.at(-1)?.tool_call_id, "call_presentation");
+  assert.equal(mutations.some((args) => args.status === "completed"), false);
+});
+
 test("generateForParticipant hands off after a completed tool round when invocation budget is exhausted", async (t) => {
   t.after(() => mock.restoreAll());
   mock.method(globalThis, "fetch", async () => streamToolCall("inspect_context", "call_inspect")) as any;
@@ -272,4 +314,71 @@ test("generateForParticipant hands off after a completed tool round when invocat
   assert.equal(handoffs[0]?.continuationCount, 1);
   assert.equal(mutations.some((args) => args.status === "completed"), false);
   assert.deepEqual(scheduled, []);
+});
+
+test("generateForParticipant keeps prior continuation tools in the live projection", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => streamToolCall("inspect_context", "call_current")) as any;
+
+  const { mutations } = await runParticipant(registryWithImmediateTool(), {
+    initialToolCalls: [{
+      id: "call_prior",
+      name: "load_skill",
+      arguments: '{"name":"pptx"}',
+    }],
+    initialToolResults: [{
+      toolCallId: "call_prior",
+      toolName: "load_skill",
+      result: '{"loaded":true}',
+    }],
+    continuationHandoff: {
+      continuationCount: 1,
+      maxToolRoundsPerInvocation: 1,
+      onHandoff: async () => undefined,
+    },
+  });
+
+  const liveToolUpdates = mutations.filter((args) => Array.isArray(args.toolCalls));
+  assert.ok(liveToolUpdates.some((args) => {
+    const calls = args.toolCalls as Array<{ id: string }>;
+    return calls.map((call) => call.id).join(",") === "call_prior,call_current";
+  }));
+});
+
+test("generateForParticipant hands restored presentation profiles from V8 to Node before model use", async (t) => {
+  t.after(() => mock.restoreAll());
+  let fetchCalls = 0;
+  mock.method(globalThis, "fetch", async () => {
+    fetchCalls += 1;
+    return streamToolCall("create_presentation", "should_not_run");
+  }) as any;
+
+  const handoffs: Array<Record<string, unknown>> = [];
+  const { result } = await runParticipant(registryWithImmediateTool(), {
+    restoredActiveProfiles: ["presentations"],
+    restoredLoadedSkills: [{
+      skill: "pptx",
+      name: "Presentations",
+      runtimeMode: "node",
+      instructions: "Use presentation tools directly.",
+      requiredToolProfiles: ["presentations"],
+      requiredToolIds: ["create_presentation"],
+      requiredIntegrationIds: [],
+      requiredCapabilities: [],
+    }],
+    v8RuntimeHandoffGuards: true,
+    continuationHandoff: {
+      continuationCount: 0,
+      maxToolRoundsPerInvocation: 1,
+      onHandoff: async (handoff: Record<string, unknown>) => {
+        handoffs.push(handoff);
+      },
+    },
+  });
+
+  assert.equal(fetchCalls, 0);
+  assert.equal(result.continued, true);
+  assert.equal(handoffs.length, 1);
+  assert.deepEqual(handoffs[0]?.activeProfiles, ["presentations"]);
+  assert.equal((handoffs[0]?.loadedSkills as Array<{ skill: string }>)[0]?.skill, "pptx");
 });

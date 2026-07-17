@@ -6,6 +6,11 @@
   command = "npm install && npx vite build && node scripts/generate-seo-shells.mjs"
   publish = "dist"
 
+[build.environment]
+  # dom-to-pptx exports in the user's browser; its Node CLI dependency must not
+  # download a headless Chrome binary during the Netlify frontend build.
+  PUPPETEER_SKIP_DOWNLOAD = "true"
+
 # Preserve the closest current destination for the only legacy content URL
 # still receiving Google impressions. Keep this before the catch-all host move.
 [[redirects]]
@@ -66,7 +71,6 @@
   from = "/openrouter/callback/"
   to = "/index.html"
   status = 200
-
 [[redirects]]
   from = "/app/*"
   to = "/index.html"

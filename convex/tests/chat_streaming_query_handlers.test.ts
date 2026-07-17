@@ -63,6 +63,10 @@ test("listStreamingMessagesHandler returns only streaming overlay rows for the a
       reasoning: "thinking newer",
       status: "streaming",
       toolCalls: [{ id: "tool_2", name: "search", arguments: "{\"q\":\"new\"}" }],
+      toolResults: undefined,
+      activeToolCallIds: undefined,
+      updatedAt: 2,
+      presentationProgress: undefined,
     },
   ]);
 });
@@ -134,6 +138,10 @@ test("listStreamingMessagesHandler merges split duplicate overlay rows", async (
       reasoning: "split reasoning",
       status: "streaming",
       toolCalls: [{ id: "tool_3", name: "lookup", arguments: "{}" }],
+      toolResults: undefined,
+      activeToolCallIds: undefined,
+      updatedAt: 3,
+      presentationProgress: undefined,
     },
   ]);
 });
@@ -228,8 +236,121 @@ test("listStreamingMessagesHandler preserves terminal overlays for cancelled par
       reasoning: undefined,
       status: "cancelled",
       toolCalls: undefined,
+      toolResults: undefined,
+      activeToolCallIds: undefined,
+      updatedAt: 1,
+      presentationProgress: undefined,
     },
   ]);
+});
+
+test("listStreamingMessagesHandler exposes authoritative presentation progress and failure results", async () => {
+  const streaming = [{
+    _id: "stream_1",
+    messageId: "msg_1",
+    chatId: "chat_1",
+    content: "",
+    status: "streaming",
+    toolCalls: [
+      { id: "call_failed", name: "create_presentation", arguments: "{}" },
+      { id: "call_active", name: "create_presentation", arguments: "{}" },
+    ],
+    createdAt: 1,
+    updatedAt: 2,
+  }];
+  const projects = [
+    {
+      originToolCallId: "call_active",
+      title: "Quarterly plan",
+      status: "generating",
+      workflowPhase: "repairing_generation",
+      plan: [{ id: "slide-1" }, { id: "slide-2" }],
+      updatedAt: 8,
+    },
+    {
+      originToolCallId: "call_failed",
+      title: "Earlier attempt",
+      status: "failed",
+      workflowPhase: "failed",
+      error: "Invalid slide HTML.",
+      updatedAt: 4,
+    },
+  ];
+  const ctx = {
+    auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") return { _id: id, userId: "user_1" };
+        if (id === "msg_1") return { _id: id, chatId: "chat_1", status: "streaming" };
+        return null;
+      },
+      query: (table: string) => ({
+        withIndex: () => table === "streamingMessages"
+          ? { collect: async () => streaming }
+          : { order: () => ({ take: async () => projects }) },
+      }),
+    },
+  } as any;
+
+  const [result] = await listStreamingMessagesHandler(ctx, { chatId: "chat_1" as any });
+
+  assert.deepEqual(result?.activeToolCallIds, ["call_active"]);
+  assert.equal(result?.toolResults?.[0]?.toolCallId, "call_failed");
+  assert.equal(result?.toolResults?.[0]?.isError, true);
+  assert.deepEqual(result?.presentationProgress, {
+    phase: "repairing_generation",
+    progress: 0.76,
+    title: "Quarterly plan",
+    slideCount: 2,
+    error: undefined,
+  });
+  assert.equal(result?.updatedAt, 8);
+});
+
+test("failed presentation progress stops at the last durable repair phase", async () => {
+  const ctx = {
+    auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
+    db: {
+      get: async (id: string) => {
+        if (id === "chat_1") return { _id: id, userId: "user_1" };
+        if (id === "msg_1") return { _id: id, chatId: "chat_1", status: "streaming" };
+        return null;
+      },
+      query: (table: string) => ({
+        withIndex: () => table === "streamingMessages"
+          ? {
+            collect: async () => [{
+              _id: "stream_1",
+              messageId: "msg_1",
+              chatId: "chat_1",
+              content: "",
+              status: "streaming",
+              toolCalls: [{ id: "call_1", name: "create_presentation", arguments: "{}" }],
+              createdAt: 1,
+              updatedAt: 2,
+            }],
+          }
+          : {
+            order: () => ({
+              take: async () => [{
+                originToolCallId: "call_1",
+                title: "Failed deck",
+                status: "failed",
+                workflowPhase: "failed",
+                plan: [{ id: "slide_1" }],
+                error: "Slide layout was invalid.",
+                updatedAt: 4,
+              }],
+            }),
+          },
+      }),
+    },
+  } as any;
+
+  const [result] = await listStreamingMessagesHandler(ctx, { chatId: "chat_1" as any });
+
+  assert.equal(result?.presentationProgress?.phase, "failed");
+  assert.equal(result?.presentationProgress?.progress, 0.76);
 });
 
 test("getStreamingContentHandler prefers streaming overlay content over persisted message content", async () => {

@@ -521,6 +521,51 @@ test("finalizeGenerationHandler creates assistant_edit version and document_upda
   assert.equal(events[0]?.sizeBytes, 13000);
 });
 
+test("finalizeGenerationHandler rejects an edited DOCX based on a superseded source version", async () => {
+  const { ctx, patches, inserts, mid, jid, cid } = buildFinalizeCtx({
+    sourceVersion: {
+      _id: "version_source",
+      documentId: "doc_source",
+      storageId: "storage_original",
+      versionNumber: 1,
+    },
+    sourceDocument: {
+      _id: "doc_source",
+      userId: "user_1",
+      title: "Source Agreement",
+      currentVersionId: "version_newer",
+    },
+    latestVersion: {
+      _id: "version_newer",
+      documentId: "doc_source",
+      versionNumber: 2,
+    },
+  });
+
+  await assert.rejects(
+    () => finalizeGenerationHandler(ctx, {
+      messageId: mid as any,
+      jobId: jid as any,
+      chatId: cid as any,
+      content: "Document updated.",
+      status: "completed",
+      userId: "user_1",
+      generatedFiles: [{
+        storageId: "storage_revised" as any,
+        originalStorageId: "storage_original" as any,
+        filename: "Agreement revised.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        toolName: "edit_docx",
+      }],
+    }),
+    (error: unknown) =>
+      error instanceof Error && error.message.includes("document changed"),
+  );
+
+  assert.equal(inserts.some((entry) => entry.table === "documentVersions"), false);
+  assert.equal(patches.some((entry) => entry.id === "doc_source"), false);
+});
+
 test("finalizeGenerationHandler sets 'Generated video' preview for video-only messages", async () => {
   const { ctx, patches, mid, jid, cid } = buildFinalizeCtx();
 

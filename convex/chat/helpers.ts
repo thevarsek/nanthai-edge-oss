@@ -145,6 +145,10 @@ export function buildRequestMessages(
       if (content.length > 0) {
         parts.push({ type: "text", text: content });
       }
+      const presentationContext = hiddenPresentationContext(msg.presentationContext);
+      if (presentationContext) {
+        parts.push({ type: "text", text: presentationContext });
+      }
       parts.push(...nonImageParts);
       if (!selectedParentImages.sourceMessageIds.has(msg._id)) {
         parts.push(...imageParts);
@@ -187,6 +191,26 @@ export function buildRequestMessages(
 
   const consolidated = consolidateConsecutiveRoles(result);
   return truncateMessages(consolidated, maxContextTokens);
+}
+
+function hiddenPresentationContext(
+  context: ContextMessage["presentationContext"],
+): string | undefined {
+  if (!context) return undefined;
+  const scope = [
+    `projectId ${context.projectId}`,
+    `projectRevision ${context.projectRevision}`,
+    context.slideId ? `slideId ${context.slideId}` : undefined,
+    context.slideRevision !== undefined
+      ? `slideRevision ${context.slideRevision}`
+      : undefined,
+    context.elementId ? `elementId ${context.elementId}` : undefined,
+  ].filter((value): value is string => value !== undefined);
+  return [
+    "[Hidden presentation context selected by the user]",
+    scope.join(", "),
+    "Use read_presentation or edit_presentation for this selection. Treat these IDs as routing context; the tool will validate ownership and revisions.",
+  ].join("\n");
 }
 
 function generatedDocumentContext(msg: {

@@ -48,6 +48,40 @@ describe("useChat streaming reconciliation", () => {
     });
   });
 
+  test("keeps the newest cumulative tool snapshot when an older live emission arrives", () => {
+    const cache = createChatMergeCache();
+    const newest = overlay({
+      updatedAt: 20,
+      toolCalls: [
+        { id: "call_1", name: "load_skill", arguments: "{}" },
+        { id: "call_2", name: "create_presentation", arguments: "{}" },
+        { id: "call_3", name: "create_presentation", arguments: "{}" },
+      ],
+      activeToolCallIds: ["call_3"],
+      presentationProgress: {
+        phase: "generating",
+        progress: 0.58,
+        title: "Roadmap",
+        slideCount: 12,
+      },
+    });
+    reconcileStreamingMessages(cache, [message()], [newest]);
+
+    const result = reconcileStreamingMessages(
+      cache,
+      [message()],
+      [overlay({
+        updatedAt: 10,
+        toolCalls: [{ id: "call_1", name: "load_skill", arguments: "{}" }],
+        activeToolCallIds: [],
+      })],
+    );
+
+    expect(result[0]?.toolCalls).toHaveLength(3);
+    expect(result[0]?.activeToolCallIds).toEqual(["call_3"]);
+    expect(result[0]?.presentationProgress?.phase).toBe("generating");
+  });
+
   test("retains a streaming fallback when a non-terminal base snapshot loses overlay content", () => {
     const cache = createChatMergeCache();
     reconcileStreamingMessages(

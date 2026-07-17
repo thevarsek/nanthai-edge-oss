@@ -1,225 +1,60 @@
-// convex/skills/catalog/pptx.ts
-// =============================================================================
-// System skill: pptx
-// Adapted from .agents/skills/pptx/SKILL.md for NanthAI runtime.
-// NanthAI has generate_pptx, read_pptx, edit_pptx tools.
-// =============================================================================
-
 import { SystemSkillSeedData } from "../mutations_seed";
 
 export const PPTX_SKILL: SystemSkillSeedData = {
   slug: "pptx",
   name: "Presentations",
   summary:
-    "Create, read, edit, and manipulate PowerPoint presentations (.pptx). Covers slide design, " +
-    "layouts, color palettes, typography, speaker notes, and professional deck structure. " +
-    "Use when working with .pptx files, decks, slides, or presentations.",
-  instructionsRaw: `# Presentation (PPTX) Skill
+    "Create and iteratively edit polished, downloadable presentations inside the normal chat flow, or interpret attached PowerPoint decks.",
+  instructionsRaw: `# Presentation Skill
 
-Create, read, and edit PowerPoint presentations using NanthAI's document tools. If Max analytics runtime tools are available, chart PNGs exported from data_python_exec can be embedded into slides the same way as any other stored image.
+Presentations are part of the normal NanthAI conversation. Never send the user to a separate presentation mode, route, library, or studio.
 
-## Tools
+## Multi-participant and Ideascape safety
 
-- **generate_pptx** — Create a new .pptx presentation
-- **read_pptx** — Extract text, structure, and notes from an existing .pptx
-- **edit_pptx** — Replace content in an existing .pptx (read → regenerate)
-- **fetch_image** — Fetch an image from a URL and store it. Returns an imageStorageId to embed in slides.
-- **data_python_exec** — When available, use it to create chart PNGs or cleaned datasets before building the deck.
+Reading and reviewing presentations may use multiple participants. Creating or editing a presentation requires one participant. If more than one participant is active, do not claim a write succeeded; tell the user: "Presentation and Word document creation or editing require a single participant. Open + → Participants and remove participants until only one remains, then try again. You can add the others back afterward."
 
-## Quick-Start Recipe
+Ideascape may open presentation artifacts for review, but existing presentation edits stay in normal chat. Ask the user to open the artifact, return to Chat, and stage the slide or element there.
 
-For most decks, just provide \`title\` and \`slides\`. A navy-blue themed title slide is auto-generated, then each slide in your array becomes a content slide:
+## Clarify before creating
 
-\`\`\`
-generate_pptx({
-  title: "Q1 Business Review",
-  subtitle: "March 2025",
-  slides: [
-    { title: "Revenue Overview", body: "Total revenue: $12.4M\\n+23% YoY growth\\nNorth America led at $6.2M" },
-    { title: "Key Wins", body: "Closed 3 enterprise deals\\nLaunched v2.0 platform\\nReduced churn by 15%" }
-  ]
-})
-\`\`\`
+Before calling create_presentation, resolve the brief through ordinary chat. Ask only for information the user has not already supplied, covering:
 
-Defaults: Navy blue theme (#003B6F), Calibri font, 24pt titles, 16pt body, white slide background. Override only when asked.
+1. audience and their level of subject knowledge;
+2. tone and technicality (for example technical, non-technical, executive, educational/divulgative, persuasive, or another user-defined style);
+3. purpose and the outcome the audience should leave with;
+4. approximate length;
+5. examples or a reference presentation when useful;
+6. brand assets, images, charts, or other material to reuse;
+7. one final check for any consequential ambiguity.
 
-## Slide Layouts
+Do not silently invent audience or tone. Keep the questions proportional: acknowledge details already supplied and ask a compact grouped question when practical. The user may answer in free text and may attach files.
 
-Each slide has an optional \`layout\` field. Default is \`"text"\`.
+Presentation creation supports 1 to 20 slides. If the user asks for more than 20, explain the current limit and ask them to consolidate or choose a supported length before calling create_presentation. Never submit an unsupported count and let generation fail later.
 
-| Layout | When to use | Required fields |
-|---|---|---|
-| \`text\` (default) | Standard bullet slide, optionally with side images | title, body |
-| \`split\` | Text on left, one large image on right | title, body, images (1) |
-| \`image\` | Image grid / mood board (up to 9 images) | title, images |
-| \`section\` | Section divider — large centered text on colored bg | title (+ optional body) |
-| \`table\` | Title + data table | title, table |
-| \`chart\` | Title + chart (bar, line, pie, doughnut, area) | title, chart |
+## Tools and workflow
 
-**Default to \`text\` layout.** Only use specialized layouts when the content calls for it.
+- create_presentation creates the canonical safe HTML presentation, stores stable slide and element IDs with revisions, and returns a real PPTX generated file for the chat.
+- read_presentation reads the latest presentation in this chat or a selected project/slide, including canonical HTML and revisions.
+- edit_presentation makes a scoped revision-safe change to one slide or data-element-id and returns an updated real PPTX.
+- read_pptx inspects an externally attached PPTX. Treat imports as references to interpret and rebuild; do not promise lossless round-trip editing.
 
-## Images: The fetch_image Workflow
+For a new presentation:
 
-To embed images in slides, **always use fetch_image first** to get an imageStorageId:
+1. Clarify the missing brief fields.
+2. If a reference PPTX is attached, call read_pptx first and summarize its layout, normalized geometry, theme, text, notes, and image traits in referenceNotes.
+3. Call create_presentation with the resolved brief, audience, tone, and an explicit slideCount when length is known. If you showed the user a slide-by-slide outline and they approved it, pass it as approvedOutline so generation preserves its count, order, and topic intent instead of silently planning a different deck. When the user's request contains factual source text, stories, figures, or labels, pass that material in sourceContent instead of reducing it to a generic summary; this is especially important when clarification happened in a later turn. For a scratch presentation, omit sourceStorageId entirely; never send an empty placeholder. For a rebuild, pass the active sourceStorageId and any reusable referenceImages[].storageId values in assetStorageIds. Attached user-owned images can also be passed in assetStorageIds.
+4. Tell the user the generated file is ready without exposing internal HTML or project IDs. Do not print or paste a direct storage/download URL: the generated-file card and its side panel are the authoritative delivery and download surfaces.
 
-1. Call \`fetch_image({ url: "https://..." })\` → returns \`{ imageStorageId: "kg2..." }\`
-2. Pass the storageId in the slide: \`images: [{ imageStorageId: "kg2...", altText: "Chart" }]\`
+Never fall back to generate_pptx or edit_pptx. Those legacy file-only tools do not create the revisioned HTML project or interactive side panel. A deferred create_presentation failure has already exhausted bounded backend repair attempts: report it and do not start another presentation project in the same user turn. You may correct and retry once only when the tool failed immediately because its arguments were invalid before generation began.
 
-**Never pass raw base64 data.** Always use imageStorageId from fetch_image.
+For a follow-up change:
 
-Image placement per layout:
-- **text**: Up to 3 images stacked on the right side
-- **split**: 1 image fills the right half
-- **image**: Up to 9 in an auto-sized grid
+1. Use the hidden presentation context supplied with the user's message when present.
+2. Otherwise call read_presentation with the project ID mentioned in prior tool context, or omit it to resolve the latest ready presentation in this chat.
+3. Call edit_presentation for surgical changes. Pass slideId and elementId when selected, plus known revisions.
+4. Preserve all unrequested slides and elements. Regenerate the whole presentation only when the user explicitly asks to start over.
 
-If the user already has a generated chart image in NanthAI storage, reuse that storage-backed image directly in the slide instead of re-fetching it from the web.
-
-### Background Images
-
-Any slide can have a full-bleed background image:
-\`\`\`
-{ title: "Our Vision", body: "...", backgroundImage: { imageStorageId: "kg2...", altText: "Background" } }
-\`\`\`
-
-## Tables
-
-Use \`layout: "table"\` with a \`table\` object:
-\`\`\`
-{
-  title: "Regional Performance",
-  layout: "table",
-  table: {
-    headers: ["Region", "Revenue", "Growth"],
-    rows: [
-      ["North America", "$6.2M", "+18%"],
-      ["Europe", "$3.8M", "+12%"],
-      ["Asia Pacific", "$2.4M", "+31%"]
-    ]
-  }
-}
-\`\`\`
-
-Tables get themed headers (primary color bg, white text) and light borders automatically.
-
-## Charts
-
-Use \`layout: "chart"\` with a \`chart\` object:
-\`\`\`
-{
-  title: "Revenue Trend",
-  layout: "chart",
-  chart: {
-    type: "bar",
-    labels: ["Q1", "Q2", "Q3", "Q4"],
-    datasets: [
-      { name: "2024", values: [8.2, 9.1, 10.5, 12.4] },
-      { name: "2023", values: [6.5, 7.2, 8.0, 9.8] }
-    ]
-  }
-}
-\`\`\`
-
-Supported chart types: \`bar\`, \`line\`, \`pie\`, \`doughnut\`, \`area\`. Default is \`bar\`.
-
-- **bar/line/area**: Multiple datasets ok. Labels on x-axis.
-- **pie/doughnut**: Usually 1 dataset. Labels are segments. Shows values and percentages automatically.
-- Optional per-dataset \`color\` (hex, e.g. "#3498DB"). Defaults to theme colors.
-
-## Theme Customization
-
-Only customize when the user asks for specific branding:
-
-\`\`\`
-generate_pptx({
-  title: "...",
-  theme: {
-    primaryColor: "1A5276",
-    accentColor: "E74C3C",
-    titleFont: "Georgia",
-    bodyFont: "Arial"
-  },
-  slides: [...]
-})
-\`\`\`
-
-| Theme field | Default | Used for |
-|---|---|---|
-| primaryColor | "003B6F" (navy) | Title slide bg, slide title text, table headers, chart primary |
-| secondaryColor | "0066B2" | Chart secondary color |
-| accentColor | "E74C3C" (red) | Highlights |
-| titleFont | "Calibri" | Slide titles |
-| bodyFont | same as titleFont | Body text, bullets |
-| titleFontSize | 24 | Slide title size (pt) |
-| bodyFontSize | 16 | Body/bullet size (pt) |
-| backgroundColor | "FFFFFF" (white) | Default slide background |
-
-**Pre-built palettes** (use when user says "make it look professional" without specific colors):
-- **Corporate Blue** (default): primary "003B6F", accent "E74C3C"
-- **Modern Dark**: primary "1A1A2E", secondary "0F3460", accent "E94560", backgroundColor "16213E"
-- **Clean Minimal**: primary "2D3436", accent "0984E3"
-- **Warm Professional**: primary "E67E22", secondary "F39C12", accent "2C3E50"
-
-## Slide Numbers
-
-Add \`showSlideNumbers: true\` to display numbers in the bottom-right corner of all slides.
-
-## Speaker Notes
-
-Always include speaker notes for presentation slides. Notes should expand on bullets, not repeat them:
-\`\`\`
-{ title: "Revenue", body: "...", notes: "Key talking point: North America drove 50% of growth due to the enterprise push in Q3..." }
-\`\`\`
-
-## Editing Presentations
-
-edit_pptx uses a read → regenerate approach:
-
-1. Use **read_pptx** to understand the existing deck (slides, text, structure, notes)
-2. Call **edit_pptx** with storageId + the full updated title/slides
-3. All layout and theme options from generate_pptx are available
-
-The model must provide the complete slide list — this is a full replacement.
-
-## Deck Structure Recipes
-
-### Business Presentation (8–12 slides)
-1. Title slide (auto-generated)
-2. Agenda (text)
-3. Context / Problem (text)
-4. Key Insight (section divider)
-5–7. Supporting Evidence (text/chart/table mix)
-8. Recommendation (text)
-9. Timeline (table)
-10. Next Steps (text)
-
-### Pitch Deck (10–12 slides)
-1. Title + tagline
-2. Problem (text)
-3. Solution (text + image)
-4. Market (chart)
-5. Product (split — text + screenshot)
-6. Business Model (table)
-7. Traction (chart)
-8. Team (text)
-9. Competition (table)
-10. Financials (chart)
-11. The Ask (section divider)
-
-### Status Update (5–7 slides)
-1. Title + date
-2. Executive Summary (text)
-3. Key Metrics (table or chart)
-4. Accomplishments (text)
-5. Risks (text)
-6. Next Period (text)
-
-## Design Principles
-
-- **One message per slide.** If you need two, use two slides.
-- **6×6 rule:** Max 6 bullets, max 6 words per bullet.
-- **Title = takeaway.** "Revenue grew 23%" not just "Revenue."
-- **Use section dividers** between major topics to signal shifts.
-- **Charts for trends, tables for comparisons.** Don't put 20 data points in bullets.`,
+Use title-as-takeaway, one primary message per slide, accessible contrast, coherent narrative, useful speaker notes, varied compositions, restrained text density, and visuals or geometry that clarify rather than decorate.`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",
   scope: "system",
@@ -228,7 +63,12 @@ The model must provide the complete slide list — this is a full replacement.
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["generate_pptx", "read_pptx", "edit_pptx"],
-  requiredToolProfiles: ["docs"],
+  requiredToolIds: [
+    "create_presentation",
+    "read_presentation",
+    "edit_presentation",
+    "read_pptx",
+  ],
+  requiredToolProfiles: ["presentations"],
   requiredIntegrationIds: [],
 };

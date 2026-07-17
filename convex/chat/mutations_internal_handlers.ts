@@ -9,6 +9,7 @@ import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
 import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
 import { VIDEO_OUTPUT_UPLOAD_TTL_MS } from "./video_output_upload_policy";
+import { preferCurrentPresentationSnapshot } from "./presentation_generated_file_snapshot";
 import {
   deleteStreamingMessageById,
   deleteStreamingMessage,
@@ -163,6 +164,8 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     toolName: string;
     title?: string;
     summary?: string;
+    presentationProjectId?: Id<"presentationProjects">;
+    presentationRevision?: number;
   }>;
   generatedCharts?: Array<{
     toolName: string;
@@ -253,6 +256,15 @@ async function createOrUpdateDocumentForGeneratedFile(
       .first();
     const sourceDocument = sourceVersion ? await ctx.db.get(sourceVersion.documentId) : null;
     if (sourceVersion && sourceDocument && sourceDocument.userId === args.userId) {
+      if (
+        sourceDocument.currentVersionId &&
+        sourceDocument.currentVersionId !== sourceVersion._id
+      ) {
+        throw new ConvexError({
+          code: "SUPERSEDED_VERSION" as const,
+          message: "This document changed while the edit was being prepared. Re-open the latest version and try again.",
+        });
+      }
       const versionNumber = await nextDocumentVersionNumber(ctx, sourceDocument._id);
       const versionId = await ctx.db.insert("documentVersions", {
         documentId: sourceDocument._id,
@@ -262,7 +274,7 @@ async function createOrUpdateDocumentForGeneratedFile(
         mimeType: args.file.mimeType,
         versionNumber,
         source: "assistant_edit",
-        parentVersionId: sourceDocument.currentVersionId ?? sourceVersion._id,
+        parentVersionId: sourceVersion._id,
         extractionStatus: "pending",
         createdAt: now,
       });
@@ -437,15 +449,18 @@ export async function finalizeGenerationHandler(
   if (args.generatedFiles && args.generatedFiles.length > 0) {
     fileIds = [];
     for (const file of args.generatedFiles) {
+      const storedFile = await preferCurrentPresentationSnapshot(ctx, args.userId, file);
       const id = await ctx.db.insert("generatedFiles", {
         userId: args.userId,
         chatId: args.chatId,
         messageId: args.messageId,
-        storageId: file.storageId,
-        filename: file.filename,
-        mimeType: file.mimeType,
-        sizeBytes: file.sizeBytes,
-        toolName: file.toolName,
+        storageId: storedFile.storageId,
+        filename: storedFile.filename,
+        mimeType: storedFile.mimeType,
+        sizeBytes: storedFile.sizeBytes,
+        toolName: storedFile.toolName,
+        presentationProjectId: storedFile.presentationProjectId,
+        presentationRevision: storedFile.presentationRevision,
         createdAt: now,
       });
       fileIds.push(id);
@@ -453,7 +468,7 @@ export async function finalizeGenerationHandler(
         userId: args.userId,
         chatId: args.chatId,
         generatedFileId: id,
-        file,
+        file: storedFile,
       });
       if (event) documentEvents.push(event);
     }
@@ -745,6 +760,13 @@ export interface UpdateMessageToolCallsArgs extends Record<string, unknown> {
     name: string;
     arguments: string;
   }>;
+  activeToolCallIds?: string[];
+  toolResults?: Array<{
+    toolCallId: string;
+    toolName: string;
+    result: string;
+    isError?: boolean;
+  }>;
 }
 
 export interface PatchMessageAudioArgs extends Record<string, unknown> {
@@ -796,6 +818,8 @@ export async function updateMessageToolCallsHandler(
     if (streamingMessage) {
       await patchStreamingMessageById(ctx, args.streamingMessageId, {
         toolCalls: args.toolCalls,
+        activeToolCallIds: args.activeToolCallIds,
+        toolResults: args.toolResults,
       });
       return;
     }
@@ -803,6 +827,8 @@ export async function updateMessageToolCallsHandler(
 
   await upsertStreamingMessage(ctx, existing, {
     toolCalls: args.toolCalls,
+    activeToolCallIds: args.activeToolCallIds,
+    toolResults: args.toolResults,
   });
 }
 

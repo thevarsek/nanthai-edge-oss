@@ -69,6 +69,7 @@ test("callOpenRouterNonStreaming retries 429 responses and eventually succeeds",
   assert.deepEqual(sleepCalls, [1000]);
   assert.equal(result.content, "done");
   assert.equal(result.generationId, "gen_1");
+  assert.equal(result.modelId, "openai/gpt-4.1");
 });
 
 test("callOpenRouterNonStreaming strips unsupported params before retrying", async () => {
@@ -173,6 +174,7 @@ test("callOpenRouterNonStreaming switches to the fallback model after a wrapped 
 
   assert.deepEqual(models, ["model_primary", "model_fallback"]);
   assert.equal(result.content, "fallback ok");
+  assert.equal(result.modelId, "model_fallback");
 });
 
 test("callOpenRouterNonStreaming surfaces insufficient credits as a structured user-facing error", async () => {

@@ -611,6 +611,7 @@ export const toolArtifactStatus = v.union(
 export const deferredToolKind = v.union(
   v.literal("spawn_subagents"),
   v.literal("drive_picker"),
+  v.literal("presentation_workflow"),
 );
 
 export const toolMemoryBranchScope = v.union(
@@ -747,6 +748,7 @@ export const skillRuntimeMode = v.union(
 
 /** Skill tool profile — used for progressive tool exposure. */
 export const skillToolProfile = v.union(
+  v.literal("presentations"),
   v.literal("docs"),
   v.literal("analytics"),
   v.literal("workspace"),

@@ -3,6 +3,7 @@ import { advisorSchemaTables } from "./schema_tables_advisors";
 import { catalogSchemaTables } from "./schema_tables_catalog";
 import { coreSchemaTables } from "./schema_tables_core";
 import { runtimeSchemaTables } from "./schema_tables_runtime";
+import { presentationSchemaTables } from "./schema_tables_presentations";
 import { userSchemaTables } from "./schema_tables_user";
 
 // =============================================================================
@@ -15,6 +16,7 @@ import { userSchemaTables } from "./schema_tables_user";
 export default defineSchema({
   ...advisorSchemaTables,
   ...coreSchemaTables,
+  ...presentationSchemaTables,
   ...catalogSchemaTables,
   ...userSchemaTables,
   ...runtimeSchemaTables,

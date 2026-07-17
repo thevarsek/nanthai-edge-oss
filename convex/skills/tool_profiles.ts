@@ -1,6 +1,7 @@
 import type { ValidationFinding } from "./validators";
 
 const PROFILE_ORDER = [
+  "presentations",
   "docs",
   "analytics",
   "workspace",
@@ -41,10 +42,14 @@ export interface SkillMetadataNormalizationResult {
 const DOC_TOOL_IDS = new Set([
   "list_documents", "read_document", "find_in_document",
   "generate_docx", "read_docx", "edit_docx", "propose_docx_edits",
-  "generate_pptx", "read_pptx", "edit_pptx",
+  "generate_pptx", "edit_pptx",
   "generate_xlsx", "read_xlsx", "edit_xlsx",
   "generate_text_file", "read_text_file",
   "generate_eml", "read_eml",
+]);
+
+const PRESENTATION_TOOL_IDS = new Set([
+  "create_presentation", "read_presentation", "edit_presentation", "read_pptx",
 ]);
 
 const ANALYTICS_TOOL_IDS = new Set([
@@ -131,6 +136,7 @@ export function inferProfilesFromToolIds(
   const profiles = new Set<SkillToolProfileId>();
 
   for (const toolId of requiredToolIds) {
+    if (PRESENTATION_TOOL_IDS.has(toolId)) profiles.add("presentations");
     if (DOC_TOOL_IDS.has(toolId)) profiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(toolId)) profiles.add("analytics");
     if (WORKSPACE_TOOL_IDS.has(toolId)) profiles.add("workspace");
@@ -164,6 +170,7 @@ export function normalizeSkillMetadata(
   const metadataWarnings: string[] = [];
 
   for (const toolId of requiredToolIds) {
+    if (PRESENTATION_TOOL_IDS.has(toolId)) inferredProfiles.add("presentations");
     if (DOC_TOOL_IDS.has(toolId)) inferredProfiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(toolId)) inferredProfiles.add("analytics");
     if (WORKSPACE_TOOL_IDS.has(toolId)) inferredProfiles.add("workspace");

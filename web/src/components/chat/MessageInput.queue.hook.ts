@@ -28,6 +28,7 @@ interface Args {
   onQueueCommitted: () => void;
   onEditCommitted: (queuedText: string) => void;
   canCaptureQueuedAdvisorSnapshot?: boolean;
+  hasEphemeralContext?: boolean;
   captureQueuedAdvisorSnapshot?: () => QueuedAdvisorSnapshot | null;
   restoreQueuedAdvisorSnapshot?: (snapshot: QueuedAdvisorSnapshot) => void;
 }
@@ -56,6 +57,7 @@ export function useQueuedFollowUp({
   onQueueCommitted,
   onEditCommitted,
   canCaptureQueuedAdvisorSnapshot = true,
+  hasEphemeralContext = false,
   captureQueuedAdvisorSnapshot,
   restoreQueuedAdvisorSnapshot,
 }: Args) {
@@ -97,11 +99,12 @@ export function useQueuedFollowUp({
     attachmentCount === 0 &&
     !isUploading &&
     canCaptureQueuedAdvisorSnapshot &&
+    !hasEphemeralContext &&
     queuedActionState === "idle";
 
   const queueFollowUp = useCallback(() => {
     const trimmed = text.trim();
-    if (!trimmed || disabled || attachmentCount > 0 || isUploading || !canCaptureQueuedAdvisorSnapshot) return;
+    if (!trimmed || disabled || attachmentCount > 0 || isUploading || !canCaptureQueuedAdvisorSnapshot || hasEphemeralContext) return;
     const capturedAdvisorSnapshot = captureQueuedAdvisorSnapshot?.();
     if (capturedAdvisorSnapshot === null) return;
     const advisorSnapshot = copyAdvisorSnapshot(capturedAdvisorSnapshot);
@@ -116,7 +119,7 @@ export function useQueuedFollowUp({
       },
     ]);
     onQueueCommitted();
-  }, [attachmentCount, canCaptureQueuedAdvisorSnapshot, captureQueuedAdvisorSnapshot, chatId, disabled, isUploading, onQueueCommitted, queuedAttachments, text]);
+  }, [attachmentCount, canCaptureQueuedAdvisorSnapshot, captureQueuedAdvisorSnapshot, chatId, disabled, hasEphemeralContext, isUploading, onQueueCommitted, queuedAttachments, text]);
 
   const editQueuedFollowUp = useCallback((id?: string) => {
     const queued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];

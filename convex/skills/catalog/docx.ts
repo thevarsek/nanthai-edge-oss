@@ -18,6 +18,12 @@ export const DOCX_SKILL: SystemSkillSeedData = {
 
 Create, read, and edit Word documents using NanthAI's document tools.
 
+## Multi-participant and Ideascape safety
+
+Reading and reviewing Word documents may use multiple participants. Creating, replacing, or proposing tracked changes requires one participant. If more than one participant is active, do not claim a write succeeded; tell the user: "Presentation and Word document creation or editing require a single participant. Open + → Participants and remove participants until only one remains, then try again. You can add the others back afterward."
+
+Ideascape may open Word artifacts for review, but document edits stay in normal chat. Ask the user to open the artifact, return to Chat, and attach or stage it there.
+
 ## Tools
 
 - **generate_docx** — Create a new .docx from structured sections

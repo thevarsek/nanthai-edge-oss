@@ -25,6 +25,10 @@ import {
   ToolResult,
 } from "./registry";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
+import {
+  executeWithLoadedSkillGuard,
+  withoutLoadSkillDefinition,
+} from "./load_skill_repeat_guard";
 
 const defaultToolCallLoopDeps = {
   callOpenRouterStreaming,
@@ -129,6 +133,8 @@ export interface ToolCallLoopOptions {
   registry: ToolRegistry;
   /** Context for tool execution (Convex ctx + userId). */
   toolCtx: ToolExecutionContext;
+  /** Skill slugs already loaded before this invocation began. */
+  loadedSkillSlugs?: string[];
   /**
    * Optional callback invoked before each tool execution round.
    * Can be used to update UI status, check cancellation, etc.
@@ -244,6 +250,7 @@ export async function runToolCallLoop(
   let exitedEarly = false;
   let exitReason: ToolCallLoopResult["exitReason"];
   let deferredToolRound: DeferredToolRound | undefined;
+  const loadedSkillSlugs = new Set(options.loadedSkillSlugs ?? []);
 
   const allToolCalls: RecordedToolCall[] = [];
   const allToolResults: RecordedToolResult[] = [];
@@ -269,10 +276,13 @@ export async function runToolCallLoop(
     }
 
     // Execute all tool calls in parallel to minimise round-trip latency.
-    const results = await currentRegistry.executeAllToolCalls(
+    const guardedExecution = await executeWithLoadedSkillGuard(
+      currentRegistry,
       currentResult.toolCalls,
       options.toolCtx,
+      loadedSkillSlugs,
     );
+    const results = guardedExecution.results;
 
     if (options.onToolArtifacts) {
       await options.onToolArtifacts(round, currentResult.toolCalls, results);
@@ -381,8 +391,11 @@ export async function runToolCallLoop(
     // `plugins: [{id:"web"}]` form (see `openrouter_request.ts`), independent
     // of tool rounds. No need to strip `webSearchEnabled` on re-calls.
     const isLastAllowedRound = round >= MAX_TOOL_ROUNDS;
+    const nextModelParams = guardedExecution.onlyRedundantSkillLoads
+      ? withoutLoadSkillDefinition(currentParams)
+      : currentParams;
     const roundParams: ChatRequestParameters = {
-      ...currentParams,
+      ...nextModelParams,
       ...(isLastAllowedRound ? { toolChoice: "none" as const } : {}),
     };
 

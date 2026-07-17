@@ -127,6 +127,24 @@ This reflects multi-parent context directly on canvas (not only first parent).
 - Node dragging with debounced persistence via `IdeascapeNodePositionSync`
 - Viewport state managed in `ChatViewModel+IdeascapeViewport.swift` (ephemeral)
 - Multi-select node state used by ideascape sends
+- Assistant nodes may render compact generated-artifact rows. Every client uses
+  one bounded ownership-gated `chat/queries:getGeneratedFilesByIds`
+  subscription for the canvas rather than one query per node. Web bounds the
+  request to visible messages; iOS and Android use the current message graph,
+  deduplicate in chronological order, and apply the same 100-file cap.
+- Artifact rows consume their own tap so opening a file does not focus or drag
+  the underlying node. DOCX/PDF files use each platform's existing document
+  preview; other mobile file types use the existing system file-opening path.
+
+### Editable artifact boundary
+
+Ideascape is read/review-only for existing PPTX and DOCX artifacts. Artifact
+rows do not add inline accept/reject/edit controls, presentation preview opens
+in view mode, and AI edit tools are server-blocked for Ideascape turns. Users
+return to normal chat and stage the intended file, slide, element, or document
+selection before editing. Multi-participant turns may review artifacts but must
+reduce `+ → Participants` to one participant before any PPTX/DOCX creation or
+edit operation.
 
 ## Compatibility Notes
 
@@ -152,5 +170,8 @@ This reflects multi-parent context directly on canvas (not only first parent).
 ## Known Issues / Follow-ups
 
 - ~~**Markdown not rendered inside node bubbles** (all platforms).~~ **Resolved.** Node body text now renders through each client markdown renderer in compact mode. In this OSS checkout, the web implementation lives in `web/src/components/ideascape/IdeascapeNodes.tsx`. Compact mode drops code-block chrome, shrinks headings/tables, and skips heavier math/highlight plugins on the node surface.
+- Native PPTX rendering/editing remains future M41 parity work. The shipped
+  Ideascape artifact rows intentionally review PPTX through the existing system
+  file-opening path until that thin client exists.
 
-*Last updated: 2026-03-17 — Rewrote data model section for Convex (post-M8), replaced UUID/ChatService references, added post-M14 hardening files, fixed test paths.*
+*Last updated: 2026-07-16 — Added iOS/Android compact artifact review parity on the shared bounded projection; native PPTX rendering remains separate M41 work.*

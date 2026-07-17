@@ -6,7 +6,7 @@
 // =============================================================================
 
 export const MODEL_IDS = {
-  appDefault: "openai/gpt-5.5",
+  appDefault: "openai/gpt-5.6-terra",
   advisorDispatcher: "openai/gpt-4.1-mini",
   titleGeneration: "openai/gpt-4.1-mini",
   memoryExtraction: "openai/gpt-4.1-mini",

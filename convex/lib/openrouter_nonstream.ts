@@ -1,32 +1,13 @@
 import { ConvexError } from "convex/values";
-import {
-  HTTP_REFERER,
-  MAX_RATE_LIMIT_RETRIES,
-  OPENROUTER_API_URL,
-  REQUEST_TIMEOUT_MS,
-  rateLimitDelayMs,
-  sleep,
-  X_TITLE,
-} from "./openrouter_constants";
+import { HTTP_REFERER, MAX_RATE_LIMIT_RETRIES, OPENROUTER_API_URL, rateLimitDelayMs, sleep, X_TITLE } from "./openrouter_constants";
 import { extractErrorMessage, openRouterErrorDetails } from "./openrouter_error";
-import {
-  extractContentFromNonStreamingPayload,
-} from "./openrouter_sse";
+import { extractContentFromNonStreamingPayload } from "./openrouter_sse";
 import { buildRequestBody } from "./openrouter_request";
-import {
-  normalizeUnsupportedParameterName,
-  parseUnsupportedParameter,
-  stripParameter,
-} from "./openrouter_param_retry";
-import {
-  ChatRequestParameters,
-  NonStreamResult,
-  OpenRouterMessage,
-  PerplexityAnnotation,
-  RetryConfig,
-} from "./openrouter_types";
+import { normalizeUnsupportedParameterName, parseUnsupportedParameter, stripParameter } from "./openrouter_param_retry";
+import { ChatRequestParameters, NonStreamResult, OpenRouterMessage, PerplexityAnnotation, RetryConfig } from "./openrouter_types";
 import { DeepPartial, mergeTestDeps } from "./test_deps";
 import { assertChatCompletionsRequest } from "./openrouter_modality";
+import { assertRetryDelayFits, createNonStreamingDeadline, nextAttemptTimeoutMs } from "./openrouter_nonstream_deadline";
 
 const defaultOpenRouterNonStreamingDeps = {
   fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
@@ -37,6 +18,7 @@ const defaultOpenRouterNonStreamingDeps = {
   normalizeUnsupportedParameterName,
   parseUnsupportedParameter,
   stripParameter,
+  now: () => Date.now(),
 };
 
 export type OpenRouterNonStreamingDeps = typeof defaultOpenRouterNonStreamingDeps;
@@ -77,6 +59,8 @@ export async function callOpenRouterNonStreaming(
 ): Promise<NonStreamResult> {
   assertChatCompletionsRequest(params);
   const { fallbackModel, retryOnUnsupportedParam = true } = retryConfig;
+  const deadline = createNonStreamingDeadline(retryConfig, deps.now());
+  const { startedAt: startTime } = deadline;
 
   let currentParams = { ...params };
   let currentModel = model;
@@ -87,10 +71,10 @@ export async function callOpenRouterNonStreaming(
   // stripped. Hard privacy constraints (provider.zdr) are preserved by
   // buildRequestBody.
   let strippedProviderOnce = false;
-  const startTime = Date.now();
   const msgCount = messages.length;
 
   while (true) {
+    const attemptTimeoutMs = nextAttemptTimeoutMs(deadline, deps.now());
     const body = deps.buildRequestBody(
       currentModel,
       messages,
@@ -100,7 +84,7 @@ export async function callOpenRouterNonStreaming(
     );
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), attemptTimeoutMs);
 
     try {
       const response = await deps.fetch(OPENROUTER_API_URL, {
@@ -135,6 +119,7 @@ export async function callOpenRouterNonStreaming(
           console.warn("[openrouter:nonstream] rate limited, retrying", {
             model: currentModel, retry: rateLimitRetries, delayMs, status: response.status,
           });
+          assertRetryDelayFits(deadline, delayMs, deps.now());
           await deps.sleep(delayMs);
           continue;
         }
@@ -188,7 +173,7 @@ export async function callOpenRouterNonStreaming(
         }
 
         console.error("[openrouter:nonstream] HTTP error", {
-          model: currentModel, status: response.status, durationMs: Date.now() - startTime,
+          model: currentModel, status: response.status, durationMs: deps.now() - startTime,
           msgCount, error: errorMessage,
         });
         throw new ConvexError(openRouterErrorDetails(response.status, errorMessage));
@@ -238,7 +223,7 @@ export async function callOpenRouterNonStreaming(
           continue;
         }
         console.error("[openrouter:nonstream] 200-wrapped error", {
-          model: currentModel, durationMs: Date.now() - startTime, msgCount,
+          model: currentModel, durationMs: deps.now() - startTime, msgCount,
           error: errorMessage,
         });
         throw new ConvexError(openRouterErrorDetails(200, errorMessage));
@@ -247,6 +232,7 @@ export async function callOpenRouterNonStreaming(
       const extracted = deps.extractContentFromNonStreamingPayload(parsed);
       const result: NonStreamResult = {
         content: extracted.content,
+        modelId: currentModel,
         usage: extracted.usage,
         finishReason: extracted.finishReason,
         audioBase64: extracted.audioBase64,
@@ -255,7 +241,7 @@ export async function callOpenRouterNonStreaming(
         annotations: extractAnnotationsFromPayload(parsed),
       };
 
-      const durationMs = Date.now() - startTime;
+      const durationMs = deps.now() - startTime;
       console.info("[openrouter:nonstream] success", {
         model: currentModel, durationMs, msgCount,
         contentLen: result.content?.length ?? 0,
@@ -282,16 +268,16 @@ export async function callOpenRouterNonStreaming(
       const cause = errObj.cause != null ? String(errObj.cause) : undefined;
       if (errName === "AbortError") {
         console.error("[openrouter:nonstream] timeout", {
-          model: currentModel, timeoutMs: REQUEST_TIMEOUT_MS, durationMs: Date.now() - startTime, msgCount,
+          model: currentModel, timeoutMs: attemptTimeoutMs, durationMs: deps.now() - startTime, msgCount,
         });
         // Keep as plain Error so callers with retry loops can inspect and retry
-        const abortMsg = `OpenRouter non-stream timeout after ${REQUEST_TIMEOUT_MS}ms for model ${currentModel}${cause ? `: ${cause}` : ""}`;
+        const abortMsg = `OpenRouter non-stream timeout after ${attemptTimeoutMs}ms for model ${currentModel}${cause ? `: ${cause}` : ""}`;
         throw new Error(abortMsg);
       }
       if (errMessage === "fetch failed") {
         console.error("[openrouter:nonstream] fetch failed", {
           model: currentModel, error: errMessage, ...(cause ? { cause } : {}),
-          durationMs: Date.now() - startTime, msgCount,
+          durationMs: deps.now() - startTime, msgCount,
         });
         // Keep as plain Error so callers with retry loops can inspect and retry
         const fetchMsg = `OpenRouter fetch failed for model ${currentModel}${cause ? `: ${cause}` : ""}`;

@@ -241,6 +241,13 @@ test("tool connection helpers return granted integrations and tolerate query fai
 
 test("progressive registry profiles add only the tools unlocked by profile and runtime", () => {
   const registry = new ToolRegistry();
+  const presentationRegistry = new ToolRegistry();
+
+  registerProfileTools(presentationRegistry, "presentations", {
+    isPro: true,
+    allowSubagents: false,
+    enabledIntegrations: [],
+  });
 
   registerBaseTools(registry, false, ["generate_eml"]);
   registerProfileTools(registry, "docs", {
@@ -266,4 +273,7 @@ test("progressive registry profiles add only the tools unlocked by profile and r
   assert.ok(registry.get("workspace_import_file"));
   assert.ok(registry.get("gmail_search"));
   assert.equal(registry.get("drive_list"), undefined);
+  assert.ok(presentationRegistry.get("create_presentation"));
+  assert.ok(presentationRegistry.get("read_pptx"));
+  assert.equal(presentationRegistry.get("generate_pptx"), undefined);
 });

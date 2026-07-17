@@ -3,6 +3,24 @@ import test from "node:test";
 
 import { extractGeneratedCharts, extractGeneratedFiles } from "../chat/generated_file_helpers";
 
+test("extractGeneratedFiles preserves presentation project linkage", () => {
+  const files = extractGeneratedFiles([{
+    toolCallId: "tool_1",
+    toolName: "create_presentation",
+    result: JSON.stringify({
+      storageId: "storage_1",
+      filename: "strategy.pptx",
+      mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      presentationProjectId: "project_1",
+      presentationRevision: 4,
+    }),
+    isError: false,
+  }]);
+  assert.equal(files[0]?.presentationProjectId, "project_1");
+  assert.equal(files[0]?.presentationRevision, 4);
+  assert.equal(files[0]?.filename, "strategy.pptx");
+});
+
 test("extractGeneratedFiles includes workspace exports", () => {
   const files = extractGeneratedFiles([
     {

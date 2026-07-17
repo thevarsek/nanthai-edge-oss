@@ -799,6 +799,11 @@
   "research_paper": "Research Paper",
   "research_paper_arg": "Research Paper ({{var1}})",
   "research_paper_requires_a_single_participant": "Research Paper requires a single participant.",
+  "artifact_write_requires_single_participant": "Presentation edits require a single participant. Open + → Participants and remove participants until only one remains. You can add the others back afterward.",
+  "create_presentation": "Create Presentation",
+  "load_skill": "Load Skill",
+  "presentation_target": "Presentation target",
+  "remove_presentation_target": "Remove presentation target",
   "research_papers": "Research Papers",
   "reset": "Reset",
   "reset_purchases": "Reset Purchases",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "Advisors",
   "pe_cap_advisors_title": "Private Persona Advisors",
   "pe_cap_advisors_desc": "Ask up to three Personas to review a turn privately, then receive one response synthesised from their streamed advice. All text participants receive the same private Advisor notes.",
-  "pe_scenario_5": "A product decision reviewed privately by a customer advocate, technical lead, and risk specialist before the main participant responds."
+  "pe_scenario_5": "A product decision reviewed privately by a customer advocate, technical lead, and risk specialist before the main participant responds.",
+  "presentation_progress_queued": "Preparing the presentation",
+  "presentation_progress_planning": "Planning the slide story",
+  "presentation_progress_repairing_plan": "Repairing the slide plan",
+  "presentation_progress_generating": "Generating {{count}} slides",
+  "presentation_progress_repairing_generation": "Repairing and validating the slides",
+  "presentation_progress_exporting": "Building the PowerPoint file",
+  "presentation_progress_complete": "Presentation ready",
+  "presentation_progress_failed": "Presentation generation failed"
 }

@@ -38,6 +38,88 @@ Put shared product behavior in Convex when it affects any of the following:
 - reusable projections used by more than one client
 - workflow state transitions (pending, approved, active, failed, archived, etc.)
 
+Presentations follow this rule across web, iOS, and Android. Creation and
+iteration run through the normal chat tool loop and generated-file lifecycle.
+Projects, slide order, provenance, revisions, AI operations, and validation live
+in the shared `presentations/*` Convex domain; each client branches its existing
+chat file-preview surface for rendering and platform export. See
+[`presentations.md`](presentations.md).
+
+### Presentation thin-client contract (M41)
+
+- `presentations/queries:getProject({ projectId })` is the canonical owned
+  projection. It returns the authoritative project/revision, ordered slide
+  records/revisions, project-allowed asset metadata and URLs, and the current
+  snapshot URL. A missing or foreign project returns `null`.
+- Chat creation and AI iteration stay in the ordinary tool loop through
+  `create_presentation`, `read_presentation`, and `edit_presentation`. Clients
+  never create a second AI transcript or call model helpers directly.
+- A selected target is sent only through the normal user-message contract as
+  `{ projectId, projectRevision, slideId?, slideRevision?, elementId? }`.
+  Convex re-authenticates all IDs and checks revisions; context is not an access
+  grant.
+- Direct edits use `presentations/mutations:saveSlide` with the current slide
+  revision. The returned project and slide revisions replace local values.
+  `REVISION_CONFLICT` means reload/reselect; clients must not merge or retry the
+  stale HTML silently.
+- Safe slide HTML may reference images only as `asset:<storageId>`. The ID must
+  be listed in the project payload. Clients resolve it to that row's temporary
+  URL only while rendering/exporting and restore the canonical placeholder
+  before saving.
+- A high-fidelity client export uploads a valid PPTX and calls
+  `presentations/actions:persistSnapshot` with the matching project revision.
+  Convex validates ownership, PPTX package structure, size, and revision before
+  replacing the project snapshot and linked generated-file blob.
+- Project-backed presentation cards open the normal file side panel instead of
+  downloading the initial fallback snapshot. Each client should expose one
+  authoritative PowerPoint action derived from its current rendered revision,
+  then persist those same bytes through `persistSnapshot`; it must not present
+  fallback and current-canvas downloads as equivalent choices.
+- `read_pptx` is the ownership-gated import seam. It exposes text/notes plus
+  layout, normalized geometry, theme, backgrounds, and registered reusable
+  embedded images for an interpreted rebuild. It is not a lossless editing API.
+- AI edits are applied in Convex as explicit stable-ID patch operations with
+  outside-target validation. Clients consume the resulting revisions; they do
+  not reproduce patch semantics locally.
+- Model-authored generation is also layout checked in Convex: absolute text
+  boxes, including nested siblings, carry explicit bounds, wrapped height is
+  estimated, and obvious containing-region overflow or text overlap enters the
+  bounded repair path. A structurally safe candidate keeps its valid slides;
+  Convex repairs only the identified slide through bounded style-only patches
+  in fresh actions, then revalidates the entire deck. One assistant turn owns
+  at most one presentation-creation project, so clients never reconcile
+  competing same-turn retries.
+  Clients do not add a separate layout-acceptance rule.
+- Stateful PPTX/DOCX creation and editing are single-participant operations.
+  Convex derives the triggering turn's participant count from the scheduled
+  assistant group and rejects mutating artifact tools when that count is above
+  one. Clients may preflight explicit staged targets, but must not reproduce the
+  rule with natural-language intent classification.
+- Existing PPTX/DOCX edits are unavailable from Ideascape turns. Ideascape may
+  load the bounded, ownership-gated `chat/queries:getGeneratedFilesByIds`
+  projection for visible message artifact IDs and open existing preview
+  surfaces. It does not create an editor transcript or grant write authority.
+- `edit_presentation` without an explicit/typed project target fails when more
+  than one ready presentation exists in the chat. Clients must prompt the user
+  to open and stage the intended artifact rather than choosing a branch-wide
+  "latest" file.
+- Whole-rewrite `edit_docx` finalization compares the original storage-backed
+  version with `documents.currentVersionId`. `SUPERSEDED_VERSION` is terminal
+  for that attempt; clients reload/reselect instead of treating the generated
+  bytes as the new canonical version.
+
+iOS and Android now consume these same paths and shapes. Their native preview
+surfaces resolve only payload-owned assets, expose explicit view/select/edit
+state, stage the same typed chat context, use revision-checked saves, generate
+PPTX/PDF or print output through platform web renderers, and refresh the
+revision-matched PPTX snapshot. They do not introduce a presentation route,
+library, wizard, mode, or platform-specific business rules.
+
+Native Ideascape renders compact artifact rows backed by one bounded
+`getGeneratedFilesByIds` subscription per canvas. PPTX opens the same native
+presentation preview read-only; DOCX/PDF retain the existing document preview.
+Existing PPTX/DOCX AI edits remain a normal-chat operation on every platform.
+
 Examples:
 
 - pending memories use `isPending` from Convex, not per-client `status === "pending"` heuristics

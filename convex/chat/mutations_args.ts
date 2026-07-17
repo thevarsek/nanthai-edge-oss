@@ -20,6 +20,7 @@ import {
   participantConfigValidator,
   videoConfigValidator,
 } from "./actions_args";
+import { presentationContextValidator } from "../presentations/validators";
 
 export const attachmentValidator = v.object({
   type: v.string(),
@@ -76,6 +77,7 @@ export const sendMessageArgs = {
   text: v.string(),
   recordedAudio: v.optional(recordedAudioValidator),
   attachments: v.optional(v.array(attachmentValidator)),
+  presentationContext: v.optional(presentationContextValidator),
   participants: v.array(participantValidator),
   explicitParentIds: v.optional(v.array(v.id("messages"))),
   expandMultiModelGroups: v.optional(v.boolean()),
@@ -215,6 +217,8 @@ export const finalizeGenerationArgs = {
     toolName: v.string(),
     title: v.optional(v.string()),
     summary: v.optional(v.string()),
+    presentationProjectId: v.optional(v.id("presentationProjects")),
+    presentationRevision: v.optional(v.number()),
   }))),
   generatedCharts: v.optional(v.array(v.object({
     toolName: v.string(),
@@ -450,6 +454,13 @@ export const updateMessageToolCallsArgs = {
     name: v.string(),
     arguments: v.string(),
   })),
+  activeToolCallIds: v.optional(v.array(v.string())),
+  toolResults: v.optional(v.array(v.object({
+    toolCallId: v.string(),
+    toolName: v.string(),
+    result: v.string(),
+    isError: v.optional(v.boolean()),
+  }))),
 } satisfies PropertyValidators;
 
 export const touchMemoriesArgs = {

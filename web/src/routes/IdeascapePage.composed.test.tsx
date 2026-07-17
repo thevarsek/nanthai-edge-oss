@@ -69,7 +69,10 @@ vi.mock("react-i18next", () => ({
 
 vi.mock("@convex/_generated/api", () => ({
   api: {
-    chat: { mutations: { createUploadUrl: "createUploadUrl" } },
+    chat: {
+      mutations: { createUploadUrl: "createUploadUrl" },
+      queries: { getGeneratedFilesByIds: "getGeneratedFilesByIds" },
+    },
     knowledge_base: { queries: { getKnowledgeBaseFilesByStorageIds: "getKnowledgeBaseFilesByStorageIds" } },
     nodePositions: {
       mutations: { upsert: "upsertPosition" },

@@ -153,6 +153,22 @@ test("preference write epoch rejects stale buffered writes after invalidation", 
   assert.equal(patches[1]?.patch.appearanceMode, "dark");
 });
 
+test("preference session invalidation is a no-op after sign-out", async () => {
+  let databaseWasRead = false;
+  const result = await (invalidatePreferenceWriteSession as any)._handler({
+    auth: buildAuth(null),
+    db: {
+      query: () => {
+        databaseWasRead = true;
+        throw new Error("Signed-out cleanup must not read user data.");
+      },
+    },
+  }, {});
+
+  assert.equal(result, 0);
+  assert.equal(databaseWasRead, false);
+});
+
 test("upsertPreferences rejects enabling default subagents for non-Pro users", async () => {
   await assert.rejects(
     (upsertPreferences as any)._handler({
@@ -246,6 +262,46 @@ test("getPreferences returns null for anonymous callers", async () => {
   }, {});
 
   assert.equal(result, null);
+});
+
+test("getPreferences projects the app default without persisting a user choice", async () => {
+  const preferences = {
+    _id: "prefs_1",
+    userId: "user_1",
+    updatedAt: 1,
+  };
+  const result = await (getPreferences as any)._handler({
+    auth: buildAuth(),
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => preferences,
+        }),
+      }),
+    },
+  }, {});
+
+  assert.equal(result.defaultModelId, "openai/gpt-5.6-terra");
+  assert.equal("defaultModelId" in preferences, false);
+});
+
+test("getPreferences preserves an explicit user default model", async () => {
+  const result = await (getPreferences as any)._handler({
+    auth: buildAuth(),
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => ({
+            _id: "prefs_1",
+            userId: "user_1",
+            defaultModelId: "anthropic/claude-sonnet-4.5",
+          }),
+        }),
+      }),
+    },
+  }, {});
+
+  assert.equal(result.defaultModelId, "anthropic/claude-sonnet-4.5");
 });
 
 test("getModelSettings and listModelSettings are user-scoped", async () => {

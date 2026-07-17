@@ -802,6 +802,11 @@
   "research_paper": "研究论文",
   "research_paper_arg": "研究论文（{{var1}}）",
   "research_paper_requires_a_single_participant": "研究论文需要单个参与者。",
+  "artifact_write_requires_single_participant": "编辑演示文稿时只能保留一个参与者。打开 + → 参与者，移除参与者直到只剩一个。编辑完成后可以重新添加其他参与者。",
+  "create_presentation": "创建演示文稿",
+  "load_skill": "加载技能",
+  "presentation_target": "演示文稿目标",
+  "remove_presentation_target": "移除演示文稿目标",
   "research_papers": "研究论文",
   "reset": "重置",
   "reset_purchases": "重置购买",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "顾问",
   "pe_cap_advisors_title": "私密 Persona 顾问",
   "pe_cap_advisors_desc": "最多三个 Persona 私下审阅一轮内容，最终回复会综合他们的建议。所有文本参与者都会收到相同的私密顾问笔记。",
-  "pe_scenario_5": "由客户代表、技术负责人和风险专家私下审阅产品决策，再由主要参与者作答。"
+  "pe_scenario_5": "由客户代表、技术负责人和风险专家私下审阅产品决策，再由主要参与者作答。",
+  "presentation_progress_queued": "正在准备演示文稿",
+  "presentation_progress_planning": "正在规划幻灯片结构",
+  "presentation_progress_repairing_plan": "正在修复幻灯片计划",
+  "presentation_progress_generating": "正在生成{{count}}张幻灯片",
+  "presentation_progress_repairing_generation": "正在修复并验证幻灯片",
+  "presentation_progress_exporting": "正在创建 PowerPoint 文件",
+  "presentation_progress_complete": "演示文稿已就绪",
+  "presentation_progress_failed": "演示文稿生成失败"
 }

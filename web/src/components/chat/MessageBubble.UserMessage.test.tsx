@@ -107,4 +107,22 @@ describe("UserMessage", () => {
 
     expect(screen.queryByRole("button", { name: "Copy" })).not.toBeInTheDocument();
   });
+
+  it("keeps a persisted presentation target visible after sending", () => {
+    renderUserMessage({
+      ...baseMessage,
+      content: "Make this headline shorter",
+      presentationContext: {
+        projectId: "project_private",
+        projectRevision: 4,
+        slideId: "slide-2",
+        slideRevision: 3,
+        elementId: "hero_headline",
+      },
+    } as Message);
+
+    expect(screen.getByTestId("presentation-message-target"))
+      .toHaveTextContent("Presentation target · #2 · Hero headline");
+    expect(screen.queryByText(/project_private/)).not.toBeInTheDocument();
+  });
 });

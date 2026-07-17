@@ -364,6 +364,20 @@ describe("AssistantMessage", () => {
     await waitFor(() => expect(view.container).toHaveTextContent("$0.0123"));
   });
 
+  it("replaces stale direct presentation links with the generated-file card instruction", () => {
+    const storageUrl = "https://example.convex.site/download?storageId=storage_1&filename=Launch_plan.pptx";
+    renderAssistant({
+      content: `Your deck is ready.\n\nYou can download it here:\n\n[Download the PowerPoint](${storageUrl})`,
+      toolCalls: [{ id: "tool_1", name: "create_presentation", arguments: "{}" }],
+      generatedFileIds: ["file_1" as Id<"generatedFiles">],
+    });
+
+    expect(screen.queryByRole("link", { name: "Download the PowerPoint" })).not.toBeInTheDocument();
+    expect(screen.queryByText("You can download it here:")).not.toBeInTheDocument();
+    expect(screen.getByText("Open the presentation card below to view or download it.")).toBeInTheDocument();
+    expect(screen.getByTestId("generated-files")).toBeInTheDocument();
+  });
+
   it("expands moderator guidance and opens document citation details", () => {
     renderAssistant({
       moderatorDirective: "Keep the answer short",

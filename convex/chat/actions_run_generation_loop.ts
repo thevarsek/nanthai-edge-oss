@@ -107,6 +107,7 @@ export interface GenerationLoopOptions {
   initialCompactionCount?: number;
   maxToolRoundsPerInvocation?: number;
   requireZdr?: boolean;
+  loadedSkillSlugs?: string[];
 }
 
 const defaultRunGenerationWithCompactionDeps = {
@@ -328,6 +329,7 @@ export async function runGenerationWithCompaction(
       retryConfig,
       registry: currentToolRegistry,
       toolCtx,
+      loadedSkillSlugs: options.loadedSkillSlugs,
       onToolRoundStart,
       onToolRoundComplete,
       onToolArtifacts: options.onToolArtifacts,

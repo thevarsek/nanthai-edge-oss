@@ -145,7 +145,8 @@ export function buildLoadedSkillsSystemMessage(
       text:
         `${LOADED_SKILLS_SYSTEM_MARKER}\n` +
         "The following skill instructions are already loaded for this conversation.\n" +
-        "Use them directly. Do not call load_skill again for these skills unless the user asks to refresh or replace them.\n\n",
+        "Use them directly. Their required tool profiles are active; do not claim a listed skill's tools are unavailable because it was loaded on an earlier turn. " +
+        "Do not call load_skill again for these skills unless the user asks to refresh or replace them.\n\n",
       // Keep the single explicit breakpoint on a stable prefix so adding new
       // skills extends the cached block instead of moving the breakpoint.
       cache_control: { type: "ephemeral" },

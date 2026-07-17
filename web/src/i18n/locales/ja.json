@@ -802,6 +802,11 @@
   "research_paper": "研究論文",
   "research_paper_arg": "リサーチペーパー（{{var1}}）",
   "research_paper_requires_a_single_participant": "研究論文には参加者が1人必要です。",
+  "artifact_write_requires_single_participant": "プレゼンテーションの編集には参加者1人が必要です。+→参加者を開き、1人になるまで参加者を削除してください。編集後に再度追加できます。",
+  "create_presentation": "プレゼンテーションを作成",
+  "load_skill": "スキルを読み込む",
+  "presentation_target": "プレゼンテーション対象",
+  "remove_presentation_target": "プレゼンテーション対象を削除",
   "research_papers": "研究論文",
   "reset": "リセット",
   "reset_purchases": "購入をリセット",
@@ -2982,5 +2987,13 @@
   "cost_breakdown_advisors": "アドバイザー",
   "pe_cap_advisors_title": "非公開Personaアドバイザー",
   "pe_cap_advisors_desc": "最大3つのPersonaがターンを非公開で確認し、最終回答が助言を統合します。すべてのテキスト参加者が同じ非公開ノートを受け取ります。",
-  "pe_scenario_5": "顧客担当、技術責任者、リスク専門家が製品判断を非公開で確認してからメイン参加者が回答します。"
+  "pe_scenario_5": "顧客担当、技術責任者、リスク専門家が製品判断を非公開で確認してからメイン参加者が回答します。",
+  "presentation_progress_queued": "プレゼンテーションを準備しています",
+  "presentation_progress_planning": "スライド構成を計画しています",
+  "presentation_progress_repairing_plan": "スライド計画を修正しています",
+  "presentation_progress_generating": "{{count}}枚のスライドを生成しています",
+  "presentation_progress_repairing_generation": "スライドを修正・検証しています",
+  "presentation_progress_exporting": "PowerPointファイルを作成しています",
+  "presentation_progress_complete": "プレゼンテーションの準備ができました",
+  "presentation_progress_failed": "プレゼンテーションの生成に失敗しました"
 }

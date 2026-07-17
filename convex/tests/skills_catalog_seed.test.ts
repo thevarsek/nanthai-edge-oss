@@ -182,7 +182,7 @@ test("SYSTEM_SKILL_CATALOG: docs, runtime, and subagent skills have requiredTool
     "documents": ["docs", "persistentRuntime"],
     "docx": ["docs"],
     "pdf": ["docs", "persistentRuntime"],
-    "pptx": ["docs"],
+    "pptx": ["presentations"],
     "xlsx": ["docs", "analytics"],
     "data-analyzer": ["analytics"],
     "code-workspace": ["workspace"],
@@ -338,13 +338,16 @@ test("SYSTEM_SKILL_CATALOG: docx requires generate_docx, read_docx, edit_docx, p
   );
 });
 
-test("SYSTEM_SKILL_CATALOG: pptx requires generate_pptx, read_pptx, edit_pptx", () => {
+test("SYSTEM_SKILL_CATALOG: pptx uses chat-first presentation tools and keeps read_pptx for imports", () => {
   const pptx = SYSTEM_SKILL_CATALOG.find((s) => s.slug === "pptx");
   assert.ok(pptx);
   assert.deepEqual(
     [...pptx.requiredToolIds].sort(),
-    ["edit_pptx", "generate_pptx", "read_pptx"],
+    ["create_presentation", "edit_presentation", "read_pptx", "read_presentation"],
   );
+  assert.match(pptx.instructionsRaw, /Clarify before creating/);
+  assert.match(pptx.instructionsRaw, /Never send the user to a separate presentation mode/);
+  assert.match(pptx.instructionsRaw, /Do not print or paste a direct storage\/download URL/);
 });
 
 test("SYSTEM_SKILL_CATALOG: xlsx requires generate_xlsx, read_xlsx, edit_xlsx", () => {

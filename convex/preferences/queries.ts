@@ -6,6 +6,7 @@
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
+import { MODEL_IDS } from "../lib/model_constants";
 import { isUserPro } from "./entitlements";
 
 // -- User Preferences ---------------------------------------------------------
@@ -18,10 +19,16 @@ export const getPreferences = query({
     if (!identity) {
       return null;
     }
-    return await ctx.db
+    const preferences = await ctx.db
       .query("userPreferences")
       .withIndex("by_user", (q) => q.eq("userId", identity.userId))
       .first();
+    if (!preferences) return null;
+
+    return {
+      ...preferences,
+      defaultModelId: preferences.defaultModelId ?? MODEL_IDS.appDefault,
+    };
   },
 });
 
