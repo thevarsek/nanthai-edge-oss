@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import * as memoryOperations from "../memory/operations";
+import * as memoryRelationships from "../memory/relationships";
 import {
   approveAllContinuation,
   deleteAllContinuation,
@@ -14,7 +15,8 @@ test("memory operation registrations remain exported", () => {
   assert.equal(typeof (memoryOperations.deleteAll as any)._handler, "function");
   assert.equal(typeof (memoryOperations.approveAll as any)._handler, "function");
   assert.equal(typeof (memoryOperations.rejectAll as any)._handler, "function");
-  assert.equal(typeof (memoryOperations.retrieveRelevant as any)._handler, "function");
+  assert.equal(typeof (memoryRelationships.rebuildForMemory as any)._handler, "function");
+  assert.equal(typeof (memoryRelationships.backfillMine as any)._handler, "function");
   assert.equal(typeof (memoryOperations.purgeUserMemories as any)._handler, "function");
 });
 
@@ -31,13 +33,15 @@ test("deleteAllContinuation deletes a full batch and schedules another pass", as
         query: (table: string) => ({
           withIndex: (_index: string, cb?: (query: any) => any) => {
             const state: { memoryId?: string } = {};
-            cb?.({
+            const queryApi = {
               eq: (_field: string, value: string) => {
                 state.memoryId = value;
-                return state;
+                return queryApi;
               },
-            });
+            };
+            cb?.(queryApi);
             return {
+              collect: async () => [],
               take: async () => (table === "memories" ? memories : []),
               first: async () =>
                 table === "memoryEmbeddings"
@@ -111,6 +115,7 @@ test("rejectAllContinuation removes pending memories and related embeddings", as
             };
             cb?.(queryApi);
             return {
+              collect: async () => [],
               take: async () =>
                 table === "memories"
                   ? [{ _id: "memory_1", isPending: true }]

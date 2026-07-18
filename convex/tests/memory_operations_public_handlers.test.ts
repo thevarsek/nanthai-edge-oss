@@ -48,6 +48,30 @@ test("listHandler requires Pro and filters inactive memories", async () => {
   assert.equal(result[0]?.category, "writingStyle");
 });
 
+test("listHandler returns more than 100 active memories by default", async () => {
+  const records = Array.from({ length: 125 }, (_, index) => ({
+    _id: `memory_${index}`,
+    userId: "user_1",
+    content: `Active memory ${index}`,
+    updatedAt: index,
+  }));
+  const result = await listHandler({
+    auth: buildAuth(),
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => table === "purchaseEntitlements"
+            ? { status: "active" }
+            : null,
+          order: () => ({ take: async () => records }),
+        }),
+      }),
+    },
+  } as any, {});
+
+  assert.equal(result.length, 125);
+});
+
 test("listHandler rejects authenticated free users", async () => {
   await assert.rejects(
     listHandler({
@@ -106,6 +130,7 @@ test("updateHandler normalizes fields and refreshes embeddings", async () => {
       },
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           first: async () => {
             if (table === "memoryEmbeddings") {
               return { _id: "embedding_1", memoryId: "memory_1" };
@@ -167,6 +192,7 @@ test("updateHandler clears category when category is explicitly null", async () 
       delete: async () => {},
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           first: async () => (table === "purchaseEntitlements" ? { status: "active" } : null),
         }),
       }),
@@ -218,9 +244,21 @@ test("removeHandler deletes both embedding and memory", async () => {
     auth: buildAuth(),
     db: {
       get: async () => ({ _id: "memory_1", userId: "user_1" }),
-      query: () => ({
+      query: (table: string) => ({
         withIndex: () => ({
-          first: async () => ({ _id: "embedding_1", memoryId: "memory_1" }),
+          collect: async () => table === "memoryRelationships"
+            ? [
+                { _id: "relationship_out" },
+                { _id: "relationship_in" },
+              ]
+            : [],
+          first: async () => {
+            if (table === "memoryEmbeddings") {
+              return { _id: "embedding_1", memoryId: "memory_1" };
+            }
+            if (table === "purchaseEntitlements") return { status: "active" };
+            return null;
+          },
         }),
       }),
       delete: async (id: string) => {
@@ -231,7 +269,12 @@ test("removeHandler deletes both embedding and memory", async () => {
     memoryId: "memory_1" as any,
   });
 
-  assert.deepEqual(deleted, ["embedding_1", "memory_1"]);
+  assert.deepEqual(deleted, [
+    "relationship_out",
+    "relationship_in",
+    "embedding_1",
+    "memory_1",
+  ]);
 });
 
 test("createManualHandler inserts normalized memory and schedules embedding", async () => {
@@ -243,6 +286,7 @@ test("createManualHandler inserts normalized memory and schedules embedding", as
     db: {
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           first: async () => (table === "purchaseEntitlements" ? { status: "active" } : null),
         }),
       }),
@@ -287,6 +331,7 @@ test("deleteAllHandler schedules continuation when a full batch is processed", a
     db: {
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           take: async () => (table === "memories" ? memories : []),
           first: async () => (table === "purchaseEntitlements" ? { status: "active" } : null),
         }),
@@ -324,6 +369,7 @@ test("approveAllHandler and rejectAllHandler process one batch and self-schedule
     db: {
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           take: async () => (table === "memories" ? pending : []),
           first: async () => (table === "purchaseEntitlements" ? { status: "active" } : null),
         }),
@@ -344,6 +390,7 @@ test("approveAllHandler and rejectAllHandler process one batch and self-schedule
     db: {
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           take: async () => (table === "memories" ? pending : []),
           first: async () => (table === "purchaseEntitlements" ? { status: "active" } : null),
         }),

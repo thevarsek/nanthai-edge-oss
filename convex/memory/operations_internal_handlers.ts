@@ -10,94 +10,13 @@ import { computeEmbedding, jaccardSimilarity } from "./embedding_helpers";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { MODEL_IDS } from "../lib/model_constants";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
+import { deleteMemoryWithDerivedData } from "./cleanup";
 
 type MemoryDocResult = Partial<Doc<"memories">> & {
   _id: Id<"memories">;
   content?: string;
   userId?: string;
 };
-
-export interface RetrieveRelevantArgs extends Record<string, unknown> {
-  queryText: string;
-  userId: string;
-  limit?: number;
-  // M23: Optional chat attribution for embedding cost tracking.
-  chatId?: Id<"chats">;
-  messageId?: Id<"messages">;
-}
-
-// ✅ userId added to memoryEmbeddings schema and vector index filterFields.
-// retrieveRelevantHandler now filters by userId directly — no overfetch needed.
-// Run backfillEmbeddingUserIds migration to populate existing rows
-// (all new rows are written with userId).
-
-export async function retrieveRelevantHandler(
-  ctx: ActionCtx,
-  args: RetrieveRelevantArgs,
-): Promise<Array<MemoryDocResult & { score: number }>> {
-  if (!args.queryText.trim()) return [];
-
-  const [apiKey, preferences] = await Promise.all([
-    getRequiredUserOpenRouterApiKey(ctx, args.userId),
-    ctx.runQuery(internal.chat.queries.getUserPreferences, {
-      userId: args.userId,
-    }),
-  ]);
-  const embeddingResult = await computeEmbedding(args.queryText, apiKey, {
-    requireZdr: isZdrEnabled(preferences),
-  });
-  if (!embeddingResult) return [];
-
-  const requestedLimit = args.limit ?? 10;
-
-  // Filter by userId directly in the vector index — no overfetch needed.
-  // Pre-migration rows without userId are excluded by the filter; the
-  // backfillEmbeddingUserIds migration populates them so they become searchable.
-  const results = await ctx.vectorSearch("memoryEmbeddings", "by_embedding", {
-    vector: embeddingResult.embedding,
-    limit: Math.min(requestedLimit, 256),
-    filter: (q) => q.eq("userId", args.userId),
-  });
-  if (results.length === 0) return [];
-
-  const memories: Array<MemoryDocResult & { score: number }> = [];
-  for (const result of results) {
-    if (memories.length >= requestedLimit) break;
-
-    const embeddingDoc = await ctx.runQuery(
-      internal.memory.operations.getEmbeddingDoc,
-      { embeddingId: result._id },
-    );
-    if (!embeddingDoc) continue;
-
-    const memory = await ctx.runQuery(internal.memory.operations.getMemoryDoc, {
-      memoryId: embeddingDoc.memoryId,
-    });
-    if (memory) {
-      memories.push({
-        ...memory,
-        score: result._score,
-      });
-    }
-  }
-
-  // M23: Track embedding retrieval cost if chat attribution is available.
-  if (embeddingResult.usage && args.chatId && args.messageId) {
-    await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
-      messageId: args.messageId,
-      chatId: args.chatId,
-      userId: args.userId,
-      modelId: MODEL_IDS.embedding,
-      promptTokens: embeddingResult.usage.promptTokens,
-      completionTokens: 0,
-      totalTokens: embeddingResult.usage.totalTokens,
-      source: "memory_embedding_retrieve",
-      generationId: embeddingResult.generationId ?? undefined,
-    });
-  }
-
-  return memories;
-}
 
 export interface ComputeAndStoreEmbeddingArgs extends Record<string, unknown> {
   memoryId: Id<"memories">;
@@ -144,6 +63,9 @@ export async function computeAndStoreEmbeddingHandler(
     userId: memory.userId,
     embedding: embeddingResult.embedding,
   });
+  await ctx.scheduler.runAfter(0, internal.memory.relationships.rebuildForMemory, {
+    memoryId: args.memoryId,
+  });
 
   // M23: Track embedding cost if the memory has chat attribution.
   if (embeddingResult.usage && memory.sourceChatId && memory.sourceMessageId) {
@@ -161,17 +83,6 @@ export async function computeAndStoreEmbeddingHandler(
   }
 }
 
-export interface GetEmbeddingDocArgs extends Record<string, unknown> {
-  embeddingId: Id<"memoryEmbeddings">;
-}
-
-export async function getEmbeddingDocHandler(
-  ctx: QueryCtx,
-  args: GetEmbeddingDocArgs,
-): Promise<Doc<"memoryEmbeddings"> | null> {
-  return await ctx.db.get(args.embeddingId);
-}
-
 export interface GetMemoryDocArgs extends Record<string, unknown> {
   memoryId: Id<"memories">;
 }
@@ -181,35 +92,6 @@ export async function getMemoryDocHandler(
   args: GetMemoryDocArgs,
 ): Promise<MemoryDocResult | null> {
   return await ctx.db.get(args.memoryId);
-}
-
-export interface HydrateRelevantMemoryHitsArgs extends Record<string, unknown> {
-  hits: Array<{
-    embeddingId: Id<"memoryEmbeddings">;
-    score: number;
-  }>;
-}
-
-export async function hydrateRelevantMemoryHitsHandler(
-  ctx: QueryCtx,
-  args: HydrateRelevantMemoryHitsArgs,
-): Promise<Array<Doc<"memories"> & { score: number }>> {
-  const hydrated: Array<Doc<"memories"> & { score: number }> = [];
-
-  for (const hit of args.hits) {
-    const embeddingDoc = await ctx.db.get(hit.embeddingId);
-    if (!embeddingDoc) continue;
-
-    const memory = await ctx.db.get(embeddingDoc.memoryId);
-    if (!memory) continue;
-
-    hydrated.push({
-      ...memory,
-      score: hit.score,
-    });
-  }
-
-  return hydrated;
 }
 
 export interface StoreEmbeddingArgs extends Record<string, unknown> {
@@ -255,14 +137,7 @@ export async function purgeUserMemoriesBatchHandler(
     .take(PURGE_BATCH_SIZE);
 
   for (const memory of memories) {
-    const embedding = await ctx.db
-      .query("memoryEmbeddings")
-      .withIndex("by_memory", (q) => q.eq("memoryId", memory._id))
-      .first();
-    if (embedding) {
-      await ctx.db.delete(embedding._id);
-    }
-    await ctx.db.delete(memory._id);
+    await deleteMemoryWithDerivedData(ctx, memory._id, args.userId);
   }
 
   return memories.length;
@@ -401,12 +276,7 @@ export async function consolidateForUserHandler(
   }
 
   for (const id of toDelete) {
-    const embedding = await ctx.db
-      .query("memoryEmbeddings")
-      .withIndex("by_memory", (q) => q.eq("memoryId", id))
-      .first();
-    if (embedding) await ctx.db.delete(embedding._id);
-    await ctx.db.delete(id);
+    await deleteMemoryWithDerivedData(ctx, id, args.userId);
   }
 
   return {

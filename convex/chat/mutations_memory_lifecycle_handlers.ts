@@ -8,6 +8,7 @@ export interface ReinforceMemoryArgs extends Record<string, unknown> {
   candidateImportanceScore?: number;
   candidateConfidenceScore?: number;
   candidateExpiresAt?: number;
+  candidateRetrievalMode?: "alwaysOn" | "contextual" | "disabled";
 }
 
 export async function reinforceMemoryHandler(
@@ -35,6 +36,12 @@ export async function reinforceMemoryHandler(
     args.candidateConfidenceScore > (memory.confidenceScore ?? 0)
   ) {
     patch.confidenceScore = args.candidateConfidenceScore;
+  }
+  if (
+    args.candidateRetrievalMode === "alwaysOn" &&
+    memory.retrievalMode !== "alwaysOn"
+  ) {
+    patch.retrievalMode = "alwaysOn";
   }
 
   const currentType = memory.memoryType ?? "workContext";

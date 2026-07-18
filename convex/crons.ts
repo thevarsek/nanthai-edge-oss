@@ -44,7 +44,8 @@ crons.interval(
 crons.cron(
   "consolidateMemories",
   "0 3 * * *",
-  internal.memory.operations.consolidate,
+  internal.memory.quality.sweep,
+  {},
 );
 
 // Clean up stale search phases and sessions daily at 4:00 UTC (7-day retention)

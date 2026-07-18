@@ -90,6 +90,9 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
       JSON.stringify([
         {
           content: "User prefers concise answers",
+          evidenceQuote: "I prefer concise answers",
+          evidenceKind: "explicitPreference",
+          durability: "durable",
           category: "preferences",
           memoryType: "responsePreference",
           importanceScore: 0.95,
@@ -97,6 +100,9 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
         },
         {
           content: "User lives in Berlin",
+          evidenceQuote: "I moved to Berlin",
+          evidenceKind: "explicitFact",
+          durability: "durable",
           category: "identity",
           memoryType: "profile",
           importanceScore: 0.91,
@@ -104,6 +110,9 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
         },
         {
           content: "User works as a product engineer",
+          evidenceQuote: "Assistant responded: Noted",
+          evidenceKind: "explicitFact",
+          durability: "durable",
           category: "work",
           memoryType: "workContext",
           importanceScore: 0.8,
@@ -196,14 +205,13 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
     true,
   );
   const created = mutationCalls.filter((call) => call.ref === createRef);
-  assert.equal(created.length, 2);
+  assert.equal(created.length, 1);
   assert.equal(created[0]?.args.supersedesMemoryId, "memory_old_location");
-  assert.equal(created[1]?.args.supersedesMemoryId, undefined);
   assert.deepEqual(
     scheduled
       .filter((entry) => entry.source === "memory_extraction" || entry.memoryId)
       .map((entry) => entry.source ?? entry.memoryId),
-    ["memory_extraction", "memory_new_1", "memory_new_2"],
+    ["memory_extraction", "memory_new_1"],
   );
   const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
   assert.deepEqual(
@@ -211,7 +219,7 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
     ["backend_ai_operation_started", "backend_ai_operation_completed"],
   );
   const completed = memoryAnalytics.find((entry) => entry.event === "backend_ai_operation_completed");
-  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.created_memory_count, 2);
+  assert.equal((completed?.properties as Record<string, unknown> | undefined)?.created_memory_count, 1);
   assert.equal((completed?.properties as Record<string, unknown> | undefined)?.reinforced_memory_count, 1);
   assert.equal((completed?.properties as Record<string, unknown> | undefined)?.superseded_memory_count, 1);
   assert.equal((completed?.properties as Record<string, unknown> | undefined)?.total_tokens, 19);
@@ -225,6 +233,9 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
       JSON.stringify([
         {
           content: "User email: dino@example.com",
+          evidenceQuote: "my email",
+          evidenceKind: "explicitFact",
+          durability: "durable",
           category: "identity",
           memoryType: "profile",
           importanceScore: 0.9,
@@ -232,6 +243,9 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
         },
         {
           content: "User prefers direct answers",
+          evidenceQuote: "Keep my email out of memory",
+          evidenceKind: "explicitPreference",
+          durability: "durable",
           category: "preferences",
           memoryType: "responsePreference",
           importanceScore: 0.49,
@@ -239,6 +253,9 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
         },
         {
           content: "User works as a platform engineer",
+          evidenceQuote: "Keep my email out of memory",
+          evidenceKind: "explicitFact",
+          durability: "durable",
           category: "work",
           memoryType: "workContext",
           importanceScore: 0.8,

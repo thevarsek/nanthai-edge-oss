@@ -51,6 +51,12 @@ test("parseMemoryExtractionPayload handles fenced JSON and array fallback", () =
   assert.equal(parsedStructured.length, 1);
   assert.equal(parsedStructured[0].category, "identity");
   assert.equal(parsedStructured[0].retrievalMode, "alwaysOn");
+
+  const evidenced = "{\"facts\":[{\"content\":\"User prefers concise answers\",\"evidenceQuote\":\"I prefer concise answers\",\"evidenceKind\":\"explicitPreference\",\"durability\":\"durable\"}]}";
+  const parsedEvidenced = parseMemoryExtractionPayload(evidenced);
+  assert.equal(parsedEvidenced[0].evidenceQuote, "I prefer concise answers");
+  assert.equal(parsedEvidenced[0].evidenceKind, "explicitPreference");
+  assert.equal(parsedEvidenced[0].durability, "durable");
   assert.deepEqual(parsedStructured[0].tags, ["name", "bio"]);
 });
 

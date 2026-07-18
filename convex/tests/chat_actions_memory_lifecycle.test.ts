@@ -99,3 +99,23 @@ test("selectMemoriesForContext prioritizes active preference memories", () => {
   assert.ok(selected.some((memory) => memory._id === "work"));
   assert.ok(selected.every((memory) => isMemoryActive(memory)));
 });
+
+test("selectMemoriesForContext uses vector and graph retrieval relevance", () => {
+  const selected = selectMemoriesForContext([
+    {
+      _id: "retrieved",
+      content: "A related detail with no shared query terms.",
+      memoryType: "transient",
+      importanceScore: 0.2,
+      retrievalScore: 1,
+    },
+    {
+      _id: "important",
+      content: "Another unrelated detail.",
+      memoryType: "transient",
+      importanceScore: 0.9,
+    },
+  ], "completely different words", 1);
+
+  assert.equal(selected[0]?._id, "retrieved");
+});

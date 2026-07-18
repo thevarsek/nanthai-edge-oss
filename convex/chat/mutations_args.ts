@@ -437,6 +437,7 @@ export const reinforceMemoryArgs = {
   candidateImportanceScore: v.optional(v.number()),
   candidateConfidenceScore: v.optional(v.number()),
   candidateExpiresAt: v.optional(v.number()),
+  candidateRetrievalMode: v.optional(memoryRetrievalMode),
 } satisfies PropertyValidators;
 
 export const supersedeMemoryArgs = {

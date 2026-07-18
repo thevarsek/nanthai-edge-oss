@@ -23,8 +23,12 @@ import {
 import {
   normalizeMemoryCategory,
   normalizeMemoryRecord,
-  normalizeMemoryRetrievalMode,
 } from "./shared";
+import {
+  isOneOffTaskContent,
+  normalizeMemoryScore,
+  resolveImportRetrievalMode,
+} from "./quality_policy";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { resolveTextAncillaryModel } from "../lib/openrouter_modality";
 
@@ -104,9 +108,8 @@ Return JSON only as an array of objects.
 Each object must include:
 - content
 - category: one of identity | writingStyle | work | goals | background | relationships | preferences | tools | skills | logistics
-- retrievalMode: one of alwaysOn | contextual | disabled
-- importanceScore
-- confidenceScore
+- importanceScore: number between 0 and 1
+- confidenceScore: number between 0 and 1
 
 The document may be a CV, resume, bio, onboarding note, or personal reference doc.
 Treat role descriptions, achievements, hobbies, language skills, and education entries as facts about the user even when written as bullet points.
@@ -220,6 +223,7 @@ export async function extractImportCandidatesHandler(
       const normalizedContent = normalizeMemoryContent(item.content ?? "");
       if (!normalizedContent) continue;
       if (!memoryLikelyUserFact(normalizedContent)) continue;
+      if (isOneOffTaskContent(normalizedContent)) continue;
       if (shouldExcludeMemoryContent(normalizedContent, exclusionRules)) continue;
       if (
         findDuplicateMemory(
@@ -235,11 +239,10 @@ export async function extractImportCandidatesHandler(
         normalizedContent,
         item.memoryType,
       );
-      const retrievalMode = normalizeMemoryRetrievalMode(
-        item.retrievalMode,
-        category,
-        item.memoryType,
-      );
+      const retrievalMode = resolveImportRetrievalMode(category, normalizedContent);
+      const importanceScore = normalizeMemoryScore(item.importanceScore, 0.88);
+      const confidenceScore = normalizeMemoryScore(item.confidenceScore, 0.8);
+      if (importanceScore < 0.65 || confidenceScore < 0.7) continue;
       const normalized = normalizeMemoryRecord({
         content: normalizedContent,
         category,
@@ -259,8 +262,8 @@ export async function extractImportCandidatesHandler(
         tags: normalized.tags,
         isPinned: false,
         sourceFileName: normalized.sourceFileName,
-        importanceScore: item.importanceScore ?? 0.88,
-        confidenceScore: item.confidenceScore ?? 0.8,
+        importanceScore,
+        confidenceScore,
       });
       keptForFile += 1;
     }

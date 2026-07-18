@@ -1,4 +1,8 @@
 import { Id } from "../_generated/dataModel";
+import {
+  isMemoryActive as isSharedMemoryActive,
+  isMemoryExpired as isSharedMemoryExpired,
+} from "../memory/shared";
 
 export type MemoryType =
   | "profile"
@@ -21,6 +25,7 @@ export interface MemoryRecordLike {
   confidenceScore?: number;
   reinforcementCount?: number;
   expiresAt?: number;
+  retrievalScore?: number;
 }
 
 const RESPONSE_PREFERENCE_PATTERNS: RegExp[] = [
@@ -209,13 +214,8 @@ export function findConflictingMemory<T extends MemoryRecordLike>(
   );
 }
 
-export function isMemoryExpired(memory: MemoryRecordLike, now = Date.now()): boolean {
-  return typeof memory.expiresAt === "number" && memory.expiresAt <= now;
-}
-
-export function isMemoryActive(memory: MemoryRecordLike, now = Date.now()): boolean {
-  return !memory.isPending && !memory.isSuperseded && !isMemoryExpired(memory, now);
-}
+export const isMemoryExpired = isSharedMemoryExpired;
+export const isMemoryActive = isSharedMemoryActive;
 
 export function selectMemoriesForContext<T extends MemoryRecordLike>(
   memories: T[],
@@ -234,13 +234,18 @@ export function selectMemoriesForContext<T extends MemoryRecordLike>(
           ? Math.max(0, 0.2 - (now - memory.updatedAt) / (1000 * 60 * 60 * 24 * 180))
           : 0;
       const pinnedBoost = memory.isPinned ? 0.35 : 0;
+      const retrievalBoost = Math.max(
+        0,
+        Math.min(1, memory.retrievalScore ?? 0),
+      ) * 1.25;
       const rank =
         importance * 1.5 +
         typePriority(memory.memoryType) * 0.45 +
         overlap * 1.4 +
         accessBoost +
         recencyBoost +
-        pinnedBoost;
+        pinnedBoost +
+        retrievalBoost;
       return { memory, rank };
     })
     .sort((a, b) => b.rank - a.rank);

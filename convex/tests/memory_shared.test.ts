@@ -59,3 +59,34 @@ test("always-on prioritization favors writing style and identity", () => {
 
   assert.deepEqual(prioritized.map((item) => item._id), ["style", "identity"]);
 });
+
+test("always-on prioritization excludes inactive memories", () => {
+  const now = Date.now();
+  const prioritized = prioritizeAlwaysOnMemories([
+    {
+      _id: "active",
+      content: "User prefers concise answers.",
+      retrievalMode: "alwaysOn",
+    },
+    {
+      _id: "pending",
+      content: "User prefers tables.",
+      retrievalMode: "alwaysOn",
+      isPending: true,
+    },
+    {
+      _id: "superseded",
+      content: "User prefers long answers.",
+      retrievalMode: "alwaysOn",
+      isSuperseded: true,
+    },
+    {
+      _id: "expired",
+      content: "User prefers headings.",
+      retrievalMode: "alwaysOn",
+      expiresAt: now - 1,
+    },
+  ], 10);
+
+  assert.deepEqual(prioritized.map((item) => item._id), ["active"]);
+});

@@ -81,33 +81,13 @@ export const commitImportedMemoriesArgs = {
   isPending: v.optional(v.boolean()),
 } satisfies PropertyValidators;
 
-export const retrieveRelevantArgs = {
-  queryText: v.string(),
-  userId: v.string(),
-  limit: v.optional(v.number()),
-  // M23: Optional chat attribution for embedding cost tracking.
-  chatId: v.optional(v.id("chats")),
-  messageId: v.optional(v.id("messages")),
-} satisfies PropertyValidators;
-
 export const computeAndStoreEmbeddingArgs = {
   memoryId: v.id("memories"),
   content: v.string(),
 } satisfies PropertyValidators;
 
-export const getEmbeddingDocArgs = {
-  embeddingId: v.id("memoryEmbeddings"),
-} satisfies PropertyValidators;
-
 export const getMemoryDocArgs = {
   memoryId: v.id("memories"),
-} satisfies PropertyValidators;
-
-export const hydrateRelevantMemoryHitsArgs = {
-  hits: v.array(v.object({
-    embeddingId: v.id("memoryEmbeddings"),
-    score: v.number(),
-  })),
 } satisfies PropertyValidators;
 
 export const storeEmbeddingArgs = {

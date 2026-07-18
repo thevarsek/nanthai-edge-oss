@@ -22,10 +22,8 @@ import {
   computeAndStoreEmbeddingArgs,
   createManualArgs,
   extractImportCandidatesArgs,
-  getEmbeddingDocArgs,
   getMessageMemoryContextArgs,
   getMessageQueryEmbeddingArgs,
-  hydrateRelevantMemoryHitsArgs,
   getMemoryDocArgs,
   listArgs,
   markMessageMemoryContextUsageRecordedArgs,
@@ -35,7 +33,6 @@ import {
   purgeUserMemoriesArgs,
   rejectArgs,
   removeArgs,
-  retrieveRelevantArgs,
   storeEmbeddingArgs,
   togglePinArgs,
   updateArgs,
@@ -45,12 +42,9 @@ import {
   consolidateForUserHandler,
   consolidateHandler,
   getDistinctMemoryUserIdsHandler,
-  getEmbeddingDocHandler,
   getMemoryDocHandler,
-  hydrateRelevantMemoryHitsHandler,
   purgeUserMemoriesBatchHandler,
   purgeUserMemoriesHandler,
-  retrieveRelevantHandler,
   storeEmbeddingHandler,
 } from "./operations_internal_handlers";
 import {
@@ -68,10 +62,10 @@ import {
   primeMessageMemoryContextHandler,
 } from "./memory_context_handlers";
 import { extractImportCandidatesHandler } from "./operations_import_handlers";
+import { commitImportedMemoriesHandler } from "./operations_import_commit_handlers";
 import {
   approveAllHandler,
   approveHandler,
-  commitImportedMemoriesHandler,
   createManualHandler,
   deleteAllHandler,
   listHandler,
@@ -142,29 +136,14 @@ export const rejectAll = mutation({
   handler: rejectAllHandler,
 });
 
-export const retrieveRelevant = internalAction({
-  args: retrieveRelevantArgs,
-  handler: retrieveRelevantHandler,
-});
-
 export const computeAndStoreEmbedding = internalAction({
   args: computeAndStoreEmbeddingArgs,
   handler: computeAndStoreEmbeddingHandler,
 });
 
-export const getEmbeddingDoc = internalQuery({
-  args: getEmbeddingDocArgs,
-  handler: getEmbeddingDocHandler,
-});
-
 export const getMemoryDoc = internalQuery({
   args: getMemoryDocArgs,
   handler: getMemoryDocHandler,
-});
-
-export const hydrateRelevantMemoryHits = internalQuery({
-  args: hydrateRelevantMemoryHitsArgs,
-  handler: hydrateRelevantMemoryHitsHandler,
 });
 
 export const storeEmbedding = internalMutation({

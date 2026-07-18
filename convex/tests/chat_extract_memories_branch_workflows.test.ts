@@ -63,6 +63,9 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
     { content: "Assistant should explain every tool call." },
     {
       content: "User works as a platform architect",
+      evidenceQuote: "I work as a platform architect",
+      evidenceKind: "explicitFact",
+      durability: "ongoing",
       category: "work",
       memoryType: "work_context",
       retrievalMode: "contextual",
@@ -95,7 +98,10 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
         scheduled.push(args);
       },
     },
-  } as any, baseArgs({ isPending: true }));
+  } as any, baseArgs({
+    isPending: true,
+    userMessageContent: "I work as a platform architect.",
+  }));
 
   assert.equal(created.length, 1);
   assert.equal(created[0].memoryType, "workContext");
@@ -121,6 +127,9 @@ test("extractMemoriesHandler skips duplicate content even when the matched row h
   mock.method(globalThis, "fetch", async () => sseResponse(JSON.stringify([
     {
       content: "User prefers concise answers",
+      evidenceQuote: "I prefer concise answers",
+      evidenceKind: "explicitPreference",
+      durability: "durable",
       category: "preferences",
       memoryType: "preference",
       importanceScore: 0.9,
@@ -146,9 +155,48 @@ test("extractMemoriesHandler skips duplicate content even when the matched row h
       return "memory_unexpected";
     },
     scheduler: { runAfter: async () => {} },
-  } as any, baseArgs());
+  } as any, baseArgs({ userMessageContent: "I prefer concise answers." }));
 
   assert.deepEqual(mutationCalls, []);
+});
+
+test("explicit multilingual remember requests use deterministic score floors", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => sseResponse(JSON.stringify([{
+    content: "Preferisco risposte concise e dirette in ogni conversazione",
+    evidenceQuote: "preferisco risposte concise e dirette in ogni conversazione",
+    evidenceKind: "explicitPreference",
+    durability: "durable",
+    category: "preferences",
+    memoryType: "profile",
+    importanceScore: 0.4,
+    confidenceScore: 0.6,
+  }]))) as any;
+
+  const names = refs();
+  const created: Record<string, unknown>[] = [];
+  await extractMemoriesHandler({
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as any);
+      if (name === names.getUserMemories) return [];
+      if (name === names.getUserPreferences) return {};
+      if (name === names.getUserApiKey) return "sk-test";
+      throw new Error(`unexpected query ${name}`);
+    },
+    runMutation: async (ref: unknown, args: Record<string, unknown>) => {
+      if (getFunctionName(ref as any) === names.createMemory) created.push(args);
+      return "memory_explicit_1";
+    },
+    scheduler: { runAfter: async () => {} },
+  } as any, baseArgs({
+    userMessageContent:
+      "Ricorda questa preferenza globale: preferisco risposte concise e dirette in ogni conversazione.",
+  }));
+
+  assert.equal(created.length, 1);
+  assert.equal(created[0]?.importanceScore, 0.8);
+  assert.equal(created[0]?.confidenceScore, 0.8);
+  assert.equal(created[0]?.retrievalMode, "alwaysOn");
 });
 
 test("extractMemoriesHandler swallows model and persistence failures", async (t) => {
@@ -173,6 +221,9 @@ test("extractMemoriesHandler swallows model and persistence failures", async (t)
   mock.method(globalThis, "fetch", async () => sseResponse(JSON.stringify([
     {
       content: "User lives in Lisbon",
+      evidenceQuote: "I live in Lisbon",
+      evidenceKind: "explicitFact",
+      durability: "durable",
       category: "identity",
       memoryType: "profile",
       importanceScore: 0.9,
@@ -192,7 +243,7 @@ test("extractMemoriesHandler swallows model and persistence failures", async (t)
       throw new Error("write unavailable");
     },
     scheduler: { runAfter: async () => {} },
-  } as any, baseArgs());
+  } as any, baseArgs({ userMessageContent: "I live in Lisbon." }));
 
   assert.ok(true);
 });

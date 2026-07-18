@@ -17,6 +17,7 @@ import { requireAuth } from "../lib/auth";
  * - generationJobs, autonomousSessions: by_user_status index
  * - searchPhases: cascaded via searchSessions
  * - memoryEmbeddings: cascaded via memories
+ * - memoryRelationships: direct by_user cleanup before memories
  * - subagentRuns: cascaded via subagentBatches (by_batch index)
  * - sandboxArtifacts: cascaded via sandboxSessions (by_session index, has storageId)
  * - sandboxEvents: by_user index
@@ -50,6 +51,7 @@ const PURGE_ORDER = [
   "searchSessions",
   "autonomousSessions",
   "modelSettings",
+  "memoryRelationships",
   "oauthConnections",
   "deviceTokens",
   "usageRecords",

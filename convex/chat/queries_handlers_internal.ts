@@ -41,11 +41,34 @@ export async function getUserMemoriesHandler(
   ctx: QueryCtx,
   args: GetUserMemoriesArgs,
 ): Promise<MemoryQueryResult[]> {
-  return await ctx.db
-    .query("memories")
-    .withIndex("by_user", (q) => q.eq("userId", args.userId))
-    .order("desc")
-    .take(120);
+  const [recent, alwaysOn, legacyPreferences, pinned] = await Promise.all([
+    ctx.db.query("memories")
+      .withIndex("by_user", (query) => query.eq("userId", args.userId))
+      .order("desc")
+      .take(120),
+    ctx.db.query("memories")
+      .withIndex("by_user_retrieval_mode", (query) =>
+        query.eq("userId", args.userId).eq("retrievalMode", "alwaysOn")
+      )
+      .order("desc")
+      .take(80),
+    ctx.db.query("memories")
+      .withIndex("by_user_type", (query) =>
+        query.eq("userId", args.userId).eq("memoryType", "responsePreference")
+      )
+      .order("desc")
+      .take(80),
+    ctx.db.query("memories")
+      .withIndex("by_user_pinned", (query) =>
+        query.eq("userId", args.userId).eq("isPinned", true)
+      )
+      .take(80),
+  ]);
+  const unique = new Map<Id<"memories">, MemoryQueryResult>();
+  for (const memory of [...recent, ...alwaysOn, ...legacyPreferences, ...pinned]) {
+    unique.set(memory._id, memory);
+  }
+  return [...unique.values()];
 }
 
 export interface GetModelCapabilitiesArgs extends Record<string, unknown> {

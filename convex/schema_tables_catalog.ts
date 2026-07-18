@@ -77,13 +77,38 @@ export const catalogSchemaTables = {
     isPending: v.boolean(),
     accessCount: v.number(),
     lastAccessedAt: v.optional(v.number()),
+    relationshipsBuiltAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId", "createdAt"])
     .index("by_user_type", ["userId", "memoryType", "createdAt"])
+    .index("by_user_retrieval_mode", ["userId", "retrievalMode", "createdAt"])
     .index("by_user_pinned", ["userId", "isPinned"])
     .index("by_user_pending", ["userId", "isPending"]),
+
+  memoryRelationships: defineTable({
+    userId: v.string(),
+    fromMemoryId: v.id("memories"),
+    toMemoryId: v.id("memories"),
+    relationType: v.union(
+      v.literal("related"),
+      v.literal("sameTopic"),
+      v.literal("supersedes"),
+    ),
+    source: v.union(
+      v.literal("embedding"),
+      v.literal("metadata"),
+      v.literal("lifecycle"),
+    ),
+    confidence: v.number(),
+    sharedTags: v.optional(v.array(v.string())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId", "updatedAt"])
+    .index("by_user_from", ["userId", "fromMemoryId"])
+    .index("by_user_to", ["userId", "toMemoryId"]),
 
   memoryEmbeddings: defineTable({
     memoryId: v.id("memories"),
@@ -126,9 +151,9 @@ export const catalogSchemaTables = {
 
   // Phase 3 TTFT cache: full memory-context chain (embedding + vector search +
   // hydrate) prewarmed when the user message is inserted. Keyed by messageId.
-  // `hydratedHits` stores the raw output of `hydrateRelevantMemoryHits`
-  // (memory rows + score) so the generation action can skip embedding, vector
-  // search, AND hydrate entirely on the critical path. `usage`/`generationId`
+  // `hydratedHits` stores vector seeds plus one-hop related memories so the
+  // generation action can skip embedding, vector search, and graph expansion
+  // entirely on the critical path. `usage`/`generationId`
   // mirror the embedding row so billing is attributed to the assistant
   // message via `usageRecordedAt` / `usageRecordedMessageId` exactly once.
   // Staleness model: cache is message-scoped, so edits that change the
@@ -142,8 +167,8 @@ export const catalogSchemaTables = {
     status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
     textHash: v.string(),
     memoryQueryText: v.optional(v.string()),
-    // Raw hydrated memory rows + score (mirrors hydrateRelevantMemoryHits
-    // return shape). `v.any()` on elements because the memories table schema
+    // Raw hydrated memory rows plus retrieval metadata. `v.any()` on elements
+    // because the memories table schema
     // is wide and evolves independently; the consumer re-validates via
     // `normalizeMemoryRecord`.
     hydratedHits: v.optional(v.array(v.any())),

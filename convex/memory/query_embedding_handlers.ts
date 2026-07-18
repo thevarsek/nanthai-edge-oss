@@ -6,27 +6,15 @@ import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { ConvexError } from "convex/values";
 import { computeEmbedding } from "./embedding_helpers";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
+import {
+  hashMemoryCacheTextForPrivacyMode,
+  waitForMemoryCache,
+} from "./cache_helpers";
 
 const PRIMARY_PROVIDER = "openrouter" as const;
 const POLL_INTERVAL_MS = 100;
 const ENSURE_READY_TIMEOUT_MS = 20_000;
 const LEASE_DURATION_MS = 15_000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function hashText(text: string): string {
-  let hash = 5381;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
-  }
-  return `h${(hash >>> 0).toString(16)}`;
-}
-
-function hashTextForPrivacyMode(text: string, requireZdr: boolean): string {
-  return hashText(requireZdr ? `zdr:${text}` : text);
-}
 
 function getStableEmbeddingErrorCode(error: unknown): string {
   if (
@@ -64,7 +52,7 @@ async function computePrimaryEmbeddingForMessage(
   },
 ): Promise<void> {
   const now = Date.now();
-  const textHash = hashTextForPrivacyMode(args.queryText, args.requireZdr);
+  const textHash = hashMemoryCacheTextForPrivacyMode(args.queryText, args.requireZdr);
   if (args.queryText.length === 0) {
     await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
       messageId: args.messageId,
@@ -275,7 +263,7 @@ export async function primeMessageQueryEmbeddingHandler(
       messageId: args.messageId,
       userId: args.userId,
       chatId: args.chatId,
-      textHash: hashTextForPrivacyMode(queryText, requireZdr),
+      textHash: hashMemoryCacheTextForPrivacyMode(queryText, requireZdr),
       leaseOwner: `prime:${args.messageId}`,
       leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
       now: Date.now(),
@@ -306,7 +294,7 @@ export async function ensureMessageQueryEmbeddingReady(
   },
 ): Promise<Doc<"messageQueryEmbeddings"> | null> {
   const requireZdr = args.requireZdr === true;
-  const textHash = hashTextForPrivacyMode(args.queryText, requireZdr);
+  const textHash = hashMemoryCacheTextForPrivacyMode(args.queryText, requireZdr);
   const deadline = Date.now() + ENSURE_READY_TIMEOUT_MS;
 
   while (Date.now() < deadline) {
@@ -341,7 +329,7 @@ export async function ensureMessageQueryEmbeddingReady(
       continue;
     }
 
-    await sleep(POLL_INTERVAL_MS);
+    await waitForMemoryCache(POLL_INTERVAL_MS);
   }
 
   const finalRow = await ctx.runQuery(internal.memory.operations.getMessageQueryEmbedding, {

@@ -55,6 +55,9 @@ export interface MemoryRecordLike {
   importanceScore?: number;
   confidenceScore?: number;
   expiresAt?: number;
+  retrievalScore?: number;
+  retrievalKind?: "vector" | "graph";
+  relationshipType?: "related" | "sameTopic";
 }
 
 const WRITING_STYLE_PATTERNS: RegExp[] = [
@@ -218,11 +221,26 @@ export function isMemoryVisibleToPersona(
   return normalized.personaIds.includes(personaId);
 }
 
+export function isMemoryExpired(
+  memory: Pick<MemoryRecordLike, "expiresAt">,
+  now = Date.now(),
+): boolean {
+  return typeof memory.expiresAt === "number" && memory.expiresAt <= now;
+}
+
+export function isMemoryActive(
+  memory: Pick<MemoryRecordLike, "isPending" | "isSuperseded" | "expiresAt">,
+  now = Date.now(),
+): boolean {
+  return !memory.isPending && !memory.isSuperseded && !isMemoryExpired(memory, now);
+}
+
 export function prioritizeAlwaysOnMemories<T extends MemoryRecordLike>(
   memories: T[],
   limit: number,
 ): T[] {
   return memories
+    .filter((memory) => isMemoryActive(memory))
     .slice()
     .sort((lhs, rhs) => {
       const left = normalizeMemoryRecord(lhs);

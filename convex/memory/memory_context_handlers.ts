@@ -16,6 +16,10 @@ import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { ensureMessageQueryEmbeddingReady } from "./query_embedding_handlers";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
+import {
+  hashMemoryCacheTextForPrivacyMode,
+  waitForMemoryCache,
+} from "./cache_helpers";
 
 const LEASE_DURATION_MS = 15_000;
 const POLL_INTERVAL_MS = 100;
@@ -25,22 +29,6 @@ const VECTOR_SEARCH_LIMIT = 12;
 interface EnsureMessageMemoryContextReadyOptions {
   maxWaitMs?: number;
   claimAndCompute?: boolean;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function hashText(text: string): string {
-  let hash = 5381;
-  for (let index = 0; index < text.length; index += 1) {
-    hash = ((hash << 5) + hash) ^ text.charCodeAt(index);
-  }
-  return `h${(hash >>> 0).toString(16)}`;
-}
-
-function hashTextForPrivacyMode(text: string, requireZdr: boolean): string {
-  return hashText(requireZdr ? `zdr:${text}` : text);
 }
 
 function getStableContextErrorCode(error: unknown): string {
@@ -88,7 +76,7 @@ async function computeMemoryContextForMessage(
     requireZdr: boolean;
   },
 ): Promise<void> {
-  const textHash = hashTextForPrivacyMode(args.queryText, args.requireZdr);
+  const textHash = hashMemoryCacheTextForPrivacyMode(args.queryText, args.requireZdr);
   if (args.queryText.length === 0) {
     await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
       messageId: args.messageId,
@@ -135,14 +123,23 @@ async function computeMemoryContextForMessage(
     const hydratedHits = results.length === 0
       ? []
       : await ctx.runQuery(
-        internal.memory.operations.hydrateRelevantMemoryHits,
+        internal.memory.relationships.hydrateRelevantHits,
         {
+          userId: args.userId,
           hits: results.map((result) => ({
             embeddingId: result._id,
             score: result._score,
           })),
         },
       );
+
+    for (const memory of hydratedHits.filter(
+      (candidate) => candidate.relationshipsBuiltAt == null,
+    )) {
+      await ctx.scheduler.runAfter(0, internal.memory.relationships.rebuildForMemory, {
+        memoryId: memory._id,
+      });
+    }
 
     await ctx.runMutation(internal.memory.operations.completeMessageMemoryContext, {
       messageId: args.messageId,
@@ -364,7 +361,7 @@ export async function primeMessageMemoryContextHandler(
       messageId: args.messageId,
       userId: args.userId,
       chatId: args.chatId,
-      textHash: hashTextForPrivacyMode(queryText, requireZdr),
+      textHash: hashMemoryCacheTextForPrivacyMode(queryText, requireZdr),
       leaseOwner,
       leaseExpiresAt: Date.now() + LEASE_DURATION_MS,
       now: Date.now(),
@@ -401,7 +398,7 @@ export async function ensureMessageMemoryContextReady(
   options: EnsureMessageMemoryContextReadyOptions = {},
 ): Promise<Doc<"messageMemoryContexts"> | null> {
   const requireZdr = args.requireZdr === true;
-  const textHash = hashTextForPrivacyMode(args.queryText, requireZdr);
+  const textHash = hashMemoryCacheTextForPrivacyMode(args.queryText, requireZdr);
   const maxWaitMs = options.maxWaitMs ?? ENSURE_READY_TIMEOUT_MS;
   const claimAndCompute = options.claimAndCompute ?? true;
   const deadline = Date.now() + maxWaitMs;
@@ -419,7 +416,7 @@ export async function ensureMessageMemoryContextReady(
     if (!claimAndCompute) {
       const remainingMs = Math.max(0, deadline - Date.now());
       if (remainingMs > 0) {
-        await sleep(Math.min(POLL_INTERVAL_MS, remainingMs));
+        await waitForMemoryCache(Math.min(POLL_INTERVAL_MS, remainingMs));
       }
       continue;
     }
@@ -450,7 +447,7 @@ export async function ensureMessageMemoryContextReady(
       continue;
     }
 
-    await sleep(POLL_INTERVAL_MS);
+    await waitForMemoryCache(POLL_INTERVAL_MS);
   }
 
   const finalRow = await ctx.runQuery(

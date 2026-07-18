@@ -1,5 +1,8 @@
 export type ExtractedMemory = {
   content: string;
+  evidenceQuote?: string;
+  evidenceKind?: string;
+  durability?: string;
   category?: string;
   memoryType?: string;
   retrievalMode?: string;
@@ -44,6 +47,23 @@ function normalizeExtractedMemory(item: unknown): ExtractedMemory | null {
   const category =
     typeof record.category === "string" && record.category.trim().length > 0
       ? record.category.trim()
+      : undefined;
+
+  const evidenceQuote =
+    typeof record.evidenceQuote === "string" && record.evidenceQuote.trim().length > 0
+      ? record.evidenceQuote.trim()
+      : typeof record.userEvidence === "string" && record.userEvidence.trim().length > 0
+        ? record.userEvidence.trim()
+        : undefined;
+
+  const evidenceKind =
+    typeof record.evidenceKind === "string" && record.evidenceKind.trim().length > 0
+      ? record.evidenceKind.trim()
+      : undefined;
+
+  const durability =
+    typeof record.durability === "string" && record.durability.trim().length > 0
+      ? record.durability.trim()
       : undefined;
 
   const memoryType =
@@ -92,6 +112,9 @@ function normalizeExtractedMemory(item: unknown): ExtractedMemory | null {
 
   return {
     content: candidate.trim(),
+    ...(evidenceQuote ? { evidenceQuote } : {}),
+    ...(evidenceKind ? { evidenceKind } : {}),
+    ...(durability ? { durability } : {}),
     category,
     memoryType,
     retrievalMode,

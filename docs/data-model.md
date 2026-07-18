@@ -4,7 +4,7 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 4 files imported into `convex/schema.ts` — 55 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 4 files imported into `convex/schema.ts` — 65 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
 
@@ -36,8 +36,9 @@ The schema-history sections later in this file preserve milestone-era table coun
 | `generatedCharts` | AI-generated native chart metadata (M19) | userId, chatId, messageId, toolName, chartType, title?, xLabel?, yLabel?, xUnit?, yUnit?, elements |
 | `fileAttachments` | Uploaded file attachment metadata + KB rows | userId, chatId?, messageId?, storageId, filename, mimeType, sizeBytes, driveFileId? (M24 P6 — present iff sourced from Google Drive), lastRefreshedAt? (M24 P6 — last Drive bytes refresh). KB rows have no `chatId`/`messageId`. Indexes: `by_user`, `by_storage` (M24 P6 — single-row lookup by storage id), `by_chat`, `by_user_drive_file` (M24 P6 — dedupe Drive imports per user). |
 | `personas` | Custom AI personas | displayName, personaDescription, modelId, avatarEmoji, avatarImageStorageId, avatarSFSymbol, avatarColor, temperature, skillOverrides (M30), integrationOverrides (M30) |
-| `memories` | Extracted memories | content, category, isPending (boolean), memoryType, importanceScore, retrievalMode (post-M14), scopeType (post-M14), personaIds (post-M14), sourceType (post-M14), sourceFileName (post-M14), tags (post-M14), citationChatId, citationMessageId |
-| `memoryEmbeddings` | Memory vector index rows | memoryId, embedding, model metadata |
+| `memories` | Evidence-admitted extracted memories | userId, content, category, isPending, memoryType, importanceScore, retrievalMode, scopeType, personaIds, sourceType, sourceFileName, tags, lifecycle/supersession fields, relationshipsBuiltAt |
+| `memoryEmbeddings` | User-scoped memory vector index rows | userId, memoryId, embedding, model metadata |
+| `memoryRelationships` | Derived, user-scoped memory graph edges | userId, fromMemoryId, toMemoryId, relationType (`related`, `sameTopic`, `supersedes`), source, confidence, sharedTags, timestamps |
 | `messageQueryEmbeddings` | Lease-based per-message query embedding cache | messageId, userId, chatId, provider, modelId, status, embedding, textHash, usage, generationId, errorCode, leaseOwner, leaseExpiresAt, usageRecordedAt, usageRecordedMessageId |
 | `messageMemoryContexts` | Lease-based per-message hydrated memory-context cache | messageId, userId, chatId, status, textHash, memoryQueryText, hydratedHits, usage, generationId, errorCode, leaseOwner, leaseExpiresAt, usageRecordedAt, usageRecordedMessageId |
 | `cachedModels` | OpenRouter model catalog + benchmark guidance cache | modelId, name, provider, canonicalSlug, pricing, contextLength, supportsImages, supportsTools, supportsVideo (M29), videoCapabilities (M29: durations, resolutions, aspectRatios, audio), benchmarkLlm, benchmarkMedia, openRouterUseCases, guidanceMatch, derivedGuidance |
@@ -153,7 +154,9 @@ enum MemoryGatingMode: String, Codable, Sendable {
 The authoritative schema is `convex/schema.ts`. Key design patterns:
 
 - **Indexes**: Every table has indexes for common query patterns (e.g., `by_chat` on messages, `by_userId` on chats, `by_user_pinned` on chats for pinned conversation queries, `by_user` on favorites)
-- **Vector indexes**: `memories` table has a vector index for semantic search (1536 dimensions, cosine similarity)
+- **Vector indexes**: `memoryEmbeddings` has a user-filtered vector index for semantic memory search (1536 dimensions, cosine similarity)
+- **Memory graph**: `memoryRelationships` stores derived links within one user only. Retrieval remains vector-first and may expand one hop over active related memories; graph traversal is bounded and runs in the preflight cache path.
+- **Memory quality maintenance**: automatic chat candidates require distinct user-message evidence; assistant output can clarify but cannot originate facts. A dry-run-capable batched sweep normalizes scores, downgrades ineligible always-on rows, expires task context, disables likely assistant-derived rows, and supersedes semantic duplicates using user-scoped graph edges.
 - **Optional relationships**: Foreign key fields (`folderId`, `personaId`) are optional (`v.optional(v.id("table"))`)
 - **String enums**: Role, status, and category fields use `v.union(v.literal("..."), ...)` for type safety
 - **Shared validators**: `schema_validators.ts` exports reusable validators (`scheduledJobStatus`, `scheduledJobRecurrence`, `jobRunStatus`, `chatSource`, `memoryRetrievalMode` (post-M14), `memoryScopeType` (post-M14), `memorySourceType` (post-M14), `scheduledJobStep` (post-M14)) used by both schema and function argument validators

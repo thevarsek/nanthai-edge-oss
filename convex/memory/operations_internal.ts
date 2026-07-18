@@ -5,26 +5,12 @@
 // handlers when a single batch wasn't enough.
 // =============================================================================
 
-import { internalMutation, type MutationCtx } from "../_generated/server";
+import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
-import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
+import { deleteMemoryWithDerivedData } from "./cleanup";
 
 const BATCH_SIZE = 100;
-
-async function deleteMemoryWithEmbedding(
-  ctx: MutationCtx,
-  memoryId: Id<"memories">,
-): Promise<void> {
-  const embedding = await ctx.db
-    .query("memoryEmbeddings")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .first();
-  if (embedding) {
-    await ctx.db.delete(embedding._id);
-  }
-  await ctx.db.delete(memoryId);
-}
 
 export const deleteAllContinuation = internalMutation({
   args: { userId: v.string() },
@@ -34,7 +20,7 @@ export const deleteAllContinuation = internalMutation({
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .take(BATCH_SIZE);
     for (const memory of batch) {
-      await deleteMemoryWithEmbedding(ctx, memory._id);
+      await deleteMemoryWithDerivedData(ctx, memory._id, args.userId);
     }
     if (batch.length === BATCH_SIZE) {
       await ctx.scheduler.runAfter(0, internal.memory.operations_internal.deleteAllContinuation, { userId: args.userId });
@@ -67,7 +53,7 @@ export const rejectAllContinuation = internalMutation({
       .withIndex("by_user_pending", (q) => q.eq("userId", args.userId).eq("isPending", true))
       .take(BATCH_SIZE);
     for (const memory of batch) {
-      await deleteMemoryWithEmbedding(ctx, memory._id);
+      await deleteMemoryWithDerivedData(ctx, memory._id, args.userId);
     }
     if (batch.length === BATCH_SIZE) {
       await ctx.scheduler.runAfter(0, internal.memory.operations_internal.rejectAllContinuation, { userId: args.userId });

@@ -4,6 +4,7 @@ import type { Id } from "../_generated/dataModel";
 import { formatMemoryContext } from "./helpers";
 import { selectMemoriesForContext } from "./actions_memory_lifecycle";
 import {
+  isMemoryActive,
   isMemoryVisibleToPersona,
   type MemoryRecordLike,
   normalizeMemoryRecord,
@@ -87,6 +88,7 @@ export async function resolveMemoryContextForGeneration(
 
   const allMemories = allMemoriesRaw
     .map((memory: MemoryRecordLike) => normalizeMemoryRecord(memory))
+    .filter((memory: NormalizedMemory) => isMemoryActive(memory))
     .filter((memory: NormalizedMemory) => isMemoryVisibleToPersona(memory, args.personaId));
 
   const alwaysOn = prioritizeAlwaysOnMemories(

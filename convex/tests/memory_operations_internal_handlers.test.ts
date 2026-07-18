@@ -73,6 +73,7 @@ test("purgeUserMemoriesBatchHandler deletes embeddings before memories", async (
     db: {
       query: (table: string) => ({
         withIndex: () => ({
+          collect: async () => [],
           take: async () =>
             table === "memories"
               ? [{ _id: "memory_1" }, { _id: "memory_2" }]

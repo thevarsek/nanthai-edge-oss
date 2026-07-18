@@ -4,11 +4,15 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import {
+  deleteMemoryWithDerivedData,
+} from "./cleanup";
+import {
   normalizeMemoryRecord,
   normalizeMemoryScopeType,
   type MemoryCategory,
   type MemoryRetrievalMode,
 } from "./shared";
+import { refreshMemoryEmbedding } from "./operations_embedding_refresh";
 
 type NormalizedMemoryRecord = ReturnType<typeof normalizeMemoryRecord>;
 
@@ -30,38 +34,6 @@ async function assertOwnedMemory(
   return memory;
 }
 
-async function deleteMemoryWithEmbedding(
-  ctx: MutationCtx,
-  memoryId: Id<"memories">,
-): Promise<void> {
-  const embedding = await ctx.db
-    .query("memoryEmbeddings")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .first();
-  if (embedding) {
-    await ctx.db.delete(embedding._id);
-  }
-  await ctx.db.delete(memoryId);
-}
-
-async function refreshEmbedding(
-  ctx: MutationCtx,
-  memoryId: Id<"memories">,
-  content: string,
-): Promise<void> {
-  const existing = await ctx.db
-    .query("memoryEmbeddings")
-    .withIndex("by_memory", (q) => q.eq("memoryId", memoryId))
-    .first();
-  if (existing) {
-    await ctx.db.delete(existing._id);
-  }
-  await ctx.scheduler.runAfter(0, internal.memory.operations.computeAndStoreEmbedding, {
-    memoryId,
-    content,
-  });
-}
-
 export interface ListArgs extends Record<string, unknown> {
   limit?: number;
   pinnedOnly?: boolean;
@@ -74,7 +46,7 @@ export async function listHandler(
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
   const now = Date.now();
-  const limit = args.limit ?? 100;
+  const limit = Math.min(Math.max(Math.floor(args.limit ?? 500), 1), 500);
   const fetchLimit = Math.max(limit * 3, 150);
 
   const records = args.pinnedOnly
@@ -123,7 +95,7 @@ export async function removeHandler(
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
   await assertOwnedMemory(ctx, args.memoryId, userId);
-  await deleteMemoryWithEmbedding(ctx, args.memoryId);
+  await deleteMemoryWithDerivedData(ctx, args.memoryId, userId);
 }
 
 export interface ApproveArgs extends Record<string, unknown> {
@@ -155,7 +127,7 @@ export async function rejectHandler(
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
   await assertOwnedMemory(ctx, args.memoryId, userId);
-  await deleteMemoryWithEmbedding(ctx, args.memoryId);
+  await deleteMemoryWithDerivedData(ctx, args.memoryId, userId);
 }
 
 export interface UpdateArgs extends Record<string, unknown> {
@@ -196,11 +168,12 @@ export async function updateHandler(
     scopeType,
     personaIds,
     tags,
+    relationshipsBuiltAt: undefined,
     ...(args.isPinned !== undefined ? { isPinned: args.isPinned } : {}),
     updatedAt: Date.now(),
   });
 
-  await refreshEmbedding(ctx, args.memoryId, content);
+  await refreshMemoryEmbedding(ctx, args.memoryId, userId, content);
 }
 
 export interface CreateManualArgs extends Record<string, unknown> {
@@ -256,77 +229,8 @@ export async function createManualHandler(
     updatedAt: now,
   });
 
-  await refreshEmbedding(ctx, memoryId, normalized.content);
+  await refreshMemoryEmbedding(ctx, memoryId, userId, normalized.content);
   return memoryId;
-}
-
-export interface CommitImportedMemoriesArgs extends Record<string, unknown> {
-  memories: Array<{
-    content: string;
-    category?: MemoryCategory;
-    retrievalMode: MemoryRetrievalMode;
-    scopeType: "allPersonas" | "selectedPersonas";
-    personaIds?: string[];
-    tags?: string[];
-    isPinned?: boolean;
-    sourceFileName?: string;
-    importanceScore?: number;
-    confidenceScore?: number;
-  }>;
-  isPending?: boolean;
-}
-
-export async function commitImportedMemoriesHandler(
-  ctx: MutationCtx,
-  args: CommitImportedMemoriesArgs,
-): Promise<number> {
-  const { userId } = await requireAuth(ctx);
-  await requirePro(ctx, userId);
-  const now = Date.now();
-  let created = 0;
-
-  for (const item of args.memories) {
-    const normalized = normalizeMemoryRecord({
-      content: item.content.trim(),
-      category: item.category,
-      retrievalMode: item.retrievalMode,
-      scopeType: item.scopeType,
-      personaIds: item.personaIds,
-      sourceType: "import",
-      sourceFileName: item.sourceFileName,
-      tags: item.tags,
-    });
-    if (!normalized.content) continue;
-
-    const memoryId = await ctx.db.insert("memories", {
-      userId,
-      content: normalized.content,
-      category: normalized.category,
-      memoryType: normalized.category === "writingStyle" ? "responsePreference" : "profile",
-      retrievalMode: normalized.retrievalMode,
-      scopeType: normalized.scopeType,
-      personaIds: normalized.personaIds,
-      sourceType: "import",
-      sourceFileName: normalized.sourceFileName,
-      tags: normalized.tags,
-      sourceMessageId: undefined,
-      sourceChatId: undefined,
-      isPinned: item.isPinned ?? false,
-      isPending: args.isPending ?? false,
-      accessCount: 0,
-      importanceScore: item.importanceScore ?? 0.88,
-      confidenceScore: item.confidenceScore ?? 0.82,
-      reinforcementCount: 1,
-      lastReinforcedAt: now,
-      isSuperseded: false,
-      createdAt: now,
-      updatedAt: now,
-    });
-    created += 1;
-    await refreshEmbedding(ctx, memoryId, normalized.content);
-  }
-
-  return created;
 }
 
 export async function deleteAllHandler(ctx: MutationCtx): Promise<void> {
@@ -341,7 +245,7 @@ export async function deleteAllHandler(ctx: MutationCtx): Promise<void> {
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .take(BATCH_SIZE);
   for (const memory of batch) {
-    await deleteMemoryWithEmbedding(ctx, memory._id);
+    await deleteMemoryWithDerivedData(ctx, memory._id, userId);
   }
   if (batch.length === BATCH_SIZE) {
     await ctx.scheduler.runAfter(0, internal.memory.operations_internal.deleteAllContinuation, { userId });
@@ -377,7 +281,7 @@ export async function rejectAllHandler(ctx: MutationCtx): Promise<number> {
     .withIndex("by_user_pending", (q) => q.eq("userId", userId).eq("isPending", true))
     .take(BATCH_SIZE);
   for (const memory of batch) {
-    await deleteMemoryWithEmbedding(ctx, memory._id);
+    await deleteMemoryWithDerivedData(ctx, memory._id, userId);
   }
   if (batch.length === BATCH_SIZE) {
     await ctx.scheduler.runAfter(0, internal.memory.operations_internal.rejectAllContinuation, { userId });

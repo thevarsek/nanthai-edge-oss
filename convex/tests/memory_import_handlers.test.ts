@@ -81,7 +81,7 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
       }
       return {
         content:
-          '[{"content":"User prefers concise updates","category":"preferences"},{"content":"User email: dino@example.com","category":"identity"}]',
+          '[{"content":"User prefers concise updates","category":"preferences","retrievalMode":"alwaysOn","importanceScore":8,"confidenceScore":9},{"content":"User email: dino@example.com","category":"identity"}]',
         usage: null,
         finishReason: "stop",
         audioBase64: "",
@@ -154,6 +154,9 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
     ((openRouterCalls[1]?.params as { plugins?: Array<{ id: string }> })?.plugins?.[0]?.id),
     "file-parser",
   );
+  assert.equal(result[0]?.retrievalMode, "contextual");
+  assert.equal(result[0]?.importanceScore, 0.8);
+  assert.equal(result[0]?.confidenceScore, 0.9);
 });
 
 test("extractImportCandidatesHandler caps accepted candidates at 32", async () => {
