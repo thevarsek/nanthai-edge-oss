@@ -11,19 +11,32 @@ export const DOCUMENT_REVIEW_SKILL: SystemSkillSeedData = {
   slug: "document-review",
   name: "Document Review",
   summary:
-    "Review scoped documents with quote-backed citations, issue spotting, concise recommendations, redline-style change lists, and structured review-grid/table outlines when requested.",
+    "Review scoped documents with quote-backed citations, redline-style change lists, and bounded document comparisons that can be exported to XLSX.",
   instructionsRaw: `# Document Review
 
 Use this skill when the user asks to review, summarize, critique, compare, or risk-check one or more scoped documents.
 
-Workflow:
+Core review workflow:
 1. Use list_documents when the document set is unclear.
 2. Use read_document for the relevant document text.
 3. Use find_in_document for targeted clauses, defined terms, dates, obligations, or suspected issues.
 4. Cite document-specific claims with the existing document citation rules.
 5. Separate facts from recommendations.
 6. If the user asks for true DOCX tracked changes, use read_document or find_in_document first, then propose_docx_edits with minimal source-anchored substitutions. Without that tool or for non-DOCX files, return a redline-style issue/change list with quotes, reasons, and recommended replacement wording.
-7. If the user asks for a review matrix, extraction grid, or tabular review draft, structure the response as stable rows and columns that can later map to the M39 tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
+
+## Bounded document comparisons
+
+When the user asks to compare documents, build an extraction grid, or produce a review matrix:
+
+1. Start with list_documents. Use only documents scoped to the current chat. Do not silently default to a fixed number of documents and do not add Knowledge Base files that the user did not attach or select.
+2. Propose a concise column set from the user's request. Always include Source document as the first column and add citation, quote, clause, page, or section fields when they help verify the result.
+3. Before reading every document, show the exact document count, proposed columns, and work units as documents × comparison columns. Explain that PAYG usage grows with source length, column count, selected model pricing, and tool rounds, so an exact price is not known in advance.
+4. Ask for a separate, explicit confirmation of that scope. Do not treat the original comparison request as confirmation and do not start the full comparison in the same response as the scope proposal.
+5. After confirmation, call list_documents again. If the source set or requested columns changed, show the revised work units and reconfirm before continuing.
+6. Perform one bounded chat/tool-loop comparison. Do not fan out an independent model call per cell or document, use subagents, add web research, or invoke analytics/runtime tools unless the user explicitly asks for that extra work.
+7. Use read_document and find_in_document economically. Disclose truncation or unsupported content. Write "Not found" when a requested fact is absent rather than guessing, and keep material claims traceable to document citations.
+8. If the confirmed scope cannot fit the available context or tool-round budget, stop and ask the user to narrow the documents or columns. Do not invent a hidden fixed limit.
+9. Return a compact Markdown preview, then use generate_xlsx for the complete comparison. The normal generated-file card is the deliverable; do not claim to create an interactive workspace.
 
 Output should be structured for scanning: executive summary, key findings, risks/gaps, and recommended next steps. Do not make legal advice the app default; for legal documents, frame analysis as informational and recommend qualified counsel for binding decisions.`,
   instructionsCompiled: undefined,
@@ -34,7 +47,13 @@ Output should be structured for scanning: executive summary, key findings, risks
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["list_documents", "read_document", "find_in_document", "propose_docx_edits"],
+  requiredToolIds: [
+    "list_documents",
+    "read_document",
+    "find_in_document",
+    "propose_docx_edits",
+    "generate_xlsx",
+  ],
   requiredToolProfiles: [...DOCS_PROFILE],
   requiredIntegrationIds: [],
 };
@@ -179,98 +198,6 @@ Workflow:
   status: "active",
   runtimeMode: "toolAugmented",
   requiredToolIds: ["read_document", "find_in_document", "generate_docx"],
-  requiredToolProfiles: [...DOCS_PROFILE],
-  requiredIntegrationIds: [],
-};
-
-export const CONDITIONS_PRECEDENT_CHECKLIST_SKILL: SystemSkillSeedData = {
-  slug: "conditions-precedent-checklist",
-  name: "Conditions Precedent Checklist",
-  summary:
-    "Template-like workflow for generating a landscape DOCX conditions precedent checklist from financing documents; a future tabular review template candidate.",
-  instructionsRaw: `# Conditions Precedent Checklist
-
-This is a template-like workflow inspired by Mike's "Generate CP Checklist" assistant workflow.
-
-When loaded, review the scoped credit agreement or financing document and generate a comprehensive conditions precedent checklist as a Word document.
-
-Requirements:
-- Use read_document first.
-- Use generate_docx; do not display the checklist only inline.
-- Set documentPurpose: "checklist" and landscape: true.
-- Organize conditions into practical categories such as Corporate, Financial, Legal, Security, Regulatory, Tax, and Miscellaneous.
-- Each category should be a section with a table.
-- Each table must use exactly four columns in this order: Index, Clause Number, Clause, Status.
-- Number each row from 1 within its category.
-- Leave Status blank for user completion.
-- Cite source provisions in the prose summary when describing what was generated.`,
-  instructionsCompiled: undefined,
-  compilationStatus: "compiled",
-  scope: "system",
-  origin: "nanthaiBuiltin",
-  visibility: "visible",
-  lockState: "locked",
-  status: "active",
-  runtimeMode: "toolAugmented",
-  requiredToolIds: ["read_document", "generate_docx"],
-  requiredToolProfiles: [...DOCS_PROFILE],
-  requiredIntegrationIds: [],
-};
-
-export const CREDIT_AGREEMENT_SUMMARY_SKILL: SystemSkillSeedData = {
-  slug: "credit-agreement-summary",
-  name: "Credit Agreement Summary",
-  summary:
-    "Template-like workflow for summarizing core credit-agreement terms; a future tabular review-grid preset candidate.",
-  instructionsRaw: `# Credit Agreement Summary
-
-This is a template-like workflow inspired by Mike's "Credit Agreement Summary" assistant workflow.
-
-Review the scoped credit agreement and produce a comprehensive summary. Use read_document and find_in_document as needed. Deliver inline unless the user explicitly asks for a Word document.
-
-If the user asks for a review matrix or extraction grid, structure the answer as stable rows/columns that can later map to a tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
-
-Cover these topics where present: lenders, borrowers, guarantors, other material parties, date, facilities, total commitments, purpose, interest, commitment or utilization fees, repayment schedule, maturity, security, guarantees, financial covenants, events of default, assignment/transfer, change of control, prepayment fees, governing law, and dispute resolution.
-
-For each section, identify key provisions, quote relevant clause or schedule references where useful, and flag unusual, onerous, missing, or non-market terms. Use document citations for factual claims.`,
-  instructionsCompiled: undefined,
-  compilationStatus: "compiled",
-  scope: "system",
-  origin: "nanthaiBuiltin",
-  visibility: "visible",
-  lockState: "locked",
-  status: "active",
-  runtimeMode: "toolAugmented",
-  requiredToolIds: ["list_documents", "read_document", "find_in_document"],
-  requiredToolProfiles: [...DOCS_PROFILE],
-  requiredIntegrationIds: [],
-};
-
-export const SHAREHOLDER_AGREEMENT_SUMMARY_SKILL: SystemSkillSeedData = {
-  slug: "shareholder-agreement-summary",
-  name: "Shareholder Agreement Summary",
-  summary:
-    "Template-like workflow for summarizing shareholder-agreement terms; a future tabular review-grid preset candidate.",
-  instructionsRaw: `# Shareholder Agreement Summary
-
-This is a template-like workflow inspired by Mike's "Shareholder Agreement Summary" assistant workflow.
-
-Review the scoped shareholder agreement and produce a structured summary. Use read_document and find_in_document as needed. Deliver inline unless the user explicitly asks for a Word document.
-
-If the user asks for a review matrix or extraction grid, structure the answer as stable rows/columns that can later map to a tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
-
-Cover these topics where present: parties, date, share classes, shareholdings, board composition, reserved matters, new-issue pre-emption rights, transfer restrictions, transfer pre-emption or ROFR, drag-along, tag-along, anti-dilution, dividends, exit/liquidity, deadlock, non-compete/non-solicit, confidentiality, warranties/indemnities, governing law, and dispute resolution.
-
-Quote and cite source text for material provisions. Distinguish what the document states from practical risk commentary.`,
-  instructionsCompiled: undefined,
-  compilationStatus: "compiled",
-  scope: "system",
-  origin: "nanthaiBuiltin",
-  visibility: "visible",
-  lockState: "locked",
-  status: "active",
-  runtimeMode: "toolAugmented",
-  requiredToolIds: ["list_documents", "read_document", "find_in_document"],
   requiredToolProfiles: [...DOCS_PROFILE],
   requiredIntegrationIds: [],
 };

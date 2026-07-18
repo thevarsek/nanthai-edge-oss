@@ -38,6 +38,16 @@ Put shared product behavior in Convex when it affects any of the following:
 - reusable projections used by more than one client
 - workflow state transitions (pending, approved, active, failed, archived, etc.)
 
+### Bounded document comparisons (M40)
+
+M40 is backend-only and stays in the ordinary chat contract. The existing
+`document-review` skill lists the documents scoped to the chat, proposes
+comparison columns, discloses `documents × columns` work units and PAYG cost
+drivers, then waits for a separate explicit confirmation. After confirmation it
+uses the existing document tools in one bounded tool loop and returns a cited
+Markdown preview plus a normal `generate_xlsx` file artifact. Clients require no
+comparison-specific route, DTO, state machine, or renderer.
+
 Presentations follow this rule across web, iOS, and Android. Creation and
 iteration run through the normal chat tool loop and generated-file lifecycle.
 Projects, slide order, provenance, revisions, AI operations, and validation live

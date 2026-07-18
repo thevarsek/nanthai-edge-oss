@@ -201,7 +201,7 @@ The model must provide the complete sheet data — this is a full replacement, n
 
 For document or data review grids, use a compact worksheet with stable columns for item, source, status, recommendation, owner, and notes. Keep review state values consistent across rows (for example pending, accepted, rejected, needs-review) so the client can render status chips predictably.
 
-When the user asks to create an interactive tabular review workspace, do not substitute a static XLSX export for the workspace. Use the tabular review workflow/tooling when it exists. Use XLSX for import, analysis, export, or offline review-grid deliverables.
+For bounded document comparisons, follow the document-review skill's separate scope confirmation and source-citation rules, then create the complete result with generate_xlsx. The comparison remains in the ordinary chat and generated-file flow; do not claim to create an interactive workspace.
 
 ## Spreadsheet Type Recipes
 

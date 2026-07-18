@@ -149,7 +149,8 @@ M33 added a dedicated document workflow layer on top of the lower-level file too
 
 - review/citation skills: `document-review`, `contract-review`, `clause-extraction`
 - drafting/generation skills: `document-drafting`, `contract-drafting`, `legal-memo`, `policy-review`
-- M36 removed overlapping standalone seeded skills (`conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, `solo-founder-gtm`) and keeps their workflows covered by broader document/legal, internal communications, GTM, and M40 tabular-review requirements
+- M36 removed overlapping standalone seeded skills (`conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, `solo-founder-gtm`); their triggers remain covered by broader document/legal, internal communications, and GTM skills
+- M40 extends `document-review` with a backend-only bounded comparison flow: explicit scope/PAYG confirmation, one normal tool loop, citations, and XLSX output
 - all use the existing progressive skill resolver; there is no separate template catalog or legal-only product mode
 - generated DOCX outputs are saved as normal generated files and linked to canonical `documents` / `documentVersions`
 - citation-aware skills only operate over explicit document scope from attachments, KB picker selections, or existing chat context; they do not search the whole Knowledge Base by default

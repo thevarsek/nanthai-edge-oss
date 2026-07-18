@@ -98,11 +98,14 @@ Light borders use black at 6-12% opacity. Dark borders use white at 10-16% opaci
 
 ### M39/M40 Handoff Rules
 
+> **M40 closeout (2026-07-18):** The proposed editable review workspace was
+> descoped. M40 is backend-only and uses ordinary chat plus the existing XLSX
+> generated-file card, so the workspace-specific rules below are retained only
+> as historical audit context and are not an implementation checklist.
+
 - M39 tracked-change cards should reuse the review-card contract rather than inventing a second accept/reject card language. The backend edit status remains the source of truth; UI cards and review workspace surfaces only render that state.
 - M39 document preview sidebars may defer perfect highlight positioning in v1, but source/edit cards must still show document metadata, concise reason text, and current accept/reject status with semantic tokens.
-- M40 review grids should reuse the editable-table-cell contract: compact cells, stable row/column dimensions, inline status chips, and citation/source cards that open from the cell without changing the cell layout.
-- Chat-created M40 tabular reviews stay draft-only until the workspace action starts generation. This keeps chat skill output aligned with the explicit-generation rule in the M40 milestone.
-- Android and iOS mobile workspaces should use full-screen drill-in for dense review surfaces; tablet and desktop layouts can split when width allows.
+- Historical workspace guidance: a future review-grid UI should reuse compact editable cells and citation/source cards rather than create another visual language.
 
 ## Skill Catalog Audit Snapshot
 

@@ -232,7 +232,7 @@ test("SYSTEM_SKILL_CATALOG: M33 document skills remain and removed templates are
   }
 });
 
-test("SYSTEM_SKILL_CATALOG: M38/M39 adjacent skills distinguish tracked changes and review grids", () => {
+test("SYSTEM_SKILL_CATALOG: document skills distinguish tracked changes and bounded comparisons", () => {
   const bySlug = new Map(SYSTEM_SKILL_CATALOG.map((skill) => [skill.slug, skill]));
 
   const docx = bySlug.get("docx");
@@ -246,6 +246,14 @@ test("SYSTEM_SKILL_CATALOG: M38/M39 adjacent skills distinguish tracked changes 
   assert.match(documentReview.summary, /redline-style change lists/);
   assert.match(documentReview.instructionsRaw, /DOCX tracked changes/);
   assert.ok(documentReview.requiredToolIds.includes("propose_docx_edits"));
+  assert.ok(documentReview.requiredToolIds.includes("generate_xlsx"));
+  assert.match(documentReview.instructionsRaw, /documents × comparison columns/);
+  assert.match(documentReview.instructionsRaw, /PAYG usage grows/);
+  assert.match(documentReview.instructionsRaw, /separate, explicit confirmation/);
+  assert.match(documentReview.instructionsRaw, /Do not silently default to a fixed number/);
+  assert.match(documentReview.instructionsRaw, /call list_documents again/);
+  assert.match(documentReview.instructionsRaw, /Do not fan out an independent model call per cell/);
+  assert.match(documentReview.instructionsRaw, /Markdown preview/);
 
   const contractReview = bySlug.get("contract-review");
   assert.ok(contractReview);
@@ -262,8 +270,8 @@ test("SYSTEM_SKILL_CATALOG: M38/M39 adjacent skills distinguish tracked changes 
 
   const xlsx = bySlug.get("xlsx");
   assert.ok(xlsx);
-  assert.match(xlsx.instructionsRaw, /interactive tabular review workspace/);
-  assert.match(xlsx.instructionsRaw, /Use XLSX for import, analysis, export/);
+  assert.match(xlsx.instructionsRaw, /bounded document comparisons/);
+  assert.match(xlsx.instructionsRaw, /ordinary chat and generated-file flow/);
 
   assert.deepEqual(
     REMOVED_SYSTEM_SKILL_SLUGS.filter((slug) => bySlug.has(slug)),
@@ -280,11 +288,12 @@ test("SYSTEM_SKILL_CATALOG: consolidated parent skills preserve removed skill tr
   assert.match(contractReview.summary + contractReview.instructionsRaw, /conditions precedent/i);
   assert.match(contractReview.summary + contractReview.instructionsRaw, /credit agreement/i);
   assert.match(contractReview.summary + contractReview.instructionsRaw, /shareholder agreement/i);
-  assert.match(contractReview.instructionsRaw, /Tabular review draft/);
+  assert.match(contractReview.instructionsRaw, /Bounded document comparison/);
+  assert.ok(contractReview.requiredToolIds.includes("generate_xlsx"));
 
   const documentReview = bySlug.get("document-review");
   assert.ok(documentReview);
-  assert.match(documentReview.summary + documentReview.instructionsRaw, /review-grid|review grid|tabular review/i);
+  assert.match(documentReview.summary + documentReview.instructionsRaw, /bounded document comparisons/i);
 
   const campaignPlanning = bySlug.get("campaign-planning");
   assert.ok(campaignPlanning);

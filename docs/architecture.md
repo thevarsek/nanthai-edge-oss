@@ -214,7 +214,7 @@ The built-in system skill catalog currently seeds 67 skills. `skills/actions:see
 - `scheduledJobs.turnSkillOverrides`
 - `scheduledJobs.steps[].turnSkillOverrides`
 
-The removed standalone skills are `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. Their workflows are represented by broader active skills and by M39/M40 workspace requirements rather than by separate catalog rows.
+The removed standalone skills are `conditions-precedent-checklist`, `credit-agreement-summary`, `release-notes`, `shareholder-agreement-summary`, and `solo-founder-gtm`. Their workflows are represented by broader active skills rather than separate catalog rows. M40 adds bounded comparison behavior to the existing `document-review` parent skill without adding a workspace or catalog row.
 
 ---
 

@@ -157,7 +157,7 @@ Use these template modes when requested, while keeping factual claims tied to do
 - **Conditions precedent checklist:** Review the scoped credit agreement or financing document and produce a checklist grouped into practical categories such as Corporate, Financial, Legal, Security, Regulatory, Tax, and Miscellaneous. For a DOCX checklist, use landscape orientation when available and use four columns in this order: Index, Clause Number, Clause, Status. Number each row from 1 within its category and leave Status blank for user completion.
 - **Credit agreement summary:** Cover lenders, borrowers, guarantors, material parties, date, facilities, total commitments, purpose, interest, commitment or utilization fees, repayment schedule, maturity, security, guarantees, financial covenants, events of default, assignment/transfer, change of control, prepayment fees, governing law, and dispute resolution where present. Flag unusual, onerous, missing, or non-market terms.
 - **Shareholder agreement summary:** Cover parties, date, share classes, shareholdings, board composition, reserved matters, new-issue pre-emption rights, transfer restrictions, transfer pre-emption or ROFR, drag-along, tag-along, anti-dilution, dividends, exit/liquidity, deadlock, non-compete/non-solicit, confidentiality, warranties/indemnities, governing law, and dispute resolution where present.
-- **Tabular review draft:** If the user asks for a review matrix or extraction grid, structure the answer as stable rows and columns that can later map to a tabular review workspace. Do not imply that cells have been generated in a workspace unless an explicit tabular review tool exists and has been used.
+- **Bounded document comparison:** If the user asks for a review matrix or extraction grid, follow the document-review skill's separate scope-confirmation, PAYG work-unit disclosure, citation, and XLSX export rules. Do not fan out model calls per cell or claim to create an interactive workspace.
 
 ## Guidelines
 
@@ -175,7 +175,13 @@ Use these template modes when requested, while keeping factual claims tied to do
   lockState: "locked",
   status: "active",
   runtimeMode: "toolAugmented",
-  requiredToolIds: ["list_documents", "read_document", "find_in_document", "propose_docx_edits"],
+  requiredToolIds: [
+    "list_documents",
+    "read_document",
+    "find_in_document",
+    "propose_docx_edits",
+    "generate_xlsx",
+  ],
   requiredToolProfiles: ["docs"],
   requiredIntegrationIds: [],
 };
