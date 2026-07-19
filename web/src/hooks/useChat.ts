@@ -45,7 +45,7 @@ export interface PresentationContext {
 
 export interface RetryContract {
   participants: Participant[];
-  searchMode: "none" | "normal" | "web";
+  searchMode: "none" | "normal" | "web" | "paper";
   searchComplexity?: number;
   enabledIntegrations?: string[];
   subagentsEnabled?: boolean;
@@ -71,7 +71,7 @@ export interface RetryContract {
 export interface RetryAnalyticsSnapshot {
   participantCount: number | null;
   modelIds: string | null;
-  searchMode: "none" | "normal" | "web" | null;
+  searchMode: "none" | "normal" | "web" | "paper" | null;
   complexity: number | null;
   integrationCount: number;
   subagentsEnabled: boolean;

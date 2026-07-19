@@ -531,6 +531,7 @@ export const retrySearchMode = v.union(
   v.literal("none"),
   v.literal("normal"),
   v.literal("web"),
+  v.literal("paper"),
 );
 
 /** Retry contract video settings persisted on assistant messages. */

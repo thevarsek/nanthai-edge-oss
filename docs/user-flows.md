@@ -88,7 +88,13 @@ Retries a failed response or regenerates with same or different participant.
 |----------|-----------|
 | iOS | `ChatViewModel+Actions` (retryMessage, retryMessageWithParticipants), `MessageActionBar` |
 | Android | `ChatDetailViewModel` (retryMessage, retryMessageWithParticipant, regenerateMessage) |
-| Convex | `chat/mutations:retryMessage`, `chat/mutations_retry_handler.ts` |
+| Convex | `chat/mutations:retryMessage`, `chat/mutations_retry_handler.ts`, `chat/mutations_retry_paper.ts` |
+
+Convex dispatches from the saved `messages.retryContract`. Ordinary search,
+tool/file generation, integrations, Advisors, subagents, image, and video
+replay through the canonical generation path. Research Paper (`paper`) retries
+restart the durable research workflow from the original user message rather
+than falling back to plain chat.
 
 ### 2.6 Fork Chat
 Forks conversation at a specific message, creating a new chat with history up to that point.

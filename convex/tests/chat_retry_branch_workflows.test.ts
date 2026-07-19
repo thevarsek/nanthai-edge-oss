@@ -8,8 +8,11 @@ import { installExecutionDbMock } from "../../test_helpers/execution_db_mock";
 function buildRetryCtx(options: {
   isPro?: boolean;
   assistant?: Record<string, unknown>;
+  chat?: Record<string, unknown>;
   userMessage?: Record<string, unknown> | null;
   searchSession?: Record<string, unknown> | null;
+  paperSiblingMessage?: Record<string, unknown> | null;
+  searchSessions?: Array<Record<string, unknown>>;
   searchContext?: Record<string, unknown> | null;
   cachedModels?: Record<string, Record<string, unknown> | null>;
 } = {}) {
@@ -37,7 +40,7 @@ function buildRetryCtx(options: {
           };
         }
         if (id === "chat_1") {
-          return { _id: "chat_1", userId: "user_1", title: "Chat" };
+          return { _id: "chat_1", userId: "user_1", title: "Chat", ...options.chat };
         }
         if (id === "user_1_msg") {
           return options.userMessage === null
@@ -46,6 +49,9 @@ function buildRetryCtx(options: {
         }
         if (id === "search_session_1") {
           return options.searchSession ?? null;
+        }
+        if (id === "paper_assistant") {
+          return options.paperSiblingMessage ?? null;
         }
         return null;
       },
@@ -65,6 +71,15 @@ function buildRetryCtx(options: {
         }
         if (table === "searchContexts") {
           return { withIndex: () => ({ first: async () => options.searchContext ?? null }) };
+        }
+        if (table === "searchSessions") {
+          return {
+            withIndex: () => ({
+              order: () => ({
+                take: async () => options.searchSessions ?? [],
+              }),
+            }),
+          };
         }
         if (table === "purchaseEntitlements") {
           return {
@@ -278,4 +293,98 @@ test("retryMessageHandler downgrades retry subagents for non-Pro users without b
   const generation = state.scheduled.find((entry) => Array.isArray(entry.args.assistantMessageIds));
   assert.ok(generation);
   assert.equal(generation.args.subagentsEnabled, false);
+});
+
+test("retryMessageHandler restarts failed comprehensive research as a paper workflow", async () => {
+  const state = buildRetryCtx({
+    isPro: true,
+    assistant: {
+      status: "failed",
+      searchSessionId: "search_session_1",
+    },
+    searchSession: {
+      _id: "search_session_1",
+      chatId: "chat_1",
+      userId: "user_1",
+      assistantMessageId: "assistant_1",
+      query: "latest AI news",
+      mode: "paper",
+      complexity: 3,
+      status: "failed",
+      progress: 0,
+      currentPhase: "planning",
+      phaseOrder: 0,
+      startedAt: 1,
+    },
+    userMessage: { content: "latest AI news" },
+  });
+
+  const result = await retryMessageHandler(state.ctx, {
+    messageId: "assistant_1" as Id<"messages">,
+  });
+
+  assert.equal(result.assistantMessageIds.length, 1);
+  const assistant = state.inserts.find((entry) => entry.table === "messages");
+  assert.ok(assistant);
+  assert.equal((assistant.value.retryContract as any).searchMode, "paper");
+  assert.equal((assistant.value.retryContract as any).searchComplexity, 3);
+  const session = state.inserts.find((entry) => entry.table === "searchSessions");
+  assert.ok(session);
+  assert.equal(session.value.mode, "paper");
+  assert.equal(session.value.complexity, 3);
+  const pipeline = state.scheduled.find((entry) => entry.args.query === "latest AI news");
+  assert.ok(pipeline);
+  assert.equal(pipeline.args.complexity, 3);
+  assert.equal(pipeline.args.analyticsSource, "research_paper");
+  assert.equal(
+    state.scheduled.some((entry) => Array.isArray(entry.args.assistantMessageIds)),
+    false,
+  );
+});
+
+test("retryMessageHandler repairs malformed plain branches that share a paper prompt", async () => {
+  const state = buildRetryCtx({
+    isPro: true,
+    chat: { searchModeOverride: "paper" },
+    assistant: {
+      retryContract: {
+        participants: [{ modelId: "openai/gpt-5.2" }],
+        searchMode: "none",
+      },
+    },
+    paperSiblingMessage: {
+      _id: "paper_assistant",
+      chatId: "chat_1",
+      userId: "user_1",
+      role: "assistant",
+      content: "",
+      modelId: "openai/gpt-5.2",
+      parentMessageIds: ["user_1_msg"],
+      status: "failed",
+      createdAt: 1,
+    },
+    searchSessions: [{
+      _id: "paper_session",
+      chatId: "chat_1",
+      userId: "user_1",
+      assistantMessageId: "paper_assistant",
+      query: "latest AI news",
+      mode: "paper",
+      complexity: 3,
+      status: "failed",
+      progress: 0,
+      currentPhase: "planning",
+      phaseOrder: 0,
+      startedAt: 1,
+    }],
+    userMessage: { content: "latest AI news" },
+  });
+
+  await retryMessageHandler(state.ctx, {
+    messageId: "assistant_1" as Id<"messages">,
+  });
+
+  const session = state.inserts.find((entry) => entry.table === "searchSessions");
+  assert.equal(session?.value.mode, "paper");
+  assert.equal(session?.value.complexity, 3);
 });

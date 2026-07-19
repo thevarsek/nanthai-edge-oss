@@ -26,6 +26,10 @@ import {
   RetrySearchMode,
 } from "./retry_contract";
 import { enqueueRunGeneration } from "./run_generation_queue";
+import {
+  createResearchPaperRetry,
+  resolvePaperRetrySource,
+} from "./mutations_retry_paper";
 
 const DEFAULT_CHAT_MODEL = MODEL_IDS.appDefault;
 
@@ -116,6 +120,7 @@ function asStoredRetryContract(value: unknown): RetryContract | undefined {
     contract.searchMode !== "none"
     && contract.searchMode !== "normal"
     && contract.searchMode !== "web"
+    && contract.searchMode !== "paper"
   ) {
     return undefined;
   }
@@ -187,12 +192,12 @@ async function resolveLegacySearchConfig(
   }
 
   const session = await ctx.db.get(originalMsg.searchSessionId);
-  if (!session || session.mode !== "web") {
+  if (!session || (session.mode !== "web" && session.mode !== "paper")) {
     return { searchMode: "none" };
   }
 
   return {
-    searchMode: "web",
+    searchMode: session.mode,
     searchComplexity:
       typeof session.complexity === "number" ? session.complexity : undefined,
   };
@@ -259,7 +264,24 @@ export async function retryMessageHandler(
     throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found" });
   }
 
-  const storedRetryContract = asStoredRetryContract(originalMsg.retryContract);
+  let storedRetryContract = asStoredRetryContract(originalMsg.retryContract);
+  const shouldResolvePaperSource = args.searchMode === undefined
+    && (originalMsg.searchSessionId !== undefined
+      || storedRetryContract?.searchMode === "paper"
+      || (storedRetryContract?.searchMode === "none"
+        && chat.searchModeOverride === "paper"));
+  const paperSource = shouldResolvePaperSource
+    ? await resolvePaperRetrySource(ctx, originalMsg, {
+      includeSiblingBranches: originalMsg.searchSessionId === undefined,
+    })
+    : undefined;
+  if (storedRetryContract && paperSource) {
+    storedRetryContract = buildRetryContract({
+      ...storedRetryContract,
+      searchMode: "paper",
+      searchComplexity: paperSource.session.complexity,
+    });
+  }
   let effectiveRetryContract: RetryContract;
 
   if (storedRetryContract) {
@@ -302,17 +324,19 @@ export async function retryMessageHandler(
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .first(),
     ]);
-    const legacySearchMode =
-      args.searchMode ?? (legacySearch.searchMode === "web" ? "web" : undefined);
+    const legacySearchMode = args.searchMode
+      ?? (legacySearch.searchMode === "none" ? undefined : legacySearch.searchMode);
     const legacyContractSearchMode: RetrySearchMode =
-      legacySearchMode ?? "none";
+      paperSource ? "paper" : (legacySearchMode ?? "none");
 
     effectiveRetryContract = buildRetryContract({
       participants: args.participants ?? legacyParticipantsFromMessage(originalMsg),
       searchMode: legacyContractSearchMode,
       searchComplexity:
-        legacyContractSearchMode === "web"
-          ? (args.complexity ?? legacySearch.searchComplexity)
+        legacyContractSearchMode === "web" || legacyContractSearchMode === "paper"
+          ? (args.complexity
+            ?? paperSource?.session.complexity
+            ?? legacySearch.searchComplexity)
           : undefined,
       enabledIntegrations:
         args.enabledIntegrations ?? originalMsg.enabledIntegrations ?? undefined,
@@ -364,11 +388,16 @@ export async function retryMessageHandler(
   const requestedSubagents =
     effectiveRetryContract.subagentsEnabled === true && participants.length === 1;
   const requiresPro =
-    effectiveRetryContract.searchMode === "web" || hasPersona || requestedSubagents;
+    effectiveRetryContract.searchMode === "web"
+      || effectiveRetryContract.searchMode === "paper"
+      || hasPersona
+      || requestedSubagents;
   const isPro = requiresPro ? await getIsProUnlocked(ctx, userId) : false;
   const effectiveSubagentsEnabled = requestedSubagents && isPro;
 
-  if ((effectiveRetryContract.searchMode === "web" || hasPersona) && !isPro) {
+  if ((effectiveRetryContract.searchMode === "web"
+      || effectiveRetryContract.searchMode === "paper"
+      || hasPersona) && !isPro) {
     await requirePro(ctx, userId);
   }
 
@@ -387,6 +416,25 @@ export async function retryMessageHandler(
     ...effectiveRetryContract,
     subagentsEnabled: effectiveSubagentsEnabled,
   });
+
+  if (effectiveRetryContract.searchMode === "paper") {
+    if (!paperSource) {
+      throw new ConvexError({
+        code: "NOT_FOUND",
+        message: "The source Research Paper session is unavailable for retry.",
+      });
+    }
+    return createResearchPaperRetry(ctx, {
+      originalMessage: originalMsg,
+      paperSource,
+      chat,
+      userId,
+      retryContract: effectiveRetryContract,
+      expandMultiModelGroups: args.expandMultiModelGroups,
+      analytics: args.analytics,
+      now,
+    });
+  }
 
   const { assistantMessageIds, generationJobIds, streamingMessageIds } =
     await createAssistantMessagesAndJobs(ctx, {

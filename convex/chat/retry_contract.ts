@@ -1,7 +1,7 @@
 import { Id } from "../_generated/dataModel";
 import type { ImageGenerationConfig } from "../preferences/image_defaults";
 
-export type RetrySearchMode = "none" | "normal" | "web";
+export type RetrySearchMode = "none" | "normal" | "web" | "paper";
 
 export interface RetryParticipantSnapshot {
   modelId: string;
@@ -84,6 +84,8 @@ export function buildRetryContract(args: RetryContract): RetryContract {
     participants: args.participants.map(cloneParticipant),
     searchMode: args.searchMode,
     searchComplexity:
-      args.searchMode === "web" ? args.searchComplexity : undefined,
+      args.searchMode === "web" || args.searchMode === "paper"
+        ? args.searchComplexity
+        : undefined,
   });
 }

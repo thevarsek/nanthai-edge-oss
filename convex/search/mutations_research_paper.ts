@@ -15,6 +15,7 @@ import {
   cancelResearchPaperHandler,
   cancellationPlaceholderForMode,
 } from "./mutations_research_paper_cancel";
+import { buildRetryContract } from "../chat/retry_contract";
 
 export { cancelResearchPaperHandler, cancellationPlaceholderForMode };
 
@@ -91,6 +92,13 @@ export const startResearchPaper = mutation({
     }
 
     const complexity = Math.max(1, Math.min(3, Math.round(args.complexity)));
+    const retryContract = buildRetryContract({
+      participants: [args.participant],
+      searchMode: "paper",
+      searchComplexity: complexity,
+      enabledIntegrations: args.enabledIntegrations,
+      subagentsEnabled: false,
+    });
     const normalizedAttachments = await normalizeMessageAttachments(
       ctx,
       args.attachments,
@@ -141,6 +149,9 @@ export const startResearchPaper = mutation({
       participantAvatarImageUrl: args.participant.personaAvatarImageUrl ?? undefined,
       parentMessageIds: [userMessageId],
       status: "pending",
+      enabledIntegrations: args.enabledIntegrations,
+      subagentsEnabled: false,
+      retryContract,
       createdAt: now + 1,
     });
 

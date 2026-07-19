@@ -357,7 +357,7 @@ Every assistant message stores a `retryContract` field — a read-only snapshot 
 ```typescript
 {
   participants: RetryParticipantSnapshot[],  // models/personas at send time
-  searchMode: RetrySearchMode,               // "none" | "basic" | "web" | "paper"
+  searchMode: RetrySearchMode,               // "none" | "normal" | "web" | "paper"
   searchComplexity?: number,                 // 1 | 2 | 3
   enabledIntegrations?: string[],
   subagentsEnabled?: boolean,
@@ -379,7 +379,16 @@ Every assistant message stores a `retryContract` field — a read-only snapshot 
    - `"cancelled_by_user"` — user explicitly stopped generation
    - `"unknown_error"` — unclassified failure
 4. **All three clients use the same fields.** Do not invent per-client failure-classification heuristics based on status strings.
+5. **Research Paper is a first-class retry mode.** `paper` retries restart the
+   durable research workflow from the original user message. They must never
+   fall through to ordinary chat generation. Convex also recognizes malformed
+   plain sibling branches created before the paper retry contract shipped.
+6. **Artifact and agent retries stay on the canonical generation path.** DOCX,
+   XLSX, PPTX/presentation, image/video, integration, Advisor, and subagent
+   turns replay the stored contract and original user-message attachments.
+   Built-in artifact tools are not external integrations and must not trigger
+   the legacy missing-integration guard.
 
 ### Canonical Convex path
 
-`retryContract` is assembled in `convex/chat/retry_contract.ts:buildRetryContract()` and stored by the send/retry mutations. There is no client-side equivalent — if a client needs any retry-related derived state, add it to the backend payload.
+`retryContract` is assembled in `convex/chat/retry_contract.ts:buildRetryContract()` and stored by the send, Research Paper start, and retry mutations. `convex/chat/mutations_retry_handler.ts` is the public dispatcher; `convex/chat/mutations_retry_paper.ts` owns Research Paper retry recovery. There is no client-side equivalent — if a client needs any retry-related derived state, add it to the backend payload.

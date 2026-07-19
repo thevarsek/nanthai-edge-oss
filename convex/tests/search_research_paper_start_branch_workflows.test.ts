@@ -146,6 +146,31 @@ test("startResearchPaper stores audio-attachment transcript fallback and truncat
   assert.equal((userMessage?.attachments as any[])?.[0]?.url, "https://files.example/audio_storage");
   const session = state.inserts.find((entry) => entry.table === "searchSessions")?.value;
   assert.equal(session?.complexity, 1);
+  const assistantMessage = state.inserts.find((entry) =>
+    entry.table === "messages" && entry.value.role === "assistant"
+  )?.value;
+  assert.deepEqual(assistantMessage?.retryContract, {
+    participants: [{
+      modelId: "openai/gpt-5.2",
+      personaId: null,
+      personaName: null,
+      personaEmoji: null,
+      personaAvatarImageUrl: null,
+      systemPrompt: null,
+      temperature: 0.4,
+      maxTokens: 2000,
+      includeReasoning: true,
+      reasoningEffort: "medium",
+    }],
+    searchMode: "paper",
+    searchComplexity: 1,
+    enabledIntegrations: ["drive"],
+    subagentsEnabled: false,
+    turnSkillOverrides: undefined,
+    turnIntegrationOverrides: undefined,
+    videoConfig: undefined,
+    imageConfig: undefined,
+  });
   const chatPatch = state.patches.find((entry) => entry.id === "chat_1")?.patch;
   assert.equal(String(chatPatch?.lastMessagePreview).length, 200);
   assert.ok(state.scheduled.some((payload) =>

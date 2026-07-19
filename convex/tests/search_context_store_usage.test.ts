@@ -380,7 +380,12 @@ test("retryMessageHandler allows old retries when only built-in tools were used"
             participantName: undefined,
             participantEmoji: undefined,
             parentMessageIds: ["user_msg_1"],
-            toolCalls: [{ id: "call_1", name: "generate_docx", arguments: "{}" }],
+            toolCalls: [
+              { id: "call_1", name: "generate_docx", arguments: "{}" },
+              { id: "call_2", name: "generate_xlsx", arguments: "{}" },
+              { id: "call_3", name: "generate_pptx", arguments: "{}" },
+              { id: "call_4", name: "create_presentation", arguments: "{}" },
+            ],
             generatedFileIds: ["file_1"],
           };
         }

@@ -55,6 +55,34 @@ describe("ChatPage retry flow helpers", () => {
     });
   });
 
+  it("keeps comprehensive research retries on the backend paper contract", () => {
+    expect(buildRetryMessageArgs({
+      messageId,
+      targetMessage: message({
+        retryContract: {
+          participants: [participant],
+          searchMode: "paper",
+          searchComplexity: 3,
+        },
+      }),
+      enabledIntegrations: new Set(),
+      turnSkillOverrideEntries: [],
+      turnIntegrationOverrideEntries: [],
+      effectiveSubagentsEnabled: false,
+    })).toEqual({
+      messageId,
+      analyticsSnapshot: {
+        participantCount: 1,
+        modelIds: "openai/gpt-5.2",
+        searchMode: "paper",
+        complexity: 3,
+        integrationCount: 0,
+        subagentsEnabled: false,
+        hasVideoConfig: false,
+      },
+    });
+  });
+
   it("builds legacy retry args from current overrides when no retryContract exists", () => {
     expect(buildRetryMessageArgs({
       messageId,
