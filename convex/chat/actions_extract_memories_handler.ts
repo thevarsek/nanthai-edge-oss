@@ -50,6 +50,11 @@ export async function extractMemoriesHandler(
   ctx: ActionCtx,
   args: ExtractMemoriesArgs,
 ): Promise<void> {
+  const writable = await ctx.runQuery(internal.chat.post_process_guard.isChatWritable, {
+    chatId: args.chatId,
+    userId: args.userId,
+  });
+  if (!writable) return;
   const [existingMemories, prefs] = await Promise.all([
     ctx.runQuery(internal.chat.queries.getUserMemories, {
       userId: args.userId,

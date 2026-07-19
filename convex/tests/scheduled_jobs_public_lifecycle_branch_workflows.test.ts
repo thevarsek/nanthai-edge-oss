@@ -135,7 +135,11 @@ test("public scheduled job create and update validate ownership and reschedule c
   assert.equal(jobId, "scheduledJobs_1");
   assert.equal(created.inserts[0]?.value.name, "Daily Digest");
   assert.equal(created.inserts[0]?.value.searchComplexity, 3);
-  assert.deepEqual(created.scheduledAt[0]?.args, { jobId: "scheduledJobs_1" });
+  assert.equal(created.scheduledAt[0]?.args.jobId, "scheduledJobs_1");
+  assert.match(
+    String(created.scheduledAt[0]?.args.occurrenceId),
+    /^scheduled:scheduledJobs_1:/,
+  );
   assert.equal(created.patches[0]?.value.scheduledFunctionId, "scheduled_at_1");
 
   const updated = buildCtx({
@@ -210,7 +214,9 @@ test("scheduled job pause resume run-now and delete preserve lifecycle invariant
   );
   const started = await (runJobNow as any)._handler(runNow.ctx, { jobId: "pausedInterval" });
   assert.equal(started.triggered, true);
-  assert.deepEqual(runNow.scheduledAfter[0]?.args, { jobId: "pausedInterval", invocationSource: "manual" });
+  assert.equal(runNow.scheduledAfter[0]?.args.jobId, "pausedInterval");
+  assert.equal(runNow.scheduledAfter[0]?.args.invocationSource, "manual");
+  assert.match(String(runNow.scheduledAfter[0]?.args.occurrenceId), /^manual:/);
 
   const rows = Array.from({ length: 101 }, (_, index) => ({ _id: `run_${index}` }));
   const deletion = buildCtx({
@@ -221,8 +227,12 @@ test("scheduled job pause resume run-now and delete preserve lifecycle invariant
   });
   await (deleteJob as any)._handler(deletion.ctx, { jobId: "job_1" });
   assert.equal(deletion.cancelled[0], "sched_2");
-  assert.equal(deletion.deletes.length, 102);
-  assert.equal(deletion.deletes.at(-1), "job_1");
+  assert.equal(deletion.deletes.length, 0);
+  assert.equal(deletion.patches[0]?.value.status, "paused");
+  assert.deepEqual(deletion.scheduledAfter[0]?.args, {
+    jobId: "job_1",
+    userId: "user_1",
+  });
 });
 
 test("scheduled job trigger tokens and API keys handle rotation, revocation, and storage branches", async () => {

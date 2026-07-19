@@ -2,13 +2,16 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ConvexError } from "convex/values";
 import { createAdvisorBatchForTurn } from "../advisors/batch_creation";
+import { durableWorkflow } from "../execution/components";
 
 type TestRow = Record<string, unknown>;
 type IndexQuery = { eq: (field: string, value: unknown) => IndexQuery };
 type BatchArgs = Parameters<typeof createAdvisorBatchForTurn>[1];
 
-test("one turn creates one shared batch, persists only keep=true selections, and is idempotent", async () => {
+test("one turn creates one shared batch, persists only keep=true selections, and is idempotent", async (t) => {
+  t.mock.method(durableWorkflow, "start", async () => "workflow_advisor_1" as never);
   const tables: Record<string, TestRow[]> = {
+    chats: [{ _id: "chat_1", userId: "user_1", source: "user" }],
     advisorBatches: [],
     advisorRuns: [],
     chatAdvisors: [{
@@ -49,7 +52,9 @@ test("one turn creates one shared batch, persists only keep=true selections, and
   const counters: Record<string, number> = {};
   const ctx = {
     db: {
-      get: async (id: string) => personas[id] ?? null,
+      get: async (id: string) => personas[id] ?? Object.values(tables)
+        .flat()
+        .find((row) => row._id === id) ?? null,
       query: (table: string) => ({
         withIndex: (_index: string, apply?: (query: IndexQuery) => void) => {
           const filters: Array<[string, unknown]> = [];
@@ -65,6 +70,7 @@ test("one turn creates one shared batch, persists only keep=true selections, and
           );
           return {
             first: async () => filtered()[0] ?? null,
+            unique: async () => filtered()[0] ?? null,
             collect: async () => filtered(),
             order: () => ({ first: async () => filtered()[0] ?? null }),
           };
@@ -97,6 +103,7 @@ test("one turn creates one shared batch, persists only keep=true selections, and
     scheduler: {
       runAfter: async () => `scheduled_${Math.random()}`,
     },
+    runMutation: async () => "workflow_advisor_1",
   } as unknown as Parameters<typeof createAdvisorBatchForTurn>[0];
 
   const args = {
@@ -215,8 +222,10 @@ test("an explicit empty turn snapshot suppresses kept Advisors without removing 
   assert.equal(assignments.length, 1);
 });
 
-test("omitted turn selections inherit kept Advisors", async () => {
+test("omitted turn selections inherit kept Advisors", async (t) => {
+  t.mock.method(durableWorkflow, "start", async () => "workflow_advisor_1" as never);
   const tables: Record<string, TestRow[]> = {
+    chats: [{ _id: "chat_1", userId: "user_1", source: "user" }],
     advisorBatches: [],
     chatAdvisors: [{
       _id: "assignment_1",
@@ -246,25 +255,32 @@ test("omitted turn selections inherit kept Advisors", async () => {
             systemPrompt: "Review carefully",
             modelId: "text_model",
           }
-        : null,
+        : Object.values(tables).flat().find((row) => row._id === id) ?? null,
       query: (table: string) => ({
         withIndex: () => {
           const rows = tables[table] ?? [];
           return {
             first: async () => rows[0] ?? null,
+            unique: async () => rows[0] ?? null,
             collect: async () => rows,
             order: () => ({ first: async () => rows[0] ?? null }),
           };
         },
       }),
-      insert: async (table: string) => {
+      insert: async (table: string, value: Record<string, unknown>) => {
         insertedTables.push(table);
-        return table === "advisorBatches" ? "batch_1" : "run_1";
+        const id = table === "advisorBatches" ? "batch_1" : `${table}_${insertedTables.length}`;
+        (tables[table] ??= []).push({ _id: id, ...value });
+        return id;
       },
-      patch: async () => undefined,
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        const row = Object.values(tables).flat().find((candidate) => candidate._id === id);
+        if (row) Object.assign(row, patch);
+      },
     },
     storage: { getUrl: async () => null },
     scheduler: { runAfter: async () => "scheduled_1" },
+    runMutation: async () => "workflow_advisor_1",
   } as unknown as Parameters<typeof createAdvisorBatchForTurn>[0];
 
   const batchId = await createAdvisorBatchForTurn(ctx, {
@@ -277,5 +293,8 @@ test("omitted turn selections inherit kept Advisors", async () => {
   } as unknown as BatchArgs);
 
   assert.equal(batchId, "batch_1");
-  assert.deepEqual(insertedTables, ["advisorBatches", "advisorRuns"]);
+  assert.deepEqual(insertedTables.slice(0, 2), ["advisorBatches", "advisorRuns"]);
+  assert.ok(insertedTables.includes("executionRuns"));
+  assert.ok(insertedTables.includes("executionAttempts"));
+  assert.ok(insertedTables.includes("executionComponentRefs"));
 });

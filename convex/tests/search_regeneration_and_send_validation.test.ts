@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import { sendMessageHandler } from "../chat/mutations_public_handlers";
+import { durableWorkflow } from "../execution/components";
 import { regeneratePaperHandler } from "../search/mutations_regenerate";
 
 test("sendMessageHandler rejects complexity-3 web search attachments before writing messages", async () => {
@@ -170,6 +171,15 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const scheduled: Array<{ fnPath: unknown; payload: Record<string, unknown> }> = [];
+  const createdRows = new Map<string, Record<string, unknown>>();
+  const workflowStart = mock.method(
+    durableWorkflow,
+    "start",
+    async (_ctx: unknown, fnPath: unknown, payload: Record<string, unknown>) => {
+      scheduled.push({ fnPath, payload });
+      return "workflow_regeneration_1" as never;
+    },
+  );
 
   const sourceSessionId = "session_source";
   const newAssistantMessageId = "message_regenerated";
@@ -207,38 +217,40 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
     auth: {
       getUserIdentity: async () => ({ subject: "user_1" }),
     },
+    scheduler: {
+      runAfter: async () => "watchdog_1",
+    },
     db: {
       get: async (id: string) => {
         if (id === sourceSessionId) return sourceSession;
         if (id === sourceSession.chatId) return chat;
         if (id === sourceSession.assistantMessageId) return originalMessage;
-        return null;
+        return createdRows.get(id) ?? null;
       },
       insert: async (table: string, value: Record<string, unknown>) => {
         inserts.push({ table, value });
-        if (table === "messages") return newAssistantMessageId;
-        if (table === "generationJobs") return newJobId;
-        if (table === "searchSessions") return newSessionId;
-        return `${table}_id`;
+        const id = table === "messages"
+          ? newAssistantMessageId
+          : table === "generationJobs"
+            ? newJobId
+            : table === "searchSessions"
+              ? newSessionId
+              : `${table}_${inserts.length}`;
+        createdRows.set(id, { _id: id, ...value });
+        return id;
       },
       patch: async (id: string, patch: Record<string, unknown>) => {
         patches.push({ id, patch });
+        const row = createdRows.get(id);
+        if (row) createdRows.set(id, { ...row, ...patch });
       },
       query: (table: string) => ({
         withIndex: () => ({
           first: async () => ({ userId: "user_1", status: "active" }),
           collect: async () => table === "searchPhases" ? sourcePhases : [],
+          unique: async () => null,
         }),
       }),
-    },
-    scheduler: {
-      runAfter: async (
-        _: number,
-        fnPath: unknown,
-        payload: Record<string, unknown>,
-      ) => {
-        scheduled.push({ fnPath, payload });
-      },
     },
   } as any;
 
@@ -308,5 +320,14 @@ test("regeneratePaperHandler creates a fresh paper session and makes regenerated
     clientEventId: "event_1",
     clientSentAt: 123,
   });
+  assert.ok(inserts.some((item) => item.table === "executionRuns"));
+  assert.ok(inserts.some((item) => item.table === "executionAttempts"));
+  assert.ok(inserts.some((item) => item.table === "executionComponentRefs"));
+  const sessionExecutionPatch = patches.find((item) =>
+    item.id === newSessionId && item.patch.executionRunId !== undefined,
+  );
+  assert.ok(sessionExecutionPatch);
+  assert.equal(sessionExecutionPatch.patch.workflowId, "workflow_regeneration_1");
   assert.equal(searchRun.payload.phaseOrder, 2);
+  workflowStart.mock.restore();
 });

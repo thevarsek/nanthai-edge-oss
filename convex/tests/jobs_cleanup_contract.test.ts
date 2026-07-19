@@ -14,7 +14,14 @@ function buildGenerationJobsQuery(queuedJobs: any[], streamingJobs: any[]) {
         },
       });
       return {
-        take: async () => (status === "queued" ? queuedJobs : streamingJobs),
+        paginate: async ({ numItems }: { numItems: number }) => {
+          const jobs = status === "queued" ? queuedJobs : streamingJobs;
+          return {
+            page: jobs.slice(0, numItems),
+            continueCursor: `${status}-next`,
+            isDone: jobs.length <= numItems,
+          };
+        },
       };
     },
   };
@@ -29,7 +36,7 @@ function buildEmptyContinuationsQuery() {
   };
 }
 
-test("cleanStale marks timed-out jobs, messages, search sessions, and scheduled executions failed", async () => {
+test("cleanStale dispatches timed-out candidates to the fenced cleanup mutation", async () => {
   const now = Date.now();
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
@@ -102,27 +109,13 @@ test("cleanStale marks timed-out jobs, messages, search sessions, and scheduled 
     },
   }, {});
 
-  const jobPatch = patches.find((entry) => entry.id === "job_1")?.patch;
-  const messagePatch = patches.find((entry) => entry.id === "msg_1")?.patch;
-  const sessionPatch = patches.find((entry) => entry.id === "search_1")?.patch;
-  const scheduledJobPatch = patches.find((entry) => entry.id === "scheduled_job_1")?.patch;
-
-  assert.equal(jobPatch?.status, "failed");
-  assert.match(String(jobPatch?.error ?? ""), /Timed out/);
-  assert.equal(messagePatch?.status, "failed");
-  assert.match(String(messagePatch?.content ?? ""), /timed out/i);
-  assert.equal(sessionPatch?.status, "failed");
-  assert.equal(sessionPatch?.currentPhase, "failed");
-  assert.equal(inserts[0]?.table, "jobRuns");
-  assert.equal(scheduledJobPatch?.status, "error");
-  assert.equal(scheduledJobPatch?.consecutiveFailures, 3);
-  assert.equal(scheduledJobPatch?.activeExecutionId, undefined);
-  assert.equal(scheduledJobPatch?.scheduledFunctionId, undefined);
-  assert.deepEqual(cancelled, ["fn_1"]);
-  assert.deepEqual(scheduled, []);
+  assert.deepEqual(patches, []);
+  assert.deepEqual(inserts, []);
+  assert.deepEqual(cancelled, []);
+  assert.deepEqual(scheduled, ["runAfter"]);
 });
 
-test("cleanStale uses the startedAt timestamp for streaming jobs", async () => {
+test("cleanStale dispatches streaming candidates for per-job timestamp evaluation", async () => {
   const now = Date.now();
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
 
@@ -158,10 +151,7 @@ test("cleanStale uses the startedAt timestamp for streaming jobs", async () => {
     },
   }, {});
 
-  assert.equal(patches[0]?.id, "job_streaming");
-  assert.equal(patches[0]?.patch.status, "failed");
-  assert.equal(patches[1]?.id, "msg_streaming");
-  assert.equal(patches[1]?.patch.content, "partial");
+  assert.deepEqual(patches, []);
 });
 
 test("cleanStale self-schedules a continuation when either candidate batch hits the cap", async () => {
@@ -197,5 +187,6 @@ test("cleanStale self-schedules a continuation when either candidate batch hits 
     },
   }, {});
 
-  assert.deepEqual(followUps, [{ delay: 0 }]);
+  assert.equal(followUps.length, 76);
+  assert.ok(followUps.every((entry) => entry.delay === 0));
 });

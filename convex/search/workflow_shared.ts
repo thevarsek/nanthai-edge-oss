@@ -28,16 +28,35 @@ export interface PipelineArgs extends Record<string, unknown> {
   subagentsEnabled?: boolean;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
 
 export async function checkCancellation(
   ctx: ActionCtx,
   sessionId: Id<"searchSessions">,
+  token: Pick<PipelineArgs, "executionAttemptId" | "executionFence"> = {},
 ): Promise<void> {
   const session = await ctx.runQuery(internal.search.queries.getSearchSession, {
     sessionId,
   });
-  if (session?.status === "cancelled") {
+  const hasExecutionToken = token.executionAttemptId !== undefined
+    || token.executionFence !== undefined;
+  if (!session) {
+    if (!hasExecutionToken) return;
+    throw new GenerationCancelledError();
+  }
+  if (session.status === "cancelled") {
+    throw new GenerationCancelledError();
+  }
+  if (!hasExecutionToken) {
+    return;
+  }
+  const current = await ctx.runQuery(
+    internal.search.queries.isResearchExecutionCurrent,
+    { sessionId, ...token },
+  );
+  if (!current) {
     throw new GenerationCancelledError();
   }
 }
@@ -115,9 +134,11 @@ export async function updateSession(
   ctx: ActionCtx,
   sessionId: Id<"searchSessions">,
   patch: Record<string, unknown>,
+  token: Pick<PipelineArgs, "executionAttemptId" | "executionFence"> = {},
 ): Promise<void> {
   await ctx.runMutation(internal.search.mutations.updateSearchSession, {
     sessionId,
     patch,
+    ...token,
   });
 }

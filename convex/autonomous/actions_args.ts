@@ -12,4 +12,8 @@ export const runCycleArgs = {
   participantConfigs: v.array(participantConfigValidator),
   moderatorConfig: v.optional(moderatorConfigValidator),
   webSearchEnabled: v.boolean(),
+  workflowManaged: v.optional(v.boolean()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+  executionEpoch: v.optional(v.number()),
 } satisfies PropertyValidators;

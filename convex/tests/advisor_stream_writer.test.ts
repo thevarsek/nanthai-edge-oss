@@ -10,7 +10,7 @@ test("AdvisorStreamWriter throttles small deltas and flushes at the size boundar
       return true;
     },
   } as unknown as ConstructorParameters<typeof AdvisorStreamWriter>[0],
-  "run_1" as ConstructorParameters<typeof AdvisorStreamWriter>[1]);
+  "run_1" as ConstructorParameters<typeof AdvisorStreamWriter>[1], "lease_1");
 
   await writer.append("a");
   await writer.append("b");
@@ -26,6 +26,6 @@ test("AdvisorStreamWriter stops when the durable run was cancelled", async () =>
   const writer = new AdvisorStreamWriter({
     runMutation: async () => false,
   } as unknown as ConstructorParameters<typeof AdvisorStreamWriter>[0],
-  "run_cancelled" as ConstructorParameters<typeof AdvisorStreamWriter>[1]);
+  "run_cancelled" as ConstructorParameters<typeof AdvisorStreamWriter>[1], "lease_2");
   await assert.rejects(writer.append("first delta"), /cancelled/);
 });

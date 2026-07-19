@@ -36,7 +36,7 @@ import {
   assertTextGenerationModel,
 } from "../lib/openrouter_modality";
 
-const researchPaperPipelineArgs = {
+export const researchPaperPipelineArgs = {
   sessionId: v.id("searchSessions"),
   assistantMessageId: v.id("messages"),
   jobId: v.id("generationJobs"),
@@ -58,6 +58,9 @@ const researchPaperPipelineArgs = {
   subagentsEnabled: v.optional(v.boolean()),
   analytics: v.optional(analyticsClientMetadataValidator),
   analyticsSource: v.optional(analyticsSourceValidator),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+  parentExecutionRunId: v.optional(v.id("executionRuns")),
 } satisfies PropertyValidators;
 
 export const researchPaperPipeline = internalAction({
@@ -114,15 +117,10 @@ async function researchPaperPipelineHandler(
 
     await checkCancellation(ctx, args.sessionId);
 
-    // Schedule the first durable phase: planning
-    await ctx.scheduler.runAfter(
-      0,
-      internal.search.workflow_durable.runPlanningAction,
-      {
-        ...args,
-        phaseOrder: 0,
-      },
-    );
+    await ctx.runMutation(internal.execution.mutations.ensureGeneration, {
+      jobId: args.jobId,
+    });
+    await ctx.runMutation(internal.execution.workflow_starts.startResearchPaper, args);
   } catch (error) {
     const errorMessage = formatResearchPaperFailureMessage(error);
     const wasCancelled = isGenerationCancelledError(error);

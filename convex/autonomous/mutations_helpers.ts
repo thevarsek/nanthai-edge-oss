@@ -12,6 +12,8 @@ import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 
 export interface CreateAutonomousMessageArgs extends Record<string, unknown> {
+  sessionId?: Id<"autonomousSessions">;
+  executionEpoch?: number;
   chatId: Id<"chats">;
   userId: string;
   modelId: string;
@@ -20,12 +22,30 @@ export interface CreateAutonomousMessageArgs extends Record<string, unknown> {
   personaId?: Id<"personas"> | null;
   parentMessageIds: Id<"messages">[];
   moderatorDirective?: string;
+  turnCycle?: number;
+  turnParticipantIndex?: number;
 }
 
 export async function createAutonomousMessageHandler(
   ctx: MutationCtx,
   args: CreateAutonomousMessageArgs,
-): Promise<Id<"messages">> {
+): Promise<Id<"messages"> | null> {
+  if (args.sessionId) {
+    const session = await ctx.db.get(args.sessionId);
+    if (
+      !session
+      || session.status !== "running"
+      || (args.executionEpoch !== undefined
+        && session.executionEpoch !== args.executionEpoch)
+      || (args.turnCycle !== undefined && (
+        session.activeTurnCycle !== args.turnCycle
+        || session.activeTurnParticipantIndex !== args.turnParticipantIndex
+        || session.activeTurnExecutionEpoch !== args.executionEpoch
+      ))
+    ) {
+      return null;
+    }
+  }
   const now = Date.now();
 
   const messageId = await ctx.db.insert("messages", {
@@ -51,6 +71,16 @@ export async function createAutonomousMessageHandler(
     activeBranchLeafId: messageId,
     activeBranchLeafFocusOrder: undefined,
   });
+  if (args.sessionId && args.turnCycle !== undefined && args.turnParticipantIndex !== undefined) {
+    const session = await ctx.db.get(args.sessionId);
+    if (
+      session?.activeTurnCycle === args.turnCycle
+      && session.activeTurnParticipantIndex === args.turnParticipantIndex
+      && session.activeTurnExecutionEpoch === args.executionEpoch
+    ) {
+      await ctx.db.patch(session._id, { activeTurnMessageId: messageId, updatedAt: now });
+    }
+  }
 
   return messageId;
 }
@@ -58,6 +88,8 @@ export async function createAutonomousMessageHandler(
 /** Create an assistant message for an autonomous turn. */
 export const createAutonomousMessage = internalMutation({
   args: {
+    sessionId: v.optional(v.id("autonomousSessions")),
+    executionEpoch: v.optional(v.number()),
     chatId: v.id("chats"),
     userId: v.string(),
     modelId: v.string(),
@@ -66,8 +98,10 @@ export const createAutonomousMessage = internalMutation({
     personaId: v.optional(v.union(v.id("personas"), v.null())),
     parentMessageIds: v.array(v.id("messages")),
     moderatorDirective: v.optional(v.string()),
+    turnCycle: v.optional(v.number()),
+    turnParticipantIndex: v.optional(v.number()),
   },
-  returns: v.id("messages"),
+  returns: v.union(v.id("messages"), v.null()),
   handler: createAutonomousMessageHandler,
 });
 
@@ -76,8 +110,19 @@ export const setChatActiveLeaf = internalMutation({
   args: {
     chatId: v.id("chats"),
     messageId: v.id("messages"),
+    sessionId: v.optional(v.id("autonomousSessions")),
+    executionEpoch: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    if (args.sessionId) {
+      const session = await ctx.db.get(args.sessionId);
+      if (
+        !session
+        || session.status !== "running"
+        || (args.executionEpoch !== undefined
+          && session.executionEpoch !== args.executionEpoch)
+      ) return;
+    }
     await ctx.db.patch(args.chatId, {
       activeBranchLeafId: args.messageId,
       activeBranchLeafFocusOrder: undefined,
@@ -89,16 +134,37 @@ export const setChatActiveLeaf = internalMutation({
 /** Create a generation job for an autonomous turn. */
 export const createGenerationJob = internalMutation({
   args: {
+    sessionId: v.optional(v.id("autonomousSessions")),
+    executionEpoch: v.optional(v.number()),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
     chatId: v.id("chats"),
     messageId: v.id("messages"),
     modelId: v.string(),
     userId: v.string(),
+    turnCycle: v.optional(v.number()),
+    turnParticipantIndex: v.optional(v.number()),
   },
-  returns: v.id("generationJobs"),
+  returns: v.union(v.id("generationJobs"), v.null()),
   handler: async (ctx, args) => {
+    if (args.sessionId) {
+      const session = await ctx.db.get(args.sessionId);
+      if (
+        !session
+        || session.status !== "running"
+        || (args.executionEpoch !== undefined
+          && session.executionEpoch !== args.executionEpoch)
+        || (args.turnCycle !== undefined && (
+          session.activeTurnCycle !== args.turnCycle
+          || session.activeTurnParticipantIndex !== args.turnParticipantIndex
+          || session.activeTurnExecutionEpoch !== args.executionEpoch
+          || session.activeTurnMessageId !== args.messageId
+        ))
+      ) return null;
+    }
     const now = Date.now();
 
-    return await ctx.db.insert("generationJobs", {
+    const jobId = await ctx.db.insert("generationJobs", {
       chatId: args.chatId,
       messageId: args.messageId,
       userId: args.userId,
@@ -106,6 +172,18 @@ export const createGenerationJob = internalMutation({
       status: "queued",
       createdAt: now,
     });
+    if (args.sessionId && args.turnCycle !== undefined && args.turnParticipantIndex !== undefined) {
+      const session = await ctx.db.get(args.sessionId);
+      if (
+        session?.activeTurnCycle === args.turnCycle
+        && session.activeTurnParticipantIndex === args.turnParticipantIndex
+        && session.activeTurnExecutionEpoch === args.executionEpoch
+        && session.activeTurnMessageId === args.messageId
+      ) {
+        await ctx.db.patch(session._id, { activeTurnJobId: jobId, updatedAt: now });
+      }
+    }
+    return jobId;
   },
 });
 

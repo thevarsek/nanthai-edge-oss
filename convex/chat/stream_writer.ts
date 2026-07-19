@@ -21,6 +21,8 @@ export interface StreamWriterOptions {
   ctx: ActionCtx;
   messageId: Id<"messages">;
   streamingMessageId?: Id<"streamingMessages">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   /**
    * Optional hook called before each content patch to allow the caller to
    * run cancellation checks or other side-effects. Throw to abort the stream.
@@ -51,6 +53,8 @@ export class StreamWriter {
   private ctx: ActionCtx;
   private messageId: Id<"messages">;
   private streamingMessageId: Id<"streamingMessages"> | undefined;
+  private executionAttemptId: Id<"executionAttempts"> | undefined;
+  private executionFence: number | undefined;
   private beforePatch: (() => Promise<void>) | undefined;
   private transformContent: (content: string) => string;
   private transformStreamingContent: (content: string) => string;
@@ -75,6 +79,8 @@ export class StreamWriter {
     this.ctx = opts.ctx;
     this.messageId = opts.messageId;
     this.streamingMessageId = opts.streamingMessageId;
+    this.executionAttemptId = opts.executionAttemptId;
+    this.executionFence = opts.executionFence;
     this.beforePatch = opts.beforePatch;
     this.transformContent = opts.transformContent ?? ((c) => c);
     this.transformStreamingContent = opts.transformStreamingContent ?? this.transformContent;
@@ -128,6 +134,8 @@ export class StreamWriter {
     await this.ctx.runMutation(internal.chat.mutations.updateMessageContent, {
       messageId: this.messageId,
       streamingMessageId: this.streamingMessageId,
+      executionAttemptId: this.executionAttemptId,
+      executionFence: this.executionFence,
       content: this.transformStreamingContent(this._totalContent),
       status: "streaming",
     });
@@ -174,6 +182,8 @@ export class StreamWriter {
       {
         messageId: this.messageId,
         streamingMessageId: this.streamingMessageId,
+        executionAttemptId: this.executionAttemptId,
+        executionFence: this.executionFence,
         reasoning: this._totalReasoning,
       },
     );

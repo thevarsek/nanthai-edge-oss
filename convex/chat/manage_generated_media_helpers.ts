@@ -10,7 +10,7 @@ import {
   isGeneratedMediaReferenceFullyTracked,
 } from "../lib/generated_media_reference_tracking";
 
-async function deleteGeneratedMediaRecord(
+export async function deleteGeneratedMediaRecord(
   ctx: MutationCtx,
   media: Doc<"generatedMedia">,
 ): Promise<void> {

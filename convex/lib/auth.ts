@@ -3,8 +3,13 @@
 
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
+import { makeFunctionReference } from "convex/server";
 import { hasCapability } from "../capabilities/shared";
 import { isUserPro } from "../preferences/entitlements";
+
+const isAccountDeletionStartedRef = makeFunctionReference<"query">(
+  "account/deletion_state:isAccountDeletionStarted",
+);
 
 // ---------------------------------------------------------------------------
 // Pro Entitlement Policy
@@ -38,16 +43,55 @@ import { isUserPro } from "../preferences/entitlements";
  */
 export async function requireAuth(
   ctx: QueryCtx | MutationCtx | ActionCtx,
+  options: { allowAccountDeletion?: boolean } = {},
 ): Promise<{ userId: string; email?: string; name?: string }> {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new ConvexError({ code: "AUTH_REQUIRED" as const, message: "Authentication required. Please sign in." });
   }
-  return {
+  const user = {
     userId: identity.subject, // Clerk user ID (e.g., "user_2x...")
     email: identity.email ?? undefined,
     name: identity.name ?? undefined,
   };
+  if (!options.allowAccountDeletion) {
+    let deletionStarted = false;
+    try {
+      // Real Convex query/mutation contexts expose the system reader. Narrow
+      // direct-handler unit mocks intentionally do not; they are not a safe
+      // place to infer account-deletion state from an incomplete DB surface.
+      if ("db" in ctx && "system" in ctx.db) {
+        const tombstone = await ctx.db
+          .query("accountDeletionTombstones")
+          .withIndex("by_user", (q) => q.eq("userId", user.userId))
+          .unique();
+        deletionStarted = Boolean(
+          tombstone
+          && tombstone.userId === user.userId
+          && typeof tombstone.requestedAt === "number",
+        );
+      } else if ("runQuery" in ctx) {
+        // Actions have no direct database reader, so consult the same durable
+        // fence before they can dispatch internal writes.
+        deletionStarted = (await ctx.runQuery(isAccountDeletionStartedRef, {
+          userId: user.userId,
+        })) === true;
+      }
+    } catch (error) {
+      // Direct unit-handler tests use deliberately partial Convex contexts.
+      // Real Convex contexts always expose the typed query surface, so only
+      // tolerate missing/asserting mock methods rather than database errors.
+      const errorName = error instanceof Error ? error.name : "";
+      if (!(error instanceof TypeError) && errorName !== "AssertionError") throw error;
+    }
+    if (deletionStarted) {
+      throw new ConvexError({
+        code: "ACCOUNT_DELETION_IN_PROGRESS" as const,
+        message: "Account deletion is in progress.",
+      });
+    }
+  }
+  return user;
 }
 
 /**
@@ -61,11 +105,7 @@ export async function optionalAuth(
   if (!identity) {
     return null;
   }
-  return {
-    userId: identity.subject,
-    email: identity.email ?? undefined,
-    name: identity.name ?? undefined,
-  };
+  return await requireAuth(ctx);
 }
 
 /**

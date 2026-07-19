@@ -28,6 +28,7 @@ export interface WorkflowBaseArgs {
   projectId: Id<"presentationProjects">;
   userId: string;
   expectedRevision: number;
+  workflowManaged?: boolean;
 }
 function assertStatus(actual: PresentationStatus, expected: PresentationStatus): void {
   if (actual !== expected) {
@@ -73,11 +74,13 @@ export async function beginPlanningHandler(ctx: MutationCtx, args: WorkflowBaseA
     revision: projectRevision,
     updatedAt: now,
   });
-  await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
-    projectId: project._id,
-    userId: args.userId,
-    expectedRevision: projectRevision,
-  });
+  if (!args.workflowManaged) {
+    await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
+      projectId: project._id,
+      userId: args.userId,
+      expectedRevision: projectRevision,
+    });
+  }
   return { projectId: project._id, projectRevision };
 }
 export async function completePlanningHandler(ctx: MutationCtx, args: WorkflowBaseArgs & {
@@ -102,11 +105,13 @@ export async function completePlanningHandler(ctx: MutationCtx, args: WorkflowBa
     revision: projectRevision,
     updatedAt: Date.now(),
   });
-  await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
-    projectId: project._id,
-    userId: args.userId,
-    expectedRevision: projectRevision,
-  });
+  if (!args.workflowManaged) {
+    await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
+      projectId: project._id,
+      userId: args.userId,
+      expectedRevision: projectRevision,
+    });
+  }
   return { projectId: project._id, projectRevision };
 }
 export async function beginGenerationHandler(ctx: MutationCtx, args: WorkflowBaseArgs & {
@@ -127,11 +132,13 @@ export async function beginGenerationHandler(ctx: MutationCtx, args: WorkflowBas
     revision: projectRevision,
     updatedAt: Date.now(),
   });
-  await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
-    projectId: project._id,
-    userId: args.userId,
-    expectedRevision: projectRevision,
-  });
+  if (!args.workflowManaged) {
+    await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
+      projectId: project._id,
+      userId: args.userId,
+      expectedRevision: projectRevision,
+    });
+  }
   return { projectId: project._id, projectRevision };
 }
 export async function completeGenerationHandler(ctx: MutationCtx, args: WorkflowBaseArgs & {
@@ -242,11 +249,13 @@ export async function setWorkflowPhaseHandler(
     revision: projectRevision,
     updatedAt: Date.now(),
   });
-  await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
-    projectId: project._id,
-    userId: args.userId,
-    expectedRevision: projectRevision,
-  });
+  if (!args.workflowManaged) {
+    await ctx.scheduler.runAfter(PRESENTATION_WORKFLOW_LEASE_MS, expireWorkflowRef, {
+      projectId: project._id,
+      userId: args.userId,
+      expectedRevision: projectRevision,
+    });
+  }
   return true;
 }
 

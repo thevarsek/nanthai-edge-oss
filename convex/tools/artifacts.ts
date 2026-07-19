@@ -2,182 +2,57 @@ import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, query } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
-import { extractToolMemoryDrafts, type PersistedArtifactRef } from "./tool_memory_extractor";
+import {
+  artifactInput,
+  persistArtifactCapture,
+  prepareArtifactCapture,
+} from "./artifact_persistence";
+import { storeAncillaryCostArgs } from "../chat/mutations_args";
 
 const MAX_ASSEMBLY_LINEAGE_LOOKUPS = 64;
-
-const artifactInput = v.object({
-  userId: v.string(),
-  chatId: v.id("chats"),
-  messageId: v.id("messages"),
-  jobId: v.id("generationJobs"),
-  branchRootMessageId: v.optional(v.id("messages")),
-  sourceUserMessageId: v.optional(v.id("messages")),
-  multiModelGroupId: v.optional(v.string()),
-  runtimeKind: v.optional(v.union(
-    v.literal("chat_generation"),
-    v.literal("autonomous_discussion"),
-    v.literal("subagent_child"),
-    v.literal("subagent_parent_resume"),
-    v.literal("scheduled_job"),
-  )),
-  subagentBatchId: v.optional(v.id("subagentBatches")),
-  subagentRunId: v.optional(v.id("subagentRuns")),
-  parentMessageId: v.optional(v.id("messages")),
-  parentJobId: v.optional(v.id("generationJobs")),
-  parentToolCallId: v.optional(v.string()),
-  promotionDecision: v.optional(v.union(
-    v.literal("child_private"),
-    v.literal("parent_resume"),
-    v.literal("parent_visible"),
-    v.literal("audit_only"),
-  )),
-  visibilityScope: v.union(
-    v.literal("participant"),
-    v.literal("shared_participants"),
-    v.literal("branch"),
-    v.literal("conversation"),
-    v.literal("audit_only"),
-  ),
-  ownerParticipantId: v.optional(v.string()),
-  ownerModelRunId: v.optional(v.string()),
-  sharedWithParticipants: v.optional(v.array(v.string())),
-  runtimeIsolationPolicy: v.union(
-    v.literal("isolated"),
-    v.literal("shared_readonly"),
-    v.literal("shared_mutable"),
-    v.literal("audit_only"),
-  ),
-  toolCallId: v.string(),
-  toolName: v.string(),
-  round: v.number(),
-  argumentsRaw: v.optional(v.string()),
-  argumentsHash: v.string(),
-  argumentsBytes: v.number(),
-  resultRaw: v.optional(v.string()),
-  resultHash: v.optional(v.string()),
-  resultBytes: v.optional(v.number()),
-  argumentsStorageId: v.optional(v.id("_storage")),
-  resultStorageId: v.optional(v.id("_storage")),
-  status: v.union(
-    v.literal("pending"),
-    v.literal("completed"),
-    v.literal("failed"),
-    v.literal("deferred"),
-    v.literal("cancelled"),
-  ),
-  isError: v.optional(v.boolean()),
-  errorCode: v.optional(v.string()),
-  errorMessage: v.optional(v.string()),
-  deferredKind: v.optional(v.union(
-    v.literal("spawn_subagents"),
-    v.literal("drive_picker"),
-    v.literal("presentation_workflow"),
-  )),
-  provider: v.optional(v.string()),
-  runtime: v.optional(v.string()),
-  integrationId: v.optional(v.string()),
-  skillIds: v.optional(v.array(v.id("skills"))),
-  activeProfiles: v.optional(v.array(v.string())),
-  privacyClassification: v.union(
-    v.literal("normal"),
-    v.literal("oauth_data"),
-    v.literal("google_data"),
-    v.literal("document_data"),
-    v.literal("runtime_file_data"),
-    v.literal("secret_adjacent"),
-  ),
-  contextClass: v.union(
-    v.literal("operational"),
-    v.literal("provenance"),
-    v.literal("recovery"),
-    v.literal("policy"),
-  ),
-});
 
 export const insertToolArtifacts = internalMutation({
   args: { artifacts: v.array(artifactInput), extractMemories: v.optional(v.boolean()) },
   handler: async (ctx, args) => {
-    const inserted = [];
-    for (const artifact of args.artifacts) {
-      const now = Date.now();
-      const id = await ctx.db.insert("toolExecutionArtifacts", {
-        ...artifact,
-        createdAt: now,
-        updatedAt: now,
-      });
-      inserted.push({ _id: id, ...artifact });
-    }
-
-    if (args.extractMemories !== false) {
-      const memoryArtifacts: PersistedArtifactRef[] = inserted.map((artifact) => ({
-        _id: artifact._id,
-        toolName: artifact.toolName,
-        status: artifact.status,
-        resultRaw: artifact.resultRaw,
-        resultBytes: artifact.resultBytes,
-        storageId: artifact.resultStorageId,
-        isError: artifact.isError,
-        privacyClassification: artifact.privacyClassification,
-        contextClass: artifact.contextClass,
-      }));
-      const drafts = extractToolMemoryDrafts({ artifacts: memoryArtifacts });
-      for (const draft of drafts) {
-        const sourceIds = draft.sourceArtifactIds?.length
-          ? draft.sourceArtifactIds
-          : inserted.map((artifact) => artifact._id);
-        const sourceIdSet = new Set(sourceIds.map((id) => String(id)));
-        const sourceArtifacts = inserted.filter((artifact) => sourceIdSet.has(String(artifact._id)));
-        const first = sourceArtifacts[0] ?? inserted[0];
-        if (!first) continue;
-        const now = Date.now();
-        await ctx.db.insert("toolMemories", {
-          userId: first.userId,
-          chatId: first.chatId,
-          messageId: first.messageId,
-          branchScope: "message",
-          runtimeKind: first.runtimeKind,
-          subagentBatchId: first.subagentBatchId,
-          subagentRunId: first.subagentRunId,
-          parentMessageId: first.parentMessageId,
-          parentJobId: first.parentJobId,
-          parentToolCallId: first.parentToolCallId,
-          promotionDecision: first.promotionDecision,
-          visibilityScope: first.visibilityScope,
-          ownerParticipantId: first.ownerParticipantId,
-          ownerModelRunId: first.ownerModelRunId,
-          sharedWithParticipants: first.sharedWithParticipants,
-          runtimeIsolationPolicy: first.runtimeIsolationPolicy,
-          kind: draft.kind,
-          contextClass: draft.contextClass,
-          promotionPolicy: draft.promotionPolicy,
-          summary: draft.summary,
-          structuredPayload: draft.structuredPayload,
-          artifactIds: sourceIds,
-          sourceArtifactIds: sourceIds,
-          sourceToolNames: draft.sourceToolNames,
-          confidence: draft.confidence,
-          confidenceSource: draft.confidenceSource,
-          confidenceRationale: draft.confidenceRationale,
-          ambiguities: draft.ambiguities,
-          limitations: draft.limitations,
-          privacyClassification: draft.privacyClassification,
-          freshnessClass: draft.freshnessClass,
-          observedAt: now,
-          staleAfter: draft.staleAfter,
-          confidenceDecayCurve: "none",
-          requiresRevalidation: draft.requiresRevalidation,
-          provenanceLocators: draft.provenanceLocators,
-          revalidationToolNames: draft.revalidationToolNames,
-          expiresAt: draft.expiresAt,
-          createdAt: now,
-          updatedAt: now,
-        });
-      }
-    }
-
-    return inserted.map((artifact) => artifact._id);
+    const result = await persistArtifactCapture(ctx, {
+      captureKey: `legacy:${crypto.randomUUID()}`,
+      artifacts: args.artifacts,
+      extractMemories: args.extractMemories,
+      legacyUnfenced: true,
+    });
+    return result.artifactIds;
   },
+});
+
+const captureFenceArgs = {
+  captureKey: v.string(),
+  jobId: v.id("generationJobs"),
+  userId: v.string(),
+  chatId: v.id("chats"),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+};
+
+export const prepareToolArtifactCapture = internalMutation({
+  args: captureFenceArgs,
+  returns: v.any(),
+  handler: prepareArtifactCapture,
+});
+
+export const commitToolArtifactCapture = internalMutation({
+  args: {
+    captureKey: v.string(),
+    artifacts: v.array(artifactInput),
+    usages: v.optional(v.array(v.object({
+      ...storeAncillaryCostArgs,
+      idempotencyKey: v.string(),
+    }))),
+    extractMemories: v.optional(v.boolean()),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+  },
+  returns: v.any(),
+  handler: persistArtifactCapture,
 });
 
 export const recordMemoryResolution = internalMutation({

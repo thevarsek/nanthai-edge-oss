@@ -3,7 +3,6 @@
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { ttftLog } from "../lib/generation_log";
 import type { ToolCall } from "../lib/openrouter";
@@ -36,9 +35,16 @@ import {
   RunGenerationParticipantArgs,
   TERMINAL_GENERATION_JOB_STATUSES,
 } from "./generation_continuation_shared";
+import { claimParticipantExecution } from "./actions_execution_lease";
 import { classifyTerminalErrorCode } from "./terminal_error";
 import { normalizeGenerationError } from "./generation_error";
 import { scheduleDeferredPresentationWorkflow } from "../presentations/deferred_workflow_scheduler";
+import { scheduleDeferredAnalyticsWorkflow } from "../analytics_workflows/parent_handoff";
+import {
+  generationBudgetStartedAt,
+  resolveGenerationProviderDeadline,
+} from "./generation_deadline";
+import { transitionGenerationRound } from "./generation_round_actions";
 
 function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -124,6 +130,9 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     analytics: args.analytics,
     analyticsSource: args.analyticsSource,
     imageConfig: args.imageConfig,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
+    workflowResumeEventId: args.workflowResumeEventId,
   };
   if (args.requireZdrOverride === true) {
     generationArgs.requireZdrOverride = true;
@@ -149,6 +158,8 @@ async function finalizeParticipantSetupFailure(
       status: "failed",
       error: errorMessage,
     }),
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 }
 
@@ -176,14 +187,31 @@ export async function runGenerationParticipantHandler(
   ctx: ActionCtx,
   args: RunGenerationParticipantArgs,
 ): Promise<void> {
-  const continuationState = args.resumeExpected
+  const participantStartedAt = Date.now();
+  const providerDeadlineAt = resolveGenerationProviderDeadline(
+    args.providerDeadlineAt,
+    participantStartedAt,
+  );
+  const actionStartTime = generationBudgetStartedAt(
+    providerDeadlineAt,
+    participantStartedAt,
+  );
+  const claimedArgs = await claimParticipantExecution(ctx, args);
+  if (!claimedArgs) return;
+  const continuationState = claimedArgs.resumeExpected
     ? await ctx.runMutation(internal.chat.mutations.claimGenerationContinuation, {
-        jobId: args.participant.jobId,
+        jobId: claimedArgs.participant.jobId,
+        ...(claimedArgs.executionAttemptId && claimedArgs.executionFence !== undefined
+          ? {
+              executionAttemptId: claimedArgs.executionAttemptId,
+              executionFence: claimedArgs.executionFence,
+            }
+          : {}),
       })
     : null;
 
   if (args.resumeExpected && !continuationState) {
-    return;
+    throw new Error("GENERATION_CONTINUATION_NOT_CLAIMABLE");
   }
 
   const effectiveArgs: RunGenerationParticipantArgs = continuationState
@@ -204,7 +232,8 @@ export async function runGenerationParticipantHandler(
         disableTools: continuationState.group.disableTools,
         searchSessionId: continuationState.group.searchSessionId,
         subagentBatchId: continuationState.group.subagentBatchId,
-        drivePickerBatchId: continuationState.group.drivePickerBatchId,
+        drivePickerBatchId: claimedArgs.drivePickerBatchId
+          ?? continuationState.group.drivePickerBatchId,
         chatSkillOverrides: continuationState.group.chatSkillOverrides,
         chatIntegrationOverrides: continuationState.group.chatIntegrationOverrides,
         personaSkillOverrides: continuationState.group.personaSkillOverrides,
@@ -213,9 +242,13 @@ export async function runGenerationParticipantHandler(
         analytics: continuationState.group.analytics,
         analyticsSource: continuationState.group.analyticsSource,
         imageConfig: continuationState.group.imageConfig,
+        executionAttemptId: claimedArgs.executionAttemptId,
+        executionFence: claimedArgs.executionFence,
+        workflowManaged: claimedArgs.workflowManaged,
+        workflowResumeEventId: claimedArgs.workflowResumeEventId,
         resumeExpected: true,
       }
-    : args;
+    : claimedArgs;
 
   const generationArgs = toRunGenerationArgs(effectiveArgs);
   const job = await ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
@@ -356,7 +389,6 @@ export async function runGenerationParticipantHandler(
     });
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, effectiveArgs.userId);
     const continuationCount = continuationState?.continuationCount ?? 0;
-    const forceToolChoiceNone = continuationCount >= MAX_TOOL_ROUNDS;
 
     let allMessages: GenerationContext["allMessages"] = [];
     let memoryContext: string | undefined;
@@ -423,8 +455,10 @@ export async function runGenerationParticipantHandler(
       initialCompactionCount: continuationState?.compactionCount ?? 0,
       restoredActiveProfiles: continuationState?.activeProfiles,
       restoredLoadedSkills: continuationState?.loadedSkills,
-      forceToolChoiceNone,
-      actionStartTime: Date.now(),
+      forceToolChoiceNone: false,
+      actionStartTime,
+      providerDeadlineAt,
+      onProviderDispatch: async () => await transitionGenerationRound(ctx, effectiveArgs, "dispatched"),
       streamingMessageId,
       preResolvedOverrides: {
         resolved: true as const,
@@ -488,9 +522,7 @@ export async function runGenerationParticipantHandler(
           audioGeneratedAt: Date.now(),
         };
       },
-      continuationHandoff: forceToolChoiceNone
-        ? undefined
-        : {
+      continuationHandoff: {
             maxToolRoundsPerInvocation: 1,
             continuationCount,
             onHandoff: async (checkpoint) => {
@@ -504,8 +536,17 @@ export async function runGenerationParticipantHandler(
                 workflow,
               );
             },
+            onDeferredAnalytics: async (checkpoint, analyticsRunId) => {
+              await scheduleDeferredAnalyticsWorkflow(
+                ctx,
+                effectiveArgs,
+                checkpoint,
+                analyticsRunId,
+              );
+            },
           },
     });
+    await transitionGenerationRound(ctx, effectiveArgs, "committed");
     const generationDurationMs = Date.now() - preflightStartedAt;
 
     if (!result.deferredForSubagents && !result.continued) {

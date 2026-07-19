@@ -108,7 +108,10 @@ test("persistent VM reuses an active sandbox session and honors recursive listin
   assert.equal(getMock.mock.callCount(), 2);
   assert.equal(createMock.mock.callCount(), 0);
   assert.equal(mutations[0].sessionId, "session_existing");
-  assert.equal(mutations[0].providerSandboxId, "sbx_existing");
+  assert.equal(
+    mutations.find((entry) => entry.providerSandboxId)?.providerSandboxId,
+    "sbx_existing",
+  );
   assert.equal(toolCtx.sandboxSessionId, "session_existing");
   assert.equal(listed.root, "/tmp/nanthai-edge/chat_1/vm-python/outputs");
   assert.deepEqual(listed.files, [

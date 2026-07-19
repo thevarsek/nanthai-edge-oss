@@ -40,6 +40,7 @@ function sseTextResponse(content: string, generationId = "subagent_gen_1") {
 test("sendMessageHandler downgrades stale non-Pro subagent requests", async () => {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const scheduled: Array<Record<string, unknown>> = [];
+  const inserted = new Map<string, Record<string, unknown>>();
 
   const ctx = {
     auth: {
@@ -47,6 +48,7 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
     },
     db: {
       get: async (id: string) => {
+        if (inserted.has(id)) return inserted.get(id);
         if (id === "chat_1") {
           return {
             _id: "chat_1",
@@ -59,9 +61,14 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
       },
       insert: async (table: string, value: Record<string, unknown>) => {
         inserts.push({ table, value });
-        return `${table}_${inserts.length}`;
+        const id = `${table}_${inserts.length}`;
+        inserted.set(id, { _id: id, ...value });
+        return id;
       },
-      patch: async () => undefined,
+      patch: async (id: string, patch: Record<string, unknown>) => {
+        const existing = inserted.get(id);
+        if (existing) inserted.set(id, { ...existing, ...patch });
+      },
       query: (table: string) => {
         if (table === "usageRecords") {
           return {
@@ -112,6 +119,12 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
         }
         if (table === "chatAdvisors") {
           return { withIndex: () => ({ collect: async () => [] }) };
+        }
+        if (table === "accountDeletionTombstones") {
+          return { withIndex: () => ({ unique: async () => null }) };
+        }
+        if (table === "executionRuns" || table === "runEvents") {
+          return { withIndex: () => ({ unique: async () => null }) };
         }
         throw new Error(`Unexpected table query: ${table}`);
       },
@@ -958,7 +971,7 @@ test("runSubagentRunHandler does not emit a duplicate start for continuation res
   assert.ok(scheduled.some((entry) => entry.event === "assistant_response_failed"));
 });
 
-test("runSubagentRunHandler completes a simple streaming run and schedules parent continuation", async (t) => {
+test("runSubagentRunHandler completes a legacy streaming run and arms durable parent resume", async (t) => {
   t.after(() => mock.restoreAll());
 
   mock.method(globalThis, "fetch", async () => sseTextResponse("Child answer complete.")) as any;
@@ -1001,7 +1014,6 @@ test("runSubagentRunHandler completes a simple streaming run and schedules paren
       if ("runId" in args && args.status === "completed") {
         return { batchId: "batch_1", allTerminal: true };
       }
-      if ("batchId" in args && args.status === "waiting_to_resume") return true;
       return null;
     },
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
@@ -1036,11 +1048,11 @@ test("runSubagentRunHandler completes a simple streaming run and schedules paren
       && call.status === "completed"
       && call.content === "Child answer complete."));
   assert.ok(runMutationCalls.some((call) =>
-    call.batchId === "batch_1" && call.status === "waiting_to_resume"));
+    call.batchId === "batch_1" && Object.keys(call).length === 1));
   assert.equal(scheduled.some((entry) => entry.source === "subagent"), true);
   assert.equal(
     scheduled.some((entry) => entry.batchId === "batch_1" && !("source" in entry)),
-    true,
+    false,
   );
 });
 

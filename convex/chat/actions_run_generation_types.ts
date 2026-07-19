@@ -62,6 +62,9 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   enqueuedAt?: number;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+  workflowResumeEventId?: string;
 }
 
 export interface VideoCapabilities {

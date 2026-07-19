@@ -26,6 +26,7 @@ import {
 } from "./service_analytics_charts";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { processCharts, processOutputFiles, buildResultSummary, type StoredFileEntry } from "./service_analytics_common";
+import type { AnalyticsExecutionEnvelope } from "./analytics_execution_envelope";
 
 // ---------------------------------------------------------------------------
 // Dependency injection (for testing)
@@ -107,6 +108,7 @@ export async function runDataPythonSandbox(
     captureCharts?: boolean;
     packages?: string[];
     timeoutMs?: number;
+    onExecutionReady?: (envelope: AnalyticsExecutionEnvelope) => Promise<void>;
   },
   deps: RuntimeSandboxDeps = defaultRuntimeSandboxDeps,
 ): Promise<{
@@ -179,6 +181,23 @@ export async function runDataPythonSandbox(
     mergedPackages.push("matplotlib");
   }
 
+  const reusableSession = existingSession?.status !== "deleted" ? existingSession : null;
+  const sessionId = reusableSession?._id ?? await toolCtx.ctx.runMutation(
+    internal.runtime.mutations.upsertSessionInternal,
+    {
+      userId: toolCtx.userId,
+      chatId: chatId as Id<"chats">,
+      environment: "python",
+      status: "pendingCreate",
+      cwd: "/tmp",
+      lastActiveAt: Date.now(),
+      timeoutMs: args.timeoutMs ?? 5 * 60 * 1000,
+      internetEnabled: true,
+      publicTrafficEnabled: false,
+    },
+  );
+  toolCtx.sandboxSessionId = sessionId;
+
   // Run in Vercel Sandbox
   const result = await deps.runVercelSandboxCode(
     args.code,
@@ -188,6 +207,28 @@ export async function runDataPythonSandbox(
     mergedPackages.length > 0 ? mergedPackages : undefined,
     args.timeoutMs,
     args.exportPaths,
+    async (providerSandboxId) => {
+      try {
+        await toolCtx.ctx.runMutation(internal.runtime.mutations.upsertSessionInternal, {
+          sessionId,
+          userId: toolCtx.userId,
+          chatId: chatId as Id<"chats">,
+          environment: "python",
+          providerSandboxId,
+          status: "running",
+          cwd: "/tmp",
+          lastActiveAt: Date.now(),
+          timeoutMs: args.timeoutMs ?? 5 * 60 * 1000,
+          internetEnabled: true,
+          publicTrafficEnabled: false,
+        });
+      } catch (error) {
+        await toolCtx.ctx.runAction(internal.runtime.cleanup.stopSandboxById, {
+          providerSandboxId,
+        }).catch(() => undefined);
+        throw error;
+      }
+    },
   );
 
   // NOTE: We intentionally do NOT stop the Vercel sandbox here or register a
@@ -196,60 +237,20 @@ export async function runDataPythonSandbox(
   // VMs are reaped by the cleanStaleSandboxSessions cron (30-min interval,
   // 1-hr idle threshold).
 
-  // Persist / update the session record and link artifacts to the session.
-  try {
-    const now = Date.now();
-    if (existingSession && existingSession.providerSandboxId === result.sandboxId) {
-      // Existing session — just update lastActiveAt.
-      // Always keep status "running" — a Python script error does NOT mean
-      // the sandbox VM is dead. Marking "failed" would prevent session reuse
-      // and lose installed packages/files.
-      await toolCtx.ctx.runMutation(
-        internal.runtime.mutations.upsertSessionInternal,
-        {
-          sessionId: existingSession._id,
-          userId: toolCtx.userId,
-          chatId: chatId as Id<"chats">,
-          environment: "python",
-          providerSandboxId: result.sandboxId,
-          status: "running",
-          cwd: "/tmp",
-          lastActiveAt: now,
-          timeoutMs: args.timeoutMs ?? 5 * 60 * 1000,
-          internetEnabled: true,
-          publicTrafficEnabled: false,
-        },
-      );
-      toolCtx.sandboxSessionId = existingSession._id;
-    } else {
-      // New sandbox — insert record.
-      // Same rationale: script errors don't kill the VM.
-      const sessionId = await toolCtx.ctx.runMutation(
-        internal.runtime.mutations.upsertSessionInternal,
-        {
-          userId: toolCtx.userId,
-          chatId: chatId as Id<"chats">,
-          environment: "python",
-          providerSandboxId: result.sandboxId,
-          status: "running",
-          cwd: "/tmp",
-          lastActiveAt: now,
-          timeoutMs: args.timeoutMs ?? 5 * 60 * 1000,
-          internetEnabled: true,
-          publicTrafficEnabled: false,
-        },
-      );
-      toolCtx.sandboxSessionId = sessionId;
-    }
-  } catch (sessionErr) {
-    // Non-fatal — session tracking failure should not block tool result
-    warnings.push(
-      `Session tracking failed: ${sessionErr instanceof Error ? sessionErr.message : String(sessionErr)}`,
-    );
-  }
-
   // If execution failed, return error text
   if (result.error) {
+    if (args.onExecutionReady) {
+      await args.onExecutionReady({
+        stdout: result.stdout,
+        stderr: result.stderr,
+        error: result.error,
+        importedFiles,
+        warnings,
+        charts: [],
+        outputFiles: [],
+      });
+      return stagedResult(importedFiles, warnings);
+    }
     const lines: string[] = [];
     if (result.stdout) lines.push("stdout:\n" + result.stdout);
     if (result.stderr) lines.push("stderr:\n" + result.stderr);
@@ -263,6 +264,19 @@ export async function runDataPythonSandbox(
       chartsCreated,
       warnings,
     };
+  }
+
+  if (args.onExecutionReady) {
+    await args.onExecutionReady({
+      stdout: result.stdout,
+      stderr: result.stderr,
+      error: null,
+      importedFiles,
+      warnings,
+      charts: result.charts,
+      outputFiles: result.outputFiles,
+    });
+    return stagedResult(importedFiles, warnings);
   }
 
   // Process charts — store PNGs in Convex storage (images render inline via
@@ -283,6 +297,17 @@ export async function runDataPythonSandbox(
     importedFiles,
     exportedFiles,
     chartsCreated,
+    warnings,
+  };
+}
+
+function stagedResult(importedFiles: unknown[], warnings: string[]) {
+  return {
+    text: "Execution staged for durable artifact collection.",
+    resultsSummary: ["Execution staged for durable artifact collection."],
+    importedFiles,
+    exportedFiles: [] as StoredFileEntry[],
+    chartsCreated: [] as NormalizedGeneratedChart[],
     warnings,
   };
 }

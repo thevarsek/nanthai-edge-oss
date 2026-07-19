@@ -51,6 +51,7 @@ function makeDb(rows = makeRows()) {
           unique: async () => rows[table]?.[0] ?? null,
           first: async () => rows[table]?.[0] ?? null,
           collect: async () => rows[table] ?? [],
+          take: async () => rows[table] ?? [],
         }),
       }),
       insert: async (table: string, row: Record<string, unknown>) => {

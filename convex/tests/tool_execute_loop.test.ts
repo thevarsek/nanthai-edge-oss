@@ -67,12 +67,14 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   registry.register(
     createTool({
       name: "tool_one",
+      effectPolicy: { effect: "read", retry: "safe" },
       description: "tool one",
       parameters: { type: "object", properties: {} },
       execute: async () => ({ success: true, data: { ok: 1 } }),
     }),
     createTool({
       name: "tool_two",
+      effectPolicy: { effect: "read", retry: "safe" },
       description: "tool two",
       parameters: { type: "object", properties: {} },
       execute: async () => ({ success: true, data: { ok: 2 } }),
@@ -276,6 +278,7 @@ test("runToolCallLoop supports early exit and truncates stored tool metadata", a
   registry.register(
     createTool({
       name: "big_tool",
+      effectPolicy: { effect: "read", retry: "safe" },
       description: "big",
       parameters: { type: "object", properties: {} },
       execute: async () => ({
@@ -330,6 +333,7 @@ test("runToolCallLoop exits after the configured round budget before the next mo
   registry.register(
     createTool({
       name: "one_round_tool",
+      effectPolicy: { effect: "read", retry: "safe" },
       description: "single round",
       parameters: { type: "object", properties: {} },
       execute: async () => ({ success: true, data: { ok: true } }),
@@ -373,6 +377,7 @@ test("runToolCallLoop allows two invocation rounds before continuation handoff",
   registry.register(
     createTool({
       name: "runtime_safe_tool",
+      effectPolicy: { effect: "read", retry: "safe" },
       description: "runtime safe",
       parameters: { type: "object", properties: {} },
       execute: async () => ({ success: true, data: { ok: true } }),

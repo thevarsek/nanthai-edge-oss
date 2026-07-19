@@ -25,6 +25,7 @@ import {
   RetryContract,
   RetrySearchMode,
 } from "./retry_contract";
+import { enqueueRunGeneration } from "./run_generation_queue";
 
 const DEFAULT_CHAT_MODEL = MODEL_IDS.appDefault;
 
@@ -461,7 +462,7 @@ export async function retryMessageHandler(
   }
 
   if (!effectiveSearchMode || effectiveSearchMode === "normal") {
-    await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
+    await enqueueRunGeneration(ctx, {
       chatId: originalMsg.chatId,
       userMessageId: retryUserMessageId,
       assistantMessageIds,

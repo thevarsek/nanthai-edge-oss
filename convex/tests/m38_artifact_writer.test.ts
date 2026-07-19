@@ -12,6 +12,17 @@ function toolCall(id: string, name: string, args: Record<string, unknown>): Tool
   };
 }
 
+function artifactMutationResult(args: Record<string, any>) {
+  if (!Array.isArray(args.artifacts)) {
+    return { decision: "execute", artifactIds: [] };
+  }
+  return {
+    inserted: true,
+    stale: false,
+    artifactIds: args.artifacts.map((_artifact: unknown, index: number) => `artifact_${index + 1}`),
+  };
+}
+
 test("artifact writer preserves full raw args/results and stores oversized payloads", async () => {
   const mutations: Array<Record<string, any>> = [];
   const stored: Blob[] = [];
@@ -21,10 +32,11 @@ test("artifact writer preserves full raw args/results and stores oversized paylo
         stored.push(blob);
         return `storage_${stored.length}`;
       },
+      delete: async () => undefined,
     },
     runMutation: async (_ref: unknown, args: Record<string, any>) => {
       mutations.push(args);
-      return args.artifacts.map((_artifact: unknown, index: number) => `artifact_${index + 1}`);
+      return artifactMutationResult(args);
     },
   } as any;
 
@@ -53,7 +65,7 @@ test("artifact writer preserves full raw args/results and stores oversized paylo
 
   assert.deepEqual(ids, ["artifact_1"]);
   assert.equal(stored.length, 1);
-  const artifact = mutations[0]?.artifacts[0];
+  const artifact = mutations.find((entry) => Array.isArray(entry.artifacts))?.artifacts[0];
   assert.equal(artifact.toolCallId, "call_1");
   assert.equal(artifact.argumentsRaw, "{\"doc_id\":\"doc-0\"}");
   assert.equal(artifact.resultRaw, undefined);
@@ -75,10 +87,11 @@ test("artifact writer stores oversized args and results under separate storage i
         stored.push(await blob.text());
         return `storage_${stored.length}`;
       },
+      delete: async () => undefined,
     },
     runMutation: async (_ref: unknown, args: Record<string, any>) => {
       mutations.push(args);
-      return ["artifact_1"];
+      return artifactMutationResult(args);
     },
   } as any;
 
@@ -100,7 +113,7 @@ test("artifact writer stores oversized args and results under separate storage i
     }],
   });
 
-  const artifact = mutations[0]?.artifacts[0];
+  const artifact = mutations.find((entry) => Array.isArray(entry.artifacts))?.artifacts[0];
   assert.equal(stored.length, 2);
   assert.equal(artifact.argumentsRaw, undefined);
   assert.equal(artifact.resultRaw, undefined);
@@ -110,14 +123,13 @@ test("artifact writer stores oversized args and results under separate storage i
   assert.match(stored[1], /"text"/);
 });
 
-test("artifact writer records materialized web_search usage as ancillary cost", async () => {
+test("artifact writer atomically commits materialized web_search usage with artifacts", async () => {
   const mutations: Array<Record<string, any>> = [];
   const ctx = {
-    storage: { store: async () => "storage_1" },
+    storage: { store: async () => "storage_1", delete: async () => undefined },
     runMutation: async (_ref: unknown, args: Record<string, any>) => {
       mutations.push(args);
-      if (Array.isArray(args.artifacts)) return ["artifact_1"];
-      return null;
+      return artifactMutationResult(args);
     },
   } as any;
 
@@ -153,7 +165,8 @@ test("artifact writer records materialized web_search usage as ancillary cost", 
     }],
   });
 
-  const usageMutation = mutations.find((entry) => entry.source === "tool_web_search");
+  const artifactInsert = mutations.find((entry) => Array.isArray(entry.artifacts));
+  const usageMutation = artifactInsert?.usages[0];
   assert.equal(usageMutation?.messageId, "msg_1");
   assert.equal(usageMutation?.modelId, "openai/gpt-5");
   assert.equal(usageMutation?.promptTokens, 11);
@@ -163,17 +176,18 @@ test("artifact writer records materialized web_search usage as ancillary cost", 
   assert.equal(usageMutation?.isByok, true);
   assert.equal(usageMutation?.webSearchRequests, 1);
   assert.equal(usageMutation?.generationId, "gen_web_1");
-  const artifactInsert = mutations.find((entry) => Array.isArray(entry.artifacts));
+  assert.match(String(usageMutation?.idempotencyKey), /^[a-f0-9]{64}:tool:0:web_search$/);
   assert.equal(artifactInsert?.artifacts[0].toolName, "web_search");
+  assert.equal(mutations.some((entry) => entry.source === "tool_web_search"), false);
 });
 
 test("artifact writer marks deferred and failed calls as recovery context", async () => {
   const mutations: Array<Record<string, any>> = [];
   const ctx = {
-    storage: { store: async () => "storage_1" },
+    storage: { store: async () => "storage_1", delete: async () => undefined },
     runMutation: async (_ref: unknown, args: Record<string, any>) => {
       mutations.push(args);
-      return ["artifact_1", "artifact_2"];
+      return artifactMutationResult(args);
     },
   } as any;
 
@@ -206,11 +220,79 @@ test("artifact writer marks deferred and failed calls as recovery context", asyn
     ],
   });
 
-  const artifacts = mutations[0]?.artifacts;
+  const artifacts = mutations.find((entry) => Array.isArray(entry.artifacts))?.artifacts;
   assert.equal(artifacts[0].status, "deferred");
   assert.equal(artifacts[0].deferredKind, "drive_picker");
   assert.equal(artifacts[0].contextClass, "recovery");
   assert.equal(artifacts[1].status, "failed");
   assert.equal(artifacts[1].isError, true);
   assert.equal(artifacts[1].privacyClassification, "google_data");
+});
+
+test("artifact writer rejects a stale capture before creating blobs or usage", async () => {
+  let stores = 0;
+  const mutations: Array<Record<string, any>> = [];
+  const ctx = {
+    storage: {
+      store: async () => { stores += 1; return "storage_1"; },
+      delete: async () => undefined,
+    },
+    runMutation: async (_ref: unknown, args: Record<string, any>) => {
+      mutations.push(args);
+      return { decision: "stale", artifactIds: [] };
+    },
+  } as any;
+
+  const ids = await captureToolRoundArtifacts({
+    ctx,
+    metadata: {
+      userId: "user_1", chatId: "chat_1" as any, messageId: "msg_1" as any,
+      jobId: "job_1" as any, executionAttemptId: "attempt_old" as any, executionFence: 1,
+    },
+    round: 1,
+    toolCalls: [toolCall("call_1", "web_search", { query: "news" })],
+    results: [{
+      toolCallId: "call_1",
+      result: {
+        success: true,
+        data: {},
+        artifactData: {
+          usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 },
+          generationId: "generation_stale",
+          modelId: "openai/gpt-5",
+        },
+      },
+    }],
+  });
+
+  assert.deepEqual(ids, []);
+  assert.equal(stores, 0);
+  assert.equal(mutations.some((entry) => entry.source === "tool_web_search"), false);
+});
+
+test("artifact capture race loser removes duplicate oversized blobs", async () => {
+  const deleted: string[] = [];
+  let mutationCount = 0;
+  const ctx = {
+    storage: {
+      store: async () => "storage_duplicate",
+      delete: async (storageId: string) => { deleted.push(storageId); },
+    },
+    runMutation: async () => {
+      mutationCount += 1;
+      if (mutationCount === 1) return { decision: "execute", artifactIds: [] };
+      return { inserted: false, stale: false, artifactIds: ["artifact_existing"] };
+    },
+  } as any;
+
+  const ids = await captureToolRoundArtifacts({
+    ctx,
+    metadata: { userId: "user_1", chatId: "chat_1" as any, messageId: "msg_1" as any, jobId: "job_1" as any },
+    round: 1,
+    toolCalls: [toolCall("call_1", "read_document", {})],
+    results: [{ toolCallId: "call_1", result: { success: true, data: { text: "x".repeat(100_000) } } }],
+  });
+
+  assert.deepEqual(ids, ["artifact_existing"]);
+  assert.deepEqual(deleted, ["storage_duplicate"]);
 });

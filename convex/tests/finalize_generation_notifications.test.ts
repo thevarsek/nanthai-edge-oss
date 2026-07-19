@@ -62,6 +62,7 @@ test("finalizeGenerationHandler does not send completion push for manual follow-
 
 test("finalizeGenerationHandler continues scheduled executions for scheduled-step generations", async () => {
   const scheduledCalls: Array<Record<string, unknown>> = [];
+  const workflowSignals: Array<Record<string, unknown>> = [];
 
   const ctx = {
     db: {
@@ -81,6 +82,14 @@ test("finalizeGenerationHandler continues scheduled executions for scheduled-ste
             sourceJobId: "scheduled_job_1",
           };
         }
+        if (id === "scheduled_job_1") {
+          return {
+            _id: id,
+            activeWorkflowId: "workflow_1",
+            activeExecutionId: "exec_1",
+            activeStepIndex: 0,
+          };
+        }
         return null;
       },
       patch: async () => undefined,
@@ -97,6 +106,10 @@ test("finalizeGenerationHandler continues scheduled executions for scheduled-ste
         scheduledCalls.push({ delayMs, ...args });
       },
     },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      workflowSignals.push(args);
+      return "scheduled-step-event";
+    },
   } as any;
 
   await finalizeGenerationHandler(ctx, {
@@ -108,10 +121,9 @@ test("finalizeGenerationHandler continues scheduled executions for scheduled-ste
     userId: "user_1",
   });
 
-  assert.equal(scheduledCalls.length, 1);
-  assert.equal(scheduledCalls[0].jobId, "scheduled_job_1");
-  assert.equal(scheduledCalls[0].executionId, "exec_1");
-  assert.equal(scheduledCalls[0].completedStepIndex, 0);
+  assert.equal(scheduledCalls.length, 0);
+  assert.equal(workflowSignals.length, 1);
+  assert.equal(workflowSignals[0]?.name, "scheduled-step-0-terminal");
 });
 
 test("finalizeGenerationHandler schedules chat completion push only after sibling assistant messages finish", async () => {

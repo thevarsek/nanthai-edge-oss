@@ -1,18 +1,13 @@
 "use node";
 
 import type { Id } from "../_generated/dataModel";
-import { makeFunctionReference, type FunctionReference } from "convex/server";
-import {
-  createChatProjectRef,
-  getProjectWithSlidesInternalRef,
-  recordSnapshotRef,
-} from "../presentations/action_refs";
+import { createChatProjectRef } from "../presentations/action_refs";
 import { applyAiEditHandler } from "../presentations/action_edit_handler";
 import { createPresentationActionDepsForTest } from "../presentations/action_shared";
 import { inspectSlideHtml } from "../presentations/html_contract";
 import { MAX_PRESENTATION_SLIDES } from "../presentations/limits";
 import type { PresentationDirection, PresentationImageMode } from "../presentations/types";
-import { createTool, type ToolExecutionContext, type ToolResult } from "./registry";
+import { createTool, type ToolExecutionContext } from "./registry";
 import {
   assertSelectedPresentationRevisions,
   authoritativePresentationTarget,
@@ -24,24 +19,13 @@ import {
   presentationAssetStorageIds,
 } from "./presentation_tool_args";
 import { buildResolvedPresentationBrief } from "./presentation_brief";
+import { snapshotResult } from "./presentation_snapshot_result";
+export { snapshotResult } from "./presentation_snapshot_result";
 import {
   approvedPresentationOutline,
   requiredPresentationText,
   requestedPresentationSlideCount,
 } from "./presentation_create_args";
-
-const PPTX_MIME_TYPE =
-  "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-const createPresentationSnapshotRef = makeFunctionReference<
-  "action",
-  { projectId: Id<"presentationProjects">; userId: string },
-  ToolResult
->("tools/presentation_snapshot:createPresentationSnapshot") as unknown as FunctionReference<
-  "action",
-  "internal",
-  { projectId: Id<"presentationProjects">; userId: string },
-  ToolResult
->;
 
 function modelDeps(toolCtx: ToolExecutionContext) {
   return createPresentationActionDepsForTest({
@@ -49,65 +33,9 @@ function modelDeps(toolCtx: ToolExecutionContext) {
   });
 }
 
-export async function snapshotResult(
-  toolCtx: ToolExecutionContext,
-  projectId: Id<"presentationProjects">,
-  revision: number,
-  toolName: "create_presentation" | "edit_presentation",
-): Promise<ToolResult> {
-  const presentation = await toolCtx.ctx.runQuery(getProjectWithSlidesInternalRef, {
-    projectId,
-    userId: toolCtx.userId,
-  });
-  if (!presentation) {
-    return { success: false, data: null, error: "Presentation disappeared before export." };
-  }
-  const snapshot = await toolCtx.ctx.runAction(createPresentationSnapshotRef, {
-    projectId,
-    userId: toolCtx.userId,
-  });
-  if (!snapshot.success) return snapshot;
-  const result = snapshot.data as {
-    storageId?: string;
-    filename?: string;
-  };
-  if (
-    !result.storageId ||
-    !result.filename ||
-    !result.filename.toLowerCase().endsWith(".pptx")
-  ) {
-    return { success: false, data: null, error: "PowerPoint snapshot export failed." };
-  }
-  const blob = await toolCtx.ctx.storage.get(result.storageId as Id<"_storage">);
-  if (!blob) {
-    return { success: false, data: null, error: "PowerPoint snapshot was not stored." };
-  }
-  await toolCtx.ctx.runMutation(recordSnapshotRef, {
-    projectId,
-    userId: toolCtx.userId,
-    expectedRevision: revision,
-    storageId: result.storageId as Id<"_storage">,
-    sizeBytes: blob.size,
-    kind: "fallback",
-  });
-  return {
-    success: true,
-    data: {
-      storageId: result.storageId,
-      filename: result.filename,
-      mimeType: PPTX_MIME_TYPE,
-      sizeBytes: blob.size,
-      toolName,
-      title: presentation.project.title,
-      summary: `${presentation.slides.length}-slide editable presentation`,
-      presentationProjectId: projectId,
-      presentationRevision: revision,
-    },
-  };
-}
-
 export const createPresentationNode = createTool({
   name: "create_presentation",
+  mayDefer: true,
   description:
     "Create a revisioned NanthAI HTML presentation and a real downloadable PPTX in the current chat. " +
     "Call only after normal chat has resolved audience, tone/technicality, purpose, length, examples or references, reusable assets, and any final ambiguity. " +

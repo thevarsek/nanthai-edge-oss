@@ -43,6 +43,10 @@ function refs() {
     getUserPreferences: getFunctionName(internal.chat.queries.getUserPreferences),
     getUserApiKey: getFunctionName(internal.scheduledJobs.queries.getUserApiKey),
     createMemory: getFunctionName(internal.chat.mutations.createMemory),
+    enqueueMemoryEmbedding: getFunctionName(
+      internal.execution.workload_queues.enqueueMemoryEmbedding,
+    ),
+    isChatWritable: getFunctionName(internal.chat.post_process_guard.isChatWritable),
   };
 }
 
@@ -76,11 +80,13 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
 
   const names = refs();
   const created: Record<string, unknown>[] = [];
+  const enqueuedEmbeddings: Record<string, unknown>[] = [];
   const scheduled: Record<string, unknown>[] = [];
 
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === names.isChatWritable) return true;
       if (name === names.getUserMemories) return [];
       if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
@@ -90,6 +96,10 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
       if (getFunctionName(ref as any) === names.createMemory) {
         created.push(args);
         return "memory_work_1";
+      }
+      if (getFunctionName(ref as any) === names.enqueueMemoryEmbedding) {
+        enqueuedEmbeddings.push(args);
+        return "memory_embedding_work_1";
       }
       return null;
     },
@@ -108,11 +118,13 @@ test("extractMemoriesHandler keeps processing around invalid candidates and crea
   assert.equal(created[0].isPending, true);
   assert.equal(typeof created[0].expiresAt, "number");
   assert.deepEqual(
-    scheduled
-      .filter((entry) => entry.source === "memory_extraction" || entry.memoryId)
-      .map((entry) => entry.source ?? entry.memoryId),
-    ["memory_extraction", "memory_work_1"],
+    scheduled.filter((entry) => entry.source === "memory_extraction").map((entry) => entry.source),
+    ["memory_extraction"],
   );
+  assert.deepEqual(enqueuedEmbeddings, [{
+    memoryId: "memory_work_1",
+    content: "User works as a platform architect.",
+  }]);
   const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
   assert.deepEqual(
     memoryAnalytics.map((entry) => entry.event),
@@ -143,6 +155,7 @@ test("extractMemoriesHandler skips duplicate content even when the matched row h
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === names.isChatWritable) return true;
       if (name === names.getUserMemories) {
         return [{ content: "User prefers concise answers." }];
       }
@@ -178,6 +191,7 @@ test("explicit multilingual remember requests use deterministic score floors", a
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === names.isChatWritable) return true;
       if (name === names.getUserMemories) return [];
       if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
@@ -206,6 +220,7 @@ test("extractMemoriesHandler swallows model and persistence failures", async (t)
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === names.isChatWritable) return true;
       if (name === names.getUserMemories) return [];
       if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) throw new Error("secret unavailable");
@@ -234,6 +249,7 @@ test("extractMemoriesHandler swallows model and persistence failures", async (t)
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === names.isChatWritable) return true;
       if (name === names.getUserMemories) return [];
       if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";
@@ -258,6 +274,7 @@ test("extractMemoriesHandler handles empty extraction responses without writes",
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === names.isChatWritable) return true;
       if (name === names.getUserMemories) return [];
       if (name === names.getUserPreferences) return {};
       if (name === names.getUserApiKey) return "sk-test";

@@ -67,10 +67,13 @@ test("deleteUserTableBatch stops cascaded cleanup at the batch boundary", async 
       db: {
         query: (table: string) => ({
           withIndex: () => ({
-            collect: async () =>
-              table === testCase.parentTable
+            paginate: async () => ({
+              page: table === testCase.parentTable
                 ? [{ _id: `${testCase.parentKey}_1` }, { _id: `${testCase.parentKey}_2` }]
                 : [],
+              continueCursor: "next",
+              isDone: true,
+            }),
             take: async (limit: number) => {
               if (table !== testCase.childTable) return [];
               queriedChildrenForParents.push(`${testCase.parentKey}_${queriedChildrenForParents.length + 1}`);
@@ -109,14 +112,20 @@ test("deleteUserTableBatch tolerates missing blobs while deleting account-owned 
   const db = {
     query: (table: string) => ({
       withIndex: () => ({
-        collect: async () => {
-          if (table === "chats") return [{ _id: "chat_1" }];
-          if (table === "subagentBatches") return [{ _id: "batch_1" }];
-          if (table === "sandboxSessions") return [{ _id: "sandbox_session_1" }];
-          return [];
-        },
+        paginate: async () => ({
+          page: table === "chats"
+            ? [{ _id: "chat_1" }]
+            : table === "subagentBatches"
+              ? [{ _id: "batch_1" }]
+              : table === "sandboxSessions"
+                ? [{ _id: "sandbox_session_1" }]
+                : [],
+          continueCursor: "done",
+          isDone: true,
+        }),
         take: async () => {
           if (table === "messages") {
+            if (deletedRows.includes("message_1")) return [];
             return [{ _id: "message_1", audioStorageId: "audio_missing" }];
           }
           if (table === "subagentRuns") {
@@ -185,10 +194,9 @@ test("deleteUserTableBatch tolerates missing blobs while deleting account-owned 
     "audio_missing",
     "run_file_missing",
     "artifact_missing",
-    "version_missing",
     "markdown_missing",
+    "version_missing",
     "generated_file_missing",
-    "media_missing",
     "drive_missing",
   ]);
 });

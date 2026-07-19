@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createAdvisorBatchForTurn } from "../advisors/batch_creation";
+import { durableWorkflow } from "../execution/components";
 
 type TestRow = Record<string, unknown>;
 type IndexQuery = { eq: (field: string, value: unknown) => IndexQuery };
@@ -8,6 +9,7 @@ type BatchArgs = Parameters<typeof createAdvisorBatchForTurn>[1];
 
 function invalidAssignmentFixture() {
   const tables: Record<string, TestRow[]> = {
+    chats: [{ _id: "chat_1", userId: "user_1", source: "user" }],
     advisorBatches: [],
     advisorRuns: [],
     chatAdvisors: [],
@@ -41,7 +43,9 @@ function invalidAssignmentFixture() {
   let nextId = 0;
   const ctx = {
     db: {
-      get: async (id: string) => personas[id] ?? null,
+      get: async (id: string) => personas[id] ?? Object.values(tables)
+        .flat()
+        .find((row) => row._id === id) ?? null,
       query: (table: string) => ({
         withIndex: (_index: string, apply?: (query: IndexQuery) => void) => {
           const filters: Array<[string, unknown]> = [];
@@ -57,6 +61,7 @@ function invalidAssignmentFixture() {
           );
           return {
             first: async () => filtered()[0] ?? null,
+            unique: async () => filtered()[0] ?? null,
             collect: async () => filtered(),
             order: () => ({ first: async () => filtered()[0] ?? null }),
           };
@@ -70,6 +75,8 @@ function invalidAssignmentFixture() {
       },
       patch: async (id: string, patch: TestRow) => {
         patches.push({ id, patch });
+        const row = Object.values(tables).flat().find((candidate) => candidate._id === id);
+        if (row) Object.assign(row, patch);
       },
     },
     storage: { getUrl: async () => null },
@@ -96,7 +103,8 @@ function argsFor(selections: BatchArgs["selections"], userMessageId: string): Ba
   } as unknown as BatchArgs;
 }
 
-test("newly selected unavailable Personas are neither kept nor run while valid Advisors proceed", async () => {
+test("newly selected unavailable Personas are neither kept nor run while valid Advisors proceed", async (t) => {
+  t.mock.method(durableWorkflow, "start", async () => "workflow_advisor_valid" as never);
   const fixture = invalidAssignmentFixture();
   const batchId = await createAdvisorBatchForTurn(fixture.ctx, argsFor([
     { personaId: "persona_image", keepAvailable: true, allowWebSearch: false },

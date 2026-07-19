@@ -27,7 +27,12 @@ function fnName(fn: unknown): string {
 
 /** Build a minimal fake ActionCtx with a controllable searchPhases store. */
 function buildFakeCtx(options: {
-  phases?: Array<{ phaseType: string; phaseOrder: number; iteration?: number; data: unknown }>;
+  phases?: Array<{
+    phaseType: string;
+    phaseOrder: number;
+    iteration?: number;
+    data: unknown;
+  }>;
   sessionStatus?: string;
   apiKey?: string;
   onSchedule?: (fn: unknown, args: unknown) => void;
@@ -70,13 +75,24 @@ function buildFakeCtx(options: {
         }
         // Fallback for standalone helper tests that don't use real references
         if ("personaId" in _args) return null;
-        if ("userId" in _args && !("sessionId" in _args)) return options.apiKey ?? "sk-test";
+        if ("userId" in _args && !("sessionId" in _args))
+          return options.apiKey ?? "sk-test";
         if ("sessionId" in _args) return phaseDocs;
         return null;
       },
       runMutation: async (fn: unknown, args: unknown) => {
         mutations.push({ fn, args });
         options.onMutation?.(fn, args);
+        if (
+          args
+          && typeof args === "object"
+          && "generationArgs" in args
+        ) {
+          scheduled.push({
+            fn,
+            args: (args as { generationArgs: unknown }).generationArgs,
+          });
+        }
       },
       scheduler: {
         runAfter: async (_delay: number, fn: unknown, args: unknown) => {
@@ -107,13 +123,21 @@ function buildBaseArgs(overrides: Record<string, unknown> = {}) {
   } as any;
 }
 
-function buildSearchResult(query: string, citations: string[] = []): SearchResult {
+function buildSearchResult(
+  query: string,
+  citations: string[] = [],
+): SearchResult {
   return {
     query,
     content: `Research content for: ${query}`,
     citations,
     success: true,
-    usage: { promptTokens: 100, completionTokens: 200, totalTokens: 300, cost: 0.01 },
+    usage: {
+      promptTokens: 100,
+      completionTokens: 200,
+      totalTokens: 300,
+      cost: 0.01,
+    },
     generationId: "gen_123",
   };
 }
@@ -123,7 +147,10 @@ function buildSearchResult(query: string, citations: string[] = []): SearchResul
 test("reconstructSearchResults collects results from initial_search and depth_iteration phases", async () => {
   const initialResults = [
     buildSearchResult("query 1", ["https://source1.com"]),
-    buildSearchResult("query 2", ["https://source2.com", "https://source2b.com"]),
+    buildSearchResult("query 2", [
+      "https://source2.com",
+      "https://source2b.com",
+    ]),
   ];
   const depthResults = [
     buildSearchResult("depth query 1", ["https://deep1.com"]),
@@ -131,10 +158,28 @@ test("reconstructSearchResults collects results from initial_search and depth_it
 
   const { ctx } = buildFakeCtx({
     phases: [
-      { phaseType: "planning", phaseOrder: 0, data: { plan: "test", queries: ["q1"] } },
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: initialResults } },
-      { phaseType: "analysis", phaseOrder: 2, iteration: 0, data: { gaps: "gap", queries: ["dq1"] } },
-      { phaseType: "depth_iteration", phaseOrder: 3, iteration: 0, data: { results: depthResults } },
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        data: { plan: "test", queries: ["q1"] },
+      },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: initialResults },
+      },
+      {
+        phaseType: "analysis",
+        phaseOrder: 2,
+        iteration: 0,
+        data: { gaps: "gap", queries: ["dq1"] },
+      },
+      {
+        phaseType: "depth_iteration",
+        phaseOrder: 3,
+        iteration: 0,
+        data: { results: depthResults },
+      },
       { phaseType: "synthesis", phaseOrder: 4, data: "Synthesis text" },
     ],
   });
@@ -145,7 +190,10 @@ test("reconstructSearchResults collects results from initial_search and depth_it
   assert.equal(results[0].query, "query 1");
   assert.deepEqual(results[0].citations, ["https://source1.com"]);
   assert.equal(results[1].query, "query 2");
-  assert.deepEqual(results[1].citations, ["https://source2.com", "https://source2b.com"]);
+  assert.deepEqual(results[1].citations, [
+    "https://source2.com",
+    "https://source2b.com",
+  ]);
   assert.equal(results[2].query, "depth query 1");
   assert.deepEqual(results[2].citations, ["https://deep1.com"]);
 });
@@ -153,7 +201,11 @@ test("reconstructSearchResults collects results from initial_search and depth_it
 test("reconstructSearchResults returns empty array when no search phases exist", async () => {
   const { ctx } = buildFakeCtx({
     phases: [
-      { phaseType: "planning", phaseOrder: 0, data: { plan: "test", queries: ["q1"] } },
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        data: { plan: "test", queries: ["q1"] },
+      },
     ],
   });
 
@@ -165,13 +217,22 @@ test("reconstructSearchResults preserves full SearchResult shape including usage
   const result = buildSearchResult("test query", ["https://cite.com"]);
   const { ctx } = buildFakeCtx({
     phases: [
-      { phaseType: "initial_search", phaseOrder: 0, data: { results: [result] } },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 0,
+        data: { results: [result] },
+      },
     ],
   });
 
   const results = await reconstructSearchResults(ctx, "session_1" as any);
   assert.equal(results.length, 1);
-  assert.deepEqual(results[0].usage, { promptTokens: 100, completionTokens: 200, totalTokens: 300, cost: 0.01 });
+  assert.deepEqual(results[0].usage, {
+    promptTokens: 100,
+    completionTokens: 200,
+    totalTokens: 300,
+    cost: 0.01,
+  });
   assert.equal(results[0].generationId, "gen_123");
   assert.equal(results[0].content, "Research content for: test query");
 });
@@ -180,7 +241,11 @@ test("reconstructSearchResults handles phases with missing or malformed data gra
   const { ctx } = buildFakeCtx({
     phases: [
       { phaseType: "initial_search", phaseOrder: 0, data: {} },
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: "not an array" } },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: "not an array" },
+      },
       { phaseType: "depth_iteration", phaseOrder: 2, iteration: 0, data: null },
     ],
   });
@@ -194,11 +259,19 @@ test("reconstructSearchResults handles phases with missing or malformed data gra
 test("readQueriesFromPhase reads queries from planning phase", async () => {
   const { ctx } = buildFakeCtx({
     phases: [
-      { phaseType: "planning", phaseOrder: 0, data: { plan: "Research plan", queries: ["q1", "q2", "q3"] } },
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        data: { plan: "Research plan", queries: ["q1", "q2", "q3"] },
+      },
     ],
   });
 
-  const queries = await readQueriesFromPhase(ctx, "session_1" as any, "planning");
+  const queries = await readQueriesFromPhase(
+    ctx,
+    "session_1" as any,
+    "planning",
+  );
   assert.deepEqual(queries, ["q1", "q2", "q3"]);
 });
 
@@ -208,19 +281,37 @@ test("readQueriesFromPhase reads structured M37 query objects from planning and 
       {
         phaseType: "planning",
         phaseOrder: 0,
-        data: { queries: [{ query: "structured q1", rationale: "r1" }, { query: "structured q2" }] },
+        data: {
+          queries: [
+            { query: "structured q1", rationale: "r1" },
+            { query: "structured q2" },
+          ],
+        },
       },
       {
         phaseType: "analysis",
         phaseOrder: 2,
         iteration: 0,
-        data: { followUpQueries: [{ query: "follow up q1", gapAddressed: "counter-evidence" }] },
+        data: {
+          followUpQueries: [
+            { query: "follow up q1", gapAddressed: "counter-evidence" },
+          ],
+        },
       },
     ],
   });
 
-  const planning = await readQueriesFromPhase(ctx, "session_1" as any, "planning");
-  const analysis = await readQueriesFromPhase(ctx, "session_1" as any, "analysis", 0);
+  const planning = await readQueriesFromPhase(
+    ctx,
+    "session_1" as any,
+    "planning",
+  );
+  const analysis = await readQueriesFromPhase(
+    ctx,
+    "session_1" as any,
+    "analysis",
+    0,
+  );
 
   assert.deepEqual(planning, ["structured q1", "structured q2"]);
   assert.deepEqual(analysis, ["follow up q1"]);
@@ -229,22 +320,46 @@ test("readQueriesFromPhase reads structured M37 query objects from planning and 
 test("readQueriesFromPhase reads queries from analysis phase matching iteration", async () => {
   const { ctx } = buildFakeCtx({
     phases: [
-      { phaseType: "analysis", phaseOrder: 2, iteration: 0, data: { gaps: "gap0", queries: ["iter0_q1"] } },
-      { phaseType: "analysis", phaseOrder: 5, iteration: 1, data: { gaps: "gap1", queries: ["iter1_q1", "iter1_q2"] } },
+      {
+        phaseType: "analysis",
+        phaseOrder: 2,
+        iteration: 0,
+        data: { gaps: "gap0", queries: ["iter0_q1"] },
+      },
+      {
+        phaseType: "analysis",
+        phaseOrder: 5,
+        iteration: 1,
+        data: { gaps: "gap1", queries: ["iter1_q1", "iter1_q2"] },
+      },
     ],
   });
 
-  const iter0 = await readQueriesFromPhase(ctx, "session_1" as any, "analysis", 0);
+  const iter0 = await readQueriesFromPhase(
+    ctx,
+    "session_1" as any,
+    "analysis",
+    0,
+  );
   assert.deepEqual(iter0, ["iter0_q1"]);
 
-  const iter1 = await readQueriesFromPhase(ctx, "session_1" as any, "analysis", 1);
+  const iter1 = await readQueriesFromPhase(
+    ctx,
+    "session_1" as any,
+    "analysis",
+    1,
+  );
   assert.deepEqual(iter1, ["iter1_q1", "iter1_q2"]);
 });
 
 test("readQueriesFromPhase returns empty array when no matching phase exists", async () => {
   const { ctx } = buildFakeCtx({ phases: [] });
 
-  const queries = await readQueriesFromPhase(ctx, "session_1" as any, "planning");
+  const queries = await readQueriesFromPhase(
+    ctx,
+    "session_1" as any,
+    "planning",
+  );
   assert.deepEqual(queries, []);
 });
 
@@ -256,8 +371,8 @@ test("handlePhaseError finalizes with failed status on regular errors", async ()
 
   await handlePhaseError(ctx, args, new Error("Perplexity API timeout"));
 
-  const finalize = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "failed",
+  const finalize = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "failed",
   );
   assert.ok(finalize);
   assert.match(
@@ -276,8 +391,8 @@ test("handlePhaseError finalizes with cancelled status on GenerationCancelledErr
 
   await handlePhaseError(ctx, args, new GenerationCancelledError());
 
-  const finalize = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "cancelled",
+  const finalize = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "cancelled",
   );
   assert.ok(finalize);
   assert.equal(
@@ -288,7 +403,9 @@ test("handlePhaseError finalizes with cancelled status on GenerationCancelledErr
   // Session should also be marked cancelled
   const sessionPatch = mutations.find((m) => {
     const a = m.args as Record<string, unknown>;
-    return (a.patch as Record<string, unknown> | undefined)?.status === "cancelled";
+    return (
+      (a.patch as Record<string, unknown> | undefined)?.status === "cancelled"
+    );
   });
   assert.ok(sessionPatch);
   assert.equal(
@@ -303,9 +420,10 @@ test("handlePhaseError finalizes with cancelled status on GenerationCancelledErr
     return analyticsArgs.event === "assistant_response_failed";
   });
   assert.equal(
-    ((failureAnalytics?.args as Record<string, unknown> | undefined)?.properties as
-      | Record<string, unknown>
-      | undefined)?.cancellation_category,
+    (
+      (failureAnalytics?.args as Record<string, unknown> | undefined)
+        ?.properties as Record<string, unknown> | undefined
+    )?.cancellation_category,
     "cancelled_by_user",
   );
 });
@@ -316,8 +434,8 @@ test("handlePhaseError handles non-Error thrown values gracefully", async () => 
 
   await handlePhaseError(ctx, args, "string error");
 
-  const finalize = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "failed",
+  const finalize = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "failed",
   );
   assert.ok(finalize);
   assert.match(
@@ -325,7 +443,7 @@ test("handlePhaseError handles non-Error thrown values gracefully", async () => 
     /string error/,
   );
   const advisorTerminalization = mutations.find((mutation) =>
-    fnName(mutation.fn).includes("completeBatchForMessage")
+    fnName(mutation.fn).includes("completeBatchForMessage"),
   );
   assert.deepEqual(advisorTerminalization?.args, { messageId: "assistant_1" });
 });
@@ -340,19 +458,26 @@ test("runPlanningAction calls handlePhaseError on LLM failure (does not schedule
     apiKey: "sk-test",
   });
 
-  await (runPlanningAction as any)._handler(ctx, buildBaseArgs({ complexity: 1 }));
+  await (runPlanningAction as any)._handler(
+    ctx,
+    buildBaseArgs({ complexity: 1 }),
+  );
 
   // Should have called finalizeGeneration with failed status
-  const failMutation = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "failed",
+  const failMutation = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "failed",
   );
   assert.ok(failMutation, "should finalize with failed on LLM error");
 
   // Should NOT have scheduled the next phase
-  const nextPhaseScheduled = scheduled.some((s) =>
-    (s.args as Record<string, unknown>).phaseOrder === 1,
+  const nextPhaseScheduled = scheduled.some(
+    (s) => (s.args as Record<string, unknown>).phaseOrder === 1,
   );
-  assert.equal(nextPhaseScheduled, false, "should not schedule next phase on error");
+  assert.equal(
+    nextPhaseScheduled,
+    false,
+    "should not schedule next phase on error",
+  );
 });
 
 test("runInitialSearchAction schedules synthesis for complexity 1 (depth=1, no depth loop)", async () => {
@@ -363,11 +488,14 @@ test("runInitialSearchAction schedules synthesis for complexity 1 (depth=1, no d
     apiKey: "sk-test",
   });
 
-  await (runInitialSearchAction as any)._handler(ctx, buildBaseArgs({ complexity: 1, phaseOrder: 1 }));
+  await (runInitialSearchAction as any)._handler(
+    ctx,
+    buildBaseArgs({ complexity: 1, phaseOrder: 1 }),
+  );
 
   // complexity 1 → depth=1 → depthIterations=0 → should skip to synthesis
-  const lastScheduled = scheduled.find((s) =>
-    (s.args as Record<string, unknown>).phaseOrder === 2
+  const lastScheduled = scheduled.find(
+    (s) => (s.args as Record<string, unknown>).phaseOrder === 2,
   );
   assert.ok(lastScheduled);
   // phaseOrder should be incremented
@@ -377,19 +505,30 @@ test("runInitialSearchAction schedules synthesis for complexity 1 (depth=1, no d
 test("runInitialSearchAction schedules analysis for complexity 2 (depth=2, enters depth loop)", async () => {
   const { ctx, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "planning", phaseOrder: 0, data: { queries: ["q1", "q2", "q3"] } },
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        data: { queries: ["q1", "q2", "q3"] },
+      },
     ],
     apiKey: "sk-test",
   });
 
-  await (runInitialSearchAction as any)._handler(ctx, buildBaseArgs({ complexity: 2, phaseOrder: 1 }));
+  await (runInitialSearchAction as any)._handler(
+    ctx,
+    buildBaseArgs({ complexity: 2, phaseOrder: 1 }),
+  );
 
-  const lastScheduled = scheduled.find((s) =>
-    (s.args as Record<string, unknown>).depthIteration === 0
-    && (s.args as Record<string, unknown>).phaseOrder === 2
+  const lastScheduled = scheduled.find(
+    (s) =>
+      (s.args as Record<string, unknown>).depthIteration === 0 &&
+      (s.args as Record<string, unknown>).phaseOrder === 2,
   );
   assert.ok(lastScheduled);
-  assert.equal((lastScheduled.args as Record<string, unknown>).depthIteration, 0);
+  assert.equal(
+    (lastScheduled.args as Record<string, unknown>).depthIteration,
+    0,
+  );
   assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 2);
 });
 
@@ -397,22 +536,34 @@ test("runDepthSearchAction schedules synthesis when depth loop is exhausted", as
   const analysisResults = [buildSearchResult("analysis q", ["https://a.com"])];
   const { ctx, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: [buildSearchResult("q1", ["https://s.com"])] } },
-      { phaseType: "analysis", phaseOrder: 2, iteration: 0, data: { queries: ["depth q1"] } },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: [buildSearchResult("q1", ["https://s.com"])] },
+      },
+      {
+        phaseType: "analysis",
+        phaseOrder: 2,
+        iteration: 0,
+        data: { queries: ["depth q1"] },
+      },
     ],
     apiKey: "sk-test",
   });
 
   // complexity 2 → depth=2 → depthIterations=1 → iteration 0 is the last
-  await (runDepthSearchAction as any)._handler(ctx, buildBaseArgs({
-    complexity: 2,
-    phaseOrder: 3,
-    depthIteration: 0,
-  }));
+  await (runDepthSearchAction as any)._handler(
+    ctx,
+    buildBaseArgs({
+      complexity: 2,
+      phaseOrder: 3,
+      depthIteration: 0,
+    }),
+  );
 
   // Should schedule synthesis (not another analysis)
-  const lastScheduled = scheduled.find((s) =>
-    (s.args as Record<string, unknown>).phaseOrder === 4
+  const lastScheduled = scheduled.find(
+    (s) => (s.args as Record<string, unknown>).phaseOrder === 4,
   );
   assert.ok(lastScheduled);
   assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 4);
@@ -422,62 +573,95 @@ test("runDepthSearchAction schedules synthesis when depth loop is exhausted", as
 test("runDepthSearchAction schedules next analysis when more depth iterations remain", async () => {
   const { ctx, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: [buildSearchResult("q1", [])] } },
-      { phaseType: "analysis", phaseOrder: 2, iteration: 0, data: { queries: ["depth q1"] } },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: [buildSearchResult("q1", [])] },
+      },
+      {
+        phaseType: "analysis",
+        phaseOrder: 2,
+        iteration: 0,
+        data: { queries: ["depth q1"] },
+      },
     ],
     apiKey: "sk-test",
   });
 
   // complexity 3 → depth=3 → depthIterations=2 → iteration 0, more remain
-  await (runDepthSearchAction as any)._handler(ctx, buildBaseArgs({
-    complexity: 3,
-    phaseOrder: 3,
-    depthIteration: 0,
-  }));
+  await (runDepthSearchAction as any)._handler(
+    ctx,
+    buildBaseArgs({
+      complexity: 3,
+      phaseOrder: 3,
+      depthIteration: 0,
+    }),
+  );
 
-  const lastScheduled = scheduled.find((s) =>
-    (s.args as Record<string, unknown>).depthIteration === 1
+  const lastScheduled = scheduled.find(
+    (s) => (s.args as Record<string, unknown>).depthIteration === 1,
   );
   assert.ok(lastScheduled);
-  assert.equal((lastScheduled.args as Record<string, unknown>).depthIteration, 1);
+  assert.equal(
+    (lastScheduled.args as Record<string, unknown>).depthIteration,
+    1,
+  );
 });
 
 test("runSynthesisAction calls handlePhaseError on LLM failure (does not schedule next phase)", async () => {
   // runSynthesisPhase calls callOpenRouterNonStreaming which will fail in test.
   const { ctx, mutations, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: [buildSearchResult("q1", ["https://s.com"])] } },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: [buildSearchResult("q1", ["https://s.com"])] },
+      },
     ],
     apiKey: "sk-test",
   });
 
-  await (runSynthesisAction as any)._handler(ctx, buildBaseArgs({ phaseOrder: 4 }));
+  await (runSynthesisAction as any)._handler(
+    ctx,
+    buildBaseArgs({ phaseOrder: 4 }),
+  );
 
   // Should have called finalizeGeneration with failed status
-  const failMutation = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "failed",
+  const failMutation = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "failed",
   );
   assert.ok(failMutation, "should finalize with failed on LLM error");
 
   // Should NOT have scheduled paper handoff
-  const handoffScheduled = scheduled.some((s) =>
-    (s.args as Record<string, unknown>).phaseOrder === 5,
+  const handoffScheduled = scheduled.some(
+    (s) => (s.args as Record<string, unknown>).phaseOrder === 5,
   );
-  assert.equal(handoffScheduled, false, "should not schedule paper handoff on error");
+  assert.equal(
+    handoffScheduled,
+    false,
+    "should not schedule paper handoff on error",
+  );
 });
 
 test("runPaperArchitectureAction fails when synthesis is missing", async () => {
   const { ctx, mutations } = buildFakeCtx({
     phases: [
-      { phaseType: "planning", phaseOrder: 0, data: { queries: [{ query: "q1" }] } },
+      {
+        phaseType: "planning",
+        phaseOrder: 0,
+        data: { queries: [{ query: "q1" }] },
+      },
     ],
     apiKey: "sk-test",
   });
 
-  await (runPaperArchitectureAction as any)._handler(ctx, buildBaseArgs({ phaseOrder: 5 }));
+  await (runPaperArchitectureAction as any)._handler(
+    ctx,
+    buildBaseArgs({ phaseOrder: 5 }),
+  );
 
-  const failMutation = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "failed",
+  const failMutation = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "failed",
   );
   assert.ok(failMutation);
   assert.match(
@@ -490,23 +674,46 @@ test("runPaperArchitectureAction fails when synthesis is missing", async () => {
 
 test("runPaperHandoffAction persists searchContext with full citations from all phases", async () => {
   const initialResults = [
-    buildSearchResult("initial q1", ["https://source1.com", "https://source1b.com"]),
+    buildSearchResult("initial q1", [
+      "https://source1.com",
+      "https://source1b.com",
+    ]),
     buildSearchResult("initial q2", ["https://source2.com"]),
   ];
   const depthResults = [
-    buildSearchResult("depth q1", ["https://deep1.com", "https://deep1b.com", "https://deep1c.com"]),
+    buildSearchResult("depth q1", [
+      "https://deep1.com",
+      "https://deep1b.com",
+      "https://deep1c.com",
+    ]),
   ];
 
   const { ctx, mutations, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: initialResults } },
-      { phaseType: "depth_iteration", phaseOrder: 3, iteration: 0, data: { results: depthResults } },
-      { phaseType: "synthesis", phaseOrder: 4, data: JSON.stringify({ findings: "Key findings", sources: ["s1"] }) },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: initialResults },
+      },
+      {
+        phaseType: "depth_iteration",
+        phaseOrder: 3,
+        iteration: 0,
+        data: { results: depthResults },
+      },
+      {
+        phaseType: "synthesis",
+        phaseOrder: 4,
+        data: JSON.stringify({ findings: "Key findings", sources: ["s1"] }),
+      },
     ],
     apiKey: "sk-test",
   });
 
-  await (runPaperHandoffAction as any)._handler(ctx, buildBaseArgs({ phaseOrder: 5 }));
+  await (runPaperHandoffAction as any)._handler(
+    ctx,
+    buildBaseArgs({ phaseOrder: 5 }),
+  );
 
   // Find the patchMessageSearchContext mutation
   const searchContextMutation = mutations.find((m) => {
@@ -515,7 +722,8 @@ test("runPaperHandoffAction persists searchContext with full citations from all 
   });
   assert.ok(searchContextMutation, "searchContext mutation should be called");
 
-  const searchContext = (searchContextMutation.args as Record<string, unknown>).searchContext as {
+  const searchContext = (searchContextMutation.args as Record<string, unknown>)
+    .searchContext as {
     complexity: number;
     queries: string[];
     searchResults: SearchResult[];
@@ -525,16 +733,35 @@ test("runPaperHandoffAction persists searchContext with full citations from all 
   assert.equal(searchContext.searchResults.length, 3);
 
   // Citations fully preserved
-  assert.deepEqual(searchContext.searchResults[0].citations, ["https://source1.com", "https://source1b.com"]);
-  assert.deepEqual(searchContext.searchResults[1].citations, ["https://source2.com"]);
-  assert.deepEqual(searchContext.searchResults[2].citations, ["https://deep1.com", "https://deep1b.com", "https://deep1c.com"]);
+  assert.deepEqual(searchContext.searchResults[0].citations, [
+    "https://source1.com",
+    "https://source1b.com",
+  ]);
+  assert.deepEqual(searchContext.searchResults[1].citations, [
+    "https://source2.com",
+  ]);
+  assert.deepEqual(searchContext.searchResults[2].citations, [
+    "https://deep1.com",
+    "https://deep1b.com",
+    "https://deep1c.com",
+  ]);
 
   // Queries list matches
-  assert.deepEqual(searchContext.queries, ["initial q1", "initial q2", "depth q1"]);
+  assert.deepEqual(searchContext.queries, [
+    "initial q1",
+    "initial q2",
+    "depth q1",
+  ]);
 
   // Content preserved
-  assert.equal(searchContext.searchResults[0].content, "Research content for: initial q1");
-  assert.equal(searchContext.searchResults[2].content, "Research content for: depth q1");
+  assert.equal(
+    searchContext.searchResults[0].content,
+    "Research content for: initial q1",
+  );
+  assert.equal(
+    searchContext.searchResults[2].content,
+    "Research content for: depth q1",
+  );
 });
 
 test("runPaperHandoffAction reads synthesis data from persisted phase", async () => {
@@ -546,13 +773,20 @@ test("runPaperHandoffAction reads synthesis data from persisted phase", async ()
 
   const { ctx, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: [buildSearchResult("q1", [])] } },
+      {
+        phaseType: "initial_search",
+        phaseOrder: 1,
+        data: { results: [buildSearchResult("q1", [])] },
+      },
       { phaseType: "synthesis", phaseOrder: 2, data: synthesisJson },
     ],
     apiKey: "sk-test",
   });
 
-  await (runPaperHandoffAction as any)._handler(ctx, buildBaseArgs({ phaseOrder: 3 }));
+  await (runPaperHandoffAction as any)._handler(
+    ctx,
+    buildBaseArgs({ phaseOrder: 3 }),
+  );
 
   // Should have scheduled runGeneration via runPaperGenerationPhase
   // The scheduled call's participants should contain the synthesis data in the system prompt
@@ -563,7 +797,8 @@ test("runPaperHandoffAction reads synthesis data from persisted phase", async ()
   assert.ok(runGenCall, "runGeneration should be scheduled");
   assert.equal((runGenCall.args as Record<string, unknown>).disableTools, true);
 
-  const participants = (runGenCall.args as Record<string, unknown>).participants as Array<{ systemPrompt?: string }>;
+  const participants = (runGenCall.args as Record<string, unknown>)
+    .participants as Array<{ systemPrompt?: string }>;
   assert.ok(participants[0]?.systemPrompt);
   assert.match(participants[0].systemPrompt, /AI is growing rapidly/);
 });
@@ -577,11 +812,14 @@ test("runPaperHandoffAction throws when no synthesis phase exists", async () => 
     apiKey: "sk-test",
   });
 
-  await (runPaperHandoffAction as any)._handler(ctx, buildBaseArgs({ phaseOrder: 3 }));
+  await (runPaperHandoffAction as any)._handler(
+    ctx,
+    buildBaseArgs({ phaseOrder: 3 }),
+  );
 
   // Should have called handlePhaseError → finalize with failed
-  const failMutation = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "failed",
+  const failMutation = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "failed",
   );
   assert.ok(failMutation);
   assert.match(
@@ -601,8 +839,8 @@ test("phase actions finalize with cancelled status when session is cancelled", a
 
   await (runPlanningAction as any)._handler(ctx, buildBaseArgs());
 
-  const cancelMutation = mutations.find((m) =>
-    (m.args as Record<string, unknown>).status === "cancelled",
+  const cancelMutation = mutations.find(
+    (m) => (m.args as Record<string, unknown>).status === "cancelled",
   );
   assert.ok(cancelMutation);
   assert.equal(
@@ -613,48 +851,54 @@ test("phase actions finalize with cancelled status when session is cancelled", a
 
 // -- Entry point (workflow.ts) schedules durable planning ---------------------
 
-test("researchPaperPipeline entry point schedules runPlanningAction with phaseOrder 0", async () => {
+test("researchPaperPipeline entry point starts the durable research workflow", async () => {
   // Import the entry point
   const { researchPaperPipeline } = await import("../search/workflow");
 
   const scheduled: Array<{ args: unknown }> = [];
-
-  await (researchPaperPipeline as any)._handler({
-    runMutation: async () => undefined,
-    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
-      if ("modelId" in args) {
-        return {
-          hasImageGeneration: false,
-          hasVideoGeneration: false,
-          hasAudioOutput: false,
-        };
-      }
-      if ("userId" in args) return "sk-test";
-      if ("sessionId" in args) return { status: "searching" };
-      return null;
-    },
-    scheduler: {
-      runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
-        scheduled.push({ args });
+  const workflowCalls: Array<Record<string, unknown>> = [];
+  await (researchPaperPipeline as any)._handler(
+    {
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        if ("complexity" in args) workflowCalls.push(args);
+        return undefined;
+      },
+      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+        if ("modelId" in args) {
+          return {
+            hasImageGeneration: false,
+            hasVideoGeneration: false,
+            hasAudioOutput: false,
+          };
+        }
+        if ("userId" in args) return "sk-test";
+        if ("sessionId" in args) return { status: "searching" };
+        return null;
+      },
+      scheduler: {
+        runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
+          scheduled.push({ args });
+        },
       },
     },
-  }, {
-    sessionId: "session_1",
-    assistantMessageId: "assistant_1",
-    jobId: "job_1",
-    chatId: "chat_1",
-    userMessageId: "user_message_1",
-    userId: "user_1",
-    query: "AI pricing",
-    complexity: 2,
-    expandMultiModelGroups: false,
-    modelId: "openai/gpt-5.2",
-  });
+    {
+      sessionId: "session_1",
+      assistantMessageId: "assistant_1",
+      jobId: "job_1",
+      chatId: "chat_1",
+      userMessageId: "user_message_1",
+      userId: "user_1",
+      query: "AI pricing",
+      complexity: 2,
+      expandMultiModelGroups: false,
+      modelId: "openai/gpt-5.2",
+    },
+  );
 
-  assert.equal(scheduled.length, 1);
-  assert.equal((scheduled[0].args as Record<string, unknown>).phaseOrder, 0);
-  assert.equal((scheduled[0].args as Record<string, unknown>).complexity, 2);
-  assert.equal((scheduled[0].args as Record<string, unknown>).query, "AI pricing");
+  assert.equal(scheduled.length, 0);
+  assert.equal(workflowCalls.length, 1);
+  assert.equal(workflowCalls[0]?.complexity, 2);
+  assert.equal(workflowCalls[0]?.query, "AI pricing");
 });
 
 test("researchPaperPipeline exits without replaying analytics when already cancelled at entry", async () => {
@@ -663,34 +907,42 @@ test("researchPaperPipeline exits without replaying analytics when already cance
   const mutations: Array<{ args: Record<string, unknown> }> = [];
   const scheduled: Array<unknown> = [];
 
-  await (researchPaperPipeline as any)._handler({
-    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
-      mutations.push({ args });
-    },
-    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
-      if ("jobId" in args) return true;
-      throw new Error(`Unexpected query after cancellation: ${JSON.stringify(args)}`);
-    },
-    scheduler: {
-      runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
-        scheduled.push(args);
+  await (researchPaperPipeline as any)._handler(
+    {
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push({ args });
+      },
+      runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+        if ("jobId" in args) return true;
+        throw new Error(
+          `Unexpected query after cancellation: ${JSON.stringify(args)}`,
+        );
+      },
+      scheduler: {
+        runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
+          scheduled.push(args);
+        },
       },
     },
-  }, {
-    sessionId: "session_1",
-    assistantMessageId: "assistant_1",
-    jobId: "job_1",
-    chatId: "chat_1",
-    userMessageId: "user_message_1",
-    userId: "user_1",
-    query: "AI pricing",
-    complexity: 2,
-    expandMultiModelGroups: false,
-    modelId: "openai/gpt-5.2",
-  });
+    {
+      sessionId: "session_1",
+      assistantMessageId: "assistant_1",
+      jobId: "job_1",
+      chatId: "chat_1",
+      userMessageId: "user_message_1",
+      userId: "user_1",
+      query: "AI pricing",
+      complexity: 2,
+      expandMultiModelGroups: false,
+      modelId: "openai/gpt-5.2",
+    },
+  );
 
   assert.equal(
-    mutations.some((entry) => entry.args.status === "cancelled" || entry.args.status === "failed"),
+    mutations.some(
+      (entry) =>
+        entry.args.status === "cancelled" || entry.args.status === "failed",
+    ),
     false,
   );
   assert.equal(scheduled.length, 0);
@@ -701,29 +953,36 @@ test("researchPaperPipeline entry point fails fast when API key is missing", asy
 
   const mutations: Array<{ args: Record<string, unknown> }> = [];
 
-  await (researchPaperPipeline as any)._handler({
-    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
-      mutations.push({ args });
+  await (researchPaperPipeline as any)._handler(
+    {
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push({ args });
+      },
+      runQuery: async () => null, // No API key
+      scheduler: {
+        runAfter: async () => undefined,
+      },
     },
-    runQuery: async () => null, // No API key
-    scheduler: {
-      runAfter: async () => undefined,
+    {
+      sessionId: "session_1",
+      assistantMessageId: "assistant_1",
+      jobId: "job_1",
+      chatId: "chat_1",
+      userMessageId: "user_message_1",
+      userId: "user_1",
+      query: "test",
+      complexity: 1,
+      expandMultiModelGroups: false,
+      modelId: "openai/gpt-5.2",
     },
-  }, {
-    sessionId: "session_1",
-    assistantMessageId: "assistant_1",
-    jobId: "job_1",
-    chatId: "chat_1",
-    userMessageId: "user_message_1",
-    userId: "user_1",
-    query: "test",
-    complexity: 1,
-    expandMultiModelGroups: false,
-    modelId: "openai/gpt-5.2",
-  });
+  );
 
   assert.ok(mutations.some((m) => m.args.status === "failed"));
-  assert.ok(mutations.some((m) =>
-    typeof m.args.error === "string" && /No OpenRouter API key/.test(m.args.error),
-  ));
+  assert.ok(
+    mutations.some(
+      (m) =>
+        typeof m.args.error === "string" &&
+        /No OpenRouter API key/.test(m.args.error),
+    ),
+  );
 });

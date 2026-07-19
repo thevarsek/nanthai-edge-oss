@@ -2,13 +2,11 @@ import { Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ConvexError } from "convex/values";
-import { GENERATED_MEDIA_REFERENCE_TRACKING_VERSION } from "../lib/generated_media_reference_tracking";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
 import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
 import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
-import { VIDEO_OUTPUT_UPLOAD_TTL_MS } from "./video_output_upload_policy";
 import { preferCurrentPresentationSnapshot } from "./presentation_generated_file_snapshot";
 import {
   deleteStreamingMessageById,
@@ -19,12 +17,18 @@ import {
   patchStreamingMessageById,
   upsertStreamingMessage,
 } from "./streaming_state";
+import { assertCurrentFence, terminalizeExecution } from "../execution/control_plane";
+import { assertCurrentExecution } from "../execution/attempts";
+import { notifyScheduledStepTerminal } from "../scheduledJobs/workflow_signals";
+import { assertUserDataWritable } from "../lib/write_fence";
 
 const CHAT_COMPLETION_PUSH_CATEGORY = "CHAT_COMPLETION";
 
 export interface UpdateMessageContentArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
   streamingMessageId?: Id<"streamingMessages">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   content: string;
   status: "pending" | "streaming" | "completed" | "failed" | "cancelled";
 }
@@ -33,6 +37,9 @@ export async function updateMessageContentHandler(
   ctx: MutationCtx,
   args: UpdateMessageContentArgs,
 ): Promise<void> {
+  if (args.executionAttemptId !== undefined && args.executionFence !== undefined) {
+    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+  }
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
   if (isTerminalMessageStatus(existing.status)) {
@@ -59,6 +66,8 @@ export async function updateMessageContentHandler(
 export interface UpdateMessageReasoningArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
   streamingMessageId?: Id<"streamingMessages">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   reasoning: string;
 }
 
@@ -66,6 +75,9 @@ export async function updateMessageReasoningHandler(
   ctx: MutationCtx,
   args: UpdateMessageReasoningArgs,
 ): Promise<void> {
+  if (args.executionAttemptId !== undefined && args.executionFence !== undefined) {
+    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+  }
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
   if (isTerminalMessageStatus(existing.status)) return;
@@ -140,6 +152,9 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   };
   videoUrls?: string[];
   userId: string;
+  /** The owned Workflow callback already terminalized the execution attempt. */
+  skipExecutionTerminalization?: boolean;
+  allowExpiredExecutionLease?: boolean;
   // M10 — Tool execution metadata
   toolCalls?: Array<{
     id: string;
@@ -199,6 +214,8 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId?: string;
   terminalErrorCode?: TerminalErrorCode;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
 
 type DocumentEvent = {
@@ -358,6 +375,33 @@ export async function finalizeGenerationHandler(
 ): Promise<void> {
   const now = Date.now();
   const generationJob = await ctx.db.get(args.jobId);
+  if (
+    generationJob
+    && ["completed", "failed", "cancelled", "timedOut"].includes(generationJob.status)
+    && generationJob.status !== "cancelled"
+  ) {
+    return;
+  }
+  const executionAttemptId = args.executionAttemptId ?? generationJob?.executionAttemptId;
+  const executionFence = args.executionFence ?? generationJob?.executionFence;
+  if ((executionAttemptId === undefined) !== (executionFence === undefined)) {
+    throw new Error("INCOMPLETE_EXECUTION_FENCE");
+  }
+  if (
+    !args.skipExecutionTerminalization
+    && executionAttemptId
+    && executionFence !== undefined
+  ) {
+    if (args.allowExpiredExecutionLease) {
+      await assertCurrentExecution(ctx, {
+        attemptId: executionAttemptId,
+        fence: executionFence,
+        allowExpiredLease: true,
+      });
+    } else {
+      await assertCurrentFence(ctx, executionAttemptId, executionFence);
+    }
+  }
   const shouldTreatLateTerminalResultAsCancelled =
     generationJob?.status === "cancelled"
     && (args.status === "completed" || args.status === "failed");
@@ -373,22 +417,9 @@ export async function finalizeGenerationHandler(
   // Guard: if the job was already cancelled by the user, don't overwrite
   // with "completed" or "streaming" results.  We still allow overwriting
   // neither "completed" nor "failed" should revive a cancelled job.
-  // AUDIT-6: When the guard blocks a late terminal finalization for a
-  // cancelled job, we must still continue/fail any associated scheduled-job
-  // pipeline, otherwise the pipeline stalls indefinitely.
-  if (shouldTreatLateTerminalResultAsCancelled) {
-    if (generationJob.sourceJobId && generationJob.sourceExecutionId) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.scheduledJobs.actions.failScheduledJobExecution,
-        {
-          jobId: generationJob.sourceJobId,
-          executionId: generationJob.sourceExecutionId,
-          error: "Generation was cancelled by user.",
-        },
-      );
-    }
-  }
+  // Scheduled executions are resumed exclusively through the retained
+  // Workflow event emitted below. A second legacy failure callback here can
+  // race that event and terminalize the same occurrence twice.
 
   const continuation = await ctx.db
     .query("generationContinuations")
@@ -532,6 +563,20 @@ export async function finalizeGenerationHandler(
     completedAt: now,
     scheduledFunctionId: undefined,
   });
+  if (
+    !args.skipExecutionTerminalization
+    && executionAttemptId
+    && executionFence !== undefined
+  ) {
+    await terminalizeExecution(ctx, {
+      attemptId: executionAttemptId,
+      fence: executionFence,
+      outcome: finalStatus,
+      summary: args.error,
+      now,
+      allowExpiredLease: args.allowExpiredExecutionLease,
+    });
+  }
 
   const chat = await ctx.db.get(args.chatId);
   if (chat) {
@@ -574,31 +619,17 @@ export async function finalizeGenerationHandler(
         });
       }
 
-      // Push notification when a scheduled-job generation finishes
+      // Signal the durable scheduled-execution Workflow. Events are retained
+      // when generation completes before the Workflow reaches awaitEvent.
       if (generationJob?.sourceJobId && generationJob.sourceExecutionId) {
-        if (finalStatus === "completed") {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.scheduledJobs.actions.continueScheduledJobExecution,
-            {
-              jobId: generationJob.sourceJobId,
-              chatId: args.chatId,
-              executionId: generationJob.sourceExecutionId,
-              completedStepIndex: generationJob.sourceStepIndex ?? 0,
-              assistantMessageId: args.messageId,
-            },
-          );
-        } else {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.scheduledJobs.actions.failScheduledJobExecution,
-            {
-              jobId: generationJob.sourceJobId,
-              executionId: generationJob.sourceExecutionId,
-              error: args.error ?? "Generation failed.",
-            },
-          );
-        }
+        await notifyScheduledStepTerminal(ctx, {
+          jobId: generationJob.sourceJobId,
+          executionId: generationJob.sourceExecutionId,
+          stepIndex: generationJob.sourceStepIndex ?? 0,
+          assistantMessageId: args.messageId,
+          status: finalStatus,
+          error: args.error,
+        });
       }
     }
   }
@@ -755,6 +786,8 @@ async function maybeScheduleAutoAudio(
 export interface UpdateMessageToolCallsArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
   streamingMessageId?: Id<"streamingMessages">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   toolCalls: Array<{
     id: string;
     name: string;
@@ -809,6 +842,9 @@ export async function updateMessageToolCallsHandler(
   ctx: MutationCtx,
   args: UpdateMessageToolCallsArgs,
 ): Promise<void> {
+  if (args.executionAttemptId !== undefined && args.executionFence !== undefined) {
+    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+  }
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
   if (isTerminalMessageStatus(existing.status)) return;
@@ -835,6 +871,8 @@ export async function updateMessageToolCallsHandler(
 export interface UpdateJobStatusArgs extends Record<string, unknown> {
   jobId: Id<"generationJobs">;
   messageId?: Id<"messages">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   status:
     | "queued"
     | "streaming"
@@ -853,6 +891,9 @@ export async function updateJobStatusHandler(
   ctx: MutationCtx,
   args: UpdateJobStatusArgs,
 ): Promise<void> {
+  if (args.executionAttemptId !== undefined && args.executionFence !== undefined) {
+    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+  }
   // Guard: never overwrite a terminal status (cancelled, completed, failed,
   // timedOut) with a non-terminal one (e.g. "streaming").  This prevents a
   // late-arriving runGeneration from reviving a job the user already cancelled.
@@ -918,6 +959,9 @@ export async function updateChatTitleHandler(
   ctx: MutationCtx,
   args: UpdateChatTitleArgs,
 ): Promise<void> {
+  const chat = await ctx.db.get(args.chatId);
+  if (!chat) return;
+  await assertUserDataWritable(ctx, chat.userId, chat._id);
   // Intentionally skip updatedAt — title generation is a background refinement
   // and should not re-sort the chat list or trigger an extra listChats cascade.
   // sendMessage already bumped updatedAt when the chat was created/sent.
@@ -953,6 +997,7 @@ export async function createMemoryHandler(
   ctx: MutationCtx,
   args: CreateMemoryArgs,
 ): Promise<Id<"memories">> {
+  await assertUserDataWritable(ctx, args.userId, args.sourceChatId);
   const normalized = normalizeMemoryRecord({
     content: args.content,
     category: args.category,
@@ -1227,6 +1272,7 @@ export interface StoreAncillaryCostArgs extends Record<string, unknown>, UsageDe
   totalTokens: number;
   source: string;
   generationId?: string;
+  idempotencyKey?: string;
 }
 
 export async function storeAncillaryCostHandler(
@@ -1234,6 +1280,24 @@ export async function storeAncillaryCostHandler(
   args: StoreAncillaryCostArgs,
 ): Promise<void> {
   const now = Date.now();
+
+  if (args.idempotencyKey) {
+    const existing = await ctx.db
+      .query("usageRecords")
+      .withIndex("by_idempotency_key", (q) => q.eq("idempotencyKey", args.idempotencyKey))
+      .first();
+    if (existing) return;
+  }
+
+  if (args.generationId) {
+    const existing = await ctx.db
+      .query("usageRecords")
+      .withIndex("by_generation_source", (q) => q
+        .eq("generationId", args.generationId)
+        .eq("source", args.source))
+      .first();
+    if (existing) return;
+  }
 
   // Compute cost from model pricing if not provided by the API.
   let cost = args.cost;
@@ -1262,170 +1326,8 @@ export async function storeAncillaryCostHandler(
     cost,
     ...details,
     source: args.source,
+    generationId: args.generationId,
+    idempotencyKey: args.idempotencyKey,
     createdAt: now,
-  });
-}
-
-// ── M29: Video Generation ─────────────────────────────────────────────
-
-// ── M29: Video Generation ─────────────────────────────────────────────
-
-export interface CreateVideoJobArgs extends Record<string, unknown> {
-  messageId: Id<"messages">;
-  chatId: Id<"chats">;
-  userId: string;
-  openRouterJobId: string;
-  pollingUrl: string;
-  outputUploadToken?: string;
-  model: string;
-  prompt: string;
-  videoConfig?: {
-    resolution?: string;
-    aspectRatio?: string;
-    duration?: number;
-    generateAudio?: boolean;
-  };
-}
-
-export interface UpdateVideoJobStatusArgs extends Record<string, unknown> {
-  videoJobId: Id<"videoJobs">;
-  status: "pending" | "in_progress" | "completed" | "failed";
-  error?: string;
-}
-
-export interface CreateVideoOutputUploadSessionArgs extends Record<string, unknown> {
-  token: string;
-  messageId: Id<"messages">;
-  chatId: Id<"chats">;
-  userId: string;
-}
-
-export interface CompleteVideoOutputUploadArgs extends Record<string, unknown> {
-  token: string;
-  storageId: Id<"_storage">;
-  mimeType: string;
-  sizeBytes: number;
-}
-
-export interface UpdateVideoJobPollArgs extends Record<string, unknown> {
-  videoJobId: Id<"videoJobs">;
-  status: "pending" | "in_progress" | "completed" | "failed";
-  pollCount: number;
-  error?: string;
-}
-
-export interface InsertGeneratedMediaArgs extends Record<string, unknown> {
-  userId: string;
-  chatId: Id<"chats">;
-  messageId: Id<"messages">;
-  storageId: Id<"_storage">;
-  type: "image" | "video";
-  mimeType: string;
-  sizeBytes?: number;
-  width?: number;
-  height?: number;
-  durationSeconds?: number;
-  model?: string;
-  prompt?: string;
-}
-
-export async function createVideoJobHandler(
-  ctx: MutationCtx,
-  args: CreateVideoJobArgs,
-): Promise<Id<"videoJobs">> {
-  return await ctx.db.insert("videoJobs", {
-    messageId: args.messageId,
-    chatId: args.chatId,
-    userId: args.userId,
-    openRouterJobId: args.openRouterJobId,
-    pollingUrl: args.pollingUrl,
-    outputUploadToken: args.outputUploadToken,
-    status: "pending",
-    model: args.model,
-    prompt: args.prompt,
-    videoConfig: args.videoConfig,
-    pollCount: 0,
-    createdAt: Date.now(),
-  });
-}
-
-export async function createVideoOutputUploadSessionHandler(
-  ctx: MutationCtx,
-  args: CreateVideoOutputUploadSessionArgs,
-): Promise<void> {
-  await ctx.db.insert("videoOutputUploads", {
-    token: args.token,
-    messageId: args.messageId,
-    chatId: args.chatId,
-    userId: args.userId,
-    status: "pending",
-    createdAt: Date.now(),
-  });
-}
-
-export async function completeVideoOutputUploadHandler(
-  ctx: MutationCtx,
-  args: CompleteVideoOutputUploadArgs,
-): Promise<void> {
-  const session = await ctx.db
-    .query("videoOutputUploads")
-    .withIndex("by_token", (q) => q.eq("token", args.token))
-    .first();
-  if (!session) return;
-  if (session.status !== "pending") return;
-  if (Date.now() - session.createdAt > VIDEO_OUTPUT_UPLOAD_TTL_MS) return;
-  await ctx.db.patch(session._id, {
-    status: "uploaded",
-    storageId: args.storageId,
-    mimeType: args.mimeType,
-    sizeBytes: args.sizeBytes,
-    uploadedAt: Date.now(),
-  });
-}
-
-export async function updateVideoJobStatusHandler(
-  ctx: MutationCtx,
-  args: UpdateVideoJobStatusArgs,
-): Promise<void> {
-  const patch: Record<string, unknown> = {
-    status: args.status,
-    lastPolledAt: Date.now(),
-  };
-  if (args.error) patch.error = args.error;
-  await ctx.db.patch(args.videoJobId, patch);
-}
-
-export async function updateVideoJobPollHandler(
-  ctx: MutationCtx,
-  args: UpdateVideoJobPollArgs,
-): Promise<void> {
-  const patch: Record<string, unknown> = {
-    status: args.status,
-    pollCount: args.pollCount,
-    lastPolledAt: Date.now(),
-  };
-  if (args.error) patch.error = args.error;
-  await ctx.db.patch(args.videoJobId, patch);
-}
-
-export async function insertGeneratedMediaHandler(
-  ctx: MutationCtx,
-  args: InsertGeneratedMediaArgs,
-): Promise<Id<"generatedMedia">> {
-  return await ctx.db.insert("generatedMedia", {
-    userId: args.userId,
-    chatId: args.chatId,
-    messageId: args.messageId,
-    storageId: args.storageId,
-    type: args.type,
-    mimeType: args.mimeType,
-    sizeBytes: args.sizeBytes,
-    width: args.width,
-    height: args.height,
-    durationSeconds: args.durationSeconds,
-    model: args.model,
-    prompt: args.prompt,
-    referenceTrackingVersion: GENERATED_MEDIA_REFERENCE_TRACKING_VERSION,
-    createdAt: Date.now(),
   });
 }

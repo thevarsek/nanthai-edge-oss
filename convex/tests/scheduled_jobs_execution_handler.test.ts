@@ -23,12 +23,12 @@ function activeJob() {
   };
 }
 
-test("manual overlap does not replace schedule or create a chat", async () => {
+test("manual invocation delegates to one durable workflow without legacy scheduling", async () => {
   const job = activeJob();
   let queryCount = 0;
   const mutationNames: string[] = [];
   const scheduledCalls: any[] = [];
-
+  const workflowCalls: Array<Record<string, unknown>> = [];
   const ctx = {
     runQuery: async () => {
       queryCount += 1;
@@ -37,12 +37,10 @@ test("manual overlap does not replace schedule or create a chat", async () => {
       }
       throw new Error("unexpected query");
     },
-    runMutation: async (_ref: unknown, _args: Record<string, unknown>) => {
-      mutationNames.push("beginExecution");
-      if (mutationNames.length === 1) {
-        return { started: false };
-      }
-      throw new Error("unexpected mutation");
+    runMutation: async (_ref: unknown, mutationArgs: Record<string, unknown>) => {
+      mutationNames.push("startScheduledExecution");
+      workflowCalls.push(mutationArgs);
+      return "workflow_manual";
     },
     scheduler: {
       runAt: async (...args: unknown[]) => {
@@ -57,16 +55,19 @@ test("manual overlap does not replace schedule or create a chat", async () => {
     invocationSource: "manual",
   });
 
-  assert.deepEqual(mutationNames, ["beginExecution"]);
+  assert.deepEqual(mutationNames, ["startScheduledExecution"]);
   assert.equal(scheduledCalls.length, 0);
+  assert.equal(workflowCalls.length, 1);
+  assert.equal(workflowCalls[0]?.invocationSource, "manual");
+  assert.match(String(workflowCalls[0]?.occurrenceId), /^manual:/);
 });
 
-test("scheduled overlap reschedules next run without creating a chat", async () => {
+test("scheduled invocation delegates overlap handling to the durable workflow", async () => {
   const job = activeJob();
   let queryCount = 0;
   const mutationNames: string[] = [];
   const scheduledCalls: any[] = [];
-
+  const workflowCalls: Array<Record<string, unknown>> = [];
   const ctx = {
     runQuery: async () => {
       queryCount += 1;
@@ -75,16 +76,10 @@ test("scheduled overlap reschedules next run without creating a chat", async () 
       }
       throw new Error("unexpected query");
     },
-    runMutation: async (_ref: unknown, _args: Record<string, unknown>) => {
-      if (mutationNames.length === 0) {
-        mutationNames.push("beginExecution");
-        return { started: false };
-      }
-      mutationNames.push("updateNextRun");
-      if (mutationNames.length === 2) {
-        return undefined;
-      }
-      throw new Error("unexpected mutation");
+    runMutation: async (_ref: unknown, mutationArgs: Record<string, unknown>) => {
+      mutationNames.push("startScheduledExecution");
+      workflowCalls.push(mutationArgs);
+      return "workflow_scheduled";
     },
     scheduler: {
       runAt: async (...args: unknown[]) => {
@@ -99,16 +94,17 @@ test("scheduled overlap reschedules next run without creating a chat", async () 
     invocationSource: "scheduled",
   });
 
-  assert.equal(scheduledCalls.length, 1);
-  assert.deepEqual(mutationNames, ["beginExecution", "updateNextRun"]);
+  assert.equal(scheduledCalls.length, 0);
+  assert.deepEqual(mutationNames, ["startScheduledExecution"]);
+  assert.equal(workflowCalls[0]?.invocationSource, "scheduled");
 });
 
-test("execution is claimed before chat creation on a successful run", async () => {
+test("entrypoint leaves claiming and chat creation inside the workflow", async () => {
   const job = activeJob();
   let queryCount = 0;
   const mutationNames: string[] = [];
   const actionCalls: any[] = [];
-
+  let workflowStarts = 0;
   const ctx = {
     runQuery: async () => {
       queryCount += 1;
@@ -121,29 +117,8 @@ test("execution is claimed before chat creation on a successful run", async () =
       throw new Error("unexpected query");
     },
     runMutation: async (_ref: unknown, _args: Record<string, unknown>) => {
-      const callIndex = mutationNames.length;
-      if (callIndex === 0) {
-        mutationNames.push("beginExecution");
-        return { started: true };
-      }
-      if (callIndex === 1) {
-        mutationNames.push("updateNextRun");
-        return undefined;
-      }
-      if (callIndex === 2) {
-        mutationNames.push("createJobChat");
-        return "chat_1";
-      }
-      if (callIndex === 3) {
-        mutationNames.push("createScheduledExecutionTurn");
-        return {
-          userMessageId: "msg_user_1",
-          assistantMsgId: "msg_assistant_1",
-          genJobId: "gen_1",
-          created: true,
-        };
-      }
-      throw new Error("unexpected mutation");
+      workflowStarts += 1;
+      return "workflow_success";
     },
     scheduler: {
       runAt: async () => "scheduled_new",
@@ -159,21 +134,17 @@ test("execution is claimed before chat creation on a successful run", async () =
     invocationSource: "scheduled",
   });
 
-  assert.deepEqual(mutationNames, [
-    "beginExecution",
-    "updateNextRun",
-    "createJobChat",
-    "createScheduledExecutionTurn",
-  ]);
-  assert.equal(actionCalls.length, 1);
+  assert.deepEqual(mutationNames, []);
+  assert.equal(actionCalls.length, 0);
+  assert.equal(workflowStarts, 1);
 });
 
-test("missing API key records failure without creating a chat", async () => {
+test("entrypoint delegates missing-key failure handling to the workflow", async () => {
   const job = activeJob();
   let queryCount = 0;
   const mutationNames: string[] = [];
   const actionCalls: any[] = [];
-
+  let workflowStarts = 0;
   const ctx = {
     runQuery: async () => {
       queryCount += 1;
@@ -182,20 +153,8 @@ test("missing API key records failure without creating a chat", async () => {
       throw new Error("unexpected query");
     },
     runMutation: async (_ref: unknown, _args: Record<string, unknown>) => {
-      const callIndex = mutationNames.length;
-      if (callIndex === 0) {
-        mutationNames.push("beginExecution");
-        return { started: true };
-      }
-      if (callIndex === 1) {
-        mutationNames.push("updateNextRun");
-        return undefined;
-      }
-      if (callIndex === 2) {
-        mutationNames.push("recordRunFailure");
-        return undefined;
-      }
-      throw new Error("unexpected mutation");
+      workflowStarts += 1;
+      return "workflow_missing_key";
     },
     scheduler: {
       runAt: async () => "scheduled_new",
@@ -211,12 +170,13 @@ test("missing API key records failure without creating a chat", async () => {
     invocationSource: "scheduled",
   });
 
-  assert.deepEqual(mutationNames, [
-    "beginExecution",
-    "updateNextRun",
-    "recordRunFailure",
-  ]);
-  assert.equal(actionCalls.length, 0, "missing-key path does not send failure notification");
+  assert.deepEqual(mutationNames, []);
+  assert.equal(
+    actionCalls.length,
+    0,
+    "missing-key path does not send failure notification",
+  );
+  assert.equal(workflowStarts, 1);
 });
 
 test("continueScheduledJobExecutionHandler records success and sends completion notification on final step", async () => {
@@ -234,6 +194,7 @@ test("continueScheduledJobExecutionHandler records success and sends completion 
     runQuery: async () => job,
     runMutation: async (_ref: unknown, _args: Record<string, unknown>) => {
       mutationNames.push("recordRunSuccess");
+      return true;
     },
     scheduler: {
       runAfter: async (...args: unknown[]) => {

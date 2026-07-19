@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { saveGenerationContinuationArgs } from "../chat/mutations_args";
-import type { GenerationContinuationGroupSnapshot } from "../chat/generation_continuation_shared";
+import type {
+  GenerationContinuationCheckpoint,
+  GenerationContinuationGroupSnapshot,
+} from "../chat/generation_continuation_shared";
 
 /**
  * Regression guard for the drift between
@@ -37,6 +40,44 @@ function objectValidatorFieldNames(objectValidator: unknown): string[] {
   return Object.keys(fields);
 }
 
+test("checkpoint validator covers every top-level durable checkpoint field", () => {
+  const checkpointFields: Record<keyof Required<GenerationContinuationCheckpoint>, true> = {
+    roundKey: true,
+    checkpointBeforeProviderDispatch: true,
+    deferredResumeEventId: true,
+    deferredOwnership: true,
+    participant: true,
+    group: true,
+    checkpointVersion: true,
+    assembledCheckpoint: true,
+    messages: true,
+    usage: true,
+    toolCalls: true,
+    toolResults: true,
+    activeProfiles: true,
+    loadedSkills: true,
+    compactionCount: true,
+    continuationCount: true,
+    partialContent: true,
+    partialReasoning: true,
+  };
+  const checkpointValidator = saveGenerationContinuationArgs.checkpoint as unknown;
+  const validatorFields = new Set(objectValidatorFieldNames(checkpointValidator));
+  const missing = Object.keys(checkpointFields).filter((field) => !validatorFields.has(field));
+  assert.deepEqual(missing, []);
+
+  const ownership = (checkpointValidator as any).fields.deferredOwnership;
+  const ownershipKinds = ownership.members.map(
+    (member: any) => member.fields.kind.value as string,
+  );
+  assert.deepEqual(ownershipKinds, [
+    "subagents",
+    "presentation",
+    "analytics",
+    "drive_picker",
+  ]);
+});
+
 test("saveGenerationContinuationArgs.checkpoint.group validator covers every GenerationContinuationGroupSnapshot field", () => {
   // Construct a fully-populated snapshot. If someone adds a field to the
   // TS interface, this literal stops compiling until the field is added
@@ -57,6 +98,8 @@ test("saveGenerationContinuationArgs.checkpoint.group validator covers every Gen
     searchSessionId: "search_1" as any,
     subagentBatchId: "batch_1" as any,
     drivePickerBatchId: "drive_picker_batch_1" as any,
+    executionAttemptId: "execution_attempt_1" as any,
+    executionFence: 7,
     imageConfig: { count: 2, quality: "high" },
     chatSkillOverrides: [],
     chatIntegrationOverrides: [],

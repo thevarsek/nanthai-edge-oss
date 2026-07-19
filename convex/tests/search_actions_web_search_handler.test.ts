@@ -56,15 +56,23 @@ function createCtx(
         }
         return null;
       },
-      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      runMutation: async (ref: unknown, args: Record<string, unknown>) => {
         mutations.push(args);
+        if (
+          getFunctionName(ref as never)
+          === getFunctionName(internal.search.generation_handoff.commitGenerationHandoff)
+        ) {
+          if (options.failGenerationSchedule) {
+            throw new Error("scheduler unavailable");
+          }
+          mutations.push({ patch: { status: "writing" } });
+          scheduled.push(args.generationArgs as Record<string, unknown>);
+          return "workflow_generation_1";
+        }
         return null;
       },
       scheduler: {
         runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
-          if (options.failGenerationSchedule && Array.isArray(args.assistantMessageIds)) {
-            throw new Error("scheduler unavailable");
-          }
           scheduled.push(args);
           return "sched_1";
         },

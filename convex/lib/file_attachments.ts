@@ -83,7 +83,7 @@ export async function deleteDriveGrantCacheForStorage(
     .withIndex("by_user_cached_storage", (q) =>
       q.eq("userId", userId).eq("cachedStorageId", storageId),
     )
-    .collect();
+    .take(50);
 
   for (const grant of grants) {
     await ctx.db.delete(grant._id);
@@ -99,7 +99,7 @@ export async function storageHasOtherFileAttachmentReferences(
   const refs = await ctx.db
     .query("fileAttachments")
     .withIndex("by_storage", (q) => q.eq("storageId", storageId))
-    .collect();
+    .take(2);
 
   return refs.some(
     (ref) => ref.userId === userId && ref._id !== excludingFileAttachmentId,

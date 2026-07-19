@@ -26,7 +26,7 @@ function baseArgs() {
   } as any;
 }
 
-test("video submit snaps config, attaches images, creates jobs, and schedules polling", async () => {
+test("video submit step snaps config and leaves polling to the owning Workflow", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<{ delay: number; payload: Record<string, unknown> }> = [];
@@ -110,10 +110,10 @@ test("video submit snaps config, attaches images, creates jobs, and schedules po
   assert.equal(startedAnalytics?.delay, 0);
   assert.equal((startedAnalytics?.payload.properties as any)?.source, "video_generation");
   const pollSchedule = scheduled.find((entry) => "videoJobId" in entry.payload);
-  assert.equal(pollSchedule?.delay, 15000);
+  assert.equal(pollSchedule, undefined);
 });
 
-test("video submit marks created video job failed when first poll scheduling fails", async () => {
+test("video submit step never owns legacy poll scheduling", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
 
@@ -157,16 +157,105 @@ test("video submit marks created video job failed when first poll scheduling fai
   assert.ok(mutations.some((args) =>
     args.openRouterJobId === "or_video_1",
   ));
-  assert.ok(mutations.some((args) =>
-    args.videoJobId === "video_job_1" &&
-    args.status === "failed" &&
-    String(args.error).includes("poll schedule failed"),
+  assert.equal(mutations.some((args) =>
+    args.videoJobId === "video_job_1" && args.status === "failed"
+  ), false);
+  assert.equal(mutations.some((args) =>
+    args.messageId === "msg_assistant" && args.status === "failed"
+  ), false);
+});
+
+test("an ambiguous video provider submit is journaled outcome-unknown and never retried", async () => {
+  const originalFetch = globalThis.fetch;
+  const mutations: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async () => {
+    throw new Error("connection reset after dispatch");
+  }) as any;
+  const ctx = {
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if (args.jobId) return { _id: "job_1", status: "queued" };
+      if (args.userId) return "sk-test";
+      if (args.messageId) return { _id: "msg_user", content: "Make a launch video" };
+      if (args.modelId) return { videoCapabilities: {} };
+      return null;
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if ("inputHash" in args) return { decision: "execute" };
+      return undefined;
+    },
+    scheduler: { runAfter: async () => undefined },
+    storage: { getUrl: async () => null },
+  } as any;
+  try {
+    await submitVideoGenerationHandler(ctx, {
+      ...baseArgs(),
+      execution: {
+        runId: "execution_1",
+        attemptId: "attempt_1",
+        fence: 4,
+        claimantId: "video-workflow:job_1",
+      },
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  const prepared = mutations.find((entry) => "inputHash" in entry);
+  assert.equal(prepared?.retry, "never");
+  assert.ok(mutations.some((entry) =>
+    entry.operationKey === prepared?.operationKey
+      && entry.errorSummary === "connection reset after dispatch"
   ));
-  assert.ok(mutations.some((args) =>
-    args.messageId === "msg_assistant" &&
-    args.status === "failed" &&
-    String(args.error).includes("poll schedule failed"),
+  assert.equal(mutations.some((entry) => "openRouterJobId" in entry), false);
+});
+
+test("a provider job returned after fence loss is retained in the operation ledger", async () => {
+  const originalFetch = globalThis.fetch;
+  const mutations: Array<Record<string, unknown>> = [];
+  globalThis.fetch = (async () => new Response(JSON.stringify({
+    id: "or_video_stale",
+    polling_url: "https://openrouter.ai/api/v1/videos/or_video_stale",
+    status: "pending",
+  }), { status: 200 })) as any;
+  const ctx = {
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if (args.jobId) return { _id: "job_1", status: "streaming" };
+      if (args.userId) return "sk-test";
+      if (args.messageId) return { _id: "msg_user", content: "Make a launch video" };
+      if (args.modelId) return { videoCapabilities: {} };
+      return null;
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if ("inputHash" in args) return { decision: "execute" };
+      if (args.externalId === "or_video_stale" && "fence" in args) {
+        throw new Error("STALE_EXECUTION_ATTEMPT");
+      }
+      if (args.status === "failed" && args.executionAttemptId === "attempt_1") {
+        throw new Error("STALE_EXECUTION_ATTEMPT");
+      }
+      return undefined;
+    },
+    scheduler: { runAfter: async () => undefined },
+    storage: { getUrl: async () => null },
+  } as any;
+  try {
+    await assert.rejects(submitVideoGenerationHandler(ctx, {
+      ...baseArgs(),
+      execution: {
+        runId: "execution_1",
+        attemptId: "attempt_1",
+        fence: 4,
+        claimantId: "video-workflow:job_1",
+      },
+    }), /STALE_EXECUTION_ATTEMPT/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.ok(mutations.some((entry) =>
+    entry.externalId === "or_video_stale" && !("fence" in entry)
   ));
+  assert.equal(mutations.some((entry) => "openRouterJobId" in entry), false);
 });
 
 test("video polling completes, stores media, finalizes message, and marks related flows complete", async () => {
@@ -248,13 +337,94 @@ test("video polling completes, stores media, finalizes message, and marks relate
     args.status === "completed" &&
     (args.videoUrls as string[] | undefined)?.[0] === "https://files.example.com/video.mp4",
   ));
-  assert.ok(mutations.some((args) => args.storageId === "storage_video" && args.type === "video"));
+  assert.ok(mutations.some((args) =>
+    (args.media as { storageId?: string } | undefined)?.storageId === "storage_video"
+  ));
   assert.ok(mutations.some((args) => (args.patch as { status?: string } | undefined)?.status === "completed"));
   assert.ok(mutations.some((args) => args.batchId === "batch_1" && args.status === "completed"));
   const completedAnalytics = scheduled.find((entry) => entry.event === "assistant_response_completed");
   const durationMs = (completedAnalytics?.properties as { duration_ms?: unknown } | undefined)?.duration_ms;
   assert.equal(typeof durationMs, "number");
   assert.ok((durationMs as number) >= 0);
+});
+
+test("stale video completion deletes a newly stored orphan and cannot publish", async () => {
+  const originalFetch = globalThis.fetch;
+  const mutations: Array<Record<string, unknown>> = [];
+  const deleted: string[] = [];
+  let fenceValidationCount = 0;
+  const responses = [
+    new Response(JSON.stringify({
+      status: "completed",
+      polling_url: "https://poll",
+      unsigned_urls: ["https://cdn.example/video.mp4"],
+    }), { status: 200 }),
+    new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+  ];
+  globalThis.fetch = (async () => {
+    const response = responses.shift();
+    assert.ok(response);
+    return response;
+  }) as any;
+  const args = {
+    ...baseArgs(),
+    videoJobId: "video_job_1",
+    messageId: "msg_assistant",
+    jobId: "job_1",
+    workflowManaged: true,
+    executionAttemptId: "attempt_1",
+    executionFence: 4,
+    executionClaimantId: "video-workflow:job_1",
+  } as any;
+  const ctx = {
+    runQuery: async (_ref: unknown, queryArgs: Record<string, unknown>) => {
+      if (queryArgs.videoJobId) {
+        return {
+          _id: "video_job_1",
+          status: "in_progress",
+          pollCount: 1,
+          pollingUrl: "https://poll",
+          model: "video/model",
+        };
+      }
+      if (queryArgs.jobId) return { _id: "job_1", status: "streaming" };
+      if (queryArgs.userId) return "sk-test";
+      return null;
+    },
+    runMutation: async (_ref: unknown, mutationArgs: Record<string, unknown>) => {
+      mutations.push(mutationArgs);
+      const isFenceValidation = mutationArgs.attemptId === "attempt_1"
+        && mutationArgs.fence === 4
+        && !("claimantId" in mutationArgs)
+        && !("videoJobId" in mutationArgs);
+      if (isFenceValidation) {
+        fenceValidationCount += 1;
+        if (fenceValidationCount >= 3) throw new Error("STALE_EXECUTION_ATTEMPT");
+      }
+      if (mutationArgs.videoJobId && mutationArgs.status === "failed") {
+        throw new Error("STALE_EXECUTION_ATTEMPT");
+      }
+      return undefined;
+    },
+    scheduler: { runAfter: async () => undefined },
+    storage: {
+      store: async () => "storage_orphan",
+      getUrl: async () => "https://files.example/video.mp4",
+      delete: async (storageId: string) => deleted.push(storageId),
+    },
+  } as any;
+  try {
+    await assert.rejects(
+      pollVideoGenerationHandler(ctx, args),
+      /STALE_EXECUTION_ATTEMPT/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.deepEqual(deleted, ["storage_orphan"]);
+  assert.equal(mutations.some((entry) =>
+    entry.status === "completed" && ("content" in entry || "media" in entry)
+  ), false);
 });
 
 test("video polling handles cancelled, failed, timeout, and missing-content terminal paths", async () => {
@@ -340,6 +510,10 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
   assert.ok(mutations.some((entry) => entry.error === "provider failed"));
   assert.ok(mutations.some((entry) => String(entry.error).includes("timed out")));
   assert.ok(mutations.some((entry) => entry.error === "Video completed but no content URL returned"));
+  const providerTerminalMarks = mutations.filter((entry) =>
+    Object.keys(entry).sort().join(",") === "status,videoJobId"
+  );
+  assert.deepEqual(providerTerminalMarks.map((entry) => entry.status), ["failed", "completed"]);
   assert.ok(scheduled.some((entry) => entry.delay === 15000));
 });
 
@@ -418,7 +592,7 @@ test("video submit cancellation after provider submission emits terminal analyti
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(mutations.some((entry) => entry.openRouterJobId === "or_video_cancelled"), false);
+  assert.equal(mutations.some((entry) => entry.openRouterJobId === "or_video_cancelled"), true);
   assert.equal(didFetch, true);
   assert.ok(mutations.some((entry) => entry.batchId === "batch_1" && entry.status === "cancelled"));
   assert.equal(

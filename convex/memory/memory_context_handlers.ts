@@ -31,6 +31,10 @@ interface EnsureMessageMemoryContextReadyOptions {
   claimAndCompute?: boolean;
 }
 
+type HydratedMemoryCandidate = Doc<"memories"> & {
+  score?: number;
+};
+
 function getStableContextErrorCode(error: unknown): string {
   if (
     error instanceof ConvexError
@@ -120,7 +124,7 @@ async function computeMemoryContextForMessage(
       filter: (q) => q.eq("userId", args.userId),
     });
 
-    const hydratedHits = results.length === 0
+    const hydratedHits: HydratedMemoryCandidate[] = results.length === 0
       ? []
       : await ctx.runQuery(
         internal.memory.relationships.hydrateRelevantHits,
@@ -131,12 +135,12 @@ async function computeMemoryContextForMessage(
             score: result._score,
           })),
         },
-      );
+      ) as HydratedMemoryCandidate[];
 
     for (const memory of hydratedHits.filter(
       (candidate) => candidate.relationshipsBuiltAt == null,
     )) {
-      await ctx.scheduler.runAfter(0, internal.memory.relationships.rebuildForMemory, {
+      await ctx.scheduler.runAfter(0, internal.execution.workload_queues.enqueueMemoryRelationship, {
         memoryId: memory._id,
       });
     }

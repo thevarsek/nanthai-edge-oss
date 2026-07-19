@@ -44,6 +44,7 @@ function buildParams(overrides: Record<string, unknown> = {}) {
     memoryContext: "fallback memory",
     moderatorConfig: undefined,
     userId: "user_1",
+    skipExecutionTerminalization: true,
     webSearchEnabled: true,
     ...overrides,
   };
@@ -205,6 +206,7 @@ test("runParticipantTurn finalizes visible responses and propagates moderator di
     reasoning: "model reasoning",
     imageUrls: undefined,
     userId: "user_1",
+    skipExecutionTerminalization: true,
   });
   assert.equal(
     mutations.some((entry) => entry.chatId === "chat_1" && entry.messageId === "msg_new"),
@@ -272,6 +274,7 @@ test("runParticipantTurn finalizes empty model output as a visible failed messag
     status: "failed",
     error: "Model returned an empty response after retries.",
     userId: "user_1",
+    skipExecutionTerminalization: true,
   });
 });
 
@@ -324,6 +327,7 @@ test("runParticipantTurn finalizes reasoning-only output as a visible failed mes
     status: "failed",
     error: "Model returned reasoning only without a visible response.",
     userId: "user_1",
+    skipExecutionTerminalization: true,
   });
 });
 
@@ -575,6 +579,7 @@ test("runParticipantTurn finalizes upstream errors as visible failed messages", 
     status: "failed",
     error: "Anthropic rejected assistant prefill",
     userId: "user_1",
+    skipExecutionTerminalization: true,
   });
   assert.deepEqual(
     scheduled.map((entry) => entry.event),

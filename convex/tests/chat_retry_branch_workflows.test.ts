@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { retryMessageHandler } from "../chat/mutations_retry_handler";
 import type { Id } from "../_generated/dataModel";
+import { installExecutionDbMock } from "../../test_helpers/execution_db_mock";
 
 function buildRetryCtx(options: {
   isPro?: boolean;
@@ -105,6 +106,8 @@ function buildRetryCtx(options: {
       },
     },
   } as any;
+
+  installExecutionDbMock(ctx);
 
   return { ctx, inserts, patches, scheduled };
 }

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalQuery, query } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
+import { isCurrentSubagentExecution } from "./execution_fence";
 
 export const getBatchView = query({
   args: {
@@ -62,6 +63,19 @@ export const getBatchInternal = internalQuery({
 export const getRunInternal = internalQuery({
   args: { runId: v.id("subagentRuns") },
   handler: async (ctx, args) => ctx.db.get(args.runId),
+});
+
+export const isRunExecutionCurrent = internalQuery({
+  args: {
+    runId: v.id("subagentRuns"),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    return run ? await isCurrentSubagentExecution(ctx, run, args) : false;
+  },
 });
 
 export const listRunsForBatchInternal = internalQuery({

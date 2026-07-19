@@ -15,7 +15,7 @@ export async function refreshMemoryEmbedding(
     .first();
   if (existing) await ctx.db.delete(existing._id);
   await deleteMemoryRelationships(ctx, memoryId, userId);
-  await ctx.scheduler.runAfter(0, internal.memory.operations.computeAndStoreEmbedding, {
+  await ctx.scheduler.runAfter(0, internal.execution.workload_queues.enqueueMemoryEmbedding, {
     memoryId,
     content,
   });

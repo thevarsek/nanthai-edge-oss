@@ -1,7 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
-import type { ActiveJob, Chat, Message, StreamingMessage } from "@/hooks/useChat";
+import type { ActiveJob, Chat, ExecutionProjection, Message, StreamingMessage } from "@/hooks/useChat";
 import { useChat } from "@/hooks/useChat";
 
 const analyticsMocks = vi.hoisted(() => ({
@@ -32,7 +32,7 @@ vi.mock("convex/react", () => ({
   useQuery: (_query: unknown, args: unknown) => {
     convexMocks.queryCalls.push({ args });
     if (args === "skip") return undefined;
-    const resultIndex = (convexMocks.queryCalls.length - 1) % 4;
+    const resultIndex = (convexMocks.queryCalls.length - 1) % 5;
     return convexMocks.queryResults[resultIndex];
   },
   useMutation: () => convexMocks.mutations[convexMocks.mutationIndex++ % convexMocks.mutations.length],
@@ -85,9 +85,10 @@ describe("useChat", () => {
     expect(result.current.chat).toBeNull();
     expect(result.current.messages).toEqual([]);
     expect(result.current.activeJobs).toEqual([]);
+    expect(result.current.executionRuns).toEqual([]);
     expect(result.current.isLoading).toBe(true);
     expect(result.current.isGenerating).toBe(false);
-    expect(convexMocks.queryCalls.map((call) => call.args)).toEqual(["skip", "skip", "skip", "skip"]);
+    expect(convexMocks.queryCalls.map((call) => call.args)).toEqual(["skip", "skip", "skip", "skip", "skip"]);
   });
 
   it("subscribes with the shared Convex contract and merges streaming overlays", () => {
@@ -98,11 +99,23 @@ describe("useChat", () => {
       status: "streaming",
     };
     const activeJob: ActiveJob = { _id: "job_1" as Id<"generationJobs">, status: "queued", messageId };
+    const executionRun: ExecutionProjection = {
+      runId: "run_1",
+      kind: "generation",
+      state: "running",
+      placement: "cloud",
+      updatedAt: 4,
+      cancelAvailable: true,
+      cancelRequested: false,
+      needsInput: false,
+      needsPermission: false,
+    };
     convexMocks.queryResults = [
       chat(),
       [message({ content: "", status: "pending" })],
       [streaming],
       [activeJob],
+      [executionRun],
     ];
 
     const { result } = renderHook(() => useChat(chatId));
@@ -114,6 +127,7 @@ describe("useChat", () => {
       status: "streaming",
     });
     expect(result.current.activeJobs).toEqual([activeJob]);
+    expect(result.current.executionRuns).toEqual([executionRun]);
     expect(result.current.isLoading).toBe(false);
     expect(result.current.isGenerating).toBe(true);
     expect(convexMocks.queryCalls.map((call) => call.args)).toEqual([
@@ -121,11 +135,36 @@ describe("useChat", () => {
       { chatId, limit: 500 },
       { chatId },
       { chatId },
+      { chatId, limit: 50 },
     ]);
   });
 
+  it("treats a terminal canonical execution snapshot as authoritative over stale jobs", () => {
+    convexMocks.queryResults = [
+      chat(),
+      [message({ content: "stale", status: "pending" })],
+      [],
+      [{ _id: "job_stale" as Id<"generationJobs">, status: "queued", messageId }],
+      [{
+        runId: "run_terminal",
+        kind: "generation",
+        state: "completed",
+        placement: "cloud",
+        updatedAt: 5,
+        cancelAvailable: false,
+        cancelRequested: false,
+        needsInput: false,
+        needsPermission: false,
+      } satisfies ExecutionProjection],
+    ];
+
+    const { result } = renderHook(() => useChat(chatId));
+
+    expect(result.current.isGenerating).toBe(false);
+  });
+
   it("strips local-only participant ids when sending and retrying", async () => {
-    convexMocks.queryResults = [chat(), [], [], []];
+    convexMocks.queryResults = [chat(), [], [], [], []];
     convexMocks.mutations[0]!.mockResolvedValue({ userMessageId: "user_msg", assistantMessageIds: ["assistant_msg"] });
     convexMocks.mutations[2]!.mockResolvedValue({ assistantMessageIds: ["retry_msg"] });
     const { result } = renderHook(() => useChat(chatId));
@@ -183,7 +222,7 @@ describe("useChat", () => {
   });
 
   it("marks audio attachments as audio send analytics", async () => {
-    convexMocks.queryResults = [chat(), [], [], []];
+    convexMocks.queryResults = [chat(), [], [], [], []];
     convexMocks.mutations[0]!.mockResolvedValue({ userMessageId: "user_msg", assistantMessageIds: [] });
     const { result } = renderHook(() => useChat(chatId));
 
@@ -214,7 +253,7 @@ describe("useChat", () => {
   });
 
   it("passes management mutation args through to Convex", async () => {
-    convexMocks.queryResults = [chat(), [], [], []];
+    convexMocks.queryResults = [chat(), [], [], [], []];
     const { result } = renderHook(() => useChat(chatId));
 
     await act(async () => {
@@ -247,7 +286,7 @@ describe("useChat", () => {
   });
 
   it("uses retry analytics snapshots without sending them to Convex", async () => {
-    convexMocks.queryResults = [chat(), [], [], []];
+    convexMocks.queryResults = [chat(), [], [], [], []];
     convexMocks.mutations[2]!.mockResolvedValue({ assistantMessageIds: ["retry_msg"] });
     const { result } = renderHook(() => useChat(chatId));
 

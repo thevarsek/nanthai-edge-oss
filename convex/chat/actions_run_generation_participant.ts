@@ -231,6 +231,10 @@ export interface GenerateForParticipantParams {
   /** Timestamp (ms) captured at the very start of the action, before context
    *  preparation. Used by the compaction layer to detect approaching timeout. */
   actionStartTime: number;
+  /** Absolute provider cutoff inherited from the first participant action. */
+  providerDeadlineAt?: number;
+  /** Called immediately before provider transport begins. */
+  onProviderDispatch?: () => Promise<void>;
   /** Optional active profiles restored from a durable continuation checkpoint. */
   restoredActiveProfiles?: SkillToolProfileId[];
   /** Optional loaded skill instructions restored from a durable continuation checkpoint. */
@@ -244,6 +248,10 @@ export interface GenerateForParticipantParams {
     onDeferredPresentation?: (
       checkpoint: GenerationContinuationCheckpoint,
       workflow: { projectId: Id<"presentationProjects">; toolCallId: string },
+    ) => Promise<void>;
+    onDeferredAnalytics?: (
+      checkpoint: GenerationContinuationCheckpoint,
+      analyticsRunId: Id<"analyticsWorkflowRuns">,
     ) => Promise<void>;
     continuationCount: number;
   };
@@ -389,6 +397,8 @@ export async function generateForParticipant(
     }),
     ctx.runMutation(internal.chat.mutations.updateJobStatus, {
       jobId: participant.jobId,
+      executionAttemptId: args.executionAttemptId,
+      executionFence: args.executionFence,
       status: "streaming",
       startedAt: Date.now(),
     }),
@@ -496,7 +506,18 @@ export async function generateForParticipant(
     ),
     isIdeascapeTurn: args.expandMultiModelGroups === false,
     jobId: String(participant.jobId),
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
+    authorizationSource: args.analyticsSource === "scheduled_job"
+      ? "configured_automation"
+      : "explicit_user_turn",
     generationKey: String(participant.jobId),
+    // Stable across a retry/recovery of this action, unlike hydrated request
+    // messages (which may contain refreshed signed URLs). The generation loop
+    // adds deterministic segment/round ordinals before journaling effects.
+    operationScope: `${String(participant.jobId)}:continuation:${
+      continuationHandoff?.continuationCount ?? 0
+    }`,
     modelId: participant.modelId,
     requireZdr,
   };
@@ -833,6 +854,7 @@ export async function generateForParticipant(
       await continuationHandoff.onHandoff({
         participant,
         group: continuationGroup,
+        checkpointBeforeProviderDispatch: true,
         checkpointVersion: "v2",
         assembledCheckpoint: {
           policyVersion: "m38.policy.v1",
@@ -963,6 +985,7 @@ export async function generateForParticipant(
         maxInputReferences: caps.imageCapabilities?.maxInputReferences,
         supportedParameters: caps.imageCapabilities?.supportedParameters,
         requireZdr,
+        onProviderDispatch: params.onProviderDispatch,
       });
       latencyMetrics.openrouter_round_trip_duration_ms =
         Date.now() - imageRequestStartedAt;
@@ -992,21 +1015,37 @@ export async function generateForParticipant(
     let hasLoggedFirstDelta = false;
     let hasLoggedFirstReasoningDelta = false;
     let hasLoggedFirstPatch = false;
+    let lastExecutionHeartbeatAt = 0;
     const openRouterRequestStartedAt = Date.now();
     const writer = new StreamWriter({
       ctx,
       messageId: participant.messageId,
       streamingMessageId,
+      executionAttemptId: args.executionAttemptId,
+      executionFence: args.executionFence,
       beforePatch: async () => {
-        if (hasLoggedFirstPatch) return;
-        hasLoggedFirstPatch = true;
-        ttftLog("[generation] first streaming patch written", {
-          chatId: args.chatId,
-          messageId: participant.messageId,
-          jobId: participant.jobId,
-          modelId: participant.modelId,
-          durationMs: Date.now() - openRouterRequestStartedAt,
-        });
+        const now = Date.now();
+        if (!hasLoggedFirstPatch) {
+          hasLoggedFirstPatch = true;
+          ttftLog("[generation] first streaming patch written", {
+            chatId: args.chatId,
+            messageId: participant.messageId,
+            jobId: participant.jobId,
+            modelId: participant.modelId,
+            durationMs: now - openRouterRequestStartedAt,
+          });
+        }
+        if (
+          args.executionAttemptId
+          && args.executionFence !== undefined
+          && now - lastExecutionHeartbeatAt >= 30_000
+        ) {
+          await ctx.runMutation(internal.execution.mutations.heartbeat, {
+            attemptId: args.executionAttemptId,
+            fence: args.executionFence,
+          });
+          lastExecutionHeartbeatAt = now;
+        }
       },
       transformContent: clampMessageContent,
       transformStreamingContent: (content) => clampMessageContent(stripCitationBlock(content)),
@@ -1115,6 +1154,8 @@ export async function generateForParticipant(
           {
             messageId: participant.messageId,
             streamingMessageId,
+            executionAttemptId: args.executionAttemptId,
+            executionFence: args.executionFence,
             toolCalls: progressiveToolCalls,
             activeToolCallIds: Array.from(activeProgressiveToolCallIDs),
             toolResults: progressiveToolResults,
@@ -1125,6 +1166,8 @@ export async function generateForParticipant(
         await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
           jobId: participant.jobId,
           messageId: participant.messageId,
+          executionAttemptId: args.executionAttemptId,
+          executionFence: args.executionFence,
           status: "streaming",
           openrouterGenerationId: generationId,
         });
@@ -1197,6 +1240,8 @@ export async function generateForParticipant(
           {
             messageId: participant.messageId,
             streamingMessageId,
+            executionAttemptId: args.executionAttemptId,
+            executionFence: args.executionFence,
             toolCalls: progressiveToolCalls,
             activeToolCallIds: Array.from(activeProgressiveToolCallIDs),
             toolResults: progressiveToolResults,
@@ -1233,6 +1278,8 @@ export async function generateForParticipant(
           {
             messageId: participant.messageId,
             streamingMessageId,
+            executionAttemptId: args.executionAttemptId,
+            executionFence: args.executionFence,
             toolCalls: progressiveToolCalls,
             activeToolCallIds: Array.from(activeProgressiveToolCallIDs),
             toolResults: progressiveToolResults,
@@ -1261,6 +1308,8 @@ export async function generateForParticipant(
             provider: caps?.provider,
             runtime: runtimeProfile,
             activeProfiles: Array.from(activeProfiles),
+            executionAttemptId: args.executionAttemptId,
+            executionFence: args.executionFence,
           },
           round,
           toolCalls,
@@ -1335,6 +1384,8 @@ export async function generateForParticipant(
       modelContextLimit: caps?.contextLength ?? 128_000,
       writer,
       actionStartTime: params.actionStartTime,
+      providerDeadlineAt: params.providerDeadlineAt,
+      onProviderDispatch: params.onProviderDispatch,
       allowContinuationHandoff: continuationHandoff != null,
       initialTotalUsage: params.initialTotalUsage ?? null,
       initialToolCalls: params.initialToolCalls ?? [],
@@ -1373,6 +1424,14 @@ export async function generateForParticipant(
     await writer.flush();
 
     if (genResult.deferredToolRound) {
+      if (genResult.deferredToolRound.deferredResults.length !== 1) {
+        throw new ConvexError({
+          code: "INTERNAL_ERROR" as const,
+          message:
+            "A tool round must contain exactly one durable deferred operation. " +
+            "Additional defer-capable calls must be retried after the owner resumes.",
+        });
+      }
       const deferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "spawn_subagents",
       );
@@ -1382,6 +1441,37 @@ export async function generateForParticipant(
       const presentationDeferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "presentation_workflow",
       );
+      const analyticsDeferred = genResult.deferredToolRound.deferredResults.find(
+        (entry) => entry.payload.kind === "analytics_workflow",
+      );
+      const deferredCheckpoint: GenerationContinuationCheckpoint = {
+        deferredResumeEventId: args.workflowResumeEventId,
+        participant,
+        group: continuationGroup,
+        checkpointVersion: "v2",
+        assembledCheckpoint: {
+          policyVersion: "m38.policy.v1",
+          assemblerVersion: "m38.assembler.v1",
+          artifactRefs: [],
+          memoryRefs: [],
+          rehydrationDirectives: [],
+          activeProfiles: Array.from(activeProfiles),
+          loadedSkills,
+        },
+        messages: normalizeMessagesForLoadedSkills(
+          genResult.deferredToolRound.resumeConversationMessages,
+          loadedSkills,
+        ),
+        usage: genResult.totalUsage ?? undefined,
+        toolCalls: collectedToolCalls,
+        toolResults: collectedToolResults,
+        activeProfiles: Array.from(activeProfiles),
+        loadedSkills,
+        compactionCount: genResult.compactionCount,
+        continuationCount: (continuationHandoff?.continuationCount ?? 0) + 1,
+        partialContent: writer.totalContent || undefined,
+        partialReasoning: writer.totalReasoning || undefined,
+      };
       if (presentationDeferred) {
         const projectId = (presentationDeferred.payload.data as { projectId?: unknown } | undefined)?.projectId;
         if (typeof projectId !== "string" || !continuationHandoff?.onDeferredPresentation) {
@@ -1390,36 +1480,34 @@ export async function generateForParticipant(
             message: "Presentation workflow paused without a durable continuation target.",
           });
         }
-        await continuationHandoff.onDeferredPresentation({
-          participant,
-          group: continuationGroup,
-          checkpointVersion: "v2",
-          assembledCheckpoint: {
-            policyVersion: "m38.policy.v1",
-            assemblerVersion: "m38.assembler.v1",
-            artifactRefs: [],
-            memoryRefs: [],
-            rehydrationDirectives: [],
-            activeProfiles: Array.from(activeProfiles),
-            loadedSkills,
-          },
-          messages: normalizeMessagesForLoadedSkills(
-            genResult.deferredToolRound.resumeConversationMessages,
-            loadedSkills,
-          ),
-          usage: genResult.totalUsage ?? undefined,
-          toolCalls: collectedToolCalls,
-          toolResults: collectedToolResults,
-          activeProfiles: Array.from(activeProfiles),
-          loadedSkills,
-          compactionCount: genResult.compactionCount,
-          continuationCount: continuationHandoff.continuationCount + 1,
-          partialContent: writer.totalContent || undefined,
-          partialReasoning: writer.totalReasoning || undefined,
-        }, {
+        await continuationHandoff.onDeferredPresentation(deferredCheckpoint, {
           projectId: projectId as Id<"presentationProjects">,
           toolCallId: presentationDeferred.toolCallId,
         });
+        return {
+          deferredForSubagents: false,
+          cancelled: false,
+          failed: false,
+          continued: true,
+          usage: genResult.totalUsage,
+          generationId: result.generationId,
+          latencies: latencyMetrics,
+        };
+      }
+      if (analyticsDeferred) {
+        const analyticsRunId = (
+          analyticsDeferred.payload.data as { analyticsRunId?: unknown } | undefined
+        )?.analyticsRunId;
+        if (typeof analyticsRunId !== "string" || !continuationHandoff?.onDeferredAnalytics) {
+          throw new ConvexError({
+            code: "INTERNAL_ERROR" as const,
+            message: "Analytics workflow paused without a durable continuation target.",
+          });
+        }
+        await continuationHandoff.onDeferredAnalytics(
+          deferredCheckpoint,
+          analyticsRunId as Id<"analyticsWorkflowRuns">,
+        );
         return {
           deferredForSubagents: false,
           cancelled: false,
@@ -1437,7 +1525,7 @@ export async function generateForParticipant(
         const currentRoundToolCallIds = new Set(
           genResult.deferredToolRound.toolCalls.map((entry) => entry.id),
         );
-        await ctx.runMutation(internal.drive_picker.mutations.createBatch, {
+        const driveBatchArgs = {
           parentMessageId: participant.messageId,
           sourceUserMessageId: args.userMessageId,
           parentJobId: participant.jobId,
@@ -1459,13 +1547,46 @@ export async function generateForParticipant(
             requestParams: effectiveParams,
             analytics: args.analytics,
             analyticsSource: args.analyticsSource,
+            workflowResumeEventId: args.workflowResumeEventId,
+            roundKey: args.workflowResumeEventId,
+            executionAttemptId: args.executionAttemptId,
+            executionFence: args.executionFence,
           },
           participantSnapshot: {
             chatId: args.chatId,
             userId: args.userId,
             participant,
           },
-        });
+        };
+        const durableDriveHandoff = args.workflowResumeEventId && continuationHandoff;
+        if (durableDriveHandoff) {
+          if (!args.executionAttemptId || args.executionFence === undefined) {
+            throw new Error("GENERATION_DRIVE_CHECKPOINT_EXECUTION_IDENTITY_REQUIRED");
+          }
+          await ctx.runMutation(
+            internal.drive_picker.mutations.createDurableBatchAndCheckpoint,
+            {
+              ...driveBatchArgs,
+              checkpoint: {
+                ...deferredCheckpoint,
+                roundKey: args.workflowResumeEventId,
+                group: {
+                  ...deferredCheckpoint.group,
+                  executionAttemptId: args.executionAttemptId,
+                  executionFence: args.executionFence,
+                },
+              },
+            },
+          );
+        } else {
+          await ctx.runMutation(internal.drive_picker.mutations.createBatch, driveBatchArgs);
+          if (args.executionAttemptId && args.executionFence !== undefined) {
+            await ctx.runMutation(internal.execution.mutations.releaseForContinuation, {
+              attemptId: args.executionAttemptId,
+              fence: args.executionFence,
+            });
+          }
+        }
         return {
           deferredForSubagents: true,
           cancelled: false,
@@ -1487,7 +1608,7 @@ export async function generateForParticipant(
         throw new ConvexError({ code: "INTERNAL_ERROR" as const, message: "Subagent tool paused without valid tasks." });
       }
 
-      const batchResult = await ctx.runMutation(internal.subagents.mutations.createBatch, {
+      const subagentBatchArgs = {
         parentMessageId: participant.messageId,
         sourceUserMessageId: args.userMessageId,
         parentJobId: participant.jobId,
@@ -1510,6 +1631,10 @@ export async function generateForParticipant(
           requestParams: effectiveParams,
           analytics: args.analytics,
           analyticsSource: args.analyticsSource,
+          workflowResumeEventId: args.workflowResumeEventId,
+          roundKey: args.workflowResumeEventId,
+          executionAttemptId: args.executionAttemptId,
+          executionFence: args.executionFence,
         },
         participantSnapshot: {
           chatId: args.chatId,
@@ -1517,13 +1642,45 @@ export async function generateForParticipant(
           participant,
         },
         tasks,
-      });
+      };
 
-      for (const runId of batchResult.runIds) {
-        await ctx.scheduler.runAfter(0, internal.subagents.actions.runSubagentRun, {
-          runId,
-        });
+      const durableDeferredHandoff = args.workflowResumeEventId && continuationHandoff;
+      let batchResult;
+      if (durableDeferredHandoff) {
+        if (!args.executionAttemptId || args.executionFence === undefined) {
+          throw new Error("GENERATION_SUBAGENT_CHECKPOINT_EXECUTION_IDENTITY_REQUIRED");
+        }
+        batchResult = await ctx.runMutation(
+          internal.subagents.mutations.createDurableBatchAndCheckpoint,
+          {
+            ...subagentBatchArgs,
+            checkpoint: {
+              ...deferredCheckpoint,
+              roundKey: args.workflowResumeEventId,
+              group: {
+                ...deferredCheckpoint.group,
+                executionAttemptId: args.executionAttemptId,
+                executionFence: args.executionFence,
+              },
+            },
+          },
+        );
+      } else {
+        batchResult = await ctx.runMutation(
+          internal.subagents.mutations.createBatch,
+          subagentBatchArgs,
+        );
+        if (args.executionAttemptId && args.executionFence !== undefined) {
+          await ctx.runMutation(internal.execution.mutations.releaseForContinuation, {
+            attemptId: args.executionAttemptId,
+            fence: args.executionFence,
+          });
+        }
       }
+
+      await Promise.all(batchResult.runIds.map(async (runId: Id<"subagentRuns">) =>
+        await ctx.runMutation(internal.execution.fanout_queues.enqueueSubagent, { runId })
+      ));
       return {
         deferredForSubagents: true,
         cancelled: false,
@@ -1764,6 +1921,8 @@ export async function generateForParticipant(
       audioGeneratedAt,
       triggerUserMessageId: args.userMessageId,
       openrouterGenerationId: result.generationId ?? undefined,
+      executionAttemptId: args.executionAttemptId,
+      executionFence: args.executionFence,
     });
     return {
       deferredForSubagents: false,
@@ -1792,6 +1951,8 @@ export async function generateForParticipant(
           status: "failed",
           error: errorMessage,
         }),
+      executionAttemptId: args.executionAttemptId,
+      executionFence: args.executionFence,
     });
     return {
       deferredForSubagents: false,

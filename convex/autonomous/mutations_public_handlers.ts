@@ -10,6 +10,10 @@ import {
   dedupeParticipantIds,
   resolveInitialParentMessageIds,
 } from "./session_helpers";
+import {
+  interruptAutonomousSession,
+  terminalizeAutonomousSession,
+} from "./execution_lifecycle";
 
 export { assertTurnConfiguration, computeResumeCursor, dedupeParticipantIds };
 
@@ -60,7 +64,10 @@ export async function startSessionHandler(
 
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found or unauthorized" });
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Chat not found or unauthorized",
+    });
   }
 
   const existingSessions = await ctx.db
@@ -71,7 +78,10 @@ export async function startSessionHandler(
     (session) => session.status === "running" || session.status === "paused",
   );
   if (hasActive) {
-    throw new ConvexError({ code: "CONFLICT", message: "An autonomous session is already active for this chat" });
+    throw new ConvexError({
+      code: "CONFLICT",
+      message: "An autonomous session is already active for this chat",
+    });
   }
 
   const parentMessageIds = await resolveInitialParentMessageIds(
@@ -98,15 +108,19 @@ export async function startSessionHandler(
     updatedAt: now,
   });
 
-  await ctx.scheduler.runAfter(0, internal.autonomous.actions.runCycle, {
-    sessionId,
-    cycle: 1,
-    startParticipantIndex: 0,
-    userId,
-    participantConfigs: args.participantConfigs,
-    moderatorConfig: args.moderatorConfig,
-    webSearchEnabled: args.webSearchEnabled ?? false,
-  });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.execution.workflow_starts.startAutonomous,
+    {
+      sessionId,
+      cycle: 1,
+      startParticipantIndex: 0,
+      userId,
+      participantConfigs: args.participantConfigs,
+      moderatorConfig: args.moderatorConfig,
+      webSearchEnabled: args.webSearchEnabled ?? false,
+    },
+  );
 
   return sessionId;
 }
@@ -122,7 +136,10 @@ export async function pauseSessionHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Session not found or unauthorized",
+    });
   }
   if (session.status !== "running") {
     return;
@@ -132,6 +149,17 @@ export async function pauseSessionHandler(
     status: "paused",
     updatedAt: Date.now(),
   });
+  await cancelInFlightAutonomousTurns(ctx, session.chatId, session.turnOrder);
+  await interruptAutonomousSession(ctx, session);
+  if (session.workflowId) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.execution.workflow_cancel.cancelWorkflow,
+      {
+        workflowId: session.workflowId,
+      },
+    );
+  }
 }
 
 export interface ResumeSessionArgs extends Record<string, unknown> {
@@ -149,7 +177,10 @@ export async function resumeSessionHandler(
   await requirePro(ctx, userId);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Session not found or unauthorized",
+    });
   }
   if (session.status !== "paused") {
     return;
@@ -181,15 +212,19 @@ export async function resumeSessionHandler(
     updatedAt: Date.now(),
   });
 
-  await ctx.scheduler.runAfter(0, internal.autonomous.actions.runCycle, {
-    sessionId: args.sessionId,
-    cycle: resumeCycle,
-    startParticipantIndex,
-    userId,
-    participantConfigs: args.participantConfigs,
-    moderatorConfig: args.moderatorConfig,
-    webSearchEnabled: args.webSearchEnabled ?? false,
-  });
+  await ctx.scheduler.runAfter(
+    0,
+    internal.execution.workflow_starts.startAutonomous,
+    {
+      sessionId: args.sessionId,
+      cycle: resumeCycle,
+      startParticipantIndex,
+      userId,
+      participantConfigs: args.participantConfigs,
+      moderatorConfig: args.moderatorConfig,
+      webSearchEnabled: args.webSearchEnabled ?? false,
+    },
+  );
 }
 
 export interface StopSessionArgs extends Record<string, unknown> {
@@ -203,7 +238,10 @@ export async function stopSessionHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Session not found or unauthorized",
+    });
   }
   if (session.status !== "running" && session.status !== "paused") {
     return;
@@ -214,6 +252,24 @@ export async function stopSessionHandler(
     stopReason: "User stopped",
     updatedAt: Date.now(),
   });
+  await cancelInFlightAutonomousTurns(ctx, session.chatId, session.turnOrder);
+  if (session.status === "running") {
+    await terminalizeAutonomousSession(
+      ctx,
+      session,
+      "cancelled",
+      "User stopped",
+    );
+  }
+  if (session.workflowId) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.execution.workflow_cancel.cancelWorkflow,
+      {
+        workflowId: session.workflowId,
+      },
+    );
+  }
 }
 
 export interface HandleUserInterventionArgs extends Record<string, unknown> {
@@ -228,7 +284,10 @@ export async function handleUserInterventionHandler(
   const { userId } = await requireAuth(ctx);
   const session = await ctx.db.get(args.sessionId);
   if (!session || session.userId !== userId) {
-    throw new ConvexError({ code: "NOT_FOUND", message: "Session not found or unauthorized" });
+    throw new ConvexError({
+      code: "NOT_FOUND",
+      message: "Session not found or unauthorized",
+    });
   }
   if (session.status !== "running" && session.status !== "paused") {
     return;
@@ -239,10 +298,23 @@ export async function handleUserInterventionHandler(
     stopReason: "User intervened",
     updatedAt: Date.now(),
   });
-
-  if (!args.forceSendNow) {
-    return;
+  await cancelInFlightAutonomousTurns(ctx, session.chatId, session.turnOrder);
+  if (session.status === "running") {
+    await terminalizeAutonomousSession(
+      ctx,
+      session,
+      "cancelled",
+      "User intervened",
+    );
+  }
+  if (session.workflowId) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.execution.workflow_cancel.cancelWorkflow,
+      {
+        workflowId: session.workflowId,
+      },
+    );
   }
 
-  await cancelInFlightAutonomousTurns(ctx, session.chatId, session.turnOrder);
 }

@@ -3,6 +3,7 @@ import {
   HTTP_REFERER,
   MAX_RATE_LIMIT_RETRIES,
   OPENROUTER_API_URL,
+  OPENROUTER_ACTION_BUDGET_MS,
   STREAM_REQUEST_TIMEOUT_MS,
   rateLimitDelayMs,
   sleep,
@@ -37,6 +38,7 @@ const defaultOpenRouterStreamingDeps = {
   processSSEBodyStream,
   processSSETextStream,
   stripParameter,
+  now: () => Date.now(),
 };
 
 export type OpenRouterStreamingDeps = typeof defaultOpenRouterStreamingDeps;
@@ -81,10 +83,16 @@ export async function callOpenRouterStreaming(
   let currentModel = model;
   let attempt = 0;
   let networkAttempt = 0;
-  const startTime = Date.now();
+  const startTime = deps.now();
+  const relativeDeadlineAt = startTime + OPENROUTER_ACTION_BUDGET_MS;
+  const absoluteDeadlineAt = retryConfig.absoluteDeadlineAtMs;
+  const deadlineAt = absoluteDeadlineAt == null || !Number.isFinite(absoluteDeadlineAt)
+    ? relativeDeadlineAt
+    : Math.min(relativeDeadlineAt, absoluteDeadlineAt);
   const msgCount = messages.length;
 
   while (attempt <= emptyStreamRetries) {
+    assertStreamingDeadline(deadlineAt, deps.now());
     try {
       const result = await streamOnce(
         apiKey,
@@ -93,6 +101,7 @@ export async function callOpenRouterStreaming(
         currentParams,
         callbacks,
         retryOnUnsupportedParam && attempt === 0,
+        deadlineAt,
         deps,
       );
 
@@ -115,6 +124,7 @@ export async function callOpenRouterStreaming(
             toolChoice: currentParams.toolChoice,
             provider: currentParams.provider,
           });
+          assertStreamingDelayFits(deadlineAt, delay, deps.now());
           await deps.sleep(delay);
           attempt++;
           continue;
@@ -182,6 +192,7 @@ export async function callOpenRouterStreaming(
           model: currentModel, networkAttempt, maxNetworkRetries: networkRetries,
           delayMs: networkRetryDelayMs,
         });
+        assertStreamingDelayFits(deadlineAt, networkRetryDelayMs, deps.now());
         await deps.sleep(networkRetryDelayMs);
         continue;
       }
@@ -234,6 +245,7 @@ async function streamOnce(
     onGenerationId?: (generationId: string) => Promise<void>;
   },
   retryOnUnsupportedParam: boolean,
+  deadlineAt: number,
   deps: OpenRouterStreamingDeps,
 ): Promise<StreamResult> {
   let currentParams = { ...params };
@@ -246,6 +258,7 @@ async function streamOnce(
   let strippedProviderOnce = false;
 
   while (true) {
+    assertStreamingDeadline(deadlineAt, deps.now());
     const body = deps.buildRequestBody(
       model,
       messages,
@@ -255,17 +268,22 @@ async function streamOnce(
     );
 
     const controller = new AbortController();
-    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let idleTimeout: ReturnType<typeof setTimeout> | undefined;
+    let hitAbsoluteDeadline = false;
     const resetTimeout = () => {
-      if (timeout) {
-        clearTimeout(timeout);
+      if (idleTimeout) {
+        clearTimeout(idleTimeout);
       }
-      timeout = setTimeout(
+      idleTimeout = setTimeout(
         () => controller.abort(),
         STREAM_REQUEST_TIMEOUT_MS,
       );
     };
     resetTimeout();
+    const deadlineTimeout = setTimeout(() => {
+      hitAbsoluteDeadline = true;
+      controller.abort();
+    }, Math.max(1, deadlineAt - deps.now()));
 
     try {
       // Phase 1 instrumentation: OpenRouter TTFB sub-timings to split the
@@ -311,6 +329,7 @@ async function streamOnce(
           console.warn("[openrouter:stream] rate limited, retrying", {
             model, retry: rateLimitRetries, delayMs, status: response.status,
           });
+          assertStreamingDelayFits(deadlineAt, delayMs, deps.now());
           await deps.sleep(delayMs);
           continue;
         }
@@ -440,10 +459,14 @@ async function streamOnce(
       const cause = errObj.cause != null ? String(errObj.cause) : undefined;
       if (errName === "AbortError") {
         console.error("[openrouter:stream:once] timeout", {
-          model, timeoutMs: STREAM_REQUEST_TIMEOUT_MS, rateLimitRetries,
+          model, timeoutMs: hitAbsoluteDeadline
+            ? Math.max(0, deadlineAt - deps.now())
+            : STREAM_REQUEST_TIMEOUT_MS, rateLimitRetries,
         });
         // Re-throw as a regular Error so the caller's retry logic can inspect it
-        const abortMsg = `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`;
+        const abortMsg = hitAbsoluteDeadline
+          ? `OpenRouter stream action deadline reached for model ${model}${cause ? `: ${cause}` : ""}`
+          : `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`;
         throw new Error(abortMsg);
       }
       if (errMessage === "fetch failed") {
@@ -458,10 +481,23 @@ async function streamOnce(
       }
       throw error;
     } finally {
-      if (timeout) {
-        clearTimeout(timeout);
-      }
+      if (idleTimeout) clearTimeout(idleTimeout);
+      if (deadlineTimeout) clearTimeout(deadlineTimeout);
     }
+  }
+}
+
+function assertStreamingDeadline(deadlineAt: number, now: number): void {
+  if (now >= deadlineAt) throw new Error("OpenRouter stream action deadline reached.");
+}
+
+function assertStreamingDelayFits(
+  deadlineAt: number,
+  delayMs: number,
+  now: number,
+): void {
+  if (now + delayMs >= deadlineAt) {
+    throw new Error("OpenRouter stream action deadline reached.");
   }
 }
 

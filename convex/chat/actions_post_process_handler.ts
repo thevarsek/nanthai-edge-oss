@@ -1,6 +1,6 @@
 import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { isPlaceholderTitle } from "./title_helpers";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
@@ -30,6 +30,11 @@ export async function postProcessHandler(
   args: PostProcessArgs,
   deps: PostProcessHandlerDeps = defaultPostProcessHandlerDeps,
 ): Promise<void> {
+  const writable = await ctx.runQuery(internal.chat.post_process_guard.isChatWritable, {
+    chatId: args.chatId,
+    userId: args.userId,
+  });
+  if (!writable) return;
   // Parallelize independent reads: chat, user message, and preferences
   const [chat, userMsg, prefs] = await Promise.all([
     ctx.runQuery(internal.chat.queries.getChatInternal, {
@@ -50,7 +55,7 @@ export async function postProcessHandler(
   const userContent = userMsg?.content?.trim() ?? "";
 
   // Parallelize assistant message fetches
-  const assistantMessages = await Promise.all(
+  const assistantMessages: Array<Doc<"messages"> | null> = await Promise.all(
     args.assistantMessageIds.map((msgId) =>
       ctx.runQuery(internal.chat.queries.getMessageInternal, {
         messageId: msgId,
@@ -75,7 +80,7 @@ export async function postProcessHandler(
     const configuredTitleModel = requireZdr
       ? undefined
       : prefs?.titleModelId?.trim() || undefined;
-    await ctx.scheduler.runAfter(0, internal.chat.actions.generateTitle, {
+    await ctx.runMutation(internal.execution.workload_queues.enqueueTitle, {
       chatId: args.chatId,
       sourceContent: sourceContentForTitle,
       assistantContent: assistantContent || undefined,
@@ -98,7 +103,7 @@ export async function postProcessHandler(
   const extractionModel = requireZdr
     ? undefined
     : prefs?.memoryExtractionModelId?.trim() || undefined;
-  await ctx.scheduler.runAfter(0, internal.chat.actions.extractMemories, {
+  await ctx.runMutation(internal.execution.workload_queues.enqueueMemoryExtraction, {
     chatId: args.chatId,
     userMessageContent: userContent,
     userMessageId: args.userMessageId,

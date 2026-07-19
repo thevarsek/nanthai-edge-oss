@@ -420,6 +420,50 @@ test("callOpenRouterStreaming normalizes non-Error AbortError shapes (DOMExcepti
   );
 });
 
+test("callOpenRouterStreaming enforces the action deadline despite active SSE traffic", async () => {
+  let requestSignal: AbortSignal | undefined;
+  let activityCount = 0;
+  const deps = createOpenRouterStreamingDepsForTest({
+    fetch: async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSignal = init?.signal ?? undefined;
+      return textResponse(200, "", {}) as any;
+    },
+    processSSEBodyStream: async (_body, _callbacks, onChunk) =>
+      await new Promise<never>((_resolve, reject) => {
+        activityCount += 1;
+        onChunk?.();
+        const interval = setInterval(() => {
+          activityCount += 1;
+          onChunk?.();
+        }, 2);
+        requestSignal?.addEventListener("abort", () => {
+          clearInterval(interval);
+          const error = new Error("aborted at action deadline");
+          error.name = "AbortError";
+          reject(error);
+        }, { once: true });
+      }),
+  });
+
+  await assert.rejects(
+    () => callOpenRouterStreaming(
+      "key",
+      "active_stream_model",
+      [{ role: "user", content: "hello" }],
+      {},
+      {},
+      {
+        absoluteDeadlineAtMs: Date.now() + 30,
+        emptyStreamRetries: 0,
+        networkRetries: 0,
+      },
+      deps,
+    ),
+    /stream action deadline reached/i,
+  );
+  assert.ok(activityCount > 0, "the stream remained active before the hard deadline");
+});
+
 test("callOpenRouterNonStreaming normalizes non-Error AbortError shapes (DOMException-like)", async () => {
   const fakeAbort: { name: string; message: string } = {
     name: "AbortError",

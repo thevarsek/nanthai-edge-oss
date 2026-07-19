@@ -40,11 +40,13 @@ export const updateProgressArgs = {
   sessionId: v.id("autonomousSessions"),
   currentCycle: v.number(),
   currentParticipantIndex: v.optional(v.number()),
+  executionEpoch: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const updateParentMessageIdsArgs = {
   sessionId: v.id("autonomousSessions"),
   parentMessageIds: v.array(v.id("messages")),
+  executionEpoch: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const completeSessionArgs = {
@@ -56,8 +58,10 @@ export const completeSessionArgs = {
   ),
   stopReason: v.optional(v.string()),
   error: v.optional(v.string()),
+  executionEpoch: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const shouldContinueArgs = {
   sessionId: v.id("autonomousSessions"),
+  executionEpoch: v.optional(v.number()),
 } satisfies PropertyValidators;

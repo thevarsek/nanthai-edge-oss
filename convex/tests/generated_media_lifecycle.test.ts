@@ -229,8 +229,8 @@ test("chat deletion drains generated media and schedules bounded continuation", 
 
   await deleteChatGraph(state.ctx, "chat_1" as Id<"chats">);
 
-  assert.equal(state.deleted.filter((id) => id.startsWith("media_")).length, 25);
-  assert.equal(state.storageDeleted.length, 25);
+  assert.equal(state.deleted.filter((id) => id.startsWith("media_")).length, 2);
+  assert.equal(state.storageDeleted.length, 2);
   assert.deepEqual(state.scheduled, [{ chatId: "chat_1" }]);
   assert.equal(state.deleted.includes("chat_1"), false);
 });

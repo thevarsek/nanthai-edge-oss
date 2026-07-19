@@ -10,7 +10,8 @@ import {
   snapToSupportedResolution,
   submitVideoGenerationHandler,
 } from "../chat/actions_video_generation";
-import { completeVideoOutputUploadHandler } from "../chat/mutations_internal_handlers";
+import { completeVideoOutputUploadHandler } from "../chat/video_mutation_handlers";
+import { handleVideoOutputUpload } from "../http";
 import { isAllowedVideoUploadMimeType } from "../chat/video_output_upload_policy";
 
 const submitArgs = {
@@ -76,7 +77,7 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
     },
   }) as any;
 
-  await completeVideoOutputUploadHandler(makeCtx({
+  const accepted = await completeVideoOutputUploadHandler(makeCtx({
     _id: "upload_1",
     status: "pending",
     createdAt: Date.now(),
@@ -86,7 +87,7 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
     mimeType: "video/mp4",
     sizeBytes: 10,
   } as any);
-  await completeVideoOutputUploadHandler(makeCtx({
+  const duplicate = await completeVideoOutputUploadHandler(makeCtx({
     _id: "upload_2",
     status: "uploaded",
     createdAt: Date.now(),
@@ -96,7 +97,7 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
     mimeType: "video/mp4",
     sizeBytes: 10,
   } as any);
-  await completeVideoOutputUploadHandler(makeCtx({
+  const expired = await completeVideoOutputUploadHandler(makeCtx({
     _id: "upload_3",
     status: "pending",
     createdAt: Date.now() - 31 * 60 * 1000,
@@ -110,6 +111,9 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
   assert.equal(patches.length, 1);
   assert.equal(patches[0].storageId, "storage_1");
   assert.equal(patches[0].status, "uploaded");
+  assert.equal(accepted, true);
+  assert.equal(duplicate, false);
+  assert.equal(expired, false);
 });
 
 test("submitVideoGeneration handles missing prompts and default config failure paths", async () => {
@@ -261,6 +265,7 @@ test("pollVideoGeneration fails completed jobs when storage URL resolution fails
     storage: {
       store: async () => "storage_video",
       getUrl: async () => null,
+      delete: async () => undefined,
     },
   } as any;
 
@@ -326,11 +331,10 @@ test("pollVideoGeneration finalizes Grok uploads from tracked output upload stor
     Array.isArray(entry.videoUrls) &&
     entry.videoUrls[0] === "https://storage.example/storage_uploaded_video.mp4"
   ));
-  assert.ok(mutations.some((entry) =>
-    entry.storageId === "storage_uploaded_video" &&
-    entry.type === "video" &&
-    entry.sizeBytes === 42
-  ));
+  assert.ok(mutations.some((entry) => {
+    const media = entry.media as { storageId?: string; sizeBytes?: number } | undefined;
+    return media?.storageId === "storage_uploaded_video" && media.sizeBytes === 42;
+  }));
 });
 
 test("pollVideoGeneration waits when Grok completed before output upload arrives", async () => {
@@ -374,7 +378,7 @@ test("pollVideoGeneration waits when Grok completed before output upload arrives
   assert.equal(scheduled[0].videoJobId, "video_job_1");
 });
 
-test("pollVideoGeneration final catch still finalizes when video status patch fails", async () => {
+test("pollVideoGeneration propagates an atomic settlement failure for Workflow recovery", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -391,9 +395,26 @@ test("pollVideoGeneration final catch still finalizes when video status patch fa
     scheduler: { runAfter: async () => {} },
   } as any;
 
-  await pollVideoGenerationHandler(ctx, pollArgs);
+  await assert.rejects(pollVideoGenerationHandler(ctx, pollArgs), /patch race/);
 
   assert.ok(mutations.some((entry) => entry.videoJobId === "video_job_1" && entry.status === "failed"));
-  assert.ok(mutations.some((entry) => entry.messageId === "msg_assistant" && entry.status === "failed"));
-  assert.ok(mutations.some((entry) => entry.batchId === "batch_1" && entry.status === "failed"));
+  assert.equal(mutations.some((entry) => entry.batchId === "batch_1"), false);
+});
+
+test("video output upload deletes the losing blob when a concurrent request wins", async () => {
+  const deleted: string[] = [];
+  const ctx = {
+    runQuery: async () => ({ status: "pending", createdAt: Date.now() }),
+    runMutation: async () => false,
+    storage: {
+      store: async () => "storage_loser",
+      delete: async (storageId: string) => deleted.push(storageId),
+    },
+  } as any;
+  const response = await handleVideoOutputUpload(ctx, new Request(
+    "https://example.convex.site/video-output-upload?token=tok",
+    { method: "PUT", headers: { "Content-Type": "video/mp4" }, body: new Uint8Array([1, 2]) },
+  ));
+  assert.equal(response.status, 409);
+  assert.deepEqual(deleted, ["storage_loser"]);
 });

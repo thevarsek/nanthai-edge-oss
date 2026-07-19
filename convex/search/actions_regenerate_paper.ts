@@ -20,6 +20,7 @@ import {
   assertModelAvailable,
   assertTextGenerationModel,
 } from "../lib/openrouter_modality";
+import { enqueueRunGeneration } from "../chat/run_generation_queue";
 
 const CANCEL_CHECK_INTERVAL_EVENTS = 10;
 
@@ -149,7 +150,7 @@ export const regeneratePaperAction = internalAction({
 
       // Hand off to the full generation pipeline so the model gets skills,
       // progressive tool loading, memory, compaction, subagents, etc.
-      await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
+      await enqueueRunGeneration(ctx, {
         chatId: args.chatId,
         userMessageId,
         assistantMessageIds: [args.assistantMessageId],

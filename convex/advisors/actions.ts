@@ -98,9 +98,10 @@ export const runAdvisor = internalAction({
           forwardTranscript: true,
         },
       );
-      const writer = new AdvisorStreamWriter(ctx, run._id);
+      const writer = new AdvisorStreamWriter(ctx, run._id, leaseOwner);
       await ctx.runMutation(internal.advisors.mutations_internal.markRunConsulting, {
         runId: run._id,
+        leaseOwner,
       });
       const apiKey = await getRequiredUserOpenRouterApiKey(ctx, batch.userId);
       const result = await callOpenRouterAdvisorResponses(apiKey, {
@@ -122,7 +123,10 @@ export const runAdvisor = internalAction({
             internal.advisors.queries.getRunInternal,
             { runId: run._id },
           );
-          return !current || isTerminalAdvisorRun(current.status);
+          return !current
+            || isTerminalAdvisorRun(current.status)
+            || current.leaseOwner !== leaseOwner
+            || (current.leaseExpiresAt ?? 0) <= Date.now();
         },
       }, {
         onAdviceDelta: async (delta) => await writer.append(delta),
@@ -131,6 +135,7 @@ export const runAdvisor = internalAction({
       const finalAdvice = result.advice.trim() || writer.totalContent.trim();
       const finalization = await ctx.runMutation(internal.advisors.mutations_internal.finalizeRun, {
         runId: run._id,
+        leaseOwner,
         status: "completed",
         advice: finalAdvice,
         actualModelId: result.actualModelId,
@@ -163,6 +168,7 @@ export const runAdvisor = internalAction({
       const status = parsed.code === "ADVISOR_TIMEOUT" ? "timedOut" : "failed";
       const finalization = await ctx.runMutation(internal.advisors.mutations_internal.finalizeRun, {
         runId: current._id,
+        leaseOwner,
         status,
         errorCode: parsed.code,
         errorMessage: parsed.message,

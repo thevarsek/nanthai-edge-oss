@@ -20,6 +20,7 @@
 
 import { Sandbox } from "@vercel/sandbox";
 import { guessMimeTypeFromPath } from "./shared";
+import { SANDBOX_ACTION_TIMEOUT_MS } from "../analytics_workflows/limits";
 
 export type { Sandbox };
 
@@ -239,8 +240,12 @@ export async function runVercelSandboxCode(
   packages?: string[],
   timeoutMs?: number,
   exportPaths?: string[],
+  onSandboxReady?: (sandboxId: string) => Promise<void>,
 ): Promise<VercelSandboxExecResult> {
-  const effectiveTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const effectiveTimeout = Math.min(
+    timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    SANDBOX_ACTION_TIMEOUT_MS,
+  );
   const sandbox = await getOrCreateVercelSandbox(
     existingSandboxId,
     effectiveTimeout,
@@ -248,6 +253,14 @@ export async function runVercelSandboxCode(
   );
 
   const sandboxId = sandbox.sandboxId;
+  if (onSandboxReady) {
+    try {
+      await onSandboxReady(sandboxId);
+    } catch (error) {
+      await sandbox.stop().catch(() => undefined);
+      throw error;
+    }
+  }
   const outputSnapshot = await snapshotSandboxFiles(sandbox, AUTO_CAPTURE_DIR);
 
   // Install pip packages (idempotent — pip is fast for already-installed packages)

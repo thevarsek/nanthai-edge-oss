@@ -242,7 +242,7 @@ export async function processExtractedMemoryCandidates(
       tags: item.tags,
     }));
     counts.createdCount += 1;
-    await ctx.scheduler.runAfter(0, internal.memory.operations.computeAndStoreEmbedding, {
+    await ctx.runMutation(internal.execution.workload_queues.enqueueMemoryEmbedding, {
       memoryId,
       content,
     });

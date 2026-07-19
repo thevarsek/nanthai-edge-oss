@@ -13,6 +13,7 @@ import { resolveEffectiveIntegrations } from "../skills/resolver";
 import type { GenerationContext } from "./queries_generation_context";
 import type { ContextAttachment } from "./helpers_types";
 import { sanitizeImageGenerationConfig } from "../preferences/image_defaults";
+import { durableWorkflow } from "../execution/components";
 
 export type { RunGenerationArgs } from "./actions_run_generation_types";
 
@@ -25,6 +26,22 @@ const defaultRunGenerationHandlerDeps = {
     attachmentTriggeredReadToolNames,
     attachmentTriggeredDocumentWorkspaceToolNames,
   },
+  execution: {
+    ensureGeneration: async (ctx: ActionCtx, jobId: Id<"generationJobs">) =>
+      await ctx.runMutation(internal.execution.mutations.ensureGeneration, { jobId }),
+    dispatchParticipant: async (
+      ctx: ActionCtx,
+      participantArgs: Parameters<typeof durableWorkflow.start>[2],
+    ): Promise<string> => {
+      return await ctx.runMutation(
+        internal.chat.workflow_events.startGenerationWorkflow,
+        participantArgs,
+      ) ?? "generation-not-started";
+    },
+    cancelParticipant: async (ctx: ActionCtx, operationId: string): Promise<void> => {
+      await durableWorkflow.cancel(ctx, operationId as never);
+    },
+  },
 };
 
 export type RunGenerationHandlerDeps = typeof defaultRunGenerationHandlerDeps;
@@ -32,18 +49,41 @@ export type RunGenerationHandlerDeps = typeof defaultRunGenerationHandlerDeps;
 export function createRunGenerationHandlerDepsForTest(
   overrides: DeepPartial<RunGenerationHandlerDeps> = {},
 ): RunGenerationHandlerDeps {
-  return mergeTestDeps(defaultRunGenerationHandlerDeps, overrides);
+  const testDeps: RunGenerationHandlerDeps = {
+    ...defaultRunGenerationHandlerDeps,
+    execution: {
+      ensureGeneration: async () => null,
+      dispatchParticipant: async (ctx, participantArgs) => {
+        const scheduledFunctionId = await ctx.scheduler.runAfter(
+          0,
+          internal.chat.actions_runtime.runGenerationParticipant,
+          participantArgs,
+        );
+        await ctx.runMutation(internal.chat.mutations.setGenerationContinuationScheduled, {
+          jobId: participantArgs.participant.jobId,
+          scheduledFunctionId,
+          updateContinuation: false,
+        });
+        return String(scheduledFunctionId);
+      },
+      cancelParticipant: async (ctx, operationId) => {
+        await ctx.scheduler.cancel(operationId as Id<"_scheduled_functions">);
+      },
+    },
+  };
+  return mergeTestDeps(testDeps, overrides);
 }
 
 export async function runGenerationHandler(
   ctx: ActionCtx,
   args: RunGenerationArgs,
   deps: RunGenerationHandlerDeps = defaultRunGenerationHandlerDeps,
+  options: { deferTerminalFailureToWorkflow?: boolean } = {},
 ): Promise<void> {
   const actionStartTime = deps.now();
   const scheduledParticipants: Array<{
     jobId: Id<"generationJobs">;
-    scheduledFunctionId: Id<"_scheduled_functions">;
+    operationId: string;
   }> = [];
   // Phase 1 instrumentation: scheduler hop #1 latency (sendMessage/retry enqueue → handler entry)
   const schedulerHop1Ms =
@@ -131,6 +171,7 @@ export async function runGenerationHandler(
         turnOverrides: explicitTurnIntegrationOverrides,
         connectedIntegrationIds,
       });
+      const execution = await deps.execution.ensureGeneration(ctx, participant.jobId);
       const participantArgs = {
           chatId: args.chatId,
           userMessageId: args.userMessageId,
@@ -158,6 +199,12 @@ export async function runGenerationHandler(
           // Phase 1 instrumentation: scheduler hop #2 latency measurement
           enqueuedAt: deps.now(),
         };
+      if (execution) {
+        Object.assign(participantArgs, {
+          executionAttemptId: execution.attemptId,
+          executionFence: execution.fence,
+        });
+      }
       if (args.analytics) {
         (participantArgs as typeof participantArgs & { analytics: NonNullable<RunGenerationArgs["analytics"]> })
           .analytics = args.analytics;
@@ -174,20 +221,10 @@ export async function runGenerationHandler(
         (participantArgs as typeof participantArgs & { requireZdrOverride: boolean })
           .requireZdrOverride = true;
       }
-      const scheduledId = await ctx.scheduler.runAfter(
-        0,
-        internal.chat.actions_runtime.runGenerationParticipant,
-        participantArgs,
-      );
+      const operationId = await deps.execution.dispatchParticipant(ctx, participantArgs);
       scheduledParticipants.push({
         jobId: participant.jobId,
-        scheduledFunctionId: scheduledId,
-      });
-
-      await ctx.runMutation(internal.chat.mutations.setGenerationContinuationScheduled, {
-        jobId: participant.jobId,
-        scheduledFunctionId: scheduledId,
-        updateContinuation: false,
+        operationId,
       });
       console.info("[runGeneration] participant dispatch scheduled", {
         chatId: args.chatId,
@@ -221,9 +258,15 @@ export async function runGenerationHandler(
       durationMs,
       error: error instanceof Error ? error.message : String(error),
     });
+    if (options.deferTerminalFailureToWorkflow) {
+      // Successfully started participant Workflows are idempotently discovered
+      // on retry. Leave them running and let the outer durable Workflow retry
+      // only the coordinator work that did not finish.
+      throw error;
+    }
     for (const scheduledParticipant of scheduledParticipants) {
       try {
-        await ctx.scheduler.cancel(scheduledParticipant.scheduledFunctionId);
+        await deps.execution.cancelParticipant(ctx, scheduledParticipant.operationId);
         const cancelledParticipant = args.participants.find(
           (participant) => participant.jobId === scheduledParticipant.jobId,
         );

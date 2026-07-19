@@ -26,6 +26,8 @@ function buildCtx(options?: {
       return chainFor(table);
     },
     collect: async () => tableRows.get(table) ?? [],
+    unique: async () => (tableRows.get(table) ?? [])[0] ?? null,
+    first: async () => (tableRows.get(table) ?? [])[0] ?? null,
   });
 
   const ctx = {
@@ -104,7 +106,14 @@ test("scheduled execution steps link to prior assistant messages and reuse match
 
 test("scheduled run success and failure clear active execution state and tolerate settled cancellation", async () => {
   const success = buildCtx({
-    records: { job_success: { _id: "job_success", userId: "user_1" } },
+    records: {
+      job_success: {
+        _id: "job_success",
+        userId: "user_1",
+        activeExecutionId: "exec_success",
+      },
+      chat_1: { _id: "chat_1", userId: "user_1" },
+    },
   });
   await (recordRunSuccess as any)._handler(success.ctx, {
     jobId: "job_missing",
@@ -113,6 +122,7 @@ test("scheduled run success and failure clear active execution state and tolerat
   });
   await (recordRunSuccess as any)._handler(success.ctx, {
     jobId: "job_success",
+    executionId: "exec_success",
     chatId: "chat_1",
     startedAt: 10,
   });

@@ -20,7 +20,6 @@ function makeClaimedRunCtx(options: {
   fetchError?: unknown;
   streamEvents?: unknown[];
   finalizeResult?: Record<string, unknown> | null;
-  updateBatchResult?: boolean;
 } = {}) {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
@@ -58,9 +57,6 @@ function makeClaimedRunCtx(options: {
         mutations.push(args);
         if ("expectedStatuses" in args) return true;
         if ("runId" in args && "status" in args) return options.finalizeResult ?? null;
-        if ("batchId" in args && args.status === "waiting_to_resume") {
-          return options.updateBatchResult ?? false;
-        }
         return null;
       },
       runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -82,7 +78,7 @@ function makeClaimedRunCtx(options: {
   };
 }
 
-test("unclaimed stale streaming subagent runs are failed and resume the parent when all children are terminal", async () => {
+test("unclaimed stale legacy subagents arm durable parent resume when all children are terminal", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
 
@@ -93,7 +89,6 @@ test("unclaimed stale streaming subagent runs are failed and resume the parent w
       if (args.status === "failed") {
         return { batchId: "batch_1", allTerminal: true };
       }
-      if (args.status === "waiting_to_resume") return true;
       return undefined;
     },
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -144,8 +139,7 @@ test("unclaimed stale streaming subagent runs are failed and resume the parent w
   ));
   assert.ok(mutations.some((args) =>
     args.batchId === "batch_1"
-    && args.status === "waiting_to_resume"
-    && args.expectedCurrentStatus === "running_children"
+    && Object.keys(args).length === 1
   ));
   assert.ok(scheduled.some((entry) =>
     entry.event === "assistant_response_started"
@@ -153,7 +147,7 @@ test("unclaimed stale streaming subagent runs are failed and resume the parent w
   assert.ok(scheduled.some((entry) =>
     entry.event === "assistant_response_failed"
       && (entry.properties as Record<string, unknown>).stale_recovery === true));
-  assert.ok(scheduled.some((entry) => entry.batchId === "batch_1"));
+  assert.equal(scheduled.some((entry) => entry.batchId === "batch_1"), false);
 });
 
 test("claimed subagent run exits cleanly when the run disappears before recovery scheduling", async () => {
@@ -252,7 +246,7 @@ test("claimed subagent run stores an explicit empty-response fallback without re
   assert.equal(state.scheduled.some((args) => args.batchId === "batch_1"), false);
 });
 
-test("claimed subagent run records stream failures and respects a failed parent-resume status transition", async (t) => {
+test("claimed legacy subagent stream failures arm parent resume through the mutation boundary", async (t) => {
   t.after(() => mock.restoreAll());
   mock.method(globalThis, "fetch", async () => {
     throw "subagent transport failed";
@@ -260,7 +254,6 @@ test("claimed subagent run records stream failures and respects a failed parent-
 
   const state = makeClaimedRunCtx({
     finalizeResult: { batchId: "batch_1", allTerminal: true },
-    updateBatchResult: false,
   });
 
   await runSubagentRunHandler(state.ctx, { runId: "run_1" as any });
@@ -271,8 +264,7 @@ test("claimed subagent run records stream failures and respects a failed parent-
   assert.equal(failed?.error, "subagent transport failed");
   assert.ok(state.mutations.some((args) =>
     args.batchId === "batch_1"
-    && args.status === "waiting_to_resume"
-    && args.expectedCurrentStatus === "running_children"
+    && Object.keys(args).length === 1
   ));
   assert.equal(state.scheduled.some((args) => args.batchId === "batch_1"), false);
 });

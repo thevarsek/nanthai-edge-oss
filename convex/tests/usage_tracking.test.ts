@@ -152,6 +152,59 @@ test("storeAncillaryCostHandler stores undefined cost when model not found and c
   assert.equal(inserts[0].value.source, "memory_extraction");
 });
 
+test("storeAncillaryCostHandler deduplicates provider usage by generation and source", async () => {
+  let inserts = 0;
+  await storeAncillaryCostHandler({
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => table === "usageRecords" ? { _id: "usage_existing" } : null,
+        }),
+      }),
+      insert: async () => { inserts += 1; },
+    },
+  } as any, {
+    messageId: "msg_1" as any,
+    chatId: "chat_1" as any,
+    userId: "user_1",
+    modelId: "openai/gpt-5",
+    promptTokens: 1,
+    completionTokens: 1,
+    totalTokens: 2,
+    cost: 0.01,
+    source: "tool_web_search",
+    generationId: "generation_1",
+  });
+
+  assert.equal(inserts, 0);
+});
+
+test("storeAncillaryCostHandler deduplicates usage without a provider generation id", async () => {
+  let inserts = 0;
+  await storeAncillaryCostHandler({
+    db: {
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => table === "usageRecords" ? { _id: "usage_existing" } : null,
+        }),
+      }),
+      insert: async () => { inserts += 1; },
+    },
+  } as any, {
+    messageId: "msg_1" as any,
+    chatId: "chat_1" as any,
+    userId: "user_1",
+    modelId: "openai/gpt-5",
+    promptTokens: 1,
+    completionTokens: 1,
+    totalTokens: 2,
+    source: "tool_web_search",
+    idempotencyKey: "capture_1:tool:0:web_search",
+  });
+
+  assert.equal(inserts, 0);
+});
+
 // ---------------------------------------------------------------------------
 // storeGenerationUsageHandler — upsert must not overwrite ancillary rows
 // ---------------------------------------------------------------------------

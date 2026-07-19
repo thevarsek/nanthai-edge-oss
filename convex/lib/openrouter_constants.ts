@@ -5,7 +5,11 @@ export const X_TITLE = "NanthAi:Edge";
 // paper synthesis and architecture. Uncapped Anthropic generations can exceed
 // 3 minutes even when they eventually complete, so keep this just below
 // Convex's 10-minute action ceiling but high enough for long paper artifacts.
-export const REQUEST_TIMEOUT_MS = 590_000;
+// Provider work must stop early enough for the owning Convex action to flush
+// streaming state, persist a checkpoint, and run terminal hooks before the
+// platform's 10-minute ceiling.
+export const OPENROUTER_ACTION_BUDGET_MS = 9 * 60 * 1_000;
+export const REQUEST_TIMEOUT_MS = OPENROUTER_ACTION_BUDGET_MS;
 // Per-chunk idle timeout: abort if no SSE data arrives within this window.
 // Resets on every received chunk. Sized to match Convex's 600s action limit
 // (any stall longer than that gets killed by the platform anyway, so a
@@ -14,7 +18,7 @@ export const REQUEST_TIMEOUT_MS = 590_000;
 // between visible SSE chunks while reasoning, especially with web-search
 // plugins or deep research; 10 minutes accommodates those without masking
 // genuinely stalled connections.
-export const STREAM_REQUEST_TIMEOUT_MS = 600_000;
+export const STREAM_REQUEST_TIMEOUT_MS = OPENROUTER_ACTION_BUDGET_MS;
 export const MAX_RATE_LIMIT_RETRIES = 3;
 export const RATE_LIMIT_BACKOFF_MS = [1000, 2000, 4000];
 

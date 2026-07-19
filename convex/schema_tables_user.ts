@@ -16,6 +16,26 @@ import {
 } from "./schema_validators";
 
 export const userSchemaTables = {
+  /** Immutable write fence installed before an account purge begins. */
+  accountDeletionTombstones: defineTable({
+    userId: v.string(),
+    requestedAt: v.number(),
+    cancellationCursor: v.optional(v.string()),
+    purgeTableIndex: v.optional(v.number()),
+    purgeCursor: v.optional(v.string()),
+    totalDeleted: v.optional(v.number()),
+    purgeLeaseId: v.optional(v.string()),
+    purgeLeaseExpiresAt: v.optional(v.number()),
+    status: v.optional(v.union(
+      v.literal("cancelling"),
+      v.literal("purging"),
+      v.literal("completed"),
+    )),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status_updated", ["status", "updatedAt"]),
+
   // ── Favorites: quick-launch model/persona/group shortcuts ───────────
   favorites: defineTable({
     userId: v.string(),
@@ -33,8 +53,7 @@ export const userSchemaTables = {
     sortOrder: v.number(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  })
-    .index("by_user", ["userId", "sortOrder"]),
+  }).index("by_user", ["userId", "sortOrder"]),
 
   folders: defineTable({
     userId: v.string(),
@@ -53,12 +72,14 @@ export const userSchemaTables = {
     showReasoning: v.boolean(),
     hapticFeedback: v.boolean(),
     appearanceMode: v.string(),
-    colorTheme: v.optional(v.union(
-      v.literal("vibrant"),
-      v.literal("highContrast"),
-      v.literal("teal"),
-      v.literal("lilac"),
-    )),
+    colorTheme: v.optional(
+      v.union(
+        v.literal("vibrant"),
+        v.literal("highContrast"),
+        v.literal("teal"),
+        v.literal("lilac"),
+      ),
+    ),
     defaultTemperature: v.optional(v.number()),
     defaultMaxTokens: v.optional(v.number()),
     includeReasoning: v.optional(v.boolean()),
@@ -69,28 +90,36 @@ export const userSchemaTables = {
     pickerFilterImageGen: v.boolean(),
     pickerFilterVideoGen: v.optional(v.boolean()),
     pickerFilterTools: v.boolean(),
-    pickerSortPrimaryKey: v.optional(v.union(
-      v.literal("recommended"),
-      v.literal("coding"),
-      v.literal("research"),
-      v.literal("fast"),
-      v.literal("value"),
-      v.literal("image"),
-      v.literal("price"),
-      v.literal("context"),
-    )),
-    pickerSortPrimaryDirection: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
-    pickerSortSecondaryKey: v.optional(v.union(
-      v.literal("recommended"),
-      v.literal("coding"),
-      v.literal("research"),
-      v.literal("fast"),
-      v.literal("value"),
-      v.literal("image"),
-      v.literal("price"),
-      v.literal("context"),
-    )),
-    pickerSortSecondaryDirection: v.optional(v.union(v.literal("asc"), v.literal("desc"))),
+    pickerSortPrimaryKey: v.optional(
+      v.union(
+        v.literal("recommended"),
+        v.literal("coding"),
+        v.literal("research"),
+        v.literal("fast"),
+        v.literal("value"),
+        v.literal("image"),
+        v.literal("price"),
+        v.literal("context"),
+      ),
+    ),
+    pickerSortPrimaryDirection: v.optional(
+      v.union(v.literal("asc"), v.literal("desc")),
+    ),
+    pickerSortSecondaryKey: v.optional(
+      v.union(
+        v.literal("recommended"),
+        v.literal("coding"),
+        v.literal("research"),
+        v.literal("fast"),
+        v.literal("value"),
+        v.literal("image"),
+        v.literal("price"),
+        v.literal("context"),
+      ),
+    ),
+    pickerSortSecondaryDirection: v.optional(
+      v.union(v.literal("asc"), v.literal("desc")),
+    ),
     webSearchEnabledByDefault: v.boolean(),
     subagentsEnabledByDefault: v.optional(v.boolean()),
     chatCompletionNotificationsEnabled: v.optional(v.boolean()),
@@ -117,8 +146,8 @@ export const userSchemaTables = {
     defaultImageOutputFormat: v.optional(v.string()),
     defaultImageOutputCompression: v.optional(v.number()),
     defaultVideoAspectRatio: v.optional(v.string()), // "16:9" | "9:16" | "1:1"
-    defaultVideoDuration: v.optional(v.number()),     // seconds
-    defaultVideoResolution: v.optional(v.string()),   // "480p" | "720p" | "1080p" | "4K"
+    defaultVideoDuration: v.optional(v.number()), // seconds
+    defaultVideoResolution: v.optional(v.string()), // "480p" | "720p" | "1080p" | "4K"
     defaultVideoGenerateAudio: v.optional(v.boolean()),
     // ZDR (Zero Data Retention) — when true, all requests enforce provider.zdr
     zdrEnabled: v.optional(v.boolean()),
@@ -195,8 +224,6 @@ export const userSchemaTables = {
     .index("by_user_provider", ["userId", "provider"])
     .index("by_provider", ["provider", "updatedAt"]),
 
-
-
   purchaseEntitlements: defineTable({
     userId: v.string(),
     platform: purchasePlatform,
@@ -231,12 +258,14 @@ export const userSchemaTables = {
     turnSkillOverrides: v.optional(v.array(skillOverrideEntry)),
     turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
     webSearchEnabled: v.optional(v.boolean()), // Deprecated: use searchMode
-    searchMode: v.optional(v.union(
-      v.literal("none"),
-      v.literal("basic"),
-      v.literal("web"),
-      v.literal("research"),
-    )),
+    searchMode: v.optional(
+      v.union(
+        v.literal("none"),
+        v.literal("basic"),
+        v.literal("web"),
+        v.literal("research"),
+      ),
+    ),
     searchComplexity: v.optional(v.number()), // 1 | 2 | 3
     knowledgeBaseFileIds: v.optional(v.array(v.id("_storage"))),
     steps: v.optional(v.array(scheduledJobStep)),
@@ -252,8 +281,12 @@ export const userSchemaTables = {
 
     // State
     status: scheduledJobStatus,
+    isDeleting: v.optional(v.boolean()),
+    deletingAt: v.optional(v.number()),
     nextRunAt: v.optional(v.number()),
     scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    nextScheduledOccurrenceId: v.optional(v.string()),
+    lastScheduledOccurrenceId: v.optional(v.string()),
     lastRunAt: v.optional(v.number()),
     lastRunChatId: v.optional(v.id("chats")),
     lastRunStatus: v.optional(jobRunStatus),
@@ -261,6 +294,12 @@ export const userSchemaTables = {
     consecutiveFailures: v.optional(v.number()),
     totalRuns: v.optional(v.number()),
     activeExecutionId: v.optional(v.string()),
+    activeOccurrenceId: v.optional(v.string()),
+    activeWorkflowId: v.optional(v.string()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    executionClaimantId: v.optional(v.string()),
     activeExecutionChatId: v.optional(v.id("chats")),
     activeExecutionStartedAt: v.optional(v.number()),
     activeExecutionVariables: v.optional(v.record(v.string(), v.string())),
@@ -277,6 +316,8 @@ export const userSchemaTables = {
   })
     .index("by_user", ["userId", "status"])
     .index("by_user_next_run", ["userId", "nextRunAt"])
+    .index("by_execution_run", ["executionRunId"])
+    .index("by_active_execution", ["activeExecutionId", "updatedAt"])
     .index("by_status", ["status", "nextRunAt"]),
 
   /** Per-execution run history (retained 30 days). */
@@ -322,6 +363,8 @@ export const userSchemaTables = {
     status: v.union(
       v.literal("triggered"),
       v.literal("duplicate"),
+      // Historical audit value retained for rows written before M46 removed
+      // the API trigger cooldown. No current mutation accepts this status.
       v.literal("throttled"),
       v.literal("unauthorized"),
       v.literal("not_found"),

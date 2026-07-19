@@ -17,6 +17,7 @@ import { filterParticipantToolOptions } from "../lib/tool_capability";
 import { MODEL_IDS } from "../lib/model_constants";
 import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { isTerminalSubagentStatus } from "../subagents/shared";
+import { cancelExecutionForGenerationJob } from "../execution/cancellation";
 import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./audio_public_handlers";
 import { isAudioAttachment } from "./audio_shared";
 import { shouldRequireZdrForMemoryPrewarm } from "./memory_prewarm_zdr";
@@ -33,6 +34,7 @@ import {
   scheduleCancelledAssistantResponseAnalytics,
   SendParticipantConfig,
 } from "./mutation_send_helpers";
+import { enqueueRunGeneration } from "./run_generation_queue";
 
 const DEFAULT_CHAT_MODEL = MODEL_IDS.appDefault;
 
@@ -176,6 +178,9 @@ export async function sendMessageHandler(
       .first(),
   ]);
   if (!chat || chat.userId !== userId) {
+    throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
+  }
+  if (chat.isDeleting === true) {
     throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
   }
 
@@ -444,15 +449,11 @@ export async function sendMessageHandler(
       generationSnapshot: { kind: "generation", args: generationArgs },
     });
     if (!advisorBatchId) {
-      const runGenerationScheduledAt = await ctx.scheduler.runAfter(
-        0,
-        internal.chat.actions_runtime.runGeneration,
-        generationArgs,
-      );
+      const runGenerationWorkId = await enqueueRunGeneration(ctx, generationArgs);
       ttftLog("[generation] runGeneration enqueued", {
         chatId: args.chatId,
         userId,
-        scheduledFunctionId: runGenerationScheduledAt,
+        workId: runGenerationWorkId,
         jobIds: generationJobIds,
         participantCount: participants.length,
       });
@@ -561,6 +562,10 @@ export async function cancelGenerationHandler(
     return;
   }
 
+  await cancelExecutionForGenerationJob(ctx, {
+    jobId: job._id,
+    requestedBy: userId,
+  });
   await cancelGenerationContinuationHandler(ctx, {
     jobId: args.jobId,
   });
@@ -657,6 +662,11 @@ export async function cancelActiveGenerationHandler(
     .collect();
 
   for (const job of queuedJobs) {
+    await cancelExecutionForGenerationJob(ctx, {
+      jobId: job._id,
+      requestedBy: userId,
+      now,
+    });
     await cancelGenerationContinuationHandler(ctx, {
       jobId: job._id,
     });
@@ -709,6 +719,11 @@ export async function cancelActiveGenerationHandler(
     .collect();
 
   for (const job of streamingJobs) {
+    await cancelExecutionForGenerationJob(ctx, {
+      jobId: job._id,
+      requestedBy: userId,
+      now,
+    });
     await cancelGenerationContinuationHandler(ctx, {
       jobId: job._id,
     });

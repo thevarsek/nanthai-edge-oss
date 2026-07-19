@@ -4,10 +4,9 @@ import { getFunctionName } from "convex/server";
 import { scheduleDeferredPresentationWorkflow } from "../presentations/deferred_workflow_scheduler";
 import {
   type DeferredPresentationRepairArgs,
-  expireDeferredPresentationRef,
   presentationWorkflowArgs,
-  runDeferredPresentationPlanRef,
 } from "../presentations/deferred_workflow_refs";
+import { startPresentationWorkflowRef } from "../presentations/presentation_workflow_refs";
 import {
   completeAndResume,
   failAndResume,
@@ -22,9 +21,8 @@ test("deferred presentations reserve every remaining model phase for local layou
   assert.equal(MAX_PRESENTATION_GENERATION_REPAIR_ATTEMPTS + 2, MAX_PRESENTATION_WORKFLOW_MODEL_PHASES);
 });
 
-test("deferred presentation scheduling persists the checkpoint and starts fresh phase actions", async () => {
-  const mutations: Array<Record<string, unknown>> = [];
-  const scheduled: Array<{ delay: number; name: string; args: Record<string, unknown> }> = [];
+test("deferred presentation scheduling persists the checkpoint and starts one durable Workflow", async () => {
+  const mutations: Array<{ name: string; args: Record<string, unknown> }> = [];
   const checkpoint = {
     participant: { modelId: "openai/gpt-5", messageId: "message_1", jobId: "job_1" },
     group: {
@@ -50,7 +48,7 @@ test("deferred presentation scheduling persists the checkpoint and starts fresh 
     loadedSkills: [],
     compactionCount: 0,
     continuationCount: 1,
-  } as never;
+  };
   const args = {
     chatId: "chat_1",
     userMessageId: "user_message_1",
@@ -63,31 +61,35 @@ test("deferred presentation scheduling persists the checkpoint and starts fresh 
     effectiveIntegrations: [],
     isPro: true,
     allowSubagents: false,
+    workflowManaged: true,
+    workflowResumeEventId: "event_1",
   } as never;
   const ctx = {
-    runMutation: async (_ref: unknown, mutationArgs: Record<string, unknown>) => {
-      mutations.push(mutationArgs);
-    },
-    scheduler: {
-      runAfter: async (delay: number, ref: unknown, phaseArgs: Record<string, unknown>) => {
-        scheduled.push({ delay, name: getFunctionName(ref as never), args: phaseArgs });
-        return `scheduled_${scheduled.length}`;
-      },
+    runMutation: async (ref: unknown, mutationArgs: Record<string, unknown>) => {
+      mutations.push({ name: getFunctionName(ref as never), args: mutationArgs });
+      return "workflow_1";
     },
   } as never;
 
-  await scheduleDeferredPresentationWorkflow(ctx, args, checkpoint, {
+  await scheduleDeferredPresentationWorkflow(ctx, args, checkpoint as never, {
     projectId: "project_1" as never,
     toolCallId: "call_1",
   });
 
-  assert.equal(mutations[0]?.jobId, "job_1");
-  assert.equal(mutations[0]?.checkpoint, checkpoint);
-  assert.equal(scheduled[0]?.name, getFunctionName(runDeferredPresentationPlanRef));
-  assert.equal(scheduled[0]?.delay, 0);
-  assert.equal(scheduled[1]?.name, getFunctionName(expireDeferredPresentationRef));
-  assert.ok((scheduled[1]?.delay ?? 0) > 30 * 60 * 1_000);
-  assert.equal(mutations[1]?.scheduledFunctionId, "scheduled_1");
+  assert.equal(mutations[0]?.args.jobId, "job_1");
+  assert.deepEqual(mutations[0]?.args.checkpoint, {
+    ...checkpoint,
+    deferredResumeEventId: "event_1",
+    roundKey: "event_1",
+    deferredOwnership: {
+      kind: "presentation",
+      projectId: "project_1",
+      toolCallId: "call_1",
+      modelId: "openai/gpt-5",
+    },
+  });
+  assert.equal(mutations[1]?.name, getFunctionName(startPresentationWorkflowRef));
+  assert.equal(mutations[1]?.args.workflowResumeEventId, "event_1");
 });
 
 test("deferred presentation repair transitions strip repair-only action fields", () => {
@@ -144,6 +146,7 @@ test("deferred presentation terminalizes when its parent continuation disappeare
           status: "streaming",
         };
       }
+      if (name.includes("getProjectInternal")) return null;
       throw new Error(`Unexpected query ${name}`);
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -186,4 +189,80 @@ test("deferred presentation terminalizes when its parent continuation disappeare
     presentationProjectId: "project_1",
     presentationRevision: 4,
   }]);
+});
+
+test("Workflow-owned presentation completion updates the deferred tool before signaling", async () => {
+  const mutations: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const ctx = {
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as never);
+      if (name.includes("getGenerationContinuationInternal")) {
+        return { userId: "user_1" };
+      }
+      if (name.includes("getGenerationJobInternal")) {
+        return {
+          _id: "job_1",
+          userId: "user_1",
+          status: "streaming",
+        };
+      }
+      if (name.includes("getProjectInternal")) {
+        return { _id: "project_1", parentResumeEventId: "event_rebound" };
+      }
+      throw new Error(`Unexpected query ${name}`);
+    },
+    runMutation: async (ref: unknown, args: Record<string, unknown>) => {
+      mutations.push({ name: getFunctionName(ref as never), args });
+      return "resumed";
+    },
+  } as never;
+
+  await completeAndResume(ctx, {
+    projectId: "project_1",
+    userId: "user_1",
+    jobId: "job_1",
+    toolCallId: "call_1",
+    modelId: "openai/gpt-5",
+    workflowResumeEventId: "event_1",
+  } as never, {
+    success: true,
+    data: { presentationProjectId: "project_1", presentationRevision: 4 },
+  });
+
+  assert.equal(mutations.length, 1);
+  assert.equal(mutations[0]?.name, "chat/workflow_events:completeDeferredTool");
+  assert.equal(mutations[0]?.args.eventId, "event_rebound");
+  assert.equal(mutations[0]?.args.toolCallId, "call_1");
+  assert.ok(!("isError" in (mutations[0]?.args ?? {})));
+});
+
+test("Workflow-owned presentation completion rejects a missing parent checkpoint", async () => {
+  const ctx = {
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as never);
+      if (name.includes("getGenerationContinuationInternal")) {
+        return { userId: "user_1" };
+      }
+      if (name.includes("getGenerationJobInternal")) {
+        return { _id: "job_1", userId: "user_1", status: "streaming" };
+      }
+      if (name.includes("getProjectInternal")) {
+        return { _id: "project_1", parentResumeEventId: "event_rebound" };
+      }
+      throw new Error(`Unexpected query ${name}`);
+    },
+    runMutation: async () => "missing",
+  } as never;
+
+  await assert.rejects(completeAndResume(ctx, {
+    projectId: "project_1",
+    userId: "user_1",
+    jobId: "job_1",
+    toolCallId: "call_1",
+    modelId: "openai/gpt-5",
+    workflowResumeEventId: "event_old",
+  } as never, {
+    success: true,
+    data: { presentationProjectId: "project_1", presentationRevision: 4 },
+  }), /PRESENTATION_PARENT_CHECKPOINT_NOT_FOUND/);
 });

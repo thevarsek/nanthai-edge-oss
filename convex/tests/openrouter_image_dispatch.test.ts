@@ -11,14 +11,18 @@ import { isGenerationCancelledError } from "../chat/generation_helpers";
 test("dedicated image action persists images and finalizes the shared message", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<{ args: Record<string, unknown> }> = [];
+  let providerDispatchCount = 0;
   try {
-    globalThis.fetch = (async () => new Response(JSON.stringify({
-      data: [
-        { b64_json: "AAEC", media_type: "image/png" },
-        { b64_json: "AwQF", media_type: "image/png" },
-      ],
-      usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
-    }), { status: 200 })) as typeof fetch;
+    globalThis.fetch = (async () => {
+      assert.equal(providerDispatchCount, 1, "journal transition precedes provider POST");
+      return new Response(JSON.stringify({
+        data: [
+          { b64_json: "AAEC", media_type: "image/png" },
+          { b64_json: "AwQF", media_type: "image/png" },
+        ],
+        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 },
+      }), { status: 200 });
+    }) as typeof fetch;
     let storedCount = 0;
     const ctx = {
       storage: {
@@ -57,6 +61,9 @@ test("dedicated image action persists images and finalizes the shared message", 
       apiKey: "test-key",
       supportedParameters: { n: { type: "range", min: 1, max: 1 } },
       requireZdr: false,
+      onProviderDispatch: async () => {
+        providerDispatchCount += 1;
+      },
     });
 
     const publication = mutations.find(({ args }) => Array.isArray(args.images))?.args;
@@ -74,6 +81,7 @@ test("dedicated image action persists images and finalizes the shared message", 
       },
     ]);
     assert.equal(generated.imageCount, 1);
+    assert.equal(providerDispatchCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

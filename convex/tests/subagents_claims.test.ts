@@ -19,6 +19,7 @@ test("claimRunForExecution only claims queued work once", async () => {
         Object.assign(run, value);
       },
     },
+    scheduler: { runAfter: async () => "scheduled_1" },
   } as any;
 
   const first = await (claimRunForExecution as any)._handler(ctx, {
@@ -50,6 +51,7 @@ test("claimBatchForResume only claims waiting batches once", async () => {
         Object.assign(batch, value);
       },
     },
+    scheduler: { runAfter: async () => "scheduled_1" },
   } as any;
 
   const first = await (claimBatchForResume as any)._handler(ctx, {
@@ -93,19 +95,26 @@ test("claimRunForExecution does not reclaim a stale streaming lease", async () =
   assert.equal(patches.length, 0);
 });
 
-test("claimBatchForResume does not reclaim a stale resuming lease", async () => {
+test("claimBatchForResume does not reclaim a stale resuming lease and re-arms recovery", async () => {
   const batch = {
     _id: "batch_1",
     status: "resuming",
     updatedAt: Date.now() - SUBAGENT_RECOVERY_LEASE_MS - 1_000,
   };
   const patches: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
   const ctx = {
     db: {
       get: async () => batch,
       patch: async (_id: string, value: Record<string, unknown>) => {
         patches.push(value);
         Object.assign(batch, value);
+      },
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "scheduled_1";
       },
     },
   } as any;
@@ -117,6 +126,7 @@ test("claimBatchForResume does not reclaim a stale resuming lease", async () => 
   assert.equal(claimed, false);
   assert.equal(batch.status, "resuming");
   assert.equal(patches.length, 0);
+  assert.deepEqual(scheduled, [{ batchId: "batch_1", expectedGateAt: undefined }]);
 });
 
 test("finalizeRun preserves stored tool metadata when new values are omitted", async () => {

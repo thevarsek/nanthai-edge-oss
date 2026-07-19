@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ConvexError } from "convex/values";
+import { getFunctionName } from "convex/server";
 import {
   deleteConnection as deleteGoogleConnection,
   deleteDriveFileGrantsForUser,
@@ -306,7 +307,12 @@ test("getDrivePickerAccessToken refreshes expired Drive tokens before returning 
 
     const result = await (getDrivePickerAccessToken as any)._handler({
       auth: buildAuth(),
-      runQuery: async () => queryResults.shift() ?? null,
+      runQuery: async (fn: unknown) => {
+        if (getFunctionName(fn as never) === "account/deletion_state:isAccountDeletionStarted") {
+          return false;
+        }
+        return queryResults.shift() ?? null;
+      },
       runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
         mutations.push(args);
       },

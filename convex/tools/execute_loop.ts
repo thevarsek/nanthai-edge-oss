@@ -279,7 +279,12 @@ export async function runToolCallLoop(
     const guardedExecution = await executeWithLoadedSkillGuard(
       currentRegistry,
       currentResult.toolCalls,
-      options.toolCtx,
+      {
+        ...options.toolCtx,
+        operationScope: options.toolCtx.operationScope
+          ? `${options.toolCtx.operationScope}:round:${round}`
+          : JSON.stringify(conversationMessages),
+      },
       loadedSkillSlugs,
     );
     const results = guardedExecution.results;

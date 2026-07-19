@@ -23,6 +23,7 @@ function normalizeTasks(value: unknown): Array<{ title: string; prompt: string }
 
 export const spawnSubagents = createTool({
   name: "spawn_subagents",
+  mayDefer: true,
   description:
     "Delegate up to 3 focused sub-tasks to parallel helper agents that share your current model, persona, and tools. " +
     "Use this when the work can be split into independent research, drafting, review, or comparison tasks. " +

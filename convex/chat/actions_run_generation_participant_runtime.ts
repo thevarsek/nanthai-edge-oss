@@ -1,7 +1,6 @@
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { ttftLog } from "../lib/generation_log";
 import { prepareGenerationContext } from "./actions_run_generation_context";
@@ -14,6 +13,7 @@ import {
   RunGenerationParticipantArgs,
   TERMINAL_GENERATION_JOB_STATUSES,
 } from "./generation_continuation_shared";
+import { claimParticipantExecution } from "./actions_execution_lease";
 import { buildRuntimeBaseToolRegistry } from "../tools/progressive_registry_runtime";
 import {
   hasNodeRequiredDirectTools,
@@ -33,6 +33,11 @@ import {
   markGenerationJobStreamingIfActive,
 } from "./generation_start_guard";
 import { dedicatedImageGenerationAnalytics } from "./image_generation_analytics";
+import {
+  generationBudgetStartedAt,
+  resolveGenerationProviderDeadline,
+} from "./generation_deadline";
+import { transitionGenerationRound } from "./generation_round_actions";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -117,6 +122,9 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     analyticsSource: args.analyticsSource,
     subagentBatchId: args.subagentBatchId,
     drivePickerBatchId: args.drivePickerBatchId,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
+    workflowResumeEventId: args.workflowResumeEventId,
   };
   if (args.requireZdrOverride === true) {
     generationArgs.requireZdrOverride = true;
@@ -142,6 +150,8 @@ async function finalizeParticipantSetupFailure(
       status: "failed",
       error: errorMessage,
     }),
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 }
 
@@ -201,6 +211,14 @@ export async function runGenerationParticipantRuntimeHandler(
   // Phase 1 TTFT instrumentation: scheduler hop #2 latency
   // (coordinator dispatch → participant runtime handler entry)
   const participantStartedAt = Date.now();
+  const providerDeadlineAt = resolveGenerationProviderDeadline(
+    args.providerDeadlineAt,
+    participantStartedAt,
+  );
+  const actionStartTime = generationBudgetStartedAt(
+    providerDeadlineAt,
+    participantStartedAt,
+  );
   const schedulerHop2Ms =
     typeof args.enqueuedAt === "number" ? participantStartedAt - args.enqueuedAt : null;
   console.info("[generationParticipant] started", {
@@ -233,7 +251,10 @@ export async function runGenerationParticipantRuntimeHandler(
     hasImageGeneration: caps?.hasImageGeneration === true,
   })) {
     try {
-      await ctx.runAction(internal.chat.actions_node.runGenerationParticipantNode, args);
+      await ctx.runAction(internal.chat.actions_node.runGenerationParticipantNode, {
+        ...args,
+        providerDeadlineAt,
+      });
     } catch (error) {
       const nodeJob = await ctx.runQuery(
         internal.chat.queries.getGenerationJobInternal,
@@ -248,14 +269,23 @@ export async function runGenerationParticipantRuntimeHandler(
     return;
   }
 
-  const continuationState = args.resumeExpected
-    ? await ctx.runMutation(internal.chat.mutations.claimGenerationContinuation, {
-        jobId: args.participant.jobId,
+  const claimedArgs = await claimParticipantExecution(ctx, args);
+  if (!claimedArgs) return;
+
+  const continuationState = claimedArgs.resumeExpected
+      ? await ctx.runMutation(internal.chat.mutations.claimGenerationContinuation, {
+        jobId: claimedArgs.participant.jobId,
+        ...(claimedArgs.executionAttemptId && claimedArgs.executionFence !== undefined
+          ? {
+              executionAttemptId: claimedArgs.executionAttemptId,
+              executionFence: claimedArgs.executionFence,
+            }
+          : {}),
       })
     : null;
 
   if (args.resumeExpected && !continuationState) {
-    return;
+    throw new Error("GENERATION_CONTINUATION_NOT_CLAIMABLE");
   }
 
   const effectiveArgs: RunGenerationParticipantArgs = continuationState
@@ -276,7 +306,8 @@ export async function runGenerationParticipantRuntimeHandler(
         disableTools: continuationState.group.disableTools,
         searchSessionId: continuationState.group.searchSessionId,
         subagentBatchId: continuationState.group.subagentBatchId,
-        drivePickerBatchId: continuationState.group.drivePickerBatchId,
+        drivePickerBatchId: claimedArgs.drivePickerBatchId
+          ?? continuationState.group.drivePickerBatchId,
         chatSkillOverrides: continuationState.group.chatSkillOverrides,
         chatIntegrationOverrides: continuationState.group.chatIntegrationOverrides,
         personaSkillOverrides: continuationState.group.personaSkillOverrides,
@@ -284,9 +315,13 @@ export async function runGenerationParticipantRuntimeHandler(
         integrationDefaults: continuationState.group.integrationDefaults,
         analytics: continuationState.group.analytics,
         analyticsSource: continuationState.group.analyticsSource,
+        executionAttemptId: claimedArgs.executionAttemptId,
+        executionFence: claimedArgs.executionFence,
+        workflowManaged: claimedArgs.workflowManaged,
+        workflowResumeEventId: claimedArgs.workflowResumeEventId,
         resumeExpected: true,
       }
-    : args;
+    : claimedArgs;
   const imageTerminalAnalytics = caps?.hasImageGeneration === true
     ? dedicatedImageGenerationAnalytics({
         config: effectiveArgs.imageConfig,
@@ -349,7 +384,6 @@ export async function runGenerationParticipantRuntimeHandler(
     });
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, effectiveArgs.userId);
     const continuationCount = continuationState?.continuationCount ?? 0;
-    const forceToolChoiceNone = continuationCount >= MAX_TOOL_ROUNDS;
 
     let allMessages: GenerationContext["allMessages"] = [];
     let memoryContext: string | undefined;
@@ -416,8 +450,10 @@ export async function runGenerationParticipantRuntimeHandler(
       initialCompactionCount: continuationState?.compactionCount ?? 0,
       restoredActiveProfiles: continuationState?.activeProfiles,
       restoredLoadedSkills: continuationState?.loadedSkills,
-      forceToolChoiceNone,
-      actionStartTime: Date.now(),
+      forceToolChoiceNone: false,
+      actionStartTime,
+      providerDeadlineAt,
+      onProviderDispatch: async () => await transitionGenerationRound(ctx, effectiveArgs, "dispatched"),
       v8RuntimeHandoffGuards: true,
       streamingMessageId,
       preResolvedOverrides: {
@@ -431,16 +467,15 @@ export async function runGenerationParticipantRuntimeHandler(
         // so they are retried on the Node continuation path.
         patchDeferredProgressiveToolErrors(toolCalls, results);
       },
-      continuationHandoff: forceToolChoiceNone
-        ? undefined
-        : {
-            maxToolRoundsPerInvocation: 2,
+      continuationHandoff: {
+            maxToolRoundsPerInvocation: 1,
             continuationCount,
             onHandoff: async (checkpoint) => {
               await scheduleGenerationContinuation(ctx, effectiveArgs, checkpoint);
             },
           },
     });
+    await transitionGenerationRound(ctx, effectiveArgs, "committed");
     const generationDurationMs = Date.now() - preflightStartedAt;
 
     if (!result.deferredForSubagents && !result.continued) {

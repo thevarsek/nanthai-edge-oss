@@ -31,10 +31,24 @@ import {
   createScheduledTriggerToken,
   sha256Hex,
 } from "./trigger_auth";
+import {
+  apiOccurrenceId,
+  manualOccurrenceId,
+  scheduledOccurrenceId,
+} from "./occurrence";
 
 const GOOGLE_SCHEDULED_JOB_INTEGRATION_IDS = new Set(["gmail", "drive", "calendar"]);
 const GOOGLE_SCHEDULED_JOB_MODEL_MESSAGE =
   "Choose an OpenAI, Anthropic, or Google model with ZDR support to keep Google integrations enabled.";
+
+function assertScheduledJobNotDeleting(job: Doc<"scheduledJobs">): void {
+  if (job.isDeleting) {
+    throw new ConvexError({
+      code: "NOT_FOUND" as const,
+      message: "Job not found or unauthorized",
+    });
+  }
+}
 
 function recurrenceEquals(left: Recurrence, right: Recurrence): boolean {
   if (left.type !== right.type) return false;
@@ -362,14 +376,17 @@ async function buildScheduledJobUpdatePatch(
     updates.nextRunAt = effectiveStatus === "active" ? nextRunAt : undefined;
 
     if (effectiveStatus === "active" && nextRunAt !== undefined) {
+      const occurrenceId = scheduledOccurrenceId(args.jobId, nextRunAt);
       const scheduledId = await ctx.scheduler.runAt(
         nextRunAt,
         internal.scheduledJobs.actions.executeScheduledJob,
-        { jobId: args.jobId },
+        { jobId: args.jobId, occurrenceId },
       );
       updates.scheduledFunctionId = scheduledId;
+      updates.nextScheduledOccurrenceId = occurrenceId;
     } else {
       updates.scheduledFunctionId = undefined;
+      updates.nextScheduledOccurrenceId = undefined;
     }
   }
 
@@ -470,12 +487,16 @@ export const createJob = mutation({
 
     // Schedule first execution (skip for manual jobs)
     if (nextRunAt !== undefined) {
+      const occurrenceId = scheduledOccurrenceId(jobId, nextRunAt);
       const scheduledId = await ctx.scheduler.runAt(
         nextRunAt,
         internal.scheduledJobs.actions.executeScheduledJob,
-        { jobId },
+        { jobId, occurrenceId },
       );
-      await ctx.db.patch(jobId, { scheduledFunctionId: scheduledId });
+      await ctx.db.patch(jobId, {
+        scheduledFunctionId: scheduledId,
+        nextScheduledOccurrenceId: occurrenceId,
+      });
     }
 
     return jobId;
@@ -516,6 +537,7 @@ export const updateJob = mutation({
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
     const updates = await buildScheduledJobUpdatePatch(ctx, {
       ...args,
       userId,
@@ -529,11 +551,11 @@ export const pauseJob = mutation({
   args: { jobId: v.id("scheduledJobs") },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
     if (job.status === "paused") return;
 
     // Cancel pending scheduled function
@@ -564,6 +586,7 @@ export const resumeJob = mutation({
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
     if (job.status === "active") return;
 
     const recurrence = job.recurrence as Recurrence;
@@ -578,14 +601,17 @@ export const resumeJob = mutation({
     };
 
     if (nextRunAt !== undefined) {
+      const occurrenceId = scheduledOccurrenceId(args.jobId, nextRunAt);
       const scheduledId = await ctx.scheduler.runAt(
         nextRunAt,
         internal.scheduledJobs.actions.executeScheduledJob,
-        { jobId: args.jobId },
+        { jobId: args.jobId, occurrenceId },
       );
       updates.scheduledFunctionId = scheduledId;
+      updates.nextScheduledOccurrenceId = occurrenceId;
     } else {
       updates.scheduledFunctionId = undefined;
+      updates.nextScheduledOccurrenceId = undefined;
     }
 
     await ctx.db.patch(args.jobId, updates);
@@ -597,11 +623,11 @@ export const deleteJob = mutation({
   args: { jobId: v.id("scheduledJobs") },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    await requirePro(ctx, userId);
     const job = await ctx.db.get(args.jobId);
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    if (job.isDeleting) return;
 
     // Cancel pending scheduled function
     if (job.scheduledFunctionId) {
@@ -612,19 +638,20 @@ export const deleteJob = mutation({
       }
     }
 
-    // Delete run history in batches to stay within transaction limits
-    let batch;
-    do {
-      batch = await ctx.db
-        .query("jobRuns")
-        .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
-        .take(100);
-      for (const run of batch) {
-        await ctx.db.delete(run._id);
-      }
-    } while (batch.length === 100);
-
-    await ctx.db.delete(args.jobId);
+    const now = Date.now();
+    await ctx.db.patch(job._id, {
+      status: "paused",
+      isDeleting: true,
+      deletingAt: job.deletingAt ?? now,
+      nextRunAt: undefined,
+      scheduledFunctionId: undefined,
+      updatedAt: now,
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.execution.teardown.cancelScheduledJobAndDelete,
+      { jobId: job._id, userId },
+    );
   },
 });
 
@@ -638,6 +665,7 @@ export const runJobNow = mutation({
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
 
     // Block paused manual jobs from running (for non-manual jobs, allow one-off)
     // Actually per spec: "Paused manual jobs cannot be run via Run Now"
@@ -647,12 +675,14 @@ export const runJobNow = mutation({
     }
 
     // Fire immediately
+    const occurrenceId = manualOccurrenceId();
     await ctx.scheduler.runAfter(
       0,
       internal.scheduledJobs.actions.executeScheduledJob,
       {
         jobId: args.jobId,
         invocationSource: "manual",
+        occurrenceId,
       },
     );
 
@@ -713,6 +743,7 @@ export const createJobTriggerToken = mutation({
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
 
     return await insertScheduledJobTriggerToken(ctx, {
       userId,
@@ -736,6 +767,7 @@ export const rotateJobTriggerToken = mutation({
     if (!job || job.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
 
     const activeTokens = await ctx.db
       .query("scheduledJobTriggerTokens")
@@ -919,12 +951,16 @@ export const createJobInternal = internalMutation({
 
     // Schedule first execution (skip for manual jobs)
     if (nextRunAt !== undefined) {
+      const occurrenceId = scheduledOccurrenceId(jobId, nextRunAt);
       const scheduledId = await ctx.scheduler.runAt(
         nextRunAt,
         internal.scheduledJobs.actions.executeScheduledJob,
-        { jobId },
+        { jobId, occurrenceId },
       );
-      await ctx.db.patch(jobId, { scheduledFunctionId: scheduledId });
+      await ctx.db.patch(jobId, {
+        scheduledFunctionId: scheduledId,
+        nextScheduledOccurrenceId: occurrenceId,
+      });
     }
 
     return jobId;
@@ -965,6 +1001,7 @@ export const updateJobInternal = internalMutation({
     if (!job || job.userId !== args.userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    assertScheduledJobNotDeleting(job);
     const updates = await buildScheduledJobUpdatePatch(ctx, args, job);
     await ctx.db.patch(args.jobId, updates);
   },
@@ -981,6 +1018,7 @@ export const deleteJobInternal = internalMutation({
     if (!job || job.userId !== args.userId) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
     }
+    if (job.isDeleting) return;
 
     // Cancel pending scheduled function
     if (job.scheduledFunctionId) {
@@ -991,19 +1029,58 @@ export const deleteJobInternal = internalMutation({
       }
     }
 
-    // Delete run history in batches to stay within transaction limits
-    let batch;
-    do {
-      batch = await ctx.db
+    const now = Date.now();
+    await ctx.db.patch(job._id, {
+      status: "paused",
+      isDeleting: true,
+      deletingAt: job.deletingAt ?? now,
+      nextRunAt: undefined,
+      scheduledFunctionId: undefined,
+      updatedAt: now,
+    });
+    await ctx.scheduler.runAfter(
+      0,
+      internal.execution.teardown.cancelScheduledJobAndDelete,
+      args,
+    );
+  },
+});
+
+export const deleteJobBatchInternal = internalMutation({
+  args: { jobId: v.id("scheduledJobs"), userId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.userId !== args.userId) return true;
+    const [runs, tokens, invocations] = await Promise.all([
+      ctx.db
         .query("jobRuns")
         .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
-        .take(100);
-      for (const run of batch) {
-        await ctx.db.delete(run._id);
+        .take(100),
+      ctx.db
+        .query("scheduledJobTriggerTokens")
+        .withIndex("by_job", (q) => q.eq("jobId", args.jobId))
+        .take(100),
+      ctx.db
+        .query("scheduledJobApiInvocations")
+        .withIndex("by_job_created", (q) => q.eq("jobId", args.jobId))
+        .take(100),
+    ]);
+    for (const invocation of invocations) {
+      if (invocation.scheduledFunctionId) {
+        await ctx.scheduler.cancel(invocation.scheduledFunctionId).catch(() => undefined);
       }
-    } while (batch.length === 100);
-
-    await ctx.db.delete(args.jobId);
+    }
+    await Promise.all([
+      ...runs.map((run) => ctx.db.delete(run._id)),
+      ...tokens.map((token) => ctx.db.delete(token._id)),
+      ...invocations.map((invocation) => ctx.db.delete(invocation._id)),
+    ]);
+    if (runs.length === 100 || tokens.length === 100 || invocations.length === 100) {
+      return false;
+    }
+    await ctx.db.delete(job._id);
+    return true;
   },
 });
 
@@ -1022,8 +1099,29 @@ export const createJobChat = internalMutation({
     if (!job) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Scheduled job not found" });
     }
+    assertScheduledJobNotDeleting(job);
     if (job.activeExecutionId !== args.executionId) {
       throw new ConvexError({ code: "EXECUTION_STALE" as const, message: "Scheduled job execution no longer active" });
+    }
+
+    if (job.activeExecutionChatId) {
+      const existingChat = await ctx.db.get(job.activeExecutionChatId);
+      if (
+        existingChat
+        && existingChat.userId === args.userId
+        && existingChat.sourceJobId === args.sourceJobId
+      ) {
+        if (job.executionRunId) {
+          const executionRun = await ctx.db.get(job.executionRunId);
+          if (executionRun && executionRun.chatId !== existingChat._id) {
+            await ctx.db.patch(executionRun._id, {
+              chatId: existingChat._id,
+              updatedAt: Date.now(),
+            });
+          }
+        }
+        return existingChat._id;
+      }
     }
 
     const now = Date.now();
@@ -1076,6 +1174,12 @@ export const createJobChat = internalMutation({
       lastRunChatId: chatId,
       updatedAt: now,
     });
+    if (job.executionRunId) {
+      const executionRun = await ctx.db.get(job.executionRunId);
+      if (executionRun) {
+        await ctx.db.patch(executionRun._id, { chatId, updatedAt: now });
+      }
+    }
 
     return chatId;
   },
@@ -1199,6 +1303,8 @@ export const beginExecution = internalMutation({
   args: {
     jobId: v.id("scheduledJobs"),
     executionId: v.string(),
+    workflowId: v.string(),
+    occurrenceId: v.optional(v.string()),
     startedAt: v.number(),
     stepCount: v.number(),
     templateVariables: v.optional(v.record(v.string(), v.string())),
@@ -1210,12 +1316,22 @@ export const beginExecution = internalMutation({
       return { started: false };
     }
 
+    if (job.isDeleting) return { started: false };
+
+    const occurrenceId = args.occurrenceId ?? args.executionId;
     if (job.activeExecutionId) {
-      return { started: false };
+      return {
+        started:
+          job.activeExecutionId === args.executionId
+          && job.activeWorkflowId === args.workflowId
+          && (job.activeOccurrenceId ?? job.activeExecutionId) === occurrenceId,
+      };
     }
 
     await ctx.db.patch(args.jobId, {
       activeExecutionId: args.executionId,
+      activeOccurrenceId: occurrenceId,
+      activeWorkflowId: args.workflowId,
       activeExecutionChatId: undefined,
       activeExecutionStartedAt: args.startedAt,
       activeExecutionVariables: args.templateVariables ?? undefined,
@@ -1261,6 +1377,7 @@ export const createScheduledExecutionTurn = internalMutation({
     if (!job) {
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Scheduled job not found" });
     }
+    assertScheduledJobNotDeleting(job);
     if (job.activeExecutionId !== args.executionId) {
       throw new ConvexError({ code: "EXECUTION_STALE" as const, message: "Scheduled job execution no longer active" });
     }
@@ -1385,6 +1502,13 @@ export const createSearchSession = internalMutation({
   },
   returns: v.id("searchSessions"),
   handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("searchSessions")
+      .withIndex("by_message", (query) =>
+        query.eq("assistantMessageId", args.assistantMessageId),
+      )
+      .first();
+    if (existing && existing.mode === args.mode) return existing._id;
     const now = Date.now();
     const complexity = Math.max(1, Math.min(3, Math.round(args.complexity)));
 
@@ -1413,13 +1537,25 @@ export const createSearchSession = internalMutation({
 export const recordRunSuccess = internalMutation({
   args: {
     jobId: v.id("scheduledJobs"),
+    executionId: v.string(),
     chatId: v.id("chats"),
     startedAt: v.number(),
   },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const now = Date.now();
     const job = await ctx.db.get(args.jobId);
-    if (!job) return;
+    if (!job || job.activeExecutionId !== args.executionId) return false;
+    const [chat, tombstone] = await Promise.all([
+      ctx.db.get(args.chatId),
+      ctx.db
+        .query("accountDeletionTombstones")
+        .withIndex("by_user", (q) => q.eq("userId", job.userId))
+        .unique(),
+    ]);
+    if (!chat || chat.userId !== job.userId || chat.isDeleting === true || tombstone) {
+      return false;
+    }
 
     // Insert run record
     await ctx.db.insert("jobRuns", {
@@ -1441,6 +1577,8 @@ export const recordRunSuccess = internalMutation({
       consecutiveFailures: 0,
       totalRuns: (job.totalRuns ?? 0) + 1,
       activeExecutionId: undefined,
+      activeOccurrenceId: undefined,
+      activeWorkflowId: undefined,
       activeExecutionChatId: undefined,
       activeExecutionStartedAt: undefined,
       activeExecutionVariables: undefined,
@@ -1451,6 +1589,7 @@ export const recordRunSuccess = internalMutation({
       activeGenerationJobId: undefined,
       updatedAt: now,
     });
+    return true;
   },
 });
 
@@ -1492,6 +1631,8 @@ export const recordRunFailure = internalMutation({
       status: args.autoPause ? "error" : job.status,
       totalRuns: (job.totalRuns ?? 0) + 1,
       activeExecutionId: undefined,
+      activeOccurrenceId: undefined,
+      activeWorkflowId: undefined,
       activeExecutionChatId: undefined,
       activeExecutionStartedAt: undefined,
       activeExecutionVariables: undefined,
@@ -1513,6 +1654,7 @@ export const recordRunFailure = internalMutation({
       }
       patch.nextRunAt = undefined;
       patch.scheduledFunctionId = undefined;
+      patch.nextScheduledOccurrenceId = undefined;
     }
 
     await ctx.db.patch(args.jobId, patch);
@@ -1525,11 +1667,13 @@ export const updateNextRun = internalMutation({
     jobId: v.id("scheduledJobs"),
     nextRunAt: v.number(),
     scheduledFunctionId: v.id("_scheduled_functions"),
+    occurrenceId: v.string(),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.jobId, {
       nextRunAt: args.nextRunAt,
       scheduledFunctionId: args.scheduledFunctionId,
+      nextScheduledOccurrenceId: args.occurrenceId,
       updatedAt: Date.now(),
     });
   },
@@ -1553,6 +1697,13 @@ export const triggerJobViaApi = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     const effectiveIdempotencyKey = args.idempotencyKey?.trim() || undefined;
+    const job = await ctx.db.get(args.jobId);
+    if (!job || job.userId !== args.userId || job.isDeleting) {
+      throw new ConvexError({
+        code: "NOT_FOUND" as const,
+        message: "Job not found or unauthorized",
+      });
+    }
 
     if (effectiveIdempotencyKey) {
       const existing = await ctx.db
@@ -1581,6 +1732,10 @@ export const triggerJobViaApi = internalMutation({
       }
     }
 
+    const occurrenceId = apiOccurrenceId(
+      args.requestId,
+      effectiveIdempotencyKey,
+    );
     const scheduledFunctionId = await ctx.scheduler.runAfter(
       0,
       internal.scheduledJobs.actions.executeScheduledJob,
@@ -1588,6 +1743,7 @@ export const triggerJobViaApi = internalMutation({
         jobId: args.jobId,
         invocationSource: "api",
         templateVariables: args.variables,
+        occurrenceId,
       },
     );
 
@@ -1627,7 +1783,6 @@ export const logApiInvocation = internalMutation({
     requestId: v.string(),
     idempotencyKey: v.optional(v.string()),
     status: v.union(
-      v.literal("throttled"),
       v.literal("unauthorized"),
       v.literal("not_found"),
       v.literal("error"),
@@ -1655,12 +1810,14 @@ export const replaceScheduledFunction = internalMutation({
     jobId: v.id("scheduledJobs"),
     nextRunAt: v.number(),
     scheduledFunctionId: v.id("_scheduled_functions"),
+    occurrenceId: v.string(),
     previousScheduledFunctionId: v.optional(v.id("_scheduled_functions")),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.jobId, {
       nextRunAt: args.nextRunAt,
       scheduledFunctionId: args.scheduledFunctionId,
+      nextScheduledOccurrenceId: args.occurrenceId,
       updatedAt: Date.now(),
     });
 

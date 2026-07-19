@@ -34,6 +34,7 @@ function buildCtx(options?: {
       },
       order: () => chain,
       first: async () => rowsFor(table)[0] ?? null,
+      unique: async () => rowsFor(table)[0] ?? null,
       collect: async () => rowsFor(table),
       take: async (count: number) => rowsFor(table).slice(0, count),
     };

@@ -91,6 +91,9 @@ test("beginExecution accepts only idle jobs and stores execution variables", asy
 
 test("triggerJobViaApi enforces idempotency and records token usage on accepted triggers", async () => {
   const duplicate = buildCtx({
+    records: {
+      job_1: { _id: "job_1", userId: "user_1", status: "active" },
+    },
     tableRows: {
       scheduledJobApiInvocations: [{ _id: "inv_1", requestId: "request_old" }],
     },
@@ -107,7 +110,12 @@ test("triggerJobViaApi enforces idempotency and records token usage on accepted 
   assert.equal(duplicate.inserts[0]?.value.status, "duplicate");
   assert.equal(duplicate.scheduled.length, 0);
 
-  const triggered = buildCtx();
+  const triggered = buildCtx({
+    records: {
+      job_1: { _id: "job_1", userId: "user_1", status: "active" },
+      token_1: { _id: "token_1", userId: "user_1", useCount: 0 },
+    },
+  });
   const triggeredResult = await (triggerJobViaApi as any)._handler(triggered.ctx, {
     jobId: "job_1",
     userId: "user_1",

@@ -3,6 +3,7 @@ import test from "node:test";
 import { finalizeAdvisorRun, stopAdvisorBatchConsultations } from "../advisors/lifecycle";
 import { completeBatchForMessage } from "../advisors/mutations_internal";
 import { getChatCostSummaryHandler } from "../chat/queries_handlers_public";
+import { reconcileAdvisorWork } from "../advisors/workflow_steps";
 
 type TestRecord = Record<string, unknown>;
 type FinalizeArgs = Parameters<typeof finalizeAdvisorRun>[1];
@@ -34,6 +35,7 @@ function lifecycleState() {
           webSearchEnabled: false,
         },
       },
+      workflowId: "workflow_1",
     }],
     ["run_1", {
       _id: "run_1",
@@ -62,6 +64,7 @@ function lifecycleState() {
   ]);
   const scheduled: Array<{ args: Record<string, unknown> }> = [];
   const cancelled: string[] = [];
+  const workflowEvents: Array<Record<string, unknown>> = [];
   const ctx = {
     db: {
       get: async (id: string) => records.get(id) ?? null,
@@ -85,11 +88,15 @@ function lifecycleState() {
         cancelled.push(id);
       },
     },
+    runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
+      workflowEvents.push(args);
+      return "advisor-event-1";
+    },
   } as unknown as Parameters<typeof finalizeAdvisorRun>[0];
-  return { ctx, records, scheduled, cancelled };
+  return { ctx, records, scheduled, cancelled, workflowEvents };
 }
 
-test("parallel Advisor completion schedules final generation exactly once", async () => {
+test("parallel Advisor completion signals the durable workflow exactly once", async () => {
   const state = lifecycleState();
   const first = await finalizeAdvisorRun(state.ctx, {
     runId: "run_1" as FinalizeArgs["runId"],
@@ -108,7 +115,8 @@ test("parallel Advisor completion schedules final generation exactly once", asyn
     errorMessage: "Unavailable",
   });
   assert.equal(second.allTerminal, true);
-  assert.equal(state.scheduled.filter((entry) => Array.isArray(entry.args.participants)).length, 1);
+  assert.equal(state.workflowEvents.length, 1);
+  assert.equal(state.workflowEvents[0]?.name, "advisor-batch-terminal");
   assert.equal(state.records.get("batch_1")?.status, "synthesizing");
   assert.equal(state.records.get("batch_1")?.completedRunCount, 1);
   assert.equal(state.records.get("batch_1")?.failedRunCount, 1);
@@ -118,7 +126,33 @@ test("parallel Advisor completion schedules final generation exactly once", asyn
     status: "failed",
   });
   assert.equal(duplicate.changed, false);
-  assert.equal(state.scheduled.filter((entry) => Array.isArray(entry.args.participants)).length, 1);
+  assert.equal(state.workflowEvents.length, 1);
+});
+
+test("pre-M47 Advisor batches retain their deferred generation drain path", async () => {
+  const state = lifecycleState();
+  const batch = state.records.get("batch_1");
+  assert.ok(batch);
+  delete batch.workflowId;
+  await finalizeAdvisorRun(state.ctx, {
+    runId: "run_1" as FinalizeArgs["runId"],
+    status: "completed",
+    advice: "Legacy first",
+  });
+  await finalizeAdvisorRun(state.ctx, {
+    runId: "run_2" as FinalizeArgs["runId"],
+    status: "completed",
+    advice: "Legacy second",
+  });
+  assert.equal(state.workflowEvents.length, 0);
+  assert.equal(
+    state.scheduled.filter((entry) => Array.isArray(entry.args.participants)).length,
+    1,
+  );
+  assert.equal(
+    typeof state.records.get("batch_1")?.scheduledFinalGenerationAt,
+    "number",
+  );
 });
 
 test("Advisor persistence discards SDK request and private prompt dumps", async () => {
@@ -146,7 +180,38 @@ test("Advisor persistence discards SDK request and private prompt dumps", async 
   );
 });
 
-test("Advisor barrier resumes advanced web search and Research Paper snapshots", async () => {
+test("Advisor Workpool failure with a live lease schedules durable expiry reconciliation", async () => {
+  const runAtCalls: Array<{ at: number; args: Record<string, unknown> }> = [];
+  const leaseExpiresAt = Date.now() + 30_000;
+  const ctx = {
+    db: {
+      get: async () => ({
+        _id: "run_1",
+        status: "streaming",
+        leaseExpiresAt,
+      }),
+      query: () => ({ withIndex: () => ({ unique: async () => null }) }),
+    },
+    scheduler: {
+      runAt: async (at: number, _reference: unknown, args: Record<string, unknown>) => {
+        runAtCalls.push({ at, args });
+        return "scheduled_1";
+      },
+    },
+  };
+  await (reconcileAdvisorWork as unknown as {
+    _handler: (context: unknown, args: unknown) => Promise<void>;
+  })._handler(ctx, {
+    workId: "work_1",
+    context: { runId: "run_1" },
+    result: { kind: "failed", error: "worker stopped" },
+  });
+  assert.equal(runAtCalls.length, 1);
+  assert.equal(runAtCalls[0]?.at, leaseExpiresAt + 1);
+  assert.equal(runAtCalls[0]?.args.outcome, "failed");
+});
+
+test("Advisor barrier signals the durable workflow for every snapshot kind", async () => {
   for (const scenario of [
     {
       snapshot: {
@@ -182,10 +247,8 @@ test("Advisor barrier resumes advanced web search and Research Paper snapshots",
       advice: "Second perspective",
     });
 
-    assert.deepEqual(
-      state.scheduled.map((entry) => entry.args.sessionId),
-      scenario.expectedSessionIds,
-    );
+    assert.equal(state.workflowEvents.length, 1);
+    assert.equal(state.workflowEvents[0]?.name, "advisor-batch-terminal");
   }
 });
 
@@ -233,7 +296,7 @@ test("Stop Advisors preserves completed advice and schedules synthesis after can
   assert.equal(state.records.get("run_2")?.status, "cancelled");
   assert.equal(state.records.get("batch_1")?.status, "synthesizing");
   assert.equal(state.records.get("batch_1")?.completedRunCount, 1);
-  assert.equal(state.scheduled.filter((entry) => Array.isArray(entry.args.participants)).length, 1);
+  assert.equal(state.workflowEvents.length, 1);
 
   assert.equal(await stopAdvisorBatchConsultations(
     state.ctx,

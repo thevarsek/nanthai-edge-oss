@@ -28,6 +28,7 @@ type WorkflowBaseArgs = {
   projectId: PresentationProjectId;
   userId: string;
   expectedRevision: number;
+  workflowManaged?: boolean;
 };
 
 function internalRef<

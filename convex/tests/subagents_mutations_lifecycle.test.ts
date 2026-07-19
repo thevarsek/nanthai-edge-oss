@@ -274,10 +274,14 @@ test("subagent batch and generated artifact mutations are idempotent", async () 
   assert.equal(state.records.get("batch_1")?.status, "waiting_to_resume");
   assert.equal(state.records.get("batch_1")?.continuationScheduledAt, 42);
 
-  assert.equal(await (claimBatchForResume as any)._handler({ db: state.db }, {
+  const claimCtx = {
+    db: state.db,
+    scheduler: { runAfter: async () => "scheduled_1" },
+  };
+  assert.equal(await (claimBatchForResume as any)._handler(claimCtx, {
     batchId: "batch_1",
   }), true);
-  assert.equal(await (claimBatchForResume as any)._handler({ db: state.db }, {
+  assert.equal(await (claimBatchForResume as any)._handler(claimCtx, {
     batchId: "batch_1",
   }), false);
   assert.equal(state.records.get("batch_1")?.status, "resuming");

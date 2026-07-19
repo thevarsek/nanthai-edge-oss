@@ -100,6 +100,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
               : null
           ),
           collect: async () => [],
+          take: async () => [],
         }),
       }),
       get: async () => ({ _id: "msg_1", generatedFileIds: ["gf_1", "gf_2"] }),
@@ -128,6 +129,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
               : null
           ),
           collect: async () => [],
+          take: async () => [],
         }),
       }),
       get: async () => ({
@@ -173,7 +175,7 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted uploaded att
               ? { _id: "fa_1", userId: "user_1", messageId: "msg_1", storageId: "storage_drive" }
               : null
           ),
-          collect: async () => (
+          take: async () => (
             table === "googleDriveFileGrants"
               ? [{ _id: "grant_1", userId: "user_1", cachedStorageId: "storage_drive" }]
               : []
@@ -212,7 +214,7 @@ test("deleteKnowledgeBaseFile preserves shared cached Drive storage until the la
               ? { _id: "fa_1", userId: "user_1", storageId: "storage_shared", driveFileId: "drive_1" }
               : null
           ),
-          collect: async () => (
+          take: async () => (
             table === "fileAttachments"
               ? [
                   { _id: "fa_1", userId: "user_1", storageId: "storage_shared", driveFileId: "drive_1" },
@@ -253,7 +255,7 @@ test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared stora
             assert.notEqual(indexName, "by_source_storage");
             return null;
           },
-          collect: async () => [],
+          take: async () => [],
         }),
       }),
       get: async (id: string) => (
@@ -289,7 +291,7 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted generated fi
               ? { _id: "gf_1", userId: "user_1", messageId: "msg_1", storageId: "storage_generated" }
               : null
           ),
-          collect: async () => (
+          take: async () => (
             table === "googleDriveFileGrants"
               ? [{ _id: "grant_2", userId: "user_1", cachedStorageId: "storage_generated" }]
               : []
@@ -521,7 +523,7 @@ test("ensureDocumentsForChat does not reuse a document from a different origin c
   assert.equal(inserts[0].value.originChatId, "chat_2");
 });
 
-test("deleteChatGraph removes canonical document versions before source rows", async () => {
+test("deleteChatGraph removes canonical document versions before a later source-row pass", async () => {
   const storageDeletes: string[] = [];
   const rowDeletes: string[] = [];
   const rows: Record<string, any[]> = {
@@ -548,8 +550,10 @@ test("deleteChatGraph removes canonical document versions before source rows", a
     db: {
       query: (table: string) => ({
         withIndex: () => ({
-          take: async () => rows[table] ?? [],
-          collect: async () => rows[table] ?? [],
+          take: async () => [...(rows[table] ?? [])],
+          collect: async () => [...(rows[table] ?? [])],
+          first: async () => null,
+          unique: async () => null,
         }),
       }),
       delete: async (id: string) => {
@@ -570,8 +574,14 @@ test("deleteChatGraph removes canonical document versions before source rows", a
     },
   } as any, "chat_1" as any);
 
-  assert.deepEqual(rowDeletes, ["version_1", "doc_1", "gf_1", "fa_1", "chat_1"]);
-  assert.deepEqual(storageDeletes, ["storage_text", "storage_md", "storage_generated", "storage_source"]);
+  assert.deepEqual(rowDeletes, ["version_1", "gf_1", "fa_1"]);
+  assert.deepEqual(storageDeletes, [
+    "storage_text",
+    "storage_md",
+    "storage_source",
+    "storage_generated",
+    "storage_source",
+  ]);
 });
 
 test("Drive refresh creates an immutable document version and advances imported documents", async () => {

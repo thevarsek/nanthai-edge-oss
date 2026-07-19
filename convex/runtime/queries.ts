@@ -37,6 +37,39 @@ export const getSessionByChatInternal = internalQuery({
   },
 });
 
+export const listActiveSessionsForChatInternal = internalQuery({
+  args: { userId: v.string(), chatId: v.id("chats") },
+  handler: async (ctx, args) => {
+    const statuses = ["pendingCreate", "running", "failed"] as const;
+    const rows = (await Promise.all(statuses.map((status) => ctx.db
+      .query("sandboxSessions")
+      .withIndex("by_chat_user_status", (q) => q
+        .eq("chatId", args.chatId)
+        .eq("userId", args.userId)
+        .eq("status", status))
+      .take(CLEANUP_BATCH_SIZE)))).flat().slice(0, CLEANUP_BATCH_SIZE);
+    return rows.map((row) => ({
+      sessionId: row._id,
+      providerSandboxId: row.providerSandboxId,
+    }));
+  },
+});
+
+export const listActiveSessionsForUserInternal = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const statuses = ["pendingCreate", "running", "failed"] as const;
+    const rows = (await Promise.all(statuses.map((status) => ctx.db
+      .query("sandboxSessions")
+      .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", status))
+      .take(CLEANUP_BATCH_SIZE)))).flat().slice(0, CLEANUP_BATCH_SIZE);
+    return rows.map((row) => ({
+      sessionId: row._id,
+      providerSandboxId: row.providerSandboxId,
+    }));
+  },
+});
+
 export const hasActiveGenerationForChatInternal = internalQuery({
   args: { chatId: v.id("chats") },
   handler: async (ctx, args) => {
@@ -157,21 +190,21 @@ export const getStaleSessionsInternal = internalQuery({
           environment: s.environment,
           providerSandboxId: s.providerSandboxId,
           status: s.status as string,
-          hasVm: true,
+          hasVm: !!s.providerSandboxId?.trim(),
         })),
         ...stalePending.map((s) => ({
           id: s._id,
           environment: s.environment,
           providerSandboxId: s.providerSandboxId,
           status: s.status as string,
-          hasVm: !!s.providerSandboxId,
+          hasVm: !!s.providerSandboxId?.trim(),
         })),
         ...staleFailed.map((s) => ({
           id: s._id,
           environment: s.environment,
           providerSandboxId: s.providerSandboxId,
           status: s.status as string,
-          hasVm: false,
+          hasVm: !!s.providerSandboxId?.trim(),
         })),
       ],
       hitBatchLimit:

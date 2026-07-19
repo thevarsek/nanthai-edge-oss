@@ -18,7 +18,10 @@ import { triggerScheduledJob } from "./scheduledJobs/http";
 
 const http = httpRouter();
 
-async function handleVideoOutputUpload(ctx: ActionCtx, request: Request): Promise<Response> {
+export async function handleVideoOutputUpload(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
   const url = new URL(request.url);
   const token = url.searchParams.get("token");
   if (!token) {
@@ -57,12 +60,20 @@ async function handleVideoOutputUpload(ctx: ActionCtx, request: Request): Promis
   }
 
   const storageId = await ctx.storage.store(new Blob([blob], { type: mimeType }));
-  await ctx.runMutation(internal.chat.mutations.completeVideoOutputUpload, {
-    token,
-    storageId,
-    mimeType,
-    sizeBytes: blob.size,
-  });
+  let accepted: boolean;
+  try {
+    accepted = await ctx.runMutation(
+      internal.chat.mutations.completeVideoOutputUpload,
+      { token, storageId, mimeType, sizeBytes: blob.size },
+    );
+  } catch (error) {
+    await ctx.storage.delete(storageId).catch(() => undefined);
+    throw error;
+  }
+  if (!accepted) {
+    await ctx.storage.delete(storageId).catch(() => undefined);
+    return new Response("Upload token already used or expired", { status: 409 });
+  }
 
   return Response.json({ storageId });
 }

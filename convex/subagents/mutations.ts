@@ -1,10 +1,23 @@
 import { internalMutation } from "../_generated/server";
-import { v } from "convex/values";
+import { type ObjectType, v } from "convex/values";
 import { subagentBatchStatus, subagentRunStatus, usageObject } from "../schema_validators";
-import { isTerminalSubagentStatus } from "./shared";
+import {
+  isTerminalSubagentStatus,
+} from "./shared";
+import { scheduleParentResumeGate } from "./parent_resume_gate";
+import { isCurrentSubagentExecution } from "./execution_fence";
+import { saveGenerationContinuationArgs } from "../chat/mutations_args";
+import { saveGenerationContinuationHandler } from
+  "../chat/mutations_generation_continuation_handlers";
+import type { GenerationContinuationCheckpoint } from
+  "../chat/generation_continuation_shared";
 
-export const createBatch = internalMutation({
-  args: {
+const executionFenceArgs = {
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+};
+
+const createBatchArgs = {
     parentMessageId: v.id("messages"),
     sourceUserMessageId: v.id("messages"),
     parentJobId: v.id("generationJobs"),
@@ -22,9 +35,16 @@ export const createBatch = internalMutation({
       title: v.string(),
       prompt: v.string(),
     })),
-  },
-  handler: async (ctx, args) => {
+};
+
+type CreateBatchArgs = ObjectType<typeof createBatchArgs>;
+
+export async function createBatchHandler(ctx: Parameters<
+  typeof saveGenerationContinuationHandler
+>[0], args: CreateBatchArgs) {
     const now = Date.now();
+    const workflowResumeEventId = (args.paramsSnapshot as { workflowResumeEventId?: unknown })
+      .workflowResumeEventId;
     const batchId = await ctx.db.insert("subagentBatches", {
       parentMessageId: args.parentMessageId,
       sourceUserMessageId: args.sourceUserMessageId,
@@ -39,6 +59,9 @@ export const createBatch = internalMutation({
       childConversationSeed: args.childConversationSeed,
       resumeConversationSeed: args.resumeConversationSeed,
       paramsSnapshot: args.paramsSnapshot,
+      workflowResumeEventId: typeof workflowResumeEventId === "string"
+        ? workflowResumeEventId
+        : undefined,
       participantSnapshot: args.participantSnapshot,
       childCount: args.tasks.length,
       completedChildCount: 0,
@@ -64,12 +87,43 @@ export const createBatch = internalMutation({
 
     await ctx.db.patch(args.parentMessageId, { subagentBatchId: batchId });
     return { batchId, runIds };
+}
+
+export const createBatch = internalMutation({
+  args: createBatchArgs,
+  handler: createBatchHandler,
+});
+
+export const createDurableBatchAndCheckpoint = internalMutation({
+  args: {
+    ...createBatchArgs,
+    checkpoint: saveGenerationContinuationArgs.checkpoint,
+  },
+  handler: async (ctx, args) => {
+    const { checkpoint, ...batchArgs } = args;
+    const result = await createBatchHandler(ctx, batchArgs);
+    await saveGenerationContinuationHandler(ctx, {
+      chatId: args.chatId,
+      messageId: args.parentMessageId,
+      jobId: args.parentJobId,
+      userId: args.userId,
+      checkpoint: {
+        ...checkpoint,
+        deferredOwnership: { kind: "subagents", batchId: result.batchId },
+        group: {
+          ...checkpoint.group,
+          subagentBatchId: result.batchId,
+        },
+      } as GenerationContinuationCheckpoint,
+    });
+    return result;
   },
 });
 
 export const updateRunStreaming = internalMutation({
   args: {
     runId: v.id("subagentRuns"),
+    ...executionFenceArgs,
     content: v.optional(v.string()),
     reasoning: v.optional(v.string()),
     usage: v.optional(usageObject),
@@ -114,6 +168,7 @@ export const updateRunStreaming = internalMutation({
   handler: async (ctx, args) => {
     const existing = await ctx.db.get(args.runId);
     if (!existing || isTerminalSubagentStatus(existing.status)) return;
+    if (!await isCurrentSubagentExecution(ctx, existing, args)) return;
     await ctx.db.patch(args.runId, {
       ...(args.content !== undefined ? { content: args.content } : {}),
       ...(args.reasoning !== undefined ? { reasoning: args.reasoning } : {}),
@@ -148,6 +203,7 @@ export const claimRunForExecution = internalMutation({
   args: {
     runId: v.id("subagentRuns"),
     expectedStatuses: v.array(subagentRunStatus),
+    ...executionFenceArgs,
   },
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -155,6 +211,7 @@ export const claimRunForExecution = internalMutation({
     if (!args.expectedStatuses.includes(run.status)) {
       return false;
     }
+    if (!await isCurrentSubagentExecution(ctx, run, args)) return false;
     const now = Date.now();
     await ctx.db.patch(args.runId, {
       status: "streaming",
@@ -168,11 +225,13 @@ export const claimRunForExecution = internalMutation({
 export const markRunAnalyticsStarted = internalMutation({
   args: {
     runId: v.id("subagentRuns"),
+    ...executionFenceArgs,
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
     if (!run || isTerminalSubagentStatus(run.status)) return false;
+    if (!await isCurrentSubagentExecution(ctx, run, args)) return false;
     if (run.analyticsStartedAt !== undefined) {
       return false;
     }
@@ -188,6 +247,7 @@ export const markRunAnalyticsStarted = internalMutation({
 export const checkpointRunContinuation = internalMutation({
   args: {
     runId: v.id("subagentRuns"),
+    ...executionFenceArgs,
     content: v.optional(v.string()),
     reasoning: v.optional(v.string()),
     usage: v.optional(usageObject),
@@ -208,6 +268,7 @@ export const checkpointRunContinuation = internalMutation({
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
     if (!run || isTerminalSubagentStatus(run.status)) return null;
+    if (!await isCurrentSubagentExecution(ctx, run, args)) return null;
     const now = Date.now();
     await ctx.db.patch(args.runId, {
       status: "waiting_continuation",
@@ -228,6 +289,7 @@ export const checkpointRunContinuation = internalMutation({
 export const finalizeRun = internalMutation({
   args: {
     runId: v.id("subagentRuns"),
+    ...executionFenceArgs,
     status: subagentRunStatus,
     content: v.optional(v.string()),
     reasoning: v.optional(v.string()),
@@ -273,7 +335,8 @@ export const finalizeRun = internalMutation({
   handler: async (ctx, args) => {
     const now = Date.now();
     const run = await ctx.db.get(args.runId);
-    if (!run) return null;
+    if (!run || isTerminalSubagentStatus(run.status)) return null;
+    if (!await isCurrentSubagentExecution(ctx, run, args)) return null;
     await ctx.db.patch(args.runId, {
       status: args.status,
       content: args.content ?? run.content,
@@ -338,14 +401,26 @@ export const claimBatchForResume = internalMutation({
   },
   handler: async (ctx, args) => {
     const batch = await ctx.db.get(args.batchId);
-    if (!batch || batch.status !== "waiting_to_resume") {
+    if (!batch || (batch.status !== "waiting_to_resume" && batch.status !== "resuming")) {
+      return false;
+    }
+    if (batch.status === "resuming") {
+      await scheduleParentResumeGate(ctx, {
+        batchId: args.batchId,
+        expectedGateAt: batch.parentRecoveryGateAt,
+      });
       return false;
     }
     const now = Date.now();
     await ctx.db.patch(args.batchId, {
       status: "resuming",
       continuationScheduledAt: now,
+      parentRecoveryScheduledAt: now,
       updatedAt: now,
+    });
+    await scheduleParentResumeGate(ctx, {
+      batchId: args.batchId,
+      expectedGateAt: batch.parentRecoveryGateAt,
     });
     return true;
   },

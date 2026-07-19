@@ -18,6 +18,7 @@ import {
 import { MODEL_IDS } from "../lib/model_constants";
 import { withZdrProvider } from "../lib/openrouter_zdr";
 import {
+  checkCancellation,
   computeProgress,
   PipelineArgs,
   updateSession,
@@ -142,7 +143,7 @@ export async function runPlanningPhase(
     progress: computeProgress(args.complexity, "planning", 0),
     currentPhase: "planning",
     phaseOrder,
-  });
+  }, args);
 
   const prompt = buildResearchPlanningPrompt(args.query, breadth);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
@@ -192,6 +193,7 @@ export async function runPlanningPhase(
     });
     throw error;
   }
+  await checkCancellation(ctx, args.sessionId, args);
 
   const artifact = parsePlanningArtifact(result.content, args.query, breadth);
   const queries = artifact.queries.map((query) => query.query);
@@ -236,6 +238,8 @@ export async function runPlanningPhase(
     phaseType: "planning",
     phaseOrder,
     data: artifact,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 
   return { plan, queries };
@@ -254,7 +258,7 @@ export async function runInitialSearchPhase(
     progress: computeProgress(args.complexity, "initial_search", 0),
     currentPhase: "searching",
     phaseOrder,
-  });
+  }, args);
 
   const operationStartedAt = Date.now();
   await captureBackendAIOperationStarted(ctx, {
@@ -299,6 +303,7 @@ export async function runInitialSearchPhase(
     });
     throw error;
   }
+  await checkCancellation(ctx, args.sessionId, args);
 
   await captureBackendAIOperationCompleted(ctx, {
     userId: args.userId,
@@ -332,6 +337,8 @@ export async function runInitialSearchPhase(
     phaseType: "initial_search",
     phaseOrder,
     data: { results },
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 
   return results;
@@ -351,7 +358,7 @@ export async function runAnalysisPhase(
     progress: computeProgress(args.complexity, "analysis", iteration),
     currentPhase: "analyzing",
     phaseOrder,
-  });
+  }, args);
 
   const priorSummary = summarizeSearchResults(priorResults, 2000);
 
@@ -407,6 +414,7 @@ export async function runAnalysisPhase(
     });
     throw error;
   }
+  await checkCancellation(ctx, args.sessionId, args);
 
   const artifact = parseAnalysisArtifact(result.content, args.query, breadth);
   const gaps = artifact.coverageSummary;
@@ -455,6 +463,8 @@ export async function runAnalysisPhase(
     phaseOrder,
     iteration,
     data: artifact,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 
   return { gaps, queries };
@@ -474,7 +484,7 @@ export async function runDepthSearchPhase(
     progress: computeProgress(args.complexity, "depth_iteration", iteration),
     currentPhase: "deepening",
     phaseOrder,
-  });
+  }, args);
 
   const operationStartedAt = Date.now();
   await captureBackendAIOperationStarted(ctx, {
@@ -521,6 +531,7 @@ export async function runDepthSearchPhase(
     });
     throw error;
   }
+  await checkCancellation(ctx, args.sessionId, args);
 
   await captureBackendAIOperationCompleted(ctx, {
     userId: args.userId,
@@ -556,6 +567,8 @@ export async function runDepthSearchPhase(
     phaseOrder,
     iteration,
     data: { results },
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 
   return results;
@@ -573,7 +586,7 @@ export async function runSynthesisPhase(
     progress: computeProgress(args.complexity, "synthesis", 0),
     currentPhase: "synthesizing",
     phaseOrder,
-  });
+  }, args);
 
   const allResultsSummary = summarizeSearchResults(allResults, Number.MAX_SAFE_INTEGER);
 
@@ -631,6 +644,7 @@ export async function runSynthesisPhase(
     });
     throw error;
   }
+  await checkCancellation(ctx, args.sessionId, args);
 
   const artifact = parseStructuredArtifact(result.content, {
     findings: "No synthesis output was returned; use collected results from the session context.",
@@ -682,6 +696,8 @@ export async function runSynthesisPhase(
     phaseType: "synthesis",
     phaseOrder,
     data: artifact,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 
   return synthesisData;
@@ -700,7 +716,7 @@ export async function runPaperArchitecturePhase(
     progress: computeProgress(args.complexity, "synthesis", 0),
     currentPhase: "synthesizing",
     phaseOrder,
-  });
+  }, args);
 
   const prompt = buildPaperArchitecturePrompt(
     `Planning artifact:\n${planningData}\n\nSynthesis artifact:\n${synthesisData}`,
@@ -761,6 +777,7 @@ export async function runPaperArchitecturePhase(
     });
     throw error;
   }
+  await checkCancellation(ctx, args.sessionId, args);
 
   const artifact = parseStructuredArtifact(result.content, {
     title: args.query,
@@ -812,6 +829,8 @@ export async function runPaperArchitecturePhase(
     phaseType: "paper_architecture",
     phaseOrder,
     data: artifact,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
 
   return architectureData;

@@ -8,6 +8,8 @@ type ContinuationExtras = {
   drivePickerBatchId?: Id<"drivePickerBatches">;
   chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 };
 
 export function buildGenerationContinuationGroup(args: {
@@ -38,6 +40,8 @@ export function buildGenerationContinuationGroup(args: {
     searchSessionId: generation.searchSessionId,
     subagentBatchId: generation.subagentBatchId,
     drivePickerBatchId: generation.drivePickerBatchId,
+    executionAttemptId: generation.executionAttemptId,
+    executionFence: generation.executionFence,
     imageConfig: generation.imageConfig,
     chatSkillOverrides: args.chatSkillOverrides,
     chatIntegrationOverrides: generation.chatIntegrationOverrides,

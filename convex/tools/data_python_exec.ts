@@ -1,7 +1,9 @@
 "use node";
 
 import { createTool } from "./registry";
-import { runDataPythonExec } from "../runtime/service_analytics";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import { PYODIDE_ACTION_TIMEOUT_MS } from "../analytics_workflows/limits";
 
 type DataPythonInputFileArg = {
   storageId?: unknown;
@@ -14,6 +16,7 @@ function isDataPythonInputFileArg(value: unknown): value is DataPythonInputFileA
 
 export const dataPythonExec = createTool({
   name: "data_python_exec",
+  mayDefer: true,
   description:
     "Run notebook-style Python (Pyodide/WebAssembly) for data analysis and chart generation. " +
     "Pre-loaded packages: numpy, pandas, matplotlib. ~400 MB memory limit, 120s timeout, stateless per call. " +
@@ -62,37 +65,53 @@ export const dataPythonExec = createTool({
       return { success: false, data: null, error: "Missing code." };
     }
 
-    try {
-      return {
-        success: true,
-        data: await runDataPythonExec(toolCtx, {
-          code,
-          inputFiles: Array.isArray(args.inputFiles)
-            ? args.inputFiles
-              .map((item: unknown) => {
-                const inputFile = isDataPythonInputFileArg(item) ? item : {};
-                return {
-                  storageId: String(inputFile.storageId ?? "").trim(),
-                  filename: typeof inputFile.filename === "string"
-                    ? inputFile.filename
-                    : undefined,
-                };
-              })
-              .filter((item) => item.storageId.length > 0)
-            : undefined,
-          exportPaths: Array.isArray(args.exportPaths)
-            ? args.exportPaths.map((entry) => String(entry)).filter(Boolean)
-            : undefined,
-          captureCharts: typeof args.captureCharts === "boolean" ? args.captureCharts : undefined,
-          timeoutMs: typeof args.timeoutMs === "number" ? args.timeoutMs : undefined,
-        }),
-      };
-    } catch (error) {
+    if (!toolCtx.chatId || !toolCtx.messageId || !toolCtx.userMessageId ||
+        !toolCtx.jobId || !toolCtx.toolCallId) {
+      return { success: false, data: null, error: "Analytics Workflow requires generation context." };
+    }
+    const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : undefined;
+    if (timeoutMs !== undefined && (timeoutMs < 1 || timeoutMs > PYODIDE_ACTION_TIMEOUT_MS)) {
       return {
         success: false,
         data: null,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Pyodide execution is capped at 120000ms. Split the work into durable rounds or use the bounded sandbox tool.",
       };
     }
+    const inputFiles = Array.isArray(args.inputFiles)
+      ? args.inputFiles
+        .map((item: unknown) => {
+          const inputFile = isDataPythonInputFileArg(item) ? item : {};
+          return {
+            storageId: String(inputFile.storageId ?? "").trim(),
+            filename: typeof inputFile.filename === "string" ? inputFile.filename : undefined,
+          };
+        })
+        .filter((item) => item.storageId.length > 0)
+      : [];
+    const analyticsRunId = await toolCtx.ctx.runMutation(
+      internal.analytics_workflows.mutations.prepareRun,
+      {
+        userId: toolCtx.userId,
+        chatId: toolCtx.chatId as Id<"chats">,
+        messageId: toolCtx.messageId as Id<"messages">,
+        userMessageId: toolCtx.userMessageId as Id<"messages">,
+        jobId: toolCtx.jobId as Id<"generationJobs">,
+        toolCallId: toolCtx.toolCallId,
+        toolName: "data_python_exec",
+        code,
+        inputFiles,
+        exportPaths: Array.isArray(args.exportPaths)
+          ? args.exportPaths.map((entry) => String(entry)).filter(Boolean)
+          : [],
+        captureCharts: typeof args.captureCharts === "boolean" ? args.captureCharts : true,
+        packages: [],
+        timeoutMs,
+      },
+    );
+    return {
+      success: true,
+      data: { status: "deferred", analyticsRunId },
+      deferred: { kind: "analytics_workflow", data: { analyticsRunId } },
+    };
   },
 });

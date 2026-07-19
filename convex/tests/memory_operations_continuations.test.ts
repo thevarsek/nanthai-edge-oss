@@ -22,7 +22,7 @@ test("memory operation registrations remain exported", () => {
 
 test("deleteAllContinuation deletes a full batch and schedules another pass", async () => {
   const deleted: string[] = [];
-  const scheduled: Array<Record<string, unknown>> = [];
+  const enqueued: Array<Record<string, unknown>> = [];
   const memories = Array.from({ length: 100 }, (_, index) => ({
     _id: `memory_${index}`,
   }));
@@ -47,6 +47,7 @@ test("deleteAllContinuation deletes a full batch and schedules another pass", as
                 table === "memoryEmbeddings"
                   ? { _id: `embedding_${state.memoryId}`, memoryId: state.memoryId }
                   : null,
+              unique: async () => null,
             };
           },
         }),
@@ -54,10 +55,8 @@ test("deleteAllContinuation deletes a full batch and schedules another pass", as
           deleted.push(id);
         },
       },
-      scheduler: {
-        runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
-          scheduled.push(payload);
-        },
+      runMutation: async (_fn: unknown, payload: Record<string, unknown>) => {
+        enqueued.push(payload);
       },
     } as any,
     { userId: "user_1" },
@@ -65,7 +64,7 @@ test("deleteAllContinuation deletes a full batch and schedules another pass", as
 
   assert.ok(deleted.includes("embedding_memory_0"));
   assert.ok(deleted.includes("memory_99"));
-  assert.deepEqual(scheduled, [{ userId: "user_1" }]);
+  assert.deepEqual(enqueued, [{ userId: "user_1" }]);
 });
 
 test("approveAllContinuation clears pending flags with one timestamp", async () => {
@@ -80,6 +79,7 @@ test("approveAllContinuation clears pending flags with one timestamp", async () 
               { _id: "memory_1", isPending: true },
               { _id: "memory_2", isPending: true },
             ],
+            unique: async () => null,
           }),
         }),
         patch: async (id: string, patch: Record<string, unknown>) => {
@@ -124,6 +124,7 @@ test("rejectAllContinuation removes pending memories and related embeddings", as
                 table === "memoryEmbeddings"
                   ? { _id: `embedding_${state.memoryId}` }
                   : null,
+              unique: async () => null,
             };
           },
         }),

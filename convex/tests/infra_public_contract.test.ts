@@ -350,25 +350,30 @@ test("Drive ingestion reuses cache under the canonical Drive file id", async () 
   }
 });
 
-test("deleteAccount drains tables in batches until deleteUserTableBatch returns under the batch size", async () => {
-  const calls: string[] = [];
+test("deleteAccount installs its tombstone and waits for durable cancellation and purge", async () => {
+  const mutationCalls: Array<Record<string, unknown>> = [];
+  const teardownCalls: Array<Record<string, unknown>> = [];
 
   const result = await (deleteAccount as any)._handler({
     auth: buildAuth(),
-    runMutation: async (_fnRef: unknown, args: { tableName: string }) => {
-      calls.push(args.tableName);
-      if (args.tableName === "favorites" && calls.filter((name) => name === "favorites").length === 1) {
-        return { deleted: 200 };
-      }
-      if (args.tableName === "favorites") {
-        return { deleted: 3 };
-      }
-      return { deleted: 0 };
+    runAction: async (_fnRef: unknown, args: Record<string, unknown>) => {
+      teardownCalls.push(args);
+      return "reason" in args
+        ? true
+        : { completed: true, totalDeleted: 203 };
+    },
+    runMutation: async (_fnRef: unknown, args: Record<string, unknown>) => {
+      mutationCalls.push(args);
+      return null;
     },
   }, {});
 
   assert.equal(result.totalDeleted, 203);
-  assert.equal(calls.filter((name) => name === "favorites").length, 2);
+  assert.deepEqual(mutationCalls, [{ userId: "user_1" }]);
+  assert.deepEqual(teardownCalls, [
+    { userId: "user_1", reason: "Account deleted" },
+    { userId: "user_1" },
+  ]);
 });
 
 test("deleteUserTableBatch cancels scheduled functions before deleting scheduled jobs", async () => {

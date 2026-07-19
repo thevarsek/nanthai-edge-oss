@@ -207,6 +207,7 @@ test("finalizeGenerationHandler canonically cancels late completed jobs and clea
   const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
   const deletes: string[] = [];
   const scheduledCalls: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const workflowSignals: Array<Record<string, unknown>> = [];
 
   const streamingRow = {
     _id: "stream_late",
@@ -229,7 +230,15 @@ test("finalizeGenerationHandler canonically cancels late completed jobs and clea
           };
         }
         if (id === "msg_late") return { _id: id, modelId: "openai/gpt-4.1", content: "", status: "cancelled" };
-        if (id === "chat_late") return { _id: id };
+        if (id === "chat_late") return { _id: id, sourceJobId: "scheduled_job_1" };
+        if (id === "scheduled_job_1") {
+          return {
+            _id: id,
+            activeWorkflowId: "workflow_1",
+            activeExecutionId: "execution_1",
+            activeStepIndex: 0,
+          };
+        }
         return null;
       },
       query: (table: string) => ({
@@ -266,6 +275,10 @@ test("finalizeGenerationHandler canonically cancels late completed jobs and clea
         scheduledCalls.push({ name, args });
       },
     },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      workflowSignals.push(args);
+      return "scheduled-step-event";
+    },
   } as any;
 
   await finalizeGenerationHandler(ctx, {
@@ -284,8 +297,9 @@ test("finalizeGenerationHandler canonically cancels late completed jobs and clea
   const jobPatch = patches.find((entry) => entry.id === "job_late");
   assert.equal(jobPatch?.value.status, "cancelled");
   assert.deepEqual(deletes, ["stream_late"]);
-  assert.equal(scheduledCalls.length, 1);
-  assert.equal(scheduledCalls[0]?.args.error, "Generation was cancelled by user.");
+  assert.equal(scheduledCalls.length, 0);
+  assert.equal(workflowSignals.length, 1);
+  assert.equal(workflowSignals[0]?.name, "scheduled-step-0-terminal");
 });
 
 test("finalizeGenerationHandler canonically cancels late failed jobs", async () => {

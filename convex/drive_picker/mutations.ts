@@ -1,12 +1,15 @@
-import { internalMutation, internalQuery } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
-import { v, ConvexError } from "convex/values";
-import { insertFileAttachment } from "../lib/file_attachments";
-import type { ParticipantConfig } from "../chat/actions_run_generation_types";
-
-type ParticipantSnapshot = {
-  participant?: ParticipantConfig;
-};
+import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
+import { v, type ObjectType } from "convex/values";
+import { finalizeGenerationHandler } from "../chat/mutations_internal_handlers";
+import { cancelExecutionForGenerationJob } from "../execution/cancellation";
+import { saveGenerationContinuationArgs } from "../chat/mutations_args";
+import { saveGenerationContinuationHandler } from
+  "../chat/mutations_generation_continuation_handlers";
+import type { GenerationContinuationCheckpoint } from
+  "../chat/generation_continuation_shared";
+import { closeSupersededDriveBatchesHandler } from "./superseded_cleanup";
+import { appendAttachmentsAndMarkResumingHandler } from
+  "./resume_mutation_handlers";
 
 const attachmentValidator = v.object({
   type: v.string(),
@@ -22,26 +25,7 @@ const attachmentValidator = v.object({
   modifiedTime: v.optional(v.string()),
 });
 
-function toMessageAttachment(attachment: {
-  type: string;
-  url: string;
-  storageId: Id<"_storage">;
-  name: string;
-  mimeType: string;
-  sizeBytes?: number;
-}) {
-  return {
-    type: attachment.type,
-    url: attachment.url,
-    storageId: attachment.storageId,
-    name: attachment.name,
-    mimeType: attachment.mimeType,
-    sizeBytes: attachment.sizeBytes,
-  };
-}
-
-export const createBatch = internalMutation({
-  args: {
+const createBatchArgs = {
     parentMessageId: v.id("messages"),
     sourceUserMessageId: v.id("messages"),
     parentJobId: v.id("generationJobs"),
@@ -54,9 +38,14 @@ export const createBatch = internalMutation({
     resumeConversationSeed: v.any(),
     paramsSnapshot: v.any(),
     participantSnapshot: v.any(),
-  },
-  handler: async (ctx, args) => {
+};
+
+type CreateBatchArgs = ObjectType<typeof createBatchArgs>;
+
+export async function createBatchHandler(ctx: MutationCtx, args: CreateBatchArgs) {
     const now = Date.now();
+    const workflowResumeEventId = (args.paramsSnapshot as { workflowResumeEventId?: unknown })
+      .workflowResumeEventId;
     const batchId = await ctx.db.insert("drivePickerBatches", {
       parentMessageId: args.parentMessageId,
       sourceUserMessageId: args.sourceUserMessageId,
@@ -70,9 +59,16 @@ export const createBatch = internalMutation({
       toolRoundResults: args.toolRoundResults,
       resumeConversationSeed: args.resumeConversationSeed,
       paramsSnapshot: args.paramsSnapshot,
+      workflowResumeEventId: typeof workflowResumeEventId === "string"
+        ? workflowResumeEventId
+        : undefined,
       participantSnapshot: args.participantSnapshot,
       createdAt: now,
       updatedAt: now,
+    });
+    await closeSupersededDriveBatchesHandler(ctx, {
+      jobId: args.parentJobId,
+      keepBatchId: batchId,
     });
 
     await ctx.db.patch(args.parentMessageId, {
@@ -94,6 +90,36 @@ export const createBatch = internalMutation({
     }
 
     return { batchId };
+}
+
+export const createBatch = internalMutation({
+  args: createBatchArgs,
+  handler: createBatchHandler,
+});
+
+export const createDurableBatchAndCheckpoint = internalMutation({
+  args: {
+    ...createBatchArgs,
+    checkpoint: saveGenerationContinuationArgs.checkpoint,
+  },
+  handler: async (ctx, args) => {
+    const { checkpoint, ...batchArgs } = args;
+    const result = await createBatchHandler(ctx, batchArgs);
+    await saveGenerationContinuationHandler(ctx, {
+      chatId: args.chatId,
+      messageId: args.parentMessageId,
+      jobId: args.parentJobId,
+      userId: args.userId,
+      checkpoint: {
+        ...checkpoint,
+        deferredOwnership: { kind: "drive_picker", batchId: result.batchId },
+        group: {
+          ...checkpoint.group,
+          drivePickerBatchId: result.batchId,
+        },
+      } as GenerationContinuationCheckpoint,
+    });
+    return result;
   },
 });
 
@@ -120,18 +146,25 @@ export const cancelBatch = internalMutation({
     if (batch.status !== "awaiting_pick") return { cancelled: false };
     const now = Date.now();
     await ctx.db.patch(batch._id, { status: "cancelled", updatedAt: now });
-    await ctx.db.patch(batch.parentMessageId, {
-      status: "cancelled",
-      drivePickerBatchId: undefined,
-    });
     const job = await ctx.db.get(batch.parentJobId);
-    if (job?.streamingMessageId) {
-      await ctx.db.delete(job.streamingMessageId);
+    if (job) {
+      await cancelExecutionForGenerationJob(ctx, {
+        jobId: batch.parentJobId,
+        requestedBy: args.userId,
+        now,
+      });
+      await finalizeGenerationHandler(ctx, {
+        messageId: batch.parentMessageId,
+        jobId: batch.parentJobId,
+        chatId: batch.chatId,
+        content: "[Generation cancelled]",
+        status: "cancelled",
+        userId: args.userId,
+        skipExecutionTerminalization: true,
+      });
     }
-    await ctx.db.patch(batch.parentJobId, {
-      status: "cancelled",
-      completedAt: now,
-      scheduledFunctionId: undefined,
+    await ctx.db.patch(batch.parentMessageId, {
+      drivePickerBatchId: undefined,
     });
     return { cancelled: true };
   },
@@ -144,102 +177,7 @@ export const appendAttachmentsAndMarkResuming = internalMutation({
     pickedFileIds: v.array(v.string()),
     attachments: v.array(attachmentValidator),
   },
-  handler: async (ctx, args) => {
-    const batch = await ctx.db.get(args.batchId);
-    if (!batch || batch.userId !== args.userId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Drive picker batch not found." });
-    }
-    if (batch.status !== "awaiting_pick") {
-      throw new ConvexError({ code: "VALIDATION", message: "Drive picker batch is not waiting for file selection." });
-    }
-
-    const now = Date.now();
-    const sourceMessage = await ctx.db.get(batch.sourceUserMessageId);
-    if (!sourceMessage || sourceMessage.userId !== args.userId) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "Source message not found." });
-    }
-
-    const participantSnapshot = batch.participantSnapshot as ParticipantSnapshot;
-    if (!participantSnapshot.participant) {
-      throw new ConvexError({ code: "INTERNAL_ERROR", message: "Drive picker resume participant snapshot is missing." });
-    }
-
-    const existingAttachments = sourceMessage.attachments ?? [];
-    const existingStorageIds = new Set(existingAttachments.map((attachment) => String(attachment.storageId ?? "")));
-    const newAttachments = args.attachments.filter((attachment) => !existingStorageIds.has(String(attachment.storageId)));
-    await ctx.db.patch(sourceMessage._id, {
-      attachments: [...existingAttachments, ...newAttachments.map(toMessageAttachment)],
-    });
-
-    for (const attachment of newAttachments) {
-      await insertFileAttachment(ctx, {
-        userId: args.userId,
-        chatId: batch.chatId,
-        messageId: sourceMessage._id,
-        storageId: attachment.storageId,
-        filename: attachment.name,
-        mimeType: attachment.mimeType,
-        sizeBytes: attachment.sizeBytes,
-        driveFileId: attachment.driveFileId,
-        lastRefreshedAt: attachment.driveFileId ? now : undefined,
-        createdAt: now,
-      });
-    }
-
-    let streamingMessageId = (await ctx.db.get(batch.parentJobId))?.streamingMessageId;
-    if (!streamingMessageId) {
-      streamingMessageId = await ctx.db.insert("streamingMessages", {
-        messageId: batch.parentMessageId,
-        chatId: batch.chatId,
-        content: "",
-        status: "pending",
-        createdAt: now,
-        updatedAt: now,
-      });
-    } else {
-      await ctx.db.patch(streamingMessageId, {
-        content: "",
-        reasoning: undefined,
-        toolCalls: undefined,
-        status: "pending",
-        updatedAt: now,
-      });
-    }
-
-    await ctx.db.patch(batch.parentMessageId, {
-      content: "",
-      reasoning: undefined,
-      toolCalls: undefined,
-      toolResults: undefined,
-      status: "pending",
-      drivePickerBatchId: batch._id,
-    });
-    await ctx.db.patch(batch.parentJobId, {
-      status: "queued",
-      streamingMessageId,
-      error: undefined,
-      completedAt: undefined,
-      scheduledFunctionId: undefined,
-    });
-    await ctx.db.patch(batch._id, {
-      status: "resuming",
-      pickedFileIds: args.pickedFileIds,
-      updatedAt: now,
-    });
-
-    return {
-      chatId: batch.chatId,
-      userMessageId: batch.sourceUserMessageId,
-      assistantMessageIds: [batch.parentMessageId],
-      generationJobIds: [batch.parentJobId],
-      participant: {
-        ...participantSnapshot.participant,
-        streamingMessageId,
-      },
-      userId: batch.userId,
-      paramsSnapshot: batch.paramsSnapshot,
-    };
-  },
+  handler: appendAttachmentsAndMarkResumingHandler,
 });
 
 export const completeBatch = internalMutation({

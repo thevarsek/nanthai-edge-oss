@@ -152,7 +152,11 @@ test("runPaperGenerationPhase schedules runGeneration with persona or explicit s
   const scheduled: Array<Record<string, unknown>> = [];
 
   await runPaperGenerationPhase({
-    runMutation: async () => undefined,
+    runMutation: async (_fn: unknown, payload: Record<string, unknown>) => {
+      if (payload.generationArgs) {
+        scheduled.push(payload.generationArgs as Record<string, unknown>);
+      }
+    },
     runQuery: async (_fn: unknown, args: Record<string, unknown>) =>
       args.personaId ? { systemPrompt: "Persona voice" } : null,
     scheduler: {

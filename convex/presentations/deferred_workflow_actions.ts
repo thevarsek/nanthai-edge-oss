@@ -134,6 +134,9 @@ export const runDeferredPresentationGenerate = internalAction({
       });
       if (!project) throw new Error("Presentation not found or unauthorized.");
       if (project.status === "planned") {
+        if (!project.executionAttemptId || project.executionFence === undefined) {
+          throw new Error("Presentation execution identity is missing.");
+        }
         await ctx.runMutation(startPresentationFanoutRef, {
           projectId: project._id,
           userId: args.userId,
@@ -141,6 +144,8 @@ export const runDeferredPresentationGenerate = internalAction({
           toolCallId: args.toolCallId,
           expectedRevision: project.revision,
           modelId: args.modelId,
+          executionAttemptId: project.executionAttemptId,
+          executionFence: project.executionFence,
           ...(args.requireZdrOverride !== undefined
             ? { requireZdrOverride: args.requireZdrOverride }
             : {}),

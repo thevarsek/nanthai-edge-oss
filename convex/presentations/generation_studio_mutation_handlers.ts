@@ -1,16 +1,72 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { validateGeneratedSlideLayout } from "./generated_layout_validation";
-import {
-  runPresentationCuratorRef,
-  runPresentationStudioRepairRef,
-} from "./generation_fanout_refs";
 import { failPresentationRunState } from "./generation_fanout_cleanup";
-import { renewPresentationFanoutLease } from "./generation_fanout_start";
+import {
+  linkPresentationWorkpool,
+  renewPresentationExecutionLease,
+} from "./generation_fanout_start";
 import { inspectSlideHtml } from "./html_contract";
 import { MAX_TITLE_CHARS, presentationError, requireBoundedText } from "./limits";
 import { harmonizePresentationTypography } from "./typography_harmonization";
 import type { ParsedPresentationSlide } from "./types";
+import { TERMINAL_GENERATION_JOB_STATUSES } from "../chat/generation_continuation_shared";
+import { interactiveWorkpool } from "../execution/components";
+import {
+  runPresentationCuratorRef,
+  runPresentationStudioRepairRef,
+} from "./generation_fanout_refs";
+import { internal } from "../_generated/api";
+import { durableWorkflow } from "../execution/components";
+import type { WorkflowId } from "@convex-dev/workflow";
+import { PRESENTATION_RUN_TERMINAL_EVENT } from "./presentation_workflow_state";
+import {
+  matchesPresentationExecution,
+  type PresentationExecutionIdentity,
+} from "./generation_execution_identity";
+
+export type PresentationStudioDispatch = {
+  enqueueRepair: (
+    ctx: MutationCtx,
+    args: {
+      runId: Id<"presentationGenerationRuns">;
+      batchId: Id<"presentationGenerationBatches">;
+    } & PresentationExecutionIdentity,
+  ) => Promise<string>;
+  enqueueCurator: (
+    ctx: MutationCtx,
+    args: { runId: Id<"presentationGenerationRuns"> } & PresentationExecutionIdentity,
+  ) => Promise<string>;
+};
+
+const defaultStudioDispatch: PresentationStudioDispatch = {
+  enqueueRepair: async (ctx, args) => await interactiveWorkpool.enqueueAction(
+    ctx,
+    runPresentationStudioRepairRef,
+    args,
+    {
+      retry: false,
+      name: "presentation-studio-repair",
+      onComplete:
+        internal.presentations.generation_fanout_mutations
+          .reconcilePresentationWork,
+      context: args,
+    },
+  ),
+  enqueueCurator: async (ctx, args) => await interactiveWorkpool.enqueueAction(
+    ctx,
+    runPresentationCuratorRef,
+    args,
+    {
+      retry: false,
+      name: "presentation-curator",
+      onComplete:
+        internal.presentations.generation_fanout_mutations
+          .reconcilePresentationWork,
+      context: args,
+    },
+  ),
+};
 
 function appendModel(models: string[], modelId: string | undefined): string[] {
   return modelId ? [...new Set([...models, modelId])] : models;
@@ -20,11 +76,15 @@ export async function claimPresentationStudioBatchHandler(ctx: MutationCtx, args
   runId: Id<"presentationGenerationRuns">;
   batchId: Id<"presentationGenerationBatches">;
   repair: boolean;
-}): Promise<boolean> {
+} & PresentationExecutionIdentity): Promise<boolean> {
   const [run, batch] = await Promise.all([ctx.db.get(args.runId), ctx.db.get(args.batchId)]);
   const expectedStatus = args.repair ? "repairing" : "queued";
-  if (!run || run.status !== "generating" || !batch || batch.runId !== run._id ||
+  if (!run || !matchesPresentationExecution(run, args) || run.status !== "generating" ||
+      !batch || batch.runId !== run._id ||
       batch.status !== expectedStatus) return false;
+  await renewPresentationExecutionLease(ctx, run._id, args);
+  const job = await ctx.db.get(run.jobId);
+  if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return false;
   const project = await ctx.db.get(run.projectId);
   if (!project || project.status !== "generating" || project.revision !== run.projectRevision) {
     return false;
@@ -47,14 +107,27 @@ export async function queuePresentationStudioRepairHandler(ctx: MutationCtx, arg
   validationCode?: string;
   validationDetails?: string;
   effectiveModelId?: string;
-}): Promise<boolean> {
+} & PresentationExecutionIdentity, dispatch: PresentationStudioDispatch = defaultStudioDispatch): Promise<boolean> {
   const [run, batch] = await Promise.all([ctx.db.get(args.runId), ctx.db.get(args.batchId)]);
-  if (!run || run.status !== "generating" || !batch || batch.runId !== run._id ||
+  if (!run || !matchesPresentationExecution(run, args) || run.status !== "generating" ||
+      !batch || batch.runId !== run._id ||
       batch.status !== "running") return false;
-  const scheduledFunctionId = await ctx.scheduler.runAfter(0, runPresentationStudioRepairRef, {
+  await renewPresentationExecutionLease(ctx, run._id, args);
+  const job = await ctx.db.get(run.jobId);
+  if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return false;
+  const workpoolOperationId = await dispatch.enqueueRepair(ctx, {
     runId: run._id,
     batchId: batch._id,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
+  await linkPresentationWorkpool(
+    ctx,
+    run,
+    args,
+    workpoolOperationId,
+    `presentation-studio-repair:${batch.batchIndex}:${args.repairAttempt}`,
+  );
   await ctx.db.patch(batch._id, {
     status: "repairing",
     repairAttempt: args.repairAttempt,
@@ -75,10 +148,10 @@ export async function queuePresentationStudioRepairHandler(ctx: MutationCtx, arg
       },
     ].slice(-8),
     effectiveModelIds: appendModel(batch.effectiveModelIds, args.effectiveModelId),
-    scheduledFunctionId,
+    workpoolOperationId,
     updatedAt: Date.now(),
   });
-  await renewPresentationFanoutLease(ctx, run._id);
+  await renewPresentationExecutionLease(ctx, run._id, args);
   return true;
 }
 
@@ -88,10 +161,16 @@ export async function completePresentationStudioBatchHandler(ctx: MutationCtx, a
   slides: ParsedPresentationSlide[];
   effectiveModelId: string;
   allowLayoutIssues?: boolean;
-}) {
+} & PresentationExecutionIdentity, dispatch: PresentationStudioDispatch = defaultStudioDispatch) {
   const [run, batch] = await Promise.all([ctx.db.get(args.runId), ctx.db.get(args.batchId)]);
-  if (!run || run.status !== "generating" || !batch || batch.runId !== run._id ||
+  if (!run || !matchesPresentationExecution(run, args) || run.status !== "generating" ||
+      !batch || batch.runId !== run._id ||
       batch.status !== "running") return { accepted: false, curatorQueued: false };
+  await renewPresentationExecutionLease(ctx, run._id, args);
+  const job = await ctx.db.get(run.jobId);
+  if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) {
+    return { accepted: false, curatorQueued: false };
+  }
   if (args.slides.length !== batch.slideIds.length ||
       args.slides.some((slide, index) => slide.id !== batch.slideIds[index])) {
     throw presentationError("MODEL_RESPONSE_INVALID", "Studio slides did not match the assigned slide IDs.");
@@ -146,16 +225,19 @@ export async function completePresentationStudioBatchHandler(ctx: MutationCtx, a
     await ctx.db.patch(run._id, { completedSlideIds, updatedAt: now });
     return { accepted: true, curatorQueued: false };
   }
-  const curatorScheduledFunctionId = await ctx.scheduler.runAfter(0, runPresentationCuratorRef, {
+  const curatorWorkpoolOperationId = await dispatch.enqueueCurator(ctx, {
     runId: run._id,
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
   });
+  await linkPresentationWorkpool(ctx, run, args, curatorWorkpoolOperationId, "presentation-curator");
   await ctx.db.patch(run._id, {
     completedSlideIds,
     status: "curator_queued",
-    curatorScheduledFunctionId,
+    curatorWorkpoolOperationId,
     updatedAt: now,
   });
-  await renewPresentationFanoutLease(ctx, run._id);
+  await renewPresentationExecutionLease(ctx, run._id, args);
   return { accepted: true, curatorQueued: true };
 }
 
@@ -163,9 +245,11 @@ export async function failPresentationFanoutHandler(ctx: MutationCtx, args: {
   runId: Id<"presentationGenerationRuns">;
   batchId?: Id<"presentationGenerationBatches">;
   error: string;
-}): Promise<boolean> {
+} & PresentationExecutionIdentity): Promise<boolean> {
   const run = await ctx.db.get(args.runId);
-  if (!run || run.status === "complete" || run.status === "failed") return false;
+  if (!run || !matchesPresentationExecution(run, args) ||
+      run.status === "complete" || run.status === "failed") return false;
+  await renewPresentationExecutionLease(ctx, run._id, args);
   const project = await ctx.db.get(run.projectId);
   const now = Date.now();
   await failPresentationRunState(ctx, run, args.error, now);
@@ -176,6 +260,12 @@ export async function failPresentationFanoutHandler(ctx: MutationCtx, args: {
       error: args.error.slice(0, 500),
       revision: project.revision + 1,
       updatedAt: now,
+    });
+  }
+  if (run.workflowId) {
+    await durableWorkflow.sendEvent(ctx, {
+      workflowId: run.workflowId as WorkflowId,
+      name: PRESENTATION_RUN_TERMINAL_EVENT,
     });
   }
   return true;

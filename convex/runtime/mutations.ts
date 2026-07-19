@@ -1,6 +1,7 @@
 import { internalMutation } from "../_generated/server";
 import type { Doc } from "../_generated/dataModel";
 import { v } from "convex/values";
+import { assertUserDataWritable } from "../lib/write_fence";
 
 export const upsertSessionInternal = internalMutation({
   args: {
@@ -28,6 +29,9 @@ export const upsertSessionInternal = internalMutation({
     metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    if (args.status !== "deleted") {
+      await assertUserDataWritable(ctx, args.userId, args.chatId);
+    }
     const now = Date.now();
     const sessionFields = {
       provider: "vercel" as const,
@@ -56,6 +60,12 @@ export const upsertSessionInternal = internalMutation({
     }
 
     if (args.sessionId) {
+      const existing = await ctx.db.get(args.sessionId);
+      if (
+        !existing
+        || existing.userId !== args.userId
+        || existing.chatId !== args.chatId
+      ) throw new Error("SANDBOX_SESSION_OWNERSHIP_MISMATCH");
       await ctx.db.patch(args.sessionId, patch);
       return args.sessionId;
     }
@@ -91,6 +101,7 @@ export const recordSandboxArtifactInternal = internalMutation({
     isDurable: v.boolean(),
   },
   handler: async (ctx, args) => {
+    await assertUserDataWritable(ctx, args.userId, args.chatId);
     return await ctx.db.insert("sandboxArtifacts", {
       ...args,
       createdAt: Date.now(),
@@ -108,6 +119,7 @@ export const recordSandboxEventInternal = internalMutation({
     details: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
+    await assertUserDataWritable(ctx, args.userId, args.chatId);
     return await ctx.db.insert("sandboxEvents", {
       ...args,
       createdAt: Date.now(),
@@ -144,5 +156,23 @@ export const markSessionsDeletedInternal = internalMutation({
       marked++;
     }
     return { marked };
+  },
+});
+
+export const confirmSessionDeletedInternal = internalMutation({
+  args: {
+    sessionId: v.id("sandboxSessions"),
+    reason: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) return null;
+    await ctx.db.patch(session._id, {
+      status: "deleted",
+      pendingDeletionReason: args.reason,
+      updatedAt: Date.now(),
+    });
+    return null;
   },
 });

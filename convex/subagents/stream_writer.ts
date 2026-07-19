@@ -11,6 +11,8 @@ export class SubagentStreamWriter {
   private readonly ctx: ActionCtx;
   private readonly runId: Id<"subagentRuns">;
   private readonly beforePatch?: () => Promise<void>;
+  private readonly executionAttemptId?: Id<"executionAttempts">;
+  private readonly executionFence?: number;
   private _totalContent = "";
   private _totalReasoning = "";
   private lastPatchedContentLength = 0;
@@ -25,12 +27,16 @@ export class SubagentStreamWriter {
     ctx: ActionCtx;
     runId: Id<"subagentRuns">;
     beforePatch?: () => Promise<void>;
+    executionAttemptId?: Id<"executionAttempts">;
+    executionFence?: number;
     initialContent?: string;
     initialReasoning?: string;
   }) {
     this.ctx = opts.ctx;
     this.runId = opts.runId;
     this.beforePatch = opts.beforePatch;
+    this.executionAttemptId = opts.executionAttemptId;
+    this.executionFence = opts.executionFence;
     this._totalContent = opts.initialContent ?? "";
     this._totalReasoning = opts.initialReasoning ?? "";
     this.lastPatchedContentLength = this._totalContent.length;
@@ -75,6 +81,7 @@ export class SubagentStreamWriter {
     if (this.beforePatch) await this.beforePatch();
     await this.ctx.runMutation(internal.subagents.mutations.updateRunStreaming, {
       runId: this.runId,
+      ...this.executionToken(),
       content: this._totalContent,
       status: "streaming",
     });
@@ -100,11 +107,25 @@ export class SubagentStreamWriter {
     if (this.beforePatch) await this.beforePatch();
     await this.ctx.runMutation(internal.subagents.mutations.updateRunStreaming, {
       runId: this.runId,
+      ...this.executionToken(),
       reasoning: this._totalReasoning,
     });
     this.lastPatchedReasoningLength = this._totalReasoning.length;
     this.lastPatchedReasoningAtMs = nowMs;
     this.reasoningStartedAtMs = nowMs;
+  }
+
+  private executionToken(): {
+    executionAttemptId?: Id<"executionAttempts">;
+    executionFence?: number;
+  } {
+    if (this.executionAttemptId === undefined || this.executionFence === undefined) {
+      return {};
+    }
+    return {
+      executionAttemptId: this.executionAttemptId,
+      executionFence: this.executionFence,
+    };
   }
 
   async handleContentDeltaBoundary(deltaLength: number): Promise<void> {

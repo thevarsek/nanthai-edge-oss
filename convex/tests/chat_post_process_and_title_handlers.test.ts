@@ -76,6 +76,7 @@ test("postProcessHandler exits when the chat is missing or the user message is a
 
 test("postProcessHandler schedules title generation and memory extraction with filtered assistant content", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
+  const enqueued: Array<Record<string, unknown>> = [];
   const ctx = createMockCtx({
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if (args.chatId) return { _id: "chat_1", title: "New chat" };
@@ -110,6 +111,10 @@ test("postProcessHandler schedules title generation and memory extraction with f
         scheduled.push(args);
       },
     },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      enqueued.push(args);
+      return `work_${enqueued.length}`;
+    },
   });
 
   await postProcessHandler(ctx, {
@@ -119,8 +124,9 @@ test("postProcessHandler schedules title generation and memory extraction with f
     userId: "user_1",
   });
 
-  assert.equal(scheduled.length, 2);
-  assert.deepEqual(scheduled[0], {
+  assert.equal(scheduled.length, 0);
+  assert.equal(enqueued.length, 2);
+  assert.deepEqual(enqueued[0], {
     chatId: "chat_1",
     sourceContent: "Remember that my favorite editor is neovim.",
     assistantContent: "Assistant result A",
@@ -128,7 +134,7 @@ test("postProcessHandler schedules title generation and memory extraction with f
     userId: "user_1",
     messageId: "msg_a1",
   });
-  assert.deepEqual(scheduled[1], {
+  assert.deepEqual(enqueued[1], {
     chatId: "chat_1",
     userMessageContent: "Remember that my favorite editor is neovim.",
     userMessageId: "msg_user",
@@ -281,9 +287,10 @@ test("generateTitleHandler overwrites placeholder or seed titles, stores ancilla
   const guardedCtx = createMockCtx({
     runQuery: async () => {
       readCount += 1;
-      return readCount === 1
-        ? { _id: "chat_2", title: "New chat" }
-        : { _id: "chat_2", title: "Custom title" };
+      if (readCount === 1) return true;
+      if (readCount === 2) return { _id: "chat_2", title: "New chat" };
+      if (readCount === 3) return {};
+      return { _id: "chat_2", title: "Custom title" };
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       guardedMutations.push(args);

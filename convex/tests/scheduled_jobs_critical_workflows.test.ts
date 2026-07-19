@@ -12,11 +12,12 @@ import {
   createSearchSession,
   deleteApiKey,
   deleteJob,
+  deleteJobBatchInternal,
   pauseJob,
-  recordRunFailure,
   recordRunSuccess,
   replaceScheduledFunction,
   resumeJob,
+  runJobNow,
   revokeJobTriggerToken,
   rotateJobTriggerToken,
   triggerJobViaApi,
@@ -134,6 +135,7 @@ test("public scheduled job lifecycle covers idempotent pause/resume/delete and t
   const deleted: string[] = [];
   const cancelled: string[] = [];
   const scheduled: Array<Record<string, unknown>> = [];
+  const teardownScheduled: Array<Record<string, unknown>> = [];
   let jobStatus = "active";
   let jobRunsBatch = 0;
 
@@ -191,6 +193,10 @@ test("public scheduled job lifecycle covers idempotent pause/resume/delete and t
         scheduled.push(payload);
         return "sched_new";
       },
+      runAfter: async (_delay: number, _ref: unknown, payload: Record<string, unknown>) => {
+        teardownScheduled.push(payload);
+        return "sched_teardown";
+      },
     },
   } as any;
 
@@ -201,7 +207,8 @@ test("public scheduled job lifecycle covers idempotent pause/resume/delete and t
   await (resumeJob as any)._handler(ctx, { jobId: "job_1" });
   await (resumeJob as any)._handler(ctx, { jobId: "job_1" });
   assert.ok(patches.some((entry) => entry.id === "job_1" && entry.patch.status === "active" && entry.patch.scheduledFunctionId === "sched_new"));
-  assert.deepEqual(scheduled, [{ jobId: "job_1" }]);
+  assert.equal(scheduled[0]?.jobId, "job_1");
+  assert.match(String(scheduled[0]?.occurrenceId), /^scheduled:job_1:/);
 
   const createdToken = await (createJobTriggerToken as any)._handler(ctx, {
     jobId: "job_1",
@@ -220,9 +227,116 @@ test("public scheduled job lifecycle covers idempotent pause/resume/delete and t
   assert.ok(patches.some((entry) => entry.id === "token_1" && entry.patch.status === "revoked"));
 
   await (deleteJob as any)._handler(ctx, { jobId: "job_1" });
-  assert.equal(deleted.length, 102);
-  assert.equal(deleted.at(-1), "job_1");
+  assert.equal(deleted.length, 0);
+  assert.deepEqual(teardownScheduled, [{ jobId: "job_1", userId: "user_1" }]);
   assert.ok(cancelled.includes("sched_old"));
+});
+
+test("pause and delete remain available without an active Pro entitlement", async () => {
+  const patches: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  const job = {
+    _id: "job_1",
+    userId: "user_1",
+    status: "active",
+    recurrence: { type: "manual" },
+  };
+  const ctx = {
+    auth: auth(),
+    db: {
+      get: async () => job,
+      query: () => {
+        throw new Error("entitlement lookup must not run");
+      },
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
+        Object.assign(job, value);
+      },
+    },
+    scheduler: {
+      cancel: async () => undefined,
+      runAfter: async (_delay: number, _ref: unknown, value: Record<string, unknown>) => {
+        scheduled.push(value);
+      },
+    },
+  } as any;
+
+  await (pauseJob as any)._handler(ctx, { jobId: "job_1" });
+  job.status = "active";
+  await (deleteJob as any)._handler(ctx, { jobId: "job_1" });
+
+  assert.equal(patches[0]?.status, "paused");
+  assert.equal(patches[1]?.isDeleting, true);
+  assert.deepEqual(scheduled, [{ jobId: "job_1", userId: "user_1" }]);
+});
+
+test("scheduled job deletion drains runs, trigger secrets, and API audit rows", async () => {
+  const deleted: string[] = [];
+  const rows: Record<string, Array<{ _id: string }>> = {
+    jobRuns: [{ _id: "run_1" }],
+    scheduledJobTriggerTokens: [{ _id: "token_1" }],
+    scheduledJobApiInvocations: [{ _id: "invocation_1" }],
+  };
+  const ctx = {
+    db: {
+      get: async () => ({ _id: "job_1", userId: "user_1", isDeleting: true }),
+      query: (table: string) => ({
+        withIndex: () => ({
+          take: async () => rows[table] ?? [],
+        }),
+      }),
+      delete: async (id: string) => {
+        deleted.push(id);
+      },
+    },
+  } as any;
+
+  assert.equal(await (deleteJobBatchInternal as any)._handler(ctx, {
+    jobId: "job_1",
+    userId: "user_1",
+  }), true);
+  assert.deepEqual(new Set(deleted), new Set([
+    "run_1",
+    "token_1",
+    "invocation_1",
+    "job_1",
+  ]));
+});
+
+test("a deletion-marked job cannot be resumed, run, or API-triggered", async () => {
+  let scheduled = 0;
+  const ctx = {
+    auth: auth(),
+    db: {
+      get: async () => ({
+        _id: "job_1",
+        userId: "user_1",
+        status: "paused",
+        isDeleting: true,
+        recurrence: { type: "interval", minutes: 60 },
+      }),
+      query: (table: string) => table === "purchaseEntitlements"
+        ? queryChain({ first: { _id: "ent_1", status: "active" } })
+        : queryChain({}),
+    },
+    scheduler: {
+      runAt: async () => {
+        scheduled += 1;
+      },
+      runAfter: async () => {
+        scheduled += 1;
+      },
+    },
+  } as any;
+
+  await assert.rejects((resumeJob as any)._handler(ctx, { jobId: "job_1" }));
+  await assert.rejects((runJobNow as any)._handler(ctx, { jobId: "job_1" }));
+  await assert.rejects((triggerJobViaApi as any)._handler(ctx, {
+    jobId: "job_1",
+    userId: "user_1",
+    requestId: "request_1",
+  }));
+  assert.equal(scheduled, 0);
 });
 
 test("scheduled job API key mutations validate, upsert, and delete user secrets", async () => {
@@ -234,6 +348,7 @@ test("scheduled job API key mutations validate, upsert, and delete user secrets"
   const ctx = {
     auth: auth(),
     db: {
+      get: async () => ({ _id: "job_1", userId: "user_1" }),
       query: (table: string) => {
         if (table === "userSecrets") return queryChain({ unique: secret });
         return queryChain({});
@@ -344,7 +459,8 @@ test("updateJobInternal validates folders, personas, KB ownership, and reschedul
   });
 
   assert.deepEqual(cancelled, ["sched_old"]);
-  assert.deepEqual(scheduled, [{ jobId: "job_1" }]);
+  assert.equal(scheduled[0]?.jobId, "job_1");
+  assert.match(String(scheduled[0]?.occurrenceId), /^scheduled:job_1:/);
   assert.equal(patches[0]?.id, "job_1");
   assert.equal(patches[0]?.patch.name, "New Digest");
   assert.equal(patches[0]?.patch.targetFolderId, "folder_1");
@@ -373,6 +489,7 @@ test("scheduled execution internals create chats, turns, sessions, and lifecycle
             activeAssistantMessageId: undefined,
           };
         }
+        if (id === "chat_1") return { _id: "chat_1", userId: "user_1" };
         return null;
       },
       query: (table: string) => {
@@ -440,17 +557,14 @@ test("scheduled execution internals create chats, turns, sessions, and lifecycle
   });
   assert.equal(searchId, "searchSessions_7");
 
-  await (recordRunSuccess as any)._handler(ctx, { jobId: "job_1", chatId: "chat_1", startedAt: 50 });
-  await (recordRunFailure as any)._handler(ctx, {
+  await (recordRunSuccess as any)._handler(ctx, {
     jobId: "job_1",
-    error: "provider failed",
-    consecutiveFailures: 3,
-    autoPause: true,
-    startedAt: 60,
+    executionId: "exec_1",
+    chatId: "chat_1",
+    startedAt: 50,
   });
 
   assert.ok(patches.some((entry) => entry.patch.lastRunStatus === "success"));
-  assert.ok(patches.some((entry) => entry.patch.lastRunStatus === "failed" && entry.patch.status === "error"));
 });
 
 test("API trigger idempotency logs duplicates and active triggers, and cleanup continues after full batches", async () => {
@@ -462,6 +576,7 @@ test("API trigger idempotency logs duplicates and active triggers, and cleanup c
 
   const ctx = {
     db: {
+      get: async () => ({ _id: "job_1", userId: "user_1" }),
       query: (table: string) => {
         if (table === "scheduledJobApiInvocations") {
           return queryChain({ first: { _id: "inv_1", requestId: "req_old" } });

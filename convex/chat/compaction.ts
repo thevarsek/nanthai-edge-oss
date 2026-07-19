@@ -165,7 +165,7 @@ export interface CompactionResult {
 export async function compactMessages(
   messages: OpenRouterMessage[],
   apiKey: string,
-  options: { requireZdr?: boolean } = {},
+  options: { requireZdr?: boolean; absoluteDeadlineAtMs?: number } = {},
 ): Promise<CompactionResult> {
   // Prepare messages for the compaction model — strip binary content.
   const cleanedMessages = messages.map((msg) => {
@@ -216,6 +216,7 @@ export async function compactMessages(
       },
       options.requireZdr === true,
     ),
+    { absoluteDeadlineAtMs: options.absoluteDeadlineAtMs },
   );
 
   return {

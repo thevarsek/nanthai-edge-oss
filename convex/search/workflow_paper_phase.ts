@@ -1,6 +1,9 @@
 import { internal } from "../_generated/api";
 import { ActionCtx } from "../_generated/server";
-import { buildPaperGenerationSystemPrompt } from "./helpers";
+import {
+  buildPaperGenerationSystemPrompt,
+  resolveComplexityPreset,
+} from "./helpers";
 import {
   computeProgress,
   PipelineArgs,
@@ -30,7 +33,7 @@ export async function runPaperGenerationPhase(
     progress: computeProgress(args.complexity, "paper", 0),
     currentPhase: "writing",
     phaseOrder,
-  });
+  }, args);
 
   // Build the paper-generation system prompt from synthesis data.
   const paperSystemPrompt = buildPaperGenerationSystemPrompt(synthesisData, {
@@ -56,7 +59,7 @@ export async function runPaperGenerationPhase(
   // utilities such as load_skill/fetch_image cannot steer autonomous drafting.
   // The job status is already "streaming" — runGeneration will re-set it
   // (idempotent) and handle finalization, post-processing, and tool loops.
-  await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
+  const generationArgs = {
     chatId: args.chatId,
     userMessageId: args.userMessageId,
     assistantMessageIds: [args.assistantMessageId],
@@ -84,5 +87,19 @@ export async function runPaperGenerationPhase(
     searchSessionId: args.sessionId,
     analytics: args.analytics,
     analyticsSource: args.analyticsSource ?? "research_paper",
-  });
+  };
+  const preset = resolveComplexityPreset("paper", args.complexity);
+  await ctx.runMutation(
+    internal.search.generation_handoff.commitGenerationHandoff,
+    {
+      sessionId: args.sessionId,
+      generationArgs,
+      progress: computeProgress(args.complexity, "paper", 0),
+      searchCallCount: 0,
+      perplexityModelTier: preset.searchModel,
+      participantCount: 1,
+      executionAttemptId: args.executionAttemptId,
+      executionFence: args.executionFence,
+    },
+  );
 }

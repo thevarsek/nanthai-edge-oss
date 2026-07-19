@@ -12,8 +12,10 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "cleanOldJobRuns",
     "cleanStaleJobs",
     "cleanStaleSandboxSessions",
-    "cleanStaleSearchPhases",
-    "consolidateMemories",
+      "cleanStaleSearchPhases",
+      "cleanupAccountDeletionTombstones",
+      "consolidateMemories",
+    "reconcileExecutionCancellations",
     "refreshModelCatalog",
     "syncArtificialAnalysis",
     "syncImageModels",
@@ -67,6 +69,8 @@ test("schema exposes the indexes and fields that shared clients depend on", () =
   assert.deepEqual(scheduledIndexes, [
     "by_user",
     "by_user_next_run",
+    "by_execution_run",
+    "by_active_execution",
     "by_status",
   ]);
 });

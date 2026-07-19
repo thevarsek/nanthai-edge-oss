@@ -49,12 +49,14 @@ test("Advisor context lookup failures terminalize a claimed run", async () => {
     scheduler: { runAfter: async () => "analytics_1" },
   }, { runId: "run_1" });
 
-  assert.deepEqual(finalized, [{
+  assert.equal(typeof finalized[0]?.leaseOwner, "string");
+  assert.deepEqual({ ...finalized[0], leaseOwner: undefined }, {
     runId: "run_1",
+    leaseOwner: undefined,
     status: "failed",
     errorCode: "ADVISOR_FAILED",
     errorMessage: "context limit exceeded",
-  }]);
+  });
 });
 
 test("Advisor action strips SDK request dumps before finalization", async () => {

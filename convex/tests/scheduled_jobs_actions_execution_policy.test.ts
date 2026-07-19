@@ -12,6 +12,16 @@ test("scheduled invocations only run active jobs", () => {
       status: "active",
       recurrence: { type: "daily", hourUTC: 8, minuteUTC: 30 },
       invocationSource: "scheduled",
+      isDeleting: true,
+    }),
+    false,
+  );
+
+  assert.equal(
+    shouldExecuteScheduledJob({
+      status: "active",
+      recurrence: { type: "daily", hourUTC: 8, minuteUTC: 30 },
+      invocationSource: "scheduled",
     }),
     true,
   );

@@ -37,6 +37,7 @@ function baseArgs() {
     isPro: false,
     allowSubagents: true,
     resumeExpected: true,
+    drivePickerBatchId: "drive_batch_1" as any,
   };
 }
 
@@ -140,5 +141,9 @@ test("runGenerationParticipantHandler resumes from continuation state and finali
     && args.openrouterGenerationId === "gen_resume"
   ));
   assert.ok(mutationCalls.some((args) => args.jobId === "job_resume"));
+  assert.ok(mutationCalls.some((args) =>
+    args.batchId === "drive_batch_1"
+    && args.status === "completed"
+  ));
   assert.equal(mutationCalls.some((args) => args.jobId === "job_original" && args.status), false);
 });

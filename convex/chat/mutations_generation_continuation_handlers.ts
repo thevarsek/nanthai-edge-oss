@@ -6,6 +6,7 @@ import {
   GenerationContinuationState,
   TERMINAL_GENERATION_JOB_STATUSES,
 } from "./generation_continuation_shared";
+import { commitGenerationCheckpointBoundary } from "./generation_checkpoint_commit";
 
 type ContinuationMutationCtx = Pick<MutationCtx, "db" | "scheduler">;
 
@@ -63,22 +64,47 @@ export async function saveGenerationContinuationHandler(
     scheduledFunctionId: undefined,
     claimedAt: undefined,
     leaseExpiresAt: undefined,
+    executionAttemptId: args.checkpoint.group.executionAttemptId,
+    executionFence: args.checkpoint.group.executionFence,
+    roundKey: args.checkpoint.roundKey,
+    deferredResumeEventId: args.checkpoint.deferredResumeEventId,
+    deferredOwnership: args.checkpoint.deferredOwnership,
     updatedAt: now,
   };
 
   if (existing) {
     await ctx.db.patch(existing._id, value);
-    return;
+  } else {
+    await ctx.db.insert("generationContinuations", {
+      ...value,
+      createdAt: now,
+    });
   }
 
-  await ctx.db.insert("generationContinuations", {
-    ...value,
-    createdAt: now,
-  });
+  const executionAttemptId = args.checkpoint.group.executionAttemptId;
+  const executionFence = args.checkpoint.group.executionFence;
+  if ((executionAttemptId === undefined) !== (executionFence === undefined)) {
+    throw new Error("GENERATION_CHECKPOINT_EXECUTION_IDENTITY_INCOMPLETE");
+  }
+  if (args.checkpoint.roundKey && !executionAttemptId) {
+    throw new Error("GENERATION_CHECKPOINT_EXECUTION_IDENTITY_REQUIRED");
+  }
+  if (executionAttemptId && executionFence !== undefined) {
+    await commitGenerationCheckpointBoundary(ctx as MutationCtx, {
+      jobId: args.jobId,
+      userId: args.userId,
+      roundKey: args.checkpoint.roundKey,
+      checkpointBeforeProviderDispatch: args.checkpoint.checkpointBeforeProviderDispatch,
+      executionAttemptId,
+      executionFence,
+    });
+  }
 }
 
 export interface ClaimGenerationContinuationArgs extends Record<string, unknown> {
   jobId: Id<"generationJobs">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
 
 export async function claimGenerationContinuationHandler(
@@ -99,6 +125,15 @@ export async function claimGenerationContinuationHandler(
     }
     return null;
   }
+  if (
+    args.executionAttemptId &&
+    (job.executionAttemptId !== args.executionAttemptId || job.executionFence !== args.executionFence)
+  ) {
+    return null;
+  }
+  if (continuation.deferredResumeEventId) {
+    return null;
+  }
 
   const leaseActive =
     continuation.status === "running"
@@ -112,6 +147,8 @@ export async function claimGenerationContinuationHandler(
     status: "running",
     claimedAt: now,
     leaseExpiresAt: now + GENERATION_CONTINUATION_LEASE_MS,
+    executionAttemptId: args.executionAttemptId ?? continuation.executionAttemptId,
+    executionFence: args.executionFence ?? continuation.executionFence,
     scheduledAt: undefined,
     scheduledFunctionId: undefined,
     updatedAt: now,
@@ -121,6 +158,7 @@ export async function claimGenerationContinuationHandler(
   }
 
   return {
+    roundKey: continuation.roundKey,
     participant: continuation.participantSnapshot as GenerationContinuationState["participant"],
     group: continuation.groupSnapshot as GenerationContinuationState["group"],
     checkpointVersion: (continuation.checkpointVersion ?? "v1") as GenerationContinuationState["checkpointVersion"],
@@ -215,23 +253,4 @@ export async function cancelGenerationContinuationHandler(
   if (job?.scheduledFunctionId) {
     await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
   }
-}
-
-export interface MarkPostProcessScheduledArgs extends Record<string, unknown> {
-  messageId: Id<"messages">;
-}
-
-export async function markPostProcessScheduledHandler(
-  ctx: MutationCtx,
-  args: MarkPostProcessScheduledArgs,
-): Promise<boolean> {
-  const message = await ctx.db.get(args.messageId);
-  if (!message || message.postProcessScheduledAt != null) {
-    return false;
-  }
-
-  await ctx.db.patch(args.messageId, {
-    postProcessScheduledAt: Date.now(),
-  });
-  return true;
 }

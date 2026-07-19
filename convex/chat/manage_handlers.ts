@@ -1,6 +1,8 @@
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { closeChatExecutionWriters } from "../execution/teardown_graph";
+import { deleteForMessage as deleteAnalyticsForMessage } from "../analytics_workflows/cleanup";
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import { safeDeleteAudioBlob } from "./manage_delete_helpers";
@@ -354,13 +356,14 @@ export async function deleteChatHandler(
   }
 
   const deletingAt = Date.now();
+  await closeChatExecutionWriters(ctx, args.chatId, userId);
   await ctx.db.patch(args.chatId, {
     isDeleting: true,
     deletingAt,
     updatedAt: deletingAt,
   });
 
-  await ctx.scheduler.runAfter(0, internal.chat.manage_internal.deleteSingleChat, {
+  await ctx.scheduler.runAfter(0, internal.execution.teardown.cancelChatExecutionsAndDelete, {
     chatId: args.chatId,
     userId,
   });
@@ -381,7 +384,10 @@ export async function bulkDeleteChatsHandler(
   for (const chatId of args.chatIds) {
     const chat = await ctx.db.get(chatId);
     if (!chat || chat.userId !== userId) continue;
-    await ctx.scheduler.runAfter(0, internal.chat.manage_internal.deleteSingleChat, {
+    const deletingAt = Date.now();
+    await closeChatExecutionWriters(ctx, chatId, userId);
+    await ctx.db.patch(chatId, { isDeleting: true, deletingAt, updatedAt: deletingAt });
+    await ctx.scheduler.runAfter(0, internal.execution.teardown.cancelChatExecutionsAndDelete, {
       chatId,
       userId,
     });
@@ -497,6 +503,7 @@ export async function deleteMessageHandler(
   }
 
   await deleteAdvisorDataForMessage(ctx, message);
+  await deleteAnalyticsForMessage(ctx, args.messageId);
   await ctx.db.delete(args.messageId);
 }
 

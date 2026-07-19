@@ -10,13 +10,34 @@ export async function scheduleGenerationContinuation(
   args: RunGenerationParticipantArgs,
   checkpoint: GenerationContinuationCheckpoint,
 ): Promise<void> {
+  if (args.workflowManaged && !args.workflowResumeEventId) {
+    throw new Error("GENERATION_WORKFLOW_ROUND_KEY_REQUIRED");
+  }
+  const roundKey = args.workflowResumeEventId ?? checkpoint.roundKey;
+  const durableCheckpoint: GenerationContinuationCheckpoint = args.executionAttemptId &&
+    args.executionFence !== undefined
+    ? {
+        ...checkpoint,
+        ...(roundKey ? { roundKey } : {}),
+        group: {
+          ...checkpoint.group,
+          executionAttemptId: args.executionAttemptId,
+          executionFence: args.executionFence,
+        },
+      }
+    : {
+        ...checkpoint,
+        ...(roundKey ? { roundKey } : {}),
+      };
   await ctx.runMutation(internal.chat.mutations.saveGenerationContinuation, {
     chatId: args.chatId,
     messageId: args.participant.messageId,
     jobId: args.participant.jobId,
     userId: args.userId,
-    checkpoint,
+    checkpoint: durableCheckpoint,
   });
+
+  if (args.workflowManaged) return;
 
   const scheduledId = await ctx.scheduler.runAfter(
     0,

@@ -4,6 +4,8 @@ import type { Id } from "../_generated/dataModel";
 import type { ToolCall } from "../lib/openrouter";
 import type { OpenRouterUsage } from "../lib/openrouter";
 import type { ToolResult } from "./registry";
+import { deleteStoredPayloads, toolRoundCaptureKey } from "./artifact_capture_client";
+import type { ArtifactUsageInput } from "./artifact_persistence";
 
 const INLINE_RAW_BYTE_LIMIT = 96_000;
 
@@ -30,6 +32,8 @@ export interface ToolArtifactRunMetadata {
   provider?: string;
   runtime?: string;
   activeProfiles?: string[];
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
 
 export interface ToolRoundArtifactInput {
@@ -124,12 +128,12 @@ function extractWebSearchUsage(
   };
 }
 
-async function recordWebSearchUsage(
-  ctx: ActionCtx,
+function webSearchUsageInput(
   metadata: ToolArtifactRunMetadata,
   payload: { usage: OpenRouterUsage; modelId: string; generationId?: string },
-): Promise<void> {
-  await ctx.runMutation(internal.chat.mutations.storeAncillaryCost, {
+  idempotencyKey: string,
+): ArtifactUsageInput {
+  return {
     messageId: metadata.messageId,
     chatId: metadata.chatId,
     userId: metadata.userId,
@@ -153,7 +157,8 @@ async function recordWebSearchUsage(
     webSearchRequests: optionalNumber(payload.usage.webSearchRequests),
     source: "tool_web_search",
     generationId: payload.generationId,
-  });
+    idempotencyKey,
+  };
 }
 
 async function maybeStoreRaw(
@@ -170,19 +175,50 @@ async function maybeStoreRaw(
 export async function captureToolRoundArtifacts(
   input: ToolRoundArtifactInput,
 ): Promise<Array<Id<"toolExecutionArtifacts">>> {
+  if (input.toolCalls.length === 0) return [];
+  const captureKey = await toolRoundCaptureKey(input);
+  const prepared = await input.ctx.runMutation(
+    internal.tools.artifacts.prepareToolArtifactCapture,
+    {
+      captureKey,
+      jobId: input.metadata.jobId,
+      userId: input.metadata.userId,
+      chatId: input.metadata.chatId,
+      executionAttemptId: input.metadata.executionAttemptId,
+      executionFence: input.metadata.executionFence,
+    },
+  ) as {
+    decision: "execute" | "replay" | "stale";
+    artifactIds: Array<Id<"toolExecutionArtifacts">>;
+  };
+  if (prepared.decision === "stale") return [];
+
+  const webSearchUsages = input.toolCalls.flatMap((call, index) => {
+    const matching = input.results.find((entry) => entry.toolCallId === call.id);
+    if (!matching) return [];
+    const usage = extractWebSearchUsage(call.function.name, matching.result);
+    return usage ? [webSearchUsageInput(
+      input.metadata,
+      usage,
+      `${captureKey}:tool:${index}:${call.function.name}`,
+    )] : [];
+  });
+  if (prepared.decision === "replay") {
+    return prepared.artifactIds;
+  }
+
   const artifacts = [];
+  const storedPayloadIds: Array<Id<"_storage">> = [];
   for (const call of input.toolCalls) {
     const matching = input.results.find((entry) => entry.toolCallId === call.id);
     if (!matching) continue;
     const argsRaw = call.function.arguments || "{}";
     const payload = resultPayload(matching.result);
-    const webSearchUsage = extractWebSearchUsage(call.function.name, matching.result);
-    if (webSearchUsage) {
-      await recordWebSearchUsage(input.ctx, input.metadata, webSearchUsage);
-    }
     const resultRaw = JSON.stringify(payload);
     const argsStorage = await maybeStoreRaw(input.ctx, argsRaw);
     const resultStorage = await maybeStoreRaw(input.ctx, resultRaw);
+    if (argsStorage.storageId) storedPayloadIds.push(argsStorage.storageId);
+    if (resultStorage.storageId) storedPayloadIds.push(resultStorage.storageId);
     artifacts.push({
       userId: input.metadata.userId,
       chatId: input.metadata.chatId,
@@ -230,8 +266,27 @@ export async function captureToolRoundArtifacts(
     });
   }
   if (artifacts.length === 0) return [];
-  return await input.ctx.runMutation(internal.tools.artifacts.insertToolArtifacts, {
-    artifacts,
-    extractMemories: true,
-  }) as Array<Id<"toolExecutionArtifacts">>;
+  try {
+    const committed = await input.ctx.runMutation(
+      internal.tools.artifacts.commitToolArtifactCapture,
+      {
+        captureKey,
+        artifacts,
+        usages: webSearchUsages,
+        extractMemories: true,
+        executionAttemptId: input.metadata.executionAttemptId,
+        executionFence: input.metadata.executionFence,
+      },
+    ) as {
+      inserted: boolean;
+      stale: boolean;
+      artifactIds: Array<Id<"toolExecutionArtifacts">>;
+    };
+    if (!committed.inserted) await deleteStoredPayloads(input.ctx, storedPayloadIds);
+    if (committed.stale) return [];
+    return committed.artifactIds;
+  } catch (error) {
+    await deleteStoredPayloads(input.ctx, storedPayloadIds);
+    throw error;
+  }
 }

@@ -7,8 +7,6 @@ import {
   sha256Hex,
 } from "./trigger_auth";
 
-const API_TRIGGER_COOLDOWN_MS = 5_000;
-
 function normalizeVariables(
   raw: unknown,
 ): Record<string, string> | undefined {
@@ -70,6 +68,12 @@ export const triggerScheduledJob = httpAction(async (ctx, request) => {
   const jobId = body.jobId as Id<"scheduledJobs">;
   const job = await ctx.runQuery(internal.scheduledJobs.queries.getJobInternal, { jobId });
   if (!job) {
+    return new Response(JSON.stringify({
+      error: "Scheduled job not found",
+      requestId,
+    }), { status: 404, headers: { "Content-Type": "application/json" } });
+  }
+  if (job.isDeleting) {
     return new Response(JSON.stringify({
       error: "Scheduled job not found",
       requestId,
@@ -140,31 +144,6 @@ export const triggerScheduledJob = httpAction(async (ctx, request) => {
       error: "Unauthorized",
       requestId,
     }), { status: 401, headers: { "Content-Type": "application/json" } });
-  }
-
-  const latestInvocation = await ctx.runQuery(
-    internal.scheduledJobs.queries.getLatestApiInvocationForJob,
-    { jobId },
-  );
-  if (
-    latestInvocation
-    && latestInvocation.status === "triggered"
-    && (Date.now() - latestInvocation.createdAt) < API_TRIGGER_COOLDOWN_MS
-  ) {
-    await ctx.runMutation(internal.scheduledJobs.mutations.logApiInvocation, {
-      userId: authorizedUserId,
-      jobId,
-      tokenId,
-      requestId,
-      idempotencyKey,
-      status: "throttled",
-      variables,
-      note: `Triggered too recently; cooldown ${API_TRIGGER_COOLDOWN_MS}ms`,
-    });
-    return new Response(JSON.stringify({
-      error: "Too Many Requests",
-      requestId,
-    }), { status: 429, headers: { "Content-Type": "application/json" } });
   }
 
   try {

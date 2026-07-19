@@ -280,4 +280,9 @@ export interface RetryConfig {
   requestTimeoutMs?: number;
   /** Optional non-streaming cumulative deadline across retries and fallback attempts. */
   totalTimeoutMs?: number;
+  /**
+   * Absolute provider deadline. Generation actions set this from action entry,
+   * so active SSE traffic cannot extend provider work into finalization time.
+   */
+  absoluteDeadlineAtMs?: number;
 }

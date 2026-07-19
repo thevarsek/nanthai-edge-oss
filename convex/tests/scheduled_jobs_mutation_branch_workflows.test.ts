@@ -207,12 +207,12 @@ test("scheduled function replacement, cancellation, and API audit logging handle
     tokenId: "token_1",
     requestId: "req_1",
     idempotencyKey: "   ",
-    status: "throttled",
+    status: "error",
     variables: { topic: "sales" },
-    note: "rate limited",
+    note: "provider error",
   });
 
   assert.equal(audit.inserts[0]?.table, "scheduledJobApiInvocations");
   assert.equal(audit.inserts[0]?.value.idempotencyKey, undefined);
-  assert.equal(audit.inserts[0]?.value.status, "throttled");
+  assert.equal(audit.inserts[0]?.value.status, "error");
 });

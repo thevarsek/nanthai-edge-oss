@@ -450,7 +450,9 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
   const positions = await (listByChat as any)._handler({
     auth: buildAuth(),
     db: {
-      get: async () => ({ _id: "chat_1", userId: "user_1" }),
+      get: async (id: string) => id === "session_1"
+        ? { _id: "session_1", userId: "user_1", chatId: "chat_1" }
+        : { _id: "chat_1", userId: "user_1" },
       query: () => ({
         withIndex: () => ({
           take: async () => [{ _id: "pos_1" }, { _id: "pos_2" }],
@@ -470,6 +472,10 @@ test("node positions, push tokens, runtime sessions, and capabilities mutations 
 
   await (upsertSessionInternal as any)._handler({
     db: {
+      query: () => ({ withIndex: () => ({ unique: async () => null }) }),
+      get: async (id: string) => id === "session_1"
+        ? { _id: "session_1", userId: "user_1", chatId: "chat_1" }
+        : { _id: "chat_1", userId: "user_1" },
       patch: async (id: string, value: Record<string, unknown>) => {
         runtimePatches.push({ id, value });
       },

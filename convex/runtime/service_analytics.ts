@@ -25,6 +25,7 @@ import {
 } from "./service_analytics_charts";
 import { DeepPartial, mergeTestDeps } from "../lib/test_deps";
 import { processCharts, processOutputFiles, buildResultSummary, type StoredFileEntry } from "./service_analytics_common";
+import type { AnalyticsExecutionEnvelope } from "./analytics_execution_envelope";
 
 // ---------------------------------------------------------------------------
 // Dependency injection (for testing)
@@ -71,6 +72,7 @@ export async function runDataPythonExec(
     exportPaths?: string[];
     captureCharts?: boolean;
     timeoutMs?: number;
+    onExecutionReady?: (envelope: AnalyticsExecutionEnvelope) => Promise<void>;
   },
   deps: RuntimeAnalyticsDeps = defaultRuntimeAnalyticsDeps,
 ): Promise<{
@@ -139,6 +141,18 @@ export async function runDataPythonExec(
 
   // If execution failed, build error text for the model
   if (result.error) {
+    if (args.onExecutionReady) {
+      await args.onExecutionReady({
+        stdout: result.stdout,
+        stderr: result.stderr,
+        error: result.error,
+        importedFiles,
+        warnings,
+        charts: [],
+        outputFiles: [],
+      });
+      return stagedResult(importedFiles, warnings);
+    }
     const lines: string[] = [];
     if (result.stdout.length > 0) {
       lines.push("stdout:\n" + result.stdout.join("\n"));
@@ -156,6 +170,19 @@ export async function runDataPythonExec(
       chartsCreated,
       warnings,
     };
+  }
+
+  if (args.onExecutionReady) {
+    await args.onExecutionReady({
+      stdout: result.stdout,
+      stderr: result.stderr,
+      error: null,
+      importedFiles,
+      warnings,
+      charts: result.charts,
+      outputFiles: result.outputFiles,
+    });
+    return stagedResult(importedFiles, warnings);
   }
 
   // Process charts — store PNGs in Convex storage (images render inline via
@@ -177,6 +204,17 @@ export async function runDataPythonExec(
     importedFiles,
     exportedFiles,
     chartsCreated,
+    warnings,
+  };
+}
+
+function stagedResult(importedFiles: unknown[], warnings: string[]) {
+  return {
+    text: "Execution staged for durable artifact collection.",
+    resultsSummary: ["Execution staged for durable artifact collection."],
+    importedFiles,
+    exportedFiles: [] as StoredFileEntry[],
+    chartsCreated: [] as NormalizedGeneratedChart[],
     warnings,
   };
 }

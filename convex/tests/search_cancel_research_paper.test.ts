@@ -5,6 +5,8 @@ import {
   cancelResearchPaperHandler,
   cancellationPlaceholderForMode,
 } from "../search/mutations_research_paper";
+import { closeRunWriterForCancellation } from "../execution/cancel_fence";
+import { isCurrentResearchExecution } from "../search/execution_lifecycle";
 
 test("cancellationPlaceholderForMode returns mode-specific placeholder text", () => {
   assert.equal(cancellationPlaceholderForMode("paper"), "[Research paper cancelled]");
@@ -114,4 +116,50 @@ test("cancelResearchPaperHandler preserves existing assistant content when cance
   const messagePatch = patches.find((entry) => entry.id === "message_2");
   assert.ok(messagePatch);
   assert.equal(messagePatch.patch.content, "Partially streamed answer");
+});
+
+test("research cancellation closes the writer before a normal handoff can complete", async () => {
+  const rows = new Map<string, Record<string, unknown>>([
+    ["run_1", {
+      _id: "run_1",
+      activeAttemptId: "attempt_1",
+      state: "running",
+      userId: "user_1",
+    }],
+    ["attempt_1", {
+      _id: "attempt_1",
+      runId: "run_1",
+      status: "running",
+      fence: 7,
+      claimantId: "research-workflow:workflow_1",
+    }],
+  ]);
+  const db = {
+    get: async (id: string) => rows.get(id) ?? null,
+    patch: async (id: string, patch: Record<string, unknown>) => {
+      rows.set(id, { ...rows.get(id), ...patch });
+    },
+  } as any;
+  await closeRunWriterForCancellation(
+    { db } as any,
+    "run_1" as any,
+    "user_1",
+    "Research paper cancelled by user",
+    123,
+  );
+  assert.equal(rows.get("run_1")?.state, "cancelling");
+
+  const current = await isCurrentResearchExecution({ db }, {
+    _id: "session_1",
+    status: "writing",
+    executionRunId: "run_1",
+    executionAttemptId: "attempt_1",
+    executionFence: 7,
+    executionClaimantId: "research-workflow:workflow_1",
+    generationHandoffOperationId: "generation_workflow_1",
+  } as any, {
+    executionAttemptId: "attempt_1" as any,
+    executionFence: 7,
+  }, true);
+  assert.equal(current, false);
 });

@@ -8,6 +8,14 @@ import {
   deleteUserAdvisorBatchesBatch,
   deleteUserAdvisorRunsBatch,
 } from "./mutations_advisor_cleanup";
+import { deleteDurableOrchestrationBatch } from "./mutations_durable_cleanup";
+import { deleteAccountStorageBatch } from "./mutations_storage_cleanup";
+import { isPurgeTable } from "./purge_tables";
+import { deleteGeneratedMediaRecord } from "../chat/manage_generated_media_helpers";
+import {
+  storageHasContentReferences,
+} from "../knowledge_base/delete_helpers";
+import { safeDeleteAudioBlob } from "../chat/manage_delete_helpers";
 
 const BATCH_SIZE = 200;
 
@@ -30,10 +38,33 @@ export const deleteUserTableBatch = internalMutation({
   args: {
     userId: v.string(),
     tableName: v.string(),
+    cursor: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const { userId, tableName } = args;
+    if (!isPurgeTable(tableName)) {
+      throw new Error("INVALID_ACCOUNT_PURGE_TABLE");
+    }
     let deleted = 0;
+    const durableDeleted = await deleteDurableOrchestrationBatch(
+      ctx,
+      tableName,
+      userId,
+      BATCH_SIZE,
+      args.cursor,
+    );
+    if (durableDeleted !== undefined) {
+      return typeof durableDeleted === "number"
+        ? { deleted: durableDeleted }
+        : durableDeleted;
+    }
+    const storageDeleted = await deleteAccountStorageBatch(
+      ctx,
+      tableName,
+      userId,
+      BATCH_SIZE,
+    );
+    if (storageDeleted !== undefined) return { deleted: storageDeleted };
 
     // ---------------------------------------------------------------
     // Cascade tables (no direct userId, or no by_user index)
@@ -46,11 +77,11 @@ export const deleteUserTableBatch = internalMutation({
 
     if (tableName === "searchPhases") {
       // searchPhases → keyed by sessionId; cascade via user's sessions
-      const sessions = await ctx.db
+      const page = await ctx.db
         .query("searchSessions")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .collect();
-      for (const session of sessions) {
+        .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+      for (const session of page.page) {
         if (deleted >= BATCH_SIZE) break;
         const remaining = BATCH_SIZE - deleted;
         const phases = await ctx.db
@@ -62,16 +93,18 @@ export const deleteUserTableBatch = internalMutation({
           deleted++;
         }
       }
-      return { deleted };
+      return deleted >= BATCH_SIZE
+        ? { deleted, cursor: args.cursor, done: false }
+        : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
     if (tableName === "memoryEmbeddings") {
       // memoryEmbeddings → keyed by memoryId; cascade via user's memories
-      const memories = await ctx.db
+      const page = await ctx.db
         .query("memories")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .collect();
-      for (const memory of memories) {
+        .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+      for (const memory of page.page) {
         if (deleted >= BATCH_SIZE) break;
         const remaining = BATCH_SIZE - deleted;
         const embeddings = await ctx.db
@@ -83,16 +116,18 @@ export const deleteUserTableBatch = internalMutation({
           deleted++;
         }
       }
-      return { deleted };
+      return deleted >= BATCH_SIZE
+        ? { deleted, cursor: args.cursor, done: false }
+        : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
     if (tableName === "messages") {
       // messages have no by_user index — cascade via user's chats
-      const chats = await ctx.db
+      const page = await ctx.db
         .query("chats")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .collect();
-      for (const chat of chats) {
+        .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+      for (const chat of page.page) {
         if (deleted >= BATCH_SIZE) break;
         const remaining = BATCH_SIZE - deleted;
         const msgs = await ctx.db
@@ -100,41 +135,36 @@ export const deleteUserTableBatch = internalMutation({
           .withIndex("by_chat", (q) => q.eq("chatId", chat._id))
           .take(remaining);
         for (const msg of msgs) {
-          // Clean up audio storage blob
-          if (msg.audioStorageId) {
-            try {
-              await ctx.storage.delete(msg.audioStorageId);
-            } catch {
-              // Already deleted
-            }
-          }
-          // Clean up storage blobs in attachments
-          if (msg.attachments) {
-            for (const att of msg.attachments) {
-              if (att.storageId) {
-                try {
-                  await ctx.storage.delete(att.storageId);
-                } catch {
-                  // Already deleted
-                }
-              }
-            }
-          }
+          const storageIds = new Set(
+            (msg.attachments ?? []).flatMap((attachment) =>
+              attachment.storageId ? [attachment.storageId] : []
+            ),
+          );
           await ctx.db.delete(msg._id);
+          if (msg.audioStorageId) {
+            await safeDeleteAudioBlob(ctx, msg.audioStorageId);
+          }
+          for (const storageId of storageIds) {
+            if (!await storageHasContentReferences(ctx, storageId)) {
+              await ctx.storage.delete(storageId).catch(() => undefined);
+            }
+          }
           deleted++;
         }
       }
-      return { deleted };
+      return deleted >= BATCH_SIZE
+        ? { deleted, cursor: args.cursor, done: false }
+        : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
     if (tableName === "nodePositions") {
       // nodePositions has userId but only by_chat/by_chat_message indexes
       // Cascade via user's chats
-      const chats = await ctx.db
+      const page = await ctx.db
         .query("chats")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .collect();
-      for (const chat of chats) {
+        .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+      for (const chat of page.page) {
         if (deleted >= BATCH_SIZE) break;
         const remaining = BATCH_SIZE - deleted;
         const positions = await ctx.db
@@ -146,17 +176,19 @@ export const deleteUserTableBatch = internalMutation({
           deleted++;
         }
       }
-      return { deleted };
+      return deleted >= BATCH_SIZE
+        ? { deleted, cursor: args.cursor, done: false }
+        : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
     if (tableName === "subagentRuns") {
       // subagentRuns → keyed by batchId; cascade via user's subagentBatches.
       // Inline generatedFiles may contain storageId fields needing blob cleanup.
-      const batches = await ctx.db
+      const page = await ctx.db
         .query("subagentBatches")
         .withIndex("by_user", (q) => q.eq("userId", userId))
-        .collect();
-      for (const batch of batches) {
+        .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+      for (const batch of page.page) {
         if (deleted >= BATCH_SIZE) break;
         const remaining = BATCH_SIZE - deleted;
         const runs = await ctx.db
@@ -180,7 +212,9 @@ export const deleteUserTableBatch = internalMutation({
           deleted++;
         }
       }
-      return { deleted };
+      return deleted >= BATCH_SIZE
+        ? { deleted, cursor: args.cursor, done: false }
+        : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
     if (tableName === "advisorRuns") {
@@ -191,11 +225,11 @@ export const deleteUserTableBatch = internalMutation({
     if (tableName === "sandboxArtifacts") {
       // sandboxArtifacts → keyed by sandboxSessionId; cascade via user's sessions.
       // storageId needs blob cleanup before row deletion.
-      const sessions = await ctx.db
+      const page = await ctx.db
         .query("sandboxSessions")
         .withIndex("by_user_status", (q) => q.eq("userId", userId))
-        .collect();
-      for (const session of sessions) {
+        .paginate({ cursor: args.cursor ?? null, numItems: 25 });
+      for (const session of page.page) {
         if (deleted >= BATCH_SIZE) break;
         const remaining = BATCH_SIZE - deleted;
         const artifacts = await ctx.db
@@ -214,7 +248,9 @@ export const deleteUserTableBatch = internalMutation({
           deleted++;
         }
       }
-      return { deleted };
+      return deleted >= BATCH_SIZE
+        ? { deleted, cursor: args.cursor, done: false }
+        : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
     // ---------------------------------------------------------------
@@ -269,6 +305,9 @@ export const deleteUserTableBatch = internalMutation({
         .withIndex("by_user_status", (q) => q.eq("userId", userId))
         .take(BATCH_SIZE);
       for (const row of rows) {
+        if (row.scheduledFunctionId) {
+          await ctx.scheduler.cancel(row.scheduledFunctionId).catch(() => undefined);
+        }
         await ctx.db.delete(row._id);
         deleted++;
       }
@@ -339,71 +378,16 @@ export const deleteUserTableBatch = internalMutation({
     // Storage-bearing tables: delete blobs alongside rows
     // ---------------------------------------------------------------
 
-    if (tableName === "documentVersions") {
-      const rows = await ctx.db
-        .query("documentVersions")
-        .withIndex("by_user", (q) => q.eq("userId", userId))
-        .take(BATCH_SIZE);
-      for (const row of rows) {
-        const fileAttachmentRef = await ctx.db
-          .query("fileAttachments")
-          .withIndex("by_storage", (q) => q.eq("storageId", row.storageId))
-          .first();
-        const generatedFileRef = await ctx.db
-          .query("generatedFiles")
-          .withIndex("by_storage", (q) => q.eq("storageId", row.storageId))
-          .first();
-        const generatedMediaRef = await ctx.db
-          .query("generatedMedia")
-          .withIndex("by_storageId", (q) => q.eq("storageId", row.storageId))
-          .first();
-        const driveGrantRef = await ctx.db
-          .query("googleDriveFileGrants")
-          .withIndex("by_user_cached_storage", (q) =>
-            q.eq("userId", userId).eq("cachedStorageId", row.storageId),
-          )
-          .first();
-        if (!fileAttachmentRef && !generatedFileRef && !generatedMediaRef && !driveGrantRef) {
-          try {
-            await ctx.storage.delete(row.storageId);
-          } catch {
-            // Storage blob may already be deleted
-          }
-        }
-        if (row.extractionTextStorageId) {
-          try {
-            await ctx.storage.delete(row.extractionTextStorageId);
-          } catch {
-            // Storage blob may already be deleted
-          }
-        }
-        if (row.extractionMarkdownStorageId) {
-          try {
-            await ctx.storage.delete(row.extractionMarkdownStorageId);
-          } catch {
-            // Storage blob may already be deleted
-          }
-        }
-        await ctx.db.delete(row._id);
-        deleted++;
-      }
-      return { deleted };
-    }
-
     if (tableName === "generatedFiles" || tableName === "fileAttachments") {
       const rows = await ctx.db
         .query(tableName as "generatedFiles" | "fileAttachments")
         .withIndex("by_user", (q) => q.eq("userId", userId))
         .take(BATCH_SIZE);
       for (const row of rows) {
-        if (row.storageId) {
-          try {
-            await ctx.storage.delete(row.storageId);
-          } catch {
-            // Storage blob may already be deleted
-          }
-        }
         await ctx.db.delete(row._id);
+        if (row.storageId && !await storageHasContentReferences(ctx, row.storageId)) {
+          await ctx.storage.delete(row.storageId).catch(() => undefined);
+        }
         deleted++;
       }
       return { deleted };
@@ -496,12 +480,7 @@ export const deleteUserTableBatch = internalMutation({
         .withIndex("by_userId", (q) => q.eq("userId", userId))
         .take(BATCH_SIZE);
       for (const row of rows) {
-        try {
-          await ctx.storage.delete(row.storageId);
-        } catch {
-          // Storage blob may already be deleted
-        }
-        await ctx.db.delete(row._id);
+        await deleteGeneratedMediaRecord(ctx, row);
         deleted++;
       }
       return { deleted };

@@ -27,7 +27,15 @@ export async function runAutonomousImageTurn(args: {
   requireZdr: boolean;
   generationStartedAt: number;
   now: () => number;
+  executionEpoch?: number;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }): Promise<void> {
+  const activeBeforeDispatch = await args.ctx.runMutation(
+    internal.autonomous.mutations.shouldContinue,
+    { sessionId: args.sessionId, executionEpoch: args.executionEpoch },
+  );
+  if (!activeBeforeDispatch) throw new Error("AUTONOMOUS_SESSION_CANCELLED");
   const generated = await dispatchDedicatedImageGeneration({
     ctx: args.ctx,
     userId: args.userId,
@@ -43,6 +51,11 @@ export async function runAutonomousImageTurn(args: {
     supportedParameters: args.supportedParameters,
     requireZdr: args.requireZdr,
   });
+  const activeAfterDispatch = await args.ctx.runMutation(
+    internal.autonomous.mutations.shouldContinue,
+    { sessionId: args.sessionId, executionEpoch: args.executionEpoch },
+  );
+  if (!activeAfterDispatch) throw new Error("AUTONOMOUS_SESSION_CANCELLED");
   const imageAnalytics = dedicatedImageGenerationAnalytics({
     config: args.imageConfig,
     supportedParameters: args.supportedParameters,
@@ -68,12 +81,4 @@ export async function runAutonomousImageTurn(args: {
       persona_id: args.personaId ? String(args.personaId) : null,
     },
   });
-  await args.ctx.runMutation(
-    internal.autonomous.mutations_helpers.setChatActiveLeaf,
-    { chatId: args.chatId, messageId: args.messageId },
-  );
-  await args.ctx.runMutation(
-    internal.autonomous.mutations.updateParentMessageIds,
-    { sessionId: args.sessionId, parentMessageIds: [args.messageId] },
-  );
 }

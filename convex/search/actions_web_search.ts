@@ -177,7 +177,7 @@ async function runWebSearchHandler(
     // has access to tools, skills, progressive loading, memory, etc.
     // The job status is already "streaming" — runGeneration will re-set it
     // (idempotent) and handle finalization, post-processing, and tool loops.
-    await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
+    const generationArgs = {
       chatId: args.chatId,
       userMessageId: args.userMessageId,
       assistantMessageIds: [args.assistantMessageId],
@@ -205,14 +205,14 @@ async function runWebSearchHandler(
       searchSessionId: args.sessionId,
       analytics: args.analytics,
       analyticsSource: args.analyticsSource ?? "web_search",
-    });
+    };
 
     // Write search stats but keep status as "writing" — runGeneration will
     // mark the session "completed" (or "failed") when generation finishes.
-    await updateSession(ctx, args.sessionId, {
-      status: "writing",
+    await ctx.runMutation(internal.search.generation_handoff.commitGenerationHandoff, {
+      sessionId: args.sessionId,
+      generationArgs,
       progress: 90,
-      currentPhase: "writing",
       searchCallCount: searchResults.length,
       perplexityModelTier: preset.searchModel,
       participantCount: 1,

@@ -178,6 +178,33 @@ export async function executePerplexitySearch(
   return mappedResults;
 }
 
+export async function executeSinglePerplexitySearch(
+  query: string,
+  searchModel: string,
+  apiKey: string,
+  options: { maxTokens?: number; requireZdr?: boolean } = {},
+): Promise<SearchResult> {
+  try {
+    const result = await callPerplexity(query, searchModel, apiKey, options);
+    return {
+      query,
+      content: result.content,
+      citations: result.citations,
+      success: true,
+      usage: result.usage,
+      generationId: result.generationId,
+    };
+  } catch (error) {
+    return {
+      query,
+      content: "",
+      citations: [],
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown search error",
+    };
+  }
+}
+
 interface PerplexityResponse {
   content: string;
   citations: string[];

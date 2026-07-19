@@ -3,8 +3,7 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
-import { MAX_TOOL_ROUNDS } from "../tools/execute_loop";
+import { Doc, Id } from "../_generated/dataModel";
 import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
 import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
 import { generateForParticipant } from "../chat/actions_run_generation_participant";
@@ -22,7 +21,6 @@ import {
   isSubagentLeaseStale,
   resolveSnapshotRequireZdr,
   resolveWebSearchToolIntent,
-  SUBAGENT_RECOVERY_LEASE_MS,
 } from "./shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { estimatePromptTokens } from "../chat/runtime_graph";
@@ -30,6 +28,7 @@ import type { OpenRouterMessage } from "../lib/openrouter";
 import { scheduleContextAssemblyLog } from "../chat/context_assembly_log_scheduler";
 import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guard";
 import { normalizeGenerationError } from "../chat/generation_error";
+import { continueDurableParentAfterSubagents } from "./durable_parent_resume";
 
 type ParentContinuationRun = Parameters<typeof buildParentContinuationPayload>[0][number];
 type ChildGeneratedFile = NonNullable<ParentContinuationRun["generatedFiles"]>[number];
@@ -160,8 +159,10 @@ async function finalizeParentResumeFailure(
 async function reconcileOrFailStaleResume(
   ctx: ActionCtx,
   batchId: Id<"subagentBatches">,
+  prefetchedBatch?: Doc<"subagentBatches"> | null,
 ): Promise<boolean> {
-  const batch = await ctx.runQuery(internal.subagents.queries.getBatchInternal, { batchId });
+  const batch = prefetchedBatch
+    ?? await ctx.runQuery(internal.subagents.queries.getBatchInternal, { batchId });
   if (!batch || batch.status !== "resuming" || !isSubagentLeaseStale(batch.updatedAt, Date.now())) {
     return false;
   }
@@ -245,20 +246,18 @@ export async function continueParentAfterSubagentsHandler(
   const claimed = await ctx.runMutation(internal.subagents.mutations.claimBatchForResume, {
     batchId: args.batchId,
   });
+  const batch = await ctx.runQuery(internal.subagents.queries.getBatchInternal, {
+    batchId: args.batchId,
+  });
+  if (await continueDurableParentAfterSubagents(ctx, args.batchId, { batch, claimed })) return;
   if (!claimed) {
-    await reconcileOrFailStaleResume(ctx, args.batchId);
+    await reconcileOrFailStaleResume(ctx, args.batchId, batch);
     return;
   }
 
-  const batch = await ctx.runQuery(internal.subagents.queries.getBatchInternal, { batchId: args.batchId });
   if (!batch || batch.status !== "resuming") {
     return;
   }
-  await ctx.scheduler.runAfter(
-    SUBAGENT_RECOVERY_LEASE_MS,
-    internal.subagents.actions.continueParentAfterSubagents,
-    { batchId: args.batchId },
-  );
   const runs = await ctx.runQuery(internal.subagents.queries.listRunsForBatchInternal, { batchId: batch._id });
   const [existingParentMessage, existingParentJob] = await Promise.all([
     ctx.runQuery(internal.chat.queries.getMessageInternal, {
@@ -322,7 +321,7 @@ export async function continueParentAfterSubagentsHandler(
     analyticsSource?: "chat_generation" | "web_search" | "research_paper" | "scheduled_job";
   };
   const continuationPayload = buildParentContinuationPayload(
-    runs.map((run) => ({
+    runs.map((run: Doc<"subagentRuns">) => ({
       childIndex: run.childIndex,
       title: run.title,
       status: run.status,
@@ -519,12 +518,6 @@ export async function continueParentAfterSubagentsHandler(
         maxToolRoundsPerInvocation: 1,
         continuationCount: 0,
         onHandoff: async (checkpoint) => {
-          if (checkpoint.continuationCount > MAX_TOOL_ROUNDS) {
-            throw new ConvexError({
-              code: "INTERNAL_ERROR" as const,
-              message: "Parent continuation exceeded the tool round limit.",
-            });
-          }
           const resumeCheckpoint: GenerationContinuationCheckpoint = {
             ...checkpoint,
             assembledCheckpoint: {

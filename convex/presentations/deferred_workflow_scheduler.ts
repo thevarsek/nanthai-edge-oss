@@ -1,20 +1,9 @@
 import type { ActionCtx } from "../_generated/server";
-import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { GenerationContinuationCheckpoint } from "../chat/generation_continuation_shared";
 import type { RunGenerationParticipantArgs } from "../chat/generation_continuation_shared";
-import {
-  MAX_PRESENTATION_WORKFLOW_MODEL_PHASES,
-  PRESENTATION_WORKFLOW_LEASE_MS,
-} from "./limits";
-import {
-  expireDeferredPresentationRef,
-  runDeferredPresentationPlanRef,
-} from "./deferred_workflow_refs";
-
-const DEFERRED_PRESENTATION_TIMEOUT_MS =
-  PRESENTATION_WORKFLOW_LEASE_MS * MAX_PRESENTATION_WORKFLOW_MODEL_PHASES +
-  2 * 60 * 1_000;
+import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
+import { startPresentationWorkflowRef } from "./presentation_workflow_refs";
 
 export async function scheduleDeferredPresentationWorkflow(
   ctx: ActionCtx,
@@ -25,13 +14,25 @@ export async function scheduleDeferredPresentationWorkflow(
     toolCallId: string;
   },
 ): Promise<void> {
-  await ctx.runMutation(internal.chat.mutations.saveGenerationContinuation, {
-    chatId: args.chatId,
-    messageId: args.participant.messageId,
-    jobId: args.participant.jobId,
-    userId: args.userId,
-    checkpoint,
-  });
+  await scheduleGenerationContinuation(
+    ctx,
+    { ...args, workflowManaged: true },
+    args.workflowResumeEventId
+      ? {
+          ...checkpoint,
+          deferredResumeEventId: args.workflowResumeEventId,
+          deferredOwnership: {
+            kind: "presentation",
+            projectId: workflow.projectId,
+            toolCallId: workflow.toolCallId,
+            modelId: args.participant.modelId,
+            ...(args.requireZdrOverride !== undefined
+              ? { requireZdrOverride: args.requireZdrOverride }
+              : {}),
+          },
+        }
+      : checkpoint,
+  );
 
   const phaseArgs = {
     projectId: workflow.projectId,
@@ -39,20 +40,12 @@ export async function scheduleDeferredPresentationWorkflow(
     jobId: args.participant.jobId,
     toolCallId: workflow.toolCallId,
     modelId: args.participant.modelId,
-    requireZdrOverride: args.requireZdrOverride,
+    ...(args.requireZdrOverride !== undefined
+      ? { requireZdrOverride: args.requireZdrOverride }
+      : {}),
+    ...(args.workflowResumeEventId
+      ? { workflowResumeEventId: args.workflowResumeEventId }
+      : {}),
   };
-  const scheduledFunctionId = await ctx.scheduler.runAfter(
-    0,
-    runDeferredPresentationPlanRef,
-    phaseArgs,
-  );
-  await ctx.runMutation(internal.chat.mutations.setGenerationContinuationScheduled, {
-    jobId: args.participant.jobId,
-    scheduledFunctionId,
-  });
-  await ctx.scheduler.runAfter(
-    DEFERRED_PRESENTATION_TIMEOUT_MS,
-    expireDeferredPresentationRef,
-    phaseArgs,
-  );
+  await ctx.runMutation(startPresentationWorkflowRef, phaseArgs);
 }

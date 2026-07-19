@@ -5,7 +5,6 @@ import {
   cancelGenerationContinuationHandler,
   claimGenerationContinuationHandler,
   clearGenerationContinuationHandler,
-  markPostProcessScheduledHandler,
   saveGenerationContinuationHandler,
   setGenerationContinuationScheduledHandler,
 } from "../chat/mutations_generation_continuation_handlers";
@@ -185,6 +184,18 @@ test("claimGenerationContinuationHandler covers missing, terminal, active-lease,
   );
 
   continuation = {
+    _id: "cont_deferred",
+    status: "waiting",
+    deferredResumeEventId: "event_1",
+  };
+  job = { _id: "job_1", status: "streaming" };
+  assert.equal(
+    await claimGenerationContinuationHandler(ctx, { jobId: "job_1" as any }),
+    null,
+  );
+  assert.equal(patches.some((entry) => entry.id === "cont_deferred"), false);
+
+  continuation = {
     _id: "cont_waiting",
     status: "waiting",
     participantSnapshot: { jobId: "job_1" },
@@ -314,27 +325,4 @@ test("clear and cancel continuation handlers remove durable state and stale sche
     entry.id === "job_1"
     && entry.value.scheduledFunctionId === undefined
   ));
-});
-
-test("markPostProcessScheduledHandler only marks unmarked messages", async () => {
-  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
-  let message: Record<string, unknown> | null = null;
-  const ctx = {
-    db: {
-      get: async () => message,
-      patch: async (id: string, value: Record<string, unknown>) => {
-        patches.push({ id, value });
-      },
-    },
-  } as any;
-
-  assert.equal(await markPostProcessScheduledHandler(ctx, { messageId: "msg_1" as any }), false);
-  message = { _id: "msg_1", postProcessScheduledAt: 123 };
-  assert.equal(await markPostProcessScheduledHandler(ctx, { messageId: "msg_1" as any }), false);
-  message = { _id: "msg_1" };
-  assert.equal(await markPostProcessScheduledHandler(ctx, { messageId: "msg_1" as any }), true);
-
-  assert.equal(patches.length, 1);
-  assert.equal(patches[0]?.id, "msg_1");
-  assert.equal(typeof patches[0]?.value.postProcessScheduledAt, "number");
 });

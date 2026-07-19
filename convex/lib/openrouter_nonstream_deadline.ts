@@ -1,12 +1,16 @@
-import { REQUEST_TIMEOUT_MS } from "./openrouter_constants";
+import {
+  OPENROUTER_ACTION_BUDGET_MS,
+  REQUEST_TIMEOUT_MS,
+} from "./openrouter_constants";
 import type { RetryConfig } from "./openrouter_types";
 
 const MIN_TIMEOUT_MS = 1_000;
 
 export interface NonStreamingDeadline {
   requestTimeoutMs: number;
-  totalTimeoutMs?: number;
+  totalTimeoutMs: number;
   startedAt: number;
+  deadlineAt: number;
 }
 
 function boundedTimeout(value: number, fallback: number): number {
@@ -23,17 +27,20 @@ export function createNonStreamingDeadline(
     retryConfig.requestTimeoutMs ?? REQUEST_TIMEOUT_MS,
     REQUEST_TIMEOUT_MS,
   );
-  const configuredTotal = retryConfig.totalTimeoutMs;
-  const totalTimeoutMs = configuredTotal == null
-    ? undefined
-    : boundedTimeout(configuredTotal, REQUEST_TIMEOUT_MS);
-  return { requestTimeoutMs, totalTimeoutMs, startedAt };
+  const totalTimeoutMs = boundedTimeout(
+    retryConfig.totalTimeoutMs ?? OPENROUTER_ACTION_BUDGET_MS,
+    OPENROUTER_ACTION_BUDGET_MS,
+  );
+  const relativeDeadlineAt = startedAt + totalTimeoutMs;
+  const configuredAbsolute = retryConfig.absoluteDeadlineAtMs;
+  const deadlineAt = configuredAbsolute == null || !Number.isFinite(configuredAbsolute)
+    ? relativeDeadlineAt
+    : Math.min(relativeDeadlineAt, configuredAbsolute);
+  return { requestTimeoutMs, totalTimeoutMs, startedAt, deadlineAt };
 }
 
-function remainingTotalMs(deadline: NonStreamingDeadline, now: number): number | undefined {
-  return deadline.totalTimeoutMs == null
-    ? undefined
-    : deadline.totalTimeoutMs - Math.max(0, now - deadline.startedAt);
+function remainingTotalMs(deadline: NonStreamingDeadline, now: number): number {
+  return deadline.deadlineAt - now;
 }
 
 function totalTimeoutError(deadline: NonStreamingDeadline): Error {
@@ -47,7 +54,6 @@ export function nextAttemptTimeoutMs(
   now: number,
 ): number {
   const remaining = remainingTotalMs(deadline, now);
-  if (remaining == null) return deadline.requestTimeoutMs;
   if (remaining <= 0) throw totalTimeoutError(deadline);
   return Math.max(1, Math.min(deadline.requestTimeoutMs, Math.floor(remaining)));
 }
@@ -58,5 +64,5 @@ export function assertRetryDelayFits(
   now: number,
 ): void {
   const remaining = remainingTotalMs(deadline, now);
-  if (remaining != null && delayMs >= remaining) throw totalTimeoutError(deadline);
+  if (delayMs >= remaining) throw totalTimeoutError(deadline);
 }

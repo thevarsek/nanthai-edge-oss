@@ -11,8 +11,17 @@ export const runGeneration = internalAction({
   handler: runGenerationHandler,
 });
 
+export const runGenerationForDurableDispatch = internalAction({
+  args: runGenerationArgs,
+  handler: async (ctx, args) => await runGenerationHandler(
+    ctx,
+    args,
+    undefined,
+    { deferTerminalFailureToWorkflow: true },
+  ),
+});
+
 export const runGenerationParticipant = internalAction({
   args: runGenerationParticipantArgs,
   handler: runGenerationParticipantRuntimeHandler,
 });
-

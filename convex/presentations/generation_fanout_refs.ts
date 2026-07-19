@@ -9,15 +9,41 @@ import type { ParsedPresentationSlide } from "./types";
 export type StudioActionArgs = {
   runId: Id<"presentationGenerationRuns">;
   batchId: Id<"presentationGenerationBatches">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
 
 export type CuratorActionArgs = {
   runId: Id<"presentationGenerationRuns">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
 
 export type CuratorTaskActionArgs = {
   taskId: Id<"presentationCuratorTasks">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 }
+
+type ExecutionIdentity = {
+  executionAttemptId: Id<"executionAttempts">;
+  executionFence: number;
+};
+export type AdoptedPresentationExecution = ExecutionIdentity & {
+  executionRunId: Id<"executionRuns">;
+};
+type StudioMutationArgs = Omit<
+  StudioActionArgs,
+  keyof ExecutionIdentity
+> & ExecutionIdentity;
+type CuratorMutationArgs = Omit<
+  CuratorActionArgs,
+  keyof ExecutionIdentity
+> & ExecutionIdentity;
+type CuratorTaskMutationArgs = Omit<
+  CuratorTaskActionArgs,
+  keyof ExecutionIdentity
+> & ExecutionIdentity;
 
 export type PresentationStudioContext = {
   run: Doc<"presentationGenerationRuns">;
@@ -79,6 +105,18 @@ export const getPresentationCuratorTaskContextRef = internalRef<
   }) | null
 >("presentations/generation_fanout_queries:getPresentationCuratorTaskContext");
 
+export const adoptLegacyPresentationExecutionRef = internalRef<
+  "mutation",
+  { runId: Id<"presentationGenerationRuns"> },
+  AdoptedPresentationExecution | null
+>("presentations/legacy_execution_adoption:adoptLegacyPresentationExecution");
+
+export const cancelAdoptedLegacyPresentationExecutionRef = internalRef<
+  "mutation",
+  { runId: Id<"presentationGenerationRuns"> } & ExecutionIdentity,
+  boolean
+>("presentations/legacy_execution_adoption:cancelAdoptedLegacyPresentationExecution");
+
 export const startPresentationFanoutRef = internalRef<
   "mutation",
   {
@@ -88,18 +126,20 @@ export const startPresentationFanoutRef = internalRef<
     toolCallId: string;
     expectedRevision: number;
     modelId: string;
+    executionAttemptId: Id<"executionAttempts">;
+    executionFence: number;
     requireZdrOverride?: boolean;
   },
   { runId: Id<"presentationGenerationRuns">; started: boolean }
 >("presentations/generation_fanout_mutations:startPresentationFanout");
 
 export const claimPresentationStudioBatchRef = internalRef<
-  "mutation", StudioActionArgs & { repair: boolean }, boolean
+  "mutation", StudioMutationArgs & { repair: boolean }, boolean
 >("presentations/generation_fanout_mutations:claimPresentationStudioBatch");
 
 export const queuePresentationStudioRepairRef = internalRef<
   "mutation",
-  StudioActionArgs & {
+  StudioMutationArgs & {
     repairAttempt: number;
     candidateStorageId?: Id<"_storage">;
     targetSlideId?: string;
@@ -113,7 +153,7 @@ export const queuePresentationStudioRepairRef = internalRef<
 
 export const completePresentationStudioBatchRef = internalRef<
   "mutation",
-  StudioActionArgs & {
+  StudioMutationArgs & {
     slides: ParsedPresentationSlide[];
     effectiveModelId: string;
     allowLayoutIssues?: boolean;
@@ -123,17 +163,20 @@ export const completePresentationStudioBatchRef = internalRef<
 
 export const failPresentationFanoutRef = internalRef<
   "mutation",
-  { runId: Id<"presentationGenerationRuns">; batchId?: Id<"presentationGenerationBatches">; error: string },
+  CuratorMutationArgs & {
+    batchId?: Id<"presentationGenerationBatches">;
+    error: string;
+  },
   boolean
 >("presentations/generation_fanout_mutations:failPresentationFanout");
 
 export const claimPresentationCuratorRef = internalRef<
-  "mutation", CuratorActionArgs, boolean
+  "mutation", CuratorMutationArgs, boolean
 >("presentations/generation_fanout_mutations:claimPresentationCurator");
 
 export const startPresentationCuratorTasksRef = internalRef<
   "mutation",
-  CuratorActionArgs & {
+  CuratorMutationArgs & {
     tasks: Array<{
       taskKey: string;
       kind: "recompose" | "consolidate";
@@ -144,12 +187,12 @@ export const startPresentationCuratorTasksRef = internalRef<
 >("presentations/generation_fanout_mutations:startPresentationCuratorTasks");
 
 export const claimPresentationCuratorTaskRef = internalRef<
-  "mutation", CuratorTaskActionArgs, boolean
+  "mutation", CuratorTaskMutationArgs, boolean
 >("presentations/generation_fanout_mutations:claimPresentationCuratorTask");
 
 export const retryPresentationCuratorTaskRef = internalRef<
   "mutation",
-  CuratorTaskActionArgs & {
+  CuratorTaskMutationArgs & {
     mode: "patch" | "recreate";
     attempt: number;
     error: string;
@@ -160,7 +203,7 @@ export const retryPresentationCuratorTaskRef = internalRef<
 
 export const completePresentationCuratorTaskRef = internalRef<
   "mutation",
-  CuratorTaskActionArgs & {
+  CuratorTaskMutationArgs & {
     slides: ParsedPresentationSlide[];
     deleteSlideIds: string[];
     effectiveModelId?: string;
@@ -171,6 +214,6 @@ export const completePresentationCuratorTaskRef = internalRef<
 
 export const finalizePresentationFanoutRef = internalRef<
   "mutation",
-  CuratorActionArgs,
+  CuratorMutationArgs,
   { projectId: Id<"presentationProjects">; projectRevision: number; slideCount: number } | null
 >("presentations/generation_fanout_mutations:finalizePresentationFanout");

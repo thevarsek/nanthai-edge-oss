@@ -188,25 +188,17 @@ test("scheduled trigger route rejects trigger tokens whose user does not match t
   assert.equal(payload.error, "Unauthorized");
 });
 
-test("scheduled trigger route rate limits bursts for the same job", async () => {
+test("scheduled trigger route does not impose a user-visible burst throttle", async () => {
   const handler = getScheduledTriggerHandler();
-  let queryCount = 0;
   const response = await handler(
     {
       auth: buildAuth("user_1"),
-      runQuery: async () => {
-        queryCount += 1;
-        if (queryCount === 1) {
-          return { _id: "job_1", userId: "user_1" };
-        }
-        return {
-          _id: "inv_1",
-          jobId: "job_1",
-          status: "triggered",
-          createdAt: Date.now(),
-        };
-      },
-      runMutation: async () => undefined,
+      runQuery: async () => ({ _id: "job_1", userId: "user_1" }),
+      runMutation: async () => ({
+        duplicate: false,
+        triggered: true,
+        message: "Scheduled job execution triggered.",
+      }),
     },
     new Request("https://example.com/scheduled-jobs/trigger", {
       method: "POST",
@@ -215,7 +207,33 @@ test("scheduled trigger route rate limits bursts for the same job", async () => 
     }),
   );
 
-  assert.equal(response.status, 429);
-  const payload = await response.json() as { error: string };
-  assert.equal(payload.error, "Too Many Requests");
+  assert.equal(response.status, 202);
+  const payload = await response.json() as { triggered: boolean };
+  assert.equal(payload.triggered, true);
+});
+
+test("scheduled trigger route treats a deletion-marked job as unavailable", async () => {
+  const handler = getScheduledTriggerHandler();
+  let mutations = 0;
+  const response = await handler(
+    {
+      auth: buildAuth("user_1"),
+      runQuery: async () => ({
+        _id: "job_1",
+        userId: "user_1",
+        isDeleting: true,
+      }),
+      runMutation: async () => {
+        mutations += 1;
+      },
+    },
+    new Request("https://example.com/scheduled-jobs/trigger", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: "job_1" }),
+    }),
+  );
+
+  assert.equal(response.status, 404);
+  assert.equal(mutations, 0);
 });

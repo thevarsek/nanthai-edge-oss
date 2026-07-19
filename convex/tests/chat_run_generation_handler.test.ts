@@ -231,6 +231,40 @@ test("runGenerationHandler cancels already scheduled participants when a later d
   ]);
 });
 
+test("durable dispatch rethrows coordinator failure without cancelling or terminalizing started participants", async () => {
+  const cancelledOperationIds: string[] = [];
+  const failureCalls: unknown[] = [];
+  let dispatchCount = 0;
+  const deps = createRunGenerationHandlerDepsForTest({
+    generation: {
+      failPendingParticipants: async (...args: unknown[]) => void failureCalls.push(args),
+    },
+    execution: {
+      dispatchParticipant: async () => {
+        dispatchCount += 1;
+        if (dispatchCount === 1) return "workflow_1";
+        throw new Error("transient coordinator failure");
+      },
+      cancelParticipant: async (_ctx: unknown, operationId: string) => {
+        cancelledOperationIds.push(operationId);
+      },
+    },
+  });
+  const ctx = createCtxWithGenCtx(buildGenCtx());
+
+  await assert.rejects(
+    runGenerationHandler(
+      ctx,
+      buildArgs(),
+      deps,
+      { deferTerminalFailureToWorkflow: true },
+    ),
+    /transient coordinator failure/,
+  );
+  assert.deepEqual(cancelledOperationIds, []);
+  assert.deepEqual(failureCalls, []);
+});
+
 // ---------------------------------------------------------------------------
 // Pre-refactor regression tests: persona resolution, overrides, pro/free gating
 // ---------------------------------------------------------------------------

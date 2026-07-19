@@ -156,9 +156,12 @@ test("createJobInternal normalizes multi-step jobs, validates owned KB files, an
   assert.equal(steps[1]?.searchComplexity, 1);
   assert.equal(steps[0]?.searchMode, "research");
   assert.equal(steps[1]?.searchMode, "basic");
-  assert.deepEqual(state.scheduled, [{ jobId: "scheduledJobs_1" }]);
-  assert.deepEqual(state.patches, [{
-    id: "scheduledJobs_1",
-    value: { scheduledFunctionId: "scheduled_1" },
-  }]);
+  assert.equal(state.scheduled[0]?.jobId, "scheduledJobs_1");
+  assert.match(String(state.scheduled[0]?.occurrenceId), /^scheduled:scheduledJobs_1:/);
+  assert.equal(state.patches[0]?.id, "scheduledJobs_1");
+  assert.equal(state.patches[0]?.value.scheduledFunctionId, "scheduled_1");
+  assert.match(
+    String(state.patches[0]?.value.nextScheduledOccurrenceId),
+    /^scheduled:scheduledJobs_1:/,
+  );
 });

@@ -2,17 +2,11 @@ import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
-import {
-  shouldExecuteScheduledJob,
-  shouldReplaceExistingSchedule,
-} from "./actions_execution_policy";
 import { enqueueStep } from "./actions_execution";
 import {
   handleFailure,
   scheduleFailureNotification,
-  scheduleNextRunIfNeeded,
 } from "./actions_lifecycle";
-import { type Recurrence } from "./recurrence";
 import { getScheduledJobSteps } from "./shared";
 
 export async function executeScheduledJobHandler(
@@ -21,109 +15,19 @@ export async function executeScheduledJobHandler(
     jobId: Id<"scheduledJobs">;
     invocationSource?: "scheduled" | "manual" | "api";
     templateVariables?: Record<string, string>;
+    occurrenceId?: string;
   },
 ): Promise<void> {
-  const job = await ctx.runQuery(
-    internal.scheduledJobs.queries.getJobInternal,
-    { jobId: args.jobId },
-  );
-  if (!job) return;
-
-  const invocationSource = args.invocationSource ?? "scheduled";
-  if (!shouldExecuteScheduledJob({
-    status: job.status,
-    recurrence: job.recurrence as Recurrence,
-    invocationSource,
-  })) {
-    return;
-  }
-
-  const steps = getScheduledJobSteps(job);
-  const startedAt = Date.now();
-  const executionId = `${args.jobId}:${startedAt}:${Math.random().toString(36).slice(2, 10)}`;
-
-  try {
-    const beginResult = await ctx.runMutation(
-      internal.scheduledJobs.mutations.beginExecution,
-      {
-        jobId: args.jobId,
-        executionId,
-        startedAt,
-        stepCount: steps.length,
-        templateVariables: args.templateVariables,
-      },
-    );
-    if (!beginResult.started) {
-      if (invocationSource === "scheduled") {
-        await scheduleNextRunIfNeeded(ctx, {
-          jobId: args.jobId,
-          recurrence: job.recurrence as Recurrence,
-          timezone: job.timezone,
-          status: job.status,
-          scheduledFunctionId: job.scheduledFunctionId,
-          replaceExistingSchedule: false,
-        });
-      }
-      return;
-    }
-
-    await scheduleNextRunIfNeeded(ctx, {
+  // `occurrenceId` is persisted before enqueue for all new call sites. The
+  // fallback only drains scheduled functions created before M47.
+  const occurrenceId = args.occurrenceId
+    ?? `${args.invocationSource ?? "scheduled"}:legacy:${crypto.randomUUID()}`;
+  await ctx.runMutation(internal.execution.workflow_starts.startScheduledExecution, {
       jobId: args.jobId,
-      recurrence: job.recurrence as Recurrence,
-      timezone: job.timezone,
-      status: job.status,
-      scheduledFunctionId: job.scheduledFunctionId,
-      replaceExistingSchedule: shouldReplaceExistingSchedule({
-        status: job.status,
-        invocationSource,
-      }),
-    });
-
-    const apiKey = await ctx.runQuery(
-      internal.scheduledJobs.queries.getUserApiKey,
-      { userId: job.userId },
-    );
-    if (!apiKey) {
-      await handleFailure(
-        ctx,
-        args.jobId,
-        job.consecutiveFailures ?? 0,
-        "No API key found — reconnect OpenRouter in Settings",
-        startedAt,
-      );
-      return;
-    }
-
-    const chatId = await ctx.runMutation(
-      internal.scheduledJobs.mutations.createJobChat,
-      {
-        jobId: args.jobId,
-        userId: job.userId,
-        jobName: job.name,
-        targetFolderId: job.targetFolderId,
-        sourceJobId: args.jobId,
-        executionId,
-      },
-    );
-
-    await enqueueStep(ctx, {
-      jobId: args.jobId,
-      chatId,
-      userId: job.userId,
-      executionId,
-      step: steps[0],
-      stepIndex: 0,
+      invocationSource: args.invocationSource,
       templateVariables: args.templateVariables,
-    });
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    await handleFailure(ctx, args.jobId, job.consecutiveFailures ?? 0, errorMessage, startedAt);
-    await scheduleFailureNotification(ctx, {
-      userId: job.userId,
-      jobName: job.name,
-      errorMessage,
-    });
-  }
+      occurrenceId,
+  });
 }
 
 export async function continueScheduledJobExecutionHandler(
@@ -150,10 +54,16 @@ export async function continueScheduledJobExecutionHandler(
 
   try {
     if (args.completedStepIndex >= steps.length - 1) {
-      await ctx.runMutation(
+      const recorded = await ctx.runMutation(
         internal.scheduledJobs.mutations.recordRunSuccess,
-        { jobId: args.jobId, chatId: args.chatId, startedAt },
+        {
+          jobId: args.jobId,
+          executionId: args.executionId,
+          chatId: args.chatId,
+          startedAt,
+        },
       );
+      if (!recorded) return;
       await ctx.scheduler.runAfter(0, internal.push.actions.sendPushNotification, {
         userId: job.userId,
         title: `${job.name} — Complete`,

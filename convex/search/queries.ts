@@ -8,6 +8,7 @@
 import { query, internalQuery } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../lib/auth";
+import { isCurrentResearchExecution } from "./execution_lifecycle";
 
 /**
  * Watch a single search session for real-time progress updates.
@@ -86,6 +87,19 @@ export const getSearchSession = internalQuery({
   args: { sessionId: v.id("searchSessions") },
   handler: async (ctx, args) => {
     return await ctx.db.get(args.sessionId);
+  },
+});
+
+export const isResearchExecutionCurrent = internalQuery({
+  args: {
+    sessionId: v.id("searchSessions"),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    return session ? await isCurrentResearchExecution(ctx, session, args) : false;
   },
 });
 

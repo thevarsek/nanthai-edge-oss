@@ -8,6 +8,14 @@ import {
   type AnalyticsClientMetadata,
 } from "../analytics/client_metadata";
 import { reuseAdvisorBatchForRetry } from "../advisors/retry";
+import { durableWorkflow } from "../execution/components";
+import { ownedWorkflowCompletionRef } from "../execution/workflow_lifecycle";
+import { scheduleOwnedWorkflowWatchdog } from
+  "../execution/owned_workflow_watchdog";
+import {
+  createAndClaimDomainExecution,
+  linkDomainComponent,
+} from "../execution/domain_lifecycle";
 
 const REGENERATE_REUSED_PHASE_TYPES = new Set([
   "planning",
@@ -206,9 +214,21 @@ export async function regeneratePaperHandler(
     const nextPhaseOrder =
       reusablePhases.reduce((max, phase) => Math.max(max, phase.phaseOrder), -1) + 1;
 
-    await ctx.scheduler.runAfter(
-      0,
-      internal.search.workflow_durable.runSynthesisAction,
+    const claimantId = `research-workflow:${String(regenerationSessionId)}`;
+    const execution = await createAndClaimDomainExecution(ctx, {
+      userId,
+      runKey: `research:${String(regenerationSessionId)}`,
+      kind: "research",
+      domainType: "search_session",
+      domainId: String(regenerationSessionId),
+      claimantId,
+      chatId: sourceSession.chatId,
+      sourceMessageId: assistantMessageId,
+      generationJobId: jobId,
+    });
+    const workflowId = await durableWorkflow.start(
+      ctx,
+      internal.search.research_workflow.runResearchRegenerationWorkflow,
       {
         sessionId: regenerationSessionId,
         assistantMessageId,
@@ -231,7 +251,25 @@ export async function regeneratePaperHandler(
         analytics: args.analytics,
         phaseOrder: nextPhaseOrder,
       },
+      { startAsync: true, onComplete: ownedWorkflowCompletionRef, context: {} },
     );
+    await ctx.db.patch(execution.attemptId, {
+      componentOperationId: workflowId,
+      updatedAt: now,
+    });
+    await linkDomainComponent(ctx, execution, {
+      adapterId: "convex-workflow",
+      operationId: workflowId,
+      role: "research-regeneration-workflow",
+    });
+    await scheduleOwnedWorkflowWatchdog(ctx, { workflowId, context: {} });
+    await ctx.db.patch(regenerationSessionId, {
+      workflowId,
+      executionRunId: execution.runId,
+      executionAttemptId: execution.attemptId,
+      executionFence: execution.fence,
+      executionClaimantId: claimantId,
+    });
 
     const chat = await ctx.db.get(sourceSession.chatId);
     if (chat) {

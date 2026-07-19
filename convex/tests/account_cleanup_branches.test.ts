@@ -10,12 +10,15 @@ test("deleteUserTableBatch cascades message cleanup through chats and removes st
   const result = await (deleteUserTableBatch as any)._handler({
     db: {
       query: (table: string) => ({
-        withIndex: () => ({
-          collect: async () =>
-            table === "chats" ? [{ _id: "chat_1" }] : [],
-          take: async () =>
-            table === "messages"
-              ? [
+        withIndex: (indexName: string) => ({
+          paginate: async () => ({
+            page: table === "chats" ? [{ _id: "chat_1" }] : [],
+            continueCursor: "done",
+            isDone: true,
+          }),
+          take: async () => {
+            if (table !== "messages") return [];
+            const messages = [
                   {
                     _id: "msg_1",
                     audioStorageId: "audio_1",
@@ -25,8 +28,12 @@ test("deleteUserTableBatch cascades message cleanup through chats and removes st
                     _id: "msg_2",
                     attachments: [{ storageId: "att_3" }],
                   },
-                ]
-              : [],
+                ].filter((row) => !deletedRows.includes(row._id));
+            return indexName === "by_audio_storage"
+              ? messages.filter((row) => row.audioStorageId === "audio_1")
+              : messages;
+          },
+          first: async () => null,
         }),
       }),
       delete: async (id: string) => {
@@ -60,6 +67,8 @@ test("deleteUserTableBatch deletes storage-bearing generated and uploaded files"
           { _id: `${table}_1`, storageId: `${table}_storage_1` },
           { _id: `${table}_2`, storageId: `${table}_storage_2` },
         ],
+        first: async () => null,
+        unique: async () => null,
       }),
     }),
     delete: async (id: string) => {
@@ -142,8 +151,11 @@ test("deleteUserTableBatch cleans inline subagent generated file storage", async
     db: {
       query: (table: string) => ({
         withIndex: () => ({
-          collect: async () =>
-            table === "subagentBatches" ? [{ _id: "batch_1" }] : [],
+          paginate: async () => ({
+            page: table === "subagentBatches" ? [{ _id: "batch_1" }] : [],
+            continueCursor: "done",
+            isDone: true,
+          }),
           take: async () =>
             table === "subagentRuns"
               ? [
@@ -180,8 +192,11 @@ test("deleteUserTableBatch uses special indexes for node positions and request g
   const db = {
     query: (table: string) => ({
       withIndex: () => ({
-        collect: async () =>
-          table === "chats" ? [{ _id: "chat_1" }] : [],
+        paginate: async () => ({
+          page: table === "chats" ? [{ _id: "chat_1" }] : [],
+          continueCursor: "done",
+          isDone: true,
+        }),
         take: async () => {
           if (table === "nodePositions") return [{ _id: "pos_1" }, { _id: "pos_2" }];
           if (table === "integrationRequestGates") return [{ _id: "gate_1" }];
@@ -216,8 +231,11 @@ test("deleteUserTableBatch cleans sandbox artifact blobs before deleting rows", 
     db: {
       query: (table: string) => ({
         withIndex: () => ({
-          collect: async () =>
-            table === "sandboxSessions" ? [{ _id: "session_1" }] : [],
+          paginate: async () => ({
+            page: table === "sandboxSessions" ? [{ _id: "session_1" }] : [],
+            continueCursor: "done",
+            isDone: true,
+          }),
           take: async () =>
             table === "sandboxArtifacts"
               ? [{ _id: "artifact_1", storageId: "artifact_storage_1" }]
@@ -249,11 +267,15 @@ test("deleteUserTableBatch covers remaining cascade and special-index account cl
   const db = {
     query: (table: string) => ({
       withIndex: () => ({
-        collect: async () => {
-          if (table === "searchSessions") return [{ _id: "search_session_1" }];
-          if (table === "memories") return [{ _id: "memory_1" }];
-          return [];
-        },
+        paginate: async () => ({
+          page: table === "searchSessions"
+            ? [{ _id: "search_session_1" }]
+            : table === "memories"
+              ? [{ _id: "memory_1" }]
+              : [],
+          continueCursor: "done",
+          isDone: true,
+        }),
         take: async () => {
           if (table === "searchPhases") return [{ _id: "phase_1" }];
           if (table === "memoryEmbeddings") return [{ _id: "embedding_1" }];
@@ -396,8 +418,15 @@ test("deleteUserTableBatch cleans document versions and Drive cached blobs only 
         withIndex: () => ({
           take: async () =>
             table === "generatedMedia"
-              ? [{ _id: "media_1", storageId: "media_storage_1" }]
+              ? [{
+                  _id: "media_1",
+                  userId: "user_1",
+                  storageId: "media_storage_1",
+                  referenceTrackingVersion: 1,
+                }]
               : [],
+          first: async () => null,
+          unique: async () => null,
         }),
       }),
       delete: async (id: string) => {
@@ -451,10 +480,66 @@ test("deleteUserTableBatch cleans document versions and Drive cached blobs only 
   assert.deepEqual([documentVersions.deleted, generatedMedia.deleted, driveGrant.deleted], [1, 1, 3]);
   assert.deepEqual(deletedRows, ["version_1", "media_1", "grant_1", "grant_2", "grant_3"]);
   assert.deepEqual(deletedStorage, [
-    "doc_storage_1",
     "doc_text_1",
     "doc_md_1",
+    "doc_storage_1",
     "media_storage_1",
     "cached_2",
   ]);
+});
+
+test("deleteUserTableBatch reclaims only unreferenced KB upload blobs", async () => {
+  const deletedRows: string[] = [];
+  const deletedStorage: string[] = [];
+  const sessions = [
+    { _id: "session_orphan", userId: "user_1", storageId: "storage_orphan" },
+    { _id: "session_shared", userId: "user_1", storageId: "storage_shared" },
+  ];
+  const ctx = {
+    db: {
+      query: (table: string) => ({
+        withIndex: (
+          _index: string,
+          apply?: (query: { eq: (field: string, value: unknown) => unknown }) => unknown,
+        ) => {
+          const filters = new Map<string, unknown>();
+          const query = {
+            eq: (field: string, value: unknown) => {
+              filters.set(field, value);
+              return query;
+            },
+          };
+          apply?.(query);
+          return {
+            take: async () => table === "kbUploadSessions" ? [...sessions] : [],
+            first: async () => {
+              const storageId = filters.get("storageId");
+              if (table === "fileAttachments" && storageId === "storage_shared") {
+                return { _id: "attachment_1", storageId };
+              }
+              if (table === "kbUploadSessions") {
+                return sessions.find((row) =>
+                  !deletedRows.includes(row._id) && row.storageId === storageId
+                ) ?? null;
+              }
+              return null;
+            },
+          };
+        },
+      }),
+      delete: async (id: string) => { deletedRows.push(id); },
+    },
+    storage: {
+      delete: async (id: string) => { deletedStorage.push(id); },
+    },
+  } as any;
+
+  const result = await (deleteUserTableBatch as any)._handler(ctx, {
+    userId: "user_1",
+    tableName: "kbUploadSessions",
+  });
+
+  assert.equal(result.deleted, 2);
+  assert.deepEqual(deletedRows, ["session_orphan", "session_shared"]);
+  assert.deepEqual(deletedStorage, ["storage_orphan"]);
 });

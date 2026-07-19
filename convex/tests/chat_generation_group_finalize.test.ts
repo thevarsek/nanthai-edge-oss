@@ -7,6 +7,10 @@ import {
 } from "../chat/actions_run_generation_group_finalize";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
+function withoutOrphanCleanup(calls: Array<Record<string, unknown>>) {
+  return calls.filter((call) => !("jobId" in call) && !("assistantMessageId" in call));
+}
+
 test("maybeFinalizeGenerationGroup waits for all generation jobs to become terminal", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
   const scheduledCalls: Array<Record<string, unknown>> = [];
@@ -78,15 +82,16 @@ test("maybeFinalizeGenerationGroup schedules postProcess once and completes mixe
     now: () => 999,
   }));
 
-  assert.deepEqual(mutationCalls[0], { messageId: "msg_assistant_1" });
-  assert.deepEqual(scheduledCalls[0], {
+  const businessCalls = withoutOrphanCleanup(mutationCalls);
+  assert.deepEqual(businessCalls[0], { messageId: "msg_assistant_1" });
+  assert.equal(scheduledCalls.length, 0);
+  assert.deepEqual(businessCalls[1], {
     chatId: "chat_1",
     userMessageId: "msg_user",
     assistantMessageIds: ["msg_assistant_1", "msg_assistant_2"],
     userId: "user_1",
   });
-  assert.deepEqual(mutationCalls[1], { messageId: "msg_assistant_1" });
-  assert.deepEqual(mutationCalls[2], {
+  assert.deepEqual(businessCalls[2], {
     sessionId: "search_1",
     patch: {
       status: "completed",
@@ -95,6 +100,11 @@ test("maybeFinalizeGenerationGroup schedules postProcess once and completes mixe
       completedAt: 999,
     },
   });
+  assert.equal(
+    mutationCalls.filter((call) => Array.isArray(call.assistantMessageIds)).length,
+    1,
+    "post-process claiming and Workpool enqueueing use one mutation contract",
+  );
 });
 
 test("maybeFinalizeGenerationGroup marks fully cancelled groups as cancelled without postProcess", async () => {
@@ -131,7 +141,7 @@ test("maybeFinalizeGenerationGroup marks fully cancelled groups as cancelled wit
   }));
 
   assert.equal(scheduledCalls.length, 0);
-  assert.deepEqual(mutationCalls, [
+  assert.deepEqual(withoutOrphanCleanup(mutationCalls), [
     { messageId: "msg_assistant_1" },
     {
       sessionId: "search_1",
@@ -178,7 +188,7 @@ test("maybeFinalizeGenerationGroup marks failed and timed-out groups as failed w
   }));
 
   assert.equal(scheduledCalls.length, 0);
-  assert.deepEqual(mutationCalls, [
+  assert.deepEqual(withoutOrphanCleanup(mutationCalls), [
     { messageId: "msg_assistant_1" },
     {
       sessionId: "search_1",

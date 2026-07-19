@@ -1,7 +1,6 @@
 "use node";
 
 import { internalAction, type ActionCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { MODEL_IDS } from "../lib/model_constants";
 import { withZdrProvider } from "../lib/openrouter_zdr";
@@ -19,7 +18,6 @@ import {
   claimPresentationStudioBatchRef,
   completePresentationStudioBatchRef,
   failPresentationFanoutRef,
-  getPresentationStudioContextRef,
 } from "./generation_fanout_refs";
 import { presentationGenerationJobIsActive } from "./generation_workflow_active";
 import {
@@ -35,7 +33,6 @@ import {
   deletePresentationRepairCandidate,
 } from "./repair_candidate_storage";
 import { buildStudioGenerationMessages } from "./studio_prompts";
-import type { DeferredPresentationWorkflowArgs } from "./deferred_workflow_refs";
 import { callPresentationStudio } from "./generation_studio_model";
 import {
   completeOrQueueStudioRepair,
@@ -44,31 +41,19 @@ import {
   queueStudioRepair,
   type StudioAttemptOutcome,
 } from "./generation_studio_repair_helpers";
+import { presentationExecutionIdentity } from "./generation_execution_identity";
+import {
+  presentationStudioActionContext as studioContext,
+  presentationStudioWorkflowArgs as workflowArgs,
+} from "./generation_studio_action_context";
+import { cancelUnfencedPresentationAction } from "./legacy_action_identity";
 
 const studioArgs = {
-  runId: v.id("presentationGenerationRuns"), batchId: v.id("presentationGenerationBatches"),
+  runId: v.id("presentationGenerationRuns"),
+  batchId: v.id("presentationGenerationBatches"),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 };
-
-function workflowArgs(context: Awaited<ReturnType<typeof studioContext>>): DeferredPresentationWorkflowArgs {
-  if (!context) throw new Error("Presentation studio context is unavailable.");
-  return {
-    projectId: context.project._id,
-    userId: context.run.userId,
-    jobId: context.run.jobId,
-    toolCallId: context.run.toolCallId,
-    modelId: context.run.selectedModelId,
-    ...(context.run.requireZdrOverride !== undefined
-      ? { requireZdrOverride: context.run.requireZdrOverride }
-      : {}),
-  };
-}
-
-async function studioContext(
-  ctx: ActionCtx,
-  args: { runId: Id<"presentationGenerationRuns">; batchId: Id<"presentationGenerationBatches"> },
-) {
-  return await ctx.runQuery(getPresentationStudioContextRef, args);
-}
 
 async function failStudio(
   ctx: ActionCtx,
@@ -79,17 +64,29 @@ async function failStudio(
   const changed = await ctx.runMutation(failPresentationFanoutRef, {
     runId: context.run._id,
     batchId: context.batch._id,
+    ...presentationExecutionIdentity(context.run),
     error: message,
   });
-  if (changed) await failAndResume(ctx, workflowArgs(context), error);
+  if (changed && !context.project.workflowId) {
+    await failAndResume(ctx, workflowArgs(context), error);
+  }
 }
 
 export const runPresentationStudio = internalAction({
   args: studioArgs,
   handler: async (ctx, args): Promise<void> => {
     const context = await studioContext(ctx, args);
-    if (!context || !(await presentationGenerationJobIsActive(ctx, context.run.jobId))) return;
-    if (!(await ctx.runMutation(claimPresentationStudioBatchRef, { ...args, repair: false }))) return;
+    if (!context) return;
+    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) {
+      await cancelUnfencedPresentationAction(ctx, args, context.run);
+      return;
+    }
+    if (!(await ctx.runMutation(claimPresentationStudioBatchRef, {
+      runId: context.run._id,
+      batchId: context.batch._id,
+      ...presentationExecutionIdentity(context.run),
+      repair: false,
+    }))) return;
     try {
       const { response, ai } = await callPresentationStudio(ctx, context);
       const outcome = await completeOrQueueStudioRepair({
@@ -110,8 +107,17 @@ export const runPresentationStudioRepair = internalAction({
   args: studioArgs,
   handler: async (ctx, args): Promise<void> => {
     const context = await studioContext(ctx, args);
-    if (!context || !(await presentationGenerationJobIsActive(ctx, context.run.jobId))) return;
-    if (!(await ctx.runMutation(claimPresentationStudioBatchRef, { ...args, repair: true }))) return;
+    if (!context) return;
+    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) {
+      await cancelUnfencedPresentationAction(ctx, args, context.run);
+      return;
+    }
+    if (!(await ctx.runMutation(claimPresentationStudioBatchRef, {
+      runId: context.run._id,
+      batchId: context.batch._id,
+      ...presentationExecutionIdentity(context.run),
+      repair: true,
+    }))) return;
     let oldCandidate: typeof context.batch.candidateStorageId;
     let deleteOldCandidate = false;
     try {
@@ -234,6 +240,7 @@ async function applyRepairResponse(
       await ctx.runMutation(completePresentationStudioBatchRef, {
         runId: context.run._id,
         batchId: context.batch._id,
+        ...presentationExecutionIdentity(context.run),
         slides: deck.slides,
         effectiveModelId,
       });

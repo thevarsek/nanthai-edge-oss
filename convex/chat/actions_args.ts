@@ -98,6 +98,11 @@ export const runGenerationParticipantArgs = {
   subagentBatchId: v.optional(v.id("subagentBatches")),
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   resumeExpected: v.optional(v.boolean()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+  workflowManaged: v.optional(v.boolean()),
+  workflowResumeEventId: v.optional(v.string()),
+  providerDeadlineAt: v.optional(v.number()),
   // M29 — Video generation config
   videoConfig: v.optional(videoConfigValidator),
   imageConfig: v.optional(imageConfigValidator),
@@ -185,4 +190,5 @@ export const pollVideoGenerationArgs = {
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   analytics: v.optional(analyticsClientMetadataValidator),
   analyticsSource: v.optional(analyticsSourceValidator),
+  workflowManaged: v.optional(v.boolean()),
 } satisfies PropertyValidators;

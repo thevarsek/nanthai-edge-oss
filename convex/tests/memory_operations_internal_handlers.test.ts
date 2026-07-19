@@ -12,9 +12,11 @@ test("storeEmbeddingHandler patches an existing embedding row", async () => {
 
   await storeEmbeddingHandler({
     db: {
+      get: async () => ({ _id: "memory_1", userId: "user_1" }),
       query: () => ({
         withIndex: () => ({
           first: async () => ({ _id: "embedding_1", memoryId: "memory_1" }),
+          unique: async () => null,
         }),
       }),
       patch: async (id: string, patch: Record<string, unknown>) => {
@@ -41,9 +43,11 @@ test("storeEmbeddingHandler inserts when the embedding row is missing", async ()
 
   await storeEmbeddingHandler({
     db: {
+      get: async () => ({ _id: "memory_1", userId: "user_1" }),
       query: () => ({
         withIndex: () => ({
           first: async () => null,
+          unique: async () => null,
         }),
       }),
       insert: async (table: string, value: Record<string, unknown>) => {

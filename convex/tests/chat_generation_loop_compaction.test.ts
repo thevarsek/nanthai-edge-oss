@@ -99,6 +99,37 @@ test("runGenerationWithCompaction returns immediately on simple non-tool respons
   assert.equal(result.compactionCount, 0);
 });
 
+test("generation loop applies the inherited absolute deadline before provider dispatch", async () => {
+  const retryDeadlines: Array<number | undefined> = [];
+  let dispatchMarks = 0;
+  const deps = createRunGenerationWithCompactionDepsForTest({
+    callOpenRouterStreaming: async (_key, _model, _messages, _params, _callbacks, retry) => {
+      retryDeadlines.push(retry?.absoluteDeadlineAtMs);
+      return makeStreamResult({ content: "done", finishReason: "stop" });
+    },
+  });
+
+  await runGenerationWithCompaction({
+    apiKey: "key",
+    model: "model",
+    messages: [{ role: "user", content: "hi" }],
+    params: {},
+    callbacks: {},
+    toolCtx: { ctx: {} as any, userId: "user_1" },
+    modelContextLimit: 100,
+    writer: {
+      patchReasoningIfNeeded: async () => undefined,
+      flush: async () => undefined,
+    } as any,
+    actionStartTime: 1_000,
+    providerDeadlineAt: 200_000,
+    onProviderDispatch: async () => { dispatchMarks += 1; },
+  }, deps);
+
+  assert.deepEqual(retryDeadlines, [200_000]);
+  assert.equal(dispatchMarks, 1);
+});
+
 test("compactMessages preserves ZDR provider policy", async (t) => {
   t.after(() => mock.restoreAll());
   let requestBody: Record<string, unknown> = {};
@@ -380,12 +411,12 @@ test("runGenerationWithCompaction returns a round-budget continuation without co
     callbacks: {},
     toolRegistry: { isEmpty: false } as any,
     toolCtx: { ctx: {} as any, userId: "user_1" },
-    modelContextLimit: 100,
+    modelContextLimit: 10_000,
     writer: {
       patchReasoningIfNeeded: async () => undefined,
       flush: async () => undefined,
     } as any,
-    actionStartTime: 0,
+    actionStartTime: Date.now(),
     allowContinuationHandoff: true,
     maxToolRoundsPerInvocation: 1,
   }, deps);
@@ -401,7 +432,7 @@ test("runGenerationWithCompaction returns a round-budget continuation without co
   });
 });
 
-test("runGenerationWithCompaction forces a final text response after the continuation cap", async () => {
+test("persisted compaction history does not impose a generation lifetime cap", async () => {
   const seenParams: Array<Record<string, unknown>> = [];
   const deps = createRunGenerationWithCompactionDepsForTest({
     callOpenRouterStreaming: async (_apiKey: string, _model: string, _messages: OpenRouterMessage[], params) => {
@@ -432,6 +463,14 @@ test("runGenerationWithCompaction forces a final text response after the continu
       }),
     isContextOverflow: () => false,
     isApproachingTimeout: () => true,
+    pruneToolOutputs: (messages: OpenRouterMessage[]) => ({ messages, tokensSaved: 0 }),
+    compactMessages: async () => ({
+      summary: "durable summary",
+      usage: null,
+      generationId: null,
+      modelId: "compact-model",
+    }),
+    buildCompactedMessages: () => [{ role: "assistant", content: "durable summary" }],
   });
 
   const result = await runGenerationWithCompaction({
@@ -449,13 +488,13 @@ test("runGenerationWithCompaction forces a final text response after the continu
     } as any,
     actionStartTime: 0,
     initialCompactionCount: 5,
+    allowContinuationHandoff: true,
   }, deps);
 
-  assert.equal(result.streamResult.content, "forced final");
-  assert.equal(seenParams.length, 2);
-  assert.deepEqual(seenParams[1], {
-    temperature: 0.5,
-    webSearchEnabled: true,
-    toolChoice: "none",
+  assert.equal(seenParams.length, 1);
+  assert.equal(result.compactionCount, 6);
+  assert.deepEqual(result.continuation, {
+    reason: "timeout",
+    messages: [{ role: "assistant", content: "durable summary" }],
   });
 });

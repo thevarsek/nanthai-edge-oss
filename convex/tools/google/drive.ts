@@ -215,6 +215,7 @@ export const driveUpload = createTool({
 
 export const driveList = createTool({
   name: "drive_list",
+  mayDefer: true,
   description:
     "List or search Google Drive files that the user explicitly selected for NanthAI " +
     "or files NanthAI created/uploaded. This does not search the user's entire Drive. " +

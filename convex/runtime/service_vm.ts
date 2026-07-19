@@ -93,6 +93,21 @@ export async function getOrCreatePersistentRuntime(
       ? existingSession.providerSandboxId
       : undefined;
 
+  const pendingSessionId = await toolCtx.ctx.runMutation(
+    internal.runtime.mutations.upsertSessionInternal,
+    {
+      sessionId: existingSession?._id,
+      userId: toolCtx.userId,
+      chatId: chatId as Id<"chats">,
+      environment,
+      status: "pendingCreate",
+      cwd: persistentRuntimeWorkspacePaths(chatId, environment).root,
+      lastActiveAt: Date.now(),
+      timeoutMs,
+      internetEnabled: true,
+      publicTrafficEnabled: false,
+    },
+  );
   const sandbox = await getOrCreateVercelSandbox(
     existingSandboxId,
     timeoutMs,
@@ -105,10 +120,12 @@ export async function getOrCreatePersistentRuntime(
   ]);
 
   const now = Date.now();
-  const sessionId = await toolCtx.ctx.runMutation(
-    internal.runtime.mutations.upsertSessionInternal,
-    {
-      sessionId: existingSession?._id,
+  let sessionId;
+  try {
+    sessionId = await toolCtx.ctx.runMutation(
+      internal.runtime.mutations.upsertSessionInternal,
+      {
+      sessionId: pendingSessionId,
       userId: toolCtx.userId,
       chatId: chatId as Id<"chats">,
       environment,
@@ -119,8 +136,12 @@ export async function getOrCreatePersistentRuntime(
       timeoutMs,
       internetEnabled: true,
       publicTrafficEnabled: false,
-    },
-  );
+      },
+    );
+  } catch (error) {
+    await sandbox.stop().catch(() => undefined);
+    throw error;
+  }
   toolCtx.sandboxSessionId = sessionId;
 
   return { sandbox, workspace, sessionId };

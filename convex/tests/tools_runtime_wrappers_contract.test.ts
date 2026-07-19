@@ -29,7 +29,7 @@ test("data python tools reject missing code", async () => {
   assert.equal(sandboxResult.error, "Missing code.");
 });
 
-test("data python tools surface runtime context errors through execute wrappers", async () => {
+test("data python tools require a durable generation Workflow context", async () => {
   const execResult = await dataPythonExec.execute(
     { userId: "user_1" } as any,
     { code: "print(1)" },
@@ -40,22 +40,37 @@ test("data python tools surface runtime context errors through execute wrappers"
   );
 
   assert.equal(execResult.success, false);
-  assert.match(String(execResult.error), /require chatId/i);
+  assert.match(String(execResult.error), /requires generation context/i);
   assert.equal(sandboxResult.success, false);
-  assert.match(String(sandboxResult.error), /require chatId/i);
+  assert.match(String(sandboxResult.error), /requires generation context/i);
 });
 
-test("data python exec ignores malformed inputFiles entries before runtime execution", async () => {
+test("data python exec ignores malformed inputFiles before preparing its durable run", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
   const execResult = await dataPythonExec.execute(
-    { userId: "user_1" } as any,
+    {
+      userId: "user_1",
+      chatId: "chat_1",
+      messageId: "message_1",
+      userMessageId: "message_user_1",
+      jobId: "job_1",
+      toolCallId: "call_1",
+      ctx: {
+        runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+          mutations.push(args);
+          return "analytics_run_1";
+        },
+      },
+    } as any,
     {
       code: "print(1)",
       inputFiles: [null, "bad entry", { filename: "missing-storage.csv" }],
     },
   );
 
-  assert.equal(execResult.success, false);
-  assert.match(String(execResult.error), /require chatId/i);
+  assert.equal(execResult.success, true);
+  assert.equal(execResult.deferred?.kind, "analytics_workflow");
+  assert.deepEqual(mutations[0]?.inputFiles, []);
 });
 
 test("persistent runtime wrappers validate required args", async () => {

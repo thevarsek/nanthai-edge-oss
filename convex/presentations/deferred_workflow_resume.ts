@@ -3,6 +3,7 @@
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import { makeFunctionReference, type FunctionReference } from "convex/server";
 import { scheduleGenerationContinuation } from "../chat/actions_run_generation_continuation";
 import type { ParticipantConfig } from "../chat/actions_run_generation_types";
 import {
@@ -15,6 +16,45 @@ import type { OpenRouterMessage } from "../lib/openrouter";
 import type { ToolResult } from "../tools/registry";
 import type { DeferredPresentationWorkflowArgs } from "./deferred_workflow_refs";
 import { safePresentationErrorMessage } from "./limits";
+import { getProjectInternalRef } from "./action_refs";
+
+const signalGenerationResumeRef = makeFunctionReference<
+  "mutation",
+  { eventId: string; value: { mode: "checkpoint" } },
+  boolean
+>("chat/workflow_events:signalGenerationResume") as unknown as FunctionReference<
+  "mutation",
+  "internal",
+  { eventId: string; value: { mode: "checkpoint" } },
+  boolean
+>;
+
+const completeDeferredToolRef = makeFunctionReference<
+  "mutation",
+  {
+    jobId: Id<"generationJobs">;
+    userId: string;
+    toolCallId: string;
+    toolName: string;
+    result: string;
+    isError?: boolean;
+    eventId: string;
+  },
+  "resumed" | "duplicate" | "missing" | "terminal"
+>("chat/workflow_events:completeDeferredTool") as unknown as FunctionReference<
+  "mutation",
+  "internal",
+  {
+    jobId: Id<"generationJobs">;
+    userId: string;
+    toolCallId: string;
+    toolName: string;
+    result: string;
+    isError?: boolean;
+    eventId: string;
+  },
+  "resumed" | "duplicate" | "missing" | "terminal"
+>;
 
 function replaceToolResultMessage(
   messages: OpenRouterMessage[],
@@ -96,18 +136,29 @@ async function resumeParentWithResult(
   args: DeferredPresentationWorkflowArgs,
   result: ToolResult,
 ): Promise<void> {
-  const [continuation, job] = await Promise.all([
+  const [continuation, job, project] = await Promise.all([
     ctx.runQuery(internal.chat.queries.getGenerationContinuationInternal, {
       jobId: args.jobId,
     }),
     ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
       jobId: args.jobId,
     }),
+    ctx.runQuery(getProjectInternalRef, {
+      projectId: args.projectId,
+      userId: args.userId,
+    }),
   ]);
   if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return;
   if (job.userId !== args.userId) return;
+  const parentEventId = project?.parentResumeEventId ?? args.workflowResumeEventId;
   if (!continuation) {
     await finalizeWithoutContinuation(ctx, args, job, result);
+    if (parentEventId) {
+      await ctx.runMutation(signalGenerationResumeRef, {
+        eventId: parentEventId,
+        value: { mode: "checkpoint" },
+      });
+    }
     return;
   }
   if (continuation.userId !== args.userId) return;
@@ -118,8 +169,23 @@ async function resumeParentWithResult(
       error: result.error,
       ...(result.data && typeof result.data === "object"
         ? result.data as Record<string, unknown>
-        : {}),
+      : {}),
     });
+  if (parentEventId) {
+    const resumeStatus = await ctx.runMutation(completeDeferredToolRef, {
+      jobId: args.jobId,
+      userId: args.userId,
+      toolCallId: args.toolCallId,
+      toolName: "create_presentation",
+      result: content,
+      ...(result.success ? {} : { isError: true }),
+      eventId: parentEventId,
+    });
+    if (resumeStatus === "missing") {
+      throw new Error("PRESENTATION_PARENT_CHECKPOINT_NOT_FOUND");
+    }
+    return;
+  }
   const storedResults = [...(continuation.toolResults ?? [])];
   const resultIndex = storedResults.findIndex((entry) => entry.toolCallId === args.toolCallId);
   const storedResult = {
@@ -162,6 +228,7 @@ async function resumeParentWithResult(
     resumeExpected: true,
   };
   const checkpoint: GenerationContinuationCheckpoint = {
+    roundKey: continuation.roundKey,
     participant,
     group,
     checkpointVersion: continuation.checkpointVersion ?? "v2",

@@ -14,7 +14,7 @@ export const COMPACTION = {
   /** Fraction of model's context limit at which to trigger compaction. */
   CONTEXT_OVERFLOW_THRESHOLD: 0.85,
 
-  /** Max number of compaction+continue cycles per generation. */
+  /** Max number of compaction+continue cycles within one Convex action. */
   MAX_CONTINUATIONS: 5,
 
   /** Max tokens for the compaction summary response. */

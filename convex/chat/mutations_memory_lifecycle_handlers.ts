@@ -1,5 +1,6 @@
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
+import { isUserDataWritable } from "../lib/write_fence";
 
 export interface ReinforceMemoryArgs extends Record<string, unknown> {
   memoryId: Id<"memories">;
@@ -16,7 +17,11 @@ export async function reinforceMemoryHandler(
   args: ReinforceMemoryArgs,
 ): Promise<void> {
   const memory = await ctx.db.get(args.memoryId);
-  if (!memory || memory.isSuperseded) return;
+  if (
+    !memory
+    || memory.isSuperseded
+    || !await isUserDataWritable(ctx, memory.userId, memory.sourceChatId)
+  ) return;
 
   const reinforcementCount = (memory.reinforcementCount ?? 1) + 1;
   const patch: Record<string, unknown> = {
@@ -78,7 +83,7 @@ export async function supersedeMemoryHandler(
   args: SupersedeMemoryArgs,
 ): Promise<void> {
   const memory = await ctx.db.get(args.memoryId);
-  if (!memory) return;
+  if (!memory || !await isUserDataWritable(ctx, memory.userId, memory.sourceChatId)) return;
 
   await ctx.db.patch(args.memoryId, {
     isSuperseded: true,

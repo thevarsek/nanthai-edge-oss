@@ -343,7 +343,10 @@ export async function runPyodideCode(
   timeoutMs?: number,
   exportPaths?: string[],
 ): Promise<PyodideExecResult> {
-  const effectiveTimeout = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const effectiveTimeout = Math.min(
+    timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    2 * 60 * 1_000,
+  );
   const memBaseline = memRssMiB();
 
   // Detect packages needed from imports (auto-detect numpy/pandas/matplotlib)

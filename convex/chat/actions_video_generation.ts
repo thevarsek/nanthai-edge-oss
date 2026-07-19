@@ -161,6 +161,12 @@ export interface SubmitVideoGenerationArgs extends Record<string, unknown> {
   videoConfig?: VideoConfig;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
+  execution?: {
+    runId: Id<"executionRuns">;
+    attemptId: Id<"executionAttempts">;
+    fence: number;
+    claimantId: string;
+  };
 }
 
 export interface PollVideoGenerationArgs extends Record<string, unknown> {
@@ -176,6 +182,101 @@ export interface PollVideoGenerationArgs extends Record<string, unknown> {
   drivePickerBatchId?: Id<"drivePickerBatches">;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
+  workflowManaged?: boolean;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+  executionClaimantId?: string;
+}
+
+function submitExecutionFields(args: SubmitVideoGenerationArgs): {
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+} {
+  return args.execution
+    ? {
+        executionAttemptId: args.execution.attemptId,
+        executionFence: args.execution.fence,
+      }
+    : {};
+}
+
+function submitOwnershipFields(args: SubmitVideoGenerationArgs): {
+  executionRunId?: Id<"executionRuns">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+} {
+  return args.execution
+    ? { executionRunId: args.execution.runId, ...submitExecutionFields(args) }
+    : {};
+}
+
+function pollExecutionFields(args: PollVideoGenerationArgs): {
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+} {
+  return args.executionAttemptId && args.executionFence !== undefined
+    ? {
+        executionAttemptId: args.executionAttemptId,
+        executionFence: args.executionFence,
+      }
+    : {};
+}
+
+async function validatePollFence(
+  ctx: ActionCtx,
+  args: PollVideoGenerationArgs,
+): Promise<void> {
+  if (args.executionAttemptId && args.executionFence !== undefined) {
+    await ctx.runMutation(internal.execution.mutations.validateFence, {
+      attemptId: args.executionAttemptId,
+      fence: args.executionFence,
+    });
+  } else if (args.workflowManaged) {
+    throw new Error("VIDEO_EXECUTION_FENCE_REQUIRED");
+  }
+}
+
+export async function startVideoGenerationHandler(
+  ctx: ActionCtx,
+  args: SubmitVideoGenerationArgs,
+): Promise<void> {
+  await ctx.runMutation(internal.execution.workflow_starts.startVideoGeneration, args);
+}
+
+export async function failVideoWorkflowHandler(
+  ctx: ActionCtx,
+  args: SubmitVideoGenerationArgs & { error: string },
+): Promise<void> {
+  const job = await ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
+    jobId: args.participant.jobId,
+  });
+  if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return;
+  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+    messageId: args.participant.messageId,
+    jobId: args.participant.jobId,
+    chatId: args.chatId,
+    content: `Error: ${args.error}`,
+    status: "failed",
+    error: args.error,
+    userId: args.userId,
+    triggerUserMessageId: args.userMessageId,
+    ...submitExecutionFields(args),
+  });
+  if (args.execution) {
+    await ctx.runMutation(internal.chat.mutations.closeVideoParentGeneration, {
+      videoRunId: args.execution.runId,
+      generationJobId: args.participant.jobId,
+    });
+  }
+  await maybeFinalizeGenerationGroup(ctx, {
+    chatId: args.chatId,
+    userMessageId: args.userMessageId,
+    assistantMessageIds: args.assistantMessageIds,
+    generationJobIds: args.generationJobIds,
+    userId: args.userId,
+    searchSessionId: args.searchSessionId,
+  });
+  await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
 }
 
 async function maybeCompleteDrivePickerBatch(
@@ -210,6 +311,7 @@ export async function submitVideoGenerationHandler(
   const didStartGenerationJob = await markGenerationJobStreamingIfActive(
     ctx,
     participant.jobId,
+    args.execution,
   );
   if (!didStartGenerationJob) {
     const latestGenerationJob = await ctx.runQuery(
@@ -224,7 +326,11 @@ export async function submitVideoGenerationHandler(
 
   let shouldCaptureStarted = false;
   try {
-    shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, participant.jobId);
+    shouldCaptureStarted = await markGenerationJobAnalyticsStarted(
+      ctx,
+      participant.jobId,
+      args.execution,
+    );
   } catch (error) {
     console.warn("[analytics] failed to mark video generation job analytics start", {
       jobId: participant.jobId,
@@ -401,6 +507,7 @@ export async function submitVideoGenerationHandler(
         messageId: participant.messageId,
         chatId,
         userId,
+        ...submitOwnershipFields(args),
       });
       request.output = {
         upload_url: buildVideoOutputUploadUrl(outputUploadToken),
@@ -444,20 +551,75 @@ export async function submitVideoGenerationHandler(
       return;
     }
 
-    // 6. Submit to OpenRouter
-    const submission = await submitVideoJob(apiKey, request);
-    const latestGenerationJob = await ctx.runQuery(
-      internal.chat.queries.getGenerationJobInternal,
-      { jobId: participant.jobId },
-    );
-    if (!latestGenerationJob || TERMINAL_GENERATION_JOB_STATUSES.has(latestGenerationJob.status)) {
-      if (latestGenerationJob?.status === "cancelled") {
-        await completeCancelledSubmit();
+    // 6. Submit to OpenRouter behind the immutable operation journal. OpenRouter's
+    // video endpoint does not expose an idempotency key, so an ambiguous dispatch
+    // is never replayed automatically.
+    let submission: Awaited<ReturnType<typeof submitVideoJob>>;
+    const execution = args.execution;
+    const operationKey = `${String(participant.jobId)}:video-provider-submit`;
+    if (execution) {
+      const requestBytes = new TextEncoder().encode(JSON.stringify(request));
+      const digest = await crypto.subtle.digest("SHA-256", requestBytes);
+      const inputHash = Array.from(new Uint8Array(digest))
+        .map((byte) => byte.toString(16).padStart(2, "0"))
+        .join("");
+      const decision = await ctx.runMutation(internal.execution.operations.prepare, {
+        jobId: participant.jobId,
+        attemptId: execution.attemptId,
+        fence: execution.fence,
+        operationKey,
+        toolName: "video_provider_submit",
+        toolCallId: operationKey,
+        effect: "write",
+        retry: "never",
+        authorizationSource: args.analyticsSource === "scheduled_job"
+          ? "configured_automation"
+          : "explicit_user_turn",
+        inputHash,
+      });
+      if (decision.decision === "refuse") throw new Error(decision.reason);
+      if (decision.decision === "replay") {
+        submission = JSON.parse(decision.resultJson) as Awaited<ReturnType<typeof submitVideoJob>>;
+      } else {
+        await ctx.runMutation(internal.execution.operations.markDispatched, {
+          attemptId: execution.attemptId,
+          fence: execution.fence,
+          operationKey,
+        });
+        try {
+          submission = await submitVideoJob(apiKey, request);
+        } catch (error) {
+          await ctx.runMutation(internal.execution.operations.markOutcomeUnknown, {
+            attemptId: execution.attemptId,
+            fence: execution.fence,
+            operationKey,
+            errorSummary: error instanceof Error ? error.message : String(error),
+          }).catch(() => undefined);
+          throw error;
+        }
+        try {
+          await ctx.runMutation(internal.execution.operations.complete, {
+            attemptId: execution.attemptId,
+            fence: execution.fence,
+            operationKey,
+            externalId: submission.id,
+            resultJson: JSON.stringify(submission),
+          });
+        } catch (error) {
+          await ctx.runMutation(internal.execution.operations.recordObservedExternalOutcome, {
+            attemptId: execution.attemptId,
+            operationKey,
+            externalId: submission.id,
+            resultJson: JSON.stringify(submission),
+          }).catch(() => undefined);
+          throw error;
+        }
       }
-      return;
+    } else {
+      submission = await submitVideoJob(apiKey, request);
     }
-
-    // 7. Create the videoJobs row
+    // 7. Persist provider ownership immediately after dispatch. This row is
+    // retained even if cancellation wins the following generation-job check.
     const videoJobId: Id<"videoJobs"> = await ctx.runMutation(
       internal.chat.mutations.createVideoJob,
       {
@@ -475,29 +637,31 @@ export async function submitVideoGenerationHandler(
           duration: vc.duration,
           generateAudio: vc.generateAudio,
         } : undefined,
+        ...submitOwnershipFields(args),
       },
     );
     createdVideoJobId = videoJobId;
 
-    // 8. Schedule the first poll
-    await ctx.scheduler.runAfter(
-      FAST_POLL_INTERVAL_MS,
-      internal.chat.actions.pollVideoGeneration,
-      {
-        videoJobId,
-        chatId: args.chatId,
-        userMessageId: args.userMessageId,
-        assistantMessageIds: args.assistantMessageIds,
-        generationJobIds: args.generationJobIds,
-        messageId: participant.messageId,
-        jobId: participant.jobId,
-        userId,
-        searchSessionId: args.searchSessionId,
-        drivePickerBatchId: args.drivePickerBatchId,
-        analytics: args.analytics,
-        analyticsSource: args.analyticsSource,
-      },
+    const latestGenerationJob = await ctx.runQuery(
+      internal.chat.queries.getGenerationJobInternal,
+      { jobId: participant.jobId },
     );
+    if (!latestGenerationJob || TERMINAL_GENERATION_JOB_STATUSES.has(latestGenerationJob.status)) {
+      if (latestGenerationJob?.status === "cancelled") {
+        await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
+          videoJobId,
+          status: "failed",
+          error: "Cancelled by user",
+          ...submitExecutionFields(args),
+        }).catch(() => undefined);
+        await completeCancelledSubmit();
+      }
+      return;
+    }
+
+    await ctx.runMutation(internal.execution.mutations.ensureGeneration, {
+      jobId: participant.jobId,
+    });
   } catch (error) {
     // Finalize the message as failed
     const errorMessage =
@@ -508,6 +672,7 @@ export async function submitVideoGenerationHandler(
           videoJobId: createdVideoJobId,
           status: "failed",
           error: errorMessage,
+          ...submitExecutionFields(args),
         });
       } catch {
         // Best-effort: the message generation failure below remains authoritative.
@@ -522,7 +687,14 @@ export async function submitVideoGenerationHandler(
       error: errorMessage,
       userId,
       triggerUserMessageId: args.userMessageId,
+      ...submitExecutionFields(args),
     });
+    if (args.execution) {
+      await ctx.runMutation(internal.chat.mutations.closeVideoParentGeneration, {
+        videoRunId: args.execution.runId,
+        generationJobId: participant.jobId,
+      });
+    }
 
     await maybeFinalizeGenerationGroup(ctx, {
       chatId: args.chatId,
@@ -556,6 +728,20 @@ export async function pollVideoGenerationHandler(
   const { videoJobId, chatId, messageId, jobId, userId } = args;
 
   try {
+    if (
+      args.executionAttemptId
+      && args.executionFence !== undefined
+      && args.executionClaimantId
+    ) {
+      await ctx.runMutation(internal.execution.mutations.heartbeat, {
+        attemptId: args.executionAttemptId,
+        fence: args.executionFence,
+        claimantId: args.executionClaimantId,
+        leaseMs: 20 * 60 * 1000,
+      });
+    } else if (args.workflowManaged) {
+      throw new Error("VIDEO_EXECUTION_FENCE_REQUIRED");
+    }
     // 1. Read the videoJobs row
     const videoJob = await ctx.runQuery(
       internal.chat.queries.getVideoJobInternal,
@@ -581,6 +767,7 @@ export async function pollVideoGenerationHandler(
         videoJobId,
         status: "failed",
         error: "Cancelled by user",
+        ...pollExecutionFields(args),
       });
       await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "cancelled");
       const cancellationPrecededVideoJob =
@@ -609,6 +796,7 @@ export async function pollVideoGenerationHandler(
 
     // 3. Poll OpenRouter
     const pollResult = await pollVideoJobStatus(apiKey, videoJob.pollingUrl);
+    await validatePollFence(ctx, args);
 
     // 4. Update the videoJobs row with poll count.
     // NOTE: When OpenRouter reports "completed", we keep the videoJob as
@@ -619,14 +807,26 @@ export async function pollVideoGenerationHandler(
     const newPollCount = videoJob.pollCount + 1;
     await ctx.runMutation(internal.chat.mutations.updateVideoJobPoll, {
       videoJobId,
-      status: pollResult.status === "failed"
-        ? "failed"
-        : pollResult.status === "in_progress" || pollResult.status === "completed"
+      status: pollResult.status === "in_progress"
+        || pollResult.status === "completed"
+        || pollResult.status === "failed"
           ? "in_progress"
           : "pending",
       pollCount: newPollCount,
       error: pollResult.error?.message,
+      ...pollExecutionFields(args),
     });
+
+    // Provider quiescence is a separate fact from our local publication
+    // outcome. Record it only when the provider explicitly reports terminal;
+    // local poll timeouts, transport errors, and storage failures must remain
+    // eligible for provider reconciliation.
+    if (pollResult.status === "completed" || pollResult.status === "failed") {
+      await ctx.runMutation(internal.chat.mutations.markVideoProviderTerminal, {
+        videoJobId,
+        status: pollResult.status,
+      });
+    }
 
     // 5. Handle terminal states
     if (pollResult.status === "completed") {
@@ -642,7 +842,8 @@ export async function pollVideoGenerationHandler(
 
     if (pollResult.status === "failed") {
       const errorMsg = pollResult.error?.message ?? "Video generation failed";
-      await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+      await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
+        videoJobId,
         messageId,
         jobId,
         chatId,
@@ -651,6 +852,7 @@ export async function pollVideoGenerationHandler(
         error: errorMsg,
         userId,
         triggerUserMessageId: args.userMessageId,
+        ...pollExecutionFields(args),
       });
 
       await maybeFinalizeGenerationGroup(ctx, {
@@ -682,12 +884,8 @@ export async function pollVideoGenerationHandler(
     // 6. If still pending/in_progress, check max polls
     if (newPollCount >= MAX_POLL_COUNT) {
       const timeoutMsg = `Video generation timed out after ${newPollCount} polls`;
-      await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
+      await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
         videoJobId,
-        status: "failed",
-        error: timeoutMsg,
-      });
-      await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
         messageId,
         jobId,
         chatId,
@@ -696,6 +894,7 @@ export async function pollVideoGenerationHandler(
         error: timeoutMsg,
         userId,
         triggerUserMessageId: args.userMessageId,
+        ...pollExecutionFields(args),
       });
 
       await maybeFinalizeGenerationGroup(ctx, {
@@ -726,38 +925,33 @@ export async function pollVideoGenerationHandler(
         ? FAST_POLL_INTERVAL_MS
         : SLOW_POLL_INTERVAL_MS;
 
-    await ctx.scheduler.runAfter(
-      interval,
-      internal.chat.actions.pollVideoGeneration,
-      args,
-    );
+    if (!args.workflowManaged) {
+      await ctx.scheduler.runAfter(
+        interval,
+        internal.chat.actions.pollVideoGeneration,
+        args,
+      );
+    }
   } catch (error) {
     // Non-retryable error — finalize as failed
     const errorMessage =
       error instanceof Error ? error.message : "Unknown error during video poll";
     let modelId: string | null = null;
+    let currentVideoStatus: string | null = null;
     try {
       const videoJob = await ctx.runQuery(
         internal.chat.queries.getVideoJobInternal,
         { videoJobId },
       );
       modelId = videoJob?.model ?? null;
+      currentVideoStatus = videoJob?.status ?? null;
     } catch {
       // Best-effort analytics enrichment only.
     }
+    if (currentVideoStatus === "completed" || currentVideoStatus === "failed") return;
 
-    // Try to mark the video job as failed
-    try {
-      await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
-        videoJobId,
-        status: "failed",
-        error: errorMessage,
-      });
-    } catch {
-      // Best-effort — the videoJob row may not exist
-    }
-
-    await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
+      videoJobId,
       messageId,
       jobId,
       chatId,
@@ -766,6 +960,7 @@ export async function pollVideoGenerationHandler(
       error: errorMessage,
       userId,
       triggerUserMessageId: args.userMessageId,
+      ...pollExecutionFields(args),
     });
 
     await maybeFinalizeGenerationGroup(ctx, {
@@ -809,29 +1004,41 @@ async function handleVideoCompleted(
 
   const contentUrl = pollResult.unsigned_urls?.[0];
   let storageId: Id<"_storage"> | undefined;
+  let storedByThisAction = false;
   let storedMimeType = "video/mp4";
   let storedSizeBytes: number | undefined;
 
   if (contentUrl) {
     const videoData = await downloadVideoContent(apiKey, contentUrl);
+    await validatePollFence(ctx, args);
     const blob = new Blob([videoData], { type: storedMimeType });
     storageId = await ctx.storage.store(blob);
+    storedByThisAction = true;
     storedSizeBytes = videoData.byteLength;
+    try {
+      await validatePollFence(ctx, args);
+    } catch (error) {
+      await ctx.storage.delete(storageId).catch(() => undefined);
+      throw error;
+    }
   } else if (videoJob.outputUploadToken) {
     const upload = await ctx.runQuery(
       internal.chat.queries.getVideoOutputUploadByToken,
       { token: videoJob.outputUploadToken },
     );
     if (upload?.storageId) {
+      await validatePollFence(ctx, args);
       storageId = upload.storageId;
       storedMimeType = upload.mimeType ?? storedMimeType;
       storedSizeBytes = upload.sizeBytes;
     } else if (videoJob.pollCount < MAX_POLL_COUNT) {
-      await ctx.scheduler.runAfter(
-        SLOW_POLL_INTERVAL_MS,
-        internal.chat.actions.pollVideoGeneration,
-        args,
-      );
+      if (!args.workflowManaged) {
+        await ctx.scheduler.runAfter(
+          SLOW_POLL_INTERVAL_MS,
+          internal.chat.actions.pollVideoGeneration,
+          args,
+        );
+      }
       return;
     }
   }
@@ -841,12 +1048,8 @@ async function handleVideoCompleted(
       ? "Video completed but provider upload did not arrive"
       : "Video completed but no content URL returned";
     // Mark the videoJob as failed — OpenRouter said "completed" but gave no URL
-    await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
+    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
       videoJobId: args.videoJobId,
-      status: "failed",
-      error: errorMsg,
-    });
-    await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
       messageId,
       jobId,
       chatId,
@@ -855,6 +1058,7 @@ async function handleVideoCompleted(
       error: errorMsg,
       userId,
       triggerUserMessageId: args.userMessageId,
+      ...pollExecutionFields(args),
     });
 
     await maybeFinalizeGenerationGroup(ctx, {
@@ -882,12 +1086,11 @@ async function handleVideoCompleted(
   const videoUrl = await ctx.storage.getUrl(storageId);
   if (!videoUrl) {
     const errorMsg = "Failed to get storage URL for video";
-    await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
+    if (storedByThisAction) {
+      await ctx.storage.delete(storageId).catch(() => undefined);
+    }
+    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
       videoJobId: args.videoJobId,
-      status: "failed",
-      error: errorMsg,
-    });
-    await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
       messageId,
       jobId,
       chatId,
@@ -896,6 +1099,7 @@ async function handleVideoCompleted(
       error: errorMsg,
       userId,
       triggerUserMessageId: args.userMessageId,
+      ...pollExecutionFields(args),
     });
 
     await maybeFinalizeGenerationGroup(ctx, {
@@ -931,37 +1135,34 @@ async function handleVideoCompleted(
       }
     : undefined;
 
-  // 5. Mark the videoJob as completed — URL is verified, video is stored
-  await ctx.runMutation(internal.chat.mutations.updateVideoJobStatus, {
-    videoJobId: args.videoJobId,
-    status: "completed",
-  });
+  // 5. Publish every durable completion write in one fenced transaction.
+  try {
+    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
+      videoJobId: args.videoJobId,
+      messageId,
+      jobId,
+      chatId,
+      content: "",
+      status: "completed",
+      videoUrls: [videoUrl],
+      usage,
+      userId,
+      triggerUserMessageId: args.userMessageId,
+      media: {
+        storageId,
+        mimeType: storedMimeType,
+        sizeBytes: storedSizeBytes,
+      },
+      ...pollExecutionFields(args),
+    });
+  } catch (error) {
+    if (storedByThisAction) {
+      await ctx.storage.delete(storageId).catch(() => undefined);
+    }
+    throw error;
+  }
 
-  // 6. Finalize the message with videoUrls
-  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
-    messageId,
-    jobId,
-    chatId,
-    content: "", // Video messages have no text content
-    status: "completed",
-    videoUrls: [videoUrl],
-    usage,
-    userId,
-    triggerUserMessageId: args.userMessageId,
-  });
-
-  // 7. Insert generatedMedia row for Knowledge Base (Phase 0.8 prep)
-  await ctx.runMutation(internal.chat.mutations.insertGeneratedMedia, {
-    userId,
-    chatId,
-    messageId,
-    storageId,
-    type: "video",
-    mimeType: storedMimeType,
-    sizeBytes: storedSizeBytes,
-  });
-
-  // 8. Finalize the generation group
+  // 6. Finalize the generation group
   await maybeFinalizeGenerationGroup(ctx, {
     chatId: args.chatId,
     userMessageId: args.userMessageId,

@@ -9,14 +9,14 @@ import {
   completePresentationCuratorTaskHandler,
 } from "../presentations/generation_curator_mutation_handlers";
 import { buildPresentationStudioBatches } from "../presentations/generation_fanout";
-import {
-  runPresentationCuratorRef,
-  runPresentationFinalizerRef,
-} from "../presentations/generation_fanout_refs";
 import { completePresentationStudioBatchHandler } from "../presentations/generation_studio_mutation_handlers";
 import { buildResolvedPresentationBrief } from "../tools/presentation_brief";
 
 type Row = Record<string, unknown> & { _id: string };
+const executionIdentity = {
+  executionAttemptId: "attempt_run_1" as never,
+  executionFence: 1,
+};
 
 function slideHtml(elementId: string, text: string): string {
   return `<section class="slide-root" style="position:relative;width:1280px;height:720px;overflow:hidden"><h1 data-element-id="${elementId}" style="position:absolute;left:80px;top:80px;width:900px;height:120px;font-size:42px;line-height:52px">${text}</h1></section>`;
@@ -34,7 +34,32 @@ function plan(ids: string[]) {
 
 function mutationState(initial: Record<string, Row[]>) {
   const tables = new Map(Object.entries(initial));
+  const generationRuns = tables.get("presentationGenerationRuns") ?? [];
+  const executionRuns: Row[] = [];
+  const executionAttempts: Row[] = [];
+  for (const run of generationRuns) {
+    const executionRunId = `execution_${run._id}`;
+    const executionAttemptId = `attempt_${run._id}`;
+    Object.assign(run, { executionRunId, executionAttemptId, executionFence: 1 });
+    executionRuns.push({
+      _id: executionRunId,
+      userId: run.userId,
+      activeAttemptId: executionAttemptId,
+      state: "running",
+    });
+    executionAttempts.push({
+      _id: executionAttemptId,
+      runId: executionRunId,
+      fence: 1,
+      status: "running",
+      claimantId: `presentation:${String(run.projectId)}`,
+      leaseExpiresAt: Date.now() + 60_000,
+    });
+  }
+  tables.set("executionRuns", executionRuns);
+  tables.set("executionAttempts", executionAttempts);
   const scheduled: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const workpoolCalls: Array<Record<string, unknown>> = [];
   let nextId = 1;
   const allRows = () => [...tables.values()].flat();
   const ctx = {
@@ -73,6 +98,7 @@ function mutationState(initial: Record<string, Row[]>) {
             Number(left.position ?? left.batchIndex ?? 0) - Number(right.position ?? right.batchIndex ?? 0)
           ),
           first: async () => rows[0] ?? null,
+          unique: async () => rows[0] ?? null,
         };
         return chain;
       },
@@ -83,8 +109,12 @@ function mutationState(initial: Record<string, Row[]>) {
         return `scheduled_${scheduled.length}`;
       },
     },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      workpoolCalls.push(args);
+      return `work_${workpoolCalls.length}`;
+    },
   };
-  return { ctx, tables, scheduled };
+  return { ctx, tables, scheduled, workpoolCalls };
 }
 
 test("studio fan-out adapts from one to four workers without losing slide order", () => {
@@ -116,6 +146,7 @@ test("the exact studio slide-ID barrier queues the curator once", async () => {
     }],
     presentationGenerationRuns: [{
       _id: "run_1", userId: "user_1", projectId: "project_1", projectRevision: 3,
+      jobId: "job_1",
       expectedSlideIds: ["a", "b"], completedSlideIds: [], deletedSlideIds: [],
       status: "generating",
     }],
@@ -124,29 +155,39 @@ test("the exact studio slide-ID barrier queues the curator once", async () => {
       { _id: "batch_2", runId: "run_1", status: "running", slideIds: ["b"], effectiveModelIds: [] },
     ],
     presentationSlideCandidates: [],
+    generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
   });
   const ctx = state.ctx as unknown as Parameters<typeof completePresentationStudioBatchHandler>[0];
+  const dispatch = {
+    enqueueRepair: async () => "unused",
+    enqueueCurator: async (_ctx: unknown, args: Record<string, unknown>) => {
+      state.workpoolCalls.push(args);
+      return `work_${state.workpoolCalls.length}`;
+    },
+  };
   const first = await completePresentationStudioBatchHandler(ctx, {
+    ...executionIdentity,
     runId: "run_1" as never, batchId: "batch_1" as never,
     slides: [{ id: "a", title: "A", html: slideHtml("a-title", "Alpha") }],
     effectiveModelId: "selected/model",
-  });
+  }, dispatch as never);
   assert.equal(first.curatorQueued, false);
   const second = await completePresentationStudioBatchHandler(ctx, {
+    ...executionIdentity,
     runId: "run_1" as never, batchId: "batch_2" as never,
     slides: [{ id: "b", title: "B", html: slideHtml("b-title", "Beta") }],
     effectiveModelId: "fallback/model",
-  });
+  }, dispatch as never);
   assert.equal(second.curatorQueued, true);
   const duplicate = await completePresentationStudioBatchHandler(ctx, {
+    ...executionIdentity,
     runId: "run_1" as never, batchId: "batch_2" as never,
     slides: [{ id: "b", title: "B", html: slideHtml("b-title", "Beta") }],
     effectiveModelId: "fallback/model",
-  });
+  }, dispatch as never);
   assert.equal(duplicate.accepted, false);
-  assert.equal(state.scheduled.filter((entry) =>
-    entry.name === getFunctionName(runPresentationCuratorRef)
-  ).length, 1);
+  assert.equal(state.workpoolCalls.length, 1);
+  assert.equal(state.tables.get("presentationGenerationRuns")?.[0]?.curatorWorkpoolOperationId, "work_1");
 });
 
 test("studio completion can release structurally safe slides with unresolved layout issues", async () => {
@@ -157,6 +198,7 @@ test("studio completion can release structurally safe slides with unresolved lay
     }],
     presentationGenerationRuns: [{
       _id: "run_1", userId: "user_1", projectId: "project_1", projectRevision: 3,
+      jobId: "job_1",
       expectedSlideIds: ["a"], completedSlideIds: [], deletedSlideIds: [],
       status: "generating",
     }],
@@ -165,6 +207,7 @@ test("studio completion can release structurally safe slides with unresolved lay
       effectiveModelIds: [],
     }],
     presentationSlideCandidates: [],
+    generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
   });
   const overlapping = `<section class="slide-root" style="position:relative;width:1280px;height:720px;overflow:hidden">` +
     '<h1 data-element-id="title" style="position:absolute;left:80px;top:100px;width:700px;height:120px;font-size:40px;line-height:48px">The same words occupy this line</h1>' +
@@ -172,16 +215,61 @@ test("studio completion can release structurally safe slides with unresolved lay
   const result = await completePresentationStudioBatchHandler(
     state.ctx as unknown as Parameters<typeof completePresentationStudioBatchHandler>[0],
     {
+      ...executionIdentity,
       runId: "run_1" as never,
       batchId: "batch_1" as never,
       slides: [{ id: "a", title: "A", html: overlapping }],
       effectiveModelId: "selected/model",
       allowLayoutIssues: true,
     },
+    {
+      ...executionIdentity,
+      enqueueRepair: async () => "unused",
+      enqueueCurator: async (_ctx: unknown, args: Record<string, unknown>) => {
+        state.workpoolCalls.push(args);
+        return `work_${state.workpoolCalls.length}`;
+      },
+    } as never,
   );
   assert.equal(result.accepted, true);
   assert.equal(result.curatorQueued, true);
   assert.equal(state.tables.get("presentationSlideCandidates")?.length, 1);
+});
+
+test("a cancelled parent rejects a late studio result and queues no curator", async () => {
+  const state = mutationState({
+    presentationProjects: [{
+      _id: "project_1", userId: "user_1", status: "generating", revision: 3,
+      plan: plan(["a"]), imageMode: "none", assetStorageIds: [],
+    }],
+    presentationGenerationRuns: [{
+      _id: "run_1", userId: "user_1", projectId: "project_1", projectRevision: 3,
+      jobId: "job_1", expectedSlideIds: ["a"], completedSlideIds: [],
+      deletedSlideIds: [], status: "generating",
+    }],
+    presentationGenerationBatches: [{
+      _id: "batch_1", runId: "run_1", status: "running", slideIds: ["a"],
+      effectiveModelIds: [],
+    }],
+    presentationSlideCandidates: [],
+    generationJobs: [{ _id: "job_1", userId: "user_1", status: "cancelled" }],
+  });
+  const result = await completePresentationStudioBatchHandler(
+    state.ctx as never,
+    {
+      ...executionIdentity,
+      runId: "run_1" as never,
+      batchId: "batch_1" as never,
+      slides: [{ id: "a", title: "A", html: slideHtml("a-title", "Alpha") }],
+      effectiveModelId: "selected/model",
+    },
+    {
+      enqueueRepair: async () => "unused",
+      enqueueCurator: async () => assert.fail("cancelled work must not queue a curator"),
+    } as never,
+  );
+  assert.deepEqual(result, { accepted: false, curatorQueued: false });
+  assert.equal(state.tables.get("presentationSlideCandidates")?.length, 0);
 });
 
 test("curation analysis separates content consolidation from visual recomposition", () => {
@@ -210,6 +298,7 @@ test("duplicate deletion is rejected until the survivor contains every distinct 
     }],
     presentationGenerationRuns: [{
       _id: "run_1", userId: "user_1", projectId: "project_1", projectRevision: 5,
+      jobId: "job_1",
       expectedSlideIds: ["a", "b"], completedSlideIds: ["a", "b"], deletedSlideIds: [],
       status: "curating",
     }],
@@ -221,15 +310,25 @@ test("duplicate deletion is rejected until the survivor contains every distinct 
       { _id: "candidate_a", runId: "run_1", slideId: "a", position: 0, title: "A", notes: "", html: slideHtml("a", "shared market growth strategy metric 42"), revision: 0, effectiveModelId: "selected/model" },
       { _id: "candidate_b", runId: "run_1", slideId: "b", position: 1, title: "B", notes: "", html: slideHtml("b", "shared market growth strategy metric 42 gammaunique"), revision: 0, effectiveModelId: "selected/model" },
     ],
+    generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
   } satisfies Record<string, Row[]>;
   const state = mutationState(base);
   const ctx = state.ctx as unknown as Parameters<typeof completePresentationCuratorTaskHandler>[0];
+  const curatorDispatch = {
+    enqueueTask: async () => "unused",
+    enqueueFinalizer: async (_ctx: unknown, args: Record<string, unknown>) => {
+      state.workpoolCalls.push(args);
+      return `work_${state.workpoolCalls.length}`;
+    },
+  };
   await assert.rejects(() => completePresentationCuratorTaskHandler(ctx, {
+    ...executionIdentity,
     taskId: "task_1" as never, slides: [], deleteSlideIds: ["b"],
-  }), /lose distinct slide content/);
+  }, curatorDispatch as never), /lose distinct slide content/);
   assert.equal(state.tables.get("presentationSlideCandidates")?.length, 2);
 
   const accepted = await completePresentationCuratorTaskHandler(ctx, {
+    ...executionIdentity,
     taskId: "task_1" as never,
     slides: [{
       id: "a", title: "A B",
@@ -237,12 +336,11 @@ test("duplicate deletion is rejected until the survivor contains every distinct 
     }],
     deleteSlideIds: ["b"],
     effectiveModelId: "selected/model",
-  });
+  }, curatorDispatch as never);
   assert.equal(accepted.finalizerQueued, true);
   assert.deepEqual(state.tables.get("presentationSlideCandidates")?.map((row) => row.slideId), ["a"]);
-  assert.equal(state.scheduled.filter((entry) =>
-    entry.name === getFunctionName(runPresentationFinalizerRef)
-  ).length, 1);
+  assert.equal(state.workpoolCalls.length, 1);
+  assert.equal(state.tables.get("presentationGenerationRuns")?.[0]?.finalizerWorkpoolOperationId, "work_1");
 });
 
 test("compact presentation briefs do not repeat the triggering user source", async () => {

@@ -46,7 +46,7 @@ test("recordRunFailure preserves the execution chat on failed runs", async () =>
   assert.equal(patches.length, 1);
 });
 
-test("stale cleanup releases scheduled execution locks and auto-pauses after repeated failures", async () => {
+test("stale cleanup dispatches scheduled execution candidates to fenced per-job cleanup", async () => {
   const now = Date.now();
   const staleGenerationJob = {
     _id: "gen_1",
@@ -59,33 +59,7 @@ test("stale cleanup releases scheduled execution locks and auto-pauses after rep
     sourceJobId: "job_1",
     sourceExecutionId: "exec_1",
   };
-  const message = {
-    _id: "msg_1",
-    status: "pending",
-    content: "",
-  };
-  const scheduledJob = {
-    _id: "job_1",
-    userId: "user_1",
-    status: "active",
-    scheduledFunctionId: "scheduled_1",
-    consecutiveFailures: 2,
-    totalRuns: 7,
-    activeExecutionId: "exec_1",
-    activeExecutionChatId: "chat_1",
-    activeExecutionStartedAt: now - (20 * 60 * 1000),
-    activeStepIndex: 0,
-    activeStepCount: 3,
-    activeUserMessageId: "msg_user_1",
-    activeAssistantMessageId: "msg_1",
-    activeGenerationJobId: "gen_1",
-  };
-
-  const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
-  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
-  const cancelled: string[] = [];
-
-  let queryCallCount = 0;
+  const scheduled: Array<Record<string, unknown>> = [];
   const ctx = {
     db: {
       query: (table: string) => {
@@ -98,55 +72,33 @@ test("stale cleanup releases scheduled execution locks and auto-pauses after rep
           };
         }
         assert.equal(table, "generationJobs");
-        queryCallCount++;
         return {
-          withIndex: () => ({
-            // Return the stale job only on the first call (queued batch);
-            // return empty for the second call (streaming batch).
-            take: async () => queryCallCount === 1 ? [staleGenerationJob] : [],
-          }),
+          withIndex: (indexName: string, apply: (q: any) => unknown) => {
+            let status = "";
+            const q = { eq: (_field: string, value: string) => { status = value; return q; } };
+            apply(q);
+            assert.equal(indexName, "by_status");
+            return {
+              paginate: async () => ({
+                page: status === "queued" ? [staleGenerationJob] : [],
+                continueCursor: `${status}-done`,
+                isDone: true,
+              }),
+            };
+          },
         };
       },
-      get: async (id: string) => {
-        if (id === "msg_1") return message;
-        if (id === "job_1") return scheduledJob;
-        return null;
-      },
-      patch: async (id: string, value: Record<string, unknown>) => {
-        patches.push({ id, value });
-      },
-      insert: async (table: string, value: Record<string, unknown>) => {
-        inserts.push({ table, value });
-        return "run_1";
-      },
+      get: async () => null,
+      delete: async () => undefined,
     },
     scheduler: {
-      cancel: async (id: string) => {
-        cancelled.push(id);
+      cancel: async () => undefined,
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
       },
     },
   } as any;
 
   await (cleanStale as any)._handler(ctx, {});
-
-  const generationPatch = patches.find((patch) => patch.id === "gen_1");
-  assert.equal(generationPatch?.value.status, "failed");
-
-  const messagePatch = patches.find((patch) => patch.id === "msg_1");
-  assert.equal(messagePatch?.value.status, "failed");
-
-  const scheduledPatch = patches.find((patch) => patch.id === "job_1");
-  assert.ok(scheduledPatch);
-  assert.equal(scheduledPatch?.value.activeExecutionId, undefined);
-  assert.equal(scheduledPatch?.value.status, "error");
-  assert.equal(scheduledPatch?.value.nextRunAt, undefined);
-  assert.equal(scheduledPatch?.value.scheduledFunctionId, undefined);
-
-  assert.equal(cancelled.length, 1);
-  assert.equal(cancelled[0], "scheduled_1");
-
-  assert.equal(inserts.length, 1);
-  assert.equal(inserts[0].table, "jobRuns");
-  assert.equal(inserts[0].value.chatId, "chat_1");
-  assert.equal(inserts[0].value.status, "failed");
+  assert.deepEqual(scheduled, [{ jobId: "gen_1" }]);
 });

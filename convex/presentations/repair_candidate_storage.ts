@@ -20,11 +20,13 @@ export async function deletePresentationRepairCandidate(
 export async function storePresentationRepairCandidate(
   ctx: ActionCtx,
   content: string,
+  options: { scheduleLegacyCleanup?: boolean } = {},
 ): Promise<Id<"_storage">> {
   const storageId = await ctx.storage.store(new Blob(
     [content],
     { type: "application/json" },
   ));
+  if (options.scheduleLegacyCleanup === false) return storageId;
   try {
     await ctx.scheduler.runAfter(
       PRESENTATION_WORKFLOW_LEASE_MS,

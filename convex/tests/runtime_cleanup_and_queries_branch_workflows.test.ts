@@ -125,7 +125,12 @@ test("runtime queries resolve latest sessions, active generations, owned files, 
               if (status === "pendingCreate") {
                 return [{ _id: "pending_1", environment: "python", status, providerSandboxId: "" }];
               }
-              return [{ _id: "failed_1", environment: "node", status }];
+              return [{
+                _id: "failed_1",
+                environment: "node",
+                status,
+                providerSandboxId: "vm_failed",
+              }];
             },
           };
         },
@@ -137,7 +142,7 @@ test("runtime queries resolve latest sessions, active generations, owned files, 
   assert.deepEqual(stale.sessions.map((s: { id: string; hasVm: boolean }) => [s.id, s.hasVm]), [
     ["run_1", true],
     ["pending_1", false],
-    ["failed_1", false],
+    ["failed_1", true],
   ]);
   assert.equal(stale.hitBatchLimit, false);
 });
@@ -168,6 +173,7 @@ test("runtime stale sandbox cleanup marks sessions and schedules continuation wh
         ],
         hitBatchLimit: true,
       }),
+      runAction: async () => false,
       runMutation: async (_fn: unknown, args: unknown) => mutations.push(args),
       scheduler: {
         runAfter: async (_delay: number, _fn: unknown, args: unknown) => {
@@ -178,11 +184,11 @@ test("runtime stale sandbox cleanup marks sessions and schedules continuation wh
     });
 
     assert.deepEqual(mutations, [{
-      sessionIds: ["session_db", "session_vm_without_env"],
+      sessionIds: ["session_db"],
       reason: "Stale session cleanup (cron)",
     }]);
-    assert.deepEqual(continuations, [{}]);
-    assert.ok(logs.some((entry) => entry.includes("Marked 2 stale sessions as deleted")));
+    assert.deepEqual(continuations, [{ failureAttempt: 1 }]);
+    assert.ok(logs.some((entry) => entry.includes("Marked 1 stale sessions as deleted")));
   } finally {
     console.log = originalLog;
   }

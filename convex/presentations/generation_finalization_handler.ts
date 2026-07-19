@@ -1,19 +1,33 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
-import { runDeferredPresentationSnapshotRef } from "./deferred_workflow_refs";
 import { inspectSlideHtml } from "./html_contract";
 import { MAX_TITLE_CHARS, presentationError, requireBoundedText } from "./limits";
 import { harmonizePresentationTypography } from "./typography_harmonization";
+import { runDeferredPresentationSnapshotRef } from "./deferred_workflow_refs";
+import { TERMINAL_GENERATION_JOB_STATUSES } from "../chat/generation_continuation_shared";
+import { renewPresentationExecutionLease } from "./generation_fanout_start";
+import { durableWorkflow } from "../execution/components";
+import type { WorkflowId } from "@convex-dev/workflow";
+import { PRESENTATION_RUN_TERMINAL_EVENT } from "./presentation_workflow_state";
+import {
+  matchesPresentationExecution,
+  type PresentationExecutionIdentity,
+} from "./generation_execution_identity";
+import { terminalizeLegacyPresentationExecution } from
+  "./legacy_execution_lifecycle";
 
 export async function finalizePresentationFanoutHandler(
   ctx: MutationCtx,
-  args: { runId: Id<"presentationGenerationRuns"> },
+  args: { runId: Id<"presentationGenerationRuns"> } & PresentationExecutionIdentity,
 ) {
   const run = await ctx.db.get(args.runId);
-  if (!run || run.status === "complete") return null;
+  if (!run || !matchesPresentationExecution(run, args) || run.status === "complete") return null;
   if (run.status !== "finalizing") {
     throw presentationError("INVALID_STATE", "Presentation curation is not ready to finalize.");
   }
+  const job = await ctx.db.get(run.jobId);
+  if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return null;
+  await renewPresentationExecutionLease(ctx, run._id, args);
   const project = await ctx.db.get(run.projectId);
   if (!project || project.userId !== run.userId || project.status !== "generating" ||
       project.revision !== run.projectRevision) {
@@ -91,27 +105,43 @@ export async function finalizePresentationFanoutHandler(
     revision: projectRevision,
     updatedAt: now,
   });
-  const snapshotScheduledFunctionId = await ctx.scheduler.runAfter(
-    0,
-    runDeferredPresentationSnapshotRef,
-    {
-      projectId: project._id,
-      userId: run.userId,
-      jobId: run.jobId,
-      toolCallId: run.toolCallId,
-      modelId: run.selectedModelId,
-      ...(run.requireZdrOverride !== undefined
-        ? { requireZdrOverride: run.requireZdrOverride }
-        : {}),
-    },
-  );
   await ctx.db.patch(run._id, {
     status: "complete",
     projectRevision,
-    snapshotScheduledFunctionId,
     completedAt: now,
     updatedAt: now,
   });
+  await terminalizeLegacyPresentationExecution(
+    ctx,
+    run,
+    "completed",
+    "Presentation generation completed",
+  );
+  if (run.workflowId) {
+    await durableWorkflow.sendEvent(ctx, {
+      workflowId: run.workflowId as WorkflowId,
+      name: PRESENTATION_RUN_TERMINAL_EVENT,
+    });
+  }
+  // Compatibility for a presentation that began on the pre-Workflow engine.
+  // New runs are resumed exclusively by presentation_workflow.ts.
+  if (!run.workflowId) {
+    const snapshotScheduledFunctionId = await ctx.scheduler.runAfter(
+      0,
+      runDeferredPresentationSnapshotRef,
+      {
+        projectId: project._id,
+        userId: run.userId,
+        jobId: run.jobId,
+        toolCallId: run.toolCallId,
+        modelId: run.selectedModelId,
+        ...(run.requireZdrOverride !== undefined
+          ? { requireZdrOverride: run.requireZdrOverride }
+          : {}),
+      },
+    );
+    await ctx.db.patch(run._id, { snapshotScheduledFunctionId });
+  }
   await Promise.all(candidates.map((candidate) => ctx.db.delete(candidate._id)));
   return {
     projectId: project._id,

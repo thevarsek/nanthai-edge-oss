@@ -147,7 +147,10 @@ export const catalogSchemaTables = {
     usageRecordedMessageId: v.optional(v.id("messages")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_message", ["messageId"]),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_user", ["userId", "updatedAt"])
+    .index("by_chat", ["chatId", "updatedAt"]),
 
   // Phase 3 TTFT cache: full memory-context chain (embedding + vector search +
   // hydrate) prewarmed when the user message is inserted. Keyed by messageId.
@@ -186,7 +189,10 @@ export const catalogSchemaTables = {
     usageRecordedMessageId: v.optional(v.id("messages")),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_message", ["messageId"]),
+  })
+    .index("by_message", ["messageId"])
+    .index("by_user", ["userId", "updatedAt"])
+    .index("by_chat", ["chatId", "updatedAt"]),
 
   cachedModels: cachedModelsTable,
 
@@ -218,12 +224,16 @@ export const catalogSchemaTables = {
     // "search_planning" | "search_analysis" | "search_synthesis" |
     // "search_architecture" | "subagent" | "tool_web_search"
     source: v.optional(v.string()),
+    generationId: v.optional(v.string()),
+    idempotencyKey: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId", "createdAt"])
     .index("by_user_model", ["userId", "modelId"])
     .index("by_chat", ["chatId"])
-    .index("by_message", ["messageId"]),
+    .index("by_message", ["messageId"])
+    .index("by_generation_source", ["generationId", "source"])
+    .index("by_idempotency_key", ["idempotencyKey"]),
 
   // ── M18: AI Skills ──────────────────────────────────────────────────
   skills: defineTable({

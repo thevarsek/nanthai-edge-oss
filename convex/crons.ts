@@ -38,6 +38,21 @@ crons.interval(
   "cleanStaleJobs",
   { minutes: 15 },
   internal.jobs.cleanup.cleanStale,
+  {},
+);
+
+// Retry idempotent cancellation of owned Workflow/Workpool operations when a
+// teardown action was interrupted after closing its writer fence.
+crons.interval(
+  "reconcileExecutionCancellations",
+  { minutes: 1 },
+  internal.execution.teardown.reconcilePendingComponentCancellations,
+);
+
+crons.cron(
+  "cleanupAccountDeletionTombstones",
+  "30 5 * * *",
+  internal.account.deletion_state.cleanupCompletedAccountDeletionTombstones,
 );
 
 // Consolidate duplicate memories daily at 3:00 UTC
@@ -70,6 +85,7 @@ crons.interval(
   "cleanStaleSandboxSessions",
   { minutes: 30 },
   internal.runtime.cleanup.cleanStaleSandboxSessions,
+  {},
 );
 
 // M29: Sync video model capabilities from OpenRouter every 4 hours.

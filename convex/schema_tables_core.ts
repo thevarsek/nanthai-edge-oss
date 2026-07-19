@@ -83,6 +83,7 @@ export const coreSchemaTables = {
     folderId: v.optional(v.string()),
     isDeleting: v.optional(v.boolean()),
     deletingAt: v.optional(v.number()),
+    executionTeardownCursor: v.optional(v.string()),
     isPinned: v.optional(v.boolean()),
     pinnedAt: v.optional(v.number()),
     activeBranchLeafId: v.optional(v.id("messages")),
@@ -101,12 +102,11 @@ export const coreSchemaTables = {
     reasoningEffortOverride: v.optional(v.string()),
     // Per-chat internet search overrides (nil = use global default)
     webSearchOverride: v.optional(v.boolean()),
-    searchModeOverride: v.optional(v.string()),        // "basic" | "web" | "paper"
-    searchComplexityOverride: v.optional(v.number()),   // 1 | 2 | 3
-    autoAudioResponseOverride: v.optional(v.union(
-      v.literal("enabled"),
-      v.literal("disabled"),
-    )),
+    searchModeOverride: v.optional(v.string()), // "basic" | "web" | "paper"
+    searchComplexityOverride: v.optional(v.number()), // 1 | 2 | 3
+    autoAudioResponseOverride: v.optional(
+      v.union(v.literal("enabled"), v.literal("disabled")),
+    ),
     // M30: Layered skill overrides (replaces discoverableSkillIds/disabledSkillIds)
     skillOverrides: v.optional(v.array(skillOverrideEntry)),
     // M30: Layered integration overrides (persisted, replaces ephemeral composer state)
@@ -118,9 +118,25 @@ export const coreSchemaTables = {
     .index("by_user_folder", ["userId", "folderId", "updatedAt"])
     .index("by_user_pinned", ["userId", "isPinned", "pinnedAt"])
     .index("by_user_source", ["userId", "source", "updatedAt"])
-    .index("by_user_folder_source", ["userId", "folderId", "source", "updatedAt"])
-    .index("by_user_source_pinned", ["userId", "source", "isPinned", "pinnedAt"])
-    .index("by_user_folder_source_pinned", ["userId", "folderId", "source", "isPinned", "pinnedAt"])
+    .index("by_user_folder_source", [
+      "userId",
+      "folderId",
+      "source",
+      "updatedAt",
+    ])
+    .index("by_user_source_pinned", [
+      "userId",
+      "source",
+      "isPinned",
+      "pinnedAt",
+    ])
+    .index("by_user_folder_source_pinned", [
+      "userId",
+      "folderId",
+      "source",
+      "isPinned",
+      "pinnedAt",
+    ])
     .index("by_user_subagent_override", ["userId", "subagentOverride"])
     .index("by_source_job", ["sourceJobId"])
     .searchIndex("search_title", {
@@ -170,11 +186,13 @@ export const coreSchemaTables = {
     imageUrls: v.optional(v.array(v.string())),
     imageMimeTypes: v.optional(v.array(v.string())),
     imageGenerationExpectedCount: v.optional(v.number()),
-    imageGenerationResult: v.optional(v.object({
-      requestedCount: v.number(),
-      generatedCount: v.number(),
-      failedCount: v.number(),
-    })),
+    imageGenerationResult: v.optional(
+      v.object({
+        requestedCount: v.number(),
+        generatedCount: v.number(),
+        failedCount: v.number(),
+      }),
+    ),
     // M29 — Video generation: parallel to imageUrls
     videoUrls: v.optional(v.array(v.string())),
     audioStorageId: v.optional(v.id("_storage")),
@@ -218,24 +236,36 @@ export const coreSchemaTables = {
     searchContext: v.optional(v.any()), // Cached search queries + results for retry
     searchSessionId: v.optional(v.id("searchSessions")),
     // M10 — Tool Execution Metadata
-    toolCalls: v.optional(v.array(v.object({
-      id: v.string(),           // Tool call ID from OpenRouter
-      name: v.string(),         // Tool function name
-      arguments: v.string(),    // JSON-stringified arguments
-    }))),
-    toolResults: v.optional(v.array(v.object({
-      toolCallId: v.string(),   // Matches toolCalls[].id
-      toolName: v.string(),     // Tool function name (denormalized for display)
-      result: v.string(),       // JSON-stringified result (truncated)
-      isError: v.optional(v.boolean()),
-    }))),
+    toolCalls: v.optional(
+      v.array(
+        v.object({
+          id: v.string(), // Tool call ID from OpenRouter
+          name: v.string(), // Tool function name
+          arguments: v.string(), // JSON-stringified arguments
+        }),
+      ),
+    ),
+    toolResults: v.optional(
+      v.array(
+        v.object({
+          toolCallId: v.string(), // Matches toolCalls[].id
+          toolName: v.string(), // Tool function name (denormalized for display)
+          result: v.string(), // JSON-stringified result (truncated)
+          isError: v.optional(v.boolean()),
+        }),
+      ),
+    ),
     generatedFileIds: v.optional(v.array(v.id("generatedFiles"))),
     generatedChartIds: v.optional(v.array(v.id("generatedCharts"))),
     // Perplexity citation annotations (structured for rich UI rendering)
-    citations: v.optional(v.array(v.object({
-      url: v.string(),
-      title: v.string(),
-    }))),
+    citations: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          title: v.string(),
+        }),
+      ),
+    ),
     // M32 — Document Workspace citations. Separate from web-search URL citations.
     documentCitations: v.optional(v.array(documentCitation)),
     // M33 — First-class generated/updated document cards.
@@ -373,27 +403,37 @@ export const coreSchemaTables = {
     .index("by_user", ["userId", "createdAt"]),
 
   streamingMessages: defineTable({
+    userId: v.optional(v.string()),
     messageId: v.id("messages"),
     chatId: v.id("chats"),
     content: v.string(),
     reasoning: v.optional(v.string()),
     status: messageStatus,
-    toolCalls: v.optional(v.array(v.object({
-      id: v.string(),
-      name: v.string(),
-      arguments: v.string(),
-    }))),
+    toolCalls: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          name: v.string(),
+          arguments: v.string(),
+        }),
+      ),
+    ),
     activeToolCallIds: v.optional(v.array(v.string())),
-    toolResults: v.optional(v.array(v.object({
-      toolCallId: v.string(),
-      toolName: v.string(),
-      result: v.string(),
-      isError: v.optional(v.boolean()),
-    }))),
+    toolResults: v.optional(
+      v.array(
+        v.object({
+          toolCallId: v.string(),
+          toolName: v.string(),
+          result: v.string(),
+          isError: v.optional(v.boolean()),
+        }),
+      ),
+    ),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_message", ["messageId"])
+    .index("by_user", ["userId", "updatedAt"])
     .index("by_chat", ["chatId", "updatedAt"]),
 
   generationJobs: defineTable({
@@ -416,6 +456,9 @@ export const coreSchemaTables = {
     startedAt: v.optional(v.number()),
     analyticsStartedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_message", ["messageId"])
@@ -435,17 +478,25 @@ export const coreSchemaTables = {
     assembledCheckpoint: v.optional(v.any()),
     requestMessages: v.any(),
     usage: v.optional(usageObject),
-    toolCalls: v.optional(v.array(v.object({
-      id: v.string(),
-      name: v.string(),
-      arguments: v.string(),
-    }))),
-    toolResults: v.optional(v.array(v.object({
-      toolCallId: v.string(),
-      toolName: v.string(),
-      result: v.string(),
-      isError: v.optional(v.boolean()),
-    }))),
+    toolCalls: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          name: v.string(),
+          arguments: v.string(),
+        }),
+      ),
+    ),
+    toolResults: v.optional(
+      v.array(
+        v.object({
+          toolCallId: v.string(),
+          toolName: v.string(),
+          result: v.string(),
+          isError: v.optional(v.boolean()),
+        }),
+      ),
+    ),
     activeProfiles: v.array(v.string()),
     loadedSkills: v.optional(loadedSkillStates),
     compactionCount: v.number(),
@@ -456,18 +507,72 @@ export const coreSchemaTables = {
     scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     claimedAt: v.optional(v.number()),
     leaseExpiresAt: v.optional(v.number()),
+    claimantId: v.optional(v.string()),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    roundKey: v.optional(v.string()),
+    deferredResumeEventId: v.optional(v.string()),
+    deferredOwnership: v.optional(v.union(
+      v.object({
+        kind: v.literal("subagents"),
+        batchId: v.id("subagentBatches"),
+      }),
+      v.object({
+        kind: v.literal("presentation"),
+        projectId: v.id("presentationProjects"),
+        toolCallId: v.string(),
+        modelId: v.string(),
+        requireZdrOverride: v.optional(v.boolean()),
+      }),
+      v.object({
+        kind: v.literal("analytics"),
+        analyticsRunId: v.id("analyticsWorkflowRuns"),
+      }),
+      v.object({
+        kind: v.literal("drive_picker"),
+        batchId: v.id("drivePickerBatches"),
+      }),
+    )),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_job", ["jobId"])
+    .index("by_user", ["userId", "updatedAt"])
     .index("by_status", ["status", "updatedAt"])
     .index("by_chat", ["chatId", "updatedAt"]),
+
+  generationRoundJournal: defineTable({
+    jobId: v.id("generationJobs"),
+    chatId: v.id("chats"),
+    userId: v.string(),
+    roundKey: v.string(),
+    workflowId: v.string(),
+    eventOffset: v.optional(v.string()),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    phase: v.union(
+      v.literal("pre_dispatch"),
+      v.literal("dispatched"),
+      v.literal("committed"),
+      v.literal("outcome_unknown"),
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_job_round", ["jobId", "roundKey"])
+    .index("by_job_updated", ["jobId", "updatedAt"])
+    .index("by_job_workflow_updated", ["jobId", "workflowId", "updatedAt"])
+    .index("by_chat_updated", ["chatId", "updatedAt"])
+    .index("by_user", ["userId", "updatedAt"]),
 
   toolExecutionArtifacts: defineTable({
     userId: v.string(),
     chatId: v.id("chats"),
     messageId: v.id("messages"),
     jobId: v.id("generationJobs"),
+    captureKey: v.optional(v.string()),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
     branchRootMessageId: v.optional(v.id("messages")),
     sourceUserMessageId: v.optional(v.id("messages")),
     multiModelGroupId: v.optional(v.string()),
@@ -512,6 +617,7 @@ export const coreSchemaTables = {
     .index("by_message", ["messageId", "createdAt"])
     .index("by_chat", ["chatId", "createdAt"])
     .index("by_job", ["jobId", "createdAt"])
+    .index("by_job_capture", ["jobId", "captureKey"])
     .index("by_tool_call", ["toolCallId"])
     .index("by_user_status", ["userId", "status", "updatedAt"]),
 
@@ -635,12 +741,33 @@ export const coreSchemaTables = {
     parentMessageIds: v.array(v.id("messages")),
     stopReason: v.optional(v.string()),
     error: v.optional(v.string()),
+    workflowId: v.optional(v.string()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    executionClaimantId: v.optional(v.string()),
+    executionEpoch: v.optional(v.number()),
+    activeTurnCycle: v.optional(v.number()),
+    activeTurnParticipantIndex: v.optional(v.number()),
+    activeTurnExecutionEpoch: v.optional(v.number()),
+    activeTurnMessageId: v.optional(v.id("messages")),
+    activeTurnJobId: v.optional(v.id("generationJobs")),
+    lastSettledTurnCycle: v.optional(v.number()),
+    lastSettledTurnParticipantIndex: v.optional(v.number()),
+    lastSettledTurnExecutionEpoch: v.optional(v.number()),
+    lastSettledTurnOutcome: v.optional(v.union(
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("skipped"),
+    )),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_chat", ["chatId"])
     .index("by_chat_status", ["chatId", "status"])
     .index("by_user_status", ["userId", "status"])
+    .index("by_status_updated", ["status", "updatedAt"])
+    .index("by_execution_run", ["executionRunId"])
     .index("by_user_created", ["userId", "createdAt"]),
 
   // M9 — Internet Search: search session progress beacon
@@ -657,6 +784,12 @@ export const coreSchemaTables = {
     phaseOrder: v.number(),
     participantId: v.optional(v.id("personas")),
     workflowId: v.optional(v.string()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    executionClaimantId: v.optional(v.string()),
+    generationHandoffOperationId: v.optional(v.string()),
+    generationHandoffAt: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
     startedAt: v.number(),
     completedAt: v.optional(v.number()),
@@ -668,6 +801,7 @@ export const coreSchemaTables = {
     .index("by_chat", ["chatId"])
     .index("by_user", ["userId", "startedAt"])
     .index("by_message", ["assistantMessageId"])
+    .index("by_execution_run", ["executionRunId"])
     .index("by_status_started", ["status", "startedAt"]),
 
   // M9 — Internet Search: cached search payloads keyed by assistant message.
@@ -795,6 +929,7 @@ export const coreSchemaTables = {
     .index("by_user", ["userId", "createdAt"])
     .index("by_storage", ["storageId"])
     .index("by_chat", ["chatId"])
+    .index("by_message", ["messageId"])
     .index("by_user_drive_file", ["userId", "driveFileId"]),
 
   kbUploadSessions: defineTable({
@@ -825,17 +960,24 @@ export const coreSchemaTables = {
     childConversationSeed: v.any(),
     resumeConversationSeed: v.any(),
     paramsSnapshot: v.any(),
+    workflowResumeEventId: v.optional(v.string()),
     participantSnapshot: v.any(),
     childCount: v.number(),
     completedChildCount: v.number(),
     failedChildCount: v.number(),
     continuationScheduledAt: v.optional(v.number()),
+    parentRecoveryScheduledAt: v.optional(v.number()),
+    parentRecoveryGateAt: v.optional(v.number()),
+    resumeDeliveredEventId: v.optional(v.string()),
+    resumeDeliveredAt: v.optional(v.number()),
     m38ResumeMetadata: v.optional(v.any()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_parent_message", ["parentMessageId"])
     .index("by_parent_job", ["parentJobId"])
+    .index("by_parent_job_resume_event", ["parentJobId", "workflowResumeEventId"])
+    .index("by_status_updated", ["status", "updatedAt"])
     .index("by_user", ["userId", "updatedAt"])
     .index("by_chat", ["chatId"]),
 
@@ -848,42 +990,58 @@ export const coreSchemaTables = {
     content: v.optional(v.string()),
     reasoning: v.optional(v.string()),
     usage: v.optional(usageObject),
-    toolCalls: v.optional(v.array(v.object({
-      id: v.string(),
-      name: v.string(),
-      arguments: v.string(),
-    }))),
-    toolResults: v.optional(v.array(v.object({
-      toolCallId: v.string(),
-      toolName: v.string(),
-      result: v.string(),
-      isError: v.optional(v.boolean()),
-    }))),
-    generatedFiles: v.optional(v.array(v.object({
-      storageId: v.id("_storage"),
-      filename: v.string(),
-      mimeType: v.string(),
-      sizeBytes: v.optional(v.number()),
-      toolName: v.string(),
-    }))),
-    generatedCharts: v.optional(v.array(v.object({
-      toolName: v.string(),
-      chartType: v.union(
-        v.literal("line"),
-        v.literal("bar"),
-        v.literal("scatter"),
-        v.literal("pie"),
-        v.literal("box"),
-        v.literal("png_image"),
+    toolCalls: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          name: v.string(),
+          arguments: v.string(),
+        }),
       ),
-      title: v.optional(v.string()),
-      xLabel: v.optional(v.string()),
-      yLabel: v.optional(v.string()),
-      xUnit: v.optional(v.string()),
-      yUnit: v.optional(v.string()),
-      elements: v.any(),
-      pngBase64: v.optional(v.string()),
-    }))),
+    ),
+    toolResults: v.optional(
+      v.array(
+        v.object({
+          toolCallId: v.string(),
+          toolName: v.string(),
+          result: v.string(),
+          isError: v.optional(v.boolean()),
+        }),
+      ),
+    ),
+    generatedFiles: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          filename: v.string(),
+          mimeType: v.string(),
+          sizeBytes: v.optional(v.number()),
+          toolName: v.string(),
+        }),
+      ),
+    ),
+    generatedCharts: v.optional(
+      v.array(
+        v.object({
+          toolName: v.string(),
+          chartType: v.union(
+            v.literal("line"),
+            v.literal("bar"),
+            v.literal("scatter"),
+            v.literal("pie"),
+            v.literal("box"),
+            v.literal("png_image"),
+          ),
+          title: v.optional(v.string()),
+          xLabel: v.optional(v.string()),
+          yLabel: v.optional(v.string()),
+          xUnit: v.optional(v.string()),
+          yUnit: v.optional(v.string()),
+          elements: v.any(),
+          pngBase64: v.optional(v.string()),
+        }),
+      ),
+    ),
     summaryPayload: v.optional(v.any()),
     conversationSnapshot: v.optional(v.any()),
     continuationCount: v.optional(v.number()),
@@ -891,6 +1049,8 @@ export const coreSchemaTables = {
     startedAt: v.optional(v.number()),
     analyticsStartedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
+    workpoolOperationId: v.optional(v.string()),
+    workflowId: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -910,18 +1070,31 @@ export const coreSchemaTables = {
     status: videoJobStatus,
     model: v.string(),
     prompt: v.string(),
-    videoConfig: v.optional(v.object({
-      resolution: v.optional(v.string()),
-      aspectRatio: v.optional(v.string()),
-      duration: v.optional(v.number()),
-      generateAudio: v.optional(v.boolean()),
-    })),
+    videoConfig: v.optional(
+      v.object({
+        resolution: v.optional(v.string()),
+        aspectRatio: v.optional(v.string()),
+        duration: v.optional(v.number()),
+        generateAudio: v.optional(v.boolean()),
+      }),
+    ),
     error: v.optional(v.string()),
     lastPolledAt: v.optional(v.number()),
     pollCount: v.number(),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    cancellationRequestedAt: v.optional(v.number()),
+    providerTerminalAt: v.optional(v.number()),
+    providerTerminalStatus: v.optional(v.union(
+      v.literal("completed"),
+      v.literal("failed"),
+    )),
     createdAt: v.number(),
   })
     .index("by_messageId", ["messageId"])
+    .index("by_chat", ["chatId", "createdAt"])
+    .index("by_user", ["userId", "createdAt"])
     .index("by_status_createdAt", ["status", "createdAt"]),
 
   /** Tracks provider uploads for ZDR video models that cannot return hosted output URLs. */
@@ -936,8 +1109,13 @@ export const coreSchemaTables = {
     sizeBytes: v.optional(v.number()),
     createdAt: v.number(),
     uploadedAt: v.optional(v.number()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
   })
     .index("by_token", ["token"])
+    .index("by_chat", ["chatId", "createdAt"])
+    .index("by_user", ["userId", "createdAt"])
     .index("by_messageId", ["messageId"]),
 
   /** Surfaces generated images and videos in Knowledge Base. */
@@ -980,6 +1158,9 @@ export const coreSchemaTables = {
     toolRoundResults: v.any(),
     resumeConversationSeed: v.any(),
     paramsSnapshot: v.any(),
+    workflowResumeEventId: v.optional(v.string()),
+    workflowResumeSignaledEventId: v.optional(v.string()),
+    workflowResumeSignaledAt: v.optional(v.number()),
     participantSnapshot: v.any(),
     pickedFileIds: v.optional(v.array(v.string())),
     createdAt: v.number(),
@@ -987,6 +1168,9 @@ export const coreSchemaTables = {
   })
     .index("by_parent_message", ["parentMessageId"])
     .index("by_parent_job", ["parentJobId"])
+    .index("by_parent_job_status", ["parentJobId", "status", "updatedAt"])
+    .index("by_parent_job_resume_event", ["parentJobId", "workflowResumeEventId"])
+    .index("by_status_updated", ["status", "updatedAt"])
     .index("by_user", ["userId", "updatedAt"])
     .index("by_chat", ["chatId"]),
 };

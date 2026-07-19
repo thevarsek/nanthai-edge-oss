@@ -71,14 +71,25 @@ export const presentationSchemaTables = {
     snapshotRevision: v.optional(v.number()),
     snapshotSizeBytes: v.optional(v.number()),
     snapshotKind: v.optional(v.union(v.literal("fallback"), v.literal("browser_html"))),
+    // Durable Workflow component identity for the active chat-created run.
+    // Canonical product state remains in this table; component history is not
+    // exposed to clients.
+    workflowId: v.optional(v.string()),
+    parentResumeEventId: v.optional(v.string()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId", "updatedAt"])
     .index("by_user_chat", ["userId", "chatId", "updatedAt"])
+    .index("by_status_updated", ["status", "updatedAt"])
     .index("by_snapshot_storage", ["snapshotStorageId"])
-    .index("by_origin_assistant", ["originAssistantMessageId", "updatedAt"]),
+    .index("by_parent_resume_event", ["parentResumeEventId"])
+    .index("by_origin_assistant", ["originAssistantMessageId", "updatedAt"])
+    .index("by_origin_assistant_status", ["originAssistantMessageId", "status", "updatedAt"]),
 
   presentationGenerationRuns: defineTable({
     userId: v.string(),
@@ -102,6 +113,13 @@ export const presentationSchemaTables = {
     ),
     curatorScheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     finalizerScheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    curatorWorkpoolOperationId: v.optional(v.string()),
+    finalizerWorkpoolOperationId: v.optional(v.string()),
+    workflowId: v.optional(v.string()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    fanoutDispatchedFence: v.optional(v.number()),
     snapshotScheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     error: v.optional(v.string()),
     createdAt: v.number(),
@@ -109,6 +127,7 @@ export const presentationSchemaTables = {
     completedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId", "createdAt"])
+    .index("by_status_updated", ["status", "updatedAt"])
     .index("by_project_revision", ["projectId", "projectRevision"])
     .index("by_job", ["jobId", "createdAt"]),
 
@@ -138,13 +157,16 @@ export const presentationSchemaTables = {
     }))),
     effectiveModelIds: v.array(v.string()),
     scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    workpoolOperationId: v.optional(v.string()),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_user", ["userId", "createdAt"])
-    .index("by_run", ["runId", "batchIndex"]),
+    .index("by_status_updated", ["status", "updatedAt"])
+    .index("by_run", ["runId", "batchIndex"])
+    .index("by_workpool_operation", ["workpoolOperationId"]),
 
   presentationSlideCandidates: defineTable({
     runId: v.id("presentationGenerationRuns"),
@@ -178,12 +200,15 @@ export const presentationSchemaTables = {
     attempt: v.number(),
     effectiveModelIds: v.array(v.string()),
     scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
+    workpoolOperationId: v.optional(v.string()),
     error: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId", "createdAt"])
+    .index("by_status_updated", ["status", "updatedAt"])
     .index("by_run", ["runId", "taskKey"])
-    .index("by_run_status", ["runId", "status"]),
+    .index("by_run_status", ["runId", "status"])
+    .index("by_workpool_operation", ["workpoolOperationId"]),
 };

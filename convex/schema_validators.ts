@@ -612,6 +612,7 @@ export const deferredToolKind = v.union(
   v.literal("spawn_subagents"),
   v.literal("drive_picker"),
   v.literal("presentation_workflow"),
+  v.literal("analytics_workflow"),
 );
 
 export const toolMemoryBranchScope = v.union(

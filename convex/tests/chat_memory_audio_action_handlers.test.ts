@@ -12,6 +12,13 @@ import {
 } from "../chat/audio_actions";
 import { MODEL_IDS } from "../lib/model_constants";
 
+const enqueueMemoryEmbeddingRef = getFunctionName(
+  internal.execution.workload_queues.enqueueMemoryEmbedding,
+);
+const isChatWritableRef = getFunctionName(
+  internal.chat.post_process_guard.isChatWritable,
+);
+
 function makeSchedulerCapture(scheduled: Array<Record<string, unknown>>) {
   return {
     runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
@@ -170,6 +177,7 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === isChatWritableRef) return true;
       if (name === getUserMemoriesRef) return existingMemories;
       if (name === prefsRef) return {};
       if (name === getUserApiKeyRef) return "sk-test";
@@ -208,10 +216,12 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
   assert.equal(created.length, 1);
   assert.equal(created[0]?.args.supersedesMemoryId, "memory_old_location");
   assert.deepEqual(
-    scheduled
-      .filter((entry) => entry.source === "memory_extraction" || entry.memoryId)
-      .map((entry) => entry.source ?? entry.memoryId),
-    ["memory_extraction", "memory_new_1"],
+    scheduled.filter((entry) => entry.source === "memory_extraction").map((entry) => entry.source),
+    ["memory_extraction"],
+  );
+  assert.deepEqual(
+    mutationCalls.find((call) => call.ref === enqueueMemoryEmbeddingRef)?.args,
+    { memoryId: "memory_new_1", content: "User lives in Berlin." },
   );
   const memoryAnalytics = analyticsForOperation(scheduled, "memory_extraction");
   assert.deepEqual(
@@ -276,6 +286,7 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === isChatWritableRef) return true;
       if (name === getUserMemoriesRef) return [];
       if (name === prefsRef) return {};
       if (name === getUserApiKeyRef) return "sk-test";
@@ -330,6 +341,7 @@ test("extractMemoriesHandler uses ZDR-safe default model and provider when ZDR i
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
+      if (name === isChatWritableRef) return true;
       if (name === getUserMemoriesRef) return [];
       if (name === prefsRef) {
         return {

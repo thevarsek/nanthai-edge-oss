@@ -17,10 +17,13 @@
 // =============================================================================
 
 import { createTool } from "./registry";
-import { runDataPythonSandbox } from "../runtime/service_analytics_sandbox";
+import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
+import { SANDBOX_ACTION_TIMEOUT_MS } from "../analytics_workflows/limits";
 
 export const dataPythonSandbox = createTool({
   name: "data_python_sandbox",
+  mayDefer: true,
   description:
     "Run Python code in a full Linux sandbox with pip and network access. " +
     "Use when data_python_exec fails due to missing packages, memory limits, or timeouts. " +
@@ -90,44 +93,40 @@ export const dataPythonSandbox = createTool({
 
     const captureCharts = typeof args.captureCharts === "boolean" ? args.captureCharts : true;
     const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : undefined;
-
-    try {
-      // Always return success: true when the service call completes.
-      // Script-level errors (non-zero exit code, timeouts, etc.) are already
-      // embedded in result.text and result.resultsSummary by the service
-      // layer — the model reads them as part of the structured data payload.
-      //
-      // Previously, a regex scan of resultsSummary for /error|failed/i
-      // marked the call as failed, but resultsSummary includes stdout and
-      // warnings — any script printing "error rate" or a non-fatal warning
-      // like "Session tracking failed" would be misclassified, causing the
-      // execute_loop to send only `{ error }` instead of the full data.
-      const result = await runDataPythonSandbox(toolCtx, {
-        code,
-        inputFiles,
-        exportPaths,
-        captureCharts,
-        packages,
-        timeoutMs,
-      });
-
-      return {
-        success: true,
-        data: {
-          text: result.text,
-          resultsSummary: result.resultsSummary,
-          importedFiles: result.importedFiles,
-          exportedFiles: result.exportedFiles,
-          chartsCreated: result.chartsCreated,
-          warnings: result.warnings,
-        },
-      };
-    } catch (error) {
+    if (timeoutMs !== undefined && (timeoutMs < 1 || timeoutMs > SANDBOX_ACTION_TIMEOUT_MS)) {
       return {
         success: false,
         data: null,
-        error: error instanceof Error ? error.message : String(error),
+        error: "Sandbox execution must fit within one bounded action (maximum 480000ms). Longer uninterrupted work requires an external/local M45 executor.",
       };
     }
+
+    if (!toolCtx.chatId || !toolCtx.messageId || !toolCtx.userMessageId ||
+        !toolCtx.jobId || !toolCtx.toolCallId) {
+      return { success: false, data: null, error: "Analytics Workflow requires generation context." };
+    }
+    const analyticsRunId = await toolCtx.ctx.runMutation(
+      internal.analytics_workflows.mutations.prepareRun,
+      {
+        userId: toolCtx.userId,
+        chatId: toolCtx.chatId as Id<"chats">,
+        messageId: toolCtx.messageId as Id<"messages">,
+        userMessageId: toolCtx.userMessageId as Id<"messages">,
+        jobId: toolCtx.jobId as Id<"generationJobs">,
+        toolCallId: toolCtx.toolCallId,
+        toolName: "data_python_sandbox",
+        code,
+        inputFiles: inputFiles ?? [],
+        exportPaths: exportPaths ?? [],
+        captureCharts,
+        packages: packages ?? [],
+        timeoutMs,
+      },
+    );
+    return {
+      success: true,
+      data: { status: "deferred", analyticsRunId },
+      deferred: { kind: "analytics_workflow", data: { analyticsRunId } },
+    };
   },
 });

@@ -79,6 +79,44 @@ test("ToolRegistry executeToolCall reports unknown tools and invalid JSON argume
   assert.match(String(invalid.result.error ?? ""), /Failed to parse arguments/);
 });
 
+test("ToolRegistry permits only the first actual durable deferral in a tool round", async () => {
+  const registry = new ToolRegistry();
+  const executed: string[] = [];
+  const deferredTool = (name: string, deferred: boolean) => createTool({
+    name,
+    mayDefer: true,
+    effectPolicy: { effect: "read", retry: "safe" },
+    description: name,
+    parameters: { type: "object", properties: {} },
+    execute: async () => {
+      executed.push(name);
+      return {
+        success: true,
+        data: { name },
+        ...(deferred
+          ? { deferred: { kind: "analytics_workflow" as const, data: { name } } }
+          : {}),
+      };
+    },
+  });
+  registry.register(
+    deferredTool("drive_maybe_immediate", false),
+    deferredTool("analytics_owner", true),
+    deferredTool("presentation_suppressed", true),
+  );
+  const results = await registry.executeAllToolCalls([
+    { id: "1", type: "function", function: { name: "drive_maybe_immediate", arguments: "{}" } },
+    { id: "2", type: "function", function: { name: "analytics_owner", arguments: "{}" } },
+    { id: "3", type: "function", function: { name: "presentation_suppressed", arguments: "{}" } },
+  ], { ctx: {} as any, userId: "user_1" });
+
+  assert.deepEqual(executed, ["drive_maybe_immediate", "analytics_owner"]);
+  assert.equal(results[0]?.result.success, true);
+  assert.equal(results[1]?.result.deferred?.kind, "analytics_workflow");
+  assert.equal(results[2]?.result.success, false);
+  assert.match(results[2]?.result.error ?? "", /Only one durable deferred tool/);
+});
+
 test("runtime shared helpers derive stable workspace paths and text MIME detection", () => {
   assert.equal(runtimeWorkspaceCwd("chat_1"), "/tmp/nanthai-edge/chat_1");
   assert.deepEqual(runtimeWorkspacePaths("chat_1"), {

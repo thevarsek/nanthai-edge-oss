@@ -16,7 +16,7 @@ export type StreamingToolResult = {
 
 type StreamingReader = Pick<QueryCtx | MutationCtx, "db">;
 
-type MinimalMessage = Pick<Doc<"messages">, "_id" | "chatId" | "status">;
+type MinimalMessage = Pick<Doc<"messages">, "_id" | "chatId" | "userId" | "status">;
 type StreamingMessageRecord = Doc<"streamingMessages">;
 
 function isMeaningfulText(value: string | undefined): value is string {
@@ -210,6 +210,7 @@ export async function upsertStreamingMessage(
   }
 
   await ctx.db.insert("streamingMessages", {
+    userId: message.userId,
     messageId: message._id,
     chatId: message.chatId,
     content: patch.content ?? "",

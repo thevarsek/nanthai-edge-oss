@@ -1,7 +1,6 @@
 "use node";
 
 import { internalAction, type ActionCtx } from "../_generated/server";
-import type { Id } from "../_generated/dataModel";
 import { v } from "convex/values";
 import { MODEL_IDS } from "../lib/model_constants";
 import { withZdrProvider } from "../lib/openrouter_zdr";
@@ -15,7 +14,6 @@ import {
 import {
   claimPresentationCuratorTaskRef,
   completePresentationCuratorTaskRef,
-  getPresentationCuratorTaskContextRef,
   retryPresentationCuratorTaskRef,
   type PresentationCuratorContext,
 } from "./generation_fanout_refs";
@@ -31,8 +29,18 @@ import {
   curatorConsolidationInstruction,
   curatorRecomposeInstruction,
 } from "./studio_prompts";
+import { presentationExecutionIdentity } from "./generation_execution_identity";
+import {
+  cancelUnfencedPresentationAction,
+} from "./legacy_action_identity";
+import { presentationCuratorTaskActionContext } from
+  "./generation_curator_action_context";
 
-const taskArgs = { taskId: v.id("presentationCuratorTasks") };
+const taskArgs = {
+  taskId: v.id("presentationCuratorTasks"),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+};
 
 function taskCandidates(context: PresentationCuratorContext & {
   task: PresentationCuratorContext["tasks"][number];
@@ -43,11 +51,14 @@ function taskCandidates(context: PresentationCuratorContext & {
 
 async function completeTaskWithoutChange(
   ctx: ActionCtx,
-  taskId: Id<"presentationCuratorTasks">,
+  context: PresentationCuratorContext & {
+    task: PresentationCuratorContext["tasks"][number];
+  },
   error?: string,
 ): Promise<void> {
   await ctx.runMutation(completePresentationCuratorTaskRef, {
-    taskId,
+    taskId: context.task._id,
+    ...presentationExecutionIdentity(context.run),
     slides: [],
     deleteSlideIds: [],
     ...(error ? { error: error.slice(0, 500) } : {}),
@@ -57,23 +68,31 @@ async function completeTaskWithoutChange(
 export const runPresentationCuratorTask = internalAction({
   args: taskArgs,
   handler: async (ctx, args): Promise<void> => {
-    const context = await ctx.runQuery(getPresentationCuratorTaskContextRef, args);
-    if (!context || !(await presentationGenerationJobIsActive(ctx, context.run.jobId))) return;
-    if (!(await ctx.runMutation(claimPresentationCuratorTaskRef, args))) return;
+    const context = await presentationCuratorTaskActionContext(ctx, args);
+    if (!context) return;
+    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) {
+      await cancelUnfencedPresentationAction(ctx, args, context.run);
+      return;
+    }
+    if (!(await ctx.runMutation(claimPresentationCuratorTaskRef, {
+      taskId: context.task._id,
+      ...presentationExecutionIdentity(context.run),
+    }))) return;
     const candidates = taskCandidates(context);
     if (candidates.length !== context.task.slideIds.length) {
-      await completeTaskWithoutChange(ctx, context.task._id, "Curator candidates were incomplete.");
+      await completeTaskWithoutChange(ctx, context, "Curator candidates were incomplete.");
       return;
     }
     const survivor = candidates[0];
     if (!survivor) {
-      await completeTaskWithoutChange(ctx, context.task._id, "Curator target was missing.");
+      await completeTaskWithoutChange(ctx, context, "Curator target was missing.");
       return;
     }
     if (context.task.kind === "consolidate" &&
         consolidationPreservesContent(candidates, survivor)) {
       await ctx.runMutation(completePresentationCuratorTaskRef, {
         taskId: context.task._id,
+        ...presentationExecutionIdentity(context.run),
         slides: [],
         deleteSlideIds: candidates.slice(1).map((candidate) => candidate.slideId),
       });
@@ -98,26 +117,27 @@ export const runPresentationCuratorTask = internalAction({
         );
       if (repeatsComposition) {
         if (context.task.mode === "patch") {
-          await retryTask(ctx, context.task, "recreate", result.effectiveModelId,
+          await retryTask(ctx, context, "recreate", result.effectiveModelId,
             "Component patch retained a duplicate composition.");
         } else {
-          await completeTaskWithoutChange(ctx, context.task._id,
+          await completeTaskWithoutChange(ctx, context,
             "Recreation remained compositionally repetitive; the validated original was kept.");
         }
         return;
       }
       if (context.task.kind === "consolidate" && !canDelete) {
         if (context.task.mode === "patch") {
-          await retryTask(ctx, context.task, "recreate", result.effectiveModelId,
+          await retryTask(ctx, context, "recreate", result.effectiveModelId,
             "Component patch did not retain all duplicate content.");
         } else {
-          await completeTaskWithoutChange(ctx, context.task._id,
+          await completeTaskWithoutChange(ctx, context,
             "Recreation could not prove complete duplicate-content retention; both slides were kept.");
         }
         return;
       }
       await ctx.runMutation(completePresentationCuratorTaskRef, {
         taskId: context.task._id,
+        ...presentationExecutionIdentity(context.run),
         slides: [result.slide],
         deleteSlideIds: canDelete
           ? candidates.slice(1).map((candidate) => candidate.slideId)
@@ -126,9 +146,9 @@ export const runPresentationCuratorTask = internalAction({
       });
     } catch (error) {
       if (context.task.mode === "patch") {
-        await retryTask(ctx, context.task, "recreate", undefined, safePresentationErrorMessage(error));
+        await retryTask(ctx, context, "recreate", undefined, safePresentationErrorMessage(error));
       } else {
-        await completeTaskWithoutChange(ctx, context.task._id,
+        await completeTaskWithoutChange(ctx, context,
           `Curator kept the safe original after recreation failed: ${safePresentationErrorMessage(error)}`);
       }
     }
@@ -137,15 +157,18 @@ export const runPresentationCuratorTask = internalAction({
 
 async function retryTask(
   ctx: ActionCtx,
-  task: { _id: Id<"presentationCuratorTasks">; attempt: number },
+  context: PresentationCuratorContext & {
+    task: PresentationCuratorContext["tasks"][number];
+  },
   mode: "patch" | "recreate",
   effectiveModelId: string | undefined,
   error: string,
 ): Promise<void> {
   await ctx.runMutation(retryPresentationCuratorTaskRef, {
-    taskId: task._id,
+    taskId: context.task._id,
+    ...presentationExecutionIdentity(context.run),
     mode,
-    attempt: task.attempt + 1,
+    attempt: context.task.attempt + 1,
     error,
     ...(effectiveModelId ? { effectiveModelId } : {}),
   });

@@ -4,6 +4,8 @@ import { getFunctionName } from "convex/server";
 
 import { internal } from "../_generated/api";
 import { enqueueStep } from "../scheduledJobs/actions_execution";
+import { reconcileScheduledStepWork } from "../scheduledJobs/execution_lifecycle";
+import { durableWorkflow, interactiveWorkpool } from "../execution/components";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 const createScheduledExecutionTurnRef = getFunctionName(
@@ -13,13 +15,30 @@ const createSearchSessionRef = getFunctionName(
   internal.scheduledJobs.mutations.createSearchSession,
 );
 const getPersonaRef = getFunctionName(internal.chat.queries.getPersona);
-const getKBFileContentsRef = getFunctionName(internal.scheduledJobs.queries.getKBFileContents);
+const getKBFileContentsRef = getFunctionName(
+  internal.scheduledJobs.queries.getKBFileContents,
+);
+const linkScheduledWorkpoolRef = getFunctionName(
+  internal.scheduledJobs.execution_lifecycle.linkScheduledWorkpool,
+);
+const enqueueScheduledWebSearchRef = getFunctionName(
+  internal.scheduledJobs.execution_lifecycle.enqueueScheduledWebSearch,
+);
+const startResearchPaperRef = getFunctionName(
+  internal.execution.workflow_starts.startResearchPaper,
+);
+const enqueueGenerationRef = getFunctionName(
+  internal.execution.queues.enqueueRunGeneration,
+);
 
 function buildCtx() {
-  const mutationCalls: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
+  const mutationCalls: Array<{ ref: unknown; args: Record<string, unknown> }> =
+    [];
   const queryCalls: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
-  const actionCalls: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
-  const scheduledCalls: Array<{ ref: unknown; args: Record<string, unknown> }> = [];
+  const actionCalls: Array<{ ref: unknown; args: Record<string, unknown> }> =
+    [];
+  const scheduledCalls: Array<{ ref: unknown; args: Record<string, unknown> }> =
+    [];
 
   const ctx = createMockCtx({
     runMutation: async (ref: unknown, args: Record<string, unknown>) => {
@@ -35,6 +54,16 @@ function buildCtx() {
       }
       if (refName === createSearchSessionRef) {
         return "search_session";
+      }
+      if (refName === linkScheduledWorkpoolRef) return undefined;
+      if (refName === enqueueScheduledWebSearchRef) {
+        scheduledCalls.push({ ref, args });
+        return "work_scheduled_web";
+      }
+      if (refName === startResearchPaperRef) return "workflow_scheduled_research";
+      if (refName === enqueueGenerationRef) {
+        scheduledCalls.push({ ref, args });
+        return "workflow_scheduled_generation";
       }
       throw new Error(`unexpected mutation: ${refName}`);
     },
@@ -63,7 +92,11 @@ function buildCtx() {
       return [{ storageId: "kb_1", content: "Use this context." }];
     },
     scheduler: {
-      runAfter: async (_delay: number, ref: unknown, args: Record<string, unknown>) => {
+      runAfter: async (
+        _delay: number,
+        ref: unknown,
+        args: Record<string, unknown>,
+      ) => {
         scheduledCalls.push({ ref, args });
       },
     },
@@ -72,16 +105,23 @@ function buildCtx() {
   return { ctx, mutationCalls, queryCalls, actionCalls, scheduledCalls };
 }
 
-test("enqueueStep is a no-op when the execution turn already exists", async () => {
-  const { ctx, scheduledCalls } = buildCtx();
-  ctx.runMutation = async () => {
-    return {
-      created: false,
-      userMessageId: "msg_user",
-      assistantMsgId: "msg_assistant",
-      genJobId: "job_generation",
-    };
-  };
+test("enqueueStep idempotently reroutes an existing durable turn", async () => {
+  const { ctx } = buildCtx();
+  const calls: string[] = [];
+  ctx.runMutation = (async (ref: unknown) => {
+    const name = getFunctionName(ref as never);
+    calls.push(name);
+    if (name === createScheduledExecutionTurnRef) {
+      return {
+        created: false,
+        userMessageId: "msg_user",
+        assistantMsgId: "msg_assistant",
+        genJobId: "job_generation",
+      };
+    }
+    if (name === enqueueGenerationRef) return "workflow_existing";
+    throw new Error(`unexpected mutation: ${name}`);
+  }) as typeof ctx.runMutation;
 
   await enqueueStep(ctx, {
     jobId: "job_1" as any,
@@ -96,10 +136,10 @@ test("enqueueStep is a no-op when the execution turn already exists", async () =
     stepIndex: 0,
   });
 
-  assert.equal(scheduledCalls.length, 0);
+  assert.deepEqual(calls, [createScheduledExecutionTurnRef, enqueueGenerationRef]);
 });
 
-test("enqueueStep routes basic search via runGeneration with normalized params", async () => {
+test("enqueueStep routes basic search through the durable generation Workflow", async () => {
   const { ctx, mutationCalls, scheduledCalls } = buildCtx();
 
   await enqueueStep(ctx, {
@@ -132,13 +172,113 @@ test("enqueueStep routes basic search via runGeneration with normalized params",
     { integrationId: "drive", enabled: false },
   ]);
   assert.equal(
-    (scheduledCalls[0]?.args.participants as Array<{ modelId: string }>)[0]?.modelId,
+    (scheduledCalls[0]?.args.participants as Array<{ modelId: string }>)[0]
+      ?.modelId,
     "openai/gpt-5",
   );
+  assert.equal(getFunctionName(scheduledCalls[0]?.ref as never), enqueueGenerationRef);
 });
 
-test("enqueueStep resolves persona and knowledge-base context before routing web search", async () => {
+test("a failed scheduled Workpool operation signals the waiting Workflow", async (t) => {
+  const sent: Array<Record<string, unknown>> = [];
+  t.mock.method(durableWorkflow, "sendEvent", async (
+    _ctx: unknown,
+    args: unknown,
+  ) => {
+    sent.push(args as Record<string, unknown>);
+  });
+  const handler = (reconcileScheduledStepWork as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<void>;
+  })._handler;
+  await handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => null,
+          first: async () => null,
+        }),
+      }),
+      get: async () => ({
+        _id: "job_1",
+        activeWorkflowId: "workflow_1",
+        activeExecutionId: "exec_1",
+        activeStepIndex: 0,
+      }),
+    },
+  }, {
+    context: {
+      jobId: "job_1",
+      executionId: "exec_1",
+      stepIndex: 0,
+      assistantMessageId: "msg_assistant",
+    },
+    result: { kind: "failed", error: "worker crashed" },
+  });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0]?.name, "scheduled-step-0-terminal");
+  assert.deepEqual(sent[0]?.value, {
+    status: "failed",
+    assistantMessageId: "msg_assistant",
+    error: "worker crashed",
+  });
+});
+
+test("a late failed scheduled callback preserves a completed message", async (t) => {
+  const sent: Array<Record<string, unknown>> = [];
+  t.mock.method(durableWorkflow, "sendEvent", async (
+    _ctx: unknown,
+    args: unknown,
+  ) => {
+    sent.push(args as Record<string, unknown>);
+  });
+  const handler = (reconcileScheduledStepWork as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<void>;
+  })._handler;
+  await handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => null,
+          first: async () => null,
+        }),
+      }),
+      get: async (id: string) => id === "msg_assistant"
+        ? { _id: id, status: "completed" }
+        : {
+            _id: "job_1",
+            activeWorkflowId: "workflow_1",
+            activeExecutionId: "exec_1",
+            activeStepIndex: 0,
+          },
+    },
+  }, {
+    workId: "work_1",
+    context: {
+      jobId: "job_1",
+      executionId: "exec_1",
+      stepIndex: 0,
+      assistantMessageId: "msg_assistant",
+    },
+    result: { kind: "failed", error: "late worker error" },
+  });
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0]?.value, {
+    status: "completed",
+    assistantMessageId: "msg_assistant",
+    error: undefined,
+  });
+});
+
+test("enqueueStep resolves persona and knowledge-base context before routing web search", async (t) => {
   const { ctx, mutationCalls, actionCalls, scheduledCalls } = buildCtx();
+  t.mock.method(
+    interactiveWorkpool,
+    "enqueueAction",
+    async (_ctx: unknown, ref: unknown, args: unknown) => {
+      scheduledCalls.push({ ref, args: args as Record<string, unknown> });
+      return "work_scheduled_web" as never;
+    },
+  );
 
   await enqueueStep(ctx, {
     jobId: "job_1" as any,
@@ -162,8 +302,14 @@ test("enqueueStep resolves persona and knowledge-base context before routing web
 
   assert.equal(actionCalls.length, 1);
   assert.equal(mutationCalls[0]?.args.modelId, "anthropic/claude-4");
-  assert.match(mutationCalls[0]?.args.content as string, /\[Knowledge Base Context\]/);
-  assert.match(mutationCalls[0]?.args.content as string, /\[Previous Step Output\]/);
+  assert.match(
+    mutationCalls[0]?.args.content as string,
+    /\[Knowledge Base Context\]/,
+  );
+  assert.match(
+    mutationCalls[0]?.args.content as string,
+    /\[Previous Step Output\]/,
+  );
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.complexity, 2);
   assert.equal(scheduledCalls[0]?.args.personaId, "persona_1");
@@ -172,8 +318,8 @@ test("enqueueStep resolves persona and knowledge-base context before routing web
   ]);
 });
 
-test("enqueueStep routes research mode through the paper pipeline", async () => {
-  const { ctx, scheduledCalls } = buildCtx();
+test("enqueueStep routes research mode through the owned paper workflow", async () => {
+  const { ctx, mutationCalls } = buildCtx();
 
   await enqueueStep(ctx, {
     jobId: "job_1" as any,
@@ -191,14 +337,16 @@ test("enqueueStep routes research mode through the paper pipeline", async () => 
     stepIndex: 1,
   });
 
-  assert.equal(scheduledCalls.length, 1);
-  assert.equal(scheduledCalls[0]?.args.complexity, 3);
-  assert.deepEqual(scheduledCalls[0]?.args.turnIntegrationOverrides, [
+  const researchCall = mutationCalls.find((call) =>
+    getFunctionName(call.ref as never) === startResearchPaperRef
+  );
+  assert.equal(researchCall?.args.complexity, 3);
+  assert.deepEqual(researchCall?.args.turnIntegrationOverrides, [
     { integrationId: "gmail", enabled: false },
   ]);
 });
 
-test("enqueueStep preserves explicit reasoning flags on direct generation steps", async () => {
+test("enqueueStep preserves explicit reasoning flags on durable generation steps", async () => {
   const { ctx, scheduledCalls } = buildCtx();
 
   await enqueueStep(ctx, {
@@ -216,13 +364,23 @@ test("enqueueStep preserves explicit reasoning flags on direct generation steps"
     stepIndex: 0,
   });
 
-  const participant = (scheduledCalls[0]?.args.participants as Array<Record<string, unknown>>)[0];
+  const participant = (
+    scheduledCalls[0]?.args.participants as Array<Record<string, unknown>>
+  )[0];
   assert.equal(participant.includeReasoning, false);
   assert.equal(participant.reasoningEffort, "low");
 });
 
-test("enqueueStep falls back when a configured persona is unavailable", async () => {
+test("enqueueStep falls back when a configured persona is unavailable", async (t) => {
   const { ctx, mutationCalls, scheduledCalls } = buildCtx();
+  t.mock.method(
+    interactiveWorkpool,
+    "enqueueAction",
+    async (_ctx: unknown, ref: unknown, args: unknown) => {
+      scheduledCalls.push({ ref, args: args as Record<string, unknown> });
+      return "work_scheduled_fallback" as never;
+    },
+  );
   ctx.runQuery = (async () => null) as any;
 
   await enqueueStep(ctx, {

@@ -323,7 +323,7 @@ test("createManualHandler inserts normalized memory and schedules embedding", as
 
 test("deleteAllHandler schedules continuation when a full batch is processed", async () => {
   const deleted: string[] = [];
-  const scheduled: Array<Record<string, unknown>> = [];
+  const enqueued: Array<Record<string, unknown>> = [];
   const memories = Array.from({ length: 100 }, (_, index) => ({ _id: `memory_${index}` }));
 
   await deleteAllHandler({
@@ -340,21 +340,19 @@ test("deleteAllHandler schedules continuation when a full batch is processed", a
         deleted.push(id);
       },
     },
-    scheduler: {
-      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
-        scheduled.push(payload);
-      },
+    runMutation: async (_fn: unknown, payload: Record<string, unknown>) => {
+      enqueued.push(payload);
     },
   } as any);
 
   assert.equal(deleted.length, 100);
-  assert.deepEqual(scheduled, [{ userId: "user_1" }]);
+  assert.deepEqual(enqueued, [{ userId: "user_1" }]);
 });
 
 test("approveAllHandler and rejectAllHandler process one batch and self-schedule", async () => {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const deleted: string[] = [];
-  const scheduled: Array<Record<string, unknown>> = [];
+  const enqueued: Array<Record<string, unknown>> = [];
   const pending = Array.from({ length: 100 }, (_, index) => ({ _id: `memory_${index}` }));
 
   const queryFactory = (table: string) => ({
@@ -378,10 +376,8 @@ test("approveAllHandler and rejectAllHandler process one batch and self-schedule
         patches.push({ id, patch });
       },
     },
-    scheduler: {
-      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
-        scheduled.push(payload);
-      },
+    runMutation: async (_fn: unknown, payload: Record<string, unknown>) => {
+      enqueued.push(payload);
     },
   } as any);
 
@@ -399,10 +395,8 @@ test("approveAllHandler and rejectAllHandler process one batch and self-schedule
         deleted.push(id);
       },
     },
-    scheduler: {
-      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
-        scheduled.push(payload);
-      },
+    runMutation: async (_fn: unknown, payload: Record<string, unknown>) => {
+      enqueued.push(payload);
     },
   } as any);
 
@@ -410,7 +404,7 @@ test("approveAllHandler and rejectAllHandler process one batch and self-schedule
   assert.equal(rejectCount, 100);
   assert.equal(patches.length, 100);
   assert.equal(deleted.length, 100);
-  assert.equal(scheduled.length, 2);
-  assert.deepEqual(scheduled[0], { userId: "user_1" });
-  assert.deepEqual(scheduled[1], { userId: "user_1" });
+  assert.equal(enqueued.length, 2);
+  assert.deepEqual(enqueued[0], { userId: "user_1" });
+  assert.deepEqual(enqueued[1], { userId: "user_1" });
 });

@@ -57,6 +57,7 @@ export interface CallOpenRouterImageOptions {
   }) => void;
   isCancelled?: () => Promise<boolean>;
   cancellationPollIntervalMs?: number;
+  onDispatch?: () => Promise<void>;
 }
 
 export function assertOpenRouterImagePrivacy(requireZdr: boolean): void {
@@ -93,6 +94,7 @@ export async function callOpenRouterImage(
     });
     const timeout = setTimeout(() => abort("timeout"), REQUEST_TIMEOUT_MS);
     try {
+      await options.onDispatch?.();
       const response = await fetch(OPENROUTER_IMAGE_API_URL, {
         method: "POST",
         headers: {

@@ -36,7 +36,6 @@ import {
   SUBAGENT_RECOVERY_LEASE_MS,
 } from "./shared";
 import { SubagentStreamWriter } from "./stream_writer";
-import { COMPACTION } from "../lib/compaction_constants";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
 import { ToolResult } from "../tools/registry";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
@@ -91,9 +90,30 @@ function toRecordedToolResults(
   });
 }
 
+async function markBatchWaitingAndArrangeParentResume(
+  ctx: ActionCtx,
+  batchId: Id<"subagentBatches">,
+  workflowManaged: boolean,
+): Promise<void> {
+  if (workflowManaged) {
+    await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
+      batchId,
+      status: "waiting_to_resume",
+      expectedCurrentStatus: "running_children",
+      continuationScheduledAt: Date.now(),
+    });
+    return;
+  }
+  await ctx.runMutation(
+    internal.subagents.parent_resume_gate.markBatchWaitingAndArmParentResume,
+    { batchId },
+  );
+}
+
 async function maybeFailStaleStreamingRun(
   ctx: ActionCtx,
   runId: Id<"subagentRuns">,
+  workflowManaged = false,
 ): Promise<boolean> {
   const run = await ctx.runQuery(internal.subagents.queries.getRunInternal, { runId });
   if (!run || run.status !== "streaming" || !isSubagentLeaseStale(run.updatedAt, Date.now())) {
@@ -156,17 +176,11 @@ async function maybeFailStaleStreamingRun(
     });
   }
   if (finalizeResult?.allTerminal) {
-    const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-      batchId: finalizeResult.batchId,
-      status: "waiting_to_resume",
-      expectedCurrentStatus: "running_children",
-      continuationScheduledAt: Date.now(),
-    });
-    if (didMark) {
-      await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
-        batchId: finalizeResult.batchId,
-      });
-    }
+    await markBatchWaitingAndArrangeParentResume(
+      ctx,
+      finalizeResult.batchId,
+      workflowManaged,
+    );
   }
   return true;
 }
@@ -182,24 +196,60 @@ async function ensureRunActive(ctx: ActionCtx, runId: Id<"subagentRuns">): Promi
   }
 }
 
+async function ensureFencedRunActive(
+  ctx: ActionCtx,
+  runId: Id<"subagentRuns">,
+  executionAttemptId?: Id<"executionAttempts">,
+  executionFence?: number,
+): Promise<void> {
+  await ensureRunActive(ctx, runId);
+  if (executionAttemptId === undefined && executionFence === undefined) return;
+  const current = await ctx.runQuery(
+    internal.subagents.queries.isRunExecutionCurrent,
+    { runId, executionAttemptId, executionFence },
+  );
+  if (!current) throw new GenerationCancelledError();
+}
+
 export async function runSubagentRunHandler(
   ctx: ActionCtx,
-  args: { runId: Id<"subagentRuns"> },
+  args: {
+    runId: Id<"subagentRuns">;
+    workflowManaged?: boolean;
+    executionAttemptId?: Id<"executionAttempts">;
+    executionFence?: number;
+  },
 ): Promise<void> {
+  if (
+    args.workflowManaged === true
+    && (args.executionAttemptId === undefined || args.executionFence === undefined)
+  ) {
+    throw new Error("SUBAGENT_WORKFLOW_EXECUTION_FENCE_REQUIRED");
+  }
+  const executionToken = args.executionAttemptId !== undefined
+    && args.executionFence !== undefined
+    ? {
+        executionAttemptId: args.executionAttemptId,
+        executionFence: args.executionFence,
+      }
+    : {};
   const claimed = await ctx.runMutation(internal.subagents.mutations.claimRunForExecution, {
     runId: args.runId,
     expectedStatuses: ["queued", "waiting_continuation"],
+    ...executionToken,
   });
   if (!claimed) {
-    await maybeFailStaleStreamingRun(ctx, args.runId);
+    await maybeFailStaleStreamingRun(ctx, args.runId, args.workflowManaged === true);
     return;
   }
 
   const run = await ctx.runQuery(internal.subagents.queries.getRunInternal, { runId: args.runId });
   if (!run) return;
-  await ctx.scheduler.runAfter(SUBAGENT_RECOVERY_LEASE_MS, internal.subagents.actions.continueSubagentRun, {
-    runId: args.runId,
-  });
+  if (!args.workflowManaged) {
+    await ctx.scheduler.runAfter(SUBAGENT_RECOVERY_LEASE_MS, internal.execution.fanout_queues.enqueueSubagentContinuation, {
+      runId: args.runId,
+    });
+  }
   const batch = await ctx.runQuery(internal.subagents.queries.getBatchInternal, { batchId: run.batchId });
   if (!batch) {
     return;
@@ -229,6 +279,7 @@ export async function runSubagentRunHandler(
     if (isContinuationResume) return true;
     const shouldCaptureStarted = await ctx.runMutation(internal.subagents.mutations.markRunAnalyticsStarted, {
       runId: run._id,
+      ...executionToken,
     }) !== false;
     if (!shouldCaptureStarted) return false;
     await captureAssistantResponseStartedEvent(ctx, {
@@ -256,6 +307,7 @@ export async function runSubagentRunHandler(
       : false;
     await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
+      ...executionToken,
       status: "cancelled",
       content: run.content,
       reasoning: run.reasoning,
@@ -282,11 +334,13 @@ export async function runSubagentRunHandler(
     const error = new Error("Subagent batch missing participant snapshot.");
     const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
+      ...executionToken,
       status: "failed",
       content: run.content,
       reasoning: run.reasoning,
       error: error.message,
     });
+    if (!finalizeResult) return;
     await captureAssistantResponseFailure(ctx, {
       userId: batch.userId,
       chatId: String(batch.chatId),
@@ -298,17 +352,11 @@ export async function runSubagentRunHandler(
       properties: startedProperties,
     });
     if (finalizeResult?.allTerminal) {
-      const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-        batchId: finalizeResult.batchId,
-        status: "waiting_to_resume",
-        expectedCurrentStatus: "running_children",
-        continuationScheduledAt: Date.now(),
-      });
-      if (didMark) {
-        await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
-          batchId: finalizeResult.batchId,
-        });
-      }
+      await markBatchWaitingAndArrangeParentResume(
+        ctx,
+        finalizeResult.batchId,
+        args.workflowManaged === true,
+      );
     }
     return;
   }
@@ -327,6 +375,12 @@ export async function runSubagentRunHandler(
   } | null;
   let accountCapabilities: { isPro?: boolean } | null;
   try {
+    await ensureFencedRunActive(
+      ctx,
+      run._id,
+      args.executionAttemptId,
+      args.executionFence,
+    );
     apiKey = await getRequiredUserOpenRouterApiKey(ctx, batch.userId);
     caps = await ctx.runQuery(internal.chat.queries.getModelCapabilities, { modelId });
     accountCapabilities = await ctx.runQuery(
@@ -338,11 +392,13 @@ export async function runSubagentRunHandler(
     const status = isGenerationCancelledError(error) ? "cancelled" : "failed";
     const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
+      ...executionToken,
       status,
       content: run.content,
       reasoning: run.reasoning,
       error: errorMessage,
     });
+    if (!finalizeResult) return;
     await captureAssistantResponseFailure(ctx, {
       userId: batch.userId,
       chatId: String(batch.chatId),
@@ -356,17 +412,11 @@ export async function runSubagentRunHandler(
       properties: startedProperties,
     });
     if (finalizeResult?.allTerminal) {
-      const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-        batchId: finalizeResult.batchId,
-        status: "waiting_to_resume",
-        expectedCurrentStatus: "running_children",
-        continuationScheduledAt: Date.now(),
-      });
-      if (didMark) {
-        await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
-          batchId: finalizeResult.batchId,
-        });
-      }
+      await markBatchWaitingAndArrangeParentResume(
+        ctx,
+        finalizeResult.batchId,
+        args.workflowManaged === true,
+      );
     }
     return;
   }
@@ -421,7 +471,13 @@ export async function runSubagentRunHandler(
   const writer = new SubagentStreamWriter({
     ctx,
     runId: run._id,
-    beforePatch: async () => ensureRunActive(ctx, run._id),
+    beforePatch: async () => ensureFencedRunActive(
+      ctx,
+      run._id,
+      args.executionAttemptId,
+      args.executionFence,
+    ),
+    ...executionToken,
     initialContent: run.content ?? "",
     initialReasoning: run.reasoning ?? "",
   });
@@ -433,6 +489,9 @@ export async function runSubagentRunHandler(
     ctx,
     userId: participantSnapshot.userId,
     chatId: participantSnapshot.chatId ?? String(batch.chatId),
+    jobId: String(batch.parentJobId),
+    executionAttemptId: args.executionAttemptId,
+    executionFence: args.executionFence,
     modelId,
     requireZdr,
   };
@@ -500,7 +559,12 @@ export async function runSubagentRunHandler(
         await writer.patchContentIfNeeded();
         deltaEventsSinceCancelCheck += 1;
         if (deltaEventsSinceCancelCheck % 10 === 0) {
-          await ensureRunActive(ctx, run._id);
+          await ensureFencedRunActive(
+            ctx,
+            run._id,
+            args.executionAttemptId,
+            args.executionFence,
+          );
         }
       },
       onReasoningDelta: async (delta) => {
@@ -523,6 +587,12 @@ export async function runSubagentRunHandler(
       toolRegistry,
       toolCtx: subagentToolCtx,
       onToolRoundStart: async (_round, _toolCalls) => {
+        await ensureFencedRunActive(
+          ctx,
+          run._id,
+          args.executionAttemptId,
+          args.executionFence,
+        );
         for (const toolCall of _toolCalls) {
           liveToolCalls.push({
             id: toolCall.id,
@@ -532,15 +602,23 @@ export async function runSubagentRunHandler(
         }
         await ctx.runMutation(internal.subagents.mutations.updateRunStreaming, {
           runId: run._id,
+          ...executionToken,
           status: "streaming",
           toolCalls: liveToolCalls,
         });
       },
       onToolRoundComplete: async (_round, roundResults) => {
+        await ensureFencedRunActive(
+          ctx,
+          run._id,
+          args.executionAttemptId,
+          args.executionFence,
+        );
         const recordedResults = toRecordedToolResults(liveToolCalls, roundResults);
         liveToolResults.push(...recordedResults);
         await ctx.runMutation(internal.subagents.mutations.updateRunStreaming, {
           runId: run._id,
+          ...executionToken,
           toolCalls: liveToolCalls,
           toolResults: liveToolResults,
           generatedFiles: extractGeneratedFiles(liveToolResults),
@@ -548,6 +626,12 @@ export async function runSubagentRunHandler(
         });
       },
       onToolArtifacts: async (round, toolCalls, results) => {
+        await ensureFencedRunActive(
+          ctx,
+          run._id,
+          args.executionAttemptId,
+          args.executionFence,
+        );
         await captureToolRoundArtifacts({
           ctx,
           metadata: {
@@ -569,6 +653,8 @@ export async function runSubagentRunHandler(
             visibilityScope: "participant",
             runtimeIsolationPolicy: "isolated",
             activeProfiles: Array.from(activeProfiles),
+            executionAttemptId: args.executionAttemptId,
+            executionFence: args.executionFence,
           },
           round,
           toolCalls,
@@ -576,6 +662,12 @@ export async function runSubagentRunHandler(
         });
       },
       onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {
+        await ensureFencedRunActive(
+          ctx,
+          run._id,
+          args.executionAttemptId,
+          args.executionFence,
+        );
         const newProfiles = extractProfilesFromLoadSkillResults(toolCalls, results);
         loadedSkills = mergeLoadedSkills(
           loadedSkills,
@@ -643,12 +735,20 @@ export async function runSubagentRunHandler(
       writer: writer as unknown as StreamWriter,
       actionStartTime: Date.now(),
       allowContinuationHandoff: true,
+      maxToolRoundsPerInvocation: 1,
       initialTotalUsage: snapshot?.totalUsage ?? null,
       initialToolCalls: snapshot?.allToolCalls ?? [],
       initialToolResults: snapshot?.allToolResults ?? [],
       initialCompactionCount: snapshot?.compactionCount ?? 0,
       requireZdr,
     });
+
+    await ensureFencedRunActive(
+      ctx,
+      run._id,
+      args.executionAttemptId,
+      args.executionFence,
+    );
 
     // M23: Store ancillary compaction costs against the parent message.
     for (const cu of result.compactionUsages) {
@@ -669,68 +769,11 @@ export async function runSubagentRunHandler(
     await writer.flush();
     if (result.continuation) {
       const nextContinuationCount = (run.continuationCount ?? 0) + 1;
-      if (nextContinuationCount > COMPACTION.MAX_CONTINUATIONS) {
-        const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
-          runId: run._id,
-          status: "timedOut",
-          content: writer.totalContent || undefined,
-          reasoning: writer.totalReasoning || undefined,
-          usage: result.totalUsage ?? undefined,
-          toolCalls: result.allToolCalls.length > 0 ? result.allToolCalls : undefined,
-          toolResults: result.allToolResults.length > 0 ? result.allToolResults : undefined,
-          generatedFiles: extractGeneratedFiles(result.allToolResults),
-          generatedCharts: extractGeneratedCharts(result.allToolResults),
-          error: `Subagent exceeded the continuation limit of ${COMPACTION.MAX_CONTINUATIONS}.`,
-        });
-        // M23: Track subagent generation cost against the parent message.
-        if (result.totalUsage) {
-          await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
-            messageId: batch.parentMessageId,
-            chatId: batch.chatId,
-            userId: batch.userId,
-            modelId,
-            promptTokens: result.totalUsage.promptTokens,
-            completionTokens: result.totalUsage.completionTokens,
-            totalTokens: result.totalUsage.totalTokens,
-            cost: result.totalUsage.cost ?? undefined,
-            source: "subagent",
-            generationId: result.streamResult.generationId ?? undefined,
-          });
-        }
-        await captureAssistantResponseFailure(ctx, {
-          userId: batch.userId,
-          chatId: String(batch.chatId),
-          messageId: String(batch.parentMessageId),
-          jobId: String(batch.parentJobId),
-          modelId,
-          source: "subagent_child",
-          error: new Error("Subagent exceeded continuation limit."),
-          analytics: paramsSnapshot.analytics,
-          properties: {
-            subagent_batch_id: String(batch._id),
-            subagent_run_id: String(run._id),
-          },
-        });
-        if (finalizeResult?.allTerminal) {
-          const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-            batchId: finalizeResult.batchId,
-            status: "waiting_to_resume",
-            expectedCurrentStatus: "running_children",
-            continuationScheduledAt: Date.now(),
-          });
-          if (didMark) {
-            await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
-              batchId: finalizeResult.batchId,
-            });
-          }
-        }
-        return;
-      }
-
       const continuationLoadedSkills = loadedSkills;
 
       await ctx.runMutation(internal.subagents.mutations.checkpointRunContinuation, {
         runId: run._id,
+        ...executionToken,
         content: writer.totalContent || undefined,
         reasoning: writer.totalReasoning || undefined,
         usage: result.totalUsage ?? undefined,
@@ -766,15 +809,18 @@ export async function runSubagentRunHandler(
           continuation_count: nextContinuationCount,
         },
       });
-      await ctx.scheduler.runAfter(0, internal.subagents.actions.continueSubagentRun, {
-        runId: run._id,
-      });
+      if (!args.workflowManaged) {
+        await ctx.scheduler.runAfter(0, internal.execution.fanout_queues.enqueueSubagentContinuation, {
+          runId: run._id,
+        });
+      }
       return;
     }
 
     const finalContent = writer.totalContent.trim() || result.streamResult.content.trim() || "[No response received from subagent]";
     const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
+      ...executionToken,
       status: "completed",
       content: finalContent,
       reasoning: result.streamResult.reasoning || writer.totalReasoning || undefined,
@@ -784,6 +830,7 @@ export async function runSubagentRunHandler(
       generatedFiles: extractGeneratedFiles(result.allToolResults),
       generatedCharts: extractGeneratedCharts(result.allToolResults),
     });
+    if (!finalizeResult) return;
 
     // M23: Track subagent generation cost against the parent message using the
     // subagent's own modelId so ancillary cost breakdowns reflect the actual
@@ -820,28 +867,24 @@ export async function runSubagentRunHandler(
     });
 
     if (finalizeResult?.allTerminal) {
-      const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-        batchId: finalizeResult.batchId,
-        status: "waiting_to_resume",
-        expectedCurrentStatus: "running_children",
-        continuationScheduledAt: Date.now(),
-      });
-      if (didMark) {
-        await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
-          batchId: finalizeResult.batchId,
-        });
-      }
+      await markBatchWaitingAndArrangeParentResume(
+        ctx,
+        finalizeResult.batchId,
+        args.workflowManaged === true,
+      );
     }
   } catch (error) {
     const errorMessage = normalizeGenerationError(error).message;
     const status = isGenerationCancelledError(error) ? "cancelled" : "failed";
     const finalizeResult = await ctx.runMutation(internal.subagents.mutations.finalizeRun, {
       runId: run._id,
+      ...executionToken,
       status,
       content: writer.totalContent || undefined,
       reasoning: writer.totalReasoning || undefined,
       error: errorMessage,
     });
+    if (!finalizeResult) return;
     await captureAssistantResponseFailure(ctx, {
       userId: batch.userId,
       chatId: String(batch.chatId),
@@ -858,17 +901,11 @@ export async function runSubagentRunHandler(
       },
     });
     if (finalizeResult?.allTerminal) {
-      const didMark = await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-        batchId: finalizeResult.batchId,
-        status: "waiting_to_resume",
-        expectedCurrentStatus: "running_children",
-        continuationScheduledAt: Date.now(),
-      });
-      if (didMark) {
-        await ctx.scheduler.runAfter(0, internal.subagents.actions.continueParentAfterSubagents, {
-          batchId: finalizeResult.batchId,
-        });
-      }
+      await markBatchWaitingAndArrangeParentResume(
+        ctx,
+        finalizeResult.batchId,
+        args.workflowManaged === true,
+      );
     }
   } finally {
     // Stop the workspace (just-bash) sandbox — it is per-generation, not persistent.

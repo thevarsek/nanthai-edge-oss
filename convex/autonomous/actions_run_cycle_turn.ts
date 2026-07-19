@@ -99,6 +99,7 @@ async function finalizeTransientTurnFailure(
     status: "failed",
     error: params.reason,
     userId: params.userId,
+    skipExecutionTerminalization: true,
   });
 }
 
@@ -138,6 +139,11 @@ export interface RunParticipantTurnParams {
   moderatorConfig?: ModeratorConfig;
   userId: string;
   webSearchEnabled: boolean;
+  executionEpoch?: number;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+  turnCycle?: number;
+  turnParticipantIndex?: number;
 }
 
 export async function runParticipantTurn(
@@ -155,7 +161,15 @@ export async function runParticipantTurn(
     moderatorConfig,
     userId,
     webSearchEnabled,
+    executionEpoch,
+    executionAttemptId,
+    executionFence,
+    turnCycle,
+    turnParticipantIndex,
   } = params;
+  const executionToken = executionAttemptId && executionFence !== undefined
+    ? { executionAttemptId, executionFence }
+    : {};
 
   let messageId: Id<"messages"> | undefined;
   let jobId: Id<"generationJobs"> | undefined;
@@ -173,6 +187,8 @@ export async function runParticipantTurn(
       try {
         await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
           jobId,
+          executionAttemptId,
+          executionFence,
           status: "cancelled",
         });
       } catch {
@@ -183,6 +199,8 @@ export async function runParticipantTurn(
       try {
         await ctx.runMutation(internal.chat.mutations.updateMessageContent, {
           messageId,
+          executionAttemptId,
+          executionFence,
           content: "",
           status: "cancelled",
         });
@@ -192,7 +210,17 @@ export async function runParticipantTurn(
     }
   };
 
+  const assertSessionEpochActive = async (): Promise<void> => {
+    if (executionEpoch === undefined) return;
+    const active = await ctx.runMutation(
+      internal.autonomous.mutations.shouldContinue,
+      { sessionId, executionEpoch },
+    );
+    if (!active) throw new Error(CANCELLED_TURN_ERROR);
+  };
+
   try {
+    await assertSessionEpochActive();
     const [apiKey, preferences] = await Promise.all([
       deps.getRequiredUserOpenRouterApiKey(ctx, userId),
       ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
@@ -208,6 +236,7 @@ export async function runParticipantTurn(
         userId,
       );
     }
+    await assertSessionEpochActive();
 
     let effectiveSystemPrompt = participant.systemPrompt;
     if (moderatorDirective) {
@@ -219,9 +248,11 @@ export async function runParticipantTurn(
     }
 
     const now = deps.now();
-    messageId = await ctx.runMutation(
+    const createdMessageId = await ctx.runMutation(
       internal.autonomous.mutations_helpers.createAutonomousMessage,
       {
+        sessionId,
+        executionEpoch,
         chatId,
         userId,
         modelId: participant.modelId,
@@ -230,24 +261,39 @@ export async function runParticipantTurn(
         participantName: participant.displayName,
         parentMessageIds: cycleParentIds,
         moderatorDirective,
+        turnCycle,
+        turnParticipantIndex,
       },
     );
+    if (!createdMessageId) {
+      throw new Error(CANCELLED_TURN_ERROR);
+    }
+    messageId = createdMessageId;
 
-    jobId = await ctx.runMutation(
+    const createdJobId = await ctx.runMutation(
       internal.autonomous.mutations_helpers.createGenerationJob,
       {
+        sessionId,
+        executionEpoch,
+        executionAttemptId,
+        executionFence,
         chatId,
-        messageId,
+        messageId: createdMessageId,
         modelId: participant.modelId,
         userId,
+        turnCycle,
+        turnParticipantIndex,
       },
     );
-    if (!messageId || !jobId) {
-      throw new Error("Failed to create autonomous turn runtime records.");
+    if (!createdJobId) {
+      throw new Error(CANCELLED_TURN_ERROR);
     }
+    jobId = createdJobId;
 
     await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
       jobId,
+      executionAttemptId,
+      executionFence,
       status: "streaming",
       startedAt: now,
     });
@@ -378,6 +424,7 @@ export async function runParticipantTurn(
 
     const assertTurnStillActive = async () => {
       if (!jobId) return;
+      await assertSessionEpochActive();
       cancellationCheckCounter += 1;
       if (cancellationCheckCounter % 2 !== 0) return;
       const isCancelled = await ctx.runQuery(
@@ -392,10 +439,13 @@ export async function runParticipantTurn(
     const writer = deps.createStreamWriter({
       ctx,
       messageId,
+      executionAttemptId,
+      executionFence,
       beforePatch: assertTurnStillActive,
     });
 
     const generationStartedAt = deps.now();
+    await assertTurnStillActive();
     let shouldCaptureStarted = false;
     try {
       shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, jobId);
@@ -457,6 +507,9 @@ export async function runParticipantTurn(
         requireZdr,
         generationStartedAt,
         now: deps.now,
+        executionEpoch,
+        executionAttemptId,
+        executionFence,
       });
       return { kind: "completed", messageId };
     }
@@ -558,6 +611,8 @@ export async function runParticipantTurn(
       reasoning: result.reasoning || totalReasoning || undefined,
       imageUrls: result.imageUrls.length > 0 ? result.imageUrls : undefined,
       userId,
+      ...executionToken,
+      skipExecutionTerminalization: true,
     });
 
     await captureAssistantResponseCompleted(ctx, {
@@ -579,16 +634,6 @@ export async function runParticipantTurn(
         reasoning_present: Boolean(result.reasoning || totalReasoning),
         web_search_enabled: webSearchEnabled,
       },
-    });
-
-    await ctx.runMutation(internal.autonomous.mutations_helpers.setChatActiveLeaf, {
-      chatId,
-      messageId,
-    });
-
-    await ctx.runMutation(internal.autonomous.mutations.updateParentMessageIds, {
-      sessionId,
-      parentMessageIds: [messageId],
     });
 
     return { kind: "completed", messageId };

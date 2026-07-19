@@ -2,6 +2,7 @@ import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
 import { computeNextRunTime, type Recurrence } from "./recurrence";
+import { scheduledOccurrenceId } from "./occurrence";
 
 export const MAX_CONSECUTIVE_FAILURES = 3;
 
@@ -58,11 +59,12 @@ export async function scheduleNextRunIfNeeded(
 
   const nextRunAt = computeNextRunTime(job.recurrence, job.timezone);
   if (nextRunAt === null) return;
+  const occurrenceId = scheduledOccurrenceId(job.jobId, nextRunAt);
 
   const scheduledId = await ctx.scheduler.runAt(
     nextRunAt,
     internal.scheduledJobs.actions.executeScheduledJob,
-    { jobId: job.jobId },
+    { jobId: job.jobId, occurrenceId },
   );
 
   if (job.replaceExistingSchedule) {
@@ -72,6 +74,7 @@ export async function scheduleNextRunIfNeeded(
         jobId: job.jobId,
         nextRunAt,
         scheduledFunctionId: scheduledId,
+        occurrenceId,
         previousScheduledFunctionId: job.scheduledFunctionId,
       },
     );
@@ -84,6 +87,7 @@ export async function scheduleNextRunIfNeeded(
       jobId: job.jobId,
       nextRunAt,
       scheduledFunctionId: scheduledId,
+      occurrenceId,
     },
   );
 }

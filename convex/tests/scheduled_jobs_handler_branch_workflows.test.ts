@@ -7,6 +7,7 @@ import {
   executeScheduledJobHandler,
   failScheduledJobExecutionHandler,
 } from "../scheduledJobs/actions_handlers";
+import { durableWorkflow } from "../execution/components";
 
 function activeJob(overrides: Record<string, unknown> = {}) {
   return {
@@ -28,58 +29,76 @@ function activeJob(overrides: Record<string, unknown> = {}) {
   };
 }
 
-test("scheduled job handler no-ops for missing jobs and non-executable scheduled invocations", async () => {
+test("scheduled job handler always delegates to the durable occurrence starter", async () => {
   let mutationCount = 0;
   let scheduledCount = 0;
-  await executeScheduledJobHandler({
-    runQuery: async () => null,
-    runMutation: async () => {
-      mutationCount += 1;
-    },
-    scheduler: {
-      runAfter: async () => {
-        scheduledCount += 1;
+  const starts: Array<Record<string, unknown>> = [];
+  await executeScheduledJobHandler(
+    {
+      runQuery: async () => null,
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutationCount += 1;
+        starts.push(args);
+        return "workflow_1";
       },
-      runAt: async () => {
-        scheduledCount += 1;
+      scheduler: {
+        runAfter: async () => {
+          scheduledCount += 1;
+        },
+        runAt: async () => {
+          scheduledCount += 1;
+        },
       },
-    },
-  } as any, { jobId: "missing" as Id<"scheduledJobs"> });
-  assert.equal(mutationCount, 0);
+    } as any,
+    { jobId: "missing" as Id<"scheduledJobs"> },
+  );
+  assert.equal(mutationCount, 1);
   assert.equal(scheduledCount, 0);
+  assert.equal(starts.length, 1);
 
-  await executeScheduledJobHandler({
-    runQuery: async () => activeJob({ status: "paused" }),
-    runMutation: async () => {
-      mutationCount += 1;
-    },
-    scheduler: {
-      runAfter: async () => {
-        scheduledCount += 1;
+  await executeScheduledJobHandler(
+    {
+      runQuery: async () => activeJob({ status: "paused" }),
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutationCount += 1;
+        starts.push(args);
+        return "workflow_2";
       },
-      runAt: async () => {
-        scheduledCount += 1;
+      scheduler: {
+        runAfter: async () => {
+          scheduledCount += 1;
+        },
+        runAt: async () => {
+          scheduledCount += 1;
+        },
       },
-    },
-  } as any, { jobId: "job_1" as Id<"scheduledJobs">, invocationSource: "scheduled" });
-  assert.equal(mutationCount, 0);
+    } as any,
+    { jobId: "job_1" as Id<"scheduledJobs">, invocationSource: "scheduled" },
+  );
+  assert.equal(mutationCount, 2);
   assert.equal(scheduledCount, 0);
+  assert.equal(starts.length, 2);
 });
 
-test("scheduled job handler records setup failures and schedules failure notification", async () => {
+test("scheduled job setup failures are owned by the durable starter", async () => {
   const mutationArgs: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
   let mutationCount = 0;
+  let workflowStarts = 0;
   const ctx = {
     runQuery: async () => activeJob(),
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutationCount += 1;
-      if (mutationCount === 1) throw new Error("begin failed");
+      workflowStarts += 1;
       mutationArgs.push(args);
-      return undefined;
+      return "workflow_failure_path";
     },
     scheduler: {
-      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+      runAfter: async (
+        _delay: number,
+        _ref: unknown,
+        args: Record<string, unknown>,
+      ) => {
         scheduled.push(args);
         return "scheduled_failure";
       },
@@ -92,14 +111,11 @@ test("scheduled job handler records setup failures and schedules failure notific
   });
 
   assert.equal(mutationArgs.length, 1);
-  assert.equal(mutationArgs[0].consecutiveFailures, 2);
-  assert.match(String(mutationArgs[0].error), /begin failed/);
-  assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0].userId, "user_1");
-  assert.match(String(scheduled[0].body), /begin failed/);
+  assert.equal(scheduled.length, 0);
+  assert.equal(workflowStarts, 1);
 });
 
-test("continueScheduledJobExecution enqueues the next step with prior assistant content and variables", async () => {
+test("legacy continuation enqueues the next step through the durable generation queue", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
   const job = activeJob({
@@ -114,7 +130,8 @@ test("continueScheduledJobExecution enqueues the next step with prior assistant 
   });
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-      if (args.messageId) return { _id: args.messageId, content: "Previous answer" };
+      if (args.messageId)
+        return { _id: args.messageId, content: "Previous answer" };
       return job;
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -127,7 +144,11 @@ test("continueScheduledJobExecution enqueues the next step with prior assistant 
       };
     },
     scheduler: {
-      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+      runAfter: async (
+        _delay: number,
+        _ref: unknown,
+        args: Record<string, unknown>,
+      ) => {
         scheduled.push(args);
         return "scheduled_step";
       },
@@ -145,9 +166,12 @@ test("continueScheduledJobExecution enqueues the next step with prior assistant 
   assert.equal(mutations[0]?.stepIndex, 1);
   assert.match(String(mutations[0]?.content), /Previous answer/);
   assert.match(String(mutations[0]?.content), /releases/);
-  assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0].userId, "user_1");
-  assert.equal((scheduled[0].assistantMessageIds as string[] | undefined)?.[0], "msg_assistant_2");
+  assert.equal(scheduled.length, 0);
+  assert.equal(mutations[1]?.userId, "user_1");
+  assert.equal(
+    (mutations[1]?.assistantMessageIds as string[] | undefined)?.[0],
+    "msg_assistant_2",
+  );
 });
 
 test("continueScheduledJobExecution handles missing API keys as execution failures with chat context", async () => {
@@ -169,7 +193,11 @@ test("continueScheduledJobExecution handles missing API keys as execution failur
       mutationArgs.push(args);
     },
     scheduler: {
-      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+      runAfter: async (
+        _delay: number,
+        _ref: unknown,
+        args: Record<string, unknown>,
+      ) => {
         scheduled.push(args);
         return "failure_push";
       },
@@ -213,14 +241,17 @@ test("failScheduledJobExecution ignores missing or stale execution callbacks", a
   assert.equal(mutationCount, 0);
   assert.equal(scheduledCount, 0);
 
-  await failScheduledJobExecutionHandler({
-    ...ctx,
-    runQuery: async () => null,
-  } as any, {
-    jobId: "missing" as Id<"scheduledJobs">,
-    executionId: "exec_old",
-    error: "late failure",
-  });
+  await failScheduledJobExecutionHandler(
+    {
+      ...ctx,
+      runQuery: async () => null,
+    } as any,
+    {
+      jobId: "missing" as Id<"scheduledJobs">,
+      executionId: "exec_old",
+      error: "late failure",
+    },
+  );
   assert.equal(mutationCount, 0);
   assert.equal(scheduledCount, 0);
 });

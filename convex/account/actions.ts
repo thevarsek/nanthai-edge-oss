@@ -2,100 +2,12 @@
 // Account deletion action — orchestrates full user data purge.
 // Required by Apple App Store guideline 5.1.1(v).
 
-import { action } from "../_generated/server";
+import { action, internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
-
-/**
- * Tables to purge, ordered leaf-first for foreign-key safety.
- * Each table is processed in batches until fully drained.
- *
- * Index types used:
- * - Most tables: by_user index (prefix match on userId)
- * - messages: cascaded via chats (no by_user index)
- * - nodePositions: cascaded via chats (has userId but no by_user index)
- * - generationJobs, autonomousSessions: by_user_status index
- * - searchPhases: cascaded via searchSessions
- * - memoryEmbeddings: cascaded via memories
- * - memoryRelationships: direct by_user cleanup before memories
- * - subagentRuns: cascaded via subagentBatches (by_batch index)
- * - sandboxArtifacts: cascaded via sandboxSessions (by_session index, has storageId)
- * - sandboxEvents: by_user index
- * - sandboxSessions: by_user_status index
- * - integrationRequestGates: by_user_provider index (no by_user)
- * - skills: by_owner index (scope="user" + ownerUserId)
- */
-const PURGE_ORDER = [
-  // Cascade-dependent tables first (no direct userId or no by_user index)
-  "searchPhases",
-  "memoryEmbeddings",
-  "nodePositions", // has userId but no by_user index; cascaded via chats
-  // Subagent children before parents: runs (with inline storage) → batches
-  "subagentRuns",    // cascade via subagentBatches; inline generatedFiles need blob cleanup
-  "subagentBatches", // has by_user index
-  // Advisor runs before batches; both cancel any delayed functions on deletion.
-  "advisorRuns",
-  "advisorBatches",
-  // Sandbox children before parent: events & artifacts → sessions
-  "sandboxEvents",    // has by_user index
-  "sandboxArtifacts", // cascade via sandboxSessions; storageId needs blob cleanup
-  "sandboxSessions",  // has by_user_status index
-  // Leaf tables with userId
-  "jobRuns",
-  "scheduledJobApiInvocations",
-  "scheduledJobTriggerTokens",
-  "generationJobs",
-  "chatParticipants",
-  "chatAdvisors",
-  "searchContexts",
-  "searchSessions",
-  "autonomousSessions",
-  "modelSettings",
-  "memoryRelationships",
-  "oauthConnections",
-  "deviceTokens",
-  "usageRecords",
-  "userSecrets",
-  "kbUploadSessions",
-  "purchaseEntitlements",
-  "favorites",
-  "integrationRequestGates",
-  "userCapabilities",
-  "generatedCharts",
-  "contextAssemblyLogs",
-  "toolMemories",
-  "toolExecutionArtifacts",
-  "documentEdits",
-  "documentEditBatches",
-  "documentVersions",
-  // Presentation leaves before their parent projects.
-  "presentationSlideCandidates",
-  "presentationCuratorTasks",
-  "presentationGenerationBatches",
-  "presentationGenerationRuns",
-  "presentationAssets",
-  "presentationSlides",
-  "presentationProjects",
-  // User-scoped skills (scope="user", ownerUserId)
-  "skills",
-  // Storage-bearing tables (blobs cleaned up during batch delete)
-  "documents",
-  "generatedFiles",
-  "generatedMedia",
-  "fileAttachments",
-  // Google Drive grant cache after storage owners so shared cached blobs are not
-  // deleted before rows that still reference them.
-  "googleDriveFileGrants",
-  // Messages cascaded via chats (also cleans up attachment storage)
-  "messages",
-  // Remaining parent tables
-  "memories",
-  "personas",
-  "folders",
-  "userPreferences",
-  "scheduledJobs",
-  "chats",
-];
+import { PURGE_TABLES } from "./purge_tables";
+import { ConvexError } from "convex/values";
+import { v } from "convex/values";
 
 /**
  * Delete all user data from Convex. Called from the iOS client before
@@ -107,23 +19,105 @@ const PURGE_ORDER = [
 export const deleteAccount = action({
   args: {},
   handler: async (ctx): Promise<{ totalDeleted: number }> => {
-    const { userId } = await requireAuth(ctx);
+    const { userId } = await requireAuth(ctx, { allowAccountDeletion: true });
     let totalDeleted = 0;
 
-    // Process each table in batches until fully drained
-    for (const tableName of PURGE_ORDER) {
-      let hasMore = true;
-      while (hasMore) {
-        const result: { deleted: number } = await ctx.runMutation(
-          internal.account.mutations.deleteUserTableBatch,
-          { userId, tableName },
-        );
-        totalDeleted += result.deleted;
-        // If fewer than batch size (200) were deleted, the table is drained
-        hasMore = result.deleted >= 200;
-      }
+    // Install an immutable write fence before cancellation/purge. It is kept
+    // until the upstream identity disappears so a retry cannot race new work.
+    await ctx.runMutation(internal.account.deletion_state.beginAccountDeletion, { userId });
+
+    const cancellationConfirmed: boolean = await ctx.runAction(
+      internal.execution.teardown.cancelUserExecutions,
+      {
+      userId,
+      reason: "Account deleted",
+      },
+    );
+    if (!cancellationConfirmed) {
+      throw new ConvexError({
+        code: "EXECUTION_CANCELLATION_PENDING",
+        message: "Active work is still being cancelled. Please retry account deletion shortly.",
+      });
     }
 
+    const purge = await ctx.runAction(
+      internal.account.actions.continueAccountDeletionPurge,
+      { userId },
+    );
+    totalDeleted = purge.totalDeleted;
+    if (!purge.completed) {
+      throw new ConvexError({
+        code: "ACCOUNT_DELETION_PENDING",
+        message: "Account data deletion is continuing safely. Please retry shortly.",
+      });
+    }
     return { totalDeleted };
+  },
+});
+
+const PURGE_BATCHES_PER_ACTION = 20;
+
+export const continueAccountDeletionPurge = internalAction({
+  args: { userId: v.string() },
+  handler: async (ctx, args): Promise<{ completed: boolean; totalDeleted: number }> => {
+    const existing = await ctx.runQuery(
+      internal.account.deletion_state.getAccountDeletionState,
+      args,
+    );
+    if (existing?.status === "completed") {
+      return { completed: true, totalDeleted: existing.totalDeleted ?? 0 };
+    }
+    const leaseId = crypto.randomUUID();
+    const leased = await ctx.runMutation(
+      internal.account.deletion_state.acquireAccountPurgeLease,
+      { ...args, leaseId, now: Date.now() },
+    );
+    if (!leased) {
+      return { completed: false, totalDeleted: existing?.totalDeleted ?? 0 };
+    }
+    let tableIndex = leased.tableIndex;
+    let cursor = leased.cursor;
+    let totalDeleted = leased.totalDeleted;
+    for (
+      let batch = 0;
+      batch < PURGE_BATCHES_PER_ACTION && tableIndex < PURGE_TABLES.length;
+      batch += 1
+    ) {
+      const renewed = await ctx.runMutation(
+        internal.account.deletion_state.renewAccountPurgeLease,
+        { ...args, leaseId, now: Date.now() },
+      );
+      if (!renewed) return { completed: false, totalDeleted };
+      const tableName = PURGE_TABLES[tableIndex];
+      const result: { deleted: number; cursor?: string; done?: boolean } = await ctx.runMutation(
+        internal.account.mutations.deleteUserTableBatch,
+        { userId: args.userId, tableName, cursor },
+      );
+      totalDeleted += result.deleted;
+      if (result.done === true || (result.done === undefined && result.deleted < 200)) {
+        tableIndex += 1;
+        cursor = undefined;
+      } else {
+        cursor = result.cursor;
+      }
+    }
+    const completed = tableIndex >= PURGE_TABLES.length;
+    const saved = await ctx.runMutation(internal.account.deletion_state.saveAccountPurgeProgress, {
+      ...args,
+      leaseId,
+      tableIndex,
+      cursor,
+      totalDeleted,
+      completed,
+    });
+    if (!saved) return { completed: false, totalDeleted };
+    if (!completed) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.account.actions.continueAccountDeletionPurge,
+        args,
+      );
+    }
+    return { completed, totalDeleted };
   },
 });

@@ -6,7 +6,9 @@ export function shouldExecuteScheduledJob(args: {
   status: string;
   recurrence: Recurrence;
   invocationSource: ScheduledJobInvocationSource;
+  isDeleting?: boolean;
 }): boolean {
+  if (args.isDeleting) return false;
   if (args.status === "active") {
     return true;
   }

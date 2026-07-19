@@ -2,17 +2,19 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  createVideoJobHandler,
-  insertGeneratedMediaHandler,
   markChatCompletionNotifiedHandler,
   patchMessageAudioHandler,
   updateJobStatusHandler,
   updateMessageContentHandler,
   updateMessageReasoningHandler,
   updateMessageToolCallsHandler,
+} from "../chat/mutations_internal_handlers";
+import {
+  createVideoJobHandler,
+  insertGeneratedMediaHandler,
   updateVideoJobPollHandler,
   updateVideoJobStatusHandler,
-} from "../chat/mutations_internal_handlers";
+} from "../chat/video_mutation_handlers";
 
 function buildCtx(records: Record<string, Record<string, unknown>> = {}) {
   const rows = new Map(Object.entries(records));

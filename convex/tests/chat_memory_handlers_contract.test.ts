@@ -343,6 +343,7 @@ test("reinforceMemoryHandler promotes eligible transient memories and upgrades s
 
   await reinforceMemoryHandler({
     db: {
+      query: () => ({ withIndex: () => ({ unique: async () => null }) }),
       get: async () => ({
         _id: "memory_1",
         memoryType: "transient",
@@ -389,6 +390,7 @@ test("supersedeMemoryHandler and touchMemoriesHandler patch only active target m
 
   await supersedeMemoryHandler({
     db: {
+      query: () => ({ withIndex: () => ({ unique: async () => null }) }),
       get: async (id: string) => memories.get(id) ?? null,
       patch: async (id: string, patch: Record<string, unknown>) => {
         patches.push({ id, patch });
@@ -402,6 +404,7 @@ test("supersedeMemoryHandler and touchMemoriesHandler patch only active target m
 
   await touchMemoriesHandler({
     db: {
+      query: () => ({ withIndex: () => ({ unique: async () => null }) }),
       get: async (id: string) => memories.get(id) ?? null,
       patch: async (id: string, patch: Record<string, unknown>) => {
         patches.push({ id, patch });

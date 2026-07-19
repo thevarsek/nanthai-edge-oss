@@ -6,6 +6,8 @@ import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
 import { RetryContract } from "./retry_contract";
 import { TerminalErrorCode } from "./terminal_error";
+import { createGenerationExecution } from "../execution/control_plane";
+import { cancelExecutionForGenerationJob } from "../execution/cancellation";
 
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
 
@@ -268,6 +270,7 @@ export async function createAssistantMessagesAndJobs(
     assistantMessageIds.push(assistantMessageId);
 
     const streamingMessageId = await ctx.db.insert("streamingMessages", {
+      userId: args.userId,
       messageId: assistantMessageId,
       chatId: args.chatId,
       content: "",
@@ -289,6 +292,14 @@ export async function createAssistantMessagesAndJobs(
       analytics: args.analytics,
       analyticsSource: args.analyticsSource,
       createdAt: args.jobCreatedAt,
+    });
+    await createGenerationExecution(ctx, {
+      jobId,
+      userId: args.userId,
+      chatId: args.chatId,
+      sourceMessageId: assistantMessageId,
+      modelId: participant.modelId,
+      now: args.jobCreatedAt,
     });
     generationJobIds.push(jobId);
   }
@@ -327,6 +338,11 @@ export async function cancelGenerationJobsForMessage(
     .collect();
   for (const job of existingJobs) {
     if (job.status !== "completed" && job.status !== "failed") {
+      await cancelExecutionForGenerationJob(ctx, {
+        jobId: job._id,
+        requestedBy: terminalErrorCode === "cancelled_by_retry" ? "retry" : "user",
+        now,
+      });
       await cancelGenerationContinuationHandler(ctx, {
         jobId: job._id,
       });

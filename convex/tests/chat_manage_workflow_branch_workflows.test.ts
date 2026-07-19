@@ -58,6 +58,8 @@ function buildCtx(rows: Record<string, Record<string, unknown>> = {}) {
             return {
               first: async () => queryRows(table, filters)[0] ?? null,
               collect: async () => queryRows(table, filters),
+              take: async (limit: number) => queryRows(table, filters).slice(0, limit),
+              unique: async () => queryRows(table, filters)[0] ?? null,
             };
           },
         }),

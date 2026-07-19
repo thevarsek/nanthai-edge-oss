@@ -129,7 +129,7 @@ test("safeDeleteAudioBlob preserves shared audio blobs and deletes unshared ones
     db: {
       query: () => ({
         withIndex: () => ({
-          collect: async () => [
+          take: async () => [
             { _id: "message_1", audioStorageId: "audio_1" },
             { _id: "message_2", audioStorageId: "audio_1" },
           ],
@@ -148,7 +148,7 @@ test("safeDeleteAudioBlob preserves shared audio blobs and deletes unshared ones
 
   ctx.db.query = () => ({
     withIndex: () => ({
-      collect: async () => [{ _id: "message_1", audioStorageId: "audio_1" }],
+      take: async () => [{ _id: "message_1", audioStorageId: "audio_1" }],
     }),
   });
 
@@ -159,7 +159,7 @@ test("safeDeleteAudioBlob preserves shared audio blobs and deletes unshared ones
 test("deleteChatGraph schedules a continuation when a batch fills up", async () => {
   const deleted: string[] = [];
   const scheduled: Array<Record<string, unknown>> = [];
-  const fullBatch = Array.from({ length: 200 }, (_, index) => ({
+  const fullBatch = Array.from({ length: 5 }, (_, index) => ({
     _id: `message_${index}`,
     chatId: "chat_1",
   }));
@@ -184,13 +184,15 @@ test("deleteChatGraph schedules a continuation when a batch fills up", async () 
     },
   } as any, "chat_1" as any);
 
-  assert.equal(deleted.length, 200);
+  assert.equal(deleted.filter((id) => id.startsWith("message_")).length, 5);
+  assert.equal(deleted.includes("chat_1"), false);
   assert.deepEqual(scheduled, [{ chatId: "chat_1" }]);
 });
 
-test("deleteChatGraph deletes child rows, storage blobs, and the chat on the final pass", async () => {
+test("deleteChatGraph drains subagent children before deleting their batch and chat", async () => {
   const deleted: string[] = [];
   const storageDeleted: string[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
 
   await deleteChatGraph({
     db: {
@@ -199,9 +201,16 @@ test("deleteChatGraph deletes child rows, storage blobs, and the chat on the fin
           take: async () => {
             if (table === "messages") return [{ _id: "message_1", audioStorageId: "audio_1" }];
             if (table === "searchSessions") return [{ _id: "search_1" }];
+            if (table === "searchPhases") return [{ _id: "phase_1" }];
             if (table === "generatedFiles") return [{ _id: "file_1", storageId: "storage_file" }];
             if (table === "fileAttachments") return [{ _id: "attachment_1", storageId: "storage_attachment" }];
             if (table === "subagentBatches") return [{ _id: "batch_1" }];
+            if (table === "subagentRuns") {
+              return [{
+                _id: "run_1",
+                generatedFiles: [{ storageId: "storage_subagent" }],
+              }];
+            }
             return [];
           },
           collect: async () => {
@@ -210,6 +219,8 @@ test("deleteChatGraph deletes child rows, storage blobs, and the chat on the fin
             if (table === "subagentRuns") return [{ _id: "run_1" }];
             return [];
           },
+          first: async () => null,
+          unique: async () => null,
         }),
       }),
       delete: async (id: string) => {
@@ -222,13 +233,18 @@ test("deleteChatGraph deletes child rows, storage blobs, and the chat on the fin
       },
     },
     scheduler: {
-      runAfter: async () => {
-        throw new Error("should not schedule continuation");
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
       },
     },
   } as any, "chat_1" as any);
 
-  assert.deepEqual(storageDeleted, ["audio_1", "storage_file", "storage_attachment"]);
+  assert.deepEqual(storageDeleted, [
+    "audio_1",
+    "storage_file",
+    "storage_attachment",
+    "storage_subagent",
+  ]);
   assert.deepEqual(deleted, [
     "message_1",
     "phase_1",
@@ -236,9 +252,8 @@ test("deleteChatGraph deletes child rows, storage blobs, and the chat on the fin
     "file_1",
     "attachment_1",
     "run_1",
-    "batch_1",
-    "chat_1",
   ]);
+  assert.deepEqual(scheduled, [{ chatId: "chat_1" }]);
 });
 
 test("deleteChatGraph drains every capped child table before scheduling continuation", async () => {
@@ -274,6 +289,8 @@ test("deleteChatGraph drains every capped child table before scheduling continua
             }
           },
           collect: async () => [],
+          first: async () => null,
+          unique: async () => null,
         }),
       }),
       delete: async (id: string) => {
@@ -294,16 +311,25 @@ test("deleteChatGraph drains every capped child table before scheduling continua
   assert.ok(deleted.includes("subagentBatches_199"));
 });
 
-test("deleteChatGraph removes document extraction blobs and Drive grant cache when references are unique", async () => {
+test("deleteChatGraph removes document extraction blobs and schedules the document drain", async () => {
   const deleted: string[] = [];
   const storageDeleted: string[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
 
   await deleteChatGraph({
     db: {
       query: (table: string) => ({
         withIndex: () => ({
           take: async () => {
-            if (table === "documents") return [{ _id: "document_1" }];
+            if (table === "documents") return [{ _id: "document_1", userId: "user_1" }];
+            if (table === "documentVersions") {
+              return [{
+                _id: "version_1",
+                storageId: "storage_version",
+                extractionTextStorageId: "storage_text",
+                extractionMarkdownStorageId: "storage_markdown",
+              }];
+            }
             if (table === "fileAttachments") {
               return [{
                 _id: "attachment_1",
@@ -312,24 +338,17 @@ test("deleteChatGraph removes document extraction blobs and Drive grant cache wh
                 driveFileId: "drive_1",
               }];
             }
+            if (table === "googleDriveFileGrants") return [{ _id: "grant_1" }];
             return [];
           },
           collect: async () => {
-            if (table === "documentVersions") {
-              return [{
-                _id: "version_1",
-                extractionTextStorageId: "storage_text",
-                extractionMarkdownStorageId: "storage_markdown",
-              }];
-            }
             if (table === "fileAttachments") {
               return [{ _id: "attachment_1", userId: "user_1", storageId: "storage_drive" }];
             }
-            if (table === "googleDriveFileGrants") {
-              return [{ _id: "grant_1" }];
-            }
             return [];
           },
+          first: async () => null,
+          unique: async () => null,
         }),
       }),
       delete: async (id: string) => {
@@ -344,13 +363,23 @@ test("deleteChatGraph removes document extraction blobs and Drive grant cache wh
         }
       },
     },
-    scheduler: { runAfter: async () => assert.fail("should not schedule") },
+    scheduler: {
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+      },
+    },
   } as any, "chat_1" as any);
 
-  assert.deepEqual(storageDeleted, ["storage_text", "storage_markdown", "storage_drive"]);
+  assert.deepEqual(storageDeleted, [
+    "storage_text",
+    "storage_markdown",
+    "storage_version",
+    "storage_drive",
+  ]);
   assert.ok(deleted.includes("grant_1"));
   assert.ok(deleted.includes("version_1"));
-  assert.ok(deleted.includes("document_1"));
+  assert.equal(deleted.includes("document_1"), false);
   assert.ok(deleted.includes("attachment_1"));
-  assert.ok(deleted.includes("chat_1"));
+  assert.equal(deleted.includes("chat_1"), false);
+  assert.deepEqual(scheduled, [{ chatId: "chat_1" }]);
 });

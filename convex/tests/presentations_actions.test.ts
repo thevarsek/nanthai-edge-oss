@@ -189,6 +189,64 @@ test("planProject uses stored BYOK and user default model, then persists the out
   });
 });
 
+test("workflow planning resumes after a committed begin step without poisoning retries", async () => {
+  const mutations: string[] = [];
+  const deps = createPresentationActionDepsForTest({
+    ...authAndKey,
+    callOpenRouterNonStreaming: async () => openRouterResult(JSON.stringify({
+      schemaVersion: 1,
+      title: "Recovered plan",
+      slides: [
+        {
+          id: "slide_01",
+          title: "Recovered",
+          purpose: "Resume after begin commit",
+          layout: "editorial hero",
+          imageIntent: "",
+        },
+      ],
+    })),
+  });
+  const ctx = buildCtx({
+    project: project({ status: "planning", revision: 1 }),
+    mutations: async (name) => {
+      mutations.push(name);
+      if (name === refs.completePlanning) {
+        return { projectId: "project_1", projectRevision: 2 };
+      }
+      throw new Error(`Unexpected mutation ${name}`);
+    },
+  });
+  const result = await planProjectHandler(ctx, {
+    projectId: "project_1" as any,
+    prompt: "Resume this plan",
+    direction: "editorial",
+    imageMode: "none",
+  }, deps, { workflowManaged: true });
+  assert.equal(result.projectRevision, 2);
+  assert.deepEqual(mutations, [refs.completePlanning]);
+
+  const failedMutations: string[] = [];
+  await assert.rejects(planProjectHandler(buildCtx({
+    project: project({ status: "planning", revision: 1 }),
+    mutations: async (name) => {
+      failedMutations.push(name);
+      throw new Error(`Unexpected mutation ${name}`);
+    },
+  }), {
+    projectId: "project_1" as any,
+    prompt: "Resume this plan",
+    direction: "editorial",
+    imageMode: "none",
+  }, createPresentationActionDepsForTest({
+    ...authAndKey,
+    callOpenRouterNonStreaming: async () => {
+      throw new Error("transient provider failure");
+    },
+  }), { workflowManaged: true }), /transient provider failure/);
+  assert.deepEqual(failedMutations, []);
+});
+
 test("AI presentation actions enforce Pro before reading the stored key", async () => {
   let keyRead = false;
   const deps = createPresentationActionDepsForTest({

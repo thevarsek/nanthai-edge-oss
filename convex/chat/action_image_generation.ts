@@ -34,6 +34,7 @@ export async function runDedicatedImageGeneration(args: {
   maxInputReferences?: number;
   supportedParameters?: ImageSupportedParameters;
   requireZdr: boolean;
+  onProviderDispatch?: () => Promise<void>;
 }): Promise<{
   usage: OpenRouterUsage | null;
   generationId: string | null;
@@ -55,6 +56,7 @@ export async function runDedicatedImageGeneration(args: {
     supportedParameters: args.supportedParameters,
     requireZdr: args.requireZdr,
     triggerUserMessageId: args.generation.userMessageId,
+    onProviderDispatch: args.onProviderDispatch,
   });
   return {
     usage: generated.usage,
@@ -79,6 +81,7 @@ export async function dispatchDedicatedImageGeneration(args: {
   supportedParameters?: ImageSupportedParameters;
   requireZdr: boolean;
   triggerUserMessageId?: Id<"messages">;
+  onProviderDispatch?: () => Promise<void>;
 }): Promise<{
   usage: OpenRouterUsage | null;
   generationId: string | null;
@@ -129,6 +132,7 @@ export async function dispatchDedicatedImageGeneration(args: {
 
   try {
     generated = await callOpenRouterImage(args.apiKey, request, {
+      onDispatch: args.onProviderDispatch,
       isCancelled: async () => await args.ctx.runQuery(
         internal.chat.queries.isJobCancelled,
         { jobId: args.jobId },

@@ -271,6 +271,38 @@ export interface ActiveJob {
   messageId?: Id<"messages">;
 }
 
+export interface ExecutionProjection {
+  runId: string;
+  attemptId?: string;
+  attemptNumber?: number;
+  fence?: number;
+  kind?: string;
+  domainType?: string;
+  domainId?: string;
+  parentRunId?: string;
+  state: string;
+  placement: "cloud" | "local";
+  executorKind?: string;
+  runtimeLabel?: string;
+  provider?: string;
+  modelId?: string;
+  phase?: string;
+  progress?: number;
+  checkpointRef?: string;
+  leaseExpiresAt?: number;
+  lastEventSequence?: number;
+  lastEventType?: string;
+  artifactIds?: string[];
+  lastEventSummary?: string;
+  updatedAt: number;
+  cancelAvailable: boolean;
+  cancelRequested: boolean;
+  needsInput: boolean;
+  needsPermission: boolean;
+  terminalOutcome?: string;
+  terminalSummary?: string;
+}
+
 export interface SendMessageArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
   text: string;
@@ -341,6 +373,7 @@ export interface UseChatReturn {
   chat: Chat | null | undefined;
   messages: Message[];
   activeJobs: ActiveJob[];
+  executionRuns: ExecutionProjection[];
   isLoading: boolean;
   isGenerating: boolean;
   sendMessage: (args: SendMessageArgs) => Promise<{
@@ -400,6 +433,11 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
     chatId ? { chatId } : "skip",
   ) as ActiveJob[] | undefined;
 
+  const executionRuns = useQuery(
+    api.execution.queries.listMyRunProjections,
+    chatId ? { chatId, limit: 50 } : "skip",
+  ) as ExecutionProjection[] | undefined;
+
   // ── Derived state ──────────────────────────────────────────────────────────
   const messages = useMemo<Message[]>(
     () => {
@@ -410,9 +448,11 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
   );
 
   const isLoading = chat === undefined || rawMessages === undefined;
-  const isGenerating =
-    (activeJobs?.length ?? 0) > 0 ||
+  const legacyIsGenerating = (activeJobs?.length ?? 0) > 0 ||
     messages.some((message) => message.status === "streaming" || message.status === "pending");
+  const isGenerating = executionRuns === undefined
+    ? legacyIsGenerating
+    : executionRuns.some((run) => !["completed", "failed", "cancelled"].includes(run.state));
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const sendMessageMutation = useMutation(api.chat.mutations.sendMessage);
@@ -600,6 +640,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
     chat: chat ?? null,
     messages,
     activeJobs: (activeJobs as ActiveJob[]) ?? [],
+    executionRuns: executionRuns ?? [],
     isLoading,
     isGenerating,
     sendMessage,

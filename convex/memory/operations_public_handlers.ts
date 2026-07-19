@@ -236,9 +236,8 @@ export async function createManualHandler(
 export async function deleteAllHandler(ctx: MutationCtx): Promise<void> {
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
-  // P2-12: Process a single batch per mutation. If more remain, schedule
-  // a continuation to avoid blowing Convex transaction limits on large
-  // memory collections.
+  // Process a single batch per mutation. Workpool provides bounded,
+  // retryable continuation without building a scheduler chain.
   const BATCH_SIZE = 100;
   const batch = await ctx.db
     .query("memories")
@@ -248,7 +247,7 @@ export async function deleteAllHandler(ctx: MutationCtx): Promise<void> {
     await deleteMemoryWithDerivedData(ctx, memory._id, userId);
   }
   if (batch.length === BATCH_SIZE) {
-    await ctx.scheduler.runAfter(0, internal.memory.operations_internal.deleteAllContinuation, { userId });
+    await ctx.runMutation(internal.execution.maintenance_bulk_queues.enqueueMemoryBulkDelete, { userId });
   }
 }
 
@@ -256,7 +255,7 @@ export async function approveAllHandler(ctx: MutationCtx): Promise<number> {
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
   const now = Date.now();
-  // P2-12: Single batch per mutation with self-scheduling continuation.
+  // Single batch per mutation with a Workpool continuation.
   const BATCH_SIZE = 100;
   const batch = await ctx.db
     .query("memories")
@@ -266,7 +265,7 @@ export async function approveAllHandler(ctx: MutationCtx): Promise<number> {
     await ctx.db.patch(memory._id, { isPending: false, updatedAt: now });
   }
   if (batch.length === BATCH_SIZE) {
-    await ctx.scheduler.runAfter(0, internal.memory.operations_internal.approveAllContinuation, { userId });
+    await ctx.runMutation(internal.execution.maintenance_bulk_queues.enqueueMemoryBulkApprove, { userId });
   }
   return batch.length;
 }
@@ -274,7 +273,7 @@ export async function approveAllHandler(ctx: MutationCtx): Promise<number> {
 export async function rejectAllHandler(ctx: MutationCtx): Promise<number> {
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
-  // P2-12: Single batch per mutation with self-scheduling continuation.
+  // Single batch per mutation with a Workpool continuation.
   const BATCH_SIZE = 100;
   const batch = await ctx.db
     .query("memories")
@@ -284,7 +283,7 @@ export async function rejectAllHandler(ctx: MutationCtx): Promise<number> {
     await deleteMemoryWithDerivedData(ctx, memory._id, userId);
   }
   if (batch.length === BATCH_SIZE) {
-    await ctx.scheduler.runAfter(0, internal.memory.operations_internal.rejectAllContinuation, { userId });
+    await ctx.runMutation(internal.execution.maintenance_bulk_queues.enqueueMemoryBulkReject, { userId });
   }
   return batch.length;
 }

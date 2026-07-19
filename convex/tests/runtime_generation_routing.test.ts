@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 
 import { runGenerationParticipantRuntimeHandler } from "../chat/actions_run_generation_participant_runtime";
 import {
@@ -12,6 +12,7 @@ import {
   classifyToolRuntimeSafety,
 } from "../tools/runtime_safety";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
+import { OPENROUTER_ACTION_BUDGET_MS } from "../lib/openrouter_constants";
 
 function baseRuntimeArgs(overrides: Record<string, unknown> = {}) {
   return {
@@ -177,6 +178,33 @@ test("runGenerationParticipantRuntimeHandler delegates direct node-required runt
   assert.equal(delegatedArgs.length, 1);
 });
 
+test("runtime delegation preserves the provider deadline anchored before delayed routing preflight", async (t) => {
+  t.after(() => mock.restoreAll());
+  let now = 1_000;
+  mock.method(Date, "now", () => now);
+  const delegatedArgs: Array<Record<string, unknown>> = [];
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        now = 91_000;
+        return { hasVideoGeneration: true, hasAudioOutput: false };
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runAction: async (_ref: unknown, args: Record<string, unknown>) => {
+      delegatedArgs.push(args);
+    },
+  });
+
+  await runGenerationParticipantRuntimeHandler(ctx, baseRuntimeArgs());
+
+  assert.equal(
+    delegatedArgs[0]?.providerDeadlineAt,
+    1_000 + OPENROUTER_ACTION_BUDGET_MS,
+  );
+  assert.equal(now, 91_000);
+});
+
 test("runGenerationParticipantRuntimeHandler terminally fails an active job when the Node worker times out", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   let jobQueries = 0;
@@ -213,7 +241,7 @@ test("runGenerationParticipantRuntimeHandler terminally fails an active job when
   assert.ok(mutations.some((args) => args.jobId === "job_1"));
 });
 
-test("runGenerationParticipantRuntimeHandler exits when expected continuation cannot be claimed", async () => {
+test("runGenerationParticipantRuntimeHandler fails when expected continuation cannot be claimed", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
   let jobQueryCount = 0;
   const ctx = createMockCtx({
@@ -236,9 +264,12 @@ test("runGenerationParticipantRuntimeHandler exits when expected continuation ca
     },
   });
 
-  await runGenerationParticipantRuntimeHandler(
-    ctx,
-    baseRuntimeArgs({ resumeExpected: true }),
+  await assert.rejects(
+    runGenerationParticipantRuntimeHandler(
+      ctx,
+      baseRuntimeArgs({ resumeExpected: true }),
+    ),
+    /GENERATION_CONTINUATION_NOT_CLAIMABLE/,
   );
 
   assert.equal(jobQueryCount, 1);

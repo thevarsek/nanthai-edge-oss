@@ -66,7 +66,7 @@ test("runGenerationParticipantHandler finalizes and clears state before rethrowi
 
   assert.deepEqual(
     mutationCalls.filter((args) => Object.keys(args).length === 1 && args.jobId === "job_1"),
-    [{ jobId: "job_1" }, { jobId: "job_1" }, { jobId: "job_1" }],
+    [{ jobId: "job_1" }, { jobId: "job_1" }, { jobId: "job_1" }, { jobId: "job_1" }],
   );
   assert.ok(
     mutationCalls.some((args) =>
@@ -79,7 +79,7 @@ test("runGenerationParticipantHandler finalizes and clears state before rethrowi
   );
 });
 
-test("runGenerationParticipantHandler exits when expected continuation cannot be claimed", async () => {
+test("runGenerationParticipantHandler fails when expected continuation cannot be claimed", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
   let queryCount = 0;
 
@@ -94,9 +94,12 @@ test("runGenerationParticipantHandler exits when expected continuation cannot be
     },
   });
 
-  await runGenerationParticipantHandler(
-    ctx,
-    baseRunGenerationParticipantArgs({ resumeExpected: true }),
+  await assert.rejects(
+    runGenerationParticipantHandler(
+      ctx,
+      baseRunGenerationParticipantArgs({ resumeExpected: true }),
+    ),
+    /GENERATION_CONTINUATION_NOT_CLAIMABLE/,
   );
 
   assert.deepEqual(mutationCalls, [{ jobId: "job_1" }]);

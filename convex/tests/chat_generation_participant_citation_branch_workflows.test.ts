@@ -21,6 +21,7 @@ function makeRegistry() {
   const registry = new ToolRegistry();
   registry.register(createTool({
     name: "noop_tool",
+    effectPolicy: { effect: "read", retry: "safe" },
     description: "No-op test tool",
     parameters: { type: "object", properties: {} },
     execute: async () => ({ success: true, data: { ok: true } }),

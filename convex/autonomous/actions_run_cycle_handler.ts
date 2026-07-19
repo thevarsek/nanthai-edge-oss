@@ -176,7 +176,7 @@ export async function runCycleHandler(
       );
       if (!stillRunning) return;
 
-      await ctx.scheduler.runAfter(0, internal.autonomous.actions.runCycle, {
+      if (!args.workflowManaged) await ctx.scheduler.runAfter(0, internal.autonomous.actions.runCycle, {
         sessionId: args.sessionId,
         cycle: args.cycle + 1,
         startParticipantIndex: 0,
@@ -200,5 +200,6 @@ export async function runCycleHandler(
       args.sessionId,
       reason,
     );
+    if (args.workflowManaged) throw error;
   }
 }

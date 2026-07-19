@@ -1,20 +1,20 @@
 // convex/memory/operations_internal.ts
 // =============================================================================
-// Internal mutations for memory bulk operations (continuation batches).
-// P2-12: These are scheduled by the public deleteAll/approveAll/rejectAll
-// handlers when a single batch wasn't enough.
+// Internal mutations for memory bulk operations (Workpool continuation batches).
 // =============================================================================
 
 import { internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import { deleteMemoryWithDerivedData } from "./cleanup";
+import { isUserDataWritable } from "../lib/write_fence";
 
 const BATCH_SIZE = 100;
 
 export const deleteAllContinuation = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    if (!await isUserDataWritable(ctx, args.userId)) return;
     const batch = await ctx.db
       .query("memories")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
@@ -23,7 +23,9 @@ export const deleteAllContinuation = internalMutation({
       await deleteMemoryWithDerivedData(ctx, memory._id, args.userId);
     }
     if (batch.length === BATCH_SIZE) {
-      await ctx.scheduler.runAfter(0, internal.memory.operations_internal.deleteAllContinuation, { userId: args.userId });
+      await ctx.runMutation(internal.execution.maintenance_bulk_queues.enqueueMemoryBulkDelete, {
+        userId: args.userId,
+      });
     }
   },
 });
@@ -31,6 +33,7 @@ export const deleteAllContinuation = internalMutation({
 export const approveAllContinuation = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    if (!await isUserDataWritable(ctx, args.userId)) return;
     const now = Date.now();
     const batch = await ctx.db
       .query("memories")
@@ -40,7 +43,9 @@ export const approveAllContinuation = internalMutation({
       await ctx.db.patch(memory._id, { isPending: false, updatedAt: now });
     }
     if (batch.length === BATCH_SIZE) {
-      await ctx.scheduler.runAfter(0, internal.memory.operations_internal.approveAllContinuation, { userId: args.userId });
+      await ctx.runMutation(internal.execution.maintenance_bulk_queues.enqueueMemoryBulkApprove, {
+        userId: args.userId,
+      });
     }
   },
 });
@@ -48,6 +53,7 @@ export const approveAllContinuation = internalMutation({
 export const rejectAllContinuation = internalMutation({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
+    if (!await isUserDataWritable(ctx, args.userId)) return;
     const batch = await ctx.db
       .query("memories")
       .withIndex("by_user_pending", (q) => q.eq("userId", args.userId).eq("isPending", true))
@@ -56,7 +62,9 @@ export const rejectAllContinuation = internalMutation({
       await deleteMemoryWithDerivedData(ctx, memory._id, args.userId);
     }
     if (batch.length === BATCH_SIZE) {
-      await ctx.scheduler.runAfter(0, internal.memory.operations_internal.rejectAllContinuation, { userId: args.userId });
+      await ctx.runMutation(internal.execution.maintenance_bulk_queues.enqueueMemoryBulkReject, {
+        userId: args.userId,
+      });
     }
   },
 });

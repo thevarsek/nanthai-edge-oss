@@ -26,6 +26,17 @@ test("non-stream deadline caps each attempt to the remaining total budget", () =
   assert.throws(() => nextAttemptTimeoutMs(deadline, 3_000), /total timeout/i);
 });
 
+test("non-stream deadline honors an earlier action-entry deadline", () => {
+  const deadline = createNonStreamingDeadline({
+    requestTimeoutMs: 5_000,
+    totalTimeoutMs: 5_000,
+    absoluteDeadlineAtMs: 1_500,
+  }, 1_000);
+
+  assert.equal(nextAttemptTimeoutMs(deadline, 1_000), 500);
+  assert.throws(() => nextAttemptTimeoutMs(deadline, 1_500), /total timeout/i);
+});
+
 test("non-stream deadline stops a fallback after the primary consumes the total budget", async () => {
   let now = 0;
   let fetchCount = 0;

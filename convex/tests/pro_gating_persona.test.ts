@@ -16,6 +16,7 @@ import { retryMessageHandler } from "../chat/mutations_retry_handler";
 function buildCtx(isPro: boolean) {
   const inserts: Array<[string, Record<string, unknown>]> = [];
   const patches: Array<[string, Record<string, unknown>]> = [];
+  const inserted = new Map<string, Record<string, unknown>>();
 
   return {
     inserts,
@@ -26,6 +27,7 @@ function buildCtx(isPro: boolean) {
       },
       db: {
         get: async (id: string) => {
+          if (inserted.has(id)) return inserted.get(id);
           if (id === "chat_1") {
             return {
               _id: "chat_1",
@@ -55,10 +57,14 @@ function buildCtx(isPro: boolean) {
         },
         insert: async (table: string, value: Record<string, unknown>) => {
           inserts.push([table, value]);
-          return `${table}_id`;
+          const id = `${table}_${inserts.length}`;
+          inserted.set(id, { _id: id, ...value });
+          return id;
         },
         patch: async (id: string, patch: Record<string, unknown>) => {
           patches.push([id, patch]);
+          const existing = inserted.get(id);
+          if (existing) inserted.set(id, { ...existing, ...patch });
         },
         query: (table: string) => {
           if (table === "usageRecords") {
@@ -82,6 +88,7 @@ function buildCtx(isPro: boolean) {
             withIndex: () => ({
               first: async () => null,
               collect: async () => [],
+              unique: async () => null,
             }),
           };
         },

@@ -5,6 +5,7 @@ import {
   normalizeMemoryRecord,
   type MemoryRecordLike,
 } from "./shared";
+import { isUserDataWritable } from "../lib/write_fence";
 
 export type MemoryRelationshipType = "related" | "sameTopic" | "supersedes";
 export type MemoryRelationshipSource = "embedding" | "metadata" | "lifecycle";
@@ -96,7 +97,11 @@ export async function replaceRelationshipsForMemoryHandler(
   },
 ): Promise<number> {
   const memory = await ctx.db.get(args.memoryId);
-  if (!memory || memory.userId !== args.userId) return 0;
+  if (
+    !memory
+    || memory.userId !== args.userId
+    || !await isUserDataWritable(ctx, args.userId, memory.sourceChatId)
+  ) return 0;
 
   const existing = await ctx.db
     .query("memoryRelationships")

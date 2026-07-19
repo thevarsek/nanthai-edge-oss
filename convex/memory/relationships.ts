@@ -90,7 +90,7 @@ export const backfillMine = mutation({
       .take(500);
     const candidates = memories.filter((memory) => memory.relationshipsBuiltAt == null);
     for (const memory of candidates) {
-      await ctx.scheduler.runAfter(0, internal.memory.relationships.rebuildForMemory, {
+      await ctx.scheduler.runAfter(0, internal.execution.workload_queues.enqueueMemoryRelationship, {
         memoryId: memory._id,
       });
     }

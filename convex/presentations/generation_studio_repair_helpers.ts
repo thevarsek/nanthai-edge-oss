@@ -14,6 +14,7 @@ import {
   storePresentationRepairCandidate,
 } from "./repair_candidate_storage";
 import type { ParsedPresentationSlide } from "./types";
+import { presentationExecutionIdentity } from "./generation_execution_identity";
 
 export type StudioAttemptOutcome = {
   handled: boolean;
@@ -42,12 +43,15 @@ export async function queueStudioRepair(args: {
   const attempt = args.context.batch.repairAttempt + 1;
   if (attempt > MAX_PRESENTATION_GENERATION_REPAIR_ATTEMPTS) return false;
   const candidateStorageId = args.candidateContent
-    ? await storePresentationRepairCandidate(args.ctx, args.candidateContent)
+    ? await storePresentationRepairCandidate(args.ctx, args.candidateContent, {
+      scheduleLegacyCleanup: !args.context.project.workflowId,
+    })
     : undefined;
   try {
     const queued = await args.ctx.runMutation(queuePresentationStudioRepairRef, {
       runId: args.context.run._id,
       batchId: args.context.batch._id,
+      ...presentationExecutionIdentity(args.context.run),
       repairAttempt: attempt,
       ...(candidateStorageId ? { candidateStorageId } : {}),
       ...(args.targetSlideId ? { targetSlideId: args.targetSlideId } : {}),
@@ -74,6 +78,7 @@ export async function completeStudioDeck(
   await ctx.runMutation(completePresentationStudioBatchRef, {
     runId: context.run._id,
     batchId: context.batch._id,
+    ...presentationExecutionIdentity(context.run),
     slides,
     effectiveModelId,
     ...(allowLayoutIssues ? { allowLayoutIssues: true } : {}),

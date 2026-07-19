@@ -55,6 +55,25 @@ export async function copyMessagesWithIdMap(
       buildCopiedMessageInsert(msg, newChatId, newParentIds),
     );
 
+    const attachmentRefs = await ctx.db
+      .query("fileAttachments")
+      .withIndex("by_message", (query) => query.eq("messageId", msg._id))
+      .collect();
+    for (const attachment of attachmentRefs) {
+      await ctx.db.insert("fileAttachments", {
+        userId: attachment.userId,
+        chatId: newChatId,
+        messageId: newMsgId,
+        storageId: attachment.storageId,
+        filename: attachment.filename,
+        mimeType: attachment.mimeType,
+        sizeBytes: attachment.sizeBytes,
+        createdAt: attachment.createdAt,
+        driveFileId: attachment.driveFileId,
+        lastRefreshedAt: attachment.lastRefreshedAt,
+      });
+    }
+
     idMap.set(msg._id as string, newMsgId as string);
     copiedMessages.push({
       messageId: newMsgId,

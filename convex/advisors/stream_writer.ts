@@ -12,13 +12,16 @@ export class AdvisorStreamWriter {
   private lastFlushAt = 0;
   private readonly ctx: ActionCtx;
   private readonly runId: Id<"advisorRuns">;
+  private readonly leaseOwner: string;
 
   constructor(
     ctx: ActionCtx,
     runId: Id<"advisorRuns">,
+    leaseOwner: string,
   ) {
     this.ctx = ctx;
     this.runId = runId;
+    this.leaseOwner = leaseOwner;
   }
 
   get totalContent(): string {
@@ -45,7 +48,7 @@ export class AdvisorStreamWriter {
     if (this.pendingChars === 0) return;
     const accepted = await this.ctx.runMutation(
       internal.advisors.mutations_internal.updateRunStreaming,
-      { runId: this.runId, partialAdvice: this.content },
+      { runId: this.runId, leaseOwner: this.leaseOwner, partialAdvice: this.content },
     );
     if (!accepted) throw new Error("Advisor consultation cancelled");
     this.pendingChars = 0;

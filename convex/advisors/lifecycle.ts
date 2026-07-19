@@ -5,7 +5,15 @@ import { scheduleBackendAnalytics } from "../analytics/backend_events";
 import type { OpenRouterUsage } from "../lib/openrouter_types";
 import { conciseAdvisorFailure } from "../lib/openrouter_responses_error";
 import { isTerminalAdvisorRun } from "./shared";
-import type { DeferredGenerationSnapshot } from "./types";
+import type { WorkId } from "@convex-dev/workpool";
+import { interactiveWorkpool } from "../execution/components";
+import { durableWorkflow } from "../execution/components";
+import type { WorkflowId } from "@convex-dev/workflow";
+import { ADVISOR_BATCH_TERMINAL_EVENT } from "./advisor_workflow";
+import { heartbeatAdvisorBatch } from "./execution_lifecycle";
+import { cancelAssistantGenerationRows } from "./cancel_generation_rows";
+import { scheduleLegacyDeferredGeneration } from "./legacy_deferred_generation";
+import { effectiveUsageCost, terminalStage } from "./terminal_helpers";
 
 type RunTerminalStatus = Extract<
   Doc<"advisorRuns">["status"],
@@ -26,11 +34,17 @@ export async function finalizeAdvisorRun(
     replayItems?: unknown[];
     usage?: OpenRouterUsage;
   },
-): Promise<{ changed: boolean; batchId?: Id<"advisorBatches">; allTerminal: boolean }> {
+): Promise<{
+  changed: boolean;
+  batchId?: Id<"advisorBatches">;
+  allTerminal: boolean;
+}> {
   const run = await ctx.db.get(args.runId);
   if (!run || isTerminalAdvisorRun(run.status)) {
     return { changed: false, batchId: run?.batchId, allTerminal: true };
   }
+  const owningBatch = await ctx.db.get(run.batchId);
+  if (owningBatch) await heartbeatAdvisorBatch(ctx, owningBatch);
   const now = Date.now();
   const stage = terminalStage(args.status);
   await ctx.db.patch(run._id, {
@@ -40,9 +54,10 @@ export async function finalizeAdvisorRun(
     partialAdvice: args.advice ?? run.partialAdvice,
     actualModelId: args.actualModelId,
     errorCode: args.errorCode,
-    errorMessage: args.errorMessage === undefined
-      ? undefined
-      : conciseAdvisorFailure(args.errorMessage),
+    errorMessage:
+      args.errorMessage === undefined
+        ? undefined
+        : conciseAdvisorFailure(args.errorMessage),
     responseId: args.responseId,
     outputItemId: args.outputItemId,
     replayItems: args.replayItems,
@@ -58,18 +73,27 @@ export async function finalizeAdvisorRun(
     const batch = await ctx.db.get(run.batchId);
     const messageId = batch?.assistantMessageIds[0];
     if (batch && messageId) {
-      await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
-        messageId,
-        chatId: batch.chatId,
-        userId: batch.userId,
-        modelId: args.actualModelId ?? run.requestedModelId,
-        ...args.usage,
-        source: "advisor",
-        generationId: args.responseId,
-      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.chat.mutations.storeAncillaryCost,
+        {
+          messageId,
+          chatId: batch.chatId,
+          userId: batch.userId,
+          modelId: args.actualModelId ?? run.requestedModelId,
+          ...args.usage,
+          source: "advisor",
+          generationId: args.responseId,
+        },
+      );
     }
   }
-  const allTerminal = await updateBatchAndSchedule(ctx, run.batchId, run._id, args.status);
+  const allTerminal = await updateBatchAndSchedule(
+    ctx,
+    run.batchId,
+    run._id,
+    args.status,
+  );
   return { changed: true, batchId: run.batchId, allTerminal };
 }
 
@@ -77,7 +101,11 @@ export async function cancelAdvisorBatchRows(
   ctx: MutationCtx,
   batch: Doc<"advisorBatches">,
 ): Promise<boolean> {
-  if (batch.status === "completed" || batch.status === "failed" || batch.status === "cancelled") {
+  if (
+    batch.status === "completed" ||
+    batch.status === "failed" ||
+    batch.status === "cancelled"
+  ) {
     return false;
   }
   const now = Date.now();
@@ -87,6 +115,11 @@ export async function cancelAdvisorBatchRows(
     .collect();
   for (const run of runs) {
     await cancelScheduled(ctx, run.scheduledFunctionId);
+    if (run.workpoolOperationId) {
+      await interactiveWorkpool
+        .cancel(ctx, run.workpoolOperationId as WorkId)
+        .catch(() => undefined);
+    }
     await cancelScheduled(ctx, run.watchdogScheduledFunctionId);
     if (!isTerminalAdvisorRun(run.status)) {
       await ctx.db.patch(run._id, {
@@ -98,14 +131,43 @@ export async function cancelAdvisorBatchRows(
         completedAt: now,
         updatedAt: now,
       });
-      await scheduleAdvisorFailureAnalytics(ctx, run, "cancelled", "ADVISOR_CANCELLED");
+      await scheduleAdvisorFailureAnalytics(
+        ctx,
+        run,
+        "cancelled",
+        "ADVISOR_CANCELLED",
+      );
+    }
+  }
+  if (batch.workflowId) {
+    await durableWorkflow
+      .cancel(ctx, batch.workflowId as WorkflowId)
+      .catch(() => undefined);
+  }
+  if ((batch.generationSnapshot as { kind?: string }).kind === "research_paper") {
+    for (const operationId of batch.generationOperationIds ?? []) {
+      await durableWorkflow
+        .cancel(ctx, operationId as WorkflowId)
+        .catch(() => undefined);
     }
   }
   for (const scheduledId of batch.scheduledFinalGenerationIds ?? []) {
     await cancelScheduled(ctx, scheduledId);
   }
   await cancelScheduled(ctx, batch.scheduledFinalGenerationId);
-  await cancelAssistantGenerationRows(ctx, batch.assistantMessageIds, now);
+  await cancelAssistantGenerationRows(
+    ctx,
+    batch.assistantMessageIds,
+    batch.userId,
+    now,
+  );
+  if (batch.executionRunId) {
+    await ctx.scheduler.runAfter(0, internal.execution.teardown.cancelRunTree, {
+      runId: batch.executionRunId,
+      requestedBy: batch.userId,
+      reason: "Advisor batch cancelled",
+    });
+  }
   await ctx.db.patch(batch._id, { status: "cancelled", updatedAt: now });
   return true;
 }
@@ -115,7 +177,11 @@ export async function stopAdvisorBatchConsultations(
   ctx: MutationCtx,
   batch: Doc<"advisorBatches">,
 ): Promise<boolean> {
-  if (batch.status === "completed" || batch.status === "failed" || batch.status === "cancelled") {
+  if (
+    batch.status === "completed" ||
+    batch.status === "failed" ||
+    batch.status === "cancelled"
+  ) {
     return false;
   }
   const runs = await ctx.db
@@ -132,10 +198,16 @@ export async function stopAdvisorBatchConsultations(
       runId: run._id,
       status: "cancelled",
       errorCode: "ADVISOR_CANCELLED",
-      errorMessage: "Advisor consultation stopped. The main response continued.",
+      errorMessage:
+        "Advisor consultation stopped. The main response continued.",
     });
     if (finalization.changed) {
-      await scheduleAdvisorFailureAnalytics(ctx, run, "cancelled", "ADVISOR_CANCELLED");
+      await scheduleAdvisorFailureAnalytics(
+        ctx,
+        run,
+        "cancelled",
+        "ADVISOR_CANCELLED",
+      );
     }
   }
   return stopped;
@@ -148,17 +220,23 @@ export async function scheduleAdvisorFailureAnalytics(
   errorCode: string,
 ): Promise<void> {
   const origin = run.startedAt ?? run.createdAt;
-  await scheduleBackendAnalytics(ctx, run.userId, "advisor_consultation_failed", {
-    chat_id: String(run.chatId),
-    advisor_batch_id: String(run.batchId),
-    advisor_run_id: String(run._id),
-    persona_id: String(run.personaId),
-    model_id: run.requestedModelId,
-    web_search_enabled: run.allowWebSearch,
-    duration_ms: typeof origin === "number" ? Math.max(0, Date.now() - origin) : null,
-    status,
-    error_code: errorCode,
-  });
+  await scheduleBackendAnalytics(
+    ctx,
+    run.userId,
+    "advisor_consultation_failed",
+    {
+      chat_id: String(run.chatId),
+      advisor_batch_id: String(run.batchId),
+      advisor_run_id: String(run._id),
+      persona_id: String(run.personaId),
+      model_id: run.requestedModelId,
+      web_search_enabled: run.allowWebSearch,
+      duration_ms:
+        typeof origin === "number" ? Math.max(0, Date.now() - origin) : null,
+      status,
+      error_code: errorCode,
+    },
+  );
 }
 
 async function updateBatchAndSchedule(
@@ -173,9 +251,15 @@ async function updateBatchAndSchedule(
     .query("advisorRuns")
     .withIndex("by_batch", (query) => query.eq("batchId", batchId))
     .collect();
-  const statuses = runs.map((run) => run._id === changedRunId ? changedStatus : run.status);
-  const completedRunCount = statuses.filter((status) => status === "completed").length;
-  const failedRunCount = statuses.filter((status) => status === "failed" || status === "timedOut").length;
+  const statuses = runs.map((run) =>
+    run._id === changedRunId ? changedStatus : run.status,
+  );
+  const completedRunCount = statuses.filter(
+    (status) => status === "completed",
+  ).length;
+  const failedRunCount = statuses.filter(
+    (status) => status === "failed" || status === "timedOut",
+  ).length;
   const allTerminal = statuses.every(isTerminalAdvisorRun);
   const patch: Partial<Doc<"advisorBatches">> = {
     completedRunCount,
@@ -183,76 +267,22 @@ async function updateBatchAndSchedule(
     status: allTerminal ? "synthesizing" : "running",
     updatedAt: Date.now(),
   };
-  if (allTerminal && batch.scheduledFinalGenerationAt == null) {
-    const scheduledIds = await scheduleDeferredGeneration(ctx, batch.generationSnapshot);
+  if (allTerminal && batch.workflowId) {
+    await durableWorkflow.sendEvent(ctx, {
+      workflowId: batch.workflowId as WorkflowId,
+      name: ADVISOR_BATCH_TERMINAL_EVENT,
+    });
+  } else if (allTerminal && batch.scheduledFinalGenerationAt == null) {
+    const scheduledIds = await scheduleLegacyDeferredGeneration(
+      ctx,
+      batch.generationSnapshot,
+    );
     patch.scheduledFinalGenerationAt = Date.now();
     patch.scheduledFinalGenerationId = scheduledIds[0];
     patch.scheduledFinalGenerationIds = scheduledIds;
   }
   await ctx.db.patch(batch._id, patch);
   return allTerminal;
-}
-
-async function scheduleDeferredGeneration(
-  ctx: MutationCtx,
-  rawSnapshot: unknown,
-): Promise<Array<Id<"_scheduled_functions">>> {
-  const snapshot = rawSnapshot as DeferredGenerationSnapshot;
-  if (snapshot.kind === "generation" && snapshot.args) {
-    const scheduled = await ctx.scheduler.runAfter(
-      0,
-      internal.chat.actions_runtime.runGeneration,
-      { ...snapshot.args, enqueuedAt: Date.now() },
-    );
-    return [scheduled];
-  }
-  if (snapshot.kind === "advanced_search" && Array.isArray(snapshot.requests)) {
-    return await Promise.all(snapshot.requests.map((request) =>
-      ctx.scheduler.runAfter(0, internal.search.actions.runWebSearch, request)
-    ));
-  }
-  if (snapshot.kind === "research_paper" && snapshot.request) {
-    const scheduled = await ctx.scheduler.runAfter(
-      0,
-      internal.search.workflow.researchPaperPipeline,
-      snapshot.request,
-    );
-    return [scheduled];
-  }
-  throw new Error("Invalid deferred Advisor generation snapshot");
-}
-
-async function cancelAssistantGenerationRows(
-  ctx: MutationCtx,
-  messageIds: Id<"messages">[],
-  now: number,
-): Promise<void> {
-  for (const messageId of messageIds) {
-    const jobs = await ctx.db
-      .query("generationJobs")
-      .withIndex("by_message", (query) => query.eq("messageId", messageId))
-      .collect();
-    for (const job of jobs) {
-      await cancelScheduled(ctx, job.scheduledFunctionId);
-      if (job.status === "queued" || job.status === "streaming") {
-        await ctx.db.patch(job._id, {
-          status: "cancelled",
-          terminalErrorCode: "cancelled_by_user",
-          completedAt: now,
-        });
-      }
-      if (job.streamingMessageId) {
-        await ctx.db.patch(job.streamingMessageId, { status: "cancelled", updatedAt: now });
-      }
-    }
-    const message = await ctx.db.get(messageId);
-    if (message && (message.status === "pending" || message.status === "streaming")) {
-      await ctx.db.patch(messageId, {
-        status: "cancelled",
-        terminalErrorCode: "cancelled_by_user",
-      });
-    }
-  }
 }
 
 async function cancelScheduled(
@@ -265,15 +295,4 @@ async function cancelScheduled(
   } catch {
     // Already running or terminal.
   }
-}
-
-function effectiveUsageCost(usage: OpenRouterUsage | undefined): number | undefined {
-  return usage?.isByok === true && usage.upstreamInferenceCost != null
-    ? usage.upstreamInferenceCost
-    : usage?.cost;
-}
-
-function terminalStage(status: RunTerminalStatus): Doc<"advisorRuns">["stage"] {
-  if (status === "timedOut") return "timed_out";
-  return status;
 }

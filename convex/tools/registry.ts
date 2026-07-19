@@ -1,164 +1,28 @@
-// convex/tools/registry.ts
-// =============================================================================
-// Tool registry for the OpenRouter tool-calling pipeline.
-//
-// Tools are defined via `createTool()` and collected in a `ToolRegistry`.
-// The registry converts tools to OpenRouter `ToolDefinition[]` for the request
-// and dispatches tool-call execution by name.
-// =============================================================================
-
 import { ConvexError } from "convex/values";
 import type { Id } from "../_generated/dataModel";
-import { ActionCtx } from "../_generated/server";
 import { ToolCall, ToolDefinition } from "../lib/openrouter_types";
 import { artifactWriteBlockMessage } from "./artifact_write_policy";
+import { internal } from "../_generated/api";
+import { declaredToolEffectPolicy } from "./effect_policy_inventory";
+import type {
+  RegisteredTool,
+  ToolConfig,
+  ToolExecutionContext,
+  ToolParameterSchema,
+  ToolResult,
+} from "./registry_types";
+import { executeToolCallBatch } from "./tool_call_batch";
+import { canonicalizeRawJson, stableJsonStringify } from "./stable_json";
+export type {
+  PresentationToolContext,
+  RegisteredTool,
+  ToolConfig,
+  ToolDeferredPayload,
+  ToolExecutionContext,
+  ToolParameterSchema,
+  ToolResult,
+} from "./registry_types";
 
-// ---------------------------------------------------------------------------
-// Tool definition types
-// ---------------------------------------------------------------------------
-
-/**
- * JSON Schema for tool parameters, sent to the model so it knows what
- * arguments to produce. Uses the standard JSON Schema subset that OpenAI
- * and OpenRouter support.
- */
-export interface ToolParameterSchema {
-  type: "object";
-  properties: Record<string, unknown>;
-  required?: string[];
-  additionalProperties?: boolean;
-}
-
-/** Result returned by a tool's `execute` function. */
-export interface ToolResult {
-  /** Whether the tool executed successfully. */
-  success: boolean;
-  /** Serializable data to feed back to the model as the tool response. */
-  data: unknown;
-  /** Optional fuller payload for durable artifacts; never sent to the model. */
-  artifactData?: unknown;
-  /** Optional human-readable error message (when success=false). */
-  error?: string;
-  /**
-   * Optional deferred payload. When present, the caller may persist the tool
-   * result and resume the parent workflow later instead of immediately
-   * re-calling the model in the same action.
-   */
-  deferred?: ToolDeferredPayload;
-}
-
-export interface ToolDeferredPayload {
-  kind: "spawn_subagents" | "drive_picker" | "presentation_workflow";
-  data: unknown;
-}
-
-export interface PresentationToolContext {
-  projectId: Id<"presentationProjects">;
-  projectRevision: number;
-  slideId?: string;
-  slideRevision?: number;
-  elementId?: string;
-}
-
-/**
- * Context passed to every tool execution. Provides Convex ActionCtx plus
- * user-scoped metadata needed for authorization and file storage.
- */
-export interface ToolExecutionContext {
-  ctx: ActionCtx;
-  userId: string;
-  chatId?: string;
-  messageId?: string;
-  /** User message that triggered the current assistant generation. */
-  userMessageId?: string;
-  /** Server-owned presentation target selected on that user message. */
-  presentationContext?: PresentationToolContext;
-  /** Number of assistant participants scheduled from the triggering user turn. */
-  turnParticipantCount?: number;
-  /** True when the turn used explicit Ideascape parents instead of chat expansion. */
-  isIdeascapeTurn?: boolean;
-  jobId?: string;
-  /** Exact provider tool-call ID for the invocation currently being executed. */
-  toolCallId?: string;
-  generationKey?: string;
-  /** Current OpenRouter model for model-scoped helper tools. */
-  modelId?: string;
-  /** Whether helper tools must enforce OpenRouter provider.zdr. */
-  requireZdr?: boolean;
-  /**
-   * The Convex ID of the current sandbox session (if a Vercel sandbox is
-   * active for this chat). Set by data_python_sandbox after session upsert
-   * so artifact recording can link rows to the session for proper cascade
-   * deletion on account purge.
-   */
-  sandboxSessionId?: string;
-  /**
-   * Shared just-bash Sandbox for workspace tools within a single generation.
-   * Lazy-created on first workspace tool call and reused for all subsequent
-   * calls. The sandbox's in-memory filesystem persists across tool calls,
-   * eliminating per-call re-seeding.
-   *
-   * Callers MUST call `workspaceSandboxCleanup()` when the generation ends.
-   */
-  workspaceSandbox?: unknown;
-  /**
-   * Cleanup function that stops the workspace sandbox. Must be called in a
-   * finally block when the generation run completes (success or error).
-   */
-  workspaceSandboxCleanup?: () => Promise<void>;
-}
-
-/** Definition passed to `createTool()`. */
-export interface ToolConfig {
-  /** Unique tool name (snake_case by convention, e.g. "generate_docx"). */
-  name: string;
-  /** Human-readable description shown to the model. */
-  description: string;
-  /** JSON Schema describing the tool's parameters. */
-  parameters: ToolParameterSchema;
-  /**
-   * Execute the tool. Receives Convex context and the parsed arguments
-   * object (already JSON.parse'd from the model's arguments string).
-   */
-  execute: (
-    toolCtx: ToolExecutionContext,
-    args: Record<string, unknown>,
-  ) => Promise<ToolResult>;
-}
-
-/** An immutable, registered tool ready for use. */
-export interface RegisteredTool {
-  readonly name: string;
-  readonly definition: ToolDefinition;
-  readonly execute: ToolConfig["execute"];
-}
-
-// ---------------------------------------------------------------------------
-// createTool — convenience factory
-// ---------------------------------------------------------------------------
-
-/**
- * Create a tool definition. Returns a `RegisteredTool` that can be added to
- * a `ToolRegistry`.
- *
- * ```ts
- * const myTool = createTool({
- *   name: "generate_docx",
- *   description: "Generate a Word document",
- *   parameters: {
- *     type: "object",
- *     properties: {
- *       title: { type: "string", description: "Document title" },
- *     },
- *     required: ["title"],
- *   },
- *   execute: async (toolCtx, args) => {
- *     // ... generate file, store in Convex ...
- *     return { success: true, data: { storageId, url } };
- *   },
- * });
- * ```
- */
 export function createTool(config: ToolConfig): RegisteredTool {
   const parameters: ToolParameterSchema = {
     ...config.parameters,
@@ -176,6 +40,8 @@ export function createTool(config: ToolConfig): RegisteredTool {
       },
     },
     execute: config.execute,
+    effectPolicy: config.effectPolicy ?? declaredToolEffectPolicy(config.name),
+    mayDefer: config.mayDefer === true,
   };
 }
 
@@ -229,6 +95,7 @@ export class ToolRegistry {
   async executeToolCall(
     toolCall: ToolCall,
     toolCtx: ToolExecutionContext,
+    operationOccurrence = 0,
   ): Promise<{ toolCallId: string; result: ToolResult }> {
     const tool = this.tools.get(toolCall.function.name);
     if (!tool) {
@@ -268,13 +135,88 @@ export class ToolRegistry {
       };
     }
 
+    const canonicalArguments = stableJsonStringify(parsedArgs);
+    const inputHash = await sha256Hex(`${tool.name}\n${canonicalArguments}`);
+    const scopeHash = toolCtx.operationScope
+      ? await sha256Hex(toolCtx.operationScope)
+      : undefined;
+    const operationKey = toolCtx.jobId
+      ? tool.effectPolicy.effect === "read"
+        ? `${toolCtx.jobId}:${toolCall.id}`
+        : [toolCtx.jobId, tool.name, inputHash, scopeHash, operationOccurrence]
+            .filter((part) => part !== undefined)
+            .join(":")
+      : undefined;
+    const executionIdentity = operationKey && toolCtx.jobId &&
+      toolCtx.executionAttemptId && toolCtx.executionFence !== undefined
+      ? {
+          operationKey,
+          jobId: toolCtx.jobId as Id<"generationJobs">,
+          attemptId: toolCtx.executionAttemptId,
+          fence: toolCtx.executionFence,
+        }
+      : null;
+    if (executionIdentity) {
+      const decision = await toolCtx.ctx.runMutation(internal.execution.operations.prepare, {
+        jobId: executionIdentity.jobId,
+        attemptId: executionIdentity.attemptId,
+        fence: executionIdentity.fence,
+        operationKey: executionIdentity.operationKey,
+        toolName: tool.name,
+        toolCallId: toolCall.id,
+        effect: tool.effectPolicy.effect,
+        retry: tool.effectPolicy.retry,
+        authorizationSource: toolCtx.authorizationSource ?? "explicit_user_turn",
+        inputHash,
+      });
+      if (decision.decision === "refuse") {
+        return {
+          toolCallId: toolCall.id,
+          result: { success: false, data: null, error: decision.reason },
+        };
+      }
+      if (decision.decision === "replay") {
+        return {
+          toolCallId: toolCall.id,
+          result: JSON.parse(decision.resultJson) as ToolResult,
+        };
+      }
+      await toolCtx.ctx.runMutation(internal.execution.operations.markDispatched, {
+        attemptId: executionIdentity.attemptId,
+        fence: executionIdentity.fence,
+        operationKey: executionIdentity.operationKey,
+      });
+    }
+
+    let result: ToolResult;
     try {
-      const result = await tool.execute(
-        { ...toolCtx, toolCallId: toolCall.id },
+      result = await tool.execute(
+        {
+          ...toolCtx,
+          toolCallId: toolCall.id,
+          operationIdempotencyKey: executionIdentity?.operationKey,
+        },
         parsedArgs,
       );
-      return { toolCallId: toolCall.id, result };
     } catch (e) {
+      if (executionIdentity) {
+        const errorSummary = e instanceof Error ? e.message : String(e);
+        if (tool.effectPolicy.retry === "safe") {
+          await toolCtx.ctx.runMutation(internal.execution.operations.resetSafeFailure, {
+            attemptId: executionIdentity.attemptId,
+            fence: executionIdentity.fence,
+            operationKey: executionIdentity.operationKey,
+            errorSummary,
+          }).catch(() => undefined);
+        } else {
+          await toolCtx.ctx.runMutation(internal.execution.operations.markOutcomeUnknown, {
+            attemptId: executionIdentity.attemptId,
+            fence: executionIdentity.fence,
+            operationKey: executionIdentity.operationKey,
+            errorSummary,
+          }).catch(() => undefined);
+        }
+      }
       return {
         toolCallId: toolCall.id,
         result: {
@@ -284,6 +226,33 @@ export class ToolRegistry {
         },
       };
     }
+
+    if (executionIdentity) {
+      const resultJson = serializeToolResult(result);
+      try {
+        await toolCtx.ctx.runMutation(internal.execution.operations.complete, {
+          attemptId: executionIdentity.attemptId,
+          fence: executionIdentity.fence,
+          operationKey: executionIdentity.operationKey,
+          resultJson,
+        });
+      } catch {
+        // The provider call succeeded, so a stale execution fence must not
+        // misclassify the external effect as a provider failure. Persist the
+        // observed outcome through the deliberately unfenced reconciliation
+        // path; future attempts will replay/refuse rather than duplicate it.
+        await toolCtx.ctx.runMutation(
+          internal.execution.operations.recordObservedExternalOutcome,
+          {
+            attemptId: executionIdentity.attemptId,
+            operationKey: executionIdentity.operationKey,
+            externalId: `observed:${toolCall.id}`,
+            resultJson,
+          },
+        );
+      }
+    }
+    return { toolCallId: toolCall.id, result };
   }
 
   /**
@@ -299,44 +268,33 @@ export class ToolRegistry {
     toolCalls: ToolCall[],
     toolCtx: ToolExecutionContext,
   ): Promise<Array<{ toolCallId: string; result: ToolResult }>> {
-    const results = new Array<{
-      toolCallId: string;
-      result: ToolResult;
-    }>(toolCalls.length);
-
-    let serializedChain = Promise.resolve();
-
-    const shouldSerialize = (toolName: string): boolean =>
-      toolName.startsWith("notion_") ||
-      toolName.startsWith("workspace_") ||
-      toolName.startsWith("vm_") ||
-      toolName === "data_python_exec" ||
-      toolName === "data_python_sandbox" ||
-      toolName === "read_pdf" ||
-      toolName === "generate_pdf" ||
-      toolName === "edit_pdf" ||
-      toolName === "propose_docx_edits";
-
-    await Promise.all(
-      toolCalls.map((tc, index) => {
-        if (!shouldSerialize(tc.function.name)) {
-          return this.executeToolCall(tc, toolCtx).then((result) => {
-            results[index] = result;
-          });
-        }
-
-        const run = serializedChain.then(() => this.executeToolCall(tc, toolCtx));
-        serializedChain = run.then(
-          () => undefined,
-          () => undefined,
-        );
-
-        return run.then((result) => {
-          results[index] = result;
-        });
-      }),
+    return await executeToolCallBatch(
+      toolCalls,
+      (name) => this.tools.get(name),
+      canonicalizeRawJson,
+      async (toolCall, occurrence) => await this.executeToolCall(
+        toolCall,
+        toolCtx,
+        occurrence,
+      ),
     );
-
-    return results;
   }
+}
+
+async function sha256Hex(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function serializeToolResult(result: ToolResult): string {
+  const serialized = JSON.stringify(result);
+  if (serialized.length <= 700_000) return serialized;
+  return JSON.stringify({
+    success: result.success,
+    data: null,
+    error: result.error,
+    replayTruncated: true,
+  });
 }

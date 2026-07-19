@@ -49,7 +49,7 @@ function sseText(content: string) {
   } as any;
 }
 
-test("runSubagentRunHandler records tool rounds from snapshots and resumes the parent when terminal", async (t) => {
+test("runSubagentRunHandler checkpoints one tool round and completes on the next Workflow step", async (t) => {
   t.after(() => mock.restoreAll());
   const responses = [
     sseToolCall("load_skill", { name: "docx" }, "call_load_skill"),
@@ -100,8 +100,29 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
   const ctx = {
     runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
       runMutationCalls.push(args);
-      if ("expectedStatuses" in args) return true;
+      if ("captureKey" in args && !("artifacts" in args)) {
+        return { decision: "execute", artifactIds: [] };
+      }
+      if (Array.isArray(args.artifacts)) {
+        return { inserted: true, stale: false, artifactIds: ["artifact_1"] };
+      }
+      if ("inputHash" in args) return { decision: "execute" as const };
+      if ("expectedStatuses" in args) {
+        run.status = "streaming";
+        return true;
+      }
+      if (args.runId === "run_1" && "conversationSnapshot" in args) {
+        Object.assign(run, {
+          status: "waiting_continuation",
+          content: args.content,
+          reasoning: args.reasoning,
+          continuationCount: args.continuationCount,
+          conversationSnapshot: args.conversationSnapshot,
+        });
+        return { batchId: "batch_1" };
+      }
       if (args.runId === "run_1" && args.status === "completed") {
+        run.status = "completed";
         return { batchId: "batch_1", allTerminal: true };
       }
       if (args.batchId === "batch_1" && args.status === "waiting_to_resume") {
@@ -110,6 +131,7 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
       return null;
     },
     runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      if ("executionAttemptId" in args) return true;
       if ("runId" in args) return run;
       if ("batchId" in args) return batch;
       if ("modelId" in args) {
@@ -135,7 +157,7 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
       }
       if ("userId" in args) {
         userScopedQueryCount += 1;
-        return userScopedQueryCount === 1
+        return userScopedQueryCount % 2 === 1
           ? "sk-test"
           : { isPro: true };
       }
@@ -149,7 +171,12 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
     },
   } as any;
 
-  await runSubagentRunHandler(ctx, { runId: "run_1" as any });
+  await runSubagentRunHandler(ctx, {
+    runId: "run_1" as any,
+    workflowManaged: true,
+    executionAttemptId: "attempt_1" as any,
+    executionFence: 7,
+  });
 
   assert.ok(runMutationCalls.some((call) =>
     call.runId === "run_1"
@@ -163,6 +190,19 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
       && Array.isArray(call.toolResults)
       && String(((call.toolResults as unknown[])?.at(-1) as any)?.result).includes("Read and write DOCX")
   ));
+  assert.equal(
+    runMutationCalls.some((call) => call.runId === "run_1" && call.status === "completed"),
+    false,
+  );
+  assert.equal(responses.length, 1);
+
+  await runSubagentRunHandler(ctx, {
+    runId: "run_1" as any,
+    workflowManaged: true,
+    executionAttemptId: "attempt_1" as any,
+    executionFence: 7,
+  });
+
   const finalize = runMutationCalls.find((call) => call.runId === "run_1" && call.status === "completed");
   assert.ok(finalize);
   assert.equal(finalize.content, "Partial Child answer after loading the skill.");
@@ -171,8 +211,8 @@ test("runSubagentRunHandler records tool rounds from snapshots and resumes the p
   assert.ok(runMutationCalls.some((call) =>
     call.batchId === "batch_1" && call.status === "waiting_to_resume"
   ));
-  assert.ok(scheduled.some((entry) => entry.runId === "run_1"));
-  assert.ok(scheduled.some((entry) => entry.batchId === "batch_1"));
+  assert.equal(scheduled.some((entry) => entry.runId === "run_1"), false);
+  assert.equal(scheduled.some((entry) => entry.batchId === "batch_1"), false);
   assert.equal(responses.length, 0);
 });
 

@@ -39,7 +39,7 @@ export async function maybeFinalizeGenerationGroup(
   >,
   deps: MaybeFinalizeGroupDeps = defaultMaybeFinalizeGroupDeps,
 ): Promise<void> {
-  const jobs = await Promise.all(
+  const jobs: Array<Doc<"generationJobs"> | null> = await Promise.all(
     args.generationJobIds.map((jobId) =>
       ctx.runQuery(internal.chat.queries.getGenerationJobInternal, { jobId }),
     ),
@@ -48,7 +48,7 @@ export async function maybeFinalizeGenerationGroup(
     return;
   }
 
-  const statuses = jobs.map((job) => job!.status);
+  const statuses = jobs.flatMap((job) => job ? [job.status] : []);
   if (statuses.some((status: GenerationJobStatus) => !terminalStatuses.has(status))) {
     return;
   }
@@ -60,19 +60,26 @@ export async function maybeFinalizeGenerationGroup(
     messageId: args.assistantMessageIds[0],
   });
 
-  if (!allCancelledOrFailed) {
-    const didMark = await ctx.runMutation(
-      internal.chat.mutations.markPostProcessScheduled,
-      { messageId: args.assistantMessageIds[0] },
+  for (const jobId of args.generationJobIds) {
+    await ctx.runMutation(
+      internal.chat.generation_orphan_cleanup.reconcileGenerationOwnedChildren,
+      { jobId },
     );
-    if (didMark) {
-      await ctx.scheduler.runAfter(0, internal.chat.actions.postProcess, {
-        chatId: args.chatId,
-        userMessageId: args.userMessageId,
-        assistantMessageIds: args.assistantMessageIds,
-        userId: args.userId,
-      });
-    }
+  }
+  for (const assistantMessageId of args.assistantMessageIds) {
+    await ctx.runMutation(
+      internal.chat.generation_orphan_cleanup.reconcileGenerationOwnedPresentations,
+      { assistantMessageId },
+    );
+  }
+
+  if (!allCancelledOrFailed) {
+    await ctx.runMutation(internal.execution.workload_queues.enqueuePostProcessOnce, {
+      chatId: args.chatId,
+      userMessageId: args.userMessageId,
+      assistantMessageIds: args.assistantMessageIds,
+      userId: args.userId,
+    });
   }
 
   if (!args.searchSessionId) {

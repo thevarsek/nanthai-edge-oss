@@ -20,12 +20,12 @@ import {
   finalizeGenerationArgs,
   insertGeneratedMediaArgs,
   markChatCompletionNotifiedArgs,
-  markPostProcessScheduledArgs,
   patchMessageAudioArgs,
   reinforceMemoryArgs,
   requestAudioGenerationArgs,
   retryMessageArgs,
   saveGenerationContinuationArgs,
+  settleVideoGenerationArgs,
   sendMessageArgs,
   setGenerationContinuationScheduledArgs,
   storeGenerationUsageArgs,
@@ -44,7 +44,6 @@ import {
   cancelGenerationContinuationHandler,
   claimGenerationContinuationHandler,
   clearGenerationContinuationHandler,
-  markPostProcessScheduledHandler,
   saveGenerationContinuationHandler,
   setGenerationContinuationScheduledHandler,
 } from "./mutations_generation_continuation_handlers";
@@ -59,11 +58,7 @@ import {
 import { retryMessageHandler } from "./mutations_retry_handler";
 import {
   createMemoryHandler,
-  createVideoJobHandler,
-  createVideoOutputUploadSessionHandler,
-  completeVideoOutputUploadHandler,
   finalizeGenerationHandler,
-  insertGeneratedMediaHandler,
   markChatCompletionNotifiedHandler,
   patchMessageAudioHandler,
   storeGenerationUsageHandler,
@@ -73,9 +68,18 @@ import {
   updateMessageContentHandler,
   updateMessageReasoningHandler,
   updateMessageToolCallsHandler,
+} from "./mutations_internal_handlers";
+import {
+  completeVideoOutputUploadHandler,
+  createVideoJobHandler,
+  createVideoOutputUploadSessionHandler,
+  insertGeneratedMediaHandler,
+  settleVideoGenerationHandler,
+  markVideoProviderTerminalHandler,
+  terminalizeParentGenerationExecution,
   updateVideoJobPollHandler,
   updateVideoJobStatusHandler,
-} from "./mutations_internal_handlers";
+} from "./video_mutation_handlers";
 import {
   reinforceMemoryHandler,
   supersedeMemoryHandler,
@@ -83,6 +87,7 @@ import {
 } from "./mutations_memory_lifecycle_handlers";
 import { deleteKnowledgeBaseFileArgs } from "../knowledge_base/mutations_args";
 import { deleteKnowledgeBaseFileHandler } from "../knowledge_base/mutations";
+import { assertCurrentFence } from "../execution/control_plane";
 
 export const createChat = mutation({
   args: createChatArgs,
@@ -116,6 +121,18 @@ export const cancelActiveGeneration = mutation({
   handler: cancelActiveGenerationHandler,
 });
 
+/** Drain-compatible alias for generation groups started before M47. */
+export const markPostProcessScheduled = internalMutation({
+  args: { messageId: v.id("messages") },
+  returns: v.boolean(),
+  handler: async (ctx, args): Promise<boolean> => {
+    const message = await ctx.db.get(args.messageId);
+    if (!message || message.postProcessScheduledAt != null) return false;
+    await ctx.db.patch(message._id, { postProcessScheduledAt: Date.now() });
+    return true;
+  },
+});
+
 export const retryMessage = mutation({
   args: retryMessageArgs,
   returns: v.object({
@@ -144,12 +161,6 @@ export const markChatCompletionNotified = internalMutation({
   args: markChatCompletionNotifiedArgs,
   returns: v.boolean(),
   handler: markChatCompletionNotifiedHandler,
-});
-
-export const markPostProcessScheduled = internalMutation({
-  args: markPostProcessScheduledArgs,
-  returns: v.boolean(),
-  handler: markPostProcessScheduledHandler,
 });
 
 export const patchMessageAudio = internalMutation({
@@ -182,9 +193,19 @@ export const updateJobStatus = internalMutation({
 });
 
 export const markGenerationJobAnalyticsStarted = internalMutation({
-  args: { jobId: v.id("generationJobs") },
+  args: {
+    jobId: v.id("generationJobs"),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+  },
   returns: v.boolean(),
   handler: async (ctx, args) => {
+    if ((args.executionAttemptId === undefined) !== (args.executionFence === undefined)) {
+      throw new Error("INCOMPLETE_EXECUTION_FENCE");
+    }
+    if (args.executionAttemptId && args.executionFence !== undefined) {
+      await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+    }
     const job = await ctx.db.get(args.jobId);
     if (!job || ["cancelled", "completed", "failed", "timedOut"].includes(job.status)) {
       return false;
@@ -289,6 +310,7 @@ export const createVideoOutputUploadSession = internalMutation({
 
 export const completeVideoOutputUpload = internalMutation({
   args: completeVideoOutputUploadArgs,
+  returns: v.boolean(),
   handler: completeVideoOutputUploadHandler,
 });
 
@@ -302,8 +324,45 @@ export const updateVideoJobPoll = internalMutation({
   handler: updateVideoJobPollHandler,
 });
 
+export const markVideoProviderTerminal = internalMutation({
+  args: {
+    videoJobId: v.id("videoJobs"),
+    status: v.union(v.literal("completed"), v.literal("failed")),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await markVideoProviderTerminalHandler(ctx, args);
+    return null;
+  },
+});
+
 export const insertGeneratedMedia = internalMutation({
   args: insertGeneratedMediaArgs,
   returns: v.id("generatedMedia"),
   handler: insertGeneratedMediaHandler,
+});
+
+export const settleVideoGeneration = internalMutation({
+  args: settleVideoGenerationArgs,
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await settleVideoGenerationHandler(ctx, args);
+    return null;
+  },
+});
+
+export const closeVideoParentGeneration = internalMutation({
+  args: {
+    videoRunId: v.id("executionRuns"),
+    generationJobId: v.id("generationJobs"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await terminalizeParentGenerationExecution(
+      ctx,
+      args.videoRunId,
+      args.generationJobId,
+    );
+    return null;
+  },
 });

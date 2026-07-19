@@ -147,7 +147,16 @@ test("stopSessionHandler and handleUserInterventionHandler patch terminal status
 
   await stopSessionHandler(buildAuthCtx({
     db: {
-      get: async () => ({ _id: "session_1", userId: "user_1", status: "running" }),
+      get: async () => ({
+        _id: "session_1",
+        userId: "user_1",
+        status: "running",
+        chatId: "chat_1",
+        turnOrder: ["participant_1"],
+      }),
+      query: () => ({
+        withIndex: () => ({ collect: async () => [] }),
+      }),
       patch: async (_id: string, patch: Record<string, unknown>) => {
         stopPatches.push(patch);
       },
@@ -200,7 +209,9 @@ test("autonomous internal handlers update progress, parents, completion, and con
         patches.push(patch);
       },
       get: async (id: string) =>
-        id === "running" ? { status: "running" } : id === "stopped" ? { status: "stopped" } : null,
+        id === "running" || id === "session_1"
+          ? { _id: id, status: "running" }
+          : id === "stopped" ? { _id: id, status: "stopped" } : null,
     },
   } as any;
 

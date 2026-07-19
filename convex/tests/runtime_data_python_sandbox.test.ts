@@ -333,10 +333,10 @@ test("runDataPythonSandbox auto-adds matplotlib when captureCharts is enabled", 
 });
 
 // ---------------------------------------------------------------------------
-// 10. session tracking failure is non-fatal
+// 10. session ownership must persist before a provider VM can be created
 // ---------------------------------------------------------------------------
 
-test("runDataPythonSandbox treats session tracking failure as non-fatal warning", async () => {
+test("runDataPythonSandbox fails closed when session ownership cannot be persisted", async () => {
   const deps = createRuntimeSandboxDepsForTest({
     runVercelSandboxCode: async () => makeSandboxSuccessResult({ stdout: "ok" }),
   });
@@ -352,12 +352,8 @@ test("runDataPythonSandbox treats session tracking failure as non-fatal warning"
     }),
   } as any;
 
-  const result = await runDataPythonSandbox(toolCtx, { code: "print('ok')" }, deps);
-
-  // Result should still be returned successfully
-  assert.ok(result.text.includes("ok"), "result should still contain stdout");
-  assert.ok(
-    result.warnings.some((w) => /session tracking failed/i.test(w)),
-    "should include a session tracking warning",
+  await assert.rejects(
+    runDataPythonSandbox(toolCtx, { code: "print('ok')" }, deps),
+    /DB write failed/,
   );
 });

@@ -6,6 +6,7 @@ import { resolveRegenerationSynthesisData } from "../search/actions_regenerate_p
 import {
   upsertSearchContextForMessage,
 } from "../search/mutations_internal";
+import { installExecutionDbMock } from "../../test_helpers/execution_db_mock";
 
 test("upsertSearchContextForMessage stores payload outside messages and clears message.searchContext", async () => {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
@@ -140,6 +141,9 @@ test("retryMessageHandler reuses cached web-search context from searchContexts t
         inserts.push({ table, value });
         if (table === "messages") return "assistant_new";
         if (table === "generationJobs") return "job_new";
+        if (table === "executionRuns") return "execution_run_new";
+        if (table === "executionAttempts") return "execution_attempt_new";
+        if (table === "runEvents") return "run_event_new";
         if (table === "searchSessions") return "session_new";
         return `${table}_id`;
       },
@@ -157,6 +161,8 @@ test("retryMessageHandler reuses cached web-search context from searchContexts t
       },
     },
   } as any;
+
+  installExecutionDbMock(ctx);
 
   await retryMessageHandler(ctx, {
     messageId: "assistant_old" as any,
@@ -292,6 +298,8 @@ test("retryMessageHandler strips legacy integrations for non-tool models instead
     },
   } as any;
 
+  installExecutionDbMock(ctx);
+
   await retryMessageHandler(ctx, {
     messageId: "assistant_old" as any,
     apiKey: "sk-test",
@@ -426,6 +434,9 @@ test("retryMessageHandler allows old retries when only built-in tools were used"
         if (table === "messages") return "assistant_new";
         if (table === "streamingMessages") return "streaming_new";
         if (table === "generationJobs") return "job_new";
+        if (table === "executionRuns") return "execution_run_new";
+        if (table === "executionAttempts") return "execution_attempt_new";
+        if (table === "runEvents") return "execution_event_new";
         throw new Error(`Unexpected insert table: ${table}`);
       },
       patch: async () => {
@@ -442,6 +453,8 @@ test("retryMessageHandler allows old retries when only built-in tools were used"
       },
     },
   } as any;
+
+  installExecutionDbMock(ctx);
 
   await retryMessageHandler(ctx, {
     messageId: "assistant_old" as any,

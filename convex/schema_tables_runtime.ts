@@ -48,6 +48,7 @@ export const runtimeSchemaTables = {
   })
     .index("by_chat", ["chatId"])
     .index("by_chat_user", ["chatId", "userId"])
+    .index("by_chat_user_status", ["chatId", "userId", "status"])
     .index("by_chat_user_environment", ["chatId", "userId", "environment"])
     .index("by_user_status", ["userId", "status"])
     .index("by_status_last_active", ["status", "lastActiveAt"]),

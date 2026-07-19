@@ -34,8 +34,15 @@ export async function enqueueStep(
     userId: args.userId,
   });
   const stepTitle = getStepTitle(resolvedStep, args.stepIndex);
-  const basePrompt = buildStepTriggerPrompt(resolvedStep, args.previousAssistantContent);
-  const promptWithKB = await buildPromptWithKnowledgeBase(ctx, resolvedStep, basePrompt);
+  const basePrompt = buildStepTriggerPrompt(
+    resolvedStep,
+    args.previousAssistantContent,
+  );
+  const promptWithKB = await buildPromptWithKnowledgeBase(
+    ctx,
+    resolvedStep,
+    basePrompt,
+  );
 
   const turn = await ctx.runMutation(
     internal.scheduledJobs.mutations.createScheduledExecutionTurn,
@@ -59,16 +66,15 @@ export async function enqueueStep(
     },
   );
 
-  if (!turn.created) {
-    return;
-  }
-
   await routeScheduledStep(ctx, {
+    scheduledJobId: args.jobId,
+    executionId: args.executionId,
     chatId: args.chatId,
     userId: args.userId,
     userMessageId: turn.userMessageId,
     assistantMessageId: turn.assistantMsgId,
     genJobId: turn.genJobId,
+    stepIndex: args.stepIndex,
     participant,
     prompt: promptWithKB,
     step: resolvedStep,
@@ -78,52 +84,57 @@ export async function enqueueStep(
 async function routeScheduledStep(
   ctx: ActionCtx,
   args: {
+    scheduledJobId: Id<"scheduledJobs">;
+    executionId: string;
     chatId: Id<"chats">;
     userId: string;
     userMessageId: Id<"messages">;
     assistantMessageId: Id<"messages">;
     genJobId: Id<"generationJobs">;
+    stepIndex: number;
     participant: ResolvedParticipant;
     prompt: string;
     step: ScheduledJobStepConfig;
   },
 ): Promise<void> {
   const effectiveSearchMode = resolveScheduledJobSearchMode(args.step);
-  const effectiveComplexity = normalizeSearchComplexity(args.step.searchComplexity) ?? 1;
+  const effectiveComplexity =
+    normalizeSearchComplexity(args.step.searchComplexity) ?? 1;
 
   if (effectiveSearchMode === "none" || effectiveSearchMode === "basic") {
-    await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
-      chatId: args.chatId,
-      userMessageId: args.userMessageId,
-      assistantMessageIds: [args.assistantMessageId],
-      generationJobIds: [args.genJobId],
-      participants: [
-        {
-          modelId: args.participant.modelId,
-          messageId: args.assistantMessageId,
-          jobId: args.genJobId,
-          systemPrompt: args.participant.systemPrompt ?? null,
-          temperature: args.participant.temperature,
-          maxTokens: args.participant.maxTokens,
-          personaId: args.participant.personaId ?? null,
-          personaName: args.participant.personaName ?? null,
-          personaEmoji: args.participant.personaEmoji ?? null,
-          personaAvatarImageUrl: args.participant.personaAvatarImageUrl ?? null,
-          ...(args.participant.includeReasoning !== undefined
-            ? { includeReasoning: args.participant.includeReasoning }
-            : {}),
-          reasoningEffort: args.participant.reasoningEffort ?? null,
-        },
-      ],
-      userId: args.userId,
-      expandMultiModelGroups: false,
-      webSearchEnabled: effectiveSearchMode === "basic",
-      enabledIntegrations: args.step.enabledIntegrations,
-      turnSkillOverrides: args.step.turnSkillOverrides,
-      turnIntegrationOverrides: args.step.turnIntegrationOverrides,
-      analyticsSource: "scheduled_job",
+    await ctx.runMutation(internal.execution.queues.enqueueRunGeneration, {
+        chatId: args.chatId,
+        userMessageId: args.userMessageId,
+        assistantMessageIds: [args.assistantMessageId],
+        generationJobIds: [args.genJobId],
+        participants: [
+          {
+            modelId: args.participant.modelId,
+            messageId: args.assistantMessageId,
+            jobId: args.genJobId,
+            systemPrompt: args.participant.systemPrompt ?? null,
+            temperature: args.participant.temperature,
+            maxTokens: args.participant.maxTokens,
+            personaId: args.participant.personaId ?? null,
+            personaName: args.participant.personaName ?? null,
+            personaEmoji: args.participant.personaEmoji ?? null,
+            personaAvatarImageUrl:
+              args.participant.personaAvatarImageUrl ?? null,
+            ...(args.participant.includeReasoning !== undefined
+              ? { includeReasoning: args.participant.includeReasoning }
+              : {}),
+            reasoningEffort: args.participant.reasoningEffort ?? null,
+          },
+        ],
+        userId: args.userId,
+        expandMultiModelGroups: false,
+        webSearchEnabled: effectiveSearchMode === "basic",
+        enabledIntegrations: args.step.enabledIntegrations,
+        turnSkillOverrides: args.step.turnSkillOverrides,
+        turnIntegrationOverrides: args.step.turnIntegrationOverrides,
+        analyticsSource: "scheduled_job",
     });
-     return;
+    return;
   }
 
   if (effectiveSearchMode === "web") {
@@ -139,7 +150,50 @@ async function routeScheduledStep(
       },
     );
 
-    await ctx.scheduler.runAfter(0, internal.search.actions.runWebSearch, {
+    await ctx.runMutation(
+      internal.scheduledJobs.execution_lifecycle.enqueueScheduledWebSearch,
+      {
+        scheduledJobId: args.scheduledJobId,
+        executionId: args.executionId,
+        stepIndex: args.stepIndex,
+        sessionId,
+        assistantMessageId: args.assistantMessageId,
+        jobId: args.genJobId,
+        chatId: args.chatId,
+        userMessageId: args.userMessageId,
+        userId: args.userId,
+        query: args.prompt,
+        complexity: effectiveComplexity,
+        expandMultiModelGroups: false,
+        modelId: args.participant.modelId,
+        personaId: args.participant.personaId ?? undefined,
+        systemPrompt: args.participant.systemPrompt ?? undefined,
+        temperature: args.participant.temperature,
+        maxTokens: args.participant.maxTokens,
+        includeReasoning: args.participant.includeReasoning,
+        reasoningEffort: args.participant.reasoningEffort ?? undefined,
+        enabledIntegrations: args.step.enabledIntegrations,
+        turnIntegrationOverrides: args.step.turnIntegrationOverrides,
+        subagentsEnabled: undefined,
+        analyticsSource: "scheduled_job",
+      },
+    );
+    return;
+  }
+
+  const sessionId = await ctx.runMutation(
+    internal.scheduledJobs.mutations.createSearchSession,
+    {
+      chatId: args.chatId,
+      userId: args.userId,
+      assistantMessageId: args.assistantMessageId,
+      query: args.prompt,
+      mode: "paper",
+      complexity: effectiveComplexity,
+    },
+  );
+
+  await ctx.runMutation(internal.execution.workflow_starts.startResearchPaper, {
       sessionId,
       assistantMessageId: args.assistantMessageId,
       jobId: args.genJobId,
@@ -160,43 +214,6 @@ async function routeScheduledStep(
       turnIntegrationOverrides: args.step.turnIntegrationOverrides,
       subagentsEnabled: undefined,
       analyticsSource: "scheduled_job",
-    });
-    return;
-  }
-
-  const sessionId = await ctx.runMutation(
-    internal.scheduledJobs.mutations.createSearchSession,
-    {
-      chatId: args.chatId,
-      userId: args.userId,
-      assistantMessageId: args.assistantMessageId,
-      query: args.prompt,
-      mode: "paper",
-      complexity: effectiveComplexity,
-    },
-  );
-
-  await ctx.scheduler.runAfter(0, internal.search.workflow.researchPaperPipeline, {
-    sessionId,
-    assistantMessageId: args.assistantMessageId,
-    jobId: args.genJobId,
-    chatId: args.chatId,
-    userMessageId: args.userMessageId,
-    userId: args.userId,
-    query: args.prompt,
-    complexity: effectiveComplexity,
-    expandMultiModelGroups: false,
-    modelId: args.participant.modelId,
-    personaId: args.participant.personaId ?? undefined,
-    systemPrompt: args.participant.systemPrompt ?? undefined,
-    temperature: args.participant.temperature,
-    maxTokens: args.participant.maxTokens,
-    includeReasoning: args.participant.includeReasoning,
-    reasoningEffort: args.participant.reasoningEffort ?? undefined,
-    enabledIntegrations: args.step.enabledIntegrations,
-    turnIntegrationOverrides: args.step.turnIntegrationOverrides,
-    subagentsEnabled: undefined,
-    analyticsSource: "scheduled_job",
   });
 }
 
@@ -218,10 +235,10 @@ async function resolveParticipant(
     };
   }
 
-  const persona = await ctx.runQuery(
-    internal.chat.queries.getPersona,
-    { personaId: job.personaId, userId: job.userId },
-  );
+  const persona = await ctx.runQuery(internal.chat.queries.getPersona, {
+    personaId: job.personaId,
+    userId: job.userId,
+  });
   if (!persona) {
     return {
       modelId: job.modelId,
@@ -239,8 +256,10 @@ async function resolveParticipant(
     personaName: persona.displayName ?? undefined,
     personaEmoji: persona.avatarEmoji ?? undefined,
     personaAvatarImageUrl: persona.avatarImageUrl ?? undefined,
-    includeReasoning: job.includeReasoning ?? persona.includeReasoning ?? undefined,
-    reasoningEffort: job.reasoningEffort ?? persona.reasoningEffort ?? undefined,
+    includeReasoning:
+      job.includeReasoning ?? persona.includeReasoning ?? undefined,
+    reasoningEffort:
+      job.reasoningEffort ?? persona.reasoningEffort ?? undefined,
   };
 }
 

@@ -40,6 +40,30 @@ export async function storageHasSourceReferences(
   return hasContentReference || !!driveGrantRef;
 }
 
+/**
+ * Reference check used after deleting one upload/session/version row. It
+ * includes the durable source tables omitted from the content-only helper so
+ * shared KB and document-version blobs are not reclaimed prematurely.
+ */
+export async function storageHasDurableReferences(
+  ctx: MutationCtx,
+  userId: string,
+  storageId: Id<"_storage">,
+): Promise<boolean> {
+  const [hasSourceReference, documentVersionRef, uploadSessionRef] = await Promise.all([
+    storageHasSourceReferences(ctx, userId, storageId),
+    ctx.db
+      .query("documentVersions")
+      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+      .first(),
+    ctx.db
+      .query("kbUploadSessions")
+      .withIndex("by_user_storage", (q) => q.eq("userId", userId).eq("storageId", storageId))
+      .first(),
+  ]);
+  return hasSourceReference || !!documentVersionRef || !!uploadSessionRef;
+}
+
 export async function deleteDocumentForDeletedRecord(
   ctx: MutationCtx,
   userId: string,

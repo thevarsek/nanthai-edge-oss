@@ -71,7 +71,7 @@ export async function rebuildForMemoryHandler(
   );
   if (!input) return 0;
   if (!input.embedding) {
-    await ctx.scheduler.runAfter(0, internal.memory.operations.computeAndStoreEmbedding, {
+    await ctx.runMutation(internal.execution.workload_queues.enqueueMemoryEmbedding, {
       memoryId: input.memory._id,
       content: input.memory.content,
     });
@@ -92,7 +92,7 @@ export async function rebuildForMemoryHandler(
         score: result._score,
       })),
     },
-  );
+  ) as RelationshipCandidate[];
   const sourceCandidate: RelationshipCandidate = {
     ...input.memory,
     score: 1,
@@ -136,9 +136,8 @@ export async function backfillAllRelationshipsHandler(
       isDone: boolean;
     } = await ctx.runQuery(internal.memory.relationships.getBackfillPage, { cursor });
     for (const memoryId of page.memoryIds) {
-      await ctx.scheduler.runAfter(
-        scheduled * 100,
-        internal.memory.relationships.rebuildForMemory,
+      await ctx.runMutation(
+        internal.execution.workload_queues.enqueueMemoryRelationship,
         { memoryId },
       );
       scheduled += 1;

@@ -22,6 +22,7 @@ function buildMockCtx(overrides: {
   chatIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
 } = {}) {
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
+  const insertedDocs = new Map<string, Record<string, unknown>>();
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const scheduled: Array<{ fn: unknown; args: Record<string, unknown> }> = [];
 
@@ -55,6 +56,7 @@ function buildMockCtx(overrides: {
       return {
         first: async () => filtered[0] ?? null,
         collect: async () => filtered,
+        unique: async () => filtered[0] ?? null,
       };
     },
   });
@@ -65,6 +67,8 @@ function buildMockCtx(overrides: {
     },
     db: {
       get: async (id: string) => {
+        const inserted = insertedDocs.get(id);
+        if (inserted) return inserted;
         if (id === "chat_1" && chatExists) {
           return {
             _id: "chat_1",
@@ -105,10 +109,14 @@ function buildMockCtx(overrides: {
       },
       insert: async (table: string, value: Record<string, unknown>) => {
         inserts.push({ table, value });
-        return `${table}_${inserts.length}`;
+        const id = `${table}_${inserts.length}`;
+        insertedDocs.set(id, { _id: id, __table: table, ...value });
+        return id;
       },
       patch: async (id: string, patch: Record<string, unknown>) => {
         patches.push({ id, patch });
+        const existing = insertedDocs.get(id);
+        if (existing) insertedDocs.set(id, { ...existing, ...patch });
       },
       query: (table: string) => {
         if (table === "usageRecords") {
@@ -143,6 +151,13 @@ function buildMockCtx(overrides: {
               collect: async () => [],
             }),
           };
+        }
+        if (table === "accountDeletionTombstones") {
+          return { withIndex: () => ({ unique: async () => null }) };
+        }
+        if (table === "executionRuns" || table === "runEvents") {
+          const rows = [...insertedDocs.values()].filter((row) => row.__table === table);
+          return indexedRows(rows);
         }
         if (table === "advisorBatches") {
           return { withIndex: () => ({ first: async () => null }) };

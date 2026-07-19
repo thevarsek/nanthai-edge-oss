@@ -43,6 +43,7 @@ function registryWithDeferred(
         : "create_presentation",
     description: "Deferred workflow test tool",
     parameters: { type: "object", properties: {} },
+    effectPolicy: { effect: "write", retry: "idempotency_key_required" },
     execute: async () => ({
       success: true,
       data: { accepted: true },
@@ -58,6 +59,7 @@ function registryWithImmediateTool() {
     name: "inspect_context",
     description: "Immediate tool used to exercise continuation handoff.",
     parameters: { type: "object", properties: {} },
+    effectPolicy: { effect: "read", retry: "safe" },
     execute: async () => ({
       success: true,
       data: { inspected: true, note: "tool result" },
@@ -80,7 +82,21 @@ function makeCtx() {
       },
       runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
         mutations.push(args);
-        if (Array.isArray(args.tasks)) return { runIds: ["run_child_1", "run_child_2"] };
+        if (typeof args.captureKey === "string" && !("artifacts" in args)) {
+          return { decision: "execute", artifactIds: [] };
+        }
+        if (typeof args.captureKey === "string" && Array.isArray(args.artifacts)) {
+          return { inserted: true, stale: false, artifactIds: [] };
+        }
+        if (typeof args.operationKey === "string" && typeof args.toolName === "string") {
+          return "status" in args ? true : { decision: "execute", artifactIds: [] };
+        }
+        if (Array.isArray(args.tasks)) {
+          return { batchId: "batch_1", runIds: ["run_child_1", "run_child_2"] };
+        }
+        if (args.parentJobId === "job_1" && args.toolCallId === "call_drive") {
+          return { batchId: "drive_batch_1" };
+        }
         if (args.userId === "user_1" && args.chatId === "chat_1" && !("messageId" in args)) {
           return [];
         }
@@ -153,7 +169,7 @@ async function runParticipant(
   return { result, mutations: state.mutations, scheduled: state.scheduled };
 }
 
-test("generateForParticipant persists deferred subagent batches and schedules each child run", async (t) => {
+test("generateForParticipant persists deferred subagent batches and starts each child Workflow", async (t) => {
   t.after(() => mock.restoreAll());
   mock.method(globalThis, "fetch", async () => streamToolCall("spawn_subagents", "call_subagents")) as any;
 
@@ -185,7 +201,48 @@ test("generateForParticipant persists deferred subagent batches and schedules ea
   assert.equal(batch?.toolCallId, "call_subagents");
   assert.equal((batch?.tasks as unknown[]).length, 2);
   assert.equal((batch?.paramsSnapshot as any).enabledIntegrations[0], "drive");
-  assert.deepEqual(scheduled, [{ runId: "run_child_1" }, { runId: "run_child_2" }]);
+  assert.deepEqual(
+    mutations.filter((args) => typeof args.runId === "string"),
+    [{ runId: "run_child_1" }, { runId: "run_child_2" }],
+  );
+  assert.deepEqual(scheduled, []);
+});
+
+test("Workflow subagent handoff commits a deferred parent checkpoint before child enqueue", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () =>
+    streamToolCall("spawn_subagents", "call_subagents")) as any;
+  const handoffs: Array<Record<string, any>> = [];
+
+  const { result, mutations } = await runParticipant(
+    registryWithDeferred("spawn_subagents", {
+      tasks: [{ title: "Research", prompt: "Find source material." }],
+    }),
+    {
+      continuationHandoff: {
+        continuationCount: 0,
+        maxToolRoundsPerInvocation: 1,
+        onHandoff: async (checkpoint: Record<string, any>) => {
+          handoffs.push(checkpoint);
+        },
+      },
+    },
+    {
+      workflowResumeEventId: "event_1",
+      executionAttemptId: "attempt_1",
+      executionFence: 7,
+    },
+  );
+
+  assert.equal(result.failed, false);
+  assert.equal(handoffs.length, 0);
+  const batch = mutations.find((args) => Array.isArray(args.tasks));
+  assert.equal((batch?.paramsSnapshot as { roundKey?: string }).roundKey, "event_1");
+  assert.equal((batch?.checkpoint as { roundKey?: string }).roundKey, "event_1");
+  assert.equal(
+    (batch?.checkpoint as { group?: { executionFence?: number } }).group?.executionFence,
+    7,
+  );
 });
 
 test("generateForParticipant snapshots materialized web search intent for deferred subagents", async (t) => {
@@ -238,6 +295,36 @@ test("generateForParticipant stores deferred Drive picker batches without creati
   assert.equal(driveBatch?.parentMessageId, "msg_assistant");
   assert.equal((driveBatch?.paramsSnapshot as any).turnIntegrationOverrides[0].integrationId, "drive");
   assert.deepEqual(scheduled, []);
+});
+
+test("Workflow Drive picker handoff checkpoints ownership before waiting for selection", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () =>
+    streamToolCall("drive_picker", "call_drive")) as any;
+  const handoffs: Array<Record<string, unknown>> = [];
+
+  const { result, mutations } = await runParticipant(
+    registryWithDeferred("drive_picker", { prompt: "Choose the source deck" }),
+    {
+      continuationHandoff: {
+        continuationCount: 4,
+        maxToolRoundsPerInvocation: 1,
+        onHandoff: async (checkpoint: Record<string, unknown>) => {
+          handoffs.push(checkpoint);
+        },
+      },
+    },
+    {
+      workflowResumeEventId: "event_drive",
+      executionAttemptId: "attempt_1",
+      executionFence: 7,
+    },
+  );
+
+  assert.equal(result.failed, false);
+  assert.equal(handoffs.length, 0);
+  const durableBatch = mutations.find((args) => "checkpoint" in args);
+  assert.equal((durableBatch?.checkpoint as { roundKey?: string }).roundKey, "event_drive");
 });
 
 test("generateForParticipant hands deferred presentations to a durable workflow checkpoint", async (t) => {

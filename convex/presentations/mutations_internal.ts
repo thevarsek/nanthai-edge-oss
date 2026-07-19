@@ -27,6 +27,7 @@ const workflowBaseArgs = {
   projectId: v.id("presentationProjects"),
   userId: v.string(),
   expectedRevision: v.number(),
+  workflowManaged: v.optional(v.boolean()),
 };
 
 export const createChatProject = internalMutation({

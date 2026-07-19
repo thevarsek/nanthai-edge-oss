@@ -128,6 +128,8 @@ export const retryMessageArgs = {
 export const updateMessageContentArgs = {
   messageId: v.id("messages"),
   streamingMessageId: v.optional(v.id("streamingMessages")),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   content: v.string(),
   status: v.union(
     v.literal("pending"),
@@ -141,14 +143,12 @@ export const updateMessageContentArgs = {
 export const updateMessageReasoningArgs = {
   messageId: v.id("messages"),
   streamingMessageId: v.optional(v.id("streamingMessages")),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   reasoning: v.string(),
 } satisfies PropertyValidators;
 
 export const markChatCompletionNotifiedArgs = {
-  messageId: v.id("messages"),
-} satisfies PropertyValidators;
-
-export const markPostProcessScheduledArgs = {
   messageId: v.id("messages"),
 } satisfies PropertyValidators;
 
@@ -253,6 +253,10 @@ export const finalizeGenerationArgs = {
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId: v.optional(v.string()),
   terminalErrorCode: v.optional(terminalErrorCode),
+  skipExecutionTerminalization: v.optional(v.boolean()),
+  allowExpiredExecutionLease: v.optional(v.boolean()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const requestAudioGenerationArgs = {
@@ -275,6 +279,8 @@ export const patchMessageAudioArgs = {
 export const updateJobStatusArgs = {
   jobId: v.id("generationJobs"),
   messageId: v.optional(v.id("messages")),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   status: v.union(
     v.literal("queued"),
     v.literal("streaming"),
@@ -296,6 +302,30 @@ export const saveGenerationContinuationArgs = {
   jobId: v.id("generationJobs"),
   userId: v.string(),
   checkpoint: v.object({
+    roundKey: v.optional(v.string()),
+    checkpointBeforeProviderDispatch: v.optional(v.literal(true)),
+    deferredResumeEventId: v.optional(v.string()),
+    deferredOwnership: v.optional(v.union(
+      v.object({
+        kind: v.literal("subagents"),
+        batchId: v.id("subagentBatches"),
+      }),
+      v.object({
+        kind: v.literal("presentation"),
+        projectId: v.id("presentationProjects"),
+        toolCallId: v.string(),
+        modelId: v.string(),
+        requireZdrOverride: v.optional(v.boolean()),
+      }),
+      v.object({
+        kind: v.literal("analytics"),
+        analyticsRunId: v.id("analyticsWorkflowRuns"),
+      }),
+      v.object({
+        kind: v.literal("drive_picker"),
+        batchId: v.id("drivePickerBatches"),
+      }),
+    )),
     participant: generationParticipantValidator,
     group: v.object({
       assistantMessageIds: v.array(v.id("messages")),
@@ -313,6 +343,8 @@ export const saveGenerationContinuationArgs = {
       searchSessionId: v.optional(v.id("searchSessions")),
       subagentBatchId: v.optional(v.id("subagentBatches")),
       drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
+      executionAttemptId: v.optional(v.id("executionAttempts")),
+      executionFence: v.optional(v.number()),
       imageConfig: v.optional(imageConfigValidator),
       // Pre-resolved overrides preserved across continuations (M30 skill tri-state + preflight consolidation)
       chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),
@@ -368,6 +400,8 @@ export const saveGenerationContinuationArgs = {
 
 export const claimGenerationContinuationArgs = {
   jobId: v.id("generationJobs"),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export const setGenerationContinuationScheduledArgs = {
@@ -450,6 +484,8 @@ export const supersedeMemoryArgs = {
 export const updateMessageToolCallsArgs = {
   messageId: v.id("messages"),
   streamingMessageId: v.optional(v.id("streamingMessages")),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   toolCalls: v.array(v.object({
     id: v.string(),
     name: v.string(),
@@ -521,6 +557,7 @@ export type StoreAncillaryCostArgs = {
   webSearchRequests?: number;
   source: string;
   generationId?: string;
+  idempotencyKey?: string;
 };
 
 export const storeAncillaryCostArgs = {
@@ -547,6 +584,7 @@ export const storeAncillaryCostArgs = {
   webSearchRequests: v.optional(v.number()),
   source: v.string(),
   generationId: v.optional(v.string()),
+  idempotencyKey: v.optional(v.string()),
 } satisfies PropertyValidators;
 
 // ── M29: Video Generation ─────────────────────────────────────────────
@@ -566,6 +604,9 @@ export const createVideoJobArgs = {
     duration: v.optional(v.number()),
     generateAudio: v.optional(v.boolean()),
   })),
+  executionRunId: v.optional(v.id("executionRuns")),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export type CreateVideoJobArgs = {
@@ -583,6 +624,9 @@ export type CreateVideoJobArgs = {
     duration?: number;
     generateAudio?: boolean;
   };
+  executionRunId?: Id<"executionRuns">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 };
 
 export const createVideoOutputUploadSessionArgs = {
@@ -590,6 +634,9 @@ export const createVideoOutputUploadSessionArgs = {
   messageId: v.id("messages"),
   chatId: v.id("chats"),
   userId: v.string(),
+  executionRunId: v.optional(v.id("executionRuns")),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export type CreateVideoOutputUploadSessionArgs = {
@@ -597,6 +644,9 @@ export type CreateVideoOutputUploadSessionArgs = {
   messageId: Id<"messages">;
   chatId: Id<"chats">;
   userId: string;
+  executionRunId?: Id<"executionRuns">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 };
 
 export const completeVideoOutputUploadArgs = {
@@ -622,12 +672,16 @@ export const updateVideoJobStatusArgs = {
     v.literal("failed"),
   ),
   error: v.optional(v.string()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export type UpdateVideoJobStatusArgs = {
   videoJobId: Id<"videoJobs">;
   status: "pending" | "in_progress" | "completed" | "failed";
   error?: string;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 };
 
 export const updateVideoJobPollArgs = {
@@ -640,6 +694,8 @@ export const updateVideoJobPollArgs = {
   ),
   pollCount: v.number(),
   error: v.optional(v.string()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export type UpdateVideoJobPollArgs = {
@@ -647,6 +703,8 @@ export type UpdateVideoJobPollArgs = {
   status: "pending" | "in_progress" | "completed" | "failed";
   pollCount: number;
   error?: string;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 };
 
 export const insertGeneratedMediaArgs = {
@@ -662,6 +720,8 @@ export const insertGeneratedMediaArgs = {
   durationSeconds: v.optional(v.number()),
   model: v.optional(v.string()),
   prompt: v.optional(v.string()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
 export type InsertGeneratedMediaArgs = {
@@ -677,4 +737,16 @@ export type InsertGeneratedMediaArgs = {
   durationSeconds?: number;
   model?: string;
   prompt?: string;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
 };
+
+export const settleVideoGenerationArgs = {
+  ...finalizeGenerationArgs,
+  videoJobId: v.id("videoJobs"),
+  media: v.optional(v.object({
+    storageId: v.id("_storage"),
+    mimeType: v.string(),
+    sizeBytes: v.optional(v.number()),
+  })),
+} satisfies PropertyValidators;

@@ -11,6 +11,7 @@ import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { MODEL_IDS } from "../lib/model_constants";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
 import { deleteMemoryWithDerivedData } from "./cleanup";
+import { isUserDataWritable } from "../lib/write_fence";
 
 type MemoryDocResult = Partial<Doc<"memories">> & {
   _id: Id<"memories">;
@@ -31,6 +32,11 @@ export async function computeAndStoreEmbeddingHandler(
     memoryId: args.memoryId,
   });
   if (!memory?.userId) return;
+  const writable = await ctx.runQuery(internal.lib.write_fence.isWritable, {
+    userId: memory.userId,
+    chatId: memory.sourceChatId,
+  });
+  if (!writable) return;
 
   const [apiKey, preferences] = await Promise.all([
     getRequiredUserOpenRouterApiKey(ctx, memory.userId),
@@ -63,7 +69,7 @@ export async function computeAndStoreEmbeddingHandler(
     userId: memory.userId,
     embedding: embeddingResult.embedding,
   });
-  await ctx.scheduler.runAfter(0, internal.memory.relationships.rebuildForMemory, {
+  await ctx.scheduler.runAfter(0, internal.execution.workload_queues.enqueueMemoryRelationship, {
     memoryId: args.memoryId,
   });
 
@@ -104,6 +110,12 @@ export async function storeEmbeddingHandler(
   ctx: MutationCtx,
   args: StoreEmbeddingArgs,
 ): Promise<void> {
+  const memory = await ctx.db.get(args.memoryId);
+  if (
+    !memory
+    || memory.userId !== args.userId
+    || !await isUserDataWritable(ctx, args.userId, memory.sourceChatId)
+  ) return;
   const existing = await ctx.db
     .query("memoryEmbeddings")
     .withIndex("by_memory", (q) => q.eq("memoryId", args.memoryId))

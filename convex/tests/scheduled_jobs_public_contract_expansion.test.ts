@@ -72,11 +72,14 @@ test("createJob stores normalized first step, strips integrations, and schedules
   assert.deepEqual(inserts[0]?.value.enabledIntegrations, []);
   assert.deepEqual((inserts[0]?.value.steps as Array<any>)[0]?.enabledIntegrations, []);
   assert.equal(scheduled.length, 1);
-  assert.deepEqual(scheduled[0]?.payload, { jobId: "job_1" });
-  assert.deepEqual(patches[0], {
-    id: "job_1",
-    value: { scheduledFunctionId: "sched_1" },
-  });
+  assert.equal(scheduled[0]?.payload.jobId, "job_1");
+  assert.match(String(scheduled[0]?.payload.occurrenceId), /^scheduled:job_1:/);
+  assert.equal(patches[0]?.id, "job_1");
+  assert.equal(patches[0]?.value.scheduledFunctionId, "sched_1");
+  assert.match(
+    String(patches[0]?.value.nextScheduledOccurrenceId),
+    /^scheduled:job_1:/,
+  );
 });
 
 test("createJob rejects Gmail scheduled jobs on models outside Google data allowlist", async () => {
@@ -350,44 +353,42 @@ test("pauseJob and resumeJob transition status and scheduled function state", as
   assert.equal(resumedPatches[0]?.status, "active");
   assert.equal(resumedPatches[0]?.consecutiveFailures, 0);
   assert.equal(resumedPatches[0]?.scheduledFunctionId, "sched_2");
-  assert.deepEqual(scheduled, [{ jobId: "job_1" }]);
+  assert.equal(scheduled[0]?.jobId, "job_1");
+  assert.match(String(scheduled[0]?.occurrenceId), /^scheduled:job_1:/);
 });
 
-test("deleteJob removes run history in batches and deletes the job", async () => {
-  const deleted: string[] = [];
+test("deleteJob pauses the job and schedules durable teardown", async () => {
   const cancelled: string[] = [];
-  let takeCount = 0;
+  const patches: Array<Record<string, unknown>> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
 
   await (deleteJob as any)._handler({
     auth: buildAuth(),
     db: {
       get: async () => ({ _id: "job_1", userId: "user_1", scheduledFunctionId: "sched_1" }),
-      query: (table: string) => ({
+      query: (_table: string) => ({
         withIndex: () => ({
-          take: async (_limit: number) => {
-            assert.equal(table, "jobRuns");
-            takeCount += 1;
-            return takeCount === 1
-              ? Array.from({ length: 100 }, (_, index) => ({ _id: `run_${index}` }))
-              : [{ _id: "run_tail" }];
-          },
           first: async () => ({ _id: "ent_1", status: "active" }),
         }),
       }),
-      delete: async (id: string) => {
-        deleted.push(id);
+      patch: async (_id: string, value: Record<string, unknown>) => {
+        patches.push(value);
       },
     },
     scheduler: {
       cancel: async (id: string) => {
         cancelled.push(id);
       },
+      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
+        scheduled.push(args);
+        return "teardown_1";
+      },
     },
   }, { jobId: "job_1" });
 
   assert.deepEqual(cancelled, ["sched_1"]);
-  assert.equal(deleted.length, 102);
-  assert.equal(deleted[deleted.length - 1], "job_1");
+  assert.equal(patches[0]?.status, "paused");
+  assert.deepEqual(scheduled, [{ jobId: "job_1", userId: "user_1" }]);
 });
 
 test("runJobNow rejects paused manual jobs and schedules active jobs immediately", async () => {
@@ -440,7 +441,9 @@ test("runJobNow rejects paused manual jobs and schedules active jobs immediately
   }, { jobId: "job_2" });
 
   assert.deepEqual(result, { triggered: true, message: "Job execution started" });
-  assert.deepEqual(scheduled, [{ jobId: "job_2", invocationSource: "manual" }]);
+  assert.equal(scheduled[0]?.jobId, "job_2");
+  assert.equal(scheduled[0]?.invocationSource, "manual");
+  assert.match(String(scheduled[0]?.occurrenceId), /^manual:/);
 });
 
 test("upsertApiKey patches existing secret and deleteApiKey removes it when present", async () => {
@@ -450,6 +453,7 @@ test("upsertApiKey patches existing secret and deleteApiKey removes it when pres
   await (upsertApiKey as any)._handler({
     auth: buildAuth(),
     db: {
+      get: async () => ({ _id: "job_1", userId: "user_1" }),
       query: () => ({
         withIndex: () => ({
           unique: async () => ({ _id: "secret_1", userId: "user_1", apiKey: "old" }),
@@ -516,8 +520,28 @@ test("scheduled job trigger tokens can be created, listed, rotated, and revoked"
       query: () => ({
         withIndex: () => ({
           collect: async () => ([
-            { _id: "tok_old", createdAt: 100, tokenPrefix: "sk_sched_old", status: "active" },
-            { _id: "tok_new", createdAt: 200, tokenPrefix: "sk_sched_new", status: "active" },
+            {
+              _id: "tok_old",
+              _creationTime: 90,
+              userId: "user_1",
+              jobId: "job_1",
+              createdAt: 100,
+              updatedAt: 100,
+              tokenPrefix: "sk_sched_old",
+              tokenHash: "secret-old",
+              status: "active",
+            },
+            {
+              _id: "tok_new",
+              _creationTime: 190,
+              userId: "user_1",
+              jobId: "job_1",
+              createdAt: 200,
+              updatedAt: 200,
+              tokenPrefix: "sk_sched_new",
+              tokenHash: "secret-new",
+              status: "active",
+            },
           ]),
         }),
       }),
@@ -525,6 +549,10 @@ test("scheduled job trigger tokens can be created, listed, rotated, and revoked"
   }, { jobId: "job_1" });
 
   assert.deepEqual(listed.map((token: any) => token._id), ["tok_new", "tok_old"]);
+  assert.equal(listed[0]._creationTime, 190);
+  assert.equal(listed[0].userId, "user_1");
+  assert.equal(listed[0].jobId, "job_1");
+  assert.equal("tokenHash" in listed[0], false);
 
   const rotated = await (rotateJobTriggerToken as any)._handler({
     auth: buildAuth(),
@@ -578,6 +606,7 @@ test("triggerJobViaApi omits blank idempotency keys from stored audit rows", asy
 
   const result = await (triggerJobViaApi as any)._handler({
     db: {
+      get: async () => ({ _id: "job_1", userId: "user_1" }),
       query: () => ({
         withIndex: () => ({
           first: async () => null,

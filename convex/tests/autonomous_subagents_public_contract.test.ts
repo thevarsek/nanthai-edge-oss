@@ -76,6 +76,9 @@ test("pauseSession, resumeSession, and stopSession enforce lifecycle transitions
     auth: buildAuth(),
     db: {
       get: async () => ({ _id: "session_1", userId: "user_1", status: "running" }),
+      query: () => ({
+        withIndex: () => ({ collect: async () => [] }),
+      }),
       patch: async (id: string, value: Record<string, unknown>) => {
         patches.push({ id, value });
       },
@@ -122,6 +125,9 @@ test("pauseSession, resumeSession, and stopSession enforce lifecycle transitions
     auth: buildAuth(),
     db: {
       get: async () => ({ _id: "session_1", userId: "user_1", status: "paused" }),
+      query: () => ({
+        withIndex: () => ({ collect: async () => [] }),
+      }),
       patch: async (id: string, value: Record<string, unknown>) => {
         patches.push({ id, value });
       },

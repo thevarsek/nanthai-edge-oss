@@ -25,6 +25,7 @@ import {
   StreamResult,
   ToolCall,
 } from "../lib/openrouter";
+import { OPENROUTER_ACTION_BUDGET_MS } from "../lib/openrouter_constants";
 import { COMPACTION } from "../lib/compaction_constants";
 import {
   isContextOverflow,
@@ -100,6 +101,8 @@ export interface GenerationLoopOptions {
   modelContextLimit: number;
   writer: StreamWriter;
   actionStartTime: number;
+  providerDeadlineAt?: number;
+  onProviderDispatch?: () => Promise<void>;
   allowContinuationHandoff?: boolean;
   initialTotalUsage?: OpenRouterUsage | null;
   initialToolCalls?: RecordedToolCall[];
@@ -265,21 +268,34 @@ export async function runGenerationWithCompaction(
   let currentMessages = [...options.messages];
   let totalUsage: OpenRouterUsage | null = options.initialTotalUsage ?? null;
   let compactionCount = options.initialCompactionCount ?? 0;
+  let invocationCompactionCount = 0;
   const allToolCalls: RecordedToolCall[] = [...(options.initialToolCalls ?? [])];
   const allToolResults: RecordedToolResult[] = [...(options.initialToolResults ?? [])];
   // M23: Collect compaction usage records for ancillary cost tracking.
   const compactionUsages: GenerationLoopResult["compactionUsages"] = [];
+  let operationSegment = 0;
+  const actionRetryConfig: RetryConfig = {
+    ...retryConfig,
+    absoluteDeadlineAtMs: Math.min(
+      retryConfig?.absoluteDeadlineAtMs ?? Number.POSITIVE_INFINITY,
+      options.providerDeadlineAt ?? Number.POSITIVE_INFINITY,
+      actionStartTime + OPENROUTER_ACTION_BUDGET_MS,
+    ),
+  };
 
   // Outer loop: each iteration is one "segment" (initial or post-compaction).
   while (true) {
+    const currentOperationSegment = operationSegment;
+    operationSegment += 1;
     // --- 1. Initial streaming call ---
+    await options.onProviderDispatch?.();
     const streamResult = await deps.callOpenRouterStreaming(
       apiKey,
       model,
       currentMessages,
       currentParams,
       callbacks,
-      retryConfig,
+      actionRetryConfig,
     );
 
     totalUsage = aggregateUsage(totalUsage, streamResult.usage);
@@ -326,9 +342,14 @@ export async function runGenerationWithCompaction(
       messages: currentMessages,
       params: currentParams,
       callbacks,
-      retryConfig,
+      retryConfig: actionRetryConfig,
       registry: currentToolRegistry,
-      toolCtx,
+      toolCtx: {
+        ...toolCtx,
+        operationScope: toolCtx.operationScope
+          ? `${toolCtx.operationScope}:segment:${currentOperationSegment}`
+          : undefined,
+      },
       loadedSkillSlugs: options.loadedSkillSlugs,
       onToolRoundStart,
       onToolRoundComplete,
@@ -375,7 +396,23 @@ export async function runGenerationWithCompaction(
       };
     }
 
-    if (loopResult.exitReason === "round_budget" && options.allowContinuationHandoff) {
+    // --- 4. Check if compaction is needed ---
+    const lastUsage = loopResult.streamResult.usage;
+    const checkpointTokens = Math.ceil(
+      JSON.stringify(loopResult.conversationMessages).length / 4,
+    );
+    const needsContextCompaction = deps.isContextOverflow(
+      Math.max(lastUsage?.promptTokens ?? 0, checkpointTokens),
+      modelContextLimit,
+    );
+    const needsTimeoutCompaction = deps.isApproachingTimeout(actionStartTime);
+
+    if (
+      loopResult.exitReason === "round_budget"
+      && options.allowContinuationHandoff
+      && !needsContextCompaction
+      && !needsTimeoutCompaction
+    ) {
       logGenerationLoopExit({
         model,
         exitPath: "round_budget_continuation",
@@ -397,13 +434,6 @@ export async function runGenerationWithCompaction(
         compactionUsages,
       };
     }
-
-    // --- 4. Check if compaction is needed ---
-    const lastUsage = loopResult.streamResult.usage;
-    const needsContextCompaction = lastUsage
-      ? deps.isContextOverflow(lastUsage.promptTokens, modelContextLimit)
-      : false;
-    const needsTimeoutCompaction = deps.isApproachingTimeout(actionStartTime);
 
     // If the loop did not exit early for compaction and there is no further
     // tool work to do, we're done.
@@ -434,15 +464,16 @@ export async function runGenerationWithCompaction(
 
     // Hit the continuation cap — force a final text response so the user
     // doesn't see a dangling tool_calls finish reason.
-    if (compactionCount >= COMPACTION.MAX_CONTINUATIONS) {
+    if (invocationCompactionCount >= COMPACTION.MAX_CONTINUATIONS) {
       const finalMessages = loopResult.conversationMessages;
+      await options.onProviderDispatch?.();
       const finalResult = await deps.callOpenRouterStreaming(
         apiKey,
         model,
         finalMessages,
         { ...currentParams, toolChoice: "none" },
         callbacks,
-        retryConfig,
+        actionRetryConfig,
       );
       totalUsage = aggregateUsage(totalUsage, finalResult.usage);
       logGenerationLoopExit({
@@ -465,6 +496,7 @@ export async function runGenerationWithCompaction(
 
     // --- 5. Compaction needed — compress and continue ---
     compactionCount++;
+    invocationCompactionCount++;
 
     // Flush any pending stream content before compaction pause.
     await writer.flush();
@@ -507,7 +539,10 @@ export async function runGenerationWithCompaction(
     const compactionResult = await deps.compactMessages(
       conversationToCompact,
       apiKey,
-      { requireZdr: options.requireZdr === true },
+      {
+        requireZdr: options.requireZdr === true,
+        absoluteDeadlineAtMs: actionRetryConfig.absoluteDeadlineAtMs,
+      },
     );
 
     // M23: Collect compaction usage for ancillary cost tracking.

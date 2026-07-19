@@ -172,7 +172,11 @@ test("attachPickedDriveFiles cancels awaiting batches when the picker returns no
   const mutations: Array<{ args: Record<string, unknown> }> = [];
   const result = await (attachPickedDriveFiles as any)._handler({
     auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
-    runQuery: async () => ({ status: "awaiting_pick" }),
+    runQuery: async () => ({
+      userId: "user_1",
+      status: "awaiting_pick",
+      paramsSnapshot: { workflowResumeEventId: "event_1" },
+    }),
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push({ args });
     },
@@ -183,6 +187,7 @@ test("attachPickedDriveFiles cancels awaiting batches when the picker returns no
 
   assert.deepEqual(result, { success: true, status: "cancelled" });
   assert.deepEqual(mutations[0].args, { batchId: "batch_1", userId: "user_1" });
+  assert.deepEqual(mutations[1].args, { batchId: "batch_1", userId: "user_1" });
 });
 
 test("attachPickedDriveFiles returns existing terminal batch status without touching Drive", async () => {
@@ -200,6 +205,28 @@ test("attachPickedDriveFiles returns existing terminal batch status without touc
   assert.deepEqual(result, { success: true, status: "completed" });
 });
 
+test("attachPickedDriveFiles re-signals a durable resume after an interrupted callback", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  const result = await (attachPickedDriveFiles as any)._handler({
+    auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
+    runQuery: async () => ({
+      userId: "user_1",
+      status: "resuming",
+      paramsSnapshot: { workflowResumeEventId: "event_1" },
+    }),
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      return true;
+    },
+  }, {
+    batchId: "batch_1",
+    fileIds: ["drive_1"],
+  });
+
+  assert.deepEqual(result, { success: true, status: "resuming" });
+  assert.deepEqual(mutations, [{ batchId: "batch_1", userId: "user_1" }]);
+});
+
 test("completeAfterResume delegates final status to the internal mutation", async () => {
   const calls: Array<Record<string, unknown>> = [];
   await (completeAfterResume as any)._handler({
@@ -214,7 +241,7 @@ test("completeAfterResume delegates final status to the internal mutation", asyn
   assert.deepEqual(calls, [{ batchId: "batch_1", status: "failed" }]);
 });
 
-test("attachPickedDriveFiles ingests unique Drive files, persists provenance, and schedules resume", async () => {
+test("attachPickedDriveFiles ingests unique Drive files and resumes the active Workflow", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, any>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
@@ -238,7 +265,13 @@ test("attachPickedDriveFiles ingests unique Drive files, persists provenance, an
     const result = await (attachPickedDriveFiles as any)._handler({
       auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
       runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-        if ("batchId" in args) return { status: "awaiting_pick" };
+        if ("batchId" in args) {
+          return {
+            userId: "user_1",
+            status: "awaiting_pick",
+            paramsSnapshot: { workflowResumeEventId: "event_1" },
+          };
+        }
         if ("fileId" in args) return null;
         return {
           _id: "google_1",
@@ -262,8 +295,15 @@ test("attachPickedDriveFiles ingests unique Drive files, persists provenance, an
             generationJobIds: ["job_1"],
             participant: { id: "participant_1", modelId: "openai/gpt-4.1-mini" },
             userId: "user_1",
-            paramsSnapshot: { requestParams: { webSearchEnabled: true }, enabledIntegrations: ["google_drive"] },
+            paramsSnapshot: {
+              requestParams: { webSearchEnabled: true },
+              enabledIntegrations: ["google_drive"],
+              workflowResumeEventId: "event_1",
+            },
           };
+        }
+        if (Object.keys(args).length === 2 && "batchId" in args && "userId" in args) {
+          return true;
         }
         return null;
       },
@@ -288,9 +328,8 @@ test("attachPickedDriveFiles ingests unique Drive files, persists provenance, an
     assert.equal(append.attachments[0].type, "document");
     assert.equal(append.attachments[0].driveFileId, "drive_1");
     assert.equal("fileId" in append.attachments[0], false);
-    assert.equal(scheduled[0].webSearchEnabled, true);
-    const scheduleResume = mutations.at(-1)!;
-    assert.deepEqual(scheduleResume, { batchId: "batch_1", scheduledFunctionId: "scheduled_1" });
+    assert.equal(scheduled.length, 0);
+    assert.deepEqual(mutations.at(-1), { batchId: "batch_1", userId: "user_1" });
   } finally {
     globalThis.fetch = originalFetch;
   }

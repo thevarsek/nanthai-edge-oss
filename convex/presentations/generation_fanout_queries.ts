@@ -11,6 +11,8 @@ export const getPresentationStudioContext = internalQuery({
   args: {
     runId: v.id("presentationGenerationRuns"),
     batchId: v.id("presentationGenerationBatches"),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
   },
   returns: v.union(v.null(), presentationStudioContextValidator),
   handler: async (ctx, args) => {
@@ -18,7 +20,13 @@ export const getPresentationStudioContext = internalQuery({
       ctx.db.get(args.runId),
       ctx.db.get(args.batchId),
     ]);
-    if (!run || !batch || batch.runId !== run._id || batch.userId !== run.userId) return null;
+    const suppliedFence = args.executionAttemptId !== undefined
+      || args.executionFence !== undefined;
+    if (!run || (suppliedFence && (
+      run.executionAttemptId !== args.executionAttemptId
+      || run.executionFence !== args.executionFence
+    )) || !batch ||
+        batch.runId !== run._id || batch.userId !== run.userId) return null;
     const project = await ctx.db.get(run.projectId);
     if (!project || project.userId !== run.userId) return null;
     return { run, batch, project };
@@ -45,24 +53,49 @@ async function curatorContext(
 
 async function getPresentationCuratorContextHandler(
   ctx: QueryCtx,
-  args: { runId: Id<"presentationGenerationRuns"> },
+  args: {
+    runId: Id<"presentationGenerationRuns">;
+    executionAttemptId?: Id<"executionAttempts">;
+    executionFence?: number;
+  },
 ) {
-  return await curatorContext(ctx, args.runId);
+  const context = await curatorContext(ctx, args.runId);
+  if (!context) return null;
+  const suppliedFence = args.executionAttemptId !== undefined
+    || args.executionFence !== undefined;
+  return !suppliedFence || (
+    context.run.executionAttemptId === args.executionAttemptId
+    && context.run.executionFence === args.executionFence
+  ) ? context : null;
 }
 
 export const getPresentationCuratorContext = internalQuery({
-  args: { runId: v.id("presentationGenerationRuns") },
+  args: {
+    runId: v.id("presentationGenerationRuns"),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+  },
   returns: v.union(v.null(), presentationCuratorContextValidator),
   handler: getPresentationCuratorContextHandler,
 });
 
 export const getPresentationCuratorTaskContext = internalQuery({
-  args: { taskId: v.id("presentationCuratorTasks") },
+  args: {
+    taskId: v.id("presentationCuratorTasks"),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+  },
   returns: v.union(v.null(), presentationCuratorTaskContextValidator),
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.taskId);
     if (!task) return null;
     const context = await curatorContext(ctx, task.runId);
-    return context ? { ...context, task } : null;
+    if (!context) return null;
+    const suppliedFence = args.executionAttemptId !== undefined
+      || args.executionFence !== undefined;
+    return !suppliedFence || (
+      context.run.executionAttemptId === args.executionAttemptId
+      && context.run.executionFence === args.executionFence
+    ) ? { ...context, task } : null;
   },
 });

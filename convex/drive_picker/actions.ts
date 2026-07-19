@@ -8,9 +8,10 @@
 // resume-generation logic here.
 // =============================================================================
 
-import { action, internalAction } from "../_generated/server";
+import { action, internalAction, type ActionCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
 import { getGoogleAccessToken } from "../tools/google/auth";
 import {
@@ -24,8 +25,52 @@ import {
 } from "../subagents/shared";
 
 type DrivePickerBatch = {
+  userId: string;
   status: "awaiting_pick" | "resuming" | "completed" | "failed" | "cancelled";
+  paramsSnapshot?: { workflowResumeEventId?: string };
 };
+
+export function shouldUseLegacySchedulerResume(
+  orchestrationEngine: string | undefined,
+  workflowResumeEventId?: string,
+): boolean {
+  return orchestrationEngine === "legacy_scheduler"
+    || (!orchestrationEngine && !workflowResumeEventId);
+}
+
+async function scheduleWorkflowSignalRetry(
+  ctx: ActionCtx,
+  batchId: Id<"drivePickerBatches">,
+  userId: string,
+  attempt = 0,
+): Promise<void> {
+  const ownership = await ctx.runQuery(
+    internal.drive_picker.ownership.getResumeOwnership,
+    { batchId, userId },
+  );
+  if (shouldUseLegacySchedulerResume(
+    ownership?.orchestrationEngine,
+    ownership?.workflowResumeEventId,
+  )) return;
+  await ctx.scheduler.runAfter(
+    500,
+    internal.drive_picker.ownership.retryWorkflowResumeGate,
+    { batchId, userId, attempt },
+  );
+}
+
+async function signalWorkflowIfPresent(
+  ctx: ActionCtx,
+  batch: DrivePickerBatch,
+  batchId: Id<"drivePickerBatches">,
+): Promise<boolean> {
+  const eventId = batch.paramsSnapshot?.workflowResumeEventId;
+  if (!eventId) return false;
+  return await ctx.runMutation(internal.drive_picker.ownership.signalWorkflowResume, {
+    batchId,
+    userId: batch.userId,
+  });
+}
 
 export const attachPickedDriveFiles = action({
   args: {
@@ -42,6 +87,12 @@ export const attachPickedDriveFiles = action({
       throw new ConvexError({ code: "NOT_FOUND", message: "Drive picker batch not found." });
     }
     if (batch.status !== "awaiting_pick") {
+      if (batch.status === "resuming") {
+        const signaled = await signalWorkflowIfPresent(ctx, batch, args.batchId);
+        if (!signaled) {
+          await scheduleWorkflowSignalRetry(ctx, args.batchId, userId);
+        }
+      }
       return { success: true, status: batch.status };
     }
 
@@ -51,23 +102,40 @@ export const attachPickedDriveFiles = action({
         batchId: args.batchId,
         userId,
       });
+      await signalWorkflowIfPresent(ctx, batch, args.batchId);
       return { success: true, status: "cancelled" };
     }
 
     const { accessToken } = await getGoogleAccessToken(ctx, userId, "drive");
     const attachments: CachedAttachment[] = [];
     let totalBytes = 0;
-    for (const fileId of fileIds) {
-      const attachment = await ingestDriveFile(ctx, userId, accessToken, fileId);
-      totalBytes += attachment.sizeBytes ?? 0;
-      if (totalBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+    try {
+      for (const fileId of fileIds) {
+        const attachment = await ingestDriveFile(ctx, userId, accessToken, fileId);
+        totalBytes += attachment.sizeBytes ?? 0;
+        if (totalBytes <= MAX_TOTAL_ATTACHMENT_BYTES) {
+          attachments.push(attachment);
+          continue;
+        }
         await ctx.runMutation(internal.drive_picker.mutations.cancelBatch, {
           batchId: args.batchId,
           userId,
         });
+        await signalWorkflowIfPresent(ctx, batch, args.batchId);
         throw new ConvexError({ code: "VALIDATION", message: "Selected Drive files are too large to attach together." });
       }
-      attachments.push(attachment);
+    } catch (error) {
+      const data = error instanceof ConvexError
+        ? error.data as { code?: unknown }
+        : null;
+      if (data?.code === "DRIVE_FILE_TOO_LARGE") {
+        await ctx.runMutation(internal.drive_picker.mutations.cancelBatch, {
+          batchId: args.batchId,
+          userId,
+        });
+        await signalWorkflowIfPresent(ctx, batch, args.batchId);
+      }
+      throw error;
     }
 
     // Persist Drive provenance with each attachment so KB listings and the
@@ -88,6 +156,24 @@ export const attachPickedDriveFiles = action({
       pickedFileIds: fileIds,
       attachments: persisted,
     });
+    if (resume.terminal) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: "Generation is no longer available for Drive picker resume.",
+      });
+    }
+
+    if (await signalWorkflowIfPresent(ctx, batch, args.batchId)) {
+      return { success: true, status: "resuming", attachedCount: attachments.length };
+    }
+
+    // Production-drain compatibility is only valid when the persisted attempt
+    // explicitly says it is scheduler-owned. A missing/stale Workflow event is
+    // retried; it must never start a second generation engine.
+    if (!shouldUseLegacySchedulerResume(resume.orchestrationEngine)) {
+      await scheduleWorkflowSignalRetry(ctx, args.batchId, userId);
+      return { success: true, status: "resuming", attachedCount: attachments.length };
+    }
 
     const scheduledFunctionId = await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
       chatId: resume.chatId,
@@ -114,6 +200,25 @@ export const attachPickedDriveFiles = action({
     });
 
     return { success: true, status: "resuming", attachedCount: attachments.length };
+  },
+});
+
+export const retryWorkflowResume = internalAction({
+  args: {
+    batchId: v.id("drivePickerBatches"),
+    userId: v.string(),
+    attempt: v.number(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args): Promise<boolean> => {
+    const batch = await ctx.runQuery(
+      internal.drive_picker.mutations.getBatchForUser,
+      { batchId: args.batchId, userId: args.userId },
+    ) as DrivePickerBatch | null;
+    if (!batch || batch.status !== "resuming") return false;
+    if (await signalWorkflowIfPresent(ctx, batch, args.batchId)) return true;
+    await ctx.runMutation(internal.drive_picker.ownership.retryWorkflowResumeGate, args);
+    return false;
   },
 });
 

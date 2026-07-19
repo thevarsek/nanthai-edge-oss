@@ -61,6 +61,11 @@ export async function generateTitleHandler(
   args: GenerateTitleArgs,
   deps: GenerateTitleHandlerDeps = defaultGenerateTitleHandlerDeps,
 ): Promise<void> {
+  const writable = await ctx.runQuery(internal.chat.post_process_guard.isChatWritable, {
+    chatId: args.chatId,
+    userId: args.userId,
+  });
+  if (!writable) return;
   const [currentChat, prefs] = await Promise.all([
     ctx.runQuery(internal.chat.queries.getChatInternal, {
       chatId: args.chatId,

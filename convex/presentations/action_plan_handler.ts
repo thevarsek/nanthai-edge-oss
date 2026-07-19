@@ -42,12 +42,14 @@ export async function planProjectHandler(
   options: {
     deferRepair?: boolean;
     modelTimeoutMs?: number;
+    workflowManaged?: boolean;
   } = {},
 ): Promise<PlanProjectActionResult> {
   const { userId } = await deps.requireAuth(ctx);
   const prompt = requireBoundedText(args.prompt, "Presentation brief", MAX_PROMPT_CHARS);
   const project = await requireProjectForAction(ctx, args.projectId, userId);
-  assertProjectCanBeEdited(project.status);
+  const resumeWorkflowPlanning = options.workflowManaged && project.status === "planning";
+  if (!resumeWorkflowPlanning) assertProjectCanBeEdited(project.status);
   const ai = await resolvePresentationAiAccess(
     ctx,
     userId,
@@ -55,18 +57,21 @@ export async function planProjectHandler(
     args.requireZdrOverride,
     deps,
   );
-  const started: ProjectRevisionResult = await ctx.runMutation(
-    beginPlanningRef,
-    {
-      projectId: project._id,
-      userId,
-      expectedRevision: project.revision,
-      prompt,
-      direction: args.direction,
-      imageMode: args.imageMode,
-      modelId: ai.modelId,
-    },
-  );
+  const started: ProjectRevisionResult = resumeWorkflowPlanning
+    ? { projectId: project._id, projectRevision: project.revision }
+    : await ctx.runMutation(
+      beginPlanningRef,
+      {
+        projectId: project._id,
+        userId,
+        expectedRevision: project.revision,
+        prompt,
+        direction: args.direction,
+        imageMode: args.imageMode,
+        modelId: ai.modelId,
+        ...(options.workflowManaged ? { workflowManaged: true } : {}),
+      },
+    );
   const modelTimeoutMs = options.modelTimeoutMs ?? PRESENTATION_MODEL_TIMEOUT_MS;
 
   try {
@@ -135,6 +140,7 @@ export async function planProjectHandler(
         plan: parsed.slides,
         creativeDirection: parsed.creativeDirection,
         effectiveModelIds,
+        ...(options.workflowManaged ? { workflowManaged: true } : {}),
       },
     );
     return {
@@ -144,7 +150,7 @@ export async function planProjectHandler(
       plan: parsed.slides,
     };
   } catch (error) {
-    if (!(error instanceof DeferredPresentationRepair)) {
+    if (!(error instanceof DeferredPresentationRepair) && !options.workflowManaged) {
       await ctx.runMutation(markFailedRef, {
         projectId: project._id,
         userId,

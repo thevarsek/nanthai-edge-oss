@@ -8,6 +8,7 @@ export type DeferredPresentationWorkflowArgs = {
   toolCallId: string;
   modelId: string;
   requireZdrOverride?: boolean;
+  workflowResumeEventId?: string;
 };
 
 export type DeferredPresentationRepairArgs = DeferredPresentationWorkflowArgs & {
@@ -31,6 +32,9 @@ export function presentationWorkflowArgs(
   };
   if (args.requireZdrOverride !== undefined) {
     workflowArgs.requireZdrOverride = args.requireZdrOverride;
+  }
+  if (args.workflowResumeEventId !== undefined) {
+    workflowArgs.workflowResumeEventId = args.workflowResumeEventId;
   }
   return workflowArgs;
 }

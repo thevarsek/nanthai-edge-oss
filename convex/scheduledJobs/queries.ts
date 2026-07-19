@@ -80,7 +80,21 @@ export const listJobTriggerTokens = query({
       .withIndex("by_job", (q) => q.eq("jobId", args.jobId).eq("status", "active"))
       .collect();
 
-    return tokens.sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0));
+    return tokens
+      .sort((left, right) => (right.createdAt ?? 0) - (left.createdAt ?? 0))
+      .map((token) => ({
+        _id: token._id,
+        _creationTime: token._creationTime,
+        userId: token.userId,
+        jobId: token.jobId,
+        label: token.label,
+        tokenPrefix: token.tokenPrefix,
+        status: token.status,
+        createdAt: token.createdAt,
+        updatedAt: token.updatedAt,
+        lastUsedAt: token.lastUsedAt,
+        revokedAt: token.revokedAt,
+      }));
   },
 });
 

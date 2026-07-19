@@ -39,6 +39,11 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   subagentBatchId?: Id<"subagentBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
   resumeExpected?: boolean;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
+  workflowManaged?: boolean;
+  workflowResumeEventId?: string;
+  providerDeadlineAt?: number;
   // M29 — Video generation config
   videoConfig?: VideoConfig;
   imageConfig?: ImageGenerationConfig;
@@ -70,6 +75,8 @@ export interface GenerationContinuationGroupSnapshot {
   searchSessionId?: Id<"searchSessions">;
   subagentBatchId?: Id<"subagentBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   imageConfig?: ImageGenerationConfig;
   // Pre-resolved overrides preserved across continuations
   chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;
@@ -81,7 +88,34 @@ export interface GenerationContinuationGroupSnapshot {
   analyticsSource?: GenerationAnalyticsSource;
 }
 
+export type GenerationDeferredOwnership =
+  | {
+      kind: "subagents";
+      batchId: Id<"subagentBatches">;
+    }
+  | {
+      kind: "presentation";
+      projectId: Id<"presentationProjects">;
+      toolCallId: string;
+      modelId: string;
+      requireZdrOverride?: boolean;
+    }
+  | {
+      kind: "analytics";
+      analyticsRunId: Id<"analyticsWorkflowRuns">;
+    }
+  | {
+      kind: "drive_picker";
+      batchId: Id<"drivePickerBatches">;
+    };
+
 export interface GenerationContinuationCheckpoint {
+  /** Provider round whose dispatch is durably represented by this checkpoint. */
+  roundKey?: string;
+  /** True only when V8 hands off before making any provider request for this round. */
+  checkpointBeforeProviderDispatch?: true;
+  deferredResumeEventId?: string;
+  deferredOwnership?: GenerationDeferredOwnership;
   participant: ParticipantConfig;
   group: GenerationContinuationGroupSnapshot;
   checkpointVersion?: "v1" | "v2";
@@ -116,6 +150,7 @@ export interface GenerationContinuationCheckpoint {
 }
 
 export interface GenerationContinuationState {
+  roundKey?: string;
   participant: ParticipantConfig;
   group: GenerationContinuationGroupSnapshot;
   checkpointVersion: "v1" | "v2";

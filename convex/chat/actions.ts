@@ -30,7 +30,12 @@ import { generateTitleHandler } from "./actions_generate_title_handler";
 import { postProcessHandler } from "./actions_post_process_handler";
 import { runGenerationHandler } from "./actions_run_generation_handler";
 import { runGenerationParticipantRuntimeHandler } from "./actions_run_generation_participant_runtime";
-import { submitVideoGenerationHandler, pollVideoGenerationHandler } from "./actions_video_generation";
+import {
+  pollVideoGenerationHandler,
+  failVideoWorkflowHandler,
+  startVideoGenerationHandler,
+  submitVideoGenerationHandler,
+} from "./actions_video_generation";
 import { fetchAndStoreGenerationUsageHandler } from "./actions_fetch_usage";
 import {
   captureAssistantResponseFailure,
@@ -141,10 +146,33 @@ export const captureCancelledAssistantResponse = internalAction({
 
 export const submitVideoGeneration = internalAction({
   args: submitVideoGenerationArgs,
+  handler: startVideoGenerationHandler,
+});
+
+export const submitVideoGenerationStep = internalAction({
+  args: {
+    ...submitVideoGenerationArgs,
+    execution: v.optional(v.object({
+      runId: v.id("executionRuns"),
+      attemptId: v.id("executionAttempts"),
+      fence: v.number(),
+      claimantId: v.string(),
+    })),
+  },
   handler: submitVideoGenerationHandler,
 });
 
+export const failVideoWorkflow = internalAction({
+  args: { ...submitVideoGenerationArgs, error: v.string() },
+  handler: failVideoWorkflowHandler,
+});
+
 export const pollVideoGeneration = internalAction({
-  args: pollVideoGenerationArgs,
+  args: {
+    ...pollVideoGenerationArgs,
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+    executionFence: v.optional(v.number()),
+    executionClaimantId: v.optional(v.string()),
+  },
   handler: pollVideoGenerationHandler,
 });

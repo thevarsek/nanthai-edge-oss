@@ -3,6 +3,12 @@ import { v } from "convex/values";
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
+import { isCurrentResearchExecution } from "./execution_lifecycle";
+
+const researchExecutionArgs = {
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
+};
 
 export interface UpsertSearchContextArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
@@ -18,6 +24,7 @@ export const updateSearchSession = internalMutation({
   args: {
     sessionId: v.id("searchSessions"),
     patch: v.any(),
+    ...researchExecutionArgs,
   },
   handler: async (ctx, args) => {
     // Guard: prevent terminal→non-terminal transitions. Once a session
@@ -25,6 +32,7 @@ export const updateSearchSession = internalMutation({
     // allowed (e.g. for late-arriving corrections).
     const session = await ctx.db.get(args.sessionId);
     if (!session) return;
+    if (!await isCurrentResearchExecution(ctx, session, args)) return;
     const currentStatus = session.status as string;
     const incomingStatus = (args.patch as Record<string, unknown>).status as string | undefined;
     if (
@@ -48,8 +56,16 @@ export const patchMessageSearchContext = internalMutation({
     userId: v.string(),
     mode: v.union(v.literal("web"), v.literal("paper")),
     searchContext: v.any(),
+    ...researchExecutionArgs,
   },
-  handler: upsertSearchContextForMessage,
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId);
+    const session = message?.searchSessionId
+      ? await ctx.db.get(message.searchSessionId)
+      : null;
+    if (session && !await isCurrentResearchExecution(ctx, session, args)) return;
+    await upsertSearchContextForMessage(ctx, args);
+  },
 });
 
 export async function upsertSearchContextForMessage(
@@ -94,8 +110,18 @@ export const writeSearchPhase = internalMutation({
     phaseOrder: v.number(),
     iteration: v.optional(v.number()),
     data: v.any(),
+    ...researchExecutionArgs,
   },
   handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session || !await isCurrentResearchExecution(ctx, session, args)) return null;
+    const existing = await ctx.db
+      .query("searchPhases")
+      .withIndex("by_session", (query) =>
+        query.eq("sessionId", args.sessionId).eq("phaseOrder", args.phaseOrder),
+      )
+      .unique();
+    if (existing) return existing._id;
     return await ctx.db.insert("searchPhases", {
       sessionId: args.sessionId,
       phaseType: args.phaseType as "planning" | "initial_search" | "analysis" | "depth_iteration" | "synthesis" | "paper_architecture" | "paper",

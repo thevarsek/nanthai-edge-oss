@@ -48,7 +48,9 @@ test("relationship writes reject cross-user targets", async () => {
   const count = await replaceRelationshipsForMemoryHandler({
     db: {
       get: async (id: string) => docs.get(id) ?? null,
-      query: () => ({ withIndex: () => ({ collect: async () => [] }) }),
+      query: () => ({
+        withIndex: () => ({ collect: async () => [], unique: async () => null }),
+      }),
       delete: async () => {},
       insert: async (_table: string, value: Record<string, unknown>) => {
         inserted.push(value);

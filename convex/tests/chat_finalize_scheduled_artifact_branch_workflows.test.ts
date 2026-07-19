@@ -13,6 +13,7 @@ function buildCtx(options?: {
   const inserts: Array<{ table: string; value: Record<string, unknown>; id: string }> = [];
   const deletes: string[] = [];
   const scheduled: Array<{ delay: number; args: Record<string, unknown> }> = [];
+  const workflowSignals: Array<Record<string, unknown>> = [];
 
   const queryRows = (table: string, filters: Array<[string, unknown]>) =>
     (tableRows.get(table) ?? []).filter((row) =>
@@ -64,10 +65,14 @@ function buildCtx(options?: {
         return `scheduled_${scheduled.length}`;
       },
     },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      workflowSignals.push(args);
+      return "scheduled-step-event";
+    },
     storage: { delete: async () => undefined },
   } as any;
 
-  return { ctx, records, patches, inserts, deletes, scheduled };
+  return { ctx, records, patches, inserts, deletes, scheduled, workflowSignals };
 }
 
 test("finalizeGenerationHandler preserves partial content and artifacts for late cancelled scheduled generations", async () => {
@@ -91,6 +96,12 @@ test("finalizeGenerationHandler preserves partial content and artifacts for late
         content: "Partial answer before cancellation",
       },
       chat_1: { _id: "chat_1", userId: "user_1", sourceJobId: "scheduled_job_1" },
+      scheduled_job_1: {
+        _id: "scheduled_job_1",
+        activeWorkflowId: "workflow_1",
+        activeExecutionId: "execution_1",
+        activeStepIndex: 2,
+      },
     },
     tableRows: {
       generationContinuations: [{ _id: "continuation_1", jobId: "job_1" }],
@@ -129,7 +140,9 @@ test("finalizeGenerationHandler preserves partial content and artifacts for late
   assert.deepEqual(state.deletes, ["continuation_1", "streaming_1"]);
   assert.equal(state.inserts.some((entry) => entry.table === "generatedCharts"), true);
   assert.equal(state.inserts.some((entry) => entry.table === "generatedFiles" && entry.value.toolName === "lyria_music_generation"), true);
-  assert.equal(state.scheduled.filter((entry) => entry.args.executionId === "execution_1").length, 2);
+  assert.equal(state.scheduled.filter((entry) => entry.args.executionId === "execution_1").length, 0);
+  assert.equal(state.workflowSignals.length, 1);
+  assert.equal(state.workflowSignals[0]?.name, "scheduled-step-2-terminal");
 });
 
 test("finalizeGenerationHandler continues scheduled executions and stores usage for successful scheduled steps", async () => {
@@ -150,6 +163,12 @@ test("finalizeGenerationHandler continues scheduled executions and stores usage 
         modelId: "openai/gpt-test",
       },
       chat_2: { _id: "chat_2", userId: "user_1", sourceJobId: "scheduled_job_2" },
+      scheduled_job_2: {
+        _id: "scheduled_job_2",
+        activeWorkflowId: "workflow_2",
+        activeExecutionId: "execution_2",
+        activeStepIndex: 0,
+      },
     },
     tableRows: {
       generationContinuations: [],
@@ -175,10 +194,9 @@ test("finalizeGenerationHandler continues scheduled executions and stores usage 
     },
   } as never);
 
-  const continuation = state.scheduled.find((entry) => entry.args.executionId === "execution_2");
   const usageRecord = state.inserts.find((entry) => entry.table === "usageRecords");
-  assert.equal(continuation?.args.completedStepIndex, 0);
-  assert.equal(continuation?.args.assistantMessageId, "message_2");
+  assert.equal(state.workflowSignals.length, 1);
+  assert.equal(state.workflowSignals[0]?.name, "scheduled-step-0-terminal");
   assert.equal(usageRecord?.value.cost, 0.02);
   assert.equal(usageRecord?.value.modelId, "openai/gpt-test");
   assert.equal(state.scheduled.some((entry) => entry.delay === 2000), false);
