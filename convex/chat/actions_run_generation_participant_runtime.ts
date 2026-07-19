@@ -38,6 +38,11 @@ import {
   resolveGenerationProviderDeadline,
 } from "./generation_deadline";
 import { transitionGenerationRound } from "./generation_round_actions";
+import {
+  attachmentTriggeredDocumentWorkspaceToolNames,
+  attachmentTriggeredReadToolNames,
+} from "./helpers_attachment_utils";
+import type { ContextAttachment } from "./helpers_types";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -244,7 +249,7 @@ export async function runGenerationParticipantRuntimeHandler(
     schedulerHop2Ms,
   });
 
-  const [continuationPreview, caps] = await Promise.all([
+  const [continuationPreview, caps, driveResumeMessage] = await Promise.all([
     args.resumeExpected
       ? ctx.runQuery(internal.chat.queries.getGenerationContinuationInternal, {
           jobId: args.participant.jobId,
@@ -253,10 +258,24 @@ export async function runGenerationParticipantRuntimeHandler(
     ctx.runQuery(internal.chat.queries.getModelCapabilities, {
       modelId: args.participant.modelId,
     }),
+    args.drivePickerBatchId && args.resumeExpected !== true
+      ? ctx.runQuery(internal.chat.queries.getMessageInternal, {
+          messageId: args.userMessageId,
+        })
+      : Promise.resolve(null),
   ]);
 
-  const routingDirectToolNames =
-    continuationPreviewDirectToolNames(continuationPreview) ?? args.directToolNames ?? [];
+  const persistedAttachments = driveResumeMessage?.attachments as
+    | ContextAttachment[]
+    | undefined;
+  const routingDirectToolNames = Array.from(new Set([
+    ...(continuationPreviewDirectToolNames(continuationPreview) ?? args.directToolNames ?? []),
+    ...attachmentTriggeredReadToolNames(persistedAttachments),
+    ...attachmentTriggeredDocumentWorkspaceToolNames(persistedAttachments),
+  ]));
+  const routedArgs: RunGenerationParticipantArgs = driveResumeMessage
+    ? { ...args, directToolNames: routingDirectToolNames }
+    : args;
   if (requiresNodeWorker({
     directToolNames: routingDirectToolNames,
     activeProfiles: continuationPreview?.activeProfiles ?? [],
@@ -266,7 +285,7 @@ export async function runGenerationParticipantRuntimeHandler(
   })) {
     try {
       await ctx.runAction(internal.chat.actions_node.runGenerationParticipantNode, {
-        ...args,
+        ...routedArgs,
         providerDeadlineAt,
       });
     } catch (error) {
@@ -275,15 +294,15 @@ export async function runGenerationParticipantRuntimeHandler(
         { jobId: args.participant.jobId },
       );
       if (nodeJob && !TERMINAL_GENERATION_JOB_STATUSES.has(nodeJob.status)) {
-        await finalizeParticipantFailureAndCleanup(ctx, args, error);
-        await maybeFinalizeDrivePickerBatch(ctx, args);
+        await finalizeParticipantFailureAndCleanup(ctx, routedArgs, error);
+        await maybeFinalizeDrivePickerBatch(ctx, routedArgs);
       }
       throw error;
     }
     return;
   }
 
-  const claimedArgs = await claimParticipantExecution(ctx, args);
+  const claimedArgs = await claimParticipantExecution(ctx, routedArgs);
   if (!claimedArgs) return;
 
   const continuationState = claimedArgs.resumeExpected
@@ -382,13 +401,12 @@ export async function runGenerationParticipantRuntimeHandler(
         });
         shouldCaptureStarted = true;
       }
-      if (!shouldCaptureStarted) {
-        return;
+      if (shouldCaptureStarted) {
+        startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
+          isResume: false,
+          schedulerHop2Ms,
+        }, imageTerminalAnalytics);
       }
-      startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
-        isResume: false,
-        schedulerHop2Ms,
-      }, imageTerminalAnalytics);
     }
     ttftLog("[generation] participant preflight started", {
       chatId: effectiveArgs.chatId,

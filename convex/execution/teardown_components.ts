@@ -22,6 +22,11 @@ export type SandboxSessionRef = {
   providerSandboxId?: string;
 };
 
+function isSettledWorkflowError(error: unknown): boolean {
+  return error instanceof Error
+    && /Workflow(?: .*?)? (?:not found|not running)/i.test(error.message);
+}
+
 export async function stopSandboxSessions(
   ctx: ActionCtx,
   sessions: SandboxSessionRef[],
@@ -53,6 +58,8 @@ export async function cancelComponent(
 ): Promise<boolean> {
   try {
     if (adapterId === "convex-workflow") {
+      const status = await durableWorkflow.status(ctx, operationId as WorkflowId);
+      if (status.type !== "inProgress") return true;
       await durableWorkflow.cancel(ctx, operationId as WorkflowId);
     } else if (adapterId === "interactive-workpool") {
       await interactiveWorkpool.cancel(ctx, operationId as WorkId);
@@ -67,8 +74,8 @@ export async function cancelComponent(
       return false;
     }
     return true;
-  } catch {
-    return false;
+  } catch (error) {
+    return adapterId === "convex-workflow" && isSettledWorkflowError(error);
   }
 }
 

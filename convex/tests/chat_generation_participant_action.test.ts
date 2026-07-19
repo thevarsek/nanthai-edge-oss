@@ -367,3 +367,43 @@ test("runGenerationParticipantHandler finalizes subagent and Drive picker batche
     && (args.patch as any)?.status === "failed"
   ));
 });
+
+test("Node Drive resumes continue generation when start analytics were already recorded", async () => {
+  const mutationCalls: Array<Record<string, unknown>> = [];
+  let jobOnlyMutationCount = 0;
+  let jobStatus = "queued";
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("jobId" in args) return { status: jobStatus };
+      if ("modelId" in args) return { hasVideoGeneration: false };
+      if ("messageId" in args) return { status: "failed" };
+      if ("userId" in args) return null;
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutationCalls.push(args);
+      if (args.jobId === "job_1" && args.status === "streaming") {
+        jobStatus = "streaming";
+      }
+      if (args.jobId === "job_1" && Object.keys(args).length === 1) {
+        jobOnlyMutationCount += 1;
+        if (jobOnlyMutationCount === 2) return false;
+      }
+      return undefined;
+    },
+  });
+
+  await assert.rejects(
+    runGenerationParticipantHandler(
+      ctx,
+      baseRunGenerationParticipantArgs({ drivePickerBatchId: "drive_batch_1" as any }),
+    ),
+    (error: unknown) => error instanceof ConvexError,
+  );
+
+  assert.ok(mutationCalls.some((args) =>
+    args.messageId === "msg_assistant"
+    && args.jobId === "job_1"
+    && args.status === "failed"
+  ));
+});

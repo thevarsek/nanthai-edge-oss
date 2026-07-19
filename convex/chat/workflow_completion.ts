@@ -167,6 +167,9 @@ export async function reconcileGenerationWorkflowCompletionHandler(
     internal.chat.workflow_events.cleanupGenerationWorkflow,
     { workflowId: args.workflowId },
   );
+  // Cancellation is an intentional terminal control-plane decision. Recovery
+  // here can resurrect work the user just stopped or a chat deletion fenced.
+  if (args.result.kind === "canceled") return null;
   if (!job || TERMINAL_GENERATION_STATUSES.has(job.status) || args.result.kind === "success") {
     return null;
   }

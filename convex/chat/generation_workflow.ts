@@ -151,14 +151,10 @@ export async function runGenerationParticipantWorkflowHandler(
       // generation job until terminal state.
       return null;
     }
-    const resume = await step.awaitEvent<GenerationResumeEventValue>({
-      id: workflowResumeEventId,
-      validator: generationResumeEventValue,
-    });
-    resumeExpected = resume.mode === "checkpoint";
-    drivePickerBatchId = resume.drivePickerBatchId
-      ? resume.drivePickerBatchId as Id<"drivePickerBatches">
-      : drivePickerBatchId;
+    // A nonterminal action may only return after persisting a continuation or
+    // handing the job to the independently durable video workflow. Waiting on
+    // an otherwise unowned event leaves the user at "..." forever.
+    throw new Error("GENERATION_ACTION_RETURNED_WITHOUT_DURABLE_OWNER");
   }
 
   // The mutation rechecks job and fence state atomically before starting the

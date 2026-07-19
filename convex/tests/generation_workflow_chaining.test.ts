@@ -136,6 +136,36 @@ test("generation Workflow creates its event before an immediate deferred complet
   assert.equal(order.filter((item) => item === "event-created").length, 2);
 });
 
+test("generation Workflow never waits on an event without a durable owner", async () => {
+  let awaitCalls = 0;
+  let queryCalls = 0;
+  const step = {
+    workflowId: "workflow_orphan",
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) =>
+      "roundKey" in args ? "ready" : "event_1",
+    runAction: async () => null,
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) return { hasVideoGeneration: false };
+      queryCalls += 1;
+      return queryCalls === 1
+        ? { _id: "job_1", status: "streaming" }
+        : null;
+    },
+    awaitEvent: async () => {
+      awaitCalls += 1;
+      return { mode: "checkpoint" as const };
+    },
+    runWorkflow: async () => null,
+    sleep: async () => undefined,
+  } as unknown as WorkflowCtx;
+
+  await assert.rejects(
+    runGenerationParticipantWorkflowHandler(step, workflowArgs()),
+    /GENERATION_ACTION_RETURNED_WITHOUT_DURABLE_OWNER/,
+  );
+  assert.equal(awaitCalls, 0);
+});
+
 test("successor handoff is terminal-safe and finds a delayed duplicate by exact role", async () => {
   let started = 0;
   let linked = 0;

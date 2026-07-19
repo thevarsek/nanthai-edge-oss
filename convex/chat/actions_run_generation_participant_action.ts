@@ -371,15 +371,14 @@ export async function runGenerationParticipantHandler(
         });
         shouldCaptureStarted = true;
       }
-      if (!shouldCaptureStarted) {
-        return;
+      if (shouldCaptureStarted) {
+        startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
+          isResume: false,
+          schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
+            ? Date.now() - effectiveArgs.enqueuedAt
+            : null,
+        }, imageTerminalAnalytics);
       }
-      startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
-        isResume: false,
-        schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
-          ? Date.now() - effectiveArgs.enqueuedAt
-          : null,
-      }, imageTerminalAnalytics);
     }
     ttftLog("[generation] participant preflight started", {
       chatId: effectiveArgs.chatId,

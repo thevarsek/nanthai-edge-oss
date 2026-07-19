@@ -204,6 +204,43 @@ test("runGenerationParticipantRuntimeHandler delegates direct node-required runt
   assert.equal(delegatedArgs.length, 1);
 });
 
+test("fresh Drive resumes re-derive document tools from the picked attachment", async () => {
+  const delegatedArgs: Array<Record<string, unknown>> = [];
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return { hasVideoGeneration: false, hasAudioOutput: false };
+      }
+      if ("messageId" in args) {
+        return {
+          attachments: [{
+            type: "document",
+            name: "The Founders Playbook.pdf",
+            mimeType: "application/pdf",
+            storageId: "storage_pdf_1",
+          }],
+        };
+      }
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runAction: async (_ref: unknown, args: Record<string, unknown>) => {
+      delegatedArgs.push(args);
+    },
+  });
+
+  await runGenerationParticipantRuntimeHandler(ctx, baseRuntimeArgs({
+    drivePickerBatchId: "drive_batch_1" as any,
+    directToolNames: [],
+  }));
+
+  assert.equal(delegatedArgs.length, 1);
+  assert.deepEqual(delegatedArgs[0]?.directToolNames, [
+    "list_documents",
+    "read_document",
+    "find_in_document",
+  ]);
+});
+
 test("runtime delegation preserves the provider deadline anchored before delayed routing preflight", async (t) => {
   t.after(() => mock.restoreAll());
   let now = 1_000;
@@ -403,5 +440,49 @@ test("runGenerationParticipantRuntimeHandler finalizes setup failures and relate
   assert.ok(mutations.some((args) =>
     args.sessionId === "search_1"
     && (args.patch as any)?.status === "failed"
+  ));
+});
+
+test("fresh Drive resumes continue generation when start analytics were already recorded", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  let jobOnlyMutationCount = 0;
+  let jobStatus = "queued";
+  const ctx = createMockCtx({
+    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+      if ("modelId" in args) {
+        return { hasVideoGeneration: false, hasAudioOutput: false };
+      }
+      if ("jobId" in args) return { status: jobStatus };
+      if ("messageId" in args) return { status: "failed" };
+      if ("userId" in args) return null;
+      throw new Error(`Unexpected query args: ${JSON.stringify(args)}`);
+    },
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutations.push(args);
+      if (args.jobId === "job_1" && args.status === "streaming") {
+        jobStatus = "streaming";
+      }
+      if (args.jobId === "job_1" && Object.keys(args).length === 1) {
+        jobOnlyMutationCount += 1;
+        // The second job-only mutation is the analytics start marker. A Drive
+        // resume legitimately sees it already set by the pre-picker round.
+        if (jobOnlyMutationCount === 2) return false;
+      }
+      return undefined;
+    },
+  });
+
+  await assert.rejects(
+    runGenerationParticipantRuntimeHandler(
+      ctx,
+      baseRuntimeArgs({ drivePickerBatchId: "drive_batch_1" as any }),
+    ),
+    /OpenRouter API key/,
+  );
+
+  assert.ok(mutations.some((args) =>
+    args.messageId === "msg_assistant"
+    && args.jobId === "job_1"
+    && args.status === "failed"
   ));
 });
