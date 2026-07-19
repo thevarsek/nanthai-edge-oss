@@ -32,16 +32,74 @@ export interface PipelineArgs extends Record<string, unknown> {
   executionFence?: number;
 }
 
+export function projectPipelineArgs(source: PipelineArgs): PipelineArgs {
+  return {
+    sessionId: source.sessionId,
+    assistantMessageId: source.assistantMessageId,
+    jobId: source.jobId,
+    chatId: source.chatId,
+    userMessageId: source.userMessageId,
+    userId: source.userId,
+    query: source.query,
+    complexity: source.complexity,
+    expandMultiModelGroups: source.expandMultiModelGroups,
+    modelId: source.modelId,
+    ...(source.personaId !== undefined ? { personaId: source.personaId } : {}),
+    ...(source.systemPrompt !== undefined ? { systemPrompt: source.systemPrompt } : {}),
+    ...(source.temperature !== undefined ? { temperature: source.temperature } : {}),
+    ...(source.maxTokens !== undefined ? { maxTokens: source.maxTokens } : {}),
+    ...(source.includeReasoning !== undefined
+      ? { includeReasoning: source.includeReasoning }
+      : {}),
+    ...(source.reasoningEffort !== undefined
+      ? { reasoningEffort: source.reasoningEffort }
+      : {}),
+    ...(source.enabledIntegrations !== undefined
+      ? { enabledIntegrations: source.enabledIntegrations }
+      : {}),
+    ...(source.turnIntegrationOverrides !== undefined
+      ? { turnIntegrationOverrides: source.turnIntegrationOverrides }
+      : {}),
+    ...(source.subagentsEnabled !== undefined
+      ? { subagentsEnabled: source.subagentsEnabled }
+      : {}),
+    ...(source.analytics !== undefined ? { analytics: source.analytics } : {}),
+    ...(source.analyticsSource !== undefined
+      ? { analyticsSource: source.analyticsSource }
+      : {}),
+    ...researchExecutionToken(source),
+  };
+}
+
+type ResearchExecutionToken = Pick<
+  PipelineArgs,
+  "executionAttemptId" | "executionFence"
+>;
+
+export function researchExecutionToken(
+  source: ResearchExecutionToken,
+): ResearchExecutionToken {
+  return {
+    ...(source.executionAttemptId !== undefined
+      ? { executionAttemptId: source.executionAttemptId }
+      : {}),
+    ...(source.executionFence !== undefined
+      ? { executionFence: source.executionFence }
+      : {}),
+  };
+}
+
 export async function checkCancellation(
   ctx: ActionCtx,
   sessionId: Id<"searchSessions">,
-  token: Pick<PipelineArgs, "executionAttemptId" | "executionFence"> = {},
+  token: ResearchExecutionToken = {},
 ): Promise<void> {
   const session = await ctx.runQuery(internal.search.queries.getSearchSession, {
     sessionId,
   });
-  const hasExecutionToken = token.executionAttemptId !== undefined
-    || token.executionFence !== undefined;
+  const executionToken = researchExecutionToken(token);
+  const hasExecutionToken = executionToken.executionAttemptId !== undefined
+    || executionToken.executionFence !== undefined;
   if (!session) {
     if (!hasExecutionToken) return;
     throw new GenerationCancelledError();
@@ -54,7 +112,7 @@ export async function checkCancellation(
   }
   const current = await ctx.runQuery(
     internal.search.queries.isResearchExecutionCurrent,
-    { sessionId, ...token },
+    { sessionId, ...executionToken },
   );
   if (!current) {
     throw new GenerationCancelledError();
@@ -134,11 +192,11 @@ export async function updateSession(
   ctx: ActionCtx,
   sessionId: Id<"searchSessions">,
   patch: Record<string, unknown>,
-  token: Pick<PipelineArgs, "executionAttemptId" | "executionFence"> = {},
+  token: ResearchExecutionToken = {},
 ): Promise<void> {
   await ctx.runMutation(internal.search.mutations.updateSearchSession, {
     sessionId,
     patch,
-    ...token,
+    ...researchExecutionToken(token),
   });
 }

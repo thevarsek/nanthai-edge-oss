@@ -83,6 +83,31 @@ A single zero result starts the evidence window; it does not authorize removal.
 Prefer extending these helpers or an existing domain Workflow over creating a
 new parallel abstraction.
 
+## Exact Convex validator boundaries
+
+TypeScript structural typing does not remove runtime properties. Passing a
+large Workflow payload to a helper typed as `Pick<Payload, "attemptId">` and
+then spreading that helper argument into `runQuery`, `runMutation`,
+`runAction`, or `scheduler.runAfter` still sends every property from the
+original object. Convex correctly rejects the extras at runtime.
+
+At every Convex function or scheduled-function boundary:
+
+- construct a fresh object containing only fields declared by the destination
+  validator, or use a named projector that does so;
+- do not spread a structurally wider `args`, token, checkpoint, or context
+  object into a narrower destination merely because TypeScript accepts it;
+- omit undefined optional properties when building the projected payload;
+- share the same validator constant when source and destination intentionally
+  have identical shapes; and
+- add a behavioral test with a fully populated wider source payload, asserting
+  the exact keys sent to the destination.
+
+This rule applies equally to argument and return validators. When a query
+returns a persisted document through an explicit object validator, keep a
+schema/return field-parity test so an additive schema field cannot become a
+production `ReturnsValidationError`.
+
 ## Required tests
 
 Every new durable workload needs focused coverage for:

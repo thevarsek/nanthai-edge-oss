@@ -23,6 +23,8 @@ import {
   clampResearchPaperReasoningEffort,
   computeProgress,
   formatResearchPaperFailureMessage,
+  projectPipelineArgs,
+  updateSession,
 } from "../search/workflow_shared";
 import { runPaperGenerationPhase } from "../search/workflow_paper_phase";
 
@@ -146,6 +148,91 @@ test("workflow shared helpers compute progress and throw on cancelled sessions",
     } as any, "session_1" as any),
     (error: unknown) => error instanceof GenerationCancelledError,
   );
+});
+
+test("research Workflow helpers project comprehensive phase args to validator-safe execution tokens", async () => {
+  const queryArgs: Array<Record<string, unknown>> = [];
+  const mutationArgs: Array<Record<string, unknown>> = [];
+  const comprehensivePhaseArgs = {
+    analytics: {
+      clientEventId: "event_1",
+      clientSentAt: 1_784_500_951_529,
+      platform: "web",
+      routeOrScreen: "/app/chat/chat_1",
+      surface: "web_app",
+    },
+    assistantMessageId: "assistant_1",
+    chatId: "chat_1",
+    complexity: 3,
+    executionAttemptId: "attempt_1",
+    executionFence: 1,
+    expandMultiModelGroups: true,
+    jobId: "job_1",
+    modelId: "openai/gpt-5.6-terra",
+    phaseOrder: 0,
+    query: "latest AI news",
+    sessionId: "session_1",
+    userId: "user_1",
+    userMessageId: "user_message_1",
+    workflowManaged: true,
+  };
+  const ctx = {
+    runQuery: async (_fn: unknown, args: Record<string, unknown>) => {
+      queryArgs.push(args);
+      return queryArgs.length === 1 ? { status: "planning" } : true;
+    },
+    runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+      mutationArgs.push(args);
+    },
+  } as any;
+
+  assert.deepEqual(
+    Object.keys(projectPipelineArgs(comprehensivePhaseArgs as any)).sort(),
+    [
+      "analytics",
+      "assistantMessageId",
+      "chatId",
+      "complexity",
+      "executionAttemptId",
+      "executionFence",
+      "expandMultiModelGroups",
+      "jobId",
+      "modelId",
+      "query",
+      "sessionId",
+      "userId",
+      "userMessageId",
+    ],
+  );
+  assert.equal("phaseOrder" in projectPipelineArgs(comprehensivePhaseArgs as any), false);
+  assert.equal("workflowManaged" in projectPipelineArgs(comprehensivePhaseArgs as any), false);
+
+  await checkCancellation(
+    ctx,
+    "session_1" as any,
+    comprehensivePhaseArgs as any,
+  );
+  await updateSession(
+    ctx,
+    "session_1" as any,
+    { status: "planning" },
+    comprehensivePhaseArgs as any,
+  );
+
+  assert.deepEqual(queryArgs, [
+    { sessionId: "session_1" },
+    {
+      sessionId: "session_1",
+      executionAttemptId: "attempt_1",
+      executionFence: 1,
+    },
+  ]);
+  assert.deepEqual(mutationArgs, [{
+    sessionId: "session_1",
+    patch: { status: "planning" },
+    executionAttemptId: "attempt_1",
+    executionFence: 1,
+  }]);
 });
 
 test("runPaperGenerationPhase schedules runGeneration with persona or explicit system prompt context", async () => {

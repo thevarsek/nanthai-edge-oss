@@ -27,6 +27,7 @@ import {
   checkCancellation,
   formatResearchPaperFailureMessage,
   PipelineArgs,
+  projectPipelineArgs,
   updateSession,
 } from "./workflow_shared";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
@@ -82,13 +83,6 @@ const phaseActionArgs = {
   executionAttemptId: v.optional(v.id("executionAttempts")),
   executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
-
-// Phase action args are a superset of PipelineArgs (with extra phaseOrder,
-// depthIteration). This helper picks the PipelineArgs subset so we avoid
-// `as unknown as PipelineArgs` casts throughout.
-function toPipelineArgs(args: PhaseActionArgs): PipelineArgs {
-  return args;
-}
 
 // Inferred type from the validator — matches PipelineArgs plus phase fields.
 type PhaseActionArgs = PipelineArgs & {
@@ -274,7 +268,7 @@ async function buildArgsWithApiKeyAndPolicy(
       userId: args.userId,
     }),
   ]);
-  const pipelineArgs = toPipelineArgs(args);
+  const pipelineArgs = projectPipelineArgs(args);
   const requireZdr = isZdrEnabled(preferences);
   return {
     pipelineArgs,
@@ -352,7 +346,7 @@ export const runPlanningAction = internalAction({
       }
     } catch (error) {
       if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
+      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -416,7 +410,7 @@ export const runInitialSearchAction = internalAction({
       }
     } catch (error) {
       if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
+      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -463,7 +457,7 @@ export const runAnalysisAction = internalAction({
       }
     } catch (error) {
       if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
+      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -535,7 +529,7 @@ export const runDepthSearchAction = internalAction({
       }
     } catch (error) {
       if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
+      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -578,7 +572,7 @@ export const runSynthesisAction = internalAction({
       }
     } catch (error) {
       if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
+      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -629,7 +623,7 @@ export const runPaperArchitectureAction = internalAction({
       }
     } catch (error) {
       if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, toPipelineArgs(args), error, Date.now() - phaseStartedAt);
+      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
     }
   },
 });
@@ -640,7 +634,7 @@ export const runPaperHandoffAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
     const phaseStartedAt = Date.now();
-    const pipelineArgs = toPipelineArgs(args);
+    const pipelineArgs = projectPipelineArgs(args);
     try {
       const preset = resolveComplexityPreset("paper", args.complexity);
 
@@ -715,7 +709,7 @@ export const finalizeResearchWorkflowFailure = internalAction({
     if (session?.status === "cancelled") return "cancelled" as const;
     if (session?.status === "completed") return "completed" as const;
     if (session?.generationHandoffOperationId) return "handed_off" as const;
-    await handlePhaseError(ctx, toPipelineArgs(args), new Error(args.error));
+    await handlePhaseError(ctx, projectPipelineArgs(args), new Error(args.error));
     return "failed" as const;
   },
 });

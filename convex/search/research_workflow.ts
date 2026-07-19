@@ -6,6 +6,7 @@ import { researchPaperPipelineArgs } from "./workflow";
 import { awaitResearchSearchBatch } from "./research_workflow_join";
 import { runResearchRegenerationWorkflowHandler } from "./research_regeneration_workflow";
 import { settleResearchFailureDisposition } from "./research_failure_settlement";
+import { projectPipelineArgs } from "./workflow_shared";
 
 export const runResearchPaperWorkflow = durableWorkflow
   .define({ args: researchPaperPipelineArgs, returns: v.null() })
@@ -30,7 +31,7 @@ export const runResearchPaperWorkflow = durableWorkflow
         throw new Error("RESEARCH_EXECUTION_FENCE_MISSING");
       }
       const phaseArgs = {
-        ...args,
+        ...projectPipelineArgs(args),
         executionAttemptId: session.executionAttemptId,
         executionFence: session.executionFence,
       };
@@ -218,7 +219,7 @@ export const runResearchPaperWorkflow = durableWorkflow
       const disposition = await step.runAction(
         internal.search.workflow_durable.finalizeResearchWorkflowFailure,
         {
-          ...args,
+          ...projectPipelineArgs(args),
           phaseOrder: -1,
           executionAttemptId,
           executionFence,

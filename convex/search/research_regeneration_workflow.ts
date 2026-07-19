@@ -1,6 +1,6 @@
 import type { WorkflowCtx } from "@convex-dev/workflow";
 import { internal } from "../_generated/api";
-import type { PipelineArgs } from "./workflow_shared";
+import { projectPipelineArgs, type PipelineArgs } from "./workflow_shared";
 import { settleResearchFailureDisposition } from "./research_failure_settlement";
 
 export interface ResearchRegenerationWorkflowArgs extends PipelineArgs {
@@ -30,7 +30,7 @@ export async function runResearchRegenerationWorkflowHandler(
       throw new Error("RESEARCH_EXECUTION_FENCE_MISSING");
     }
     const phaseArgs = {
-      ...args,
+      ...projectPipelineArgs(args),
       executionAttemptId: session.executionAttemptId,
       executionFence: session.executionFence,
     };
@@ -80,7 +80,8 @@ export async function runResearchRegenerationWorkflowHandler(
     const disposition = await step.runAction(
       internal.search.workflow_durable.finalizeResearchWorkflowFailure,
       {
-        ...args,
+        ...projectPipelineArgs(args),
+        phaseOrder: args.phaseOrder,
         executionAttemptId,
         executionFence,
         workflowManaged: true,
