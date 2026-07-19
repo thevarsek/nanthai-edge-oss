@@ -8,7 +8,10 @@ The repository declared AI SDK 6 (`ai`, `@ai-sdk/openai`, and `@ai-sdk/provider-
 
 ## Measured AI SDK 7 spike
 
-The reproducible spike lives in `spikes/ai-sdk-7`; its dependencies are isolated from the production backend. It pins `ai@7.0.31`, `@ai-sdk/workflow@1.0.31`, and `@ai-sdk/openai-compatible@3.0.12`.
+The evaluation used an isolated reproducible spike pinned to `ai@7.0.31`,
+`@ai-sdk/workflow@1.0.31`, and `@ai-sdk/openai-compatible@3.0.12`. The spike
+workspace was removed after this ADR captured the measured result so its
+experimental dependencies do not remain in the production repository.
 
 Measured on 2026-07-19:
 
