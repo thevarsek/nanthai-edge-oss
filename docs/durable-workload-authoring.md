@@ -76,6 +76,10 @@ queues provide backpressure; they are not user quotas.
 - Client lifecycle: `convex/execution/projection.ts`, `queries.ts`
 - Legacy removal gate: `execution/queries:getLegacyOrchestrationDrainState`
 
+The gate's deletion procedure and symbol-classification rules live in
+[M48 Legacy Orchestration Retirement](../milestones/M48-legacy-orchestration-retirement.md).
+A single zero result starts the evidence window; it does not authorize removal.
+
 Prefer extending these helpers or an existing domain Workflow over creating a
 new parallel abstraction.
 
@@ -95,4 +99,6 @@ Every new durable workload needs focused coverage for:
 
 Run the complete Convex test/typecheck/lint gates after the focused suite. Do
 not remove compatibility fields or handlers until the production drain query
-returns both `inspectionComplete: true` and `drainComplete: true` after soak.
+returns both `inspectionComplete: true` and `drainComplete: true` throughout
+M48's recorded soak and all of M48's client, data, rollback, and call-graph gates
+also pass.

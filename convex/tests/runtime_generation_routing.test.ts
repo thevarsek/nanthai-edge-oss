@@ -3,6 +3,7 @@ import test, { mock } from "node:test";
 
 import { runGenerationParticipantRuntimeHandler } from "../chat/actions_run_generation_participant_runtime";
 import {
+  clearFreshRuntimeContinuation,
   mapBatchTerminalStatus,
   requiresNodeWorker,
 } from "../chat/actions_run_generation_participant_runtime";
@@ -74,6 +75,31 @@ test("mapBatchTerminalStatus maps all status combinations correctly", () => {
   assert.equal(mapBatchTerminalStatus("completed", "completed"), "completed");
   assert.equal(mapBatchTerminalStatus(undefined, undefined), "completed");
   assert.equal(mapBatchTerminalStatus("streaming", "streaming"), "completed");
+});
+
+test("fresh V8 rounds clear stale continuations before a new handoff can be saved", async () => {
+  const calls: string[] = [];
+  let releaseClear: (() => void) | undefined;
+  const clearFinished = new Promise<void>((resolve) => {
+    releaseClear = resolve;
+  });
+  const ctx = createMockCtx({
+    runMutation: async () => {
+      calls.push("clear-started");
+      await clearFinished;
+      calls.push("clear-finished");
+    },
+  });
+
+  const clearing = clearFreshRuntimeContinuation(ctx, "job_1" as any, false);
+  await Promise.resolve();
+  assert.deepEqual(calls, ["clear-started"]);
+  releaseClear?.();
+  await clearing;
+  assert.deepEqual(calls, ["clear-started", "clear-finished"]);
+
+  await clearFreshRuntimeContinuation(ctx, "job_1" as any, true);
+  assert.deepEqual(calls, ["clear-started", "clear-finished"]);
 });
 
 test("requiresNodeWorker returns true for media generation, node tools, or node profiles", () => {
@@ -356,7 +382,10 @@ test("runGenerationParticipantRuntimeHandler finalizes setup failures and relate
     /OpenRouter API key/,
   );
 
-  assert.ok(scheduled.some((args) => args.jobId === "job_1"));
+  assert.equal(scheduled.some((args) => args.jobId === "job_1"), false);
+  assert.ok(mutations.some((args) =>
+    args.jobId === "job_1" && Object.keys(args).length === 1
+  ));
   assert.ok(mutations.some((args) =>
     args.messageId === "msg_assistant"
     && args.jobId === "job_1"

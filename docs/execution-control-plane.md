@@ -138,7 +138,7 @@ release to land first:
 | Response payloads | Existing fields retain their names and shapes. New lifecycle fields are additive; released decoders ignore unknown fields. The scheduled trigger-token projection preserves `_id`, `_creationTime`, `userId`, and `jobId` while omitting the secret hash. |
 | Schema | Existing required product fields are not removed or retyped. New execution tables and domain linkage fields are additive, with linkage optional for records created by the preceding deployment. |
 | Product truth | Messages, streaming rows, jobs, files, presentations, research, advisors, and subagents continue to be written for old clients. The new execution projection supplements rather than replaces those contracts. |
-| In-flight work | Engine identity is immutable per attempt. Legacy handlers, predecessor adoption, and the drain query remain until a production soak proves no old attempt depends on them. |
+| In-flight work | Engine identity is immutable per attempt. Legacy handlers, predecessor adoption, and the drain query remain until the complete M48 production gate proves no old attempt depends on them. |
 
 This guarantees API and in-flight-work compatibility with the immediately preceding
 released clients. It does not make an arbitrarily old client compatible with product
@@ -146,6 +146,13 @@ contracts that predate M46; normal minimum-version policy still applies to unrel
 historical changes.
 
 Rollback stops routing new work to Workflow and leaves current Workflow operations to terminalize. It does not remove the execution schema or roll clients back to reconstructing state. See [durable-orchestration-rollout.md](durable-orchestration-rollout.md).
+
+Legacy retirement is deliberately separate from M45. M48 may remove only
+proved compatibility machinery; it must preserve runs, attempts, commands,
+events, operations, component references, projections, and runtime-session
+bindings that form the executor-neutral contract. M45 can therefore begin now
+and must target those canonical surfaces rather than a legacy alias. See
+[M48 Legacy Orchestration Retirement](../milestones/M48-legacy-orchestration-retirement.md).
 
 ## Verification map
 

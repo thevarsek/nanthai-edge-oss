@@ -56,6 +56,20 @@ export function mapBatchTerminalStatus(
   return "completed";
 }
 
+export async function clearFreshRuntimeContinuation(
+  ctx: Pick<ActionCtx, "runMutation">,
+  jobId: Id<"generationJobs">,
+  resumeExpected: boolean,
+): Promise<void> {
+  if (resumeExpected) return;
+  // This must finish before the V8 round can write a new pre-provider
+  // checkpoint. Scheduling the clear allowed it to race with, and delete,
+  // the V8-to-Node handoff created later in the same action.
+  await ctx.runMutation(internal.chat.mutations.clearGenerationContinuation, {
+    jobId,
+  });
+}
+
 async function maybeFinalizeSubagentBatch(
   ctx: ActionCtx,
   args: RunGenerationParticipantArgs,
@@ -341,11 +355,11 @@ export async function runGenerationParticipantRuntimeHandler(
     });
     return;
   }
-  if (!args.resumeExpected) {
-    await ctx.scheduler.runAfter(0, internal.chat.mutations.clearGenerationContinuation, {
-      jobId: effectiveArgs.participant.jobId,
-    });
-  }
+  await clearFreshRuntimeContinuation(
+    ctx,
+    effectiveArgs.participant.jobId,
+    args.resumeExpected === true,
+  );
 
   let startedAnalyticsCapture: Promise<void> | undefined;
   try {

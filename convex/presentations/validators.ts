@@ -113,6 +113,7 @@ export const presentationProjectDocValidator = v.object({
   snapshotSizeBytes: v.optional(v.number()),
   snapshotKind: v.optional(v.union(v.literal("fallback"), v.literal("browser_html"))),
   workflowId: v.optional(v.string()),
+  parentResumeEventId: v.optional(v.string()),
   executionRunId: v.optional(v.id("executionRuns")),
   executionAttemptId: v.optional(v.id("executionAttempts")),
   executionFence: v.optional(v.number()),

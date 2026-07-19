@@ -1,6 +1,6 @@
 # Durable Orchestration Rollout
 
-Status: M47 implementation record and operating guide.
+Status: M47 production implementation record and operating guide.
 
 For new workload implementation, follow
 [durable-workload-authoring.md](durable-workload-authoring.md). This document
@@ -102,9 +102,50 @@ Rollback procedure:
 3. allow active component operations to finish or cancel them through centralized teardown;
 4. retain the M46 run/attempt projection and effect journal;
 5. inspect `execution/queries:getLegacyOrchestrationDrainState`; remove compatibility handlers only when `drainComplete` is true. The query directly checks active generation/continuation schedule IDs and the advisor, subagent, Drive-picker, presentation, research, scheduled-job, autonomous, video, and execution-attempt lifecycle rows. Any capped source makes `inspectionComplete` and `drainComplete` false rather than allowing a false zero;
-6. after a production soak reports zero active legacy attempts, remove legacy schedule-ID fields, duplicate action exports, and dead handlers in a dedicated deletion change.
+6. after the complete M48 gate passes, remove proven legacy-only routing, schedule-ID fields, duplicate action exports, and dead handlers in staged deletion changes.
 
 The branch intentionally retains legacy handlers for safe deployment compatibility. They are not the path for new Workflow-managed attempts.
+
+## Production rollout record
+
+M46/M47 was deployed to development and production on 2026-07-19 with the
+Starter/S16 pool profile above. The system skill catalog was reseeded to 67
+entries in both deployments. Two production Drive-picker batch rows created on
+2026-04-30 were confirmed to be hard orphans—their parent job, message, and chat
+were absent—and removed with a bounded cleanup. The subsequent production drain
+inspection covered all 18 sources without capping and reported zero active
+legacy work. A second production check at 2026-07-19T22:31:18Z remained complete,
+uncapped, and zero across all 18 sources.
+
+Later production canaries on 2026-07-19 found two hotfixes required before the
+rollout is considered operationally settled:
+
+- `presentationProjects.parentResumeEventId` was persisted by the new parent
+  resume path but omitted from the project's return validator, causing presentation
+  Workflow retries with `ReturnsValidationError`;
+- fresh V8 participant rounds scheduled stale-continuation cleanup asynchronously.
+  A fast pre-provider V8-to-Node handoff could save a new checkpoint before that
+  cleanup ran, after which the cleanup deleted the new checkpoint and left Workflow
+  waiting on its event indefinitely.
+
+The fixes keep the V8/Node split, add a schema-parity contract test for presentation
+project returns, and make fresh-round cleanup complete before the participant may
+write a replacement checkpoint. Operators must distinguish this failure from
+capacity pressure: the affected production sample had Workpool backlog `0`, while
+the missing continuation and a Workflow attempt in `waiting` state identified the
+checkpoint race.
+
+The same sample also measured roughly one second in the dispatch Workflow hop and
+roughly 2.9 seconds in the participant Workflow hop before participant execution.
+M47 therefore does add visible scheduled-execution latency on Starter/S16; it does
+not change the provider's own TTFT once the request is dispatched. Treat prolonged
+`waiting` with no continuation as a correctness incident, not ordinary queueing.
+
+That result is the first M48 observation, not deletion authorization. Repeated
+observations, representative current traffic, the maximum possible legacy
+in-flight lifetime, released-client compatibility, and a staged rollback plan
+must still be proved. See
+[M48 Legacy Orchestration Retirement](../milestones/M48-legacy-orchestration-retirement.md).
 
 ## Dev verification and production gate
 
@@ -118,7 +159,12 @@ Before production:
 - verify no application quota response exists under repeated PAYG sends;
 - compare TTFT, round duration, operation count, failures, storage bandwidth, and provider cost with the prior path.
 
-Production rollout should start with new runs only. In-flight legacy work finishes normally. Rollback is a code deployment plus component cancellation—not a configuration switch—and must remain rehearsed through the first soak window.
+Production rollout starts new work on Workflow/Workpool while in-flight legacy
+work finishes normally. Rollback is a code deployment plus component
+cancellation—not a configuration switch—and must remain rehearsed through the
+M48 evidence window. A non-zero or capped drain result resets that window and
+requires investigation; rows must never be mutated merely to make the gate
+green.
 
 ## Source map
 
