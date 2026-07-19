@@ -39,7 +39,7 @@ function parseEdits(raw: unknown): { edits: ProposedDocxEdit[]; error?: string }
 export const proposeDocxEdits = createTool({
   name: "propose_docx_edits",
   description:
-    "Propose precise edits to a scoped Microsoft Word .docx as Word tracked changes. Use read_document first. Each edit should be a minimal substitution with short copied context anchors.",
+    "Default tool for any localized edit to an existing Microsoft Word .docx, including dates, names, numbers, clauses, typos, and formatting corrections. Propose Word tracked changes so the user can Accept or Reject each edit. Use read_document first. Each edit should be a minimal substitution with short copied context anchors.",
   parameters: {
     type: "object",
     properties: {

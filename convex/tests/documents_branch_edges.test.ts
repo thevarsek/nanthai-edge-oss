@@ -299,6 +299,76 @@ test("proposed DOCX edits reuse one generated file and preserve attachment size 
   assert.equal(state.rows.messages[0]?.documentEditAnnotations.length, 2);
 });
 
+test("one DOCX proposal generation cannot publish files for two documents", async () => {
+  const state = indexedDbFor({
+    documents: [
+      { _id: "doc_1", userId: "user_1", currentVersionId: "version_1", source: "generated" },
+      { _id: "doc_2", userId: "user_1", currentVersionId: "version_2", source: "upload" },
+    ],
+    documentVersions: [
+      {
+        _id: "version_1",
+        documentId: "doc_1",
+        userId: "user_1",
+        storageId: "storage_1",
+        filename: "First.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        versionNumber: 1,
+      },
+      {
+        _id: "version_2",
+        documentId: "doc_2",
+        userId: "user_1",
+        storageId: "storage_2",
+        filename: "Second.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        versionNumber: 1,
+      },
+    ],
+    messages: [{ _id: "message_1", generatedFileIds: [], documentEvents: [], documentEditAnnotations: [] }],
+    documentEditBatches: [],
+    documentEdits: [],
+    generatedFiles: [],
+  });
+  const args = {
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    generationKey: "generation_1",
+    filename: "First.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    sizeBytes: 12000,
+    changes: [{
+      changeId: "change_1",
+      deletedText: "old",
+      insertedText: "new",
+    }],
+  };
+
+  await (commitProposedDocxEdits as any)._handler({ db: state.db }, {
+    ...args,
+    documentId: "doc_1",
+    sourceVersionId: "version_1",
+    storageId: "storage_3",
+  });
+  await assert.rejects(
+    (commitProposedDocxEdits as any)._handler({ db: state.db }, {
+      ...args,
+      documentId: "doc_2",
+      sourceVersionId: "version_2",
+      storageId: "storage_4",
+      filename: "Second.docx",
+    }),
+    (error: unknown) =>
+      error instanceof ConvexError &&
+      error.data?.code === "DOCX_TARGET_ALREADY_SELECTED",
+  );
+
+  assert.equal(state.rows.documentEditBatches.length, 1);
+  assert.equal(state.rows.generatedFiles.length, 1);
+  assert.equal(state.rows.messages[0]?.generatedFileIds.length, 1);
+});
+
 test("proposed DOCX edits reject stale source versions before advancing document", async () => {
   const state = indexedDbFor({
     documents: [{

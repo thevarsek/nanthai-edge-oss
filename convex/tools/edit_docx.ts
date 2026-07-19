@@ -12,6 +12,7 @@
 // heading levels H1-H6, tables, headers/footers, TOC, inline bold/italic.
 // =============================================================================
 
+import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import {
   Document,
@@ -35,6 +36,10 @@ import {
 import { extractDocxContent } from "./docx_reader";
 import { createTool } from "./registry";
 import { sanitizeFilename } from "./sanitize";
+import {
+  FULL_DOCX_REPLACEMENT_BLOCKED_MESSAGE,
+  isExplicitFullDocxReplacementRequest,
+} from "../chat/docx_edit_routing";
 
 // ---------------------------------------------------------------------------
 // Types (shared with generate_docx)
@@ -168,10 +173,12 @@ function buildTable(input: DocxTableInput, tableWidthTwips: number): Table {
 export const editDocx = createTool({
   name: "edit_docx",
   description:
-    "Edit a Microsoft Word document (.docx). Reads the original document from storage, " +
-    "then generates a new version with the provided sections. Use when the user wants " +
-    "to modify, rewrite, or update an existing Word file. You must provide the full " +
-    "updated content — this replaces the entire document. Supports the same formatting " +
+    "Replace an entire Microsoft Word document (.docx) only when the user explicitly " +
+    "requests a whole-document rewrite, rebuild, or replacement. For any localized " +
+    "change—including a date, name, number, clause, typo, or formatting correction—use " +
+    "propose_docx_edits so the user can Accept or Reject each edit. This tool reads the " +
+    "original and generates a new version from full supplied sections; it does not preserve " +
+    "tracked changes. You must provide the full updated content. Supports the same formatting " +
     "options as generate_docx (fonts, margins, heading levels, tables, headers/footers, TOC).",
   parameters: {
     type: "object",
@@ -244,6 +251,19 @@ export const editDocx = createTool({
     }
     if (!Array.isArray(sections) || sections.length === 0) {
       return { success: false, data: null, error: "'sections' must be a non-empty array" };
+    }
+    if (toolCtx.userMessageId) {
+      const userMessage = await toolCtx.ctx.runQuery(
+        internal.chat.queries.getMessageInternal,
+        { messageId: toolCtx.userMessageId as Id<"messages"> },
+      );
+      if (!isExplicitFullDocxReplacementRequest(userMessage?.content ?? "")) {
+        return {
+          success: false,
+          data: null,
+          error: FULL_DOCX_REPLACEMENT_BLOCKED_MESSAGE,
+        };
+      }
     }
 
     // Step 1: Verify the original file exists and extract old text for summary.

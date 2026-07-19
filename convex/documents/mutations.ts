@@ -447,6 +447,18 @@ export const commitProposedDocxEdits = internalMutation({
     if (sourceVersion.documentId !== args.documentId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Source version does not belong to this document." });
     }
+    const generationBatch = await ctx.db
+      .query("documentEditBatches")
+      .withIndex("by_generation", (q) => q.eq("generationKey", args.generationKey))
+      .first();
+    if (generationBatch && generationBatch.documentId !== args.documentId) {
+      throw new ConvexError({
+        code: "DOCX_TARGET_ALREADY_SELECTED",
+        message:
+          "This assistant turn already proposed DOCX edits for another document. " +
+          "Do not create a second output file; continue with the original target or ask the user to start a new edit turn.",
+      });
+    }
     if (document.currentVersionId && document.currentVersionId !== args.sourceVersionId) {
       throw new ConvexError({
         code: "SUPERSEDED_VERSION",

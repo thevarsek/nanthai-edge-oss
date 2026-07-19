@@ -239,12 +239,15 @@ test("SYSTEM_SKILL_CATALOG: document skills distinguish tracked changes and boun
   assert.ok(docx);
   assert.match(docx.instructionsRaw, /edit_docx output as true Word tracked changes/);
   assert.match(docx.instructionsRaw, /Tracked-change behavior/);
+  assert.match(docx.instructionsRaw, /change the date to today/);
+  assert.match(docx.instructionsRaw, /Do not call \*\*edit_docx\*\*/);
+  assert.match(docx.instructionsRaw, /per-edit Accept\/Reject controls/);
   assert.ok(docx.requiredToolIds.includes("propose_docx_edits"));
 
   const documentReview = bySlug.get("document-review");
   assert.ok(documentReview);
   assert.match(documentReview.summary, /redline-style change lists/);
-  assert.match(documentReview.instructionsRaw, /DOCX tracked changes/);
+  assert.match(documentReview.instructionsRaw, /any requested localized DOCX edit/);
   assert.ok(documentReview.requiredToolIds.includes("propose_docx_edits"));
   assert.ok(documentReview.requiredToolIds.includes("generate_xlsx"));
   assert.match(documentReview.instructionsRaw, /documents × comparison columns/);

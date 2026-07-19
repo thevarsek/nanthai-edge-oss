@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { Id } from "../_generated/dataModel";
-import { buildCurrentDatePrompt, buildRequestMessages } from "../chat/helpers";
+import {
+  buildCurrentDateOnlyPrompt,
+  buildCurrentDatePrompt,
+  buildRequestMessages,
+} from "../chat/helpers";
 import type { ContextMessage } from "../chat/helpers_types";
 import type { ContentPart, OpenRouterMessage } from "../lib/openrouter";
 
@@ -20,6 +24,18 @@ test("buildCurrentDatePrompt formats UTC date/time grounding", () => {
     prompt,
     "Today is 30/04/2026. Current date/time: 2026-04-30T12:34:56.000Z (UTC). Use this to resolve relative dates such as today, yesterday, last week, and this week.",
   );
+});
+
+test("buildCurrentDateOnlyPrompt stays cacheable for one UTC day", () => {
+  const morning = buildCurrentDateOnlyPrompt(new Date("2026-07-19T00:00:01.000Z"));
+  const evening = buildCurrentDateOnlyPrompt(new Date("2026-07-19T23:59:59.000Z"));
+
+  assert.equal(morning, evening);
+  assert.equal(
+    morning,
+    "Today is 19/07/2026 (UTC). Use this to resolve relative calendar dates such as today, yesterday, last week, and this week.",
+  );
+  assert.doesNotMatch(morning, /T\d{2}:\d{2}:\d{2}/);
 });
 
 test("buildRequestMessages omits volatile date grounding by default for cacheable plain chat", () => {

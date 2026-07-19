@@ -12,7 +12,7 @@ const openParameters: ToolParameterSchema = {
 export const proposeDocxEdits = createTool({
   name: "propose_docx_edits",
   description:
-    "Propose precise edits to a scoped Microsoft Word .docx as Word tracked changes.",
+    "Default tool for localized edits to a scoped Microsoft Word .docx. Propose precise Word tracked changes for per-edit Accept or Reject review.",
   parameters: openParameters,
   execute: async () => ({
     success: false,

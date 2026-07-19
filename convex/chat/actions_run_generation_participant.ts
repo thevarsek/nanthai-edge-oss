@@ -12,7 +12,11 @@ import {
   resolvePerplexityCitations,
 } from "../lib/openrouter";
 import { ttftLog } from "../lib/generation_log";
-import { buildCurrentDatePrompt, buildRequestMessages } from "./helpers";
+import {
+  buildCurrentDateOnlyPrompt,
+  buildCurrentDatePrompt,
+  buildRequestMessages,
+} from "./helpers";
 import { assembleRequestContextForGeneration } from "./actions_context_assembly_integration";
 import { promoteLatestUserVideoUrls } from "./helpers_video_url_utils";
 import {
@@ -107,6 +111,10 @@ import {
   dedicatedImageGenerationAnalytics,
   type DedicatedImageGenerationAnalytics,
 } from "./image_generation_analytics";
+import {
+  filterDocxReplacementToolDefinitions,
+  shouldGroundDocumentRelativeDate,
+} from "./docx_edit_routing";
 
 const PARALLEL_SUBAGENTS_SKILL_SLUG = "parallel-subagents";
 
@@ -165,11 +173,16 @@ const DATE_CONTEXT_INTEGRATIONS = new Set([
   "apple_calendar",
 ]);
 
-const DATE_CONTEXT_PROFILES = new Set<SkillToolProfileId>([
+const DATE_TIME_CONTEXT_PROFILES = new Set<SkillToolProfileId>([
   "google",
   "microsoft",
   "appleCalendar",
   "scheduledJobs",
+]);
+
+const DATE_CONTEXT_PROFILES = new Set<SkillToolProfileId>([
+  ...DATE_TIME_CONTEXT_PROFILES,
+  "docs",
 ]);
 
 const V8_FIRST_TOOL_ROUND_HANDOFF_MS = 30_000;
@@ -198,6 +211,38 @@ export function shouldInjectDateContext(params: {
     }
     return skill.requiredToolProfiles.some((profile) => DATE_CONTEXT_PROFILES.has(profile));
   }) ?? false;
+}
+
+export function shouldUseDateOnlyContext(params: {
+  webSearchEnabled: boolean;
+  enabledIntegrations?: string[];
+  activeProfiles?: SkillToolProfileId[];
+  loadedSkills?: LoadedSkillState[];
+}): boolean {
+  if (!shouldInjectDateContext(params)) return false;
+  if (params.webSearchEnabled) return false;
+  if (params.enabledIntegrations?.some((integration) =>
+    DATE_CONTEXT_INTEGRATIONS.has(integration)
+  )) {
+    return false;
+  }
+  if (params.activeProfiles?.some((profile) =>
+    DATE_TIME_CONTEXT_PROFILES.has(profile)
+  )) {
+    return false;
+  }
+  const loadedSkillNeedsTime = params.loadedSkills?.some((skill) =>
+    skill.requiredIntegrationIds.some((integration) =>
+      DATE_CONTEXT_INTEGRATIONS.has(integration)
+    ) || skill.requiredToolProfiles.some((profile) =>
+      DATE_TIME_CONTEXT_PROFILES.has(profile)
+    )
+  ) ?? false;
+  if (loadedSkillNeedsTime) return false;
+  return params.activeProfiles?.includes("docs") === true ||
+    params.loadedSkills?.some((skill) =>
+      skill.requiredToolProfiles.includes("docs")
+    ) === true;
 }
 
 export interface GenerateForParticipantParams {
@@ -359,6 +404,9 @@ export async function generateForParticipant(
     params;
 
   const effectiveDirectToolNames = progressiveTools?.directToolNames ?? [];
+  const currentUserPrompt = allMessages.find(
+    (message) => message._id === args.userMessageId,
+  )?.content ?? "";
 
   // Preflight parallelization: issue every independent read (cancel check,
   // user prefs, persona, chat, skills, skill-integration defaults) plus the
@@ -743,17 +791,30 @@ export async function generateForParticipant(
       ...initiallyLoadedSkills.flatMap((skill) => skill.requiredToolProfiles),
       ...alwaysSkillProfiles,
     ]));
-    const shouldAddDateContext = requestMessagesOverride == null && shouldInjectDateContext({
+    const dateContextProfiles = shouldGroundDocumentRelativeDate(
+      currentUserPrompt,
+      effectiveDirectToolNames,
+    )
+      ? Array.from(new Set([...initiallyRestoredProfiles, "docs" as const]))
+      : initiallyRestoredProfiles;
+    const dateContextParams = {
       webSearchEnabled: args.webSearchEnabled,
       enabledIntegrations: progressiveTools?.enabledIntegrations,
-      activeProfiles: initiallyRestoredProfiles,
+      activeProfiles: dateContextProfiles,
       loadedSkills: initiallyLoadedSkills,
-    });
+    };
+    const shouldAddDateContext = requestMessagesOverride == null &&
+      shouldInjectDateContext(dateContextParams);
+    const shouldUseDateOnly = shouldUseDateOnlyContext(dateContextParams);
     const legacyRequestMessages = requestMessagesOverride ?? buildRequestMessages({
       messages: allMessages as unknown as ContextMessage[],
       excludeMessageId: participant.messageId,
       systemPrompt: skillAugmentedPrompt ?? undefined,
-      dateContext: shouldAddDateContext ? buildCurrentDatePrompt() : undefined,
+      dateContext: shouldAddDateContext
+        ? shouldUseDateOnly
+          ? buildCurrentDateOnlyPrompt()
+          : buildCurrentDatePrompt()
+        : undefined,
       memoryContext: resolvedMemoryContext || memoryContext,
       expandMultiModelGroups: args.expandMultiModelGroups,
       maxContextTokens:
@@ -924,7 +985,10 @@ export async function generateForParticipant(
 
     // M10: Inject tool definitions when a registry is available.
     if (effectiveToolRegistry && !effectiveToolRegistry.isEmpty && modelSupportsTools) {
-      rawParams.tools = effectiveToolRegistry.getDefinitions();
+      rawParams.tools = filterDocxReplacementToolDefinitions(
+        effectiveToolRegistry.getDefinitions(),
+        currentUserPrompt,
+      );
       rawParams.toolChoice = forceToolChoiceNone ? "none" : "auto";
     }
 
@@ -1365,7 +1429,19 @@ export async function generateForParticipant(
         if (expanded?.registry) {
           effectiveToolRegistry = expanded.registry;
         }
-        if (expanded?.params) effectiveParams = expanded.params;
+        if (expanded?.params) {
+          effectiveParams = {
+            ...expanded.params,
+            ...(expanded.params.tools
+              ? {
+                  tools: filterDocxReplacementToolDefinitions(
+                    expanded.params.tools,
+                    currentUserPrompt,
+                  ),
+                }
+              : {}),
+          };
+        }
         const shouldStopForV8Guard =
           params.v8RuntimeHandoffGuards === true &&
           continuationHandoff != null &&

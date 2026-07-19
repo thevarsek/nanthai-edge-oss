@@ -316,7 +316,31 @@ test("editDocx regenerates the document and reports old and new word counts", as
     }],
   });
 
-  const edited = await editDocx.execute(harness.toolCtx, {
+  const blocked = await editDocx.execute({
+    ...harness.toolCtx,
+    userMessageId: "message_localized_edit",
+    ctx: {
+      ...harness.toolCtx.ctx,
+      runQuery: async () => ({ content: "can you change the date to be today" }),
+    },
+  }, {
+    storageId: (original.data as any).storageId,
+    title: "Updated / Doc",
+    sections: [{ heading: "Updated", body: "Today" }],
+  });
+  assert.equal(blocked.success, false);
+  assert.match(String(blocked.error), /propose_docx_edits/);
+
+  const edited = await editDocx.execute({
+    ...harness.toolCtx,
+    userMessageId: "message_full_rewrite",
+    ctx: {
+      ...harness.toolCtx.ctx,
+      runQuery: async () => ({
+        content: "Rewrite the whole document as a more detailed agreement",
+      }),
+    },
+  }, {
     storageId: (original.data as any).storageId,
     title: "Updated / Doc",
     includeToc: true,

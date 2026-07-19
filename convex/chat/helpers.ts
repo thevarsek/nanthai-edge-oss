@@ -35,6 +35,16 @@ export function buildCurrentDatePrompt(now: Date = new Date()): string {
   return `Today is ${date}. Current date/time: ${now.toISOString()} (UTC). Use this to resolve relative dates such as today, yesterday, last week, and this week.`;
 }
 
+export function buildCurrentDateOnlyPrompt(now: Date = new Date()): string {
+  const date = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(now);
+  return `Today is ${date} (UTC). Use this to resolve relative calendar dates such as today, yesterday, last week, and this week.`;
+}
+
 /**
  * Build the OpenRouter request messages for a generation call.
  *

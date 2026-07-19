@@ -369,6 +369,7 @@ export const coreSchemaTables = {
     updatedAt: v.number(),
   })
     .index("by_document", ["documentId", "createdAt"])
+    .index("by_generation", ["generationKey"])
     .index("by_generation_document", ["generationKey", "documentId"])
     .index("by_message", ["assistantMessageId"])
     .index("by_user", ["userId", "createdAt"]),

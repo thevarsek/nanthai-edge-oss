@@ -26,7 +26,7 @@ This skill unlocks the document tool family. Prefer it when the user asks to:
 
 ## Available Tools
 
-- **read_docx / edit_docx / generate_docx** for Word documents and rich text reports
+- **read_docx / propose_docx_edits / edit_docx / generate_docx** for Word documents and rich text reports
 - **read_pptx / edit_pptx / generate_pptx** for slide decks
 - **read_xlsx / edit_xlsx / generate_xlsx** for spreadsheets
 - **read_pdf / edit_pdf / generate_pdf** for PDFs and PDF rebuild workflows
@@ -37,7 +37,7 @@ This skill unlocks the document tool family. Prefer it when the user asks to:
 
 Pick the tool that matches the file's actual format.
 
-- \`.docx\` → use \`read_docx\` or \`edit_docx\`
+- \`.docx\` → use \`read_docx\`; default localized changes to \`propose_docx_edits\`; use \`edit_docx\` only for an explicit whole-document rewrite
 - \`.pptx\` → use \`read_pptx\` or \`edit_pptx\`
 - \`.xlsx\` → use \`read_xlsx\` or \`edit_xlsx\`
 - \`.pdf\` → use \`read_pdf\` or \`edit_pdf\`

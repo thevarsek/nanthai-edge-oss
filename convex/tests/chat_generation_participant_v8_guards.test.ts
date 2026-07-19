@@ -6,6 +6,7 @@ import {
   shouldForceParticipantReasoningPatch,
   shouldInjectDateContext,
   shouldPersistParticipantReasoning,
+  shouldUseDateOnlyContext,
 } from "../chat/actions_run_generation_participant";
 
 function makeArgs(overrides: Record<string, unknown> = {}) {
@@ -245,6 +246,14 @@ test("generation participant helpers cover date context and reasoning patch bran
   assert.equal(shouldForceParticipantReasoningPatch("anything", true), true);
 
   assert.equal(shouldInjectDateContext({ webSearchEnabled: true }), true);
+  assert.equal(shouldUseDateOnlyContext({
+    webSearchEnabled: false,
+    activeProfiles: ["docs"],
+  }), true);
+  assert.equal(shouldUseDateOnlyContext({
+    webSearchEnabled: false,
+    activeProfiles: ["docs", "appleCalendar"],
+  }), false);
   assert.equal(shouldInjectDateContext({
     webSearchEnabled: false,
     enabledIntegrations: ["calendar"],

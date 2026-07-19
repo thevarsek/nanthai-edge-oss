@@ -28,8 +28,8 @@ Ideascape may open Word artifacts for review, but document edits stay in normal 
 
 - **generate_docx** — Create a new .docx from structured sections
 - **read_docx** — Extract text and metadata from an existing .docx
-- **edit_docx** — Replace content in an existing .docx (read → regenerate)
-- **propose_docx_edits** — Add precise Word tracked changes to a scoped DOCX for accept/reject review
+- **edit_docx** — Replace an entire existing .docx only for an explicit whole-document rewrite (read → regenerate)
+- **propose_docx_edits** — Default for localized edits; add precise Word tracked changes for per-edit Accept/Reject review
 
 ## Quick-Start Recipe
 
@@ -122,7 +122,11 @@ Tables have dark blue headers (white text) and full-width layout. Column widths 
 
 ## Editing Documents
 
-edit_docx uses a read → regenerate approach. The original file is read for context, then a brand-new document is built with the provided sections. Workflow:
+For any localized change to an existing DOCX, including a date, name, number, clause, typo, signature field, or formatting correction, use **read_document** or **find_in_document** and then **propose_docx_edits**. This is the default even when the user says "change," "edit," or "update" without explicitly asking for tracked changes. The resulting edits must remain reviewable through the user's per-edit Accept/Reject controls.
+
+Example: for "change the date to today," resolve today's date from the supplied current-date context, find the exact date in the source document, and call **propose_docx_edits** with one minimal replacement. Do not call **edit_docx** for that request.
+
+Use **edit_docx** only when the user explicitly requests a whole-document rewrite, rebuild, regeneration, or replacement. edit_docx uses a read → regenerate approach: the original file is read for context, then a brand-new document is built with the provided sections. Workflow:
 
 1. Use **read_docx** to understand the existing content and structure
 2. Call **edit_docx** with storageId + the full updated title/sections
@@ -130,9 +134,9 @@ edit_docx uses a read → regenerate approach. The original file is read for con
 
 The model must provide the complete document content — this is a full replacement, not a patch.
 
-## Redline and Tracked-Change Requests
+## Localized Edits and Tracked-Change Requests
 
-When the user asks for a redline, tracked changes, accept/reject edits, or clause-level revisions in an existing DOCX, distinguish the requested workflow from ordinary full-document regeneration:
+When the user asks for any localized edit, redline, tracked changes, accept/reject edits, or clause-level revisions in an existing DOCX, distinguish the requested workflow from explicit full-document regeneration:
 
 - **Current edit_docx behavior:** full replacement document generated from supplied sections.
 - **Tracked-change behavior:** use read_document or find_in_document first, then call propose_docx_edits with minimal find/replace edits and short source-copied context anchors. The backend preserves the Word document and exposes accept/reject state.

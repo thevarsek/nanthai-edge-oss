@@ -22,7 +22,7 @@ Core review workflow:
 3. Use find_in_document for targeted clauses, defined terms, dates, obligations, or suspected issues.
 4. Cite document-specific claims with the existing document citation rules.
 5. Separate facts from recommendations.
-6. If the user asks for true DOCX tracked changes, use read_document or find_in_document first, then propose_docx_edits with minimal source-anchored substitutions. Without that tool or for non-DOCX files, return a redline-style issue/change list with quotes, reasons, and recommended replacement wording.
+6. For any requested localized DOCX edit—including dates, names, numbers, clauses, typos, and formatting corrections—use read_document or find_in_document first, then propose_docx_edits with minimal source-anchored substitutions so every edit has Accept/Reject review. Use whole-document replacement only when the user explicitly requests a complete rewrite or regeneration. Without tracked-change tooling or for non-DOCX files, return a redline-style issue/change list with quotes, reasons, and recommended replacement wording.
 
 ## Bounded document comparisons
 
