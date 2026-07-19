@@ -885,18 +885,17 @@ All bulk deletion operations (chat cascade, account deletion, memory purge) now 
 - Cursor-based iteration for larger datasets
 - Prevents Convex action time budget exhaustion on accounts with large data volumes
 
-### Rate Limiting
+### No Application Usage Quota
 
-- New `rate_limit` table for backend abuse prevention
-- Sliding-window rate checks on expensive operations (generation, audio TTS, search)
-- Indexed by `userId + action` for efficient lookup
+- The former send-message sliding-window gate was removed on 2026-07-19. PAYG users are not subject to a NanthAI message-per-minute allowance.
+- OpenRouter and integration-provider 429 handling remains active, including bounded retry/backoff where the provider contract permits it.
+- Future Workflow/Workpool concurrency controls are operational backpressure and queue protection, not user-facing quotas.
 
 ### Indexed Cleanup Queries
 
 Cleanup crons (stale jobs, old job runs, expired sessions) now use indexed queries instead of full table scans:
 - `generationJobs` gained `by_status` index
 - `messages` gained `by_audio_storage` index for orphaned audio cleanup
-- `rate_limit` uses `by_user_action` index
 
 ### Split Repair Mutations
 
@@ -1060,4 +1059,4 @@ Android routes the Drive-picker deeplink callback through an app-wide `DrivePick
 
 ---
 
-*Last updated: 2026-06-14 — M35/M36 architecture notes, 67-skill catalog seed state, current audio scheduling module references, M38/M38.5 context assembly, and M43 tool-boundary behavior are reflected. M24 Phase 6 Drive-in-KB remains the latest KB architecture change.*
+*Last updated: 2026-07-19 — M46/M47 planning and the removal of NanthAI's application-level send-message rate gate are reflected. Provider 429 recovery remains active.*

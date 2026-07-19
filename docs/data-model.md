@@ -4,7 +4,7 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 4 files imported into `convex/schema.ts` — 65 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 6 files imported into `convex/schema.ts` — 65 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
 
@@ -199,7 +199,7 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 | **Added `oauthConnections` table** | External integration OAuth tokens. Stores provider (google/microsoft/notion/slack/cloze), access/refresh tokens, expiry, scopes, user email, status. Indexes: `by_user`, `by_user_provider`, `by_status`. Notion uses HTTP Basic Auth for token exchange (no PKCE). Slack uses OAuth 2.0 (workspace-level). Cloze uses API key auth (no OAuth). |
 | **Added tool fields to `messages`** | `toolCalls` (v.optional array), `toolResults` (v.optional array), `generatedFileIds` (v.optional array of Id<"generatedFiles">). |
 | **Added `enabledIntegrations` to `sendMessageArgs`** | Passed to backend as the per-message effective integration snapshot. M30 keeps this on message/send paths while persona/chat defaults now live in layered override fields. |
-| **Schema split** | `convex/schema.ts` imports from 4 table definition files. Current counts are `schema_tables_core.ts` (28 tables), `schema_tables_catalog.ts` (9 tables), `schema_tables_user.ts` (14 tables), and `schema_tables_runtime.ts` (4 tables). |
+| **Schema split** | At this milestone stage, `convex/schema.ts` imported 4 table definition files. Later advisor and presentation milestones added two more schema files; the current six-file count is recorded in Schema Overview. |
 
 ---
 
@@ -429,7 +429,7 @@ No new tables in M20. The historical table count remained 35.
 
 | Change | Details |
 |--------|---------|
-| **Added `rate_limit` table** | Backend rate limiting for abuse prevention. Fields: `userId`, `action`, `windowStart`, `count`, `updatedAt`. Indexed by `by_user_action`. Historical table count: 35 → 36. |
+| **Historical `rate_limit` design** | M21 recorded an application-level abuse-prevention design. It is not part of the current schema. The later `usageRecords`-based send gate was removed on 2026-07-19 so PAYG users have no NanthAI message-per-minute quota. Provider rate-limit recovery remains separate. |
 | **Added `by_status` index to `generationJobs`** | Enables indexed cleanup of stale generation jobs instead of full table scan. |
 | **Added `audioGenerating` flag to `messages`** | Transient boolean flag indicating TTS generation is in progress, patched false on completion or failure. |
 | **Split `repairInvalidMessagePersonas`** | Not a schema change but a migration pattern: large repair mutations are chunked (process N documents per call, reschedule if more remain) to stay within Convex's mutation time budget. |
@@ -547,4 +547,4 @@ Two new shared validators added:
 | **Account cleanup extended** | Account deletion drains M38 artifact rows, memories, assembly logs, and both raw artifact storage blobs. |
 | **Historical table count: 46 → 49** | 3 new M38 tables: `toolExecutionArtifacts`, `toolMemories`, and `contextAssemblyLogs`. |
 
-*Last updated: 2026-06-14 — Current schema recounted at 55 app tables across 4 schema files; M39 document edit tables and post-M38 table-count drift documented.*
+*Last updated: 2026-07-19 — Current schema is 65 app tables across 6 schema files. The historical M21 rate-limit entry now records that no `rate_limit` table or NanthAI send quota remains active.*

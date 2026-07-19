@@ -12,7 +12,6 @@ import {
   insertFileAttachment,
 } from "../lib/file_attachments";
 import { ttftLog } from "../lib/generation_log";
-import { assertRateLimit } from "../lib/rate_limit";
 import { validateSameModality } from "../lib/modality_utils";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
 import { MODEL_IDS } from "../lib/model_constants";
@@ -166,10 +165,9 @@ export async function sendMessageHandler(
     searchMode: args.searchMode ?? null,
   });
 
-  // Parallel batch 1: rate-limit check, chat fetch, and attachment normalization
+  // Parallel batch 1: chat fetch, attachment normalization, and preferences
   // are independent after auth — run concurrently to reduce sequential reads.
-  const [, chat, normalizedAttachments, userPreferences] = await Promise.all([
-    assertRateLimit(ctx, userId),
+  const [chat, normalizedAttachments, userPreferences] = await Promise.all([
     ctx.db.get(args.chatId),
     normalizeMessageAttachments(ctx, args.attachments),
     ctx.db

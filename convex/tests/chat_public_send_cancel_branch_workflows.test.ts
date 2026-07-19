@@ -85,7 +85,13 @@ function buildCtx(options?: {
 
 function proTableRows(): Record<string, Row[]> {
   return {
-    usageRecords: [],
+    // Historical usage must not become a NanthAI send quota. The removed
+    // application gate rejected this fixture before the message was written.
+    usageRecords: Array.from({ length: 31 }, (_, index) => ({
+      _id: `usage_${index}`,
+      userId: "user_1",
+      createdAt: Date.now(),
+    })),
     purchaseEntitlements: [{ _id: "ent_1", userId: "user_1", status: "active" }],
     messages: [],
     cachedModels: [{ _id: "model_1", modelId: "model_tools", supportsTools: true }],
@@ -125,7 +131,7 @@ test("createChatHandler persists optional web participants and createUploadUrl r
   assert.equal(legacy.inserts.find((entry) => entry.table === "chats")?.value.title, "New conversation");
 });
 
-test("sendMessageHandler creates web-search turns with storage attachments and title seeding", async () => {
+test("sendMessageHandler ignores historical usage volume and creates web-search turns", async () => {
   const { ctx, inserts, patches, scheduled } = buildCtx({
     records: {
       chat_1: {
