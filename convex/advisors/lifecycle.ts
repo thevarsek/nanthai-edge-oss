@@ -6,9 +6,9 @@ import type { OpenRouterUsage } from "../lib/openrouter_types";
 import { conciseAdvisorFailure } from "../lib/openrouter_responses_error";
 import { isTerminalAdvisorRun } from "./shared";
 import type { WorkId } from "@convex-dev/workpool";
-import { interactiveWorkpool } from "../execution/components";
-import { durableWorkflow } from "../execution/components";
 import type { WorkflowId } from "@convex-dev/workflow";
+import { durableWorkflow, interactiveWorkpool } from "../execution/components";
+import { cancelWorkflowIfRunning } from "../execution/workflow_cancel";
 import { ADVISOR_BATCH_TERMINAL_EVENT } from "./advisor_workflow";
 import { heartbeatAdvisorBatch } from "./execution_lifecycle";
 import { cancelAssistantGenerationRows } from "./cancel_generation_rows";
@@ -139,16 +139,18 @@ export async function cancelAdvisorBatchRows(
       );
     }
   }
-  if (batch.workflowId) {
-    await durableWorkflow
-      .cancel(ctx, batch.workflowId as WorkflowId)
-      .catch(() => undefined);
-  }
-  if ((batch.generationSnapshot as { kind?: string }).kind === "research_paper") {
-    for (const operationId of batch.generationOperationIds ?? []) {
-      await durableWorkflow
-        .cancel(ctx, operationId as WorkflowId)
-        .catch(() => undefined);
+  // Modern batches register the parent and synthesis workflows with the
+  // execution tree. Cancelling those IDs again here creates one failed
+  // component mutation per already-settled workflow. Legacy batches have no
+  // executionRunId, so retain a guarded compatibility path for them.
+  if (!batch.executionRunId) {
+    if (batch.workflowId) {
+      await cancelWorkflowIfRunning(ctx, batch.workflowId);
+    }
+    if ((batch.generationSnapshot as { kind?: string }).kind === "research_paper") {
+      for (const operationId of batch.generationOperationIds ?? []) {
+        await cancelWorkflowIfRunning(ctx, operationId);
+      }
     }
   }
   for (const scheduledId of batch.scheduledFinalGenerationIds ?? []) {

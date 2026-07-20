@@ -1,4 +1,3 @@
-import type { WorkflowId } from "@convex-dev/workflow";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalMutation, type MutationCtx } from "../_generated/server";
@@ -9,6 +8,7 @@ import { durableWorkflow } from "../execution/components";
 import { ownedWorkflowCompletionRef } from "../execution/workflow_lifecycle";
 import { scheduleOwnedWorkflowWatchdog } from
   "../execution/owned_workflow_watchdog";
+import { cancelWorkflowIfRunning } from "../execution/workflow_cancel";
 
 export async function recoverPresentationWorkflowHandler(
   ctx: MutationCtx,
@@ -33,7 +33,7 @@ export async function recoverPresentationWorkflowHandler(
     ),
     link: linkExecutionComponent,
     cancel: async (cancelCtx, workflowId) => {
-      await durableWorkflow.cancel(cancelCtx, workflowId as WorkflowId);
+      await cancelWorkflowIfRunning(cancelCtx, workflowId);
     },
     scheduleWatchdog: scheduleOwnedWorkflowWatchdog,
   },

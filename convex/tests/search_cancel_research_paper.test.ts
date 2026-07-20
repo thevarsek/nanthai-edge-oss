@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   cancelResearchPaperHandler,
   cancellationPlaceholderForMode,
+  scheduleLegacyResearchWorkflowCancellation,
 } from "../search/mutations_research_paper";
 import { closeRunWriterForCancellation } from "../execution/cancel_fence";
 import { isCurrentResearchExecution } from "../search/execution_lifecycle";
@@ -12,6 +13,26 @@ test("cancellationPlaceholderForMode returns mode-specific placeholder text", ()
   assert.equal(cancellationPlaceholderForMode("paper"), "[Research paper cancelled]");
   assert.equal(cancellationPlaceholderForMode("web"), "[Web search cancelled]");
   assert.equal(cancellationPlaceholderForMode(undefined), "[Generation cancelled]");
+});
+
+test("research cancellation directly cancels only legacy-owned Workflows", async () => {
+  const scheduled: Array<Record<string, unknown>> = [];
+  const ctx = {
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
+    },
+  } as any;
+
+  assert.equal(await scheduleLegacyResearchWorkflowCancellation(ctx, {
+    executionRunId: "run_1" as any,
+    workflowId: "workflow_modern",
+  }), false);
+  assert.equal(await scheduleLegacyResearchWorkflowCancellation(ctx, {
+    workflowId: "workflow_legacy",
+  }), true);
+  assert.deepEqual(scheduled, [{ workflowId: "workflow_legacy" }]);
 });
 
 test("cancelResearchPaperHandler uses web placeholder for cancelled web sessions", async () => {

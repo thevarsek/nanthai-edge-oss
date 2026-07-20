@@ -13,6 +13,7 @@ import {
   updateParentMessageIdsHandler,
   updateProgressHandler,
 } from "../autonomous/mutations_internal_handlers";
+import { scheduleAutonomousTerminalTeardown } from "../autonomous/execution_lifecycle";
 
 function buildAuthCtx(overrides: Record<string, unknown> = {}) {
   return {
@@ -199,6 +200,32 @@ test("stopSessionHandler and handleUserInterventionHandler patch terminal status
     stopReason: "User intervened",
     updatedAt: intervenePatches[0].updatedAt,
   }]);
+});
+
+test("terminal autonomous cancellation routes modern and legacy sessions once", async () => {
+  const scheduled: Array<Record<string, unknown>> = [];
+  const ctx = {
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
+    },
+  } as any;
+
+  await scheduleAutonomousTerminalTeardown(ctx, {
+    executionRunId: "run_1",
+    workflowId: "workflow_modern",
+    userId: "user_1",
+  } as any, "User stopped");
+  await scheduleAutonomousTerminalTeardown(ctx, {
+    workflowId: "workflow_legacy",
+    userId: "user_1",
+  } as any, "User stopped");
+
+  assert.deepEqual(scheduled, [
+    { runId: "run_1", requestedBy: "user_1", reason: "User stopped" },
+    { workflowId: "workflow_legacy" },
+  ]);
 });
 
 test("autonomous internal handlers update progress, parents, completion, and continuation checks", async () => {

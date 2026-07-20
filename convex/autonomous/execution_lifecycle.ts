@@ -7,6 +7,7 @@ import {
   terminalizeDomainExecution,
   type DomainExecutionRef,
 } from "../execution/domain_lifecycle";
+import { internal } from "../_generated/api";
 import { cancelInFlightAutonomousTurns } from "./session_helpers";
 
 export function autonomousExecutionRef(
@@ -71,4 +72,26 @@ export async function interruptAutonomousSession(
   const execution = autonomousExecutionRef(session);
   if (execution)
     await interruptDomainExecution(ctx, execution, "Autonomous session paused");
+}
+
+export async function scheduleAutonomousTerminalTeardown(
+  ctx: MutationCtx,
+  session: Doc<"autonomousSessions">,
+  reason: string,
+): Promise<void> {
+  if (session.executionRunId) {
+    await ctx.scheduler.runAfter(0, internal.execution.teardown.cancelRunTree, {
+      runId: session.executionRunId,
+      requestedBy: session.userId,
+      reason,
+    });
+    return;
+  }
+  if (session.workflowId) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.execution.workflow_cancel.cancelWorkflow,
+      { workflowId: session.workflowId },
+    );
+  }
 }

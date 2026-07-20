@@ -1,5 +1,5 @@
 import { ConvexError } from "convex/values";
-import type { Id } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { cancelAdvisorBatchRows } from "../advisors/lifecycle";
 import { scheduleCancelledAssistantResponseAnalytics } from "../chat/mutation_send_helpers";
@@ -16,6 +16,19 @@ export function cancellationPlaceholderForMode(
   if (mode === "web") return "[Web search cancelled]";
   if (mode === "paper") return "[Research paper cancelled]";
   return "[Generation cancelled]";
+}
+
+export async function scheduleLegacyResearchWorkflowCancellation(
+  ctx: Pick<MutationCtx, "scheduler">,
+  session: Pick<Doc<"searchSessions">, "executionRunId" | "workflowId">,
+): Promise<boolean> {
+  if (session.executionRunId || !session.workflowId) return false;
+  await ctx.scheduler.runAfter(
+    0,
+    internal.execution.workflow_cancel.cancelWorkflow,
+    { workflowId: session.workflowId },
+  );
+  return true;
 }
 
 export async function cancelResearchPaperHandler(
@@ -78,13 +91,9 @@ export async function cancelResearchPaperHandler(
       completedAt: now,
     });
   }
-  if (session.workflowId) {
-    await ctx.scheduler.runAfter(
-      0,
-      internal.execution.workflow_cancel.cancelWorkflow,
-      { workflowId: session.workflowId },
-    );
-  }
+  // Execution-owned workflows are cancelled once by the run-tree teardown.
+  // Keep the direct path only for rows created before execution ownership.
+  await scheduleLegacyResearchWorkflowCancellation(ctx, session);
   const message = await ctx.db.get(session.assistantMessageId);
   if (!message) return;
   if (message.advisorBatchId) {

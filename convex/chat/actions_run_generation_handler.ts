@@ -14,6 +14,7 @@ import type { GenerationContext } from "./queries_generation_context";
 import type { ContextAttachment } from "./helpers_types";
 import { sanitizeImageGenerationConfig } from "../preferences/image_defaults";
 import { durableWorkflow } from "../execution/components";
+import { cancelWorkflowIfRunning } from "../execution/workflow_cancel";
 
 export type { RunGenerationArgs } from "./actions_run_generation_types";
 
@@ -39,7 +40,7 @@ const defaultRunGenerationHandlerDeps = {
       ) ?? "generation-not-started";
     },
     cancelParticipant: async (ctx: ActionCtx, operationId: string): Promise<void> => {
-      await durableWorkflow.cancel(ctx, operationId as never);
+      await cancelWorkflowIfRunning(ctx, operationId);
     },
   },
 };

@@ -132,7 +132,7 @@ test("Workflow callback terminalizes an ambiguous dispatched round instead of st
           executionAttemptId: "attempt_1",
           executionFence: 3,
         }
-        : null,
+        : id === "chat_1" ? { _id: "chat_1", isDeleting: false } : null,
       query: (table: string) => ({
         withIndex: (_index: string, apply: (query: MockIndexQuery) => unknown) => table === "generationRoundJournal"
           ? (() => {
@@ -283,4 +283,79 @@ test("canceled generation Workflows are acknowledged without starting recovery",
   assert.equal(interruptedAttempts, 0);
   assert.equal(patches[0]?.value.status, "cancel_requested");
   assert.equal(typeof patches[0]?.value.cancelAcknowledgedAt, "number");
+});
+
+test("failed generation Workflow completion settles quietly while its chat is deleting", async () => {
+  let recoveryStarts = 0;
+  let interruptedAttempts = 0;
+  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  const ctx = {
+    db: {
+      get: async (id: string) => {
+        if (id === "job_1") {
+          return {
+            _id: "job_1",
+            chatId: "chat_1",
+            status: "streaming",
+            executionRunId: "run_1",
+            executionAttemptId: "attempt_1",
+            executionFence: 3,
+          };
+        }
+        if (id === "chat_1") return { _id: "chat_1", isDeleting: true };
+        return null;
+      },
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => ({
+            _id: "component_1",
+            status: "active",
+            operationId: "workflow_1",
+          }),
+        }),
+      }),
+      patch: async (id: string, value: Record<string, unknown>) => {
+        patches.push({ id, value });
+      },
+    },
+    scheduler: { runAfter: async () => "cleanup_1" },
+  } as any;
+
+  await reconcileGenerationWorkflowCompletionHandler(ctx, {
+    workflowId: "workflow_1",
+    result: { kind: "failed", error: "stopped by chat deletion" },
+    context: {
+      participantArgs: {
+        chatId: "chat_1" as any,
+        userMessageId: "user_message_1" as any,
+        assistantMessageIds: ["assistant_1" as any],
+        generationJobIds: ["job_1" as any],
+        participant: {
+          modelId: "openai/gpt-5",
+          messageId: "assistant_1" as any,
+          jobId: "job_1" as any,
+        },
+        userId: "user_1",
+        expandMultiModelGroups: false,
+        webSearchEnabled: false,
+        effectiveIntegrations: [],
+        isPro: true,
+        allowSubagents: false,
+      },
+    },
+  }, {
+    startWorkflow: async () => {
+      recoveryStarts += 1;
+      return "unexpected_recovery";
+    },
+    interruptAttempt: async () => {
+      interruptedAttempts += 1;
+      return { changed: true, outcome: "interrupted" as const };
+    },
+    failGeneration: async () => undefined,
+  });
+
+  assert.equal(recoveryStarts, 0);
+  assert.equal(interruptedAttempts, 0);
+  assert.equal(patches[0]?.value.status, "failed");
 });

@@ -14,10 +14,15 @@ import type { PipelineArgs } from "./workflow_shared";
 import {
   cancelResearchPaperHandler,
   cancellationPlaceholderForMode,
+  scheduleLegacyResearchWorkflowCancellation,
 } from "./mutations_research_paper_cancel";
 import { buildRetryContract } from "../chat/retry_contract";
 
-export { cancelResearchPaperHandler, cancellationPlaceholderForMode };
+export {
+  cancelResearchPaperHandler,
+  cancellationPlaceholderForMode,
+  scheduleLegacyResearchWorkflowCancellation,
+};
 
 export const startResearchPaper = mutation({
   args: {

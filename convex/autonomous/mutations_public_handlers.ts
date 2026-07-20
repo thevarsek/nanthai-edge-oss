@@ -12,6 +12,7 @@ import {
 } from "./session_helpers";
 import {
   interruptAutonomousSession,
+  scheduleAutonomousTerminalTeardown,
   terminalizeAutonomousSession,
 } from "./execution_lifecycle";
 
@@ -151,6 +152,8 @@ export async function pauseSessionHandler(
   });
   await cancelInFlightAutonomousTurns(ctx, session.chatId, session.turnOrder);
   await interruptAutonomousSession(ctx, session);
+  // Pausing keeps the execution run resumable, so it cannot use terminal
+  // run-tree teardown. The compatibility mutation is status-guarded.
   if (session.workflowId) {
     await ctx.scheduler.runAfter(
       0,
@@ -261,15 +264,7 @@ export async function stopSessionHandler(
       "User stopped",
     );
   }
-  if (session.workflowId) {
-    await ctx.scheduler.runAfter(
-      0,
-      internal.execution.workflow_cancel.cancelWorkflow,
-      {
-        workflowId: session.workflowId,
-      },
-    );
-  }
+  await scheduleAutonomousTerminalTeardown(ctx, session, "User stopped");
 }
 
 export interface HandleUserInterventionArgs extends Record<string, unknown> {
@@ -307,14 +302,6 @@ export async function handleUserInterventionHandler(
       "User intervened",
     );
   }
-  if (session.workflowId) {
-    await ctx.scheduler.runAfter(
-      0,
-      internal.execution.workflow_cancel.cancelWorkflow,
-      {
-        workflowId: session.workflowId,
-      },
-    );
-  }
+  await scheduleAutonomousTerminalTeardown(ctx, session, "User intervened");
 
 }

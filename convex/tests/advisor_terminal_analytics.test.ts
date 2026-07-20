@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { mock } from "node:test";
 import {
   cancelAdvisorBatchRows,
   stopAdvisorBatchConsultations,
 } from "../advisors/lifecycle";
 import { timeoutRun } from "../advisors/mutations_internal";
+import { durableWorkflow } from "../execution/components";
 
 type TestRecord = Record<string, unknown>;
 
@@ -87,6 +88,36 @@ test("full Advisor batch cancellation emits terminal analytics for unfinished ru
   assert.equal(state.records.get("run_1")?.status, "cancelled");
   assert.equal(state.records.get("run_2")?.status, "cancelled");
   assert.equal(analyticsEvents(state.scheduled).length, 2);
+});
+
+test("execution-owned Advisor cancellation uses only run-tree teardown", async (t) => {
+  t.after(() => mock.restoreAll());
+  const state = terminalAnalyticsState();
+  const batch = state.records.get("batch_1");
+  assert.ok(batch);
+  Object.assign(batch, {
+    executionRunId: "execution_1",
+    workflowId: "workflow_parent",
+    generationSnapshot: { kind: "research_paper", request: {} },
+    generationOperationIds: ["workflow_child_1", "workflow_child_2"],
+  });
+  const cancel = mock.method(durableWorkflow, "cancel", async () => undefined);
+  const status = mock.method(durableWorkflow, "status", async () => ({
+    type: "inProgress" as const,
+    running: [],
+  }));
+
+  await cancelAdvisorBatchRows(
+    state.ctx as unknown as Parameters<typeof cancelAdvisorBatchRows>[0],
+    batch as Parameters<typeof cancelAdvisorBatchRows>[1],
+  );
+
+  assert.equal(cancel.mock.callCount(), 0);
+  assert.equal(status.mock.callCount(), 0);
+  assert.equal(
+    state.scheduled.filter((entry) => entry.runId === "execution_1").length,
+    1,
+  );
 });
 
 function run(id: string, personaId: string, status: string): TestRecord {

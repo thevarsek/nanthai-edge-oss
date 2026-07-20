@@ -173,6 +173,11 @@ export async function reconcileGenerationWorkflowCompletionHandler(
   if (!job || TERMINAL_GENERATION_STATUSES.has(job.status) || args.result.kind === "success") {
     return null;
   }
+  // Chat teardown owns terminalization once its deletion fence is visible.
+  // Attempting recovery here would be rejected by assertCurrentExecution and
+  // recorded by the Workflow component as a paid onComplete failure.
+  const chat = await ctx.db.get(job.chatId);
+  if (!chat || chat.isDeleting === true) return null;
   if (!job.executionRunId || !job.executionAttemptId || job.executionFence === undefined) {
     return null;
   }
