@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { durableWorkflow } from "../execution/components";
+import { failClosedProviderActionOptions } from
+  "../execution/workflow_retry_policy";
 
 export const runAnalyticsWorkflow = durableWorkflow
   .define({
@@ -26,7 +28,7 @@ export const runAnalyticsWorkflow = durableWorkflow
       await step.runAction(
         internal.analytics_workflows.actions.execute,
         { analyticsRunId: args.analyticsRunId, claimantId: args.claimantId },
-        { retry: true },
+        failClosedProviderActionOptions,
       );
       let state = await step.runQuery(internal.analytics_workflows.queries.getStatus, {
         analyticsRunId: args.analyticsRunId,

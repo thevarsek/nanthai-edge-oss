@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 import { normalize } from "../analytics_workflows/normalize_action";
 import {
@@ -14,6 +15,8 @@ import {
   ANALYTICS_STDOUT_MAX_CHARS,
   ANALYTICS_WARNING_MAX_COUNT,
 } from "../analytics_workflows/limits";
+import { failClosedProviderActionOptions } from
+  "../execution/workflow_retry_policy";
 import {
   buildInlineParentResult,
   buildStorageBackedParentResult,
@@ -21,6 +24,18 @@ import {
   utf8ByteLength,
 } from "../analytics_workflows/normalized_parent_result";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
+
+test("analytics provider execution fails closed across an ambiguous external boundary", () => {
+  const workflowSource = readFileSync(
+    new URL("../analytics_workflows/workflow.ts", import.meta.url),
+    "utf8",
+  );
+  assert.deepEqual(failClosedProviderActionOptions, { retry: false });
+  assert.match(
+    workflowSource,
+    /analytics_workflows\.actions\.execute[\s\S]*?failClosedProviderActionOptions/,
+  );
+});
 
 test("analytics execution envelopes keep binaries outside Workflow state without losing bytes", () => {
   const raw = serializeAnalyticsEnvelope({
