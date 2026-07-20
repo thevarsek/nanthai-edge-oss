@@ -95,14 +95,20 @@ test("extractXlsx skips broken relationships while preserving sparse large-sheet
   ]);
   assert.deepEqual(result.sheets[1], {
     name: "Empty",
+    state: undefined,
     headers: [],
     rows: [],
+    rowNumbers: [],
     totalRows: 0,
     totalCols: 0,
+    returnedRows: 0,
+    offset: 0,
+    hasMore: false,
+    range: "A1:A1",
   });
   assert.match(result.markdown, /^## Data & Ops/m);
   assert.match(result.markdown, /\| Shared & Text \| 7 \| false \| =SUM\(B2:B2\) \| not-a-number \|/);
-  assert.match(result.markdown, /\*\.\.\. 2 more rows\*/);
+  assert.match(result.markdown, /\*\.\.\. 2 more returned rows\*/);
   assert.doesNotMatch(result.markdown, /Missing Target/);
   assert.doesNotMatch(result.markdown, /Missing Xml/);
 });

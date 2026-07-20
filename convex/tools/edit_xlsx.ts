@@ -1,31 +1,28 @@
 // convex/tools/edit_xlsx.ts
 // =============================================================================
-// Tool: edit_xlsx — reads an existing .xlsx from Convex storage, then generates
-// a new version with updated sheet data. Uses the read→regenerate pattern
-// (same as edit_docx and edit_pptx).
-//
-// Supports the same extended params as generate_xlsx: cell styles, number formats,
-// merged cells, named ranges, explicit column widths.
-//
-// Uses JSZip-based reader + writer — works in Convex's default V8 runtime.
+// Tool: edit_xlsx — applies targeted OOXML patches that preserve unrelated
+// workbook parts. Complete sheet rebuilding remains an explicit fallback.
 // =============================================================================
 
+import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
-import { extractXlsx } from "./xlsx_reader";
-import { buildXlsxBlob, XlsxSheet, XlsxCellStyle, XlsxColumnFormat } from "./xlsx_writer";
+import { patchXlsxBlob } from "./xlsx_patcher";
+import { buildXlsxBlob } from "./xlsx_writer";
 import { createTool } from "./registry";
 import { sanitizeFilename } from "./sanitize";
+import { xlsxNamedRangesProperty, xlsxSheetsProperty } from "./xlsx_tool_schema";
+import { normalizeXlsxOptions, normalizeXlsxPatchOperations } from "./xlsx_validation";
+import { tryCreateXlsxPreview, xlsxPreviewWarnings } from "./xlsx_preview_client";
+import { validateXlsxPackage } from "./xlsx_qa";
 
 export const editXlsx = createTool({
   name: "edit_xlsx",
   description:
-    "Edit a Microsoft Excel spreadsheet (.xlsx). Reads the original from storage " +
-    "for verification, then generates a new version with the provided updated sheets. " +
-    "Use when the user wants to modify, add rows/columns, recalculate, or restructure " +
-    "an existing Excel file. You must provide the full updated sheet list — this replaces " +
-    "the entire spreadsheet. First use read_xlsx to understand the current content, then " +
-    "provide the complete updated sheets here. Supports the same formatting options as " +
-    "generate_xlsx (cell styles, number formats, merged cells, named ranges).",
+    "Edit a Microsoft Excel spreadsheet (.xlsx) while preserving unrelated workbook content. " +
+    "Prefer operations for targeted changes: setCells, clearRange, appendRows, and renameSheet. " +
+    "These patch the original OOXML package so existing styles, charts, validations, hidden sheets, " +
+    "and other unsupported parts survive. Full sheets replacement remains available only when the " +
+    "user explicitly wants to rebuild the workbook. Use read_xlsx with bounded sheet/range arguments first.",
   parameters: {
     type: "object",
     properties: {
@@ -35,111 +32,66 @@ export const editXlsx = createTool({
       },
       title: {
         type: "string",
-        description: "Spreadsheet title for the updated version (used for filename)",
+        description: "Optional title for the updated filename. Defaults to the original filename for patch edits.",
       },
-      sheets: {
+      sheets: xlsxSheetsProperty,
+      namedRanges: xlsxNamedRangesProperty,
+      operations: {
         type: "array",
-        description:
-          "The full updated sheet list (replaces all sheets). Each sheet " +
-          "has a name, headers, and data rows.",
+        description: "Targeted preservation-aware workbook edits. Prefer this over full sheets replacement.",
         items: {
           type: "object",
           properties: {
-            name: { type: "string", description: "Worksheet tab name (max 31 chars)" },
-            headers: {
-              type: "array",
-              description: "Column headers for the first row.",
-              items: { type: "string" },
+            type: {
+              type: "string",
+              description: "Operation type: setCells, clearRange, appendRows, or renameSheet.",
             },
+            sheet: { type: "string", description: "Existing worksheet name." },
+            startCell: { type: "string", description: "Top-left cell for setCells, e.g. B4." },
+            range: { type: "string", description: "A1 range for clearRange." },
             rows: {
               type: "array",
-              description: "Data rows. Each row is an array of cell values (numbers, strings, booleans, null, or '=FORMULA').",
+              description: "Rows for setCells or appendRows. Values use the same types as generate_xlsx.",
               items: { type: "array", items: {} },
             },
-            columnWidths: {
-              type: "array",
-              description: "Explicit column widths. Auto-sized if omitted.",
-              items: { type: "number" },
-            },
-            cellStyles: {
-              type: "array",
-              description: "Cell style overrides (same as generate_xlsx).",
-              items: {
-                type: "object",
-                properties: {
-                  range: { type: "string", description: "Cell range in A1 notation." },
-                  bold: { type: "boolean" },
-                  fontColor: { type: "string", description: "Hex RGB without #." },
-                  bgColor: { type: "string", description: "Hex RGB without #." },
-                  borderStyle: { type: "string", description: "'thin', 'medium', or 'thick'." },
-                  numberFormat: { type: "string", description: "Number format string." },
-                },
-                required: ["range"],
-              },
-            },
-            columnFormats: {
-              type: "array",
-              description: "Number format per column (same as generate_xlsx).",
-              items: {
-                type: "object",
-                properties: {
-                  column: { type: "number", description: "Column index (0-based)." },
-                  format: { type: "string", description: "Excel number format string." },
-                },
-                required: ["column", "format"],
-              },
-            },
-            mergedCells: {
-              type: "array",
-              description: "Merged cell ranges in A1 notation.",
-              items: { type: "string" },
-            },
+            startColumn: { type: "number", description: "Zero-based starting column for appendRows." },
+            newName: { type: "string", description: "New worksheet name for renameSheet." },
           },
-          required: ["name", "headers", "rows"],
+          required: ["type", "sheet"],
         },
       },
-      namedRanges: {
-        type: "array",
-        description: "Named ranges for the workbook.",
-        items: {
-          type: "object",
-          properties: {
-            name: { type: "string" },
-            range: { type: "string" },
-          },
-          required: ["name", "range"],
-        },
+      includePreview: {
+        type: "boolean",
+        description: "Generate a companion PDF preview when runtime context is available (default true).",
       },
     },
-    required: ["storageId", "title", "sheets"],
+    required: ["storageId"],
   },
 
   execute: async (toolCtx, args) => {
     if (!args.storageId || typeof args.storageId !== "string") {
       return { success: false, data: null, error: "Missing or invalid 'storageId'" };
     }
-    const { storageId, title, sheets: rawSheets, namedRanges } = args as {
-      storageId: string;
-      title: string;
-      sheets: Array<{
-        name: string;
-        headers: string[];
-        rows: unknown[][];
-        columnWidths?: number[];
-        cellStyles?: XlsxCellStyle[];
-        columnFormats?: XlsxColumnFormat[];
-        mergedCells?: string[];
-      }>;
-      namedRanges?: Array<{ name: string; range: string }>;
-    };
-
-    if (!title || typeof title !== "string") {
+    const storageId = args.storageId as string;
+    const requestedPatchMode = Array.isArray(args.operations) && args.operations.length > 0;
+    if (!requestedPatchMode && (!args.title || typeof args.title !== "string")) {
       return { success: false, data: null, error: "Missing or invalid 'title'" };
     }
 
     // Read the original to verify it exists and is a valid .xlsx
     let originalBlob: Blob | null;
+    let originalFilename = "spreadsheet.xlsx";
     try {
+      if (toolCtx.userId) {
+        const owned = await toolCtx.ctx.runQuery(
+          internal.runtime.queries.resolveOwnedStorageFileInternal,
+          { userId: toolCtx.userId, storageId: storageId as Id<"_storage"> },
+        );
+        if (!owned) {
+          return { success: false, data: null, error: "The requested spreadsheet is not available to this user." };
+        }
+        originalFilename = owned.filename;
+      }
       originalBlob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
     } catch {
       return { success: false, data: null, error: `Invalid storageId: "${storageId}"` };
@@ -148,10 +100,9 @@ export const editXlsx = createTool({
       return { success: false, data: null, error: `File not found for storageId: "${storageId}"` };
     }
 
-    // Verify it's parseable
+    // Verify it is parseable before editing.
     try {
-      const arrayBuffer = await originalBlob.arrayBuffer();
-      await extractXlsx(arrayBuffer);
+      await validateXlsxPackage(originalBlob);
     } catch (e) {
       return {
         success: false, data: null,
@@ -159,51 +110,57 @@ export const editXlsx = createTool({
       };
     }
 
-    if (!rawSheets || rawSheets.length === 0) {
-      return { success: false, data: null, error: "At least one sheet is required." };
+    const patchMode = requestedPatchMode;
+    let blob: Blob;
+    let title = typeof args.title === "string" && args.title.trim()
+      ? args.title.trim()
+      : originalFilename.replace(/\.xlsx$/i, "");
+    let totalRows = 0;
+    let sheetSummary = "Preserved original workbook structure";
+    try {
+      if (patchMode) {
+        const operations = normalizeXlsxPatchOperations(args.operations);
+        blob = await patchXlsxBlob(await originalBlob.arrayBuffer(), operations);
+        totalRows = operations.reduce((sum, operation) =>
+          operation.type === "setCells" || operation.type === "appendRows"
+            ? sum + operation.rows.length
+            : sum, 0);
+        sheetSummary = `${operations.length} targeted operation(s)`;
+      } else {
+        const workbook = normalizeXlsxOptions({
+          title: args.title,
+          sheets: args.sheets,
+          namedRanges: args.namedRanges,
+        });
+        title = workbook.title;
+        blob = await buildXlsxBlob(workbook);
+        totalRows = workbook.sheets.reduce((sum, sheet) => sum + sheet.rows.length, 0);
+        sheetSummary = workbook.sheets
+          .map((sheet) => `"${sheet.name}" (${sheet.headers.length} cols, ${sheet.rows.length} rows)`)
+          .join(", ");
+      }
+    } catch (error) {
+      return { success: false, data: null, error: error instanceof Error ? error.message : String(error) };
     }
-
-    // Sanitize and coerce
-    const sheets: XlsxSheet[] = rawSheets.map((s, i) => {
-      const safeName = (s.name || `Sheet${i + 1}`)
-        .replace(/[/\\?*[\]]/g, "_")
-        .slice(0, 31);
-
-      const rows = s.rows.map((row) =>
-        row.map((cell) => {
-          if (cell == null) return null;
-          if (typeof cell === "number") return cell;
-          if (typeof cell === "boolean") return cell;
-          const str = String(cell);
-          if (/^-?\d+(\.\d+)?$/.test(str.trim())) {
-            const num = Number(str.trim());
-            if (isFinite(num)) return num;
-          }
-          return str;
-        }),
-      );
-
+    let packageValidation;
+    try {
+      packageValidation = await validateXlsxPackage(blob);
+    } catch (error) {
       return {
-        name: safeName,
-        headers: s.headers || [],
-        rows,
-        columnWidths: s.columnWidths,
-        cellStyles: s.cellStyles,
-        columnFormats: s.columnFormats,
-        mergedCells: s.mergedCells,
+        success: false,
+        data: null,
+        error: `Updated workbook validation failed: ${error instanceof Error ? error.message : String(error)}`,
       };
-    });
-
-    // Generate new .xlsx
-    const blob = await buildXlsxBlob({ title, sheets, namedRanges });
+    }
 
     // Store in Convex file storage
     const newStorageId = await toolCtx.ctx.storage.store(blob);
-
-    const totalRows = sheets.reduce((sum, s) => sum + s.rows.length, 0);
-    const sheetSummary = sheets
-      .map((s) => `"${s.name}" (${s.headers.length} cols, ${s.rows.length} rows)`)
-      .join(", ");
+    const preview = await tryCreateXlsxPreview(
+      toolCtx,
+      newStorageId,
+      title,
+      args.includePreview !== false,
+    );
 
     const safeTitle = sanitizeFilename(title, "spreadsheet");
     const filename = `${safeTitle}.xlsx`;
@@ -219,8 +176,15 @@ export const editXlsx = createTool({
         originalStorageId: storageId,
         downloadUrl,
         filename,
+        mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        sizeBytes: blob.size,
         sheets: sheetSummary,
         totalRows,
+        editMode: patchMode ? "patch" : "rebuild",
+        companionFiles: preview.result ? [preview.result.preview] : [],
+        workbookValidation: preview.result?.validation,
+        packageValidation,
+        warnings: xlsxPreviewWarnings(preview),
         markdownLink: `[${filename}](${downloadUrl})`,
         message:
           `Spreadsheet updated. Present the download link to the user using markdown: [${filename}](${downloadUrl})`,

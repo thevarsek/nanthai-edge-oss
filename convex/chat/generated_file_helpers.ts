@@ -59,9 +59,10 @@ export function extractGeneratedFiles(
       const data = JSON.parse(tr.result);
       const candidates = (tr.toolName === "data_python_exec" || tr.toolName === "data_python_sandbox")
         ? Array.isArray(data.exportedFiles) ? data.exportedFiles : []
-        : [data];
+        : [data, ...(Array.isArray(data.companionFiles) ? data.companionFiles : [])];
 
       for (const candidate of candidates) {
+        if (!candidate || typeof candidate !== "object") continue;
         const sid = candidate.newStorageId ?? candidate.storageId;
         const filename = candidate.filename;
         if (!sid || !filename) continue;

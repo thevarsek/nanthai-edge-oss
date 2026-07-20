@@ -48,6 +48,24 @@ uses the existing document tools in one bounded tool loop and returns a cited
 Markdown preview plus a normal `generate_xlsx` file artifact. Clients require no
 comparison-specific route, DTO, state machine, or renderer.
 
+### XLSX thin-client contract
+
+Spreadsheet improvements remain backend-only and retain the existing
+`generate_xlsx`, `read_xlsx`, and `edit_xlsx` tool IDs. `read_xlsx` ownership
+checks the requested storage object and returns bounded sheet/range pages;
+targeted `edit_xlsx` operations preserve unrelated workbook parts, while full
+sheet replacement is an explicit rebuild fallback. Workbook typing, formulas,
+styles, validation rules, recalculation flags, and package QA are backend
+concerns and must not be re-derived by clients.
+
+Generated or edited XLSX output remains an ordinary `generatedFiles` artifact.
+When server-side validation succeeds, its companion PDF is added through the
+same existing generated-file extraction and subscription path. It has the
+normal PDF filename/MIME/storage fields, not an XLSX-specific client DTO or
+route. Released iOS, Android, and web clients therefore render the workbook and
+preview as the generated-file cards they already support; a preview failure is
+reported as an additive tool warning and never invalidates the primary XLSX.
+
 Presentations follow this rule across web, iOS, and Android. Creation and
 iteration run through the normal chat tool loop and generated-file lifecycle.
 Projects, slide order, provenance, revisions, AI operations, and validation live

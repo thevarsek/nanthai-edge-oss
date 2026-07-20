@@ -568,7 +568,7 @@ final class AppState {
 ### Convex-Native Tool Registry (M10)
 - **Execution Loop**: Uses an iterative loop (`runToolCallLoop()`) up to 20 rounds, re-calling OpenRouter with tool results before final stream.
 - **Registry Structure**: `ToolRegistry` manages strongly typed tool definitions and dispatches execution dynamically.
-- **Document & Spreadsheet Tooling**: Custom JSZip-based readers/writers (`docx`, `xlsx`, `pptx`) function entirely in Convex V8 environments, generating files without relying on external SaaS.
+- **Document & Spreadsheet Tooling**: Custom OOXML readers/writers keep primary `docx`, `xlsx`, and `pptx` generation in Convex-owned tool paths. XLSX adds bounded reads, preservation-aware JSZip patching, deterministic package QA, and an optional persistent-runtime `openpyxl` validation + companion-PDF pass; preview failure never discards a valid primary workbook.
 - **Integration**: Supports Google Workspace, MS 365, Notion, Apple Calendar, Slack, and Cloze with tool injection into request params.
 
 ### Scheduled Jobs (M13)

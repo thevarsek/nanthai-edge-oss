@@ -45,6 +45,28 @@ test("extractGeneratedFiles includes workspace exports", () => {
   }]);
 });
 
+test("extractGeneratedFiles includes XLSX companion previews", () => {
+  const files = extractGeneratedFiles([{
+    toolCallId: "call_xlsx",
+    toolName: "generate_xlsx",
+    result: JSON.stringify({
+      storageId: "storage_xlsx",
+      filename: "forecast.xlsx",
+      mimeType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      sizeBytes: 2_048,
+      companionFiles: [{
+        storageId: "storage_preview",
+        filename: "forecast_preview.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 1_024,
+      }],
+    }),
+  }]);
+
+  assert.deepEqual(files.map((file) => file.filename), ["forecast.xlsx", "forecast_preview.pdf"]);
+  assert.deepEqual(files.map((file) => file.toolName), ["generate_xlsx", "generate_xlsx"]);
+});
+
 test("extractGeneratedFiles falls back to extension-based mime type", () => {
   const files = extractGeneratedFiles([
     {

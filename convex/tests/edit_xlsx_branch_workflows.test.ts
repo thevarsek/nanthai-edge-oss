@@ -52,7 +52,7 @@ test("editXlsx validates storage, title, original file, and sheet payloads", asy
   assert.match(String(missingSheets.error), /At least one sheet/);
 });
 
-test("editXlsx regenerates workbook with sanitized sheets, coercions, and site download URL", async () => {
+test("editXlsx rebuilds with sanitized sheets, preserved text, and site download URL", async () => {
   const originalSiteUrl = process.env.CONVEX_SITE_URL;
   const stored: Blob[] = [];
   process.env.CONVEX_SITE_URL = "https://nanthai.example";
@@ -76,12 +76,12 @@ test("editXlsx regenerates workbook with sanitized sheets, coercions, and site d
         name: "Very/Long*Sheet?Name[With]InvalidCharacters",
         headers: ["Amount", "Flag", "Blank", "Formula"],
         rows: [[" 42.5 ", true, null, "=SUM(A2:A2)"]],
-        columnWidths: [12, 8],
+        columnWidths: [12, 8, 10, 14],
         cellStyles: [{ range: "A1:D1", bold: true }],
         columnFormats: [{ column: 0, format: "$#,##0.00" }],
         mergedCells: ["A3:D3"],
       }],
-      namedRanges: [{ name: "Totals", range: "'Very_Long_Sheet_Name_With_Inva'!A1:A2" }],
+      namedRanges: [{ name: "Totals", range: "'Very_Long_Sheet_Name_With_Inval'!A1:A2" }],
     });
 
     assert.equal(result.success, true);
@@ -96,7 +96,7 @@ test("editXlsx regenerates workbook with sanitized sheets, coercions, and site d
 
     const parsed = await extractXlsx(await stored[0]!.arrayBuffer());
     assert.equal(parsed.sheets[0].name.length, 31);
-    assert.deepEqual(parsed.sheets[0].rows[0], [42.5, true, null, "=SUM(A2:A2)"]);
+    assert.deepEqual(parsed.sheets[0].rows[0], [" 42.5 ", true, null, "=SUM(A2:A2)"]);
   } finally {
     if (originalSiteUrl === undefined) {
       delete process.env.CONVEX_SITE_URL;

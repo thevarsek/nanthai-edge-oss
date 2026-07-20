@@ -91,7 +91,9 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     const invalidId = await tool.execute({
       userId: "user_1",
       ctx: {
-        ...(name === "pptx" ? { runQuery: async () => { throw new Error("bad id"); } } : {}),
+        ...(name === "pptx" || name === "xlsx"
+          ? { runQuery: async () => { throw new Error("bad id"); } }
+          : {}),
         storage: {
           get: async () => {
             throw new Error("bad id");
@@ -105,7 +107,9 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     const missingFile = await tool.execute({
       userId: "user_1",
       ctx: {
-        ...(name === "pptx" ? { runQuery: async () => ({ storageId: `${name}_missing` }) } : {}),
+        ...(name === "pptx" || name === "xlsx"
+          ? { runQuery: async () => ({ storageId: `${name}_missing` }) }
+          : {}),
         storage: { get: async () => null },
       },
     } as any, { storageId: `${name}_missing` });
@@ -115,7 +119,9 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     const corrupt = await tool.execute({
       userId: "user_1",
       ctx: {
-        ...(name === "pptx" ? { runQuery: async () => ({ storageId: `${name}_corrupt` }) } : {}),
+        ...(name === "pptx" || name === "xlsx"
+          ? { runQuery: async () => ({ storageId: `${name}_corrupt` }) }
+          : {}),
         storage: {
           get: async () => new Blob(["not an office archive"], { type: "text/plain" }),
         },

@@ -66,6 +66,21 @@ test("buildXlsxBlob writes formulas, styles, merges, and named ranges into OOXML
         { range: "B2:B3", numberFormat: "$#,##0.00" },
       ],
       mergedCells: ["A1:D1"],
+      autoFilter: "A1:D3",
+      freezeRows: 1,
+      freezeColumns: 1,
+      conditionalFormats: [{
+        range: "B2:B3",
+        operator: "lessThan",
+        formula: "1000",
+        fontColor: "9C0006",
+        bgColor: "FFC7CE",
+      }],
+      dataValidations: [{
+        range: "C2:C100",
+        type: "list",
+        formula1: `"TRUE,FALSE"`,
+      }],
     }],
   });
 
@@ -76,13 +91,20 @@ test("buildXlsxBlob writes formulas, styles, merges, and named ranges into OOXML
 
   assert.match(workbookXml ?? "", /definedName name="Revenue"/);
   assert.match(workbookXml ?? "", /Summary!B2:B3/);
+  assert.match(workbookXml ?? "", /fullCalcOnLoad="1"/);
   assert.match(sheetXml ?? "", /mergeCell ref="A1:D1"/);
   assert.match(sheetXml ?? "", /<f>SUM\(B2:B2\)<\/f>/);
+  assert.match(sheetXml ?? "", /<autoFilter ref="A1:D3"\/>/);
+  assert.match(sheetXml ?? "", /xSplit="1" ySplit="1"/);
+  assert.match(sheetXml ?? "", /<conditionalFormatting sqref="B2:B3">/);
+  assert.match(sheetXml ?? "", /<dataValidation type="list" sqref="C2:C100"/);
   assert.match(stylesXml ?? "", /formatCode="\$#,\#\#0\.00"/);
   assert.match(stylesXml ?? "", /applyNumberFormat="1"/);
+  assert.match(stylesXml ?? "", /<dxfs count="1">/);
+  assert.match(stylesXml ?? "", /<cellStyle name="Normal"/);
 });
 
-test("generateXlsx and readXlsx round-trip sanitized workbook content", async () => {
+test("generateXlsx and readXlsx preserve explicit text identifiers", async () => {
   const harness = createStorageHarness();
   const generated = await generateXlsx.execute(harness.toolCtx, {
     title: "Ops / Scorecard",
@@ -107,8 +129,8 @@ test("generateXlsx and readXlsx round-trip sanitized workbook content", async ()
   assert.equal((readBack.data as any).sheetCount, 1);
   assert.equal((readBack.data as any).sheets[0].name, "Ops_Plan_2026");
   assert.deepEqual((readBack.data as any).sheets[0].rows, [
-    ["Alice", 42, true],
-    ["Bob", 3.5, false],
+    ["Alice", "42", true],
+    ["Bob", "3.5", false],
   ]);
 });
 
