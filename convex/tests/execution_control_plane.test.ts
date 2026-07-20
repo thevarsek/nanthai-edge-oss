@@ -355,6 +355,48 @@ test("teardown persists a bounded frontier for execution trees larger than 2,000
   );
 });
 
+test("teardown advances only one child-page frontier per mutation", async () => {
+  const { rows, ctx } = fixture();
+  const root = await createExecutionRun(ctx, {
+    userId: "user_1",
+    runKey: "paged-root",
+    kind: "chat_generation",
+    requestedPlacement: "cloud",
+    initialAttempt: {
+      executorKind: "convex_workflow",
+      placement: "cloud",
+      adapterId: "convex-workflow",
+      protocolVersion: "nanthai-execution-v1",
+    },
+  });
+  for (let index = 0; index < 2; index += 1) {
+    rows.executionRuns.push({
+      _id: `paged_child_${index}`,
+      userId: "user_1",
+      parentRunId: root.runId,
+      kind: "subagent",
+      state: "running",
+      requestedPlacement: "cloud",
+      nextAttemptNumber: 1,
+      nextEventSequence: 0,
+      createdAt: index,
+      updatedAt: index,
+    });
+  }
+
+  await requestRunTreeTeardown(ctx, root.runId, "user_1", "paged teardown");
+  await requestRunTreeTeardown(ctx, root.runId, "user_1", "paged teardown");
+
+  const childTasks = rows.executionTeardownTasks.filter(
+    (task) => task.runId !== root.runId,
+  );
+  assert.equal(childTasks.filter((task) => task.status === "pending").length, 1);
+  assert.equal(
+    childTasks.filter((task) => task.status === "waiting_for_children").length,
+    1,
+  );
+});
+
 test("domain workflows dedupe their run key without pretending active components have stopped", async () => {
   const { rows, ctx } = fixture();
   const execution = await createAndClaimDomainExecution(ctx, {
@@ -609,7 +651,7 @@ test("recursive teardown cancels descendants, commands, bindings, and every comp
     updatedAt: now,
   });
   const components: Array<{ operationId: string }> = [];
-  for (let pass = 0; pass < 12; pass += 1) {
+  for (let pass = 0; pass < 50; pass += 1) {
     const next = await requestRunTreeTeardown(
       ctx,
       root.runId,

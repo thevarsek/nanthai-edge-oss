@@ -33,7 +33,10 @@ export interface TeardownAdvanceResult {
   done: boolean;
 }
 
-const TEARDOWN_TASKS_PER_MUTATION = 12;
+// Every task may need a child-page query. Convex permits only one paginated
+// query per function call, so advance exactly one durable frontier task at a
+// time. The owning action reschedules until the frontier is settled.
+const TEARDOWN_TASKS_PER_MUTATION = 1;
 const TEARDOWN_CHILDREN_PER_PAGE = 50;
 
 export async function advanceRunTreeTeardown(
@@ -64,12 +67,15 @@ export async function advanceRunTreeTeardown(
   }
 
   const candidates = (await Promise.all(
-    (["expanding", "pending", "waiting_for_children", "cancelling"] as const).map((status) =>
+    // Prefer leaf progress over parents waiting on those leaves. Within one
+    // status, newest-first also selects descendants inserted after a parent.
+    (["cancelling", "pending", "expanding", "waiting_for_children"] as const).map((status) =>
       ctx.db
         .query("executionTeardownTasks")
         .withIndex("by_root_status", (q) =>
           q.eq("rootRunId", root._id).eq("status", status),
         )
+        .order("desc")
         .take(TEARDOWN_TASKS_PER_MUTATION),
     ),
   )).flat().slice(0, TEARDOWN_TASKS_PER_MUTATION);
