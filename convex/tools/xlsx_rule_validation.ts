@@ -1,8 +1,31 @@
 import { parseRangeReference } from "./xlsx_references";
-import type { XlsxSheet } from "./xlsx_types";
+import type { XlsxColumnFormat, XlsxSheet } from "./xlsx_types";
 
 const MAX_SHEET_RULES = 1_000;
 const HEX_COLOR = /^[0-9A-F]{6}$/;
+
+export function normalizeColumnFormats(
+  raw: unknown,
+  width: number,
+  location: string,
+): XlsxColumnFormat[] | undefined {
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw) || raw.length > MAX_SHEET_RULES) {
+    throw new Error(`${location} must contain no more than ${MAX_SHEET_RULES} rules.`);
+  }
+  const formats = new Map<number, string>();
+  raw.forEach((value, index) => {
+    const rule = value as Record<string, unknown>;
+    const column = rule.column;
+    const format = typeof rule.format === "string" ? rule.format : "";
+    if (typeof column !== "number" || !Number.isInteger(column) || column < 0 || column >= width ||
+        !format || format.length > 255) {
+      throw new Error(`${location}[${index}] is invalid.`);
+    }
+    formats.set(column, format);
+  });
+  return Array.from(formats, ([column, format]) => ({ column, format }));
+}
 
 export function normalizeConditionalFormats(
   raw: unknown,

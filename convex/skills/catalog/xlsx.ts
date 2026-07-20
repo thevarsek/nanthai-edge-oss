@@ -60,6 +60,8 @@ Pass the right type for each cell — the tool preserves types in Excel:
 
 **Always pass numbers as numbers, not strings.** \`125000\` not \`"125000"\`. Strings are never auto-converted because identifiers such as ZIP codes, SKUs, and account numbers must retain leading zeros.
 
+Quote every tab name in cross-sheet formulas: \`=SUM('Sales Data'!B2:B10)\`. Double embedded apostrophes.
+
 ## Multiple Sheets
 
 \`\`\`
@@ -160,8 +162,8 @@ Define at the workbook level for formula references:
 generate_xlsx({
   title: "Budget",
   namedRanges: [
-    { name: "Revenue", range: "Revenue!B2:B13" },
-    { name: "Expenses", range: "Expenses!B2:B13" }
+    { name: "Revenue", range: "'Revenue'!B2:B13" },
+    { name: "Expenses", range: "'Expenses'!B2:B13" }
   ],
   sheets: [...]
 })
@@ -184,7 +186,7 @@ read_xlsx({
 })
 \`\`\`
 
-Use \`nextOffset\` while \`hasMore\` is true. Use \`search\` to filter matching rows server-side. Formula cells return formula text by default even when Excel stored a cached result; set \`includeFormulas: false\` only when cached displayed values are specifically needed.
+Use \`nextOffset\` while \`hasMore\` is true and \`search\` to filter server-side. Formula cells return formulas by default; set \`includeFormulas: false\` only for cached values.
 
 ## Editing Spreadsheets
 

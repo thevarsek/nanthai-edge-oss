@@ -5,7 +5,7 @@ import {
   resolveXlsxRelationshipPath,
 } from "./xlsx_reader_parsing";
 
-const FORMULA_ERROR = /#(?:REF!|DIV\/0!|VALUE!|NAME\?|N\/A|NUM!|NULL!)/g;
+const FORMULA_ERROR = /#(?:REF!|DIV\/0!|VALUE!|NAME\?|N\/A|NUM!|NULL!|SPILL!|CALC!|FIELD!|BLOCKED!|UNKNOWN!|CONNECT!|BUSY!)/g;
 
 export interface XlsxPackageValidation {
   sheetCount: number;

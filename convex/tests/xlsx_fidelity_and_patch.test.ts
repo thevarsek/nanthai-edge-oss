@@ -3,6 +3,7 @@ import test from "node:test";
 
 import JSZip from "jszip";
 
+import { xlsxPreviewPythonSource } from "../runtime/service_xlsx_preview";
 import { patchXlsxBlob } from "../tools/xlsx_patcher";
 import { validateXlsxPackage } from "../tools/xlsx_qa";
 import { extractXlsx } from "../tools/xlsx_reader";
@@ -116,6 +117,72 @@ test("normalizeXlsxOptions validates workbook rules without coercing text", () =
   }), /unique/);
 });
 
+test("normalizeXlsxOptions repairs formula references and repeated column formats", async () => {
+  const workbook = normalizeXlsxOptions({
+    title: "Formula references",
+    sheets: [
+      {
+        name: "Executive Summary",
+        headers: ["Metric", "Value"],
+        rows: [
+          ["Average", "=AVERAGE(Project Tracker!B2:B3)"],
+          ["Typed", { type: "formula", formula: "SUM(Sales_Data!B2:B3)", cachedValue: 3 }],
+          ["Text", '="Project Tracker!B2"'],
+          ["Bad quotes", '=AVERAGE("Project Tracker"!B2:B3)'],
+          ["Three dimensional", "=SUM(Sales_Data:Project Tracker!B2:B3)"],
+        ],
+        columnFormats: [
+          { column: 1, format: "0" },
+          { column: 1, format: "0.0" },
+        ],
+        conditionalFormats: [{
+          range: "B2:B100",
+          operator: "lessThan",
+          formula: "0.5",
+          bgColor: "FFC7CE",
+        }],
+        dataValidations: [{
+          range: "B2:B100",
+          type: "list",
+          formula1: "Project Tracker!$A$2:$A$3",
+        }],
+      },
+      { name: "Project Tracker", headers: ["Project", "Progress"], rows: [["A", 0.5], ["B", 0.75]] },
+      { name: "Sales_Data", headers: ["Month", "Value"], rows: [["Jan", 1], ["Feb", 2]] },
+    ],
+    namedRanges: [{ name: "Progress", range: "Project Tracker!B2:B3" }],
+  });
+
+  assert.deepEqual(workbook.sheets[0].columnFormats, [{ column: 1, format: "0.0" }]);
+  assert.equal(workbook.sheets[0].rows[0][1], "=AVERAGE('Project Tracker'!B2:B3)");
+  assert.deepEqual(workbook.sheets[0].rows[1][1], {
+    type: "formula",
+    formula: "SUM('Sales_Data'!B2:B3)",
+    cachedValue: 3,
+  });
+  assert.equal(workbook.sheets[0].rows[2][1], '="Project Tracker!B2"');
+  assert.equal(workbook.sheets[0].rows[3][1], "=AVERAGE('Project Tracker'!B2:B3)");
+  assert.equal(workbook.sheets[0].rows[4][1], "=SUM('Sales_Data:Project Tracker'!B2:B3)");
+  assert.equal(workbook.sheets[0].dataValidations?.[0].formula1, "'Project Tracker'!$A$2:$A$3");
+  assert.equal(workbook.namedRanges?.[0].range, "'Project Tracker'!B2:B3");
+
+  const blob = await buildXlsxBlob(workbook);
+  const zip = await JSZip.loadAsync(await blob.arrayBuffer());
+  const summaryXml = await zip.file("xl/worksheets/sheet1.xml")!.async("string");
+  const stylesXml = await zip.file("xl/styles.xml")!.async("string");
+  const differentialStyles = stylesXml.match(/<dxfs\b[\s\S]*?<\/dxfs>/)?.[0] ?? "";
+  assert.match(summaryXml, /AVERAGE\(&apos;Project Tracker&apos;!B2:B3\)/);
+  assert.match(summaryXml, /AND\(NOT\(ISBLANK\(B2\)\),B2&lt;0\.5\)/);
+  assert.match(differentialStyles, /<bgColor rgb="FFFFC7CE"\/>/);
+  assert.doesNotMatch(differentialStyles, /<fgColor\b/);
+});
+
+test("XLSX preview Python source parses the truncation guard correctly", () => {
+  const source = xlsxPreviewPythonSource();
+  assert.match(source, /if \(formula_sheet\.max_row > max_rows or formula_sheet\.max_column > max_cols\):/);
+  assert.doesNotMatch(source, /max_column > max_cols:/);
+});
+
 test("patchXlsxBlob preserves unsupported parts and workbook features while editing cells", async () => {
   const original = await buildXlsxBlob({
     title: "Patch",
@@ -129,14 +196,14 @@ test("patchXlsxBlob preserves unsupported parts and workbook features while edit
         cellStyles: [{ range: "C2:C3", bgColor: "FFF9C4" }],
         dataValidations: [{ range: "C2:C100", type: "list", formula1: `"Open,Closed"` }],
       },
-      { name: "Archive", headers: ["Name"], rows: [["Old"]] },
+      { name: "Prior Data", headers: ["Name"], rows: [["Old"]] },
     ],
   });
   const sourceZip = await JSZip.loadAsync(await original.arrayBuffer());
   const sourceWorkbook = await sourceZip.file("xl/workbook.xml")!.async("string");
   sourceZip.file("xl/workbook.xml", sourceWorkbook.replace(
-    `name="Archive" sheetId="2"`,
-    `name="Archive" state="hidden" sheetId="2"`,
+    `name="Prior Data" sheetId="2"`,
+    `name="Prior Data" state="hidden" sheetId="2"`,
   ));
   const relationships = await sourceZip.file("xl/_rels/workbook.xml.rels")!.async("string");
   sourceZip.file("xl/_rels/workbook.xml.rels", relationships.replace(
@@ -164,7 +231,7 @@ test("patchXlsxBlob preserves unsupported parts and workbook features while edit
   const patched = await patchXlsxBlob(source, [
     { type: "setCells", sheet: "Data", startCell: "B2", rows: [[99]] },
     { type: "clearRange", sheet: "Data", range: "C2" },
-    { type: "appendRows", sheet: "Data", rows: [["Gamma", 300, "Open"]] },
+    { type: "appendRows", sheet: "Data", rows: [["Gamma", 300, '=COUNTIF(Prior Data!A:A,"<>")']] },
     { type: "renameSheet", sheet: "Data", newName: "Actuals" },
   ]);
   const zip = await JSZip.loadAsync(await patched.arrayBuffer());
@@ -173,7 +240,7 @@ test("patchXlsxBlob preserves unsupported parts and workbook features while edit
   const chart = await zip.file("xl/charts/chart1.xml")!.async("string");
 
   assert.match(workbook, /name="Actuals"/);
-  assert.match(workbook, /name="Archive" state="hidden"/);
+  assert.match(workbook, /name="Prior Data" state="hidden"/);
   assert.match(workbook, /<definedName name="Amounts">&apos;Actuals&apos;!B2:B3<\/definedName>/);
   assert.match(workbook, /fullCalcOnLoad="1"/);
   assert.match(sheet, /<dataValidations count="1">/);
@@ -187,7 +254,7 @@ test("patchXlsxBlob preserves unsupported parts and workbook features while edit
   assert.deepEqual(extracted.sheets[0].rows, [
     ["Alpha", 99, null],
     ["Beta", 200, "Closed"],
-    ["Gamma", 300, "Open"],
+    ["Gamma", 300, '=COUNTIF(\'Prior Data\'!A:A,"<>")'],
   ]);
   const validation = await validateXlsxPackage(patched);
   assert.equal(validation.sheetCount, 2);

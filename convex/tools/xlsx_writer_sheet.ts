@@ -140,10 +140,17 @@ function conditionalFormattingXml(sheet: XlsxSheet, registry: XlsxStyleRegistry)
       rule.fontColor?.replace(/^#/, "").toUpperCase(),
       rule.bgColor?.replace(/^#/, "").toUpperCase(),
     );
-    const second = rule.formula2 ? `<formula>${escapeXlsxXml(rule.formula2.replace(/^=/, ""))}</formula>` : "";
+    const range = parseRangeReference(rule.range);
+    const cell = cellReference(range.startCol, range.startRow);
+    const first = rule.formula.replace(/^=/, "");
+    const second = rule.formula2?.replace(/^=/, "");
+    const comparison = rule.operator === "between"
+      ? `${cell}>=${first},${cell}<=${second}`
+      : `${cell}${({ greaterThan: ">", lessThan: "<", equal: "=", notEqual: "<>" } as const)[rule.operator]}${first}`;
+    const formula = `AND(NOT(ISBLANK(${cell})),${comparison})`;
     return `<conditionalFormatting sqref="${escapeXlsxXml(rule.range)}">` +
-      `<cfRule type="cellIs" dxfId="${dxfId}" priority="${index + 1}" operator="${rule.operator}">` +
-      `<formula>${escapeXlsxXml(rule.formula.replace(/^=/, ""))}</formula>${second}</cfRule>` +
+      `<cfRule type="expression" dxfId="${dxfId}" priority="${index + 1}">` +
+      `<formula>${escapeXlsxXml(formula)}</formula></cfRule>` +
       `</conditionalFormatting>`;
   }).join("");
 }

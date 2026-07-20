@@ -6,7 +6,8 @@ import type {
   XlsxPatchOperation,
   XlsxSheet,
 } from "./xlsx_types";
-import { normalizeConditionalFormats, normalizeDataValidations } from "./xlsx_rule_validation";
+import { normalizeXlsxFormulaReferences } from "./xlsx_formula_normalization";
+import { normalizeColumnFormats, normalizeConditionalFormats, normalizeDataValidations } from "./xlsx_rule_validation";
 
 const MAX_SHEETS = 50;
 const MAX_MATERIALIZED_CELLS = 1_000_000;
@@ -120,23 +121,11 @@ function normalizeSheet(raw: Record<string, unknown>, index: number): XlsxSheet 
     const rowsInRange = Math.max(0, Math.min(range.endRow, rawRows.length + 1) - range.startRow + 1);
     styleApplications += columns * rowsInRange;
   });
-  const columnFormats = Array.isArray(raw.columnFormats)
-    ? raw.columnFormats as NonNullable<XlsxSheet["columnFormats"]>
-    : undefined;
-  if ((columnFormats?.length ?? 0) > headers.length) {
-    throw new Error(`Worksheet "${name}" has too many column format rules.`);
-  }
-  const formattedColumns = new Set<number>();
-  columnFormats?.forEach((format, formatIndex) => {
-    if (!Number.isInteger(format.column) || format.column < 0 || format.column >= headers.length ||
-        typeof format.format !== "string" || !format.format || format.format.length > 255) {
-      throw new Error(`sheets[${index}].columnFormats[${formatIndex}] is invalid.`);
-    }
-    if (formattedColumns.has(format.column)) {
-      throw new Error(`Worksheet "${name}" repeats a column format rule.`);
-    }
-    formattedColumns.add(format.column);
-  });
+  const columnFormats = normalizeColumnFormats(
+    raw.columnFormats,
+    headers.length,
+    `sheets[${index}].columnFormats`,
+  );
   styleApplications += (columnFormats?.length ?? 0) * rawRows.length;
   if (styleApplications > MAX_STYLE_APPLICATIONS) {
     throw new Error(`Worksheet "${name}" formatting spans too many cells.`);
@@ -241,7 +230,7 @@ export function normalizeXlsxOptions(args: {
     if (rangeNames.has(key)) throw new Error(`Named ranges must be unique: "${range.name}".`);
     rangeNames.add(key);
   }
-  return { title, sheets, namedRanges };
+  return normalizeXlsxFormulaReferences({ title, sheets, namedRanges });
 }
 
 export function normalizeXlsxPatchOperations(value: unknown): XlsxPatchOperation[] {

@@ -18,6 +18,7 @@ export const xlsxSheetsProperty = {
         description:
           "Data rows. Use JSON numbers for numeric cells, strings for text, booleans, null, " +
           "or formula strings beginning with '='. Numeric-looking strings remain text. " +
+          "Single-quote worksheet names in cross-sheet formulas, including names without spaces. " +
           "Typed cells are supported: {type:'text',value:'00123'}, {type:'date',value:'2026-07-20'}, " +
           "and {type:'formula',formula:'SUM(A2:A10)',cachedValue:42}.",
         items: { type: "array", items: {} },

@@ -1,4 +1,5 @@
 import JSZip from "jszip";
+import { normalizeXlsxPatchFormulaReferences } from "./xlsx_formula_normalization";
 import {
   cellReference,
   formatRangeReference,
@@ -211,6 +212,8 @@ export async function patchXlsxBlob(
     const target = relationships.get(sheet.relationshipId);
     if (target) sheetPaths.set(sheet.name.toLocaleLowerCase(), resolveXlsxRelationshipPath(target));
   }
+  const sheetNames = parseXlsxWorkbook(workbookXml).sheets.map((sheet) => sheet.name);
+  operations = normalizeXlsxPatchFormulaReferences(operations, sheetNames);
   const loaded = new Map<string, PatchSheet>();
   const renamedSheets: Array<{ oldName: string; newName: string }> = [];
   const loadSheet = async (name: string): Promise<PatchSheet> => {

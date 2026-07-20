@@ -32,7 +32,7 @@ async function installPreviewPackages(sandbox: Sandbox): Promise<void> {
   }
 }
 
-function previewPython(): string {
+export function xlsxPreviewPythonSource(): string {
   return `
 import html, json, sys
 from openpyxl import load_workbook
@@ -53,14 +53,17 @@ story = [Paragraph(html.escape(payload["title"]), styles["Title"]), Spacer(1, 4 
 formula_count = 0
 formula_errors = []
 truncated = False
-error_values = {"#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!"}
+error_values = {
+    "#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A", "#NUM!", "#NULL!",
+    "#SPILL!", "#CALC!", "#FIELD!", "#BLOCKED!", "#UNKNOWN!", "#CONNECT!", "#BUSY!",
+}
 
 for sheet_index, formula_sheet in enumerate(formula_book.worksheets):
     value_sheet = value_book[formula_sheet.title]
     story.append(Paragraph(html.escape(formula_sheet.title), styles["Heading2"]))
     max_rows = min(formula_sheet.max_row or 1, 100)
     max_cols = min(formula_sheet.max_column or 1, 16)
-    if (formula_sheet.max_row > max_rows or formula_sheet.max_column > max_cols:
+    if (formula_sheet.max_row > max_rows or formula_sheet.max_column > max_cols):
         truncated = True
     data = []
     for row in range(1, max_rows + 1):
@@ -142,7 +145,7 @@ export async function createXlsxPreview(
   await installPreviewPackages(runtime.sandbox);
   await runtime.sandbox.writeFiles([
     { path: sourcePath, content: new Uint8Array(await blob.arrayBuffer()) },
-    { path: scriptPath, content: previewPython() },
+    { path: scriptPath, content: xlsxPreviewPythonSource() },
     {
       path: inputPath,
       content: JSON.stringify({ sourcePath, pdfPath, resultPath, title: args.title }),

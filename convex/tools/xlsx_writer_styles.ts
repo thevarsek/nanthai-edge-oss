@@ -115,7 +115,7 @@ export class XlsxStyleRegistry {
     if (existing >= 0) return existing;
     const font = fontColor ? `<font><color rgb="FF${fontColor}"/></font>` : "";
     const fill = bgColor
-      ? `<fill><patternFill patternType="solid"><fgColor rgb="FF${bgColor}"/><bgColor indexed="64"/></patternFill></fill>`
+      ? `<fill><patternFill patternType="solid"><bgColor rgb="FF${bgColor}"/></patternFill></fill>`
       : "";
     this.differentialKeys.push(key);
     this.differentialXml.push(`<dxf>${font}${fill}</dxf>`);
