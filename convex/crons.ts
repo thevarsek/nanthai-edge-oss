@@ -41,6 +41,16 @@ crons.interval(
   {},
 );
 
+// Reap old streaming projections whose message is gone or terminal. Normal
+// finalization deletes these immediately; this is a low-cost repair net for
+// interrupted historical cleanup.
+crons.cron(
+  "cleanOrphanedStreamingMessages",
+  "15 5 * * *",
+  internal.chat.streaming_orphan_cleanup.cleanOrphanedStreamingMessagesCron,
+  {},
+);
+
 // Retry idempotent cancellation of owned Workflow/Workpool operations when a
 // teardown action was interrupted after closing its writer fence.
 crons.interval(

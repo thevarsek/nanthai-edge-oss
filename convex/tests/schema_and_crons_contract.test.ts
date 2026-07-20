@@ -8,9 +8,10 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   const entries = (crons as any).crons;
 
   assert.deepEqual(Object.keys(entries).sort(), [
-    "checkSlackMcpDrift",
-    "cleanOldJobRuns",
-    "cleanStaleJobs",
+      "checkSlackMcpDrift",
+      "cleanOldJobRuns",
+      "cleanOrphanedStreamingMessages",
+      "cleanStaleJobs",
     "cleanStaleSandboxSessions",
       "cleanStaleSearchPhases",
       "cleanupAccountDeletionTombstones",

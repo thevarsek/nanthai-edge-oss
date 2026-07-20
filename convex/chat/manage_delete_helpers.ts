@@ -6,6 +6,8 @@ import {
   storageHasOtherFileAttachmentReferences,
 } from "../lib/file_attachments";
 import { deleteChatAdvisorDataBatch } from "./manage_advisor_delete_helpers";
+import { deleteChatPresentationDataBatch } from
+  "./manage_delete_presentation_helpers";
 import { deleteGeneratedMediaForChatBatch } from "./manage_generated_media_helpers";
 import { deleteChatExecutionBatch } from "../execution/chat_cleanup";
 import { deleteForChatBatch as deleteAnalyticsForChatBatch } from "../analytics_workflows/cleanup";
@@ -55,6 +57,7 @@ export async function safeDeleteAudioBlob(
 export async function deleteChatGraph(
   ctx: MutationCtx,
   chatId: Id<"chats">,
+  deletedParentResidue = false,
 ): Promise<void> {
   // Batched deletion: process up to DELETE_BATCH_SIZE rows per table.
   // If any table had remaining rows, schedule a continuation mutation
@@ -62,6 +65,7 @@ export async function deleteChatGraph(
   let hasMore = false;
 
   hasMore = await deleteChatAdvisorDataBatch(ctx, chatId, DELETE_BATCH_SIZE);
+  hasMore = await deleteChatPresentationDataBatch(ctx, chatId) || hasMore;
   hasMore = await deleteChatExecutionBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;
 
   hasMore = await deleteAnalyticsForChatBatch(
@@ -435,8 +439,11 @@ export async function deleteChatGraph(
   if (hasMore) {
     // More rows remain — schedule a continuation to keep draining.
     // Don't delete the chat row yet; it will be deleted in the final pass.
-    await ctx.scheduler.runAfter(0, internal.chat.manage_internal.deleteChatContinuation, { chatId });
-  } else {
+    const continuation = deletedParentResidue
+      ? internal.chat.manage_internal.deleteDeletedChatResidue
+      : internal.chat.manage_internal.deleteChatContinuation;
+    await ctx.scheduler.runAfter(0, continuation, { chatId });
+  } else if (!deletedParentResidue) {
     // All child rows drained — safe to delete the chat document itself.
     await ctx.db.delete(chatId);
   }

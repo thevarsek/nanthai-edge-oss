@@ -8,6 +8,7 @@ import { requireAuth, requirePro } from "../lib/auth";
 import { safeDeleteAudioBlob } from "./manage_delete_helpers";
 import { copyAdvisorData } from "../advisors/copy";
 import { deleteAdvisorDataForMessage } from "../advisors/deletion";
+import { deleteStreamingMessage } from "./streaming_state";
 import {
   copyChatParticipants,
   copyMessagesWithIdMap,
@@ -502,6 +503,7 @@ export async function deleteMessageHandler(
     await ctx.db.delete(job._id);
   }
 
+  await deleteStreamingMessage(ctx, args.messageId);
   await deleteAdvisorDataForMessage(ctx, message);
   await deleteAnalyticsForMessage(ctx, args.messageId);
   await ctx.db.delete(args.messageId);

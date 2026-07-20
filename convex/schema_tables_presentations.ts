@@ -84,6 +84,7 @@ export const presentationSchemaTables = {
     updatedAt: v.number(),
   })
     .index("by_user", ["userId", "updatedAt"])
+    .index("by_chat", ["chatId", "updatedAt"])
     .index("by_user_chat", ["userId", "chatId", "updatedAt"])
     .index("by_status_updated", ["status", "updatedAt"])
     .index("by_snapshot_storage", ["snapshotStorageId"])

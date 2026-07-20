@@ -13,6 +13,7 @@ import {
 import { getOwnedProject, throwRevisionConflict } from "./mutation_helpers";
 import type { PresentationDirection, PresentationImageMode } from "./types";
 import { attachProjectAssets, resolveProjectAssets } from "./asset_ownership";
+import { deletePresentationProjectData } from "./project_cleanup";
 
 export interface CreateProjectArgs {
   title?: string;
@@ -166,57 +167,7 @@ export async function deleteProjectHandler(
   if (project.revision !== args.expectedRevision) {
     throwRevisionConflict("project", project.revision);
   }
-  const slides = await ctx.db
-    .query("presentationSlides")
-    .withIndex("by_project", (query) => query.eq("projectId", args.projectId))
-    .collect();
-  const assets = await ctx.db
-    .query("presentationAssets")
-    .withIndex("by_project", (query) => query.eq("projectId", args.projectId))
-    .collect();
-  const generatedFiles = await ctx.db
-    .query("generatedFiles")
-    .withIndex("by_presentation_project", (query) =>
-      query.eq("presentationProjectId", args.projectId)
-    )
-    .collect();
-  const generationRuns = await ctx.db
-    .query("presentationGenerationRuns")
-    .withIndex("by_project_revision", (query) => query.eq("projectId", args.projectId))
-    .collect();
-  for (const run of generationRuns) {
-    const [batches, candidates, tasks] = await Promise.all([
-      ctx.db.query("presentationGenerationBatches")
-        .withIndex("by_run", (query) => query.eq("runId", run._id)).collect(),
-      ctx.db.query("presentationSlideCandidates")
-        .withIndex("by_run", (query) => query.eq("runId", run._id)).collect(),
-      ctx.db.query("presentationCuratorTasks")
-        .withIndex("by_run", (query) => query.eq("runId", run._id)).collect(),
-    ]);
-    await Promise.all(batches.map(async (batch) => {
-      if (batch.candidateStorageId) {
-        try {
-          await ctx.storage.delete(batch.candidateStorageId);
-        } catch {
-          // Scheduled cleanup may already have removed the private candidate.
-        }
-      }
-      await ctx.db.delete(batch._id);
-    }));
-    await Promise.all(candidates.map((candidate) => ctx.db.delete(candidate._id)));
-    await Promise.all(tasks.map((task) => ctx.db.delete(task._id)));
-    await ctx.db.delete(run._id);
-  }
-  await Promise.all(slides.map((slide) => ctx.db.delete("presentationSlides", slide._id)));
-  await Promise.all(assets.map((asset) => ctx.db.delete("presentationAssets", asset._id)));
-  if (project.snapshotStorageId && generatedFiles.length === 0) {
-    try {
-      await ctx.storage.delete(project.snapshotStorageId);
-    } catch {
-      // Storage blob may already be deleted.
-    }
-  }
-  await ctx.db.delete("presentationProjects", args.projectId);
+  await deletePresentationProjectData(ctx, project);
   return null;
 }
 

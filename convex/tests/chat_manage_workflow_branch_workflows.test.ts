@@ -23,6 +23,7 @@ function buildCtx(rows: Record<string, Record<string, unknown>> = {}) {
     searchSessions: Object.values(rows).filter((row) => row._table === "searchSessions"),
     searchPhases: Object.values(rows).filter((row) => row._table === "searchPhases"),
     generationJobs: Object.values(rows).filter((row) => row._table === "generationJobs"),
+    streamingMessages: Object.values(rows).filter((row) => row._table === "streamingMessages"),
     purchaseEntitlements: Object.values(rows).filter((row) => row._table === "purchaseEntitlements"),
   };
   const queryRows = (table: string, filters: Array<[string, unknown]>) =>
@@ -121,6 +122,7 @@ test("deleteMessageHandler removes generated artifacts, search state, jobs, and 
     session_1: { _id: "session_1", _table: "searchSessions", assistantMessageId: "msg_1" },
     phase_1: { _id: "phase_1", _table: "searchPhases", sessionId: "session_1" },
     job_1: { _id: "job_1", _table: "generationJobs", messageId: "msg_1" },
+    stream_1: { _id: "stream_1", _table: "streamingMessages", messageId: "msg_1" },
   });
 
   await deleteMessageHandler(state.ctx, { messageId: "msg_1" as any });
@@ -134,6 +136,7 @@ test("deleteMessageHandler removes generated artifacts, search state, jobs, and 
     "msg_1",
     "phase_1",
     "session_1",
+    "stream_1",
   ]);
 });
 

@@ -25,6 +25,25 @@ export const deleteChatContinuation = internalMutation({
 });
 
 /**
+ * Drain child rows left by a historical chat deletion. This refuses to run
+ * while the parent chat still exists, so it cannot delete live chat data.
+ */
+export async function deleteDeletedChatResidueHandler(
+  ctx: Parameters<typeof deleteChatGraph>[0],
+  args: { chatId: Parameters<typeof deleteChatGraph>[1] },
+): Promise<boolean> {
+  if (await ctx.db.get(args.chatId)) return false;
+  await deleteChatGraph(ctx, args.chatId, true);
+  return true;
+}
+
+export const deleteDeletedChatResidue = internalMutation({
+  args: { chatId: v.id("chats") },
+  returns: v.boolean(),
+  handler: deleteDeletedChatResidueHandler,
+});
+
+/**
  * Delete a single chat — called by bulkDeleteChats scheduler.
  * Ownership was already verified by the parent mutation; this just
  * does a final existence check and delegates to deleteChatGraph.
