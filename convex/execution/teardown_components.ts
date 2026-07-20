@@ -85,6 +85,13 @@ export async function cancelOwnedComponents(
 ): Promise<boolean> {
   let allConfirmed = true;
   for (const component of components) {
+    // A prior cancellation request was acknowledged. In-flight actions may
+    // still be draining, but reissuing cancel cannot make them quiesce sooner
+    // and creates avoidable component calls during the safety window.
+    if (
+      component.cancelSafeAfter !== undefined
+      && component.cancelSafeAfter > Date.now()
+    ) continue;
     const videoJobId = component.adapterId === "external-cloud"
       && component.operationId.startsWith("openrouter-video:")
       ? component.operationId.slice("openrouter-video:".length)

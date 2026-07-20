@@ -13,6 +13,21 @@ interface RootRunPage {
   isDone: boolean;
 }
 
+export function deletionTeardownRetryDelay(
+  components: Array<{ cancelSafeAfter?: number }>,
+  now: number,
+): number {
+  const latestDrainBoundary = components.reduce<number | undefined>(
+    (latest, component) => component.cancelSafeAfter === undefined
+      ? latest
+      : Math.max(latest ?? 0, component.cancelSafeAfter),
+    undefined,
+  );
+  return latestDrainBoundary === undefined
+    ? 1_000
+    : Math.max(1_000, latestDrainBoundary - now);
+}
+
 export async function cancelUserExecutionsHandler(
   ctx: ActionCtx,
   args: { userId: string; reason: string },
@@ -36,11 +51,13 @@ export async function cancelUserExecutionsHandler(
     { userId: args.userId, cursor: state.cancellationCursor ?? null },
   );
   let pageConfirmed = true;
+  const pendingComponents: Array<{ cancelSafeAfter?: number }> = [];
   for (const runId of page.runIds) {
     const advanced = await ctx.runMutation(
       internal.execution.teardown.requestRunTeardown,
       { runId, requestedBy: args.userId, reason: args.reason },
     );
+    pendingComponents.push(...advanced.components);
     const confirmed = await cancelOwnedComponents(ctx, advanced.components);
     pageConfirmed = advanced.done && confirmed && pageConfirmed;
   }
@@ -54,7 +71,11 @@ export async function cancelUserExecutionsHandler(
   );
   const done = page.isDone && pageConfirmed && !pending;
   if (!done) {
-    await ctx.scheduler.runAfter(1_000, internal.execution.teardown.cancelUserExecutions, args);
+    await ctx.scheduler.runAfter(
+      deletionTeardownRetryDelay(pendingComponents, Date.now()),
+      internal.execution.teardown.cancelUserExecutions,
+      args,
+    );
   }
   return done;
 }
@@ -86,11 +107,13 @@ export async function cancelChatExecutionsAndDeleteHandler(
     { chatId: args.chatId, cursor: state.executionTeardownCursor ?? null },
   );
   let pageConfirmed = true;
+  const pendingComponents: Array<{ cancelSafeAfter?: number }> = [];
   for (const runId of page.runIds) {
     const advanced = await ctx.runMutation(
       internal.execution.teardown.requestRunTeardown,
       { runId, requestedBy: args.userId, reason: "Chat deleted" },
     );
+    pendingComponents.push(...advanced.components);
     const confirmed = await cancelOwnedComponents(ctx, advanced.components);
     pageConfirmed = advanced.done && confirmed && pageConfirmed;
   }
@@ -104,7 +127,7 @@ export async function cancelChatExecutionsAndDeleteHandler(
   );
   if (!page.isDone || !pageConfirmed || pending) {
     await ctx.scheduler.runAfter(
-      1_000,
+      deletionTeardownRetryDelay(pendingComponents, Date.now()),
       internal.execution.teardown.cancelChatExecutionsAndDelete,
       args,
     );

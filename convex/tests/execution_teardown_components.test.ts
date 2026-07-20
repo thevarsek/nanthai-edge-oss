@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
 import { durableWorkflow } from "../execution/components";
-import { cancelComponent } from "../execution/teardown_components";
+import {
+  cancelComponent,
+  cancelOwnedComponents,
+} from "../execution/teardown_components";
 import { cancelWorkflowIfRunning } from "../execution/workflow_cancel";
 
 test("terminal Workflows are not canceled again during teardown reconciliation", async (t) => {
@@ -70,4 +73,23 @@ test("legacy cancellation treats a status-to-cancel settlement race as settled",
 
   assert.equal(cancelled, true);
   assert.equal(cancel.mock.callCount(), 1);
+});
+
+test("acknowledged Workflow drain does not issue another cancellation request", async (t) => {
+  t.after(() => mock.restoreAll());
+  const status = mock.method(durableWorkflow, "status", async () => ({
+    type: "inProgress" as const,
+    running: [],
+  }));
+  const cancel = mock.method(durableWorkflow, "cancel", async () => undefined);
+
+  const confirmed = await cancelOwnedComponents({} as never, [{
+    adapterId: "convex-workflow",
+    operationId: "workflow_1",
+    cancelSafeAfter: Date.now() + 60_000,
+  }]);
+
+  assert.equal(confirmed, true);
+  assert.equal(status.mock.callCount(), 0);
+  assert.equal(cancel.mock.callCount(), 0);
 });

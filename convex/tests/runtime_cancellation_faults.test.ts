@@ -7,6 +7,8 @@ import {
   isComponentCancellationConfirmed,
 } from "../execution/teardown";
 import { reconcileOwnedWorkflowHandler } from "../execution/workflow_lifecycle";
+import { deletionTeardownRetryDelay } from
+  "../execution/teardown_delete_handlers";
 
 test("a canceled Workflow callback waits for component drain before terminalizing", async () => {
   const ref = {
@@ -65,4 +67,13 @@ test("acknowledged action cancellation sleeps until its safe drain boundary", ()
   assert.equal(cancelRunTreeRetryDelay([{
     adapterId: "external-cloud",
   }], false, now), 30_000);
+});
+
+test("deletion teardown sleeps until the latest acknowledged drain boundary", () => {
+  const now = 1_000;
+  assert.equal(deletionTeardownRetryDelay([], now), 1_000);
+  assert.equal(deletionTeardownRetryDelay([
+    { cancelSafeAfter: now + 30_000 },
+    { cancelSafeAfter: now + 60_000 },
+  ], now), 60_000);
 });
