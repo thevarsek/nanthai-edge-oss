@@ -50,6 +50,16 @@ const watchdogRef = makeFunctionReference<"mutation">(
 );
 export const WORKPOOL_WATCHDOG_INITIAL_MS = 11 * 60 * 1_000;
 export const WORKPOOL_WATCHDOG_RECHECK_MS = 30 * 60 * 1_000;
+export const PRESENTATION_FINALIZER_WATCHDOG_MS = 2 * 60 * 1_000;
+
+export function isPresentationFinalizerTarget(
+  target: WorkpoolWatchdogTarget,
+): target is Extract<WorkpoolWatchdogTarget, { kind: "presentation_work" }> {
+  return target.kind === "presentation_work" && (
+    target.role === "presentation-finalizer"
+    || target.role.startsWith("presentation-finalizer-recovery:")
+  );
+}
 
 export async function scheduleWorkpoolCompletionWatchdog(
   ctx: Pick<MutationCtx, "scheduler">,

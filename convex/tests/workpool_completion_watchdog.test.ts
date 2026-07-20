@@ -10,12 +10,33 @@ import {
 import { derivePresentationWorkOutcome } from
   "../presentations/workpool_reconciliation";
 import { createStatefulMockCtx } from "../../test_helpers/convex_mock_ctx";
+import {
+  isPresentationFinalizerTarget,
+  PRESENTATION_FINALIZER_WATCHDOG_MS,
+  WORKPOOL_WATCHDOG_INITIAL_MS,
+} from "../execution/workpool_watchdog_schedule";
 
 const target = {
   kind: "maintenance_work" as const,
   operationId: "work_1",
   runId: "run_1" as never,
 };
+
+test("presentation finalizers use the short reconciliation watchdog", () => {
+  const finalizer = {
+    kind: "presentation_work" as const,
+    operationId: "work_1",
+    runId: "run_1" as never,
+    executionAttemptId: "attempt_1" as never,
+    executionFence: 1,
+    role: "presentation-finalizer",
+  };
+  const studio = { ...finalizer, role: "presentation-studio:0" };
+
+  assert.equal(isPresentationFinalizerTarget(finalizer), true);
+  assert.equal(isPresentationFinalizerTarget(studio), false);
+  assert.ok(PRESENTATION_FINALIZER_WATCHDOG_MS < WORKPOOL_WATCHDOG_INITIAL_MS);
+});
 
 test("finished Workpool work invokes application-owned reconciliation", async () => {
   let reconciled = 0;

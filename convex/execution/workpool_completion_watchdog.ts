@@ -6,6 +6,8 @@ import { finalizeAdvisorRun } from "../advisors/lifecycle";
 import { isTerminalAdvisorRun } from "../advisors/shared";
 import { failPresentationFanoutHandler } from
   "../presentations/generation_studio_mutation_handlers";
+import { recoverPresentationFinalizerCompletion } from
+  "../presentations/generation_finalization_handler";
 import { derivePresentationWorkOutcome } from
   "../presentations/workpool_reconciliation";
 import { completeResearchSearchTaskHandler } from
@@ -19,6 +21,8 @@ import {
 } from "./components";
 import { terminalizeExecution } from "./control_plane";
 import {
+  isPresentationFinalizerTarget,
+  PRESENTATION_FINALIZER_WATCHDOG_MS,
   scheduleWorkpoolCompletionWatchdog,
   workpoolWatchdogTargetValidator,
   WORKPOOL_WATCHDOG_RECHECK_MS,
@@ -174,6 +178,15 @@ async function defaultReconcile(
       ? "cancelled"
       : message?.status === "completed" ? "completed" : "failed");
   } else if (target.kind === "presentation_work") {
+    if (isPresentationFinalizerTarget(target) && await recoverPresentationFinalizerCompletion(ctx, {
+      runId: target.runId,
+      operationId: target.operationId,
+      executionAttemptId: target.executionAttemptId,
+      executionFence: target.executionFence,
+    })) {
+      await settleComponent(ctx, target, "completed");
+      return;
+    }
     await settleComponent(ctx, target, "failed");
     await failPresentationFanoutHandler(ctx, {
       runId: target.runId,
@@ -231,7 +244,9 @@ const defaultDeps: Deps = {
   schedule: async (ctx, target) => await scheduleWorkpoolCompletionWatchdog(
     ctx,
     target,
-    WORKPOOL_WATCHDOG_RECHECK_MS,
+    isPresentationFinalizerTarget(target)
+      ? PRESENTATION_FINALIZER_WATCHDOG_MS
+      : WORKPOOL_WATCHDOG_RECHECK_MS,
   ),
 };
 

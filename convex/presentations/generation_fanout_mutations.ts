@@ -9,7 +9,10 @@ import {
   retryPresentationCuratorTaskHandler,
   startPresentationCuratorTasksHandler,
 } from "./generation_curator_mutation_handlers";
-import { finalizePresentationFanoutHandler } from "./generation_finalization_handler";
+import {
+  finalizePresentationFanoutHandler,
+  recoverPresentationFinalizerCompletion,
+} from "./generation_finalization_handler";
 import { startPresentationFanoutHandler } from "./generation_fanout_start";
 import {
   claimPresentationStudioBatchHandler,
@@ -40,18 +43,28 @@ export const reconcilePresentationWork = interactiveWorkpool.defineOnComplete<
 >({
   context: presentationWorkContext,
   handler: async (ctx, args) => {
-    const canonicalOutcome = await derivePresentationWorkOutcome(
+    const operationId = String(args.workId);
+    let canonicalOutcome = await derivePresentationWorkOutcome(
       ctx,
-      String(args.workId),
+      operationId,
       args.context.runId,
     );
+    if (!canonicalOutcome && args.result.kind === "success") {
+      const recovered = await recoverPresentationFinalizerCompletion(ctx, {
+        runId: args.context.runId,
+        operationId,
+        executionAttemptId: args.context.executionAttemptId,
+        executionFence: args.context.executionFence,
+      });
+      if (recovered) canonicalOutcome = "completed";
+    }
     const outcome = canonicalOutcome ?? (args.result.kind === "success"
-      ? "completed"
+      ? "failed"
       : args.result.kind === "canceled" ? "cancelled" : "failed");
     await terminalizeExecutionComponentByOperation(
       ctx,
       "interactive-workpool",
-      String(args.workId),
+      operationId,
       outcome,
     );
     if (outcome === "completed") return;
@@ -62,7 +75,9 @@ export const reconcilePresentationWork = interactiveWorkpool.defineOnComplete<
       executionFence: args.context.executionFence,
       error: args.result.kind === "failed"
         ? `Presentation worker interrupted: ${args.result.error}`
-        : "Presentation worker cancelled",
+        : args.result.kind === "canceled"
+          ? "Presentation worker cancelled"
+          : "Presentation worker completed without lifecycle reconciliation.",
     });
   },
 });

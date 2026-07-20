@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { getFunctionName } from "convex/server";
 import { runDeferredPresentationSnapshotRef } from "../presentations/deferred_workflow_refs";
-import { finalizePresentationFanoutHandler } from "../presentations/generation_finalization_handler";
+import {
+  finalizePresentationFanoutHandler,
+  recoverPresentationFinalizerCompletion,
+} from "../presentations/generation_finalization_handler";
 import { failPresentationFanoutHandler } from "../presentations/generation_studio_mutation_handlers";
 import { durableWorkflow } from "../execution/components";
 
@@ -184,6 +187,29 @@ test("finalization publishes once, records fallback use, and removes private can
   assert.equal(testState.scheduled.filter((name) =>
     name === getFunctionName(runDeferredPresentationSnapshotRef)
   ).length, 1);
+});
+test("a finished finalizer with missing lifecycle reconciliation is recovered", async () => {
+  const testState = state({
+    presentationProjects: [projectRow()],
+    generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
+    presentationGenerationRuns: [runRow({ finalizerWorkpoolOperationId: "finalizer_work_1" })],
+    presentationGenerationBatches: [
+      { _id: "batch_1", runId: "run_1", batchIndex: 0, effectiveModelIds: ["selected/model"] }],
+    presentationCuratorTasks: [],
+    presentationSlideCandidates: [
+      { _id: "candidate_a", runId: "run_1", slideId: "a", position: 0, title: "A", html: slideHtml("a", "Alpha"), revision: 0, effectiveModelId: "selected/model" },
+      { _id: "candidate_b", runId: "run_1", slideId: "b", position: 1, title: "B", html: slideHtml("b", "Beta"), revision: 0, effectiveModelId: "selected/model" },
+    ],
+    presentationSlides: [],
+  });
+  assert.equal(await recoverPresentationFinalizerCompletion(testState.ctx as never, {
+    ...executionIdentity,
+    runId: "run_1" as never,
+    operationId: "finalizer_work_1",
+  }), true);
+  assert.equal(testState.tables.get("presentationGenerationRuns")?.[0]?.status, "complete");
+  assert.equal(testState.tables.get("presentationProjects")?.[0]?.status, "ready");
+  assert.deepEqual(testState.tables.get("presentationSlides")?.map((row) => row.slideId), ["a", "b"]);
 });
 
 test("a partial studio failure terminalizes once and retains the latest private candidate", async () => {

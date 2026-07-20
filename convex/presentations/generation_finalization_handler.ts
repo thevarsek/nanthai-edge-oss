@@ -149,3 +149,20 @@ export async function finalizePresentationFanoutHandler(
     slideCount: normalized.length,
   };
 }
+
+export async function recoverPresentationFinalizerCompletion(
+  ctx: MutationCtx,
+  args: {
+    runId: Id<"presentationGenerationRuns">;
+    operationId: string;
+  } & PresentationExecutionIdentity,
+): Promise<boolean> {
+  const run = await ctx.db.get(args.runId);
+  if (!run || run.status === "complete") return true;
+  if (run.finalizerWorkpoolOperationId !== args.operationId) return true;
+  if (!matchesPresentationExecution(run, args) || run.status !== "finalizing") return false;
+
+  await finalizePresentationFanoutHandler(ctx, args);
+  const finalized = await ctx.db.get(args.runId);
+  return !finalized || finalized.status === "complete";
+}

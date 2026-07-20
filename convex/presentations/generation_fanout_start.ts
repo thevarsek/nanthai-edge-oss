@@ -18,8 +18,10 @@ import {
   matchesPresentationExecution,
   type PresentationExecutionIdentity,
 } from "./generation_execution_identity";
-import { scheduleWorkpoolCompletionWatchdog } from
-  "../execution/workpool_watchdog_schedule";
+import {
+  PRESENTATION_FINALIZER_WATCHDOG_MS,
+  scheduleWorkpoolCompletionWatchdog,
+} from "../execution/workpool_watchdog_schedule";
 export { renewPresentationExecutionLease } from "./generation_execution_identity";
 
 export async function linkPresentationWorkpool(
@@ -45,7 +47,9 @@ export async function linkPresentationWorkpool(
     executionAttemptId: identity.executionAttemptId,
     executionFence: identity.executionFence,
     role,
-  });
+  }, role === "presentation-finalizer" || role.startsWith("presentation-finalizer-recovery:")
+    ? PRESENTATION_FINALIZER_WATCHDOG_MS
+    : undefined);
 }
 
 async function enqueueRecoveredWork(
