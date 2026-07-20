@@ -104,6 +104,54 @@ test("runPlanningPhase falls back to the raw query when orchestration JSON is in
   assert.equal((planningAnalytics[1]?.properties as Record<string, unknown>).generated_query_count, 1);
 });
 
+test("runPlanningPhase replaces a stale model-generated cutoff for latest news", async () => {
+  const mutationCalls: Record<string, unknown>[] = [];
+  const deps = createWorkflowNonstreamDepsForTest({
+    updateSession: async () => undefined,
+    callOpenRouterNonStreaming: async () => ({
+      content: JSON.stringify({
+        plan: "Search the latest releases",
+        queries: [{
+          query: "site:openai.com AI model release after:2025-02-01",
+          rationale: "Find releases",
+        }],
+      }),
+      usage: null,
+      finishReason: "stop",
+      audioBase64: "",
+      audioTranscript: "",
+      generationId: "gen_recency",
+      annotations: [],
+    }),
+  });
+  const ctx = createMockCtx({
+    runQuery: async () => null,
+    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+      mutationCalls.push(args);
+    },
+    scheduler: { runAfter: async () => undefined },
+  });
+
+  const result = await runPlanningPhase(
+    ctx,
+    { ...buildArgs(), query: "latest AI news" },
+    1,
+    1,
+    deps,
+  );
+
+  assert.doesNotMatch(result.queries[0] ?? "", /after:2025-02-01/);
+  assert.match(
+    result.queries[0] ?? "",
+    /after:\d{4}-\d{2}-\d{2} before:\d{4}-\d{2}-\d{2} Focus on sources published from/,
+  );
+  const persisted = mutationCalls.find((call) => call.phaseType === "planning");
+  assert.equal(
+    (persisted?.data as { researchDate?: string } | undefined)?.researchDate,
+    new Date().toISOString().slice(0, 10),
+  );
+});
+
 test("runInitialSearchPhase and runDepthSearchPhase persist results and track search costs", async () => {
   const updates: Record<string, unknown>[] = [];
   const trackCalls: Record<string, unknown>[] = [];

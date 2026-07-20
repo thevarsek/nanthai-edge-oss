@@ -31,6 +31,10 @@ import {
   captureBackendAIOperationStarted,
 } from "../analytics/backend_events";
 import type { OpenRouterUsage } from "../lib/openrouter";
+import {
+  buildResearchTemporalContext,
+  normalizeResearchQueryForTime,
+} from "./research_temporal";
 
 type PipelineArgsWithApiKey = PipelineArgs & {
   apiKey: string;
@@ -67,6 +71,20 @@ interface AnalysisResult {
 }
 
 type StructuredPhaseResult = string;
+
+async function researchTemporalForSession(
+  ctx: ActionCtx,
+  args: PipelineArgs,
+) {
+  const session = await ctx.runQuery(
+    internal.search.queries.getSearchSession,
+    { sessionId: args.sessionId },
+  );
+  const startedAt = typeof session?.startedAt === "number"
+    ? new Date(session.startedAt)
+    : new Date();
+  return buildResearchTemporalContext(args.query, startedAt);
+}
 
 function aggregateSearchUsage(results: SearchResult[]): OpenRouterUsage | null {
   const usages = results
@@ -145,7 +163,8 @@ export async function runPlanningPhase(
     phaseOrder,
   }, args);
 
-  const prompt = buildResearchPlanningPrompt(args.query, breadth);
+  const temporal = await researchTemporalForSession(ctx, args);
+  const prompt = buildResearchPlanningPrompt(args.query, breadth, temporal);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
   const operationStartedAt = Date.now();
   await captureBackendAIOperationStarted(ctx, {
@@ -195,7 +214,18 @@ export async function runPlanningPhase(
   }
   await checkCancellation(ctx, args.sessionId, args);
 
-  const artifact = parsePlanningArtifact(result.content, args.query, breadth);
+  const parsedArtifact = parsePlanningArtifact(result.content, args.query, breadth);
+  const artifact = {
+    ...parsedArtifact,
+    researchDate: temporal.referenceDate,
+    reportingWindow: temporal.recencySensitive
+      ? { start: temporal.windowStart, end: temporal.windowEnd }
+      : undefined,
+    queries: parsedArtifact.queries.map((query) => ({
+      ...query,
+      query: normalizeResearchQueryForTime(query.query, temporal),
+    })),
+  };
   const queries = artifact.queries.map((query) => query.query);
   const plan = artifact.plan;
   await captureBackendAIOperationCompleted(ctx, {
@@ -362,7 +392,8 @@ export async function runAnalysisPhase(
 
   const priorSummary = summarizeSearchResults(priorResults, 2000);
 
-  const prompt = buildResearchAnalysisPrompt(priorSummary, breadth);
+  const temporal = await researchTemporalForSession(ctx, args);
+  const prompt = buildResearchAnalysisPrompt(priorSummary, breadth, temporal);
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
   const operationStartedAt = Date.now();
   await captureBackendAIOperationStarted(ctx, {
@@ -416,7 +447,18 @@ export async function runAnalysisPhase(
   }
   await checkCancellation(ctx, args.sessionId, args);
 
-  const artifact = parseAnalysisArtifact(result.content, args.query, breadth);
+  const parsedArtifact = parseAnalysisArtifact(result.content, args.query, breadth);
+  const artifact = {
+    ...parsedArtifact,
+    researchDate: temporal.referenceDate,
+    reportingWindow: temporal.recencySensitive
+      ? { start: temporal.windowStart, end: temporal.windowEnd }
+      : undefined,
+    followUpQueries: parsedArtifact.followUpQueries.map((query) => ({
+      ...query,
+      query: normalizeResearchQueryForTime(query.query, temporal),
+    })),
+  };
   const gaps = artifact.coverageSummary;
   const queries = artifact.followUpQueries.map((query) => query.query);
 
@@ -590,7 +632,10 @@ export async function runSynthesisPhase(
 
   const allResultsSummary = summarizeSearchResults(allResults, Number.MAX_SAFE_INTEGER);
 
-  const prompt = buildResearchSynthesisPrompt(allResultsSummary);
+  const prompt = buildResearchSynthesisPrompt(
+    allResultsSummary,
+    await researchTemporalForSession(ctx, args),
+  );
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
   const operationStartedAt = Date.now();
   await captureBackendAIOperationStarted(ctx, {
@@ -721,6 +766,7 @@ export async function runPaperArchitecturePhase(
   const prompt = buildPaperArchitecturePrompt(
     `Planning artifact:\n${planningData}\n\nSynthesis artifact:\n${synthesisData}`,
     args.complexity,
+    await researchTemporalForSession(ctx, args),
   );
   const messages = await buildOrchestrationMessages(ctx, args, prompt);
   const operationStartedAt = Date.now();

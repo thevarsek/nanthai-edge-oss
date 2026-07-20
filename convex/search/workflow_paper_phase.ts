@@ -9,6 +9,7 @@ import {
   PipelineArgs,
   updateSession,
 } from "./workflow_shared";
+import { buildResearchTemporalContext } from "./research_temporal";
 
 /**
  * Build the augmented system prompt for the paper generation phase, then hand
@@ -36,10 +37,18 @@ export async function runPaperGenerationPhase(
   }, args);
 
   // Build the paper-generation system prompt from synthesis data.
+  const session = await ctx.runQuery(
+    internal.search.queries.getSearchSession,
+    { sessionId: args.sessionId },
+  );
+  const researchStartedAt = typeof session?.startedAt === "number"
+    ? new Date(session.startedAt)
+    : new Date();
   const paperSystemPrompt = buildPaperGenerationSystemPrompt(synthesisData, {
     planningData: artifacts.planningData ?? undefined,
     architectureData: artifacts.architectureData ?? undefined,
     complexity: args.complexity,
+    temporal: buildResearchTemporalContext(args.query, researchStartedAt),
   });
 
   let effectiveSystemPrompt = paperSystemPrompt;

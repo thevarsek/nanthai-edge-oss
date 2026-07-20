@@ -115,6 +115,7 @@ import {
   filterDocxReplacementToolDefinitions,
   shouldGroundDocumentRelativeDate,
 } from "./docx_edit_routing";
+import { finalizeResearchPaperOutput } from "../search/research_output";
 
 const PARALLEL_SUBAGENTS_SKILL_SLUG = "parallel-subagents";
 
@@ -1923,6 +1924,18 @@ export async function generateForParticipant(
           url: a.url_citation.url,
           title: a.url_citation.title ?? a.url_citation.url,
         }));
+    }
+
+    if (args.searchSessionId) {
+      const searchSession = await ctx.runQuery(
+        internal.search.queries.getSearchSession,
+        { sessionId: args.searchSessionId },
+      );
+      if (searchSession?.mode === "paper") {
+        const finalizedPaper = finalizeResearchPaperOutput(finalContent);
+        finalContent = finalizedPaper.content;
+        citationsForStorage = finalizedPaper.citations;
+      }
     }
 
     finalContent = clampMessageContent(finalContent);

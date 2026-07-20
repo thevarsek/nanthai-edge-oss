@@ -1,4 +1,14 @@
-export function buildResearchPlanningPrompt(userQuery: string, breadth: number): string {
+import {
+  buildResearchTemporalContext,
+  buildResearchTemporalPrompt,
+  type ResearchTemporalContext,
+} from "./research_temporal";
+
+export function buildResearchPlanningPrompt(
+  userQuery: string,
+  breadth: number,
+  temporal: ResearchTemporalContext = buildResearchTemporalContext(userQuery),
+): string {
   return [
     "You are an academic research strategist for an autonomous Research Paper pipeline.",
     `Infer a rigorous research brief and generate exactly ${breadth} diverse, specific search queries.`,
@@ -24,6 +34,7 @@ export function buildResearchPlanningPrompt(userQuery: string, breadth: number):
     }),
     "",
     "Planning requirements:",
+    ...buildResearchTemporalPrompt(temporal).map((line) => `- ${line}`),
     "- infer paper type, discipline, audience, and citation intent from the user prompt",
     "- formulate one answerable research question plus scope boundaries",
     "- identify key concepts, synonyms, inclusion criteria, and exclusion criteria",
@@ -34,7 +45,11 @@ export function buildResearchPlanningPrompt(userQuery: string, breadth: number):
   ].join("\n");
 }
 
-export function buildResearchAnalysisPrompt(priorResults: string, breadth: number): string {
+export function buildResearchAnalysisPrompt(
+  priorResults: string,
+  breadth: number,
+  temporal: ResearchTemporalContext = buildResearchTemporalContext(""),
+): string {
   return [
     "You are an academic gap analyst and source-verification assistant.",
     `Generate exactly ${breadth} follow-up search queries targeted to evidence gaps, contradictions, methods, or missing contexts.`,
@@ -51,6 +66,7 @@ export function buildResearchAnalysisPrompt(priorResults: string, breadth: numbe
     }),
     "",
     "Analysis requirements:",
+    ...buildResearchTemporalPrompt(temporal).map((line) => `- ${line}`),
     "- explicitly look for counter-evidence, disagreements, and weak evidence categories",
     "- target follow-up queries to gaps rather than general background",
     "- preserve citation URLs from the current results when discussing gaps",
@@ -61,7 +77,10 @@ export function buildResearchAnalysisPrompt(priorResults: string, breadth: numbe
   ].join("\n");
 }
 
-export function buildResearchSynthesisPrompt(allResults: string): string {
+export function buildResearchSynthesisPrompt(
+  allResults: string,
+  temporal: ResearchTemporalContext = buildResearchTemporalContext(""),
+): string {
   return [
     "You are an academic literature synthesizer. Build a structured source-grounded synthesis from all results.",
     "Classify source quality cautiously: use phrases like 'appears to be' and 'limited metadata available' when uncertain.",
@@ -97,6 +116,7 @@ export function buildResearchSynthesisPrompt(allResults: string): string {
     }),
     "",
     "Synthesis requirements:",
+    ...buildResearchTemporalPrompt(temporal).map((line) => `- ${line}`),
     "- preserve source URLs in every source-backed artifact",
     "- distinguish supported findings from weak, mixed, or contested findings",
     "- include source notes, a Source x Theme literature matrix, claim bank, contradictions, and limitations",
@@ -107,7 +127,11 @@ export function buildResearchSynthesisPrompt(allResults: string): string {
   ].join("\n");
 }
 
-export function buildPaperArchitecturePrompt(input: string, complexity: number): string {
+export function buildPaperArchitecturePrompt(
+  input: string,
+  complexity: number,
+  temporal: ResearchTemporalContext = buildResearchTemporalContext(""),
+): string {
   return [
     "You are an academic structure architect and argument builder.",
     "Create an internal paper architecture artifact from the planning and synthesis context.",
@@ -138,6 +162,7 @@ export function buildPaperArchitecturePrompt(input: string, complexity: number):
     }),
     "",
     "Architecture requirements:",
+    ...buildResearchTemporalPrompt(temporal).map((line) => `- ${line}`),
     "- choose a structure that fits the inferred paper type",
     "- map section purposes, transitions, evidence, and source refs",
     "- include claim-evidence-reasoning chains plus counterarguments and rebuttals",
@@ -153,7 +178,12 @@ export function buildPaperArchitecturePrompt(input: string, complexity: number):
 
 export function buildPaperGenerationSystemPrompt(
   synthesisData: string,
-  options: { planningData?: string; architectureData?: string; complexity?: number } = {},
+  options: {
+    planningData?: string;
+    architectureData?: string;
+    complexity?: number;
+    temporal?: ResearchTemporalContext;
+  } = {},
 ): string {
   const complexity = Math.max(1, Math.min(3, Math.round(options.complexity ?? 2)));
   const complexityGuidance = complexity === 1
@@ -161,14 +191,17 @@ export function buildPaperGenerationSystemPrompt(
     : complexity === 2
       ? "Thorough: write a full structured paper with explicit source limitations, contradictions, and evidence mapping."
       : "Comprehensive: before finalizing, internally self-review for unsupported claims, missing limitations, citation discipline, and argument gaps; expose only the revised final paper.";
+  const temporal = options.temporal ?? buildResearchTemporalContext("");
 
   return [
     "You are a research paper writer. Use the artifacts below to write one final academic-quality paper.",
     "",
     "Drafting rules:",
+    ...buildResearchTemporalPrompt(temporal).map((line) => `- ${line}`),
     "- write section by section from the architecture artifact when present",
     "- include an executive summary, clear section headers, limitations, and a conclusion",
     "- integrate citations naturally as clickable markdown links near supported claims",
+    "- finish with a Sources section listing each distinct source cited in the paper as a clickable markdown link",
     "- prefer references already present in the search context and artifacts",
     "- do not fabricate sources, orphan references, bibliography entries, DOIs, or verification claims",
     "- hedge low-confidence claims and disclose contradictions where relevant",
