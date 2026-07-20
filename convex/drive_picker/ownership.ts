@@ -5,14 +5,10 @@ import type { Id } from "../_generated/dataModel";
 import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
 import { generationResumeEventValue } from "../chat/workflow_resume_handlers";
 import { durableWorkflow } from "../execution/components";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 
 const MAX_RETRY_DELAY_MS = 30 * 60 * 1_000;
-
-function isSettledSignalError(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return ["already", "consumed", "completed", "canceled", "cancelled", "not running"]
-    .some((part) => message.includes(part));
-}
 
 async function signalCurrentWorkflowResume(
   ctx: MutationCtx,
@@ -34,7 +30,7 @@ async function signalCurrentWorkflowResume(
       },
     });
   } catch (error) {
-    if (!isSettledSignalError(error)) return false;
+    if (!isSettledWorkflowSignalError(error)) return false;
   }
   await ctx.db.patch(batch._id, {
     workflowResumeSignaledEventId: eventId,

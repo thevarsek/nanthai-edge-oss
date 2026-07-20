@@ -11,6 +11,8 @@ import {
 } from "./presentation_workflow_refs";
 import { workflowArgsValidator } from "./presentation_workflow_validators";
 import { PRESENTATION_RUN_TERMINAL_EVENT } from "./presentation_workflow_state";
+import { failClosedProviderActionOptions } from
+  "../execution/workflow_retry_policy";
 
 export const runPresentationWorkflow = durableWorkflow
   .define({
@@ -23,7 +25,10 @@ export const runPresentationWorkflow = durableWorkflow
       const planned = await step.runAction(
         runPresentationPlanStepRef,
         args,
-        { retry: true, name: "presentation-plan" },
+        {
+          ...failClosedProviderActionOptions,
+          name: "presentation-plan",
+        },
       );
       const started = await step.runMutation(startPresentationFanoutRef, {
         projectId: args.projectId,

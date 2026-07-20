@@ -2,6 +2,8 @@ import type { WorkflowId } from "@convex-dev/workflow";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { durableWorkflow } from "../execution/components";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 import { scheduledStepEventName } from "./execution_workflow";
 
 export async function notifyScheduledStepTerminal(
@@ -21,13 +23,17 @@ export async function notifyScheduledStepTerminal(
     job.activeExecutionId !== args.executionId ||
     job.activeStepIndex !== args.stepIndex
   ) return;
-  await durableWorkflow.sendEvent(ctx, {
-    workflowId: job.activeWorkflowId as WorkflowId,
-    name: scheduledStepEventName(args.stepIndex),
-    value: {
-      status: args.status,
-      assistantMessageId: args.assistantMessageId,
-      error: args.error,
-    },
-  });
+  try {
+    await durableWorkflow.sendEvent(ctx, {
+      workflowId: job.activeWorkflowId as WorkflowId,
+      name: scheduledStepEventName(args.stepIndex),
+      value: {
+        status: args.status,
+        assistantMessageId: args.assistantMessageId,
+        error: args.error,
+      },
+    });
+  } catch (error) {
+    if (!isSettledWorkflowSignalError(error)) throw error;
+  }
 }

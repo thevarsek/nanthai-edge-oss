@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { durableWorkflow } from "../execution/components";
+import { failClosedProviderActionOptions } from
+  "../execution/workflow_retry_policy";
 import { runCycleArgs } from "./actions_args";
 
 export const runAutonomousSessionWorkflow = durableWorkflow
@@ -36,7 +38,10 @@ export const runAutonomousSessionWorkflow = durableWorkflow
         const outcome = await step.runAction(
           internal.autonomous.actions.runAutonomousTurn,
           { ...args, cycle, participantIndex, workflowManaged: true },
-          { retry: true },
+          // A turn crosses the provider boundary before its final message is
+          // durably committed. Replaying an ambiguous failure can duplicate a
+          // paid model call, so the Workflow must fail closed here.
+          failClosedProviderActionOptions,
         );
         if (outcome.kind === "terminal") return null;
         if (
@@ -61,7 +66,9 @@ export const runAutonomousSessionWorkflow = durableWorkflow
           executionEpoch: args.executionEpoch,
           workflowManaged: true,
         },
-        { retry: true },
+        // Consensus detection is also a paid provider call. The next cycle is
+        // only safe after this action returns unambiguously.
+        failClosedProviderActionOptions,
       );
       if (cycleResult === "terminal") return null;
       cycle += 1;

@@ -4,6 +4,8 @@ import { internalMutation, type MutationCtx } from "../_generated/server";
 import type { DataModel, Id } from "../_generated/dataModel";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { durableWorkflow, interactiveWorkpool } from "../execution/components";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 import {
   heartbeatResearchSession,
   isCurrentResearchExecution,
@@ -123,10 +125,14 @@ export async function completeResearchSearchTaskHandler(
         allTerminal ? now : undefined,
     });
     if (allTerminal && current && session?.workflowId) {
-      await durableWorkflow.sendEvent(ctx, {
-        workflowId: session.workflowId as WorkflowId,
-        name: researchSearchBatchTerminalEventName(String(batch._id)),
-      });
+      try {
+        await durableWorkflow.sendEvent(ctx, {
+          workflowId: session.workflowId as WorkflowId,
+          name: researchSearchBatchTerminalEventName(String(batch._id)),
+        });
+      } catch (error) {
+        if (!isSettledWorkflowSignalError(error)) throw error;
+      }
     }
 }
 

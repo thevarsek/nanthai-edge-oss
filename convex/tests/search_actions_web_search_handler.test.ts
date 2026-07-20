@@ -299,7 +299,7 @@ test("runWebSearch generates queries with persona fallback before searching", as
   ]);
 });
 
-test("runWebSearch exits without replaying analytics when already cancelled at entry", async (t) => {
+test("runWebSearch terminalizes without replaying analytics when already cancelled at entry", async (t) => {
   t.after(() => mock.restoreAll());
 
   let didFetch = false;
@@ -317,8 +317,13 @@ test("runWebSearch exits without replaying analytics when already cancelled at e
   assert.equal(didFetch, false);
   assert.equal(
     ctxState.mutations.some((entry) => entry.status === "cancelled" || entry.status === "failed"),
-    false,
+    true,
   );
+  assert.ok(ctxState.mutations.some((entry) =>
+    entry.messageId === baseArgs.assistantMessageId
+    && entry.status === "cancelled"
+    && entry.content === "[Search cancelled]"
+  ));
   assert.equal(ctxState.scheduled.length, 0);
 });
 

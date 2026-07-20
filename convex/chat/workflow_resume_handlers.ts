@@ -3,6 +3,8 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { durableWorkflow } from "../execution/components";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 import {
   saveGenerationContinuationHandler,
   type SaveGenerationContinuationArgs,
@@ -19,9 +21,7 @@ export type GenerationResumeEventValue = {
 };
 
 export function isIgnorableResumeSignalError(error: unknown): boolean {
-  const message = (error instanceof Error ? error.message : String(error)).toLowerCase();
-  return ["already", "consumed", "not found", "completed", "canceled", "cancelled", "not running"]
-    .some((fragment) => message.includes(fragment));
+  return isSettledWorkflowSignalError(error);
 }
 
 type CompleteDeferredToolArgs = {

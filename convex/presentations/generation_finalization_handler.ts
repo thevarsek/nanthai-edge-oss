@@ -7,6 +7,8 @@ import { runDeferredPresentationSnapshotRef } from "./deferred_workflow_refs";
 import { TERMINAL_GENERATION_JOB_STATUSES } from "../chat/generation_continuation_shared";
 import { renewPresentationExecutionLease } from "./generation_fanout_start";
 import { durableWorkflow } from "../execution/components";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { PRESENTATION_RUN_TERMINAL_EVENT } from "./presentation_workflow_state";
 import {
@@ -118,10 +120,14 @@ export async function finalizePresentationFanoutHandler(
     "Presentation generation completed",
   );
   if (run.workflowId) {
-    await durableWorkflow.sendEvent(ctx, {
-      workflowId: run.workflowId as WorkflowId,
-      name: PRESENTATION_RUN_TERMINAL_EVENT,
-    });
+    try {
+      await durableWorkflow.sendEvent(ctx, {
+        workflowId: run.workflowId as WorkflowId,
+        name: PRESENTATION_RUN_TERMINAL_EVENT,
+      });
+    } catch (error) {
+      if (!isSettledWorkflowSignalError(error)) throw error;
+    }
   }
   // Compatibility for a presentation that began on the pre-Workflow engine.
   // New runs are resumed exclusively by presentation_workflow.ts.

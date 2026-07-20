@@ -10,6 +10,7 @@ import {
 } from "../execution/component_refs";
 import { interactiveWorkpool } from "../execution/components";
 import { isTerminalSubagentStatus } from "./shared";
+import { failSubagentAdmission } from "./admission_failure";
 
 const INITIAL_DELAY_MS = 11 * 60 * 1_000;
 const RECHECK_DELAY_MS = 30 * 60 * 1_000;
@@ -22,6 +23,7 @@ type Deps = {
   isFinished: (ctx: MutationCtx, workId: string) => Promise<boolean>;
   enqueueReplacement: (ctx: MutationCtx, args: Args) => Promise<string>;
   terminalize: typeof terminalizeExecutionComponentByOperation;
+  failOrphan: typeof failSubagentAdmission;
   link: typeof linkExecutionComponent;
   schedule: (ctx: MutationCtx, args: Args, delayMs: number) => Promise<void>;
 };
@@ -52,6 +54,7 @@ const defaultDeps: Deps = {
     ),
   ),
   terminalize: terminalizeExecutionComponentByOperation,
+  failOrphan: failSubagentAdmission,
   link: linkExecutionComponent,
   schedule: async (ctx, args, delayMs) => {
     await ctx.scheduler.runAfter(delayMs, watchdogRef, args);
@@ -102,8 +105,15 @@ export async function reconcileSubagentAdmissionWatchdogHandler(
     ? await ctx.db.get(executionRun.activeAttemptId)
     : null;
   if (!executionRun || !attempt) {
-    await deps.schedule(ctx, args, RECHECK_DELAY_MS);
-    return "rescheduled";
+    await deps.terminalize(ctx, "interactive-workpool", args.workId, "failed");
+    await deps.failOrphan(
+      ctx,
+      child._id,
+      args.workId,
+      "failed",
+      "Subagent admission lost its execution owner and cannot be resumed.",
+    );
+    return "settled";
   }
   const nextWorkId = await deps.enqueueReplacement(ctx, args);
   await deps.terminalize(

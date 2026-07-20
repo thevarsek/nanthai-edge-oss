@@ -7,6 +7,8 @@ import { awaitResearchSearchBatch } from "./research_workflow_join";
 import { runResearchRegenerationWorkflowHandler } from "./research_regeneration_workflow";
 import { settleResearchFailureDisposition } from "./research_failure_settlement";
 import { projectPipelineArgs } from "./workflow_shared";
+import { failClosedProviderActionOptions } from
+  "../execution/workflow_retry_policy";
 
 export const runResearchPaperWorkflow = durableWorkflow
   .define({ args: researchPaperPipelineArgs, returns: v.null() })
@@ -53,7 +55,9 @@ export const runResearchPaperWorkflow = durableWorkflow
           phaseOrder: phaseOrder++,
           workflowManaged: true,
         },
-        { retry: true },
+        // Planning calls the model before its phase row is committed. An
+        // automatic replay after an ambiguous failure can double-charge.
+        failClosedProviderActionOptions,
       );
       const initialPhaseOrder = phaseOrder++;
       await step.runMutation(
@@ -122,7 +126,9 @@ export const runResearchPaperWorkflow = durableWorkflow
             depthIteration,
             workflowManaged: true,
           },
-          { retry: true },
+          // Analysis is provider-backed and has no pre-dispatch idempotency
+          // claim, so ambiguous failures must fail closed.
+          failClosedProviderActionOptions,
         );
         const depthPhaseOrder = phaseOrder++;
         const depthBatchId = await step.runAction(
@@ -175,7 +181,8 @@ export const runResearchPaperWorkflow = durableWorkflow
           phaseOrder: phaseOrder++,
           workflowManaged: true,
         },
-        { retry: true },
+        // Synthesis is provider-backed and is only checkpointed afterwards.
+        failClosedProviderActionOptions,
       );
       await step.runMutation(
         internal.search.execution_lifecycle.heartbeatResearchExecution,
@@ -192,7 +199,8 @@ export const runResearchPaperWorkflow = durableWorkflow
           phaseOrder: phaseOrder++,
           workflowManaged: true,
         },
-        { retry: true },
+        // Architecture generation has the same post-provider checkpoint.
+        failClosedProviderActionOptions,
       );
       await step.runAction(
         internal.search.workflow_durable.runPaperHandoffAction,

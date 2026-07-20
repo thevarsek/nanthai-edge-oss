@@ -61,6 +61,26 @@ queues provide backpressure; they are not user quotas.
     `execution/queries:listMyRunProjections`; keep streaming rows as the content
     overlay rather than a second lifecycle truth.
 
+## Retry, callback, and event rules
+
+- Use `failClosedProviderActionOptions` for a Workflow action that can cross a
+  paid provider boundary before committing an idempotency claim or exact
+  result. Automatic retry is allowed only for coordination, reads, or effects
+  whose durable checkpoint makes replay provably safe.
+- A successful Workflow or Workpool return is not product success. Completion
+  callbacks must derive the outcome from canonical domain rows or a committed
+  downstream-owner handoff. If neither exists, terminalize as failed instead
+  of leaving a Workflow waiting for an event that will never arrive.
+- Schedule a watchdog when dispatching every owned Workflow or Workpool item.
+  Its reconciliation path must use the same canonical-state test as the normal
+  completion callback.
+- Treat delivery to an already-settled Workflow/event as an idempotent no-op
+  with `isSettledWorkflowSignalError`. Do not let a late terminal signal roll
+  back product state that was already committed in the same mutation.
+- Reschedule only conditions that can change. A missing permanent owner
+  (execution run, attempt, or required domain row) must terminalize the orphan
+  and release its parent rather than poll forever.
+
 ## Canonical modules
 
 - Component policy: `convex/execution/components.ts`

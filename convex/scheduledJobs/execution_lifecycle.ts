@@ -39,7 +39,6 @@ export const reconcileScheduledStepWork = interactiveWorkpool.defineOnComplete<
       searchSession?.generationHandoffOperationId,
     );
     const outcome = message?.status === "completed" || handoffCommitted
-      || args.result.kind === "success"
       ? "completed"
       : message?.status === "cancelled" || args.result.kind === "canceled"
         ? "cancelled"
@@ -50,7 +49,7 @@ export const reconcileScheduledStepWork = interactiveWorkpool.defineOnComplete<
       String(args.workId),
       outcome,
     );
-    if (outcome === "completed" && message?.status !== "completed") return;
+    if (handoffCommitted && message?.status !== "completed") return;
     if (outcome === "completed") {
       await notifyScheduledStepTerminal(ctx, {
         jobId: args.context.jobId as Id<"scheduledJobs">,
@@ -70,7 +69,7 @@ export const reconcileScheduledStepWork = interactiveWorkpool.defineOnComplete<
       error: outcome === "failed" && args.result.kind === "failed"
         ? args.result.error
         : outcome === "failed"
-          ? "Scheduled generation failed without a terminal message."
+          ? "Scheduled worker returned without a terminal message or durable generation handoff."
           : "Scheduled generation was cancelled.",
     });
   },

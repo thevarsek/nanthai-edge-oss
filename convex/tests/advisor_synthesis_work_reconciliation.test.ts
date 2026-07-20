@@ -5,15 +5,90 @@ import type { MutationCtx } from "../_generated/server";
 import { reconcileAdvisorSynthesisWork } from "../advisors/workflow_steps";
 import { reconcileAdvisorSynthesisWatchdogHandler } from
   "../advisors/workflow_watchdog";
+import { finalizeAdvisorRun } from "../advisors/lifecycle";
 import { createStatefulMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 type CompletionHandler = {
   _handler: (ctx: MutationCtx, args: {
     workId: string;
-    result: { kind: "failed"; error: string };
+    result: { kind: "failed"; error: string }
+      | { kind: "success"; returnValue: unknown };
     context: { batchId: string; assistantMessageId: string };
   }) => Promise<void>;
 };
+
+test("late advisor completion settles its run after the batch is terminal", async () => {
+  const rows = {
+    advisorBatches: [{
+      _id: "batch_1",
+      status: "failed",
+      assistantMessageIds: ["message_1"],
+      completedRunCount: 0,
+    }],
+    advisorRuns: [{
+      _id: "run_1",
+      batchId: "batch_1",
+      status: "consulting",
+      createdAt: 1,
+    }],
+  };
+  const ctx = createStatefulMockCtx(rows) as unknown as MutationCtx;
+
+  const result = await finalizeAdvisorRun(ctx, {
+    runId: "run_1" as never,
+    status: "completed",
+    advice: "Late but durable advice",
+  });
+
+  assert.equal(result.changed, true);
+  assert.equal(rows.advisorRuns[0]?.status, "completed");
+  assert.equal(rows.advisorBatches[0]?.status, "failed");
+});
+
+test("successful synthesis work without canonical output fails the batch", async () => {
+  const rows = {
+    advisorBatches: [{
+      _id: "batch_1",
+      status: "synthesizing",
+      assistantMessageIds: ["message_1"],
+      generationOperationIds: ["work_1"],
+      completedRunCount: 1,
+      chatId: "chat_1",
+      userId: "user_1",
+    }],
+    messages: [{
+      _id: "message_1",
+      advisorBatchId: "batch_1",
+      status: "streaming",
+      content: "",
+    }],
+    generationJobs: [],
+    searchSessions: [],
+    executionComponentRefs: [{
+      _id: "component_1",
+      adapterId: "interactive-workpool",
+      operationId: "work_1",
+      status: "active",
+    }],
+  };
+  const ctx = createStatefulMockCtx(rows) as unknown as MutationCtx;
+
+  await (reconcileAdvisorSynthesisWork as unknown as CompletionHandler)._handler(
+    ctx,
+    {
+      workId: "work_1",
+      result: { kind: "success", returnValue: null },
+      context: {
+        batchId: "batch_1",
+        assistantMessageId: "message_1",
+      },
+    },
+  );
+
+  assert.equal(rows.executionComponentRefs[0]?.status, "failed");
+  assert.equal(rows.advisorBatches[0]?.status, "failed");
+  assert.equal(rows.messages[0]?.status, "failed");
+});
 
 test("late failed synthesis callback preserves canonical completed message", async () => {
   const rows = {

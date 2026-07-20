@@ -87,8 +87,23 @@ async function runWebSearchHandler(
       { jobId: args.jobId },
     );
     if (alreadyCancelled) {
+      await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+        messageId: args.assistantMessageId,
+        jobId: args.jobId,
+        chatId: args.chatId,
+        content: "[Search cancelled]",
+        status: "cancelled",
+        error: "Generation cancelled",
+        userId: args.userId,
+      });
       await ctx.runMutation(internal.advisors.mutations_internal.completeBatchForMessage, {
         messageId: args.assistantMessageId,
+      });
+      await updateSession(ctx, args.sessionId, {
+        status: "cancelled",
+        currentPhase: "cancelled",
+        errorMessage: undefined,
+        completedAt: Date.now(),
       });
       return;
     }

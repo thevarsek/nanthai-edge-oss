@@ -223,6 +223,88 @@ test("a failed scheduled Workpool operation signals the waiting Workflow", async
   });
 });
 
+test("a successful scheduled worker without a durable outcome fails instead of stranding", async (t) => {
+  const sent: Array<Record<string, unknown>> = [];
+  t.mock.method(durableWorkflow, "sendEvent", async (
+    _ctx: unknown,
+    args: unknown,
+  ) => {
+    sent.push(args as Record<string, unknown>);
+  });
+  const handler = (reconcileScheduledStepWork as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<void>;
+  })._handler;
+  await handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => null,
+          first: async () => null,
+        }),
+      }),
+      get: async (id: string) => id === "msg_assistant"
+        ? { _id: id, status: "streaming" }
+        : {
+            _id: "job_1",
+            activeWorkflowId: "workflow_1",
+            activeExecutionId: "exec_1",
+            activeStepIndex: 0,
+          },
+    },
+  }, {
+    workId: "work_1",
+    context: {
+      jobId: "job_1",
+      executionId: "exec_1",
+      stepIndex: 0,
+      assistantMessageId: "msg_assistant",
+    },
+    result: { kind: "success", returnValue: null },
+  });
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0]?.value, {
+    status: "failed",
+    assistantMessageId: "msg_assistant",
+    error: "Scheduled worker returned without a terminal message or durable generation handoff.",
+  });
+});
+
+test("a late scheduled signal does not roll back terminal reconciliation", async (t) => {
+  t.mock.method(durableWorkflow, "sendEvent", async () => {
+    throw new Error("Workflow not running: [object Object]");
+  });
+  const handler = (reconcileScheduledStepWork as unknown as {
+    _handler: (ctx: unknown, args: unknown) => Promise<void>;
+  })._handler;
+  await assert.doesNotReject(handler({
+    db: {
+      query: () => ({
+        withIndex: () => ({
+          unique: async () => null,
+          first: async () => null,
+        }),
+      }),
+      get: async (id: string) => id === "msg_assistant"
+        ? { _id: id, status: "completed" }
+        : {
+            _id: "job_1",
+            activeWorkflowId: "workflow_1",
+            activeExecutionId: "exec_1",
+            activeStepIndex: 0,
+          },
+    },
+  }, {
+    workId: "work_1",
+    context: {
+      jobId: "job_1",
+      executionId: "exec_1",
+      stepIndex: 0,
+      assistantMessageId: "msg_assistant",
+    },
+    result: { kind: "success", returnValue: null },
+  }));
+});
+
 test("a late failed scheduled callback preserves a completed message", async (t) => {
   const sent: Array<Record<string, unknown>> = [];
   t.mock.method(durableWorkflow, "sendEvent", async (

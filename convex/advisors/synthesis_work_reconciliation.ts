@@ -117,11 +117,20 @@ export async function reconcileAdvisorSynthesisWorkHandler(
   },
 ): Promise<void> {
   if (args.result.kind === "success") {
+    if (await settleAdvisorSynthesisWorkFromCanonicalState(ctx, {
+      operationId: args.workId,
+      ...args.context,
+    })) return;
     await terminalizeExecutionComponentByOperation(
       ctx,
       "interactive-workpool",
       args.workId,
-      "completed",
+      "failed",
+    );
+    await failAdvisorSynthesis(
+      ctx,
+      args.context.batchId,
+      "Advisor synthesis worker returned without a terminal message or durable generation handoff.",
     );
     return;
   }

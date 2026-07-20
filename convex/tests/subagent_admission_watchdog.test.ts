@@ -50,6 +50,7 @@ test("finished admission without a Workflow is durably replaced", async () => {
       terminalized.push(operationId);
       return true;
     },
+    failOrphan: async () => undefined,
     link: async (_ctx, value) => {
       linked.push(value.operationId);
       return "component_1" as never;
@@ -74,6 +75,7 @@ test("admission watchdog reschedules transient status failures", async () => {
     },
     enqueueReplacement: async () => "unused",
     terminalize: async () => true,
+    failOrphan: async () => undefined,
     link: async () => "component_1" as never,
     schedule: async () => {
       scheduled += 1;
@@ -94,10 +96,33 @@ test("cancelled batches fence admission recovery", async () => {
       return "unused";
     },
     terminalize: async () => true,
+    failOrphan: async () => undefined,
     link: async () => "component_1" as never,
     schedule: async () => undefined,
   });
   assert.equal(result, "settled");
   assert.equal(rows.child_1?.status, "cancelled");
   assert.equal(replacements, 0);
+});
+
+test("finished admission with no execution owner fails instead of polling forever", async () => {
+  const { ctx, rows } = context();
+  delete rows.attempt_1;
+  const failed: string[] = [];
+  let scheduled = 0;
+  const result = await reconcileSubagentAdmissionWatchdogHandler(ctx, args, {
+    isFinished: async () => true,
+    enqueueReplacement: async () => "unused",
+    terminalize: async () => true,
+    failOrphan: async (_ctx, runId) => {
+      failed.push(String(runId));
+    },
+    link: async () => "component_1" as never,
+    schedule: async () => {
+      scheduled += 1;
+    },
+  });
+  assert.equal(result, "settled");
+  assert.deepEqual(failed, ["child_1"]);
+  assert.equal(scheduled, 0);
 });

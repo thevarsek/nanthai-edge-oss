@@ -2,6 +2,8 @@ import type { WorkflowCtx } from "@convex-dev/workflow";
 import { internal } from "../_generated/api";
 import { projectPipelineArgs, type PipelineArgs } from "./workflow_shared";
 import { settleResearchFailureDisposition } from "./research_failure_settlement";
+import { failClosedProviderActionOptions } from
+  "../execution/workflow_retry_policy";
 
 export interface ResearchRegenerationWorkflowArgs extends PipelineArgs {
   phaseOrder: number;
@@ -48,7 +50,7 @@ export async function runResearchRegenerationWorkflowHandler(
     await step.runAction(
       internal.search.workflow_durable.runSynthesisAction,
       { ...phaseArgs, phaseOrder: phaseOrder++, workflowManaged: true },
-      { retry: true },
+      failClosedProviderActionOptions,
     );
     await step.runMutation(
       internal.search.execution_lifecycle.heartbeatResearchExecution,
@@ -57,7 +59,7 @@ export async function runResearchRegenerationWorkflowHandler(
     await step.runAction(
       internal.search.workflow_durable.runPaperArchitectureAction,
       { ...phaseArgs, phaseOrder: phaseOrder++, workflowManaged: true },
-      { retry: true },
+      failClosedProviderActionOptions,
     );
     await step.runAction(
       internal.search.workflow_durable.runPaperHandoffAction,

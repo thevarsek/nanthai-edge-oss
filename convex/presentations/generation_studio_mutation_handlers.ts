@@ -18,6 +18,8 @@ import {
 } from "./generation_fanout_refs";
 import { internal } from "../_generated/api";
 import { durableWorkflow } from "../execution/components";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { PRESENTATION_RUN_TERMINAL_EVENT } from "./presentation_workflow_state";
 import {
@@ -263,10 +265,14 @@ export async function failPresentationFanoutHandler(ctx: MutationCtx, args: {
     });
   }
   if (run.workflowId) {
-    await durableWorkflow.sendEvent(ctx, {
-      workflowId: run.workflowId as WorkflowId,
-      name: PRESENTATION_RUN_TERMINAL_EVENT,
-    });
+    try {
+      await durableWorkflow.sendEvent(ctx, {
+        workflowId: run.workflowId as WorkflowId,
+        name: PRESENTATION_RUN_TERMINAL_EVENT,
+      });
+    } catch (error) {
+      if (!isSettledWorkflowSignalError(error)) throw error;
+    }
   }
   return true;
 }

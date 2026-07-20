@@ -9,6 +9,8 @@ import type { WorkId } from "@convex-dev/workpool";
 import type { WorkflowId } from "@convex-dev/workflow";
 import { durableWorkflow, interactiveWorkpool } from "../execution/components";
 import { cancelWorkflowIfRunning } from "../execution/workflow_cancel";
+import { isSettledWorkflowSignalError } from
+  "../execution/workflow_signal_errors";
 import { ADVISOR_BATCH_TERMINAL_EVENT } from "./advisor_workflow";
 import { heartbeatAdvisorBatch } from "./execution_lifecycle";
 import { cancelAssistantGenerationRows } from "./cancel_generation_rows";
@@ -248,7 +250,12 @@ async function updateBatchAndSchedule(
   changedStatus: RunTerminalStatus,
 ): Promise<boolean> {
   const batch = await ctx.db.get(batchId);
-  if (!batch || batch.status === "cancelled") return true;
+  if (
+    !batch
+    || batch.status === "completed"
+    || batch.status === "failed"
+    || batch.status === "cancelled"
+  ) return true;
   const runs = await ctx.db
     .query("advisorRuns")
     .withIndex("by_batch", (query) => query.eq("batchId", batchId))
@@ -270,10 +277,14 @@ async function updateBatchAndSchedule(
     updatedAt: Date.now(),
   };
   if (allTerminal && batch.workflowId) {
-    await durableWorkflow.sendEvent(ctx, {
-      workflowId: batch.workflowId as WorkflowId,
-      name: ADVISOR_BATCH_TERMINAL_EVENT,
-    });
+    try {
+      await durableWorkflow.sendEvent(ctx, {
+        workflowId: batch.workflowId as WorkflowId,
+        name: ADVISOR_BATCH_TERMINAL_EVENT,
+      });
+    } catch (error) {
+      if (!isSettledWorkflowSignalError(error)) throw error;
+    }
   } else if (allTerminal && batch.scheduledFinalGenerationAt == null) {
     const scheduledIds = await scheduleLegacyDeferredGeneration(
       ctx,
