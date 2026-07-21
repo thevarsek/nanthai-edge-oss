@@ -22,7 +22,7 @@ export function HomePage() {
     <EdgeSiteLayout activePage="home">
       <Seo
         title="NanthAI Edge | AI Workspace"
-        description="NanthAI Edge is the native mobile AI workspace with multi-model chat, personas, search, files, scheduled jobs, and connected tools."
+        description="NanthAI Edge is the cross-platform AI workspace for 300+ models, research, AI skills, sandboxed analysis, and Word, Excel, and PowerPoint creation."
         url="https://nanthai.tech"
         canonical="https://nanthai.tech"
         image="https://nanthai.tech/apple-splash-1200x630.png"
@@ -35,6 +35,12 @@ export function HomePage() {
           "scheduled AI jobs",
           "OpenRouter mobile app",
           "AI app with integrations",
+          "AI document generation",
+          "AI spreadsheet generator",
+          "AI presentation maker",
+          "AI skills",
+          "AI data analysis",
+          "sandboxed code execution",
         ]}
       >
         <link rel="alternate" type="text/plain" href="https://nanthai.tech/llms.txt" />
@@ -67,7 +73,7 @@ export function HomePage() {
             url: "https://nanthai.tech",
             image: "https://nanthai.tech/apple-splash-1200x630.png",
             description:
-              "AI workspace with multi-model chat, personas, memory, scheduled jobs, search, files, and connected tools.",
+              "AI workspace with 300+ models, research, AI skills, sandboxed analysis, connected tools, and Office file creation.",
             installUrl: [StoreUrls.ios, StoreUrls.android],
             offers: {
               "@type": "Offer",

@@ -35,6 +35,21 @@ const MultiModelChatPage = lazy(() =>
 const SearchPage = lazy(() =>
   import("@/pages/features/SearchPage").then((module) => ({ default: module.SearchPage })),
 );
+const DocumentWorkflowsPage = lazy(() =>
+  import("@/pages/features/DocumentWorkflowsPage").then((module) => ({
+    default: module.DocumentWorkflowsPage,
+  })),
+);
+const SkillsHelpersPage = lazy(() =>
+  import("@/pages/features/SkillsHelpersPage").then((module) => ({
+    default: module.SkillsHelpersPage,
+  })),
+);
+const AnalysisCodePage = lazy(() =>
+  import("@/pages/features/AnalysisCodePage").then((module) => ({
+    default: module.AnalysisCodePage,
+  })),
+);
 const IdeascapesPage = lazy(() =>
   import("@/pages/features/IdeascapesPage").then((module) => ({
     default: module.IdeascapesPage,
@@ -131,6 +146,9 @@ export const publicRoutes: RouteObject[] = [
   { path: "/features", element: suspended(<FeaturesIndexPage />) },
   { path: "/features/multi-model-chat", element: suspended(<MultiModelChatPage />) },
   { path: "/features/search", element: suspended(<SearchPage />) },
+  { path: "/features/documents", element: suspended(<DocumentWorkflowsPage />) },
+  { path: "/features/skills-helpers", element: suspended(<SkillsHelpersPage />) },
+  { path: "/features/analysis-code", element: suspended(<AnalysisCodePage />) },
   { path: "/features/ideascapes", element: suspended(<IdeascapesPage />) },
   { path: "/features/chat-defaults", element: suspended(<ChatDefaultsPage />) },
   { path: "/features/folders", element: suspended(<FoldersPage />) },

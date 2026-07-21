@@ -90,6 +90,18 @@ vi.mock("./pages/features/MultiModelChatPage", () => ({
   MultiModelChatPage: () => <div>feature-multi-model-chat-page</div>,
 }));
 
+vi.mock("./pages/features/DocumentWorkflowsPage", () => ({
+  DocumentWorkflowsPage: () => <div>feature-document-workflows-page</div>,
+}));
+
+vi.mock("./pages/features/SkillsHelpersPage", () => ({
+  SkillsHelpersPage: () => <div>feature-skills-helpers-page</div>,
+}));
+
+vi.mock("./pages/features/AnalysisCodePage", () => ({
+  AnalysisCodePage: () => <div>feature-analysis-code-page</div>,
+}));
+
 vi.mock("./pages/features/IdeascapesPage", () => ({
   IdeascapesPage: () => <div>feature-ideascapes-page</div>,
 }));
@@ -282,6 +294,18 @@ describe("App routes", () => {
     const multiModelRoute = renderAt("/features/multi-model-chat");
     expect(await screen.findByText("feature-multi-model-chat-page")).toBeInTheDocument();
     multiModelRoute.unmount();
+
+    const documentWorkflowsRoute = renderAt("/features/documents");
+    expect(await screen.findByText("feature-document-workflows-page")).toBeInTheDocument();
+    documentWorkflowsRoute.unmount();
+
+    const skillsHelpersRoute = renderAt("/features/skills-helpers");
+    expect(await screen.findByText("feature-skills-helpers-page")).toBeInTheDocument();
+    skillsHelpersRoute.unmount();
+
+    const analysisCodeRoute = renderAt("/features/analysis-code");
+    expect(await screen.findByText("feature-analysis-code-page")).toBeInTheDocument();
+    analysisCodeRoute.unmount();
 
     const ideascapesFeatureRoute = renderAt("/features/ideascapes");
     expect(await screen.findByText("feature-ideascapes-page")).toBeInTheDocument();

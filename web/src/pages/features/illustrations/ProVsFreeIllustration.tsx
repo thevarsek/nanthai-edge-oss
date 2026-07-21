@@ -15,7 +15,7 @@ import {
 
 const rows = [
   { feature: "Multi-model chat", free: true, pro: true },
-  { feature: "150+ AI models", free: true, pro: true },
+  { feature: "300+ AI models", free: true, pro: true },
   { feature: "Quick web search", free: true, pro: true },
   { feature: "Folders & organisation", free: true, pro: true },
   { feature: "Themes & appearance", free: true, pro: true },

@@ -66,6 +66,19 @@ describe("public site smoke coverage", () => {
     expect(screen.getAllByText("free").length).toBeGreaterThan(0);
     expect(screen.getAllByText("pro_2").length).toBeGreaterThan(0);
     expect(screen.getByText("home_proof_label")).toBeInTheDocument();
+    expect(screen.getByText("home_proof_output_docx")).toBeInTheDocument();
+    expect(screen.getByText("home_proof_output_xlsx")).toBeInTheDocument();
+    expect(screen.getByText("home_proof_output_pptx")).toBeInTheDocument();
+    expect(
+      screen.getAllByRole("link").some((link) => link.getAttribute("href") === "/features/documents"),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole("link").some((link) => link.getAttribute("href") === "/features/skills-helpers"),
+    ).toBe(true);
+    expect(
+      screen.getAllByRole("link").some((link) => link.getAttribute("href") === "/features/analysis-code"),
+    ).toBe(true);
+    expect(screen.getByText("home_cap_voice_title")).toBeInTheDocument();
     expect(screen.getByText("home_byok_title")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /edge_footer_web_app/i })).toHaveAttribute(
       "href",

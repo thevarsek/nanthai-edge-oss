@@ -4,10 +4,12 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AudioGenerationPage } from "./features/AudioGenerationPage";
+import { AnalysisCodePage } from "./features/AnalysisCodePage";
 import { AutomatedTasksPage } from "./features/AutomatedTasksPage";
 import { BYOKPage } from "./features/BYOKPage";
 import { BranchingPage } from "./features/BranchingPage";
 import { ChatDefaultsPage } from "./features/ChatDefaultsPage";
+import { DocumentWorkflowsPage } from "./features/DocumentWorkflowsPage";
 import { FeaturesIndexPage } from "./features/FeaturesIndexPage";
 import { FoldersPage } from "./features/FoldersPage";
 import { IdeascapesPage } from "./features/IdeascapesPage";
@@ -21,6 +23,7 @@ import { PersonasPage } from "./features/PersonasPage";
 import { PriceTransparencyPage } from "./features/PriceTransparencyPage";
 import { ProVsFreePage } from "./features/ProVsFreePage";
 import { SearchPage } from "./features/SearchPage";
+import { SkillsHelpersPage } from "./features/SkillsHelpersPage";
 import { ThemesPage } from "./features/ThemesPage";
 import { VideoGenerationPage } from "./features/VideoGenerationPage";
 import { getFeature } from "./features/featureData";
@@ -88,11 +91,13 @@ function featureLink(href: string) {
 }
 
 const featurePages = [
+  { slug: "analysis-code", Page: AnalysisCodePage },
   { slug: "audio-generation", Page: AudioGenerationPage },
   { slug: "automated-tasks", Page: AutomatedTasksPage },
   { slug: "byok", Page: BYOKPage },
   { slug: "branching", Page: BranchingPage },
   { slug: "chat-defaults", Page: ChatDefaultsPage },
+  { slug: "documents", Page: DocumentWorkflowsPage },
   { slug: "folders", Page: FoldersPage },
   { slug: "ideascapes", Page: IdeascapesPage },
   { slug: "image-generation", Page: ImageGenerationPage },
@@ -105,6 +110,7 @@ const featurePages = [
   { slug: "price-transparency", Page: PriceTransparencyPage },
   { slug: "pro-vs-free", Page: ProVsFreePage },
   { slug: "search", Page: SearchPage },
+  { slug: "skills-helpers", Page: SkillsHelpersPage },
   { slug: "themes", Page: ThemesPage },
   { slug: "video-generation", Page: VideoGenerationPage },
 ] as const;
@@ -115,6 +121,15 @@ describe("public feature pages", () => {
 
     expect(screen.getByRole("heading", { name: "fi_hero_title" })).toBeInTheDocument();
     expect(featureLink("/features/multi-model-chat")).toHaveTextContent("Multi-Model Chat");
+    expect(featureLink("/features/documents")).toHaveTextContent(
+      "Documents, spreadsheets & presentations",
+    );
+    expect(featureLink("/features/skills-helpers")).toHaveTextContent(
+      "AI Skills & focused helpers",
+    );
+    expect(featureLink("/features/analysis-code")).toHaveTextContent(
+      "Analysis, code & charts",
+    );
     expect(featureLink("/features/video-generation")).toHaveTextContent("Video Generation");
     expect(canonicalHref()).toBe("https://nanthai.tech/features");
   });

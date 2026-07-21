@@ -1,10 +1,8 @@
-import { Link2 } from "lucide-react";
+import { ArrowRight, Link2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import { getCapabilityCards, getHowItWorksSteps, getIntegrations } from "./HomePage.data";
-
-const wideCapabilityIndexes = new Set([0, 3, 6, 11]);
-const rightAnchoredWideCapabilityIndexes = new Set([3, 11]);
 
 // ── How it works (BYOK) ─────────────────────────────────────────────
 
@@ -97,7 +95,7 @@ export function HomeCapabilitiesSection() {
             return (
               <div
                 key={index}
-                className={`edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8 ${wideCapabilityIndexes.has(index) ? "md:col-span-2 xl:col-span-2" : ""} ${rightAnchoredWideCapabilityIndexes.has(index) ? "xl:col-start-3" : ""}`}
+                className={`edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8 ${"wide" in item && item.wide ? "md:col-span-2 xl:col-span-2" : ""} ${"rightAnchored" in item && item.rightAnchored ? "xl:col-start-3" : ""}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl eborder-05 border ebg-glass-02">
@@ -118,6 +116,15 @@ export function HomeCapabilitiesSection() {
                 <p className="edge-sans mt-3 text-[0.84rem] font-light leading-[1.7] efg-55">
                   {item.body}
                 </p>
+                {"href" in item && item.href && (
+                  <Link
+                    to={item.href}
+                    className="mt-5 inline-flex items-center gap-1.5 text-[0.75rem] font-medium efg-35 transition-colors hover:efg-65"
+                  >
+                    {t("edge_learn_more")}
+                    <ArrowRight size={12} />
+                  </Link>
+                )}
               </div>
             );
           })}

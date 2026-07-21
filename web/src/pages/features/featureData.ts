@@ -1,26 +1,11 @@
 import type { LucideIcon } from "lucide-react";
 import type { TFunction } from "i18next";
 import {
-  MessageSquare,
-  Search,
-  Sparkles,
-  SlidersHorizontal,
-  FolderOpen,
-  CalendarClock,
-  Plug,
-  UserCircle,
-  BookOpen,
-  Brain,
-  Palette,
-  Crown,
-  Key,
-  Users,
-  GitBranch,
-  Receipt,
-  Music,
-  Image,
-  Film,
+  BookOpen, Brain, CalendarClock, Crown, FileSpreadsheet, Film, FolderOpen,
+  GitBranch, Image, Key, MessageSquare, Music, Palette, Plug, Receipt, Search,
+  SlidersHorizontal, Sparkles, UserCircle, Users,
 } from "lucide-react";
+import { advancedFeatures } from "./advancedFeatureData";
 
 /* ------------------------------------------------------------------ */
 /*  Central metadata for every feature page.                          */
@@ -53,7 +38,7 @@ export interface FeatureMeta {
   titleKey?: string;
 }
 
-export const features: FeatureMeta[] = [
+const coreFeatures: FeatureMeta[] = [
   {
     slug: "multi-model-chat",
     title: "Multi-Model Chat",
@@ -63,22 +48,18 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: MessageSquare,
     accentClass: "text-[var(--edge-cyan)]",
-    related: ["participant-options", "branching", "personas"],
-    i18nPrefix: "mmc",
-    titleKey: "multi_model_chat",
+    related: ["participant-options", "branching", "personas"], i18nPrefix: "mmc", titleKey: "multi_model_chat",
   },
   {
     slug: "participant-options",
     title: "Participant Options",
-    tagline: "Browse 150+ AI models with smart filters, sorting, and a guided wizard.",
+    tagline: "Browse 300+ AI models with smart filters, sorting, and a guided wizard.",
     indexDescription:
       "The participant picker lets you search, filter by capability (free, vision, image gen, tools), sort by 9 criteria, and use a 3-step wizard that recommends the best model for your task.",
     tier: "free",
     icon: Users,
     accentClass: "text-[var(--edge-blue)]",
-    related: ["multi-model-chat", "chat-defaults", "personas"],
-    i18nPrefix: "po",
-    titleKey: "feature_title_participant_options",
+    related: ["multi-model-chat", "chat-defaults", "personas"], i18nPrefix: "po", titleKey: "feature_title_participant_options",
   },
   {
     slug: "branching",
@@ -89,9 +70,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: GitBranch,
     accentClass: "text-[var(--edge-cyan)]",
-    related: ["ideascapes", "multi-model-chat", "personas"],
-    i18nPrefix: "br",
-    titleKey: "feature_title_branching",
+    related: ["ideascapes", "multi-model-chat", "personas"], i18nPrefix: "br", titleKey: "feature_title_branching",
   },
   {
     slug: "search",
@@ -102,9 +81,18 @@ export const features: FeatureMeta[] = [
     tier: "free-pro",
     icon: Search,
     accentClass: "text-[var(--edge-blue)]",
-    related: ["multi-model-chat", "knowledge-base", "automated-tasks"],
-    i18nPrefix: "sr",
-    titleKey: "home_cap_search_title",
+    related: ["multi-model-chat", "knowledge-base", "automated-tasks"], i18nPrefix: "sr", titleKey: "home_cap_search_title",
+  },
+  {
+    slug: "documents",
+    title: "Documents, spreadsheets & presentations",
+    tagline: "Create polished Office files from the same chat where the work begins.",
+    indexDescription:
+      "Create and refine Word documents, Excel workbooks, and PowerPoint presentations from chat. Download the finished files, reuse them later, and keep source material and revisions with the conversation.",
+    tier: "pro",
+    icon: FileSpreadsheet,
+    accentClass: "text-[var(--edge-coral)]",
+    related: ["knowledge-base", "search", "automated-tasks"], i18nPrefix: "dw", titleKey: "feature_title_document_workflows",
   },
   {
     slug: "personas",
@@ -115,9 +103,7 @@ export const features: FeatureMeta[] = [
     tier: "pro",
     icon: UserCircle,
     accentClass: "text-[var(--edge-coral)]",
-    related: ["memories", "knowledge-base", "automated-tasks"],
-    i18nPrefix: "pe",
-    titleKey: "personas",
+    related: ["memories", "knowledge-base", "automated-tasks"], i18nPrefix: "pe", titleKey: "personas",
   },
   {
     slug: "memories",
@@ -128,9 +114,7 @@ export const features: FeatureMeta[] = [
     tier: "pro",
     icon: Brain,
     accentClass: "text-[var(--edge-cyan)]",
-    related: ["personas", "knowledge-base", "chat-defaults"],
-    i18nPrefix: "me",
-    titleKey: "memories",
+    related: ["personas", "knowledge-base", "chat-defaults"], i18nPrefix: "me", titleKey: "memories",
   },
   {
     slug: "knowledge-base",
@@ -141,9 +125,7 @@ export const features: FeatureMeta[] = [
     tier: "pro",
     icon: BookOpen,
     accentClass: "text-[var(--edge-amber)]",
-    related: ["memories", "personas", "automated-tasks"],
-    i18nPrefix: "kb",
-    titleKey: "knowledge_base",
+    related: ["memories", "personas", "automated-tasks"], i18nPrefix: "kb", titleKey: "knowledge_base",
   },
   {
     slug: "ideascapes",
@@ -154,9 +136,7 @@ export const features: FeatureMeta[] = [
     tier: "pro",
     icon: Sparkles,
     accentClass: "text-[var(--edge-amber)]",
-    related: ["branching", "multi-model-chat", "memories"],
-    i18nPrefix: "is",
-    titleKey: "ideascapes",
+    related: ["branching", "multi-model-chat", "memories"], i18nPrefix: "is", titleKey: "ideascapes",
   },
   {
     slug: "automated-tasks",
@@ -167,9 +147,7 @@ export const features: FeatureMeta[] = [
     tier: "pro",
     icon: CalendarClock,
     accentClass: "text-[var(--edge-cyan)]",
-    related: ["personas", "integrations", "search"],
-    i18nPrefix: "at",
-    titleKey: "feature_title_automated_tasks",
+    related: ["personas", "integrations", "search"], i18nPrefix: "at", titleKey: "feature_title_automated_tasks",
   },
   {
     slug: "integrations",
@@ -180,9 +158,7 @@ export const features: FeatureMeta[] = [
     tier: "pro",
     icon: Plug,
     accentClass: "text-[var(--edge-blue)]",
-    related: ["automated-tasks", "personas", "knowledge-base"],
-    i18nPrefix: "ig",
-    titleKey: "integrations",
+    related: ["automated-tasks", "personas", "knowledge-base"], i18nPrefix: "ig", titleKey: "integrations",
   },
   {
     slug: "chat-defaults",
@@ -193,9 +169,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: SlidersHorizontal,
     accentClass: "text-[var(--edge-peach)]",
-    related: ["multi-model-chat", "personas", "folders"],
-    i18nPrefix: "cd",
-    titleKey: "feature_title_chat_defaults_favorites",
+    related: ["multi-model-chat", "personas", "folders"], i18nPrefix: "cd", titleKey: "feature_title_chat_defaults_favorites",
   },
   {
     slug: "folders",
@@ -206,9 +180,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: FolderOpen,
     accentClass: "text-[var(--edge-amber)]",
-    related: ["chat-defaults", "automated-tasks", "multi-model-chat"],
-    i18nPrefix: "fo",
-    titleKey: "folders",
+    related: ["chat-defaults", "automated-tasks", "multi-model-chat"], i18nPrefix: "fo", titleKey: "folders",
   },
   {
     slug: "themes",
@@ -219,9 +191,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: Palette,
     accentClass: "text-[var(--edge-peach)]",
-    related: ["chat-defaults", "personas", "pro-vs-free"],
-    i18nPrefix: "th",
-    titleKey: "feature_title_themes_appearance",
+    related: ["chat-defaults", "personas", "pro-vs-free"], i18nPrefix: "th", titleKey: "feature_title_themes_appearance",
   },
   {
     slug: "price-transparency",
@@ -232,9 +202,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: Receipt,
     accentClass: "text-[var(--edge-cyan)]",
-    related: ["byok", "pro-vs-free", "memories"],
-    i18nPrefix: "pt",
-    titleKey: "feature_title_price_transparency",
+    related: ["byok", "pro-vs-free", "memories"], i18nPrefix: "pt", titleKey: "feature_title_price_transparency",
   },
   {
     slug: "byok",
@@ -245,9 +213,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: Key,
     accentClass: "text-[var(--edge-amber)]",
-    related: ["pro-vs-free", "participant-options", "chat-defaults"],
-    i18nPrefix: "bk",
-    titleKey: "feature_title_byok",
+    related: ["pro-vs-free", "participant-options", "chat-defaults"], i18nPrefix: "bk", titleKey: "feature_title_byok",
   },
   {
     slug: "audio-generation",
@@ -258,9 +224,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: Music,
     accentClass: "text-[var(--edge-cyan)]",
-    related: ["video-generation", "image-generation", "personas"],
-    i18nPrefix: "ag",
-    titleKey: "feature_title_audio_generation",
+    related: ["video-generation", "image-generation", "personas"], i18nPrefix: "ag", titleKey: "feature_title_audio_generation",
   },
   {
     slug: "image-generation",
@@ -271,9 +235,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: Image,
     accentClass: "text-[var(--edge-amber)]",
-    related: ["video-generation", "audio-generation", "knowledge-base"],
-    i18nPrefix: "img",
-    titleKey: "feature_title_image_generation",
+    related: ["video-generation", "audio-generation", "knowledge-base"], i18nPrefix: "img", titleKey: "feature_title_image_generation",
   },
   {
     slug: "video-generation",
@@ -284,9 +246,7 @@ export const features: FeatureMeta[] = [
     tier: "free",
     icon: Film,
     accentClass: "text-[var(--edge-coral)]",
-    related: ["audio-generation", "image-generation", "participant-options"],
-    i18nPrefix: "vg",
-    titleKey: "feature_title_video_generation",
+    related: ["audio-generation", "image-generation", "participant-options"], i18nPrefix: "vg", titleKey: "feature_title_video_generation",
   },
   {
     slug: "pro-vs-free",
@@ -297,11 +257,11 @@ export const features: FeatureMeta[] = [
     tier: "none",
     icon: Crown,
     accentClass: "text-[var(--edge-coral)]",
-    related: ["multi-model-chat", "personas", "byok"],
-    i18nPrefix: "pf",
-    titleKey: "feature_title_pro_vs_free",
+    related: ["multi-model-chat", "personas", "byok"], i18nPrefix: "pf", titleKey: "feature_title_pro_vs_free",
   },
 ];
+
+export const features: FeatureMeta[] = [...coreFeatures, ...advancedFeatures];
 
 /** Lookup a feature by slug. Returns undefined if not found. */
 export function getFeature(slug: string): FeatureMeta | undefined {

@@ -75,10 +75,9 @@ function FeatureCard({ feature, index }: { feature: FeatureMeta; index: number }
   );
 }
 
-const heroFeatureSlugs = ["multi-model-chat", "search", "byok"];
+const heroFeatureSlugs = ["multi-model-chat", "search", "documents"];
 
 const heroFeatureTitleOverrides: Record<string, string> = {
-  byok: "B.Y.O.K.",
   search: "Search & research",
 };
 
@@ -99,6 +98,11 @@ const featureGroups = [
     slugs: ["personas", "memories", "knowledge-base", "ideascapes"],
   },
   {
+    title: "Specialist work",
+    description: "Reusable expertise, focused delegation, and sandboxed analysis for more demanding tasks.",
+    slugs: ["skills-helpers", "analysis-code"],
+  },
+  {
     title: "Automation and connected work",
     description: "Scheduled jobs and connected services for work that should continue outside one chat.",
     slugs: ["automated-tasks", "integrations"],
@@ -106,7 +110,7 @@ const featureGroups = [
   {
     title: "Cost control",
     description: "Clear pricing and plan boundaries for choosing how Edge should spend.",
-    slugs: ["price-transparency", "pro-vs-free"],
+    slugs: ["byok", "price-transparency", "pro-vs-free"],
   },
 ];
 

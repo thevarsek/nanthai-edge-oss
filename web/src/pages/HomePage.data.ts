@@ -1,6 +1,7 @@
 import {
   Brain,
   CalendarClock,
+  Code2,
   Drama,
   FileText,
   FileStack,
@@ -10,7 +11,9 @@ import {
   Layers,
   LayoutGrid,
   MessagesSquare,
+  Mic,
   Music,
+  Puzzle,
   Film,
   Zap,
 } from "lucide-react";
@@ -56,6 +59,7 @@ export function getCapabilityCards(t: (k: string) => string) {
       title: t("home_cap_chat_title"),
       body: t("home_cap_chat_body"),
       detail: t("free"),
+      wide: true,
     },
     {
       icon: Drama,
@@ -74,6 +78,8 @@ export function getCapabilityCards(t: (k: string) => string) {
       title: t("home_cap_search_title"),
       body: t("home_cap_search_body"),
       detail: t("home_cap_free_pro"),
+      wide: true,
+      rightAnchored: true,
     },
     {
       icon: CalendarClock,
@@ -98,6 +104,30 @@ export function getCapabilityCards(t: (k: string) => string) {
       title: t("home_cap_documents_title"),
       body: t("home_cap_documents_body"),
       detail: t("pro_2"),
+      href: "/features/documents",
+      wide: true,
+    },
+    {
+      icon: Puzzle,
+      title: t("home_cap_skills_title"),
+      body: t("home_cap_skills_body"),
+      detail: t("pro_2"),
+      href: "/features/skills-helpers",
+    },
+    {
+      icon: Code2,
+      title: t("home_cap_analysis_title"),
+      body: t("home_cap_analysis_body"),
+      detail: t("pro_2"),
+      href: "/features/analysis-code",
+      wide: true,
+      rightAnchored: true,
+    },
+    {
+      icon: Mic,
+      title: t("home_cap_voice_title"),
+      body: t("home_cap_voice_body"),
+      detail: t("free"),
     },
     {
       icon: ImageIcon,
@@ -122,6 +152,8 @@ export function getCapabilityCards(t: (k: string) => string) {
       title: t("home_cap_ideascapes_title"),
       body: t("home_cap_ideascapes_body"),
       detail: t("pro_2"),
+      wide: true,
+      rightAnchored: true,
     },
   ];
 }

@@ -1,4 +1,11 @@
-import { ArrowRight, CalendarClock, FileText, Image, Layers, Search } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarClock,
+  FileSpreadsheet,
+  FileText,
+  Presentation,
+  Search,
+} from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 const modelRows = [
@@ -8,15 +15,15 @@ const modelRows = [
 ];
 
 const contextItems = [
-  { icon: FileText, labelKey: "home_cap_documents_title", meta: "DOCX + PDF" },
+  { icon: FileText, labelKey: "home_cap_files_title", meta: "sources + citations" },
   { icon: Search, labelKey: "home_cap_search_title", meta: "web research" },
   { icon: CalendarClock, labelKey: "home_cap_jobs_title", meta: "weekly job" },
 ];
 
 const outputItems = [
-  { icon: Layers, labelKey: "home_cap_ideascapes_title" },
-  { icon: Image, labelKey: "home_cap_image_title" },
-  { icon: FileText, labelKey: "home_cap_files_title" },
+  { icon: FileText, labelKey: "home_proof_output_docx" },
+  { icon: FileSpreadsheet, labelKey: "home_proof_output_xlsx" },
+  { icon: Presentation, labelKey: "home_proof_output_pptx" },
 ];
 
 export function HomeWorkflowProofSection() {
@@ -31,7 +38,7 @@ export function HomeWorkflowProofSection() {
               <div className="flex items-center justify-between gap-4">
                 <span className="edge-label efg-35">OpenRouter</span>
                 <span className="edge-proof-chip rounded-full px-2.5 py-1 text-[0.68rem]">
-                  150+ models
+                  300+ models
                 </span>
               </div>
               <div className="mt-6 space-y-3">
