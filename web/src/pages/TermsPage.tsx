@@ -3,15 +3,20 @@ import { useTranslation } from "react-i18next";
 
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
+import { localizedPublicDate } from "@/lib/localizedPublicDate";
 
-const lastUpdatedDate = "March 6, 2026";
+const lastUpdatedDate = "2026-03-06";
 
 export function TermsPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const localizedLastUpdated = localizedPublicDate(
+    lastUpdatedDate,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   return (
     <EdgeSiteLayout activePage="terms" mainClassName="container py-14 md:py-20">
       <Seo
-        title="Terms of Service | NanthAI Edge"
+        title={`${t("tos_label")} | NanthAI Edge`}
         description={t("tos_seo_desc")}
         url="https://nanthai.tech/terms"
         canonical="https://nanthai.tech/terms"
@@ -37,7 +42,7 @@ export function TermsPage() {
             {t("tos_hero_desc")}
           </p>
           <p className="edge-mono mt-5 text-[0.7rem] efg-20">
-            {t("tos_last_updated")} {lastUpdatedDate}
+            {t("tos_last_updated")} {localizedLastUpdated}
           </p>
         </header>
 

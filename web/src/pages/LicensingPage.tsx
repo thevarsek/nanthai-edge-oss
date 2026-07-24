@@ -10,7 +10,7 @@ export function LicensingPage() {
   return (
     <EdgeSiteLayout activePage="licensing" mainClassName="container py-14 md:py-20">
       <Seo
-        title="Licensing | NanthAI Edge"
+        title={`${t("lic_label")} | NanthAI Edge`}
         description={t("lic_seo_desc")}
         url="https://nanthai.tech/licensing"
         canonical="https://nanthai.tech/licensing"

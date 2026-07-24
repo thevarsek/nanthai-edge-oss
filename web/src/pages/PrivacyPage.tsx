@@ -1,15 +1,20 @@
 import { useTranslation } from "react-i18next";
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
+import { localizedPublicDate } from "@/lib/localizedPublicDate";
 
-const lastUpdatedDate = "July 13, 2026";
+const lastUpdatedDate = "2026-07-13";
 
 export function PrivacyPage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const localizedLastUpdated = localizedPublicDate(
+    lastUpdatedDate,
+    i18n.resolvedLanguage ?? i18n.language,
+  );
   return (
     <EdgeSiteLayout activePage="privacy" mainClassName="container py-14 md:py-20">
       <Seo
-        title="Privacy Policy | NanthAI Edge"
+        title={`${t("priv_label")} | NanthAI Edge`}
         description={t("priv_seo_desc")}
         url="https://nanthai.tech/privacy"
         canonical="https://nanthai.tech/privacy"
@@ -24,7 +29,7 @@ export function PrivacyPage() {
       </Seo>
 
       <div className="mx-auto max-w-4xl">
-        <PrivacyHeader lastUpdated={lastUpdatedDate} />
+        <PrivacyHeader lastUpdated={localizedLastUpdated} />
         <PrivacyBody />
       </div>
     </EdgeSiteLayout>

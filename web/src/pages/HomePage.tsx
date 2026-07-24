@@ -8,6 +8,7 @@ import {
   NANTHAI_SOCIALS,
 } from "@/lib/seo";
 import { StoreUrls } from "@/lib/constants";
+import { useTranslation } from "react-i18next";
 import {
   HomeCapabilitiesSection,
   HomeHowItWorksSection,
@@ -18,11 +19,13 @@ import { HomeFinalCTA, HomePricingSection } from "./HomePage.pricing";
 import { HomeWorkflowProofSection } from "./HomePage.proof";
 
 export function HomePage() {
+  const { t } = useTranslation();
+
   return (
     <EdgeSiteLayout activePage="home">
       <Seo
-        title="NanthAI Edge | AI Workspace"
-        description="NanthAI Edge is the cross-platform AI workspace for 300+ models, research, AI skills, sandboxed analysis, and Word, Excel, and PowerPoint creation."
+        title={t("home_seo_title")}
+        description={t("home_seo_desc")}
         url="https://nanthai.tech"
         canonical="https://nanthai.tech"
         image="https://nanthai.tech/apple-splash-1200x630.png"
@@ -72,8 +75,7 @@ export function HomePage() {
             applicationCategory: "ProductivityApplication",
             url: "https://nanthai.tech",
             image: "https://nanthai.tech/apple-splash-1200x630.png",
-            description:
-              "AI workspace with 300+ models, research, AI skills, sandboxed analysis, connected tools, and Office file creation.",
+            description: t("home_structured_data_desc"),
             installUrl: [StoreUrls.ios, StoreUrls.android],
             offers: {
               "@type": "Offer",

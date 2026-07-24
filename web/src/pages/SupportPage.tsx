@@ -9,7 +9,7 @@ export function SupportPage() {
   return (
     <EdgeSiteLayout activePage="support" mainClassName="container py-14 md:py-20">
       <Seo
-        title="Support | NanthAI Edge"
+        title={`${t("sp_label")} | NanthAI Edge`}
         description={t("sp_seo_desc")}
         url="https://nanthai.tech/support"
         canonical="https://nanthai.tech/support"

@@ -96,10 +96,10 @@ describe("public site smoke coverage", () => {
   });
 
   it.each([
-    { page: <PrivacyPage />, title: "Privacy Policy | NanthAI Edge", heading: "priv_hero_title", canonical: "https://nanthai.tech/privacy" },
-    { page: <TermsPage />, title: "Terms of Service | NanthAI Edge", heading: "tos_hero_title", canonical: "https://nanthai.tech/terms" },
-    { page: <LicensingPage />, title: "Licensing | NanthAI Edge", heading: "lic_hero_title", canonical: "https://nanthai.tech/licensing" },
-    { page: <SupportPage />, title: "Support | NanthAI Edge", heading: "sp_hero_title", canonical: "https://nanthai.tech/support" },
+    { page: <PrivacyPage />, title: "priv_label | NanthAI Edge", heading: "priv_hero_title", canonical: "https://nanthai.tech/privacy" },
+    { page: <TermsPage />, title: "tos_label | NanthAI Edge", heading: "tos_hero_title", canonical: "https://nanthai.tech/terms" },
+    { page: <LicensingPage />, title: "lic_label | NanthAI Edge", heading: "lic_hero_title", canonical: "https://nanthai.tech/licensing" },
+    { page: <SupportPage />, title: "sp_label | NanthAI Edge", heading: "sp_hero_title", canonical: "https://nanthai.tech/support" },
   ])("renders legal page headings and metadata for $title", async ({ page, title, heading, canonical }) => {
     renderPublicPage(page);
 
