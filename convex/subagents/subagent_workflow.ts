@@ -61,7 +61,6 @@ export async function runSubagentWorkflowHandler(
       internal.subagents.actions.runSubagentRun,
       {
         runId: args.runId,
-        workflowManaged: true,
         executionAttemptId: execution.attemptId,
         executionFence: execution.fence,
       },

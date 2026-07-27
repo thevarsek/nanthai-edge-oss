@@ -450,40 +450,27 @@ test("handlePhaseError handles non-Error thrown values gracefully", async () => 
 
 // -- Phase action chaining ----------------------------------------------------
 
-test("runPlanningAction calls handlePhaseError on LLM failure (does not schedule next phase)", async () => {
-  // runPlanningPhase calls callOpenRouterNonStreaming which will fail in test.
-  // Verify that the error is caught and finalized properly.
-  const { ctx, mutations, scheduled } = buildFakeCtx({
-    phases: [],
-    apiKey: "sk-test",
-  });
+test("research phase errors propagate to the owning Workflow", async () => {
+  const { ctx, mutations } = buildFakeCtx({ phases: [], apiKey: "sk-test" });
 
-  await (runPlanningAction as any)._handler(
-    ctx,
-    buildBaseArgs({ complexity: 1 }),
-  );
-
-  // Should have called finalizeGeneration with failed status
-  const failMutation = mutations.find(
-    (m) => (m.args as Record<string, unknown>).status === "failed",
-  );
-  assert.ok(failMutation, "should finalize with failed on LLM error");
-
-  // Should NOT have scheduled the next phase
-  const nextPhaseScheduled = scheduled.some(
-    (s) => (s.args as Record<string, unknown>).phaseOrder === 1,
+  await assert.rejects(
+    (runPlanningAction as any)._handler(
+      ctx,
+      buildBaseArgs({ complexity: 1 }),
+    ),
   );
   assert.equal(
-    nextPhaseScheduled,
+    mutations.some((entry) =>
+      (entry.args as Record<string, unknown>).status === "failed"
+    ),
     false,
-    "should not schedule next phase on error",
   );
 });
 
-test("runInitialSearchAction schedules synthesis for complexity 1 (depth=1, no depth loop)", async () => {
+test("research phases never schedule a second orchestration chain", async () => {
   const { ctx, scheduled } = buildFakeCtx({
     phases: [
-      { phaseType: "planning", phaseOrder: 0, data: { queries: ["q1", "q2"] } },
+      { phaseType: "planning", phaseOrder: 0, data: { queries: ["q1"] } },
     ],
     apiKey: "sk-test",
   });
@@ -493,179 +480,25 @@ test("runInitialSearchAction schedules synthesis for complexity 1 (depth=1, no d
     buildBaseArgs({ complexity: 1, phaseOrder: 1 }),
   );
 
-  // complexity 1 → depth=1 → depthIterations=0 → should skip to synthesis
-  const lastScheduled = scheduled.find(
-    (s) => (s.args as Record<string, unknown>).phaseOrder === 2,
-  );
-  assert.ok(lastScheduled);
-  // phaseOrder should be incremented
-  assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 2);
-});
-
-test("runInitialSearchAction schedules analysis for complexity 2 (depth=2, enters depth loop)", async () => {
-  const { ctx, scheduled } = buildFakeCtx({
-    phases: [
-      {
-        phaseType: "planning",
-        phaseOrder: 0,
-        data: { queries: ["q1", "q2", "q3"] },
-      },
-    ],
-    apiKey: "sk-test",
-  });
-
-  await (runInitialSearchAction as any)._handler(
-    ctx,
-    buildBaseArgs({ complexity: 2, phaseOrder: 1 }),
-  );
-
-  const lastScheduled = scheduled.find(
-    (s) =>
-      (s.args as Record<string, unknown>).depthIteration === 0 &&
-      (s.args as Record<string, unknown>).phaseOrder === 2,
-  );
-  assert.ok(lastScheduled);
   assert.equal(
-    (lastScheduled.args as Record<string, unknown>).depthIteration,
-    0,
-  );
-  assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 2);
-});
-
-test("runDepthSearchAction schedules synthesis when depth loop is exhausted", async () => {
-  const analysisResults = [buildSearchResult("analysis q", ["https://a.com"])];
-  const { ctx, scheduled } = buildFakeCtx({
-    phases: [
-      {
-        phaseType: "initial_search",
-        phaseOrder: 1,
-        data: { results: [buildSearchResult("q1", ["https://s.com"])] },
-      },
-      {
-        phaseType: "analysis",
-        phaseOrder: 2,
-        iteration: 0,
-        data: { queries: ["depth q1"] },
-      },
-    ],
-    apiKey: "sk-test",
-  });
-
-  // complexity 2 → depth=2 → depthIterations=1 → iteration 0 is the last
-  await (runDepthSearchAction as any)._handler(
-    ctx,
-    buildBaseArgs({
-      complexity: 2,
-      phaseOrder: 3,
-      depthIteration: 0,
-    }),
-  );
-
-  // Should schedule synthesis (not another analysis)
-  const lastScheduled = scheduled.find(
-    (s) => (s.args as Record<string, unknown>).phaseOrder === 4,
-  );
-  assert.ok(lastScheduled);
-  assert.equal((lastScheduled.args as Record<string, unknown>).phaseOrder, 4);
-  // No depthIteration in synthesis args
-});
-
-test("runDepthSearchAction schedules next analysis when more depth iterations remain", async () => {
-  const { ctx, scheduled } = buildFakeCtx({
-    phases: [
-      {
-        phaseType: "initial_search",
-        phaseOrder: 1,
-        data: { results: [buildSearchResult("q1", [])] },
-      },
-      {
-        phaseType: "analysis",
-        phaseOrder: 2,
-        iteration: 0,
-        data: { queries: ["depth q1"] },
-      },
-    ],
-    apiKey: "sk-test",
-  });
-
-  // complexity 3 → depth=3 → depthIterations=2 → iteration 0, more remain
-  await (runDepthSearchAction as any)._handler(
-    ctx,
-    buildBaseArgs({
-      complexity: 3,
-      phaseOrder: 3,
-      depthIteration: 0,
-    }),
-  );
-
-  const lastScheduled = scheduled.find(
-    (s) => (s.args as Record<string, unknown>).depthIteration === 1,
-  );
-  assert.ok(lastScheduled);
-  assert.equal(
-    (lastScheduled.args as Record<string, unknown>).depthIteration,
-    1,
-  );
-});
-
-test("runSynthesisAction calls handlePhaseError on LLM failure (does not schedule next phase)", async () => {
-  // runSynthesisPhase calls callOpenRouterNonStreaming which will fail in test.
-  const { ctx, mutations, scheduled } = buildFakeCtx({
-    phases: [
-      {
-        phaseType: "initial_search",
-        phaseOrder: 1,
-        data: { results: [buildSearchResult("q1", ["https://s.com"])] },
-      },
-    ],
-    apiKey: "sk-test",
-  });
-
-  await (runSynthesisAction as any)._handler(
-    ctx,
-    buildBaseArgs({ phaseOrder: 4 }),
-  );
-
-  // Should have called finalizeGeneration with failed status
-  const failMutation = mutations.find(
-    (m) => (m.args as Record<string, unknown>).status === "failed",
-  );
-  assert.ok(failMutation, "should finalize with failed on LLM error");
-
-  // Should NOT have scheduled paper handoff
-  const handoffScheduled = scheduled.some(
-    (s) => (s.args as Record<string, unknown>).phaseOrder === 5,
-  );
-  assert.equal(
-    handoffScheduled,
+    scheduled.some((entry) =>
+      (entry.args as Record<string, unknown>).phaseOrder === 2
+    ),
     false,
-    "should not schedule paper handoff on error",
   );
 });
 
-test("runPaperArchitectureAction fails when synthesis is missing", async () => {
-  const { ctx, mutations } = buildFakeCtx({
-    phases: [
-      {
-        phaseType: "planning",
-        phaseOrder: 0,
-        data: { queries: [{ query: "q1" }] },
-      },
-    ],
+test("paper architecture leaves missing synthesis failure to Workflow recovery", async () => {
+  const { ctx } = buildFakeCtx({
+    phases: [{ phaseType: "planning", phaseOrder: 0, data: { queries: ["q1"] } }],
     apiKey: "sk-test",
   });
 
-  await (runPaperArchitectureAction as any)._handler(
-    ctx,
-    buildBaseArgs({ phaseOrder: 5 }),
-  );
-
-  const failMutation = mutations.find(
-    (m) => (m.args as Record<string, unknown>).status === "failed",
-  );
-  assert.ok(failMutation);
-  assert.match(
-    (failMutation.args as Record<string, unknown>).error as string,
+  await assert.rejects(
+    (runPaperArchitectureAction as any)._handler(
+      ctx,
+      buildBaseArgs({ phaseOrder: 5 }),
+    ),
     /No synthesis phase found/,
   );
 });
@@ -803,49 +636,37 @@ test("runPaperHandoffAction reads synthesis data from persisted phase", async ()
   assert.match(participants[0].systemPrompt, /AI is growing rapidly/);
 });
 
-test("runPaperHandoffAction throws when no synthesis phase exists", async () => {
+test("paper handoff leaves missing synthesis failure to Workflow recovery", async () => {
   const { ctx, mutations } = buildFakeCtx({
-    phases: [
-      { phaseType: "initial_search", phaseOrder: 1, data: { results: [] } },
-      // No synthesis phase
-    ],
+    phases: [{ phaseType: "initial_search", phaseOrder: 1, data: { results: [] } }],
     apiKey: "sk-test",
   });
 
-  await (runPaperHandoffAction as any)._handler(
-    ctx,
-    buildBaseArgs({ phaseOrder: 3 }),
-  );
-
-  // Should have called handlePhaseError → finalize with failed
-  const failMutation = mutations.find(
-    (m) => (m.args as Record<string, unknown>).status === "failed",
-  );
-  assert.ok(failMutation);
-  assert.match(
-    (failMutation.args as Record<string, unknown>).error as string,
+  await assert.rejects(
+    (runPaperHandoffAction as any)._handler(
+      ctx,
+      buildBaseArgs({ phaseOrder: 3 }),
+    ),
     /No synthesis phase found/,
+  );
+  assert.equal(
+    mutations.some((entry) =>
+      (entry.args as Record<string, unknown>).status === "failed"
+    ),
+    false,
   );
 });
 
-// -- Cancellation propagation across phases -----------------------------------
-
-test("phase actions finalize with cancelled status when session is cancelled", async () => {
-  const { ctx, mutations } = buildFakeCtx({
+test("phase cancellation propagates to the owning Workflow", async () => {
+  const { ctx } = buildFakeCtx({
     phases: [],
     sessionStatus: "cancelled",
     apiKey: "sk-test",
   });
 
-  await (runPlanningAction as any)._handler(ctx, buildBaseArgs());
-
-  const cancelMutation = mutations.find(
-    (m) => (m.args as Record<string, unknown>).status === "cancelled",
-  );
-  assert.ok(cancelMutation);
-  assert.equal(
-    (cancelMutation.args as Record<string, unknown>).content,
-    "[Research paper cancelled]",
+  await assert.rejects(
+    (runPlanningAction as any)._handler(ctx, buildBaseArgs()),
+    /Generation cancelled/,
   );
 });
 

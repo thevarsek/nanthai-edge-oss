@@ -58,12 +58,9 @@ function lifecycleState() {
       requestedModelId: "advisor-model",
       allowWebSearch: true,
       createdAt: 1,
-      scheduledFunctionId: "run_2_schedule",
-      watchdogScheduledFunctionId: "run_2_watchdog",
     }],
   ]);
   const scheduled: Array<{ args: Record<string, unknown> }> = [];
-  const cancelled: string[] = [];
   const workflowEvents: Array<Record<string, unknown>> = [];
   const ctx = {
     db: {
@@ -84,16 +81,13 @@ function lifecycleState() {
         scheduled.push({ args });
         return `scheduled_${scheduled.length}`;
       },
-      cancel: async (id: string) => {
-        cancelled.push(id);
-      },
     },
     runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
       workflowEvents.push(args);
       return "advisor-event-1";
     },
   } as unknown as Parameters<typeof finalizeAdvisorRun>[0];
-  return { ctx, records, scheduled, cancelled, workflowEvents };
+  return { ctx, records, scheduled, workflowEvents };
 }
 
 test("parallel Advisor completion signals the durable workflow exactly once", async () => {
@@ -129,7 +123,7 @@ test("parallel Advisor completion signals the durable workflow exactly once", as
   assert.equal(state.workflowEvents.length, 1);
 });
 
-test("pre-M47 Advisor batches retain their deferred generation drain path", async () => {
+test("Advisor completion rejects batches without canonical Workflow ownership", async () => {
   const state = lifecycleState();
   const batch = state.records.get("batch_1");
   assert.ok(batch);
@@ -139,19 +133,15 @@ test("pre-M47 Advisor batches retain their deferred generation drain path", asyn
     status: "completed",
     advice: "Legacy first",
   });
-  await finalizeAdvisorRun(state.ctx, {
+  await assert.rejects(finalizeAdvisorRun(state.ctx, {
     runId: "run_2" as FinalizeArgs["runId"],
     status: "completed",
     advice: "Legacy second",
-  });
+  }), /ADVISOR_WORKFLOW_OWNERSHIP_REQUIRED/);
   assert.equal(state.workflowEvents.length, 0);
   assert.equal(
     state.scheduled.filter((entry) => Array.isArray(entry.args.participants)).length,
-    1,
-  );
-  assert.equal(
-    typeof state.records.get("batch_1")?.scheduledFinalGenerationAt,
-    "number",
+    0,
   );
 });
 
@@ -276,7 +266,7 @@ test("a terminal all-failure consultation retains cards and marks the batch fail
   assert.equal(patches[0]?.patch.status, "failed");
 });
 
-test("Stop Advisors preserves completed advice and schedules synthesis after cancelling unfinished runs", async () => {
+test("Stop Advisors preserves completed advice and signals synthesis for unfinished canonical runs", async () => {
   const state = lifecycleState();
   await finalizeAdvisorRun(state.ctx, {
     runId: "run_1" as FinalizeArgs["runId"],
@@ -290,7 +280,6 @@ test("Stop Advisors preserves completed advice and schedules synthesis after can
   );
 
   assert.equal(stopped, true);
-  assert.deepEqual(state.cancelled, ["run_2_schedule", "run_2_watchdog"]);
   assert.equal(state.records.get("run_1")?.status, "completed");
   assert.equal(state.records.get("run_1")?.advice, "Preserved advice");
   assert.equal(state.records.get("run_2")?.status, "cancelled");

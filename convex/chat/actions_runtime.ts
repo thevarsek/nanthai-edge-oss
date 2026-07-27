@@ -1,3 +1,5 @@
+"use node";
+
 import { internalAction } from "../_generated/server";
 import {
   runGenerationArgs,

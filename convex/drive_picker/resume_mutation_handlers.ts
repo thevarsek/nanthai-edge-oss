@@ -16,15 +16,6 @@ type Attachment = {
   modifiedTime?: string;
 };
 
-export function resolveDriveResumeEngine(
-  orchestrationEngine: "legacy_scheduler" | "convex_workflow"
-    | "convex_workpool" | "runtime_adapter" | undefined,
-  workflowResumeEventId: string | undefined,
-) {
-  return orchestrationEngine
-    ?? (workflowResumeEventId ? "convex_workflow" : "legacy_scheduler");
-}
-
 export async function appendAttachmentsAndMarkResumingHandler(
   ctx: MutationCtx,
   args: {
@@ -49,6 +40,21 @@ export async function appendAttachmentsAndMarkResumingHandler(
     });
     await ctx.db.patch(batch.parentMessageId, { drivePickerBatchId: undefined });
     return { terminal: true as const };
+  }
+  const executionAttempt = job.executionAttemptId
+    ? await ctx.db.get(job.executionAttemptId)
+    : null;
+  const workflowResumeEventId = (batch.paramsSnapshot as {
+    workflowResumeEventId?: string;
+  } | undefined)?.workflowResumeEventId;
+  if (
+    executionAttempt?.orchestrationEngine !== "convex_workflow"
+    || !workflowResumeEventId
+  ) {
+    throw new ConvexError({
+      code: "INTERNAL_ERROR",
+      message: "Drive picker resume requires canonical Workflow ownership.",
+    });
   }
   const now = Date.now();
   const sourceMessage = await ctx.db.get(batch.sourceUserMessageId);
@@ -127,30 +133,17 @@ export async function appendAttachmentsAndMarkResumingHandler(
     streamingMessageId,
     error: undefined,
     completedAt: undefined,
-    scheduledFunctionId: undefined,
   });
   await ctx.db.patch(batch._id, {
     status: "resuming",
     pickedFileIds: args.pickedFileIds,
     updatedAt: now,
   });
-  const executionAttempt = job.executionAttemptId
-    ? await ctx.db.get(job.executionAttemptId)
-    : null;
-  const workflowResumeEventId = (batch.paramsSnapshot as {
-    workflowResumeEventId?: string;
-  } | undefined)?.workflowResumeEventId;
-  const orchestrationEngine = resolveDriveResumeEngine(
-    executionAttempt?.orchestrationEngine,
-    workflowResumeEventId,
+  await ctx.scheduler.runAfter(
+    0,
+    internal.drive_picker.ownership.retryWorkflowResumeGate,
+    { batchId: batch._id, userId: batch.userId, attempt: 0 },
   );
-  if (orchestrationEngine !== "legacy_scheduler") {
-    await ctx.scheduler.runAfter(
-      0,
-      internal.drive_picker.ownership.retryWorkflowResumeGate,
-      { batchId: batch._id, userId: batch.userId, attempt: 0 },
-    );
-  }
   return {
     terminal: false as const,
     chatId: batch.chatId,
@@ -160,6 +153,5 @@ export async function appendAttachmentsAndMarkResumingHandler(
     participant: { ...participant, streamingMessageId },
     userId: batch.userId,
     paramsSnapshot: batch.paramsSnapshot,
-    orchestrationEngine,
   };
 }

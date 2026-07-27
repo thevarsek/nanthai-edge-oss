@@ -15,6 +15,30 @@ function withoutSearchContext<T extends { searchContext?: unknown }>(
   return rest;
 }
 
+export function publicParticipantName(message: {
+  participantId?: string;
+  participantName?: string;
+  modelId?: string;
+}): string | undefined {
+  const participantName = message.participantName?.trim();
+  if (!participantName) return undefined;
+  const modelSlug = message.modelId?.split("/").pop();
+  return !message.participantId && participantName === modelSlug
+    ? undefined
+    : participantName;
+}
+
+function withPublicParticipantIdentity<T extends {
+  participantId?: string;
+  participantName?: string;
+  modelId?: string;
+}>(message: T): T {
+  const participantName = publicParticipantName(message);
+  return participantName === message.participantName
+    ? message
+    : { ...message, participantName };
+}
+
 export interface ListChatsArgs extends Record<string, unknown> {
   folderId?: string;
   limit?: number;
@@ -446,12 +470,13 @@ export async function listMessagesHandler(
 
   return await Promise.all(
     messages.map(async (message) => {
-      const withAvatar = message.participantId && personaAvatarUrls.has(message.participantId)
+      const publicMessage = withPublicParticipantIdentity(message);
+      const withAvatar = publicMessage.participantId && personaAvatarUrls.has(publicMessage.participantId)
         ? {
-            ...message,
-            participantAvatarImageUrl: personaAvatarUrls.get(message.participantId),
+            ...publicMessage,
+            participantAvatarImageUrl: personaAvatarUrls.get(publicMessage.participantId),
           }
-        : message;
+        : publicMessage;
       const refreshed = await withRefreshedAttachmentUrls(ctx, withAvatar);
       const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
       return withoutSearchContext(hydrated);
@@ -472,7 +497,10 @@ export async function getMessageHandler(
 
   const message = await getAuthorizedMessage(ctx, args.messageId, auth.userId);
   if (!message) return null;
-  const refreshed = await withRefreshedAttachmentUrls(ctx, message);
+  const refreshed = await withRefreshedAttachmentUrls(
+    ctx,
+    withPublicParticipantIdentity(message),
+  );
   const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
   return withoutSearchContext(hydrated);
 }

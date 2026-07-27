@@ -110,7 +110,7 @@ const coreFeatures: FeatureMeta[] = [
     title: "Memories",
     tagline: "AI that remembers your preferences, projects, and context across every conversation.",
     indexDescription:
-      "Edge can save facts about you — your writing style, current projects, relationships, and goals. Memory is categorised, searchable, and fully transparent.",
+      "Edge can save facts about you — your writing style, current projects, relationships, and goals. Memory is categorised, searchable, fully transparent, and explorable as an interactive relationship graph.",
     tier: "pro",
     icon: Brain,
     accentClass: "text-[var(--edge-cyan)]",

@@ -30,16 +30,13 @@ import {
   curatorRecomposeInstruction,
 } from "./studio_prompts";
 import { presentationExecutionIdentity } from "./generation_execution_identity";
-import {
-  cancelUnfencedPresentationAction,
-} from "./legacy_action_identity";
 import { presentationCuratorTaskActionContext } from
   "./generation_curator_action_context";
 
 const taskArgs = {
   taskId: v.id("presentationCuratorTasks"),
-  executionAttemptId: v.optional(v.id("executionAttempts")),
-  executionFence: v.optional(v.number()),
+  executionAttemptId: v.id("executionAttempts"),
+  executionFence: v.number(),
 };
 
 function taskCandidates(context: PresentationCuratorContext & {
@@ -70,10 +67,7 @@ export const runPresentationCuratorTask = internalAction({
   handler: async (ctx, args): Promise<void> => {
     const context = await presentationCuratorTaskActionContext(ctx, args);
     if (!context) return;
-    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) {
-      await cancelUnfencedPresentationAction(ctx, args, context.run);
-      return;
-    }
+    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) return;
     if (!(await ctx.runMutation(claimPresentationCuratorTaskRef, {
       taskId: context.task._id,
       ...presentationExecutionIdentity(context.run),

@@ -3,19 +3,11 @@ import test from "node:test";
 import { getFunctionName } from "convex/server";
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
-import {
-  attachPickedDriveFiles,
-  shouldUseLegacySchedulerResume,
-} from "../drive_picker/actions";
+import { attachPickedDriveFiles } from "../drive_picker/actions";
 import { MAX_TOTAL_ATTACHMENT_BYTES } from "../drive_picker/ingest";
-import { resolveDriveResumeEngine } from
-  "../drive_picker/resume_mutation_handlers";
 
 const getBatchRef = getFunctionName(
   internal.drive_picker.mutations.getBatchForUser,
-);
-const getOwnershipRef = getFunctionName(
-  internal.drive_picker.ownership.getResumeOwnership,
 );
 const signalWorkflowResumeRef = getFunctionName(
   internal.drive_picker.ownership.signalWorkflowResume,
@@ -51,16 +43,7 @@ function connection() {
   };
 }
 
-test("scheduler fallback preserves pre-M47 in-flight Drive batches", () => {
-  assert.equal(shouldUseLegacySchedulerResume("legacy_scheduler"), true);
-  assert.equal(shouldUseLegacySchedulerResume("convex_workflow"), false);
-  assert.equal(shouldUseLegacySchedulerResume(undefined), true);
-  assert.equal(shouldUseLegacySchedulerResume(undefined, "event_1"), false);
-  assert.equal(resolveDriveResumeEngine(undefined, undefined), "legacy_scheduler");
-  assert.equal(resolveDriveResumeEngine(undefined, "event_1"), "convex_workflow");
-});
-
-test("failed Workflow resume signals retry without scheduler generation fallback", async () => {
+test("failed Workflow resume signals retry without a generation fallback", async () => {
   const originalFetch = globalThis.fetch;
   const scheduled: Array<{ delay: number; ref: string }> = [];
   let signalCalls = 0;
@@ -81,9 +64,6 @@ test("failed Workflow resume signals retry without scheduler generation fallback
           status: "awaiting_pick",
           paramsSnapshot: { workflowResumeEventId: "event_1" },
         };
-        if (name === getOwnershipRef) {
-          return { orchestrationEngine: "convex_workflow" };
-        }
         if (name === getConnectionRef) return connection();
         if (name === getGrantRef) return null;
         if (name.endsWith("deletion_state:isAccountDeletionStarted")) return false;
@@ -103,7 +83,6 @@ test("failed Workflow resume signals retry without scheduler generation fallback
             participant: { modelId: "openai/gpt-5" },
             userId: "user_1",
             paramsSnapshot: { workflowResumeEventId: "event_1" },
-            orchestrationEngine: "convex_workflow",
           };
         }
         return null;

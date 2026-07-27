@@ -51,6 +51,9 @@ export async function recoverPresentationWorkflowHandler(
   if (!project || project.status !== "generating" || project.userId !== run.userId) {
     return null;
   }
+  if (!project.parentResumeEventId) {
+    throw new Error("PRESENTATION_PARENT_WORKFLOW_EVENT_REQUIRED");
+  }
   const claimantId = `presentation:${String(project._id)}`;
   const replacement = await deps.claim(ctx, {
     runId: run.executionRunId,

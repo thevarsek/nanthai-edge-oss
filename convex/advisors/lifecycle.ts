@@ -14,7 +14,6 @@ import { isSettledWorkflowSignalError } from
 import { ADVISOR_BATCH_TERMINAL_EVENT } from "./advisor_workflow";
 import { heartbeatAdvisorBatch } from "./execution_lifecycle";
 import { cancelAssistantGenerationRows } from "./cancel_generation_rows";
-import { scheduleLegacyDeferredGeneration } from "./legacy_deferred_generation";
 import { effectiveUsageCost, terminalStage } from "./terminal_helpers";
 
 type RunTerminalStatus = Extract<
@@ -116,13 +115,11 @@ export async function cancelAdvisorBatchRows(
     .withIndex("by_batch", (query) => query.eq("batchId", batch._id))
     .collect();
   for (const run of runs) {
-    await cancelScheduled(ctx, run.scheduledFunctionId);
     if (run.workpoolOperationId) {
       await interactiveWorkpool
         .cancel(ctx, run.workpoolOperationId as WorkId)
         .catch(() => undefined);
     }
-    await cancelScheduled(ctx, run.watchdogScheduledFunctionId);
     if (!isTerminalAdvisorRun(run.status)) {
       await ctx.db.patch(run._id, {
         status: "cancelled",
@@ -155,10 +152,6 @@ export async function cancelAdvisorBatchRows(
       }
     }
   }
-  for (const scheduledId of batch.scheduledFinalGenerationIds ?? []) {
-    await cancelScheduled(ctx, scheduledId);
-  }
-  await cancelScheduled(ctx, batch.scheduledFinalGenerationId);
   await cancelAssistantGenerationRows(
     ctx,
     batch.assistantMessageIds,
@@ -196,8 +189,6 @@ export async function stopAdvisorBatchConsultations(
   for (const run of runs) {
     if (isTerminalAdvisorRun(run.status)) continue;
     stopped = true;
-    await cancelScheduled(ctx, run.scheduledFunctionId);
-    await cancelScheduled(ctx, run.watchdogScheduledFunctionId);
     const finalization = await finalizeAdvisorRun(ctx, {
       runId: run._id,
       status: "cancelled",
@@ -276,7 +267,10 @@ async function updateBatchAndSchedule(
     status: allTerminal ? "synthesizing" : "running",
     updatedAt: Date.now(),
   };
-  if (allTerminal && batch.workflowId) {
+  if (allTerminal) {
+    if (!batch.workflowId) {
+      throw new Error("ADVISOR_WORKFLOW_OWNERSHIP_REQUIRED");
+    }
     try {
       await durableWorkflow.sendEvent(ctx, {
         workflowId: batch.workflowId as WorkflowId,
@@ -285,27 +279,7 @@ async function updateBatchAndSchedule(
     } catch (error) {
       if (!isSettledWorkflowSignalError(error)) throw error;
     }
-  } else if (allTerminal && batch.scheduledFinalGenerationAt == null) {
-    const scheduledIds = await scheduleLegacyDeferredGeneration(
-      ctx,
-      batch.generationSnapshot,
-    );
-    patch.scheduledFinalGenerationAt = Date.now();
-    patch.scheduledFinalGenerationId = scheduledIds[0];
-    patch.scheduledFinalGenerationIds = scheduledIds;
   }
   await ctx.db.patch(batch._id, patch);
   return allTerminal;
-}
-
-async function cancelScheduled(
-  ctx: MutationCtx,
-  scheduledId: Id<"_scheduled_functions"> | undefined,
-): Promise<void> {
-  if (!scheduledId) return;
-  try {
-    await ctx.scheduler.cancel(scheduledId);
-  } catch {
-    // Already running or terminal.
-  }
 }

@@ -4,8 +4,8 @@ Status: M47 production implementation record and operating guide.
 
 For new workload implementation, follow
 [durable-workload-authoring.md](durable-workload-authoring.md). This document
-describes the deployed workload map and rollout; legacy paths listed here remain
-for compatibility and are not new extension points.
+describes the deployed workload map and rollout. M48 subsequently removed the
+legacy compatibility paths listed in the historical rollout record.
 
 ## Production decision
 
@@ -101,10 +101,11 @@ Rollback procedure:
 2. never switch an existing attempt between engines;
 3. allow active component operations to finish or cancel them through centralized teardown;
 4. retain the M46 run/attempt projection and effect journal;
-5. inspect `execution/queries:getLegacyOrchestrationDrainState`; remove compatibility handlers only when `drainComplete` is true. The query directly checks active generation/continuation schedule IDs and the advisor, subagent, Drive-picker, presentation, research, scheduled-job, autonomous, video, and execution-attempt lifecycle rows. Any capped source makes `inspectionComplete` and `drainComplete` false rather than allowing a false zero;
-6. after the complete M48 gate passes, remove proven legacy-only routing, schedule-ID fields, duplicate action exports, and dead handlers in staged deletion changes.
+5. during M48, inspect every legacy source with the bounded drain sentinel and treat any capped source as incomplete rather than a false zero;
+6. after the complete M48 gate passes, remove proven legacy-only routing, schedule-ID fields, duplicate action exports, dead handlers, and finally the sentinel in staged deletion changes.
 
-The branch intentionally retains legacy handlers for safe deployment compatibility. They are not the path for new Workflow-managed attempts.
+M48 completed both steps. Current rollback uses a known-good canonical
+M46/M47 revision and never restores the retired handlers.
 
 ## Production rollout record
 
@@ -141,10 +142,10 @@ M47 therefore does add visible scheduled-execution latency on Starter/S16; it do
 not change the provider's own TTFT once the request is dispatched. Treat prolonged
 `waiting` with no continuation as a correctness incident, not ordinary queueing.
 
-That result is the first M48 observation, not deletion authorization. Repeated
-observations, representative current traffic, the maximum possible legacy
-in-flight lifetime, released-client compatibility, and a staged rollback plan
-must still be proved. See
+That result was the first M48 observation, not deletion authorization. The
+subsequent repeated observations, representative traffic, maximum in-flight
+horizon, released-client compatibility, staged deletion, and post-removal
+canaries are recorded in
 [M48 Legacy Orchestration Retirement](../milestones/M48-legacy-orchestration-retirement.md).
 
 ## Dev verification and production gate
@@ -159,12 +160,11 @@ Before production:
 - verify no application quota response exists under repeated PAYG sends;
 - compare TTFT, round duration, operation count, failures, storage bandwidth, and provider cost with the prior path.
 
-Production rollout starts new work on Workflow/Workpool while in-flight legacy
-work finishes normally. Rollback is a code deployment plus component
-cancellation—not a configuration switch—and must remain rehearsed through the
-M48 evidence window. A non-zero or capped drain result resets that window and
-requires investigation; rows must never be mutated merely to make the gate
-green.
+Production rollout started new work on Workflow/Workpool while in-flight legacy
+work finished normally. M48 later proved the full drain, removed the
+compatibility machinery in stages, and removed the sentinel last. Rollback
+remains a code deployment plus component cancellation—not a configuration
+switch—and never changes the engine of an existing attempt.
 
 ## Source map
 

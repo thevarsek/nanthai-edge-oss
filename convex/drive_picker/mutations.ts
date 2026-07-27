@@ -197,17 +197,3 @@ export const completeBatch = internalMutation({
     });
   },
 });
-
-export const scheduleResume = internalMutation({
-  args: {
-    batchId: v.id("drivePickerBatches"),
-    scheduledFunctionId: v.id("_scheduled_functions"),
-  },
-  handler: async (ctx, args) => {
-    const batch = await ctx.db.get(args.batchId);
-    if (!batch) return;
-    await ctx.db.patch(batch.parentJobId, {
-      scheduledFunctionId: args.scheduledFunctionId,
-    });
-  },
-});

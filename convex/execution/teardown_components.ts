@@ -15,6 +15,7 @@ export type OwnedComponentCancellation = {
   operationId: string;
   adapterId: string;
   cancelSafeAfter?: number;
+  cancelAcknowledgedAt?: number;
 };
 
 export type SandboxSessionRef = {
@@ -23,8 +24,21 @@ export type SandboxSessionRef = {
 };
 
 function isSettledWorkflowError(error: unknown): boolean {
-  return error instanceof Error
-    && /Workflow(?: .*?)? (?:not found|not running)/i.test(error.message);
+  const message = error instanceof Error ? error.message : String(error);
+  return /Workflow(?: .*?)? (?:not found|not running)/i.test(message);
+}
+
+export function isAcknowledgedActionDrainSafe(
+  component: {
+    adapterId: string;
+    cancelSafeAfter?: number;
+    cancelAcknowledgedAt?: number;
+  },
+  now: number,
+): boolean {
+  return component.cancelAcknowledgedAt !== undefined
+    && component.cancelSafeAfter !== undefined
+    && component.cancelSafeAfter <= now;
 }
 
 export async function stopSandboxSessions(
@@ -85,12 +99,22 @@ export async function cancelOwnedComponents(
 ): Promise<boolean> {
   let allConfirmed = true;
   for (const component of components) {
+    const now = Date.now();
+    if (isAcknowledgedActionDrainSafe(component, now)) {
+      if (component.componentRefId) {
+        await ctx.runMutation(internal.execution.teardown.finishComponentCancellation, {
+          componentRefId: component.componentRefId,
+          cancelled: true,
+        });
+      }
+      continue;
+    }
     // A prior cancellation request was acknowledged. In-flight actions may
     // still be draining, but reissuing cancel cannot make them quiesce sooner
     // and creates avoidable component calls during the safety window.
     if (
       component.cancelSafeAfter !== undefined
-      && component.cancelSafeAfter > Date.now()
+      && component.cancelSafeAfter > now
     ) continue;
     const videoJobId = component.adapterId === "external-cloud"
       && component.operationId.startsWith("openrouter-video:")

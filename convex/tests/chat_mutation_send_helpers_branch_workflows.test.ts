@@ -175,7 +175,7 @@ test("send helper defaults participants, maps optional fields, and cancels non-t
         { _id: "job_failed", messageId: "msg_1", status: "failed" },
       ],
       generationContinuations: [
-        { _id: "cont_1", jobId: "job_running", scheduledFunctionId: "sched_1" },
+        { _id: "cont_1", jobId: "job_running" },
       ],
     },
   });
@@ -187,14 +187,13 @@ test("send helper defaults participants, maps optional fields, and cancels non-t
     "cancelled_by_retry",
   );
 
-  assert.deepEqual(continuationCancels, ["sched_1", "cont_1"]);
+  assert.deepEqual(continuationCancels, ["cont_1"]);
   assert.deepEqual(patches, [
     {
       id: "job_running",
       value: {
         status: "cancelled",
         completedAt: 123,
-        scheduledFunctionId: undefined,
         terminalErrorCode: "cancelled_by_retry",
       },
     },

@@ -23,7 +23,7 @@ function queryChain(rows: Array<Record<string, unknown>>) {
   };
 }
 
-test("generation continuation scheduling persists checkpoint and schedules resume hop", async () => {
+test("generation continuation persists only a Workflow-owned checkpoint", async () => {
   const mutations: Array<{ args: Record<string, unknown> }> = [];
   const scheduled: Array<Record<string, unknown>> = [];
   const args = {
@@ -34,6 +34,8 @@ test("generation continuation scheduling persists checkpoint and schedules resum
       jobId: "job_1",
       modelId: "openai/gpt-5",
     },
+    workflowManaged: true,
+    workflowResumeEventId: "event_1",
   };
   const checkpoint = { messages: [{ role: "user", content: "continue" }] };
 
@@ -54,14 +56,24 @@ test("generation continuation scheduling persists checkpoint and schedules resum
     messageId: "message_1",
     jobId: "job_1",
     userId: "user_1",
-    checkpoint,
+    checkpoint: { ...checkpoint, roundKey: "event_1" },
   });
-  assert.equal(scheduled[0]?.resumeExpected, true);
-  assert.equal(typeof scheduled[0]?.enqueuedAt, "number");
-  assert.deepEqual(mutations[1]?.args, {
-    jobId: "job_1",
-    scheduledFunctionId: "scheduled_resume",
-  });
+  assert.deepEqual(scheduled, []);
+});
+
+test("generation continuation rejects scheduler-owned resume routing", async () => {
+  await assert.rejects(
+    scheduleGenerationContinuation({} as any, {
+      chatId: "chat_1",
+      userId: "user_1",
+      participant: {
+        messageId: "message_1",
+        jobId: "job_1",
+        modelId: "openai/gpt-5",
+      },
+    } as any, { messages: [] } as any),
+    /GENERATION_WORKFLOW_ROUND_KEY_REQUIRED/,
+  );
 });
 
 test("runtime queries resolve latest sessions, active generations, owned files, and stale batches", async () => {

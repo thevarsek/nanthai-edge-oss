@@ -230,7 +230,6 @@ test("cancelGenerationHandler cancels continuations, subagents, streaming record
         userId: "user_1",
         messageId: "msg_1",
         status: "streaming",
-        scheduledFunctionId: "job_sched",
       },
       msg_1: {
         _id: "msg_1",
@@ -241,7 +240,7 @@ test("cancelGenerationHandler cancels continuations, subagents, streaming record
       session_1: { _id: "session_1", status: "searching" },
     },
     tableRows: {
-      generationContinuations: [{ _id: "cont_1", jobId: "job_1", scheduledFunctionId: "cont_sched" }],
+      generationContinuations: [{ _id: "cont_1", jobId: "job_1" }],
       streamingMessages: [
         { _id: "stream_old", messageId: "msg_1", chatId: "chat_1", content: "old", status: "streaming", updatedAt: 1 },
         { _id: "stream_new", messageId: "msg_1", chatId: "chat_1", content: "latest", status: "streaming", updatedAt: 2 },
@@ -256,7 +255,7 @@ test("cancelGenerationHandler cancels continuations, subagents, streaming record
   });
 
   await cancelGenerationHandler(active.ctx, { jobId: "job_1" as any });
-  assert.deepEqual(active.cancelled, ["cont_sched"]);
+  assert.deepEqual(active.cancelled, []);
   assert.ok(active.deletes.includes("cont_1"));
   assert.ok(active.deletes.includes("stream_old"));
   assert.ok(active.patches.some((entry) => entry.id === "run_active" && entry.value.status === "cancelled"));

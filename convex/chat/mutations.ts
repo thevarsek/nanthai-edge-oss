@@ -27,7 +27,6 @@ import {
   saveGenerationContinuationArgs,
   settleVideoGenerationArgs,
   sendMessageArgs,
-  setGenerationContinuationScheduledArgs,
   storeGenerationUsageArgs,
   storeAncillaryCostArgs,
   supersedeMemoryArgs,
@@ -45,7 +44,6 @@ import {
   claimGenerationContinuationHandler,
   clearGenerationContinuationHandler,
   saveGenerationContinuationHandler,
-  setGenerationContinuationScheduledHandler,
 } from "./mutations_generation_continuation_handlers";
 import {
   cancelActiveGenerationHandler,
@@ -231,11 +229,6 @@ export const claimGenerationContinuation = internalMutation({
   args: claimGenerationContinuationArgs,
   returns: v.union(v.any(), v.null()),
   handler: claimGenerationContinuationHandler,
-});
-
-export const setGenerationContinuationScheduled = internalMutation({
-  args: setGenerationContinuationScheduledArgs,
-  handler: setGenerationContinuationScheduledHandler,
 });
 
 export const clearGenerationContinuation = internalMutation({

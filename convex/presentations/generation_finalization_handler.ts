@@ -3,7 +3,6 @@ import type { MutationCtx } from "../_generated/server";
 import { inspectSlideHtml } from "./html_contract";
 import { MAX_TITLE_CHARS, presentationError, requireBoundedText } from "./limits";
 import { harmonizePresentationTypography } from "./typography_harmonization";
-import { runDeferredPresentationSnapshotRef } from "./deferred_workflow_refs";
 import { TERMINAL_GENERATION_JOB_STATUSES } from "../chat/generation_continuation_shared";
 import { renewPresentationExecutionLease } from "./generation_fanout_start";
 import { durableWorkflow } from "../execution/components";
@@ -15,8 +14,6 @@ import {
   matchesPresentationExecution,
   type PresentationExecutionIdentity,
 } from "./generation_execution_identity";
-import { terminalizeLegacyPresentationExecution } from
-  "./legacy_execution_lifecycle";
 
 export async function finalizePresentationFanoutHandler(
   ctx: MutationCtx,
@@ -26,6 +23,12 @@ export async function finalizePresentationFanoutHandler(
   if (!run || !matchesPresentationExecution(run, args) || run.status === "complete") return null;
   if (run.status !== "finalizing") {
     throw presentationError("INVALID_STATE", "Presentation curation is not ready to finalize.");
+  }
+  if (!run.workflowId) {
+    throw presentationError(
+      "INVALID_STATE",
+      "Presentation finalization requires canonical Workflow ownership.",
+    );
   }
   const job = await ctx.db.get(run.jobId);
   if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return null;
@@ -113,40 +116,13 @@ export async function finalizePresentationFanoutHandler(
     completedAt: now,
     updatedAt: now,
   });
-  await terminalizeLegacyPresentationExecution(
-    ctx,
-    run,
-    "completed",
-    "Presentation generation completed",
-  );
-  if (run.workflowId) {
-    try {
-      await durableWorkflow.sendEvent(ctx, {
-        workflowId: run.workflowId as WorkflowId,
-        name: PRESENTATION_RUN_TERMINAL_EVENT,
-      });
-    } catch (error) {
-      if (!isSettledWorkflowSignalError(error)) throw error;
-    }
-  }
-  // Compatibility for a presentation that began on the pre-Workflow engine.
-  // New runs are resumed exclusively by presentation_workflow.ts.
-  if (!run.workflowId) {
-    const snapshotScheduledFunctionId = await ctx.scheduler.runAfter(
-      0,
-      runDeferredPresentationSnapshotRef,
-      {
-        projectId: project._id,
-        userId: run.userId,
-        jobId: run.jobId,
-        toolCallId: run.toolCallId,
-        modelId: run.selectedModelId,
-        ...(run.requireZdrOverride !== undefined
-          ? { requireZdrOverride: run.requireZdrOverride }
-          : {}),
-      },
-    );
-    await ctx.db.patch(run._id, { snapshotScheduledFunctionId });
+  try {
+    await durableWorkflow.sendEvent(ctx, {
+      workflowId: run.workflowId as WorkflowId,
+      name: PRESENTATION_RUN_TERMINAL_EVENT,
+    });
+  } catch (error) {
+    if (!isSettledWorkflowSignalError(error)) throw error;
   }
   await Promise.all(candidates.map((candidate) => ctx.db.delete(candidate._id)));
   return {

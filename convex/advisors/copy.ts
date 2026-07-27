@@ -56,7 +56,6 @@ export async function copyAdvisorData(
       completedRunCount: batch.completedRunCount,
       failedRunCount: batch.failedRunCount,
       generationSnapshot: { kind: "copied_terminal", sourceBatchId: String(batch._id) },
-      scheduledFinalGenerationAt: batch.scheduledFinalGenerationAt,
       createdAt: batch.createdAt,
       updatedAt: batch.updatedAt,
     });

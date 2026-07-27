@@ -258,7 +258,7 @@ export async function runParticipantTurn(
         modelId: participant.modelId,
         personaId: participant.personaId,
         participantId: participant.participantId,
-        participantName: participant.displayName,
+        participantName: participant.personaId ? participant.displayName : undefined,
         parentMessageIds: cycleParentIds,
         moderatorDirective,
         turnCycle,

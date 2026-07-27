@@ -15,11 +15,6 @@ import { isTerminalSubagentStatus } from "../subagents/shared";
 import { failSubagentAdmission } from "../subagents/admission_failure";
 import { scheduleSubagentAdmissionWatchdog } from
   "../subagents/subagent_admission_watchdog";
-import {
-  continuationContext,
-  enqueueSubagentContinuationHandler,
-  reconcileSubagentContinuationHandler,
-} from "../subagents/subagent_continuation_recovery";
 
 const subagentAdmissionContext = v.object({
   runId: v.id("subagentRuns"),
@@ -173,33 +168,4 @@ export const enqueueSubagent = internalMutation({
   args: { runId: v.id("subagentRuns") },
   returns: v.string(),
   handler: enqueueSubagentHandler,
-});
-
-export const reconcileSubagentContinuation = interactiveWorkpool.defineOnComplete<
-  DataModel,
-  typeof continuationContext
->({
-  context: continuationContext,
-  handler: async (ctx, args) => await reconcileSubagentContinuationHandler(
-    ctx,
-    {
-      workId: String(args.workId),
-      context: { runId: args.context.runId as Id<"subagentRuns"> },
-      result: args.result.kind === "success"
-        ? { kind: "success" }
-        : args.result.kind === "canceled"
-          ? { kind: "canceled" }
-          : { kind: "failed", error: args.result.error },
-    },
-  ),
-});
-
-export const enqueueSubagentContinuation = internalMutation({
-  args: {
-    runId: v.id("subagentRuns"),
-    runAfterMs: v.optional(v.number()),
-    expectedWorkId: v.optional(v.string()),
-  },
-  returns: v.string(),
-  handler: enqueueSubagentContinuationHandler,
 });

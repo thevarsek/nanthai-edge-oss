@@ -73,6 +73,7 @@ export function mockQueryEndpoint(name: string, value: unknown) {
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
+    i18n: { language: "en" },
     t: (key: string, options?: Record<string, unknown>) => {
       if (typeof options?.defaultValue === "string") return options.defaultValue;
       if (typeof options?.name === "string") return `${key}:${options.name}`;

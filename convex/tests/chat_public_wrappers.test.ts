@@ -828,7 +828,11 @@ test("Drive Picker resume appends picked files and persists Drive-backed file at
       parentJobId: "job_1",
       status: "awaiting_pick",
       participantSnapshot: { participant: { modelId: "openai/gpt-4o" } },
-      paramsSnapshot: { enabledIntegrations: ["drive"], requestParams: {} },
+      paramsSnapshot: {
+        enabledIntegrations: ["drive"],
+        requestParams: {},
+        workflowResumeEventId: "event_1",
+      },
     },
     msg_user: {
       _id: "msg_user",
@@ -836,7 +840,15 @@ test("Drive Picker resume appends picked files and persists Drive-backed file at
       attachments: [{ storageId: "storage_existing", name: "existing.txt" }],
     },
     msg_assistant: { _id: "msg_assistant" },
-    job_1: { _id: "job_1" },
+    job_1: {
+      _id: "job_1",
+      status: "streaming",
+      executionAttemptId: "attempt_1",
+    },
+    attempt_1: {
+      _id: "attempt_1",
+      orchestrationEngine: "convex_workflow",
+    },
   };
 
   const result = await (appendAttachmentsAndMarkResuming as any)._handler({
@@ -852,6 +864,9 @@ test("Drive Picker resume appends picked files and persists Drive-backed file at
         docs[id] = { _id: id, ...value };
         return id;
       },
+    },
+    scheduler: {
+      runAfter: async () => "scheduled_1",
     },
   }, {
     batchId: "batch_1",

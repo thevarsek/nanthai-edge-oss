@@ -6,6 +6,7 @@ import {
   chatMatchesSearch,
   chatMatchesSource,
   mergeUserSourceRecentChats,
+  publicParticipantName,
 } from "../chat/queries_handlers_public";
 
 type TestChat = {
@@ -73,6 +74,18 @@ test("chatMatchesSource treats legacy missing source as user-authored", () => {
   assert.equal(chatMatchesSource({ source: "user" }, "user"), true);
   assert.equal(chatMatchesSource({ source: "scheduled_job" }, "user"), false);
   assert.equal(chatMatchesSource({}, "scheduled_job"), false);
+});
+
+test("public messages treat a raw model slug as model identity, not a Persona", () => {
+  assert.equal(publicParticipantName({
+    modelId: "anthropic/claude-sonnet-4.6",
+    participantName: "claude-sonnet-4.6",
+  }), undefined);
+  assert.equal(publicParticipantName({
+    modelId: "anthropic/claude-sonnet-4.6",
+    participantId: "persona_1",
+    participantName: "Claude Reviewer",
+  }), "Claude Reviewer");
 });
 
 test("mergeUserSourceRecentChats keeps indexed user chats visible ahead of newer scheduled chats", () => {

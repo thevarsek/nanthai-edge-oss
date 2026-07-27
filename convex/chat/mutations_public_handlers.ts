@@ -572,7 +572,6 @@ export async function cancelGenerationHandler(
   await ctx.db.patch(args.jobId, {
     status: "cancelled",
     completedAt: Date.now(),
-    scheduledFunctionId: undefined,
     terminalErrorCode: "cancelled_by_user",
   });
 
@@ -673,7 +672,6 @@ export async function cancelActiveGenerationHandler(
     await ctx.db.patch(job._id, {
       status: "cancelled",
       completedAt: now,
-      scheduledFunctionId: undefined,
       terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);
@@ -730,7 +728,6 @@ export async function cancelActiveGenerationHandler(
     await ctx.db.patch(job._id, {
       status: "cancelled",
       completedAt: now,
-      scheduledFunctionId: undefined,
       terminalErrorCode: "cancelled_by_user",
     });
     const message = await ctx.db.get(job.messageId);

@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getFunctionName } from "convex/server";
-import { runDeferredPresentationSnapshotRef } from "../presentations/deferred_workflow_refs";
 import {
   finalizePresentationFanoutHandler,
   recoverPresentationFinalizerCompletion,
@@ -145,11 +144,11 @@ function runRow(overrides: Record<string, unknown> = {}): Row {
   };
 }
 
-test("finalization publishes once, records fallback use, and removes private candidates", async () => {
+test("Workflow-owned finalization publishes once, records fallback use, and removes private candidates", async () => {
   const testState = state({
     presentationProjects: [projectRow()],
     generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
-    presentationGenerationRuns: [runRow()],
+    presentationGenerationRuns: [runRow({ workflowId: "workflow_1" })],
     presentationGenerationBatches: [
       { _id: "batch_1", runId: "run_1", batchIndex: 0, effectiveModelIds: ["selected/model"] },
       { _id: "batch_2", runId: "run_1", batchIndex: 1, effectiveModelIds: ["app/default"] },
@@ -175,24 +174,53 @@ test("finalization publishes once, records fallback use, and removes private can
   assert.equal(project?.status, "ready");
   assert.equal(project?.modelFallbackUsed, true);
   assert.deepEqual(project?.effectiveModelIds, ["selected/model", "app/default"]);
-  assert.equal(testState.scheduled.filter((name) =>
-    name === getFunctionName(runDeferredPresentationSnapshotRef)
-  ).length, 1);
+  assert.deepEqual(testState.scheduled, []);
 
   const duplicate = await finalizePresentationFanoutHandler(ctx, {
     runId: "run_1" as never,
     ...executionIdentity,
   });
   assert.equal(duplicate, null);
-  assert.equal(testState.scheduled.filter((name) =>
-    name === getFunctionName(runDeferredPresentationSnapshotRef)
-  ).length, 1);
+  assert.deepEqual(testState.scheduled, []);
+});
+
+test("finalization without canonical Workflow ownership fails before publishing", async () => {
+  const testState = state({
+    presentationProjects: [projectRow()],
+    generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
+    presentationGenerationRuns: [runRow()],
+    presentationGenerationBatches: [],
+    presentationCuratorTasks: [],
+    presentationSlideCandidates: [],
+    presentationSlides: [
+      { _id: "old_slide", projectId: "project_1", position: 0, slideId: "old" },
+    ],
+  });
+
+  await assert.rejects(
+    finalizePresentationFanoutHandler(testState.ctx as never, {
+      runId: "run_1" as never,
+      ...executionIdentity,
+    }),
+    /canonical Workflow ownership/,
+  );
+
+  assert.equal(testState.tables.get("presentationProjects")?.[0]?.status, "generating");
+  assert.equal(testState.tables.get("presentationGenerationRuns")?.[0]?.status, "finalizing");
+  assert.deepEqual(
+    testState.tables.get("presentationSlides")?.map((row) => row.slideId),
+    ["old"],
+  );
+  assert.deepEqual(testState.scheduled, []);
 });
 test("a finished finalizer with missing lifecycle reconciliation is recovered", async () => {
   const testState = state({
     presentationProjects: [projectRow()],
     generationJobs: [{ _id: "job_1", userId: "user_1", status: "running" }],
-    presentationGenerationRuns: [runRow({ finalizerWorkpoolOperationId: "finalizer_work_1" })],
+    presentationGenerationRuns: [runRow({
+      finalizerWorkpoolOperationId: "finalizer_work_1",
+      workflowId: "workflow_1",
+    })],
     presentationGenerationBatches: [
       { _id: "batch_1", runId: "run_1", batchIndex: 0, effectiveModelIds: ["selected/model"] }],
     presentationCuratorTasks: [],

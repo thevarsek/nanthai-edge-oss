@@ -22,6 +22,7 @@ function terminalAnalyticsState(firstRunStatus = "streaming") {
       assistantMessageIds: [],
       status: "running",
       generationSnapshot: { kind: "generation", args: {} },
+      workflowId: "workflow_1",
     }],
     ["run_1", run("run_1", "persona_1", firstRunStatus)],
     ["run_2", run("run_2", "persona_2", "consulting")],
@@ -48,6 +49,7 @@ function terminalAnalyticsState(firstRunStatus = "streaming") {
       },
       cancel: async () => undefined,
     },
+    runMutation: async () => undefined,
   };
   return { ctx, records, scheduled };
 }

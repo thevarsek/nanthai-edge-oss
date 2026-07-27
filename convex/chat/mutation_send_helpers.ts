@@ -349,7 +349,6 @@ export async function cancelGenerationJobsForMessage(
       await ctx.db.patch(job._id, {
         status: "cancelled",
         completedAt: now,
-        scheduledFunctionId: undefined,
         terminalErrorCode,
       });
       await scheduleCancelledAssistantResponseAnalytics(ctx, job);

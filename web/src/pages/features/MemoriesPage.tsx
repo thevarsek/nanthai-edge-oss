@@ -14,6 +14,7 @@ import {
   UserCircle,
   CheckCircle,
   RefreshCw,
+  Network,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getFeature } from "./featureData";
@@ -48,6 +49,7 @@ function getCapabilities(t: (k: string) => string): Capability[] {
     { icon: <Clock size={18} />, title: t("me_cap_expiry_title"), description: t("me_cap_expiry_desc") },
     { icon: <RefreshCw size={18} />, title: t("me_cap_reinforce_title"), description: t("me_cap_reinforce_desc") },
     { icon: <Search size={18} />, title: t("me_cap_semantic_title"), description: t("me_cap_semantic_desc") },
+    { icon: <Network size={18} />, title: t("me_cap_graph_title"), description: t("me_cap_graph_desc") },
     { icon: <MessageSquare size={18} />, title: t("me_cap_sections_title"), description: t("me_cap_sections_desc") },
     { icon: <Eye size={18} />, title: t("me_cap_transparent_title"), description: t("me_cap_transparent_desc") },
     { icon: <Trash2 size={18} />, title: t("me_cap_control_title"), description: t("me_cap_control_desc") },

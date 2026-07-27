@@ -452,7 +452,10 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
     messages.some((message) => message.status === "streaming" || message.status === "pending");
   const isGenerating = executionRuns === undefined
     ? legacyIsGenerating
-    : executionRuns.some((run) => !["completed", "failed", "cancelled"].includes(run.state));
+    : executionRuns.some((run) =>
+        !run.cancelRequested &&
+        !["completed", "failed", "cancelled"].includes(run.state)
+      );
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const sendMessageMutation = useMutation(api.chat.mutations.sendMessage);

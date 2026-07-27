@@ -8,19 +8,8 @@ import { continueParentAfterSubagentsHandler } from "./actions_continue_parent";
 export const runSubagentRun = internalAction({
   args: {
     runId: v.id("subagentRuns"),
-    workflowManaged: v.optional(v.boolean()),
-    executionAttemptId: v.optional(v.id("executionAttempts")),
-    executionFence: v.optional(v.number()),
-  },
-  handler: runSubagentRunHandler,
-});
-
-export const continueSubagentRun = internalAction({
-  args: {
-    runId: v.id("subagentRuns"),
-    workflowManaged: v.optional(v.boolean()),
-    executionAttemptId: v.optional(v.id("executionAttempts")),
-    executionFence: v.optional(v.number()),
+    executionAttemptId: v.id("executionAttempts"),
+    executionFence: v.number(),
   },
   handler: runSubagentRunHandler,
 });

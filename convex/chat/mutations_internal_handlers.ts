@@ -561,7 +561,6 @@ export async function finalizeGenerationHandler(
     openrouterGenerationId: args.openrouterGenerationId,
     terminalErrorCode,
     completedAt: now,
-    scheduledFunctionId: undefined,
   });
   if (
     !args.skipExecutionTerminalization

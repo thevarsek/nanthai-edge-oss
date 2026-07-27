@@ -178,6 +178,10 @@ test("runParticipantTurn finalizes visible responses and propagates moderator di
   }, deps);
 
   assert.deepEqual(result, { kind: "completed", messageId: "msg_new" });
+  assert.equal(
+    mutations.find((entry) => entry.modelId === "model_1")?.participantName,
+    undefined,
+  );
   assert.equal((requestInputs[0] as any).memoryContext, "resolved memory");
   assert.match(String((requestInputs[0] as any).systemPrompt), /Challenge weak assumptions/);
   assert.deepEqual(gateCalls[0], [

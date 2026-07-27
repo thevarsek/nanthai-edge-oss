@@ -231,9 +231,11 @@ export async function reconcileOwnedWorkflowHandler(
           : "failed",
       terminalAt: args.result.kind === "canceled" ? undefined : now,
       cancelSafeAfter: args.result.kind === "canceled"
-        ? now + 11 * 60 * 1_000
+        ? ref.cancelSafeAfter ?? now + 11 * 60 * 1_000
         : undefined,
-      cancelAcknowledgedAt: args.result.kind === "canceled" ? now : undefined,
+      cancelAcknowledgedAt: args.result.kind === "canceled"
+        ? ref.cancelAcknowledgedAt ?? now
+        : undefined,
       updatedAt: now,
     });
     // A canceled component is not physically quiescent yet. Only the common

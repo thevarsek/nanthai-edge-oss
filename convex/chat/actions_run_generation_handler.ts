@@ -54,19 +54,13 @@ export function createRunGenerationHandlerDepsForTest(
     ...defaultRunGenerationHandlerDeps,
     execution: {
       ensureGeneration: async () => null,
-      dispatchParticipant: async (ctx, participantArgs) => {
-        const scheduledFunctionId = await ctx.scheduler.runAfter(
+      dispatchParticipant: async (ctx, participantArgs) => String(
+        await ctx.scheduler.runAfter(
           0,
-          internal.chat.actions_runtime.runGenerationParticipant,
+          internal.chat.workflow_events.startGenerationWorkflow,
           participantArgs,
-        );
-        await ctx.runMutation(internal.chat.mutations.setGenerationContinuationScheduled, {
-          jobId: participantArgs.participant.jobId,
-          scheduledFunctionId,
-          updateContinuation: false,
-        });
-        return String(scheduledFunctionId);
-      },
+        ),
+      ),
       cancelParticipant: async (ctx, operationId) => {
         await ctx.scheduler.cancel(operationId as Id<"_scheduled_functions">);
       },

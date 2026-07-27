@@ -2,10 +2,6 @@ import { internalQuery, query } from "../_generated/server";
 import { v } from "convex/values";
 import { requireAuth } from "../lib/auth";
 import { projectExecution } from "./projection";
-import {
-  inspectLegacyOrchestrationDrain,
-  legacyDrainStateValidator,
-} from "./legacy_drain";
 
 const executionProjection = v.object({
   runId: v.string(),
@@ -75,7 +71,7 @@ export const listActiveComponentsForUser = internalQuery({
           .collect(),
       ),
     )).flat();
-    const legacy = attempts.flatMap((attempt) => {
+    const attemptBacked = attempts.flatMap((attempt) => {
       if (!attempt.componentOperationId || attempt.executorKind === "convex_action") return [];
       return [{
         executorKind: attempt.executorKind,
@@ -94,19 +90,13 @@ export const listActiveComponentsForUser = internalQuery({
       operationId: ref.operationId,
       adapterId: ref.adapterId,
     }));
-    return [...canonical, ...legacy].filter((component, index, all) =>
+    return [...canonical, ...attemptBacked].filter((component, index, all) =>
       all.findIndex((candidate) =>
         candidate.adapterId === component.adapterId
         && candidate.operationId === component.operationId,
       ) === index,
     );
   },
-});
-
-export const getLegacyOrchestrationDrainState = internalQuery({
-  args: {},
-  returns: legacyDrainStateValidator,
-  handler: inspectLegacyOrchestrationDrain,
 });
 
 export const listMyRuns = query({

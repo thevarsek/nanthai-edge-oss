@@ -18,14 +18,8 @@ export async function deleteChatAdvisorDataBatch(
       .withIndex("by_batch", (query) => query.eq("batchId", batch._id))
       .collect();
     for (const run of runs) {
-      await safeCancelScheduled(ctx, run.scheduledFunctionId);
-      await safeCancelScheduled(ctx, run.watchdogScheduledFunctionId);
       await deleteAdvisorRunAndReclaimAvatar(ctx, run);
     }
-    for (const scheduledId of batch.scheduledFinalGenerationIds ?? []) {
-      await safeCancelScheduled(ctx, scheduledId);
-    }
-    await safeCancelScheduled(ctx, batch.scheduledFinalGenerationId);
     await ctx.db.delete(batch._id);
   }
 
@@ -38,16 +32,4 @@ export async function deleteChatAdvisorDataBatch(
   }
 
   return batches.length === batchSize || assignments.length === batchSize;
-}
-
-async function safeCancelScheduled(
-  ctx: MutationCtx,
-  scheduledId: Id<"_scheduled_functions"> | undefined,
-): Promise<void> {
-  if (!scheduledId) return;
-  try {
-    await ctx.scheduler.cancel(scheduledId);
-  } catch {
-    // Already executing or terminal.
-  }
 }

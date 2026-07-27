@@ -21,9 +21,6 @@ export async function deleteDurableOrchestrationBatch(
       .withIndex("by_user", (query) => query.eq("userId", userId))
       .take(batchSize);
     for (const row of rows) {
-      if (row.scheduledFunctionId) {
-        await ctx.scheduler.cancel(row.scheduledFunctionId).catch(() => undefined);
-      }
       await ctx.db.delete(row._id);
       processed++;
     }

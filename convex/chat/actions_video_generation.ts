@@ -1,17 +1,16 @@
 // convex/chat/actions_video_generation.ts
 // =============================================================================
-// Self-scheduling video generation actions.
+// Workflow-owned video generation actions.
 //
 // Flow:
 //   1. submitVideoGeneration  — called by runGenerationParticipant when the
-//      model has hasVideoGeneration. Submits the job to OpenRouter, creates a
-//      videoJobs row, and schedules the first poll.
-//   2. pollVideoGeneration    — self-scheduling action that polls OpenRouter,
+//      model has hasVideoGeneration. Submits the job to OpenRouter and creates
+//      a videoJobs row.
+//   2. pollVideoGeneration    — Workflow step that polls OpenRouter,
 //      downloads the video on completion, stores it in Convex _storage, and
 //      finalizes the message.
 //
-// Polling intervals: 15s for the first 4 polls, 30s after.
-// Max polls: 40 (giving ~18 minutes total, well within reason for video gen).
+// The owning Workflow controls polling intervals and retries. Max polls: 40.
 // =============================================================================
 
 "use node";
@@ -49,9 +48,6 @@ import { resolveVideoAudioParameter } from "./video_generation_capabilities";
 
 // -- Constants ----------------------------------------------------------------
 
-const FAST_POLL_INTERVAL_MS = 15_000; // 15s for first 4 polls
-const SLOW_POLL_INTERVAL_MS = 30_000; // 30s after
-const FAST_POLL_COUNT = 4;
 const MAX_POLL_COUNT = 40; // ~18 min total
 const VIDEO_OUTPUT_UPLOAD_PATH = "/video-output-upload";
 const TERMINAL_GENERATION_JOB_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
@@ -182,7 +178,6 @@ export interface PollVideoGenerationArgs extends Record<string, unknown> {
   drivePickerBatchId?: Id<"drivePickerBatches">;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
-  workflowManaged?: boolean;
   executionAttemptId?: Id<"executionAttempts">;
   executionFence?: number;
   executionClaimantId?: string;
@@ -231,8 +226,6 @@ async function validatePollFence(
       attemptId: args.executionAttemptId,
       fence: args.executionFence,
     });
-  } else if (args.workflowManaged) {
-    throw new Error("VIDEO_EXECUTION_FENCE_REQUIRED");
   }
 }
 
@@ -739,8 +732,6 @@ export async function pollVideoGenerationHandler(
         claimantId: args.executionClaimantId,
         leaseMs: 20 * 60 * 1000,
       });
-    } else if (args.workflowManaged) {
-      throw new Error("VIDEO_EXECUTION_FENCE_REQUIRED");
     }
     // 1. Read the videoJobs row
     const videoJob = await ctx.runQuery(
@@ -919,19 +910,7 @@ export async function pollVideoGenerationHandler(
       return;
     }
 
-    // 7. Schedule the next poll
-    const interval =
-      newPollCount < FAST_POLL_COUNT
-        ? FAST_POLL_INTERVAL_MS
-        : SLOW_POLL_INTERVAL_MS;
-
-    if (!args.workflowManaged) {
-      await ctx.scheduler.runAfter(
-        interval,
-        internal.chat.actions.pollVideoGeneration,
-        args,
-      );
-    }
+    // Convex Workflow owns the sleep before the next poll.
   } catch (error) {
     // Non-retryable error — finalize as failed
     const errorMessage =
@@ -1032,13 +1011,6 @@ async function handleVideoCompleted(
       storedMimeType = upload.mimeType ?? storedMimeType;
       storedSizeBytes = upload.sizeBytes;
     } else if (videoJob.pollCount < MAX_POLL_COUNT) {
-      if (!args.workflowManaged) {
-        await ctx.scheduler.runAfter(
-          SLOW_POLL_INTERVAL_MS,
-          internal.chat.actions.pollVideoGeneration,
-          args,
-        );
-      }
       return;
     }
   }

@@ -8,7 +8,6 @@ import {
 } from "./actions_run_cycle_context";
 import { runParticipantTurn } from "./actions_run_cycle_turn";
 import type { RunCycleArgs } from "./actions_run_cycle_types";
-import { normalizeGenerationError } from "../chat/generation_error";
 
 export type AutonomousTurnResult =
   | { kind: "completed" | "skipped" | "failed" }
@@ -18,7 +17,6 @@ export async function runAutonomousTurnHandler(
   ctx: ActionCtx,
   args: RunCycleArgs & { participantIndex: number },
 ): Promise<AutonomousTurnResult> {
-  try {
     const recovered = await ctx.runMutation(internal.autonomous.turn_checkpoint.recoverTurn, {
       sessionId: args.sessionId,
       cycle: args.cycle,
@@ -82,21 +80,4 @@ export async function runAutonomousTurnHandler(
       ...(outcome.kind === "completed" ? { messageId: outcome.messageId } : {}),
     });
     return { kind: outcome.kind };
-  } catch (error) {
-    if (args.workflowManaged) throw error;
-    const reason = normalizeGenerationError(error).message;
-    const session = await ctx.runQuery(internal.autonomous.queries.getSession, {
-      sessionId: args.sessionId,
-    });
-    if (session?.status === "running") {
-      await ctx.runMutation(internal.autonomous.mutations.completeSession, {
-        sessionId: args.sessionId,
-        status: "failed",
-        error: reason,
-        stopReason: "Autonomous turn failed",
-        executionEpoch: args.executionEpoch,
-      });
-    }
-    throw error;
-  }
 }

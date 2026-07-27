@@ -155,10 +155,10 @@ export async function reconcileGenerationWorkflowCompletionHandler(
       : args.result.kind === "canceled" ? "cancel_requested" : "failed",
     terminalAt: args.result.kind === "canceled" ? undefined : componentCompletedAt,
     cancelSafeAfter: args.result.kind === "canceled"
-      ? componentCompletedAt + 11 * 60 * 1_000
+      ? component.cancelSafeAfter ?? componentCompletedAt + 11 * 60 * 1_000
       : undefined,
     cancelAcknowledgedAt: args.result.kind === "canceled"
-      ? componentCompletedAt
+      ? component.cancelAcknowledgedAt ?? componentCompletedAt
       : undefined,
     updatedAt: componentCompletedAt,
   });

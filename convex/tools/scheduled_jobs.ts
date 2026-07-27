@@ -9,8 +9,12 @@
 
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
-import type { Recurrence } from "../scheduledJobs/recurrence";
 import { createTool } from "./registry";
+import {
+  normalizeScheduledJobToolModelId,
+  resolveScheduledJobToolModelId,
+} from "./scheduled_jobs_models";
+import { normalizeToolRecurrence } from "./scheduled_jobs_recurrence";
 
 // ── create_scheduled_job ───────────────────────────────────────────────
 
@@ -40,8 +44,9 @@ export const createScheduledJob = createTool({
       modelId: {
         type: "string",
         description:
-          "OpenRouter model ID to use (e.g. 'anthropic/claude-sonnet-4', " +
-          "'google/gemini-2.5-flash'). If omitted, uses the user's default model.",
+          "OpenRouter model ID to use only when the user explicitly requests " +
+          "a different model. Otherwise omit this field so the scheduled job " +
+          "inherits the model running the current turn.",
       },
       steps: {
         type: "array",
@@ -53,7 +58,12 @@ export const createScheduledJob = createTool({
           properties: {
             title: { type: "string", description: "Optional human-friendly step title." },
             prompt: { type: "string", description: "Prompt for this step." },
-            modelId: { type: "string", description: "Model ID for this step." },
+            modelId: {
+              type: "string",
+              description:
+                "Model ID only when the user explicitly requests a model for " +
+                "this step. Otherwise omit to inherit the current turn's model.",
+            },
             personaId: { type: "string", description: "Optional persona ID." },
             enabledIntegrations: {
               type: "array",
@@ -94,7 +104,7 @@ export const createScheduledJob = createTool({
             includeReasoning: { type: "boolean" },
             reasoningEffort: { type: "string" },
           },
-          required: ["prompt", "modelId"],
+          required: ["prompt"],
         },
       },
       recurrence: {
@@ -152,7 +162,7 @@ export const createScheduledJob = createTool({
     const name = args.name as string | undefined;
     const prompt = args.prompt as string | undefined;
     const steps = args.steps as Array<Record<string, unknown>> | undefined;
-    const recurrence = args.recurrence as Recurrence | undefined;
+    const recurrence = normalizeToolRecurrence(args.recurrence);
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return { success: false, data: null, error: "Missing or empty 'name'" };
@@ -164,18 +174,31 @@ export const createScheduledJob = createTool({
         error: "Provide either a non-empty 'prompt' or non-empty 'steps' array.",
       };
     }
-    if (!recurrence || typeof recurrence !== "object" || !recurrence.type) {
+    if (!recurrence) {
       return { success: false, data: null, error: "Missing or invalid 'recurrence'. Must include 'type'." };
     }
 
-    // Resolve modelId: explicit arg → user's default → fail
-    let modelId = args.modelId as string | undefined;
-    if (!modelId && (!steps || steps.length === 0)) {
-      const userDefault = await toolCtx.ctx.runQuery(
+    // An explicit tool argument represents a model the user requested.
+    // Otherwise preserve conversational continuity by using the model that
+    // invoked this tool. The account default is only the final fallback.
+    let modelId = resolveScheduledJobToolModelId(
+      args.modelId,
+      toolCtx.modelId,
+    );
+    const stepsNeedInheritedModel = steps?.some((step) =>
+      !normalizeScheduledJobToolModelId(step.modelId)
+    ) === true;
+    if (!modelId && ((!steps || steps.length === 0) || stepsNeedInheritedModel)) {
+      const userDefaultModelId = await toolCtx.ctx.runQuery(
         internal.preferences.queries.getUserDefaultModel,
         { userId: toolCtx.userId },
       );
-      if (!userDefault) {
+      modelId = resolveScheduledJobToolModelId(
+        args.modelId,
+        toolCtx.modelId,
+        userDefaultModelId,
+      );
+      if (!modelId) {
         return {
           success: false,
           data: null,
@@ -184,7 +207,6 @@ export const createScheduledJob = createTool({
             "Please either provide a 'modelId' or set a default model in Settings → Models.",
         };
       }
-      modelId = userDefault;
     }
 
     try {
@@ -199,7 +221,10 @@ export const createScheduledJob = createTool({
         return {
           title: typeof step.title === "string" ? step.title : undefined,
           prompt: step.prompt as string,
-          modelId: step.modelId as string,
+          modelId: resolveScheduledJobToolModelId(
+            step.modelId,
+            modelId,
+          ) as string,
           personaId: typeof step.personaId === "string" ? step.personaId as Id<"personas"> : undefined,
           enabledIntegrations: Array.isArray(step.enabledIntegrations)
             ? step.enabledIntegrations as string[]
@@ -234,17 +259,27 @@ export const createScheduledJob = createTool({
           webSearchEnabled: args.webSearchEnabled !== undefined ? (args.webSearchEnabled as boolean) : undefined,
         },
       );
+      const createdJob = await toolCtx.ctx.runQuery(
+        internal.scheduledJobs.queries.getJobInternal,
+        { jobId },
+      );
 
       // Build a human-friendly schedule description
       const scheduleDesc = describeRecurrence(recurrence);
+      const nextRunAt = typeof createdJob?.nextRunAt === "number"
+        ? new Date(createdJob.nextRunAt).toISOString()
+        : null;
 
       return {
         success: true,
         data: {
           jobId,
           name: name.trim(),
-          stepCount: mappedSteps?.length ?? 1,
+          stepCount: mappedSteps && mappedSteps.length > 0
+            ? mappedSteps.length
+            : 1,
           schedule: scheduleDesc,
+          nextRunAt,
           message:
             `Created scheduled job "${name.trim()}" (${scheduleDesc}). ` +
             `Each run creates a new chat with the results, and the user gets a ` +

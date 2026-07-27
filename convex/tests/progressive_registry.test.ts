@@ -214,13 +214,15 @@ test("production registry paths do not import temporary unavailable placeholders
   const googleIndex = readFileSync("convex/tools/google/index.ts", "utf8");
   const profiles = readFileSync("convex/tools/progressive_registry_profiles.ts", "utf8");
   const chatActions = readFileSync("convex/chat/actions.ts", "utf8");
+  const chatRuntimeActions = readFileSync("convex/chat/actions_runtime.ts", "utf8");
 
   assert.equal(googleIndex.includes("gmail_unavailable"), false);
   assert.equal(profiles.includes("runtime_profile_unavailable"), false);
   assert.equal(profiles.includes("pptx_unavailable"), false);
   assert.equal(profiles.includes("docx_edit_unavailable"), false);
   assert.equal(chatActions.includes("actions_run_generation_participant_action"), false);
-  assert.equal(chatActions.includes("runGenerationParticipantRuntimeHandler"), true);
+  assert.equal(chatActions.includes("runGenerationParticipantRuntimeHandler"), false);
+  assert.equal(chatRuntimeActions.includes("runGenerationParticipantRuntimeHandler"), true);
 });
 
 test("buildProgressiveToolRegistry: integration profiles only add enabled integrations", async () => {

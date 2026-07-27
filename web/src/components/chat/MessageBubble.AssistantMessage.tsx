@@ -43,6 +43,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 import { displayMessageContent } from "@/lib/persistedGenerationError";
 import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
 import { replaceInternalPresentationDownloadLinks } from "./presentationDownloadLinks";
+import { AIContentReportButton } from "./AIContentReportButton";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -712,6 +713,7 @@ export const AssistantMessage = memo(function AssistantMessage({
                 <Volume2 size={13} />
               </IconButton>
             )}
+            <AIContentReportButton messageId={message._id} />
           </div>
         )}
 

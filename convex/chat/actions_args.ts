@@ -190,5 +190,4 @@ export const pollVideoGenerationArgs = {
   drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
   analytics: v.optional(analyticsClientMetadataValidator),
   analyticsSource: v.optional(analyticsSourceValidator),
-  workflowManaged: v.optional(v.boolean()),
 } satisfies PropertyValidators;

@@ -37,7 +37,7 @@ export const runAutonomousSessionWorkflow = durableWorkflow
         });
         const outcome = await step.runAction(
           internal.autonomous.actions.runAutonomousTurn,
-          { ...args, cycle, participantIndex, workflowManaged: true },
+          { ...args, cycle, participantIndex },
           // A turn crosses the provider boundary before its final message is
           // durably committed. Replaying an ambiguous failure can duplicate a
           // paid model call, so the Workflow must fail closed here.
@@ -64,7 +64,6 @@ export const runAutonomousSessionWorkflow = durableWorkflow
           cycle,
           userId: args.userId,
           executionEpoch: args.executionEpoch,
-          workflowManaged: true,
         },
         // Consensus detection is also a paid provider call. The next cycle is
         // only safe after this action returns unambiguously.

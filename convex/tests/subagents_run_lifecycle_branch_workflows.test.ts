@@ -173,7 +173,6 @@ test("runSubagentRunHandler checkpoints one tool round and completes on the next
 
   await runSubagentRunHandler(ctx, {
     runId: "run_1" as any,
-    workflowManaged: true,
     executionAttemptId: "attempt_1" as any,
     executionFence: 7,
   });
@@ -198,7 +197,6 @@ test("runSubagentRunHandler checkpoints one tool round and completes on the next
 
   await runSubagentRunHandler(ctx, {
     runId: "run_1" as any,
-    workflowManaged: true,
     executionAttemptId: "attempt_1" as any,
     executionFence: 7,
   });

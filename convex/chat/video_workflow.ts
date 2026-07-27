@@ -76,7 +76,6 @@ export const runVideoGenerationWorkflow = durableWorkflow
           drivePickerBatchId: args.drivePickerBatchId,
           analytics: args.analytics,
           analyticsSource: args.analyticsSource,
-          workflowManaged: true,
           executionAttemptId: args.execution.attemptId,
           executionFence: args.execution.fence,
           executionClaimantId: args.execution.claimantId,

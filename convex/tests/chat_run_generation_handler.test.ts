@@ -122,10 +122,7 @@ test("runGenerationHandler intersects enabled integrations and schedules per-par
     integrationDefaults: undefined,
     enqueuedAt: 123,
   });
-  assert.deepEqual(mutationCalls, [
-    { jobId: "job_1", scheduledFunctionId: "scheduled_1", updateContinuation: false },
-    { jobId: "job_2", scheduledFunctionId: "scheduled_2", updateContinuation: false },
-  ]);
+  assert.deepEqual(mutationCalls, []);
 });
 
 test("runGenerationHandler propagates coordinator failures to search sessions and failPendingParticipants", async () => {
@@ -225,10 +222,7 @@ test("runGenerationHandler cancels already scheduled participants when a later d
 
   assert.deepEqual(cancelledScheduledIds, ["scheduled_1"]);
   assert.equal(failureCalls.length, 1);
-  assert.deepEqual(mutationCalls, [
-    { jobId: "job_1", scheduledFunctionId: "scheduled_1", updateContinuation: false },
-    { jobId: "job_1" },
-  ]);
+  assert.deepEqual(mutationCalls, [{ jobId: "job_1" }]);
 });
 
 test("durable dispatch rethrows coordinator failure without cancelling or terminalizing started participants", async () => {

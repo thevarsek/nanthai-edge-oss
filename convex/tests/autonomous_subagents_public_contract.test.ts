@@ -1,9 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { runCycle } from "../autonomous/actions";
+import {
+  finishAutonomousCycle,
+  runAutonomousTurn,
+} from "../autonomous/actions";
 import { pauseSession, resumeSession, startSession, stopSession } from "../autonomous/mutations";
-import { continueParentAfterSubagents, continueSubagentRun, runSubagentRun } from "../subagents/actions";
+import {
+  continueParentAfterSubagents,
+  runSubagentRun,
+} from "../subagents/actions";
 import { getBatchInternal, getBatchView, getRunInternal, listRunsForBatchInternal } from "../subagents/queries";
 
 function buildAuth(userId: string | null = "user_1") {
@@ -12,7 +18,7 @@ function buildAuth(userId: string | null = "user_1") {
   };
 }
 
-test("startSession inserts a running session and schedules runCycle", async () => {
+test("startSession inserts a running session and schedules canonical Workflow start", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
   const inserts: Array<Record<string, unknown>> = [];
 
@@ -187,7 +193,8 @@ test("subagent batch queries are auth-shaped and internal lookups pass through",
 });
 
 test("subagent action wrappers share the expected handler wiring", () => {
-  assert.equal(typeof (runCycle as any)._handler, "function");
-  assert.equal((runSubagentRun as any)._handler, (continueSubagentRun as any)._handler);
+  assert.equal(typeof (runAutonomousTurn as any)._handler, "function");
+  assert.equal(typeof (finishAutonomousCycle as any)._handler, "function");
+  assert.equal(typeof (runSubagentRun as any)._handler, "function");
   assert.equal(typeof (continueParentAfterSubagents as any)._handler, "function");
 });

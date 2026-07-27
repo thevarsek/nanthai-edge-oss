@@ -93,3 +93,37 @@ test("acknowledged Workflow drain does not issue another cancellation request", 
   assert.equal(status.mock.callCount(), 0);
   assert.equal(cancel.mock.callCount(), 0);
 });
+
+test("elapsed acknowledged Workflow drain finalizes without readdressing the component", async (t) => {
+  t.after(() => mock.restoreAll());
+  const status = mock.method(durableWorkflow, "status", async () => {
+    throw new Error("Workflow not found: workflow_1");
+  });
+  const cancel = mock.method(durableWorkflow, "cancel", async () => {
+    throw new Error("Workflow not found: workflow_1");
+  });
+  const mutations: Array<{ ref: unknown; args: unknown }> = [];
+  const ctx = {
+    runMutation: async (ref: unknown, args: unknown) => {
+      mutations.push({ ref, args });
+      return null;
+    },
+  };
+
+  const confirmed = await cancelOwnedComponents(ctx as never, [{
+    componentRefId: "component_1" as never,
+    adapterId: "convex-workflow",
+    operationId: "workflow_1",
+    cancelSafeAfter: Date.now() - 1,
+    cancelAcknowledgedAt: Date.now() - 60_000,
+  }]);
+
+  assert.equal(confirmed, true);
+  assert.equal(status.mock.callCount(), 0);
+  assert.equal(cancel.mock.callCount(), 0);
+  assert.equal(mutations.length, 1);
+  assert.deepEqual(mutations[0]?.args, {
+    componentRefId: "component_1",
+    cancelled: true,
+  });
+});

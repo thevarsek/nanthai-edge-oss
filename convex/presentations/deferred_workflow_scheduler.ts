@@ -14,24 +14,25 @@ export async function scheduleDeferredPresentationWorkflow(
     toolCallId: string;
   },
 ): Promise<void> {
+  if (!args.workflowResumeEventId) {
+    throw new Error("PRESENTATION_PARENT_WORKFLOW_EVENT_REQUIRED");
+  }
   await scheduleGenerationContinuation(
     ctx,
     { ...args, workflowManaged: true },
-    args.workflowResumeEventId
-      ? {
-          ...checkpoint,
-          deferredResumeEventId: args.workflowResumeEventId,
-          deferredOwnership: {
-            kind: "presentation",
-            projectId: workflow.projectId,
-            toolCallId: workflow.toolCallId,
-            modelId: args.participant.modelId,
-            ...(args.requireZdrOverride !== undefined
-              ? { requireZdrOverride: args.requireZdrOverride }
-              : {}),
-          },
-        }
-      : checkpoint,
+    {
+      ...checkpoint,
+      deferredResumeEventId: args.workflowResumeEventId,
+      deferredOwnership: {
+        kind: "presentation",
+        projectId: workflow.projectId,
+        toolCallId: workflow.toolCallId,
+        modelId: args.participant.modelId,
+        ...(args.requireZdrOverride !== undefined
+          ? { requireZdrOverride: args.requireZdrOverride }
+          : {}),
+      },
+    },
   );
 
   const phaseArgs = {
@@ -43,9 +44,7 @@ export async function scheduleDeferredPresentationWorkflow(
     ...(args.requireZdrOverride !== undefined
       ? { requireZdrOverride: args.requireZdrOverride }
       : {}),
-    ...(args.workflowResumeEventId
-      ? { workflowResumeEventId: args.workflowResumeEventId }
-      : {}),
+    workflowResumeEventId: args.workflowResumeEventId,
   };
   await ctx.runMutation(startPresentationWorkflowRef, phaseArgs);
 }

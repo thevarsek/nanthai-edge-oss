@@ -4,8 +4,8 @@ import { internalMutation } from "../_generated/server";
 import { durableWorkflow } from "./components";
 
 function isSettledWorkflowError(error: unknown): boolean {
-  return error instanceof Error
-    && /Workflow(?: .*?)? (?:not found|not running)/i.test(error.message);
+  const message = error instanceof Error ? error.message : String(error);
+  return /Workflow(?: .*?)? (?:not found|not running)/i.test(message);
 }
 
 /**

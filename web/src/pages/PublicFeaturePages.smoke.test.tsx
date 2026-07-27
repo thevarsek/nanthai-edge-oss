@@ -149,4 +149,12 @@ describe("public feature pages", () => {
     );
     expect(canonicalHref()).toBe(`https://nanthai.tech/features/${slug}`);
   });
+
+  it("shows the interactive relationship graph on the memories page", () => {
+    renderPublicPage(<MemoriesPage />);
+
+    expect(screen.getByRole("img", { name: "Stylised graph of connected memories" }))
+      .toBeInTheDocument();
+    expect(screen.getByText("me_cap_graph_title")).toBeInTheDocument();
+  });
 });

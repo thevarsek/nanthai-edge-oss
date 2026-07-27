@@ -404,12 +404,6 @@ export const claimGenerationContinuationArgs = {
   executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
 
-export const setGenerationContinuationScheduledArgs = {
-  jobId: v.id("generationJobs"),
-  scheduledFunctionId: v.id("_scheduled_functions"),
-  updateContinuation: v.optional(v.boolean()),
-} satisfies PropertyValidators;
-
 export const clearGenerationContinuationArgs = {
   jobId: v.id("generationJobs"),
 } satisfies PropertyValidators;

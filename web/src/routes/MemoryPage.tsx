@@ -3,7 +3,7 @@ import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useNavigate } from "react-router-dom";
-import { ChevronLeft, ChevronRight, Check, Trash2, List, Brain, Plus, Cpu, Upload } from "lucide-react";
+import { ChevronLeft, ChevronRight, Check, Trash2, List, Brain, Plus, Cpu, Upload, Share2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
@@ -22,6 +22,7 @@ import {
   type ImportedMemoryCandidate,
   type MemoryDoc,
 } from "./MemoryPageHelpers";
+import { MemoryGraphExplorer } from "./memory/MemoryGraphExplorer";
 
 const DEFAULT_MEMORY_MODEL = "openai/gpt-4.1-mini";
 const MEMORY_CATEGORY_ORDER = [
@@ -98,6 +99,7 @@ function MemoryPageContent() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [searchText, setSearchText] = useState("");
+  const [memoryView, setMemoryView] = useState<"list" | "graph">("list");
   const [editingMemory, setEditingMemory] = useState<MemoryDoc | null>(null);
   const [isImporting, setIsImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
@@ -409,6 +411,7 @@ function MemoryPageContent() {
                       onClick={() => {
                         setShowAllMemories(true);
                         setFilterState({ showPending: true });
+                        setMemoryView("list");
                       }}
                       className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-3 transition-colors"
                     >
@@ -454,10 +457,37 @@ function MemoryPageContent() {
 
                   {/* Quick filters */}
                   <div className="space-y-2">
+                    <div className="inline-flex rounded-xl bg-surface-2 p-1" aria-label={t("memory_view_mode", { defaultValue: "Memory view" })}>
+                      <button
+                        type="button"
+                        onClick={() => setMemoryView("list")}
+                        className={[
+                          "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors",
+                          memoryView === "list" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        <List size={13} />
+                        {t("memory_list", { defaultValue: "List" })}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMemoryView("graph");
+                          setFilterState((current) => ({ ...current, showPending: undefined, scopeType: undefined }));
+                        }}
+                        className={[
+                          "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs transition-colors",
+                          memoryView === "graph" ? "bg-surface-3 text-foreground shadow-sm" : "text-muted hover:text-foreground",
+                        ].join(" ")}
+                      >
+                        <Share2 size={13} />
+                        {t("memory_graph", { defaultValue: "Graph" })}
+                      </button>
+                    </div>
                     <input
                       value={searchText}
                       onChange={(event) => setSearchText(event.target.value)}
-                      placeholder="Search memories or tags"
+                      placeholder={t("memory_search_placeholder", { defaultValue: "Search memories or tags" })}
                       className="w-full px-3 py-2 rounded-xl bg-surface-2 border border-border/50 text-sm focus:outline-none focus:border-accent"
                     />
                     <div className="-mx-1 overflow-x-auto pb-1">
@@ -491,7 +521,7 @@ function MemoryPageContent() {
                             {memoryRetrievalLabel(retrievalMode, t)}
                           </button>
                         ))}
-                        {availableScopeTypes.map((scopeType) => (
+                        {memoryView === "list" && availableScopeTypes.map((scopeType) => (
                           <button
                             key={scopeType}
                             onClick={() => setFilterState((current) => ({
@@ -530,7 +560,7 @@ function MemoryPageContent() {
                       </div>
                     </div>
 
-                    {pendingCount > 0 && (
+                    {memoryView === "list" && pendingCount > 0 && (
                       <button
                         onClick={() => setFilterState((current) => ({
                           ...(!current.showPending ? {} : current),
@@ -548,8 +578,25 @@ function MemoryPageContent() {
                     )}
                   </div>
 
-                  {/* Memory list */}
-                  {memories === undefined ? (
+                  {/* Memory list / graph */}
+                  {memoryView === "graph" ? (
+                    <MemoryGraphExplorer
+                      searchText={searchText}
+                      category={filterState.category}
+                      retrievalMode={filterState.retrievalMode}
+                      onDelete={(id) => {
+                        setDeleteError(null);
+                        setDeleteTarget(id);
+                      }}
+                      onEdit={(memory) => setEditingMemory({
+                        _id: memory.id,
+                        content: memory.content,
+                        category: memory.category,
+                        retrievalMode: memory.retrievalMode,
+                        tags: memory.tags,
+                      })}
+                    />
+                  ) : memories === undefined ? (
                     <div className="flex justify-center py-8"><LoadingSpinner /></div>
                   ) : filterState.showPending ? (
                     /* Show only pending memories when pending filter is active */

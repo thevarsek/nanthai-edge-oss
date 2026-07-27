@@ -166,20 +166,11 @@ test("chat fork preserves a reachable retry batch when its original response is 
   ]);
 });
 
-test("chat and account deletion cancel delayed Advisor work before removing rows", async () => {
+test("chat and account deletion remove canonical Advisor rows without legacy callbacks", async () => {
   const deleted: string[] = [];
-  const cancelled: string[] = [];
   const queryRows: Record<string, TestRow[]> = {
-    advisorBatches: [{
-      _id: "batch_1",
-      scheduledFinalGenerationId: "final_1",
-      scheduledFinalGenerationIds: ["final_2"],
-    }],
-    advisorRuns: [{
-      _id: "run_1",
-      scheduledFunctionId: "run_schedule",
-      watchdogScheduledFunctionId: "watchdog_schedule",
-    }],
+    advisorBatches: [{ _id: "batch_1" }],
+    advisorRuns: [{ _id: "run_1" }],
     chatAdvisors: [{ _id: "assignment_1" }],
   };
   const ctx = {
@@ -192,7 +183,6 @@ test("chat and account deletion cancel delayed Advisor work before removing rows
       }),
       delete: async (id: string) => { deleted.push(id); },
     },
-    scheduler: { cancel: async (id: string) => { cancelled.push(id); } },
   } as unknown as Parameters<typeof deleteChatAdvisorDataBatch>[0];
 
   assert.equal(await deleteChatAdvisorDataBatch(
@@ -201,12 +191,9 @@ test("chat and account deletion cancel delayed Advisor work before removing rows
     200,
   ), false);
   assert.deepEqual(deleted, ["run_1", "batch_1", "assignment_1"]);
-  assert.deepEqual(cancelled, ["run_schedule", "watchdog_schedule", "final_2", "final_1"]);
 
   deleted.length = 0;
-  cancelled.length = 0;
   assert.equal(await deleteUserAdvisorRunsBatch(ctx, "user_1", 200), 1);
   assert.equal(await deleteUserAdvisorBatchesBatch(ctx, "user_1", 200), 1);
   assert.deepEqual(deleted, ["run_1", "batch_1"]);
-  assert.deepEqual(cancelled, ["run_schedule", "watchdog_schedule", "final_2", "final_1"]);
 });

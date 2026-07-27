@@ -42,11 +42,6 @@ export const advisorSchemaTables = {
     executionClaimantId: v.optional(v.string()),
     generationOperationIds: v.optional(v.array(v.string())),
     generationDispatchedAt: v.optional(v.number()),
-    scheduledFinalGenerationId: v.optional(v.id("_scheduled_functions")),
-    scheduledFinalGenerationIds: v.optional(
-      v.array(v.id("_scheduled_functions")),
-    ),
-    scheduledFinalGenerationAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -83,9 +78,7 @@ export const advisorSchemaTables = {
     replayItems: v.optional(v.any()),
     usage: v.optional(usageObject),
     cost: v.optional(v.number()),
-    scheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     workpoolOperationId: v.optional(v.string()),
-    watchdogScheduledFunctionId: v.optional(v.id("_scheduled_functions")),
     leaseOwner: v.optional(v.string()),
     leaseExpiresAt: v.optional(v.number()),
     startedAt: v.optional(v.number()),

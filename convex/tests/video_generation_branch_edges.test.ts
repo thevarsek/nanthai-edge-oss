@@ -337,7 +337,7 @@ test("pollVideoGeneration finalizes Grok uploads from tracked output upload stor
   }));
 });
 
-test("pollVideoGeneration waits when Grok completed before output upload arrives", async () => {
+test("pollVideoGeneration leaves pending Grok upload polling to Workflow", async () => {
   const originalFetch = globalThis.fetch;
   const scheduled: Array<Record<string, unknown>> = [];
   globalThis.fetch = (async () => new Response(JSON.stringify({
@@ -374,8 +374,7 @@ test("pollVideoGeneration waits when Grok completed before output upload arrives
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(scheduled.length, 1);
-  assert.equal(scheduled[0].videoJobId, "video_job_1");
+  assert.equal(scheduled.length, 0);
 });
 
 test("pollVideoGeneration propagates an atomic settlement failure for Workflow recovery", async () => {

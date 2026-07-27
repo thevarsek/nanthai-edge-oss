@@ -1,11 +1,11 @@
 // convex/search/workflow_durable.ts
 // =============================================================================
-// Durable research paper pipeline — each phase runs as its own Convex action
-// and schedules the next, so no single action risks the 10-minute timeout.
+// Durable research paper phase actions. Convex Workflow owns ordering and
+// invokes each phase, so no action schedules a second orchestration chain.
 //
 // State flows through the DB: each phase writes to `searchPhases` via
-// `writeSearchPhase`, and the next phase reconstructs accumulated state by
-// reading back those rows via `getSearchPhases`.
+// `writeSearchPhase`, and each subsequent Workflow step reconstructs
+// accumulated state by reading those rows through `getSearchPhases`.
 // =============================================================================
 
 import { ConvexError, v, type PropertyValidators } from "convex/values";
@@ -78,7 +78,6 @@ const phaseActionArgs = {
   phaseOrder: v.number(),
   // For depth loop phases: which iteration we're on
   depthIteration: v.optional(v.number()),
-  workflowManaged: v.optional(v.boolean()),
   searchBatchId: v.optional(v.id("researchSearchBatches")),
   executionAttemptId: v.optional(v.id("executionAttempts")),
   executionFence: v.optional(v.number()),
@@ -88,7 +87,6 @@ const phaseActionArgs = {
 type PhaseActionArgs = PipelineArgs & {
   phaseOrder: number;
   depthIteration?: number;
-  workflowManaged?: boolean;
   searchBatchId?: import("../_generated/dataModel").Id<"researchSearchBatches">;
 };
 
@@ -303,7 +301,6 @@ async function completedWorkflowPhase(
   args: PhaseActionArgs,
   phaseType: string,
 ): Promise<boolean> {
-  if (!args.workflowManaged) return false;
   const phases = await ctx.runQuery(
     internal.search.queries.getSearchPhases,
     { sessionId: args.sessionId },
@@ -320,8 +317,6 @@ async function completedWorkflowPhase(
 export const runPlanningAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
-    try {
       if (await completedWorkflowPhase(ctx, args, "planning")) return;
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -336,18 +331,6 @@ export const runPlanningAction = internalAction({
       await checkCancellation(ctx, args.sessionId, args);
       await runPlanningPhase(ctx, argsWithApiKey, preset.breadth, args.phaseOrder);
 
-      // Schedule next: initial search
-      if (!args.workflowManaged) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.search.workflow_durable.runInitialSearchAction,
-          { ...args, phaseOrder: args.phaseOrder + 1 },
-        );
-      }
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
-    }
   },
 });
 
@@ -356,8 +339,6 @@ export const runPlanningAction = internalAction({
 export const runInitialSearchAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
-    try {
       if (await completedWorkflowPhase(ctx, args, "initial_search")) return;
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -387,31 +368,6 @@ export const runInitialSearchAction = internalAction({
           : undefined,
       );
 
-      // Determine next step: depth loop or synthesis
-      const depthIterations = preset.depth - 1;
-      if (depthIterations > 0) {
-        // Start depth loop: analysis phase for iteration 0
-        if (!args.workflowManaged) {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.search.workflow_durable.runAnalysisAction,
-            { ...args, phaseOrder: args.phaseOrder + 1, depthIteration: 0 },
-          );
-        }
-      } else {
-        // Skip depth loop, go straight to synthesis
-        if (!args.workflowManaged) {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.search.workflow_durable.runSynthesisAction,
-            { ...args, phaseOrder: args.phaseOrder + 1 },
-          );
-        }
-      }
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
-    }
   },
 });
 
@@ -420,8 +376,6 @@ export const runInitialSearchAction = internalAction({
 export const runAnalysisAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
-    try {
       if (await completedWorkflowPhase(ctx, args, "analysis")) return;
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -447,18 +401,6 @@ export const runAnalysisAction = internalAction({
         iteration,
       );
 
-      // Schedule next: depth search for this iteration
-      if (!args.workflowManaged) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.search.workflow_durable.runDepthSearchAction,
-          { ...args, phaseOrder: args.phaseOrder + 1 },
-        );
-      }
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
-    }
   },
 });
 
@@ -467,8 +409,6 @@ export const runAnalysisAction = internalAction({
 export const runDepthSearchAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
-    try {
       if (await completedWorkflowPhase(ctx, args, "depth_iteration")) return;
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -505,32 +445,6 @@ export const runDepthSearchAction = internalAction({
           : undefined,
       );
 
-      // More depth iterations?
-      const depthIterations = preset.depth - 1;
-      const nextIteration = iteration + 1;
-      if (nextIteration < depthIterations) {
-        // Continue depth loop: next analysis
-        if (!args.workflowManaged) {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.search.workflow_durable.runAnalysisAction,
-            { ...args, phaseOrder: args.phaseOrder + 1, depthIteration: nextIteration },
-          );
-        }
-      } else {
-        // Depth loop done, move to synthesis
-        if (!args.workflowManaged) {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.search.workflow_durable.runSynthesisAction,
-            { ...args, phaseOrder: args.phaseOrder + 1 },
-          );
-        }
-      }
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
-    }
   },
 });
 
@@ -539,8 +453,6 @@ export const runDepthSearchAction = internalAction({
 export const runSynthesisAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
-    try {
       if (await completedWorkflowPhase(ctx, args, "synthesis")) return;
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -562,18 +474,6 @@ export const runSynthesisAction = internalAction({
         args.phaseOrder,
       );
 
-      // Schedule architecture/argument phase before final paper handoff
-      if (!args.workflowManaged) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.search.workflow_durable.runPaperArchitectureAction,
-          { ...args, phaseOrder: args.phaseOrder + 1 },
-        );
-      }
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
-    }
   },
 });
 
@@ -582,8 +482,6 @@ export const runSynthesisAction = internalAction({
 export const runPaperArchitectureAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
-    try {
       if (await completedWorkflowPhase(ctx, args, "paper_architecture")) return;
       const { argsWithApiKey, requireZdr } =
         await buildArgsWithApiKeyAndPolicy(ctx, args);
@@ -614,17 +512,6 @@ export const runPaperArchitectureAction = internalAction({
         args.phaseOrder,
       );
 
-      if (!args.workflowManaged) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.search.workflow_durable.runPaperHandoffAction,
-          { ...args, phaseOrder: args.phaseOrder + 1 },
-        );
-      }
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, projectPipelineArgs(args), error, Date.now() - phaseStartedAt);
-    }
   },
 });
 
@@ -633,9 +520,7 @@ export const runPaperArchitectureAction = internalAction({
 export const runPaperHandoffAction = internalAction({
   args: phaseActionArgs,
   handler: async (ctx, args) => {
-    const phaseStartedAt = Date.now();
     const pipelineArgs = projectPipelineArgs(args);
-    try {
       const preset = resolveComplexityPreset("paper", args.complexity);
 
       // Reconstruct all search results for the search context
@@ -685,10 +570,6 @@ export const runPaperHandoffAction = internalAction({
         perplexityModelTier: preset.searchModel,
         participantCount: 1,
       }, args);
-    } catch (error) {
-      if (args.workflowManaged) throw error;
-      await handlePhaseError(ctx, pipelineArgs, error, Date.now() - phaseStartedAt);
-    }
   },
 });
 

@@ -92,17 +92,6 @@ export const cleanStale = internalMutation({
         continue;
       }
 
-      // Cancel the scheduled function if one is recorded.
-      if (cont.scheduledFunctionId) {
-        try {
-          await ctx.scheduler.cancel(cont.scheduledFunctionId);
-        } catch {
-          // Already executed or cancelled.
-        }
-      }
-      if (job?.scheduledFunctionId) {
-        await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
-      }
       await ctx.db.delete(cont._id);
       orphansCleaned++;
     }

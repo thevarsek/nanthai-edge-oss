@@ -23,7 +23,6 @@ export interface RunCycleArgs extends Record<string, unknown> {
     displayName: string;
   };
   webSearchEnabled: boolean;
-  workflowManaged?: boolean;
   executionAttemptId?: Id<"executionAttempts">;
   executionFence?: number;
   executionEpoch?: number;

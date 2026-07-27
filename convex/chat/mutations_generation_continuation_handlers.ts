@@ -8,7 +8,7 @@ import {
 } from "./generation_continuation_shared";
 import { commitGenerationCheckpointBoundary } from "./generation_checkpoint_commit";
 
-type ContinuationMutationCtx = Pick<MutationCtx, "db" | "scheduler">;
+type ContinuationMutationCtx = Pick<MutationCtx, "db">;
 
 async function getContinuationByJobId(
   ctx: ContinuationMutationCtx,
@@ -61,7 +61,6 @@ export async function saveGenerationContinuationHandler(
     partialContent: args.checkpoint.partialContent,
     partialReasoning: args.checkpoint.partialReasoning,
     scheduledAt: undefined,
-    scheduledFunctionId: undefined,
     claimedAt: undefined,
     leaseExpiresAt: undefined,
     executionAttemptId: args.checkpoint.group.executionAttemptId,
@@ -120,9 +119,6 @@ export async function claimGenerationContinuationHandler(
   const job = await ctx.db.get(args.jobId);
   if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) {
     await ctx.db.delete(continuation._id);
-    if (job?.scheduledFunctionId) {
-      await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
-    }
     return null;
   }
   if (
@@ -150,12 +146,8 @@ export async function claimGenerationContinuationHandler(
     executionAttemptId: args.executionAttemptId ?? continuation.executionAttemptId,
     executionFence: args.executionFence ?? continuation.executionFence,
     scheduledAt: undefined,
-    scheduledFunctionId: undefined,
     updatedAt: now,
   });
-  if (job.scheduledFunctionId) {
-    await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
-  }
 
   return {
     roundKey: continuation.roundKey,
@@ -176,37 +168,6 @@ export async function claimGenerationContinuationHandler(
   };
 }
 
-export interface SetGenerationContinuationScheduledArgs extends Record<string, unknown> {
-  jobId: Id<"generationJobs">;
-  scheduledFunctionId: Id<"_scheduled_functions">;
-  updateContinuation?: boolean;
-}
-
-export async function setGenerationContinuationScheduledHandler(
-  ctx: ContinuationMutationCtx,
-  args: SetGenerationContinuationScheduledArgs,
-): Promise<void> {
-  const now = Date.now();
-  if (args.updateContinuation !== false) {
-    const continuation = await getContinuationByJobId(ctx, args.jobId);
-    if (continuation && continuation.status === "waiting") {
-      await ctx.db.patch(continuation._id, {
-        status: "waiting",
-        scheduledAt: now,
-        scheduledFunctionId: args.scheduledFunctionId,
-        updatedAt: now,
-      });
-    }
-  }
-
-  const job = await ctx.db.get(args.jobId);
-  if (job) {
-    await ctx.db.patch(job._id, {
-      scheduledFunctionId: args.scheduledFunctionId,
-    });
-  }
-}
-
 export interface ClearGenerationContinuationArgs extends Record<string, unknown> {
   jobId: Id<"generationJobs">;
 }
@@ -219,11 +180,6 @@ export async function clearGenerationContinuationHandler(
   if (continuation) {
     await ctx.db.delete(continuation._id);
   }
-
-  const job = await ctx.db.get(args.jobId);
-  if (job?.scheduledFunctionId) {
-    await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
-  }
 }
 
 export interface CancelGenerationContinuationArgs extends Record<string, unknown> {
@@ -235,22 +191,7 @@ export async function cancelGenerationContinuationHandler(
   args: CancelGenerationContinuationArgs,
 ): Promise<void> {
   const continuation = await getContinuationByJobId(ctx, args.jobId);
-  const job = await ctx.db.get(args.jobId);
-  const scheduledFunctionId =
-    continuation?.scheduledFunctionId ?? job?.scheduledFunctionId;
-
-  if (scheduledFunctionId) {
-    try {
-      await ctx.scheduler.cancel(scheduledFunctionId);
-    } catch {
-      // Already executed or cancelled.
-    }
-  }
-
   if (continuation) {
     await ctx.db.delete(continuation._id);
-  }
-  if (job?.scheduledFunctionId) {
-    await ctx.db.patch(job._id, { scheduledFunctionId: undefined });
   }
 }

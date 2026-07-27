@@ -305,9 +305,6 @@ export const deleteUserTableBatch = internalMutation({
         .withIndex("by_user_status", (q) => q.eq("userId", userId))
         .take(BATCH_SIZE);
       for (const row of rows) {
-        if (row.scheduledFunctionId) {
-          await ctx.scheduler.cancel(row.scheduledFunctionId).catch(() => undefined);
-        }
         await ctx.db.delete(row._id);
         deleted++;
       }

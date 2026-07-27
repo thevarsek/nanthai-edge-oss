@@ -53,7 +53,6 @@ export const runResearchPaperWorkflow = durableWorkflow
         {
           ...phaseArgs,
           phaseOrder: phaseOrder++,
-          workflowManaged: true,
         },
         // Planning calls the model before its phase row is committed. An
         // automatic replay after an ambiguous failure can double-charge.
@@ -95,7 +94,6 @@ export const runResearchPaperWorkflow = durableWorkflow
         {
           ...phaseArgs,
           phaseOrder: initialPhaseOrder,
-          workflowManaged: true,
           searchBatchId: initialBatchId,
         },
         { retry: true },
@@ -124,7 +122,6 @@ export const runResearchPaperWorkflow = durableWorkflow
             ...phaseArgs,
             phaseOrder: phaseOrder++,
             depthIteration,
-            workflowManaged: true,
           },
           // Analysis is provider-backed and has no pre-dispatch idempotency
           // claim, so ambiguous failures must fail closed.
@@ -160,7 +157,6 @@ export const runResearchPaperWorkflow = durableWorkflow
             ...phaseArgs,
             phaseOrder: depthPhaseOrder,
             depthIteration,
-            workflowManaged: true,
             searchBatchId: depthBatchId,
           },
           { retry: true },
@@ -179,7 +175,6 @@ export const runResearchPaperWorkflow = durableWorkflow
         {
           ...phaseArgs,
           phaseOrder: phaseOrder++,
-          workflowManaged: true,
         },
         // Synthesis is provider-backed and is only checkpointed afterwards.
         failClosedProviderActionOptions,
@@ -197,7 +192,6 @@ export const runResearchPaperWorkflow = durableWorkflow
         {
           ...phaseArgs,
           phaseOrder: phaseOrder++,
-          workflowManaged: true,
         },
         // Architecture generation has the same post-provider checkpoint.
         failClosedProviderActionOptions,
@@ -207,7 +201,6 @@ export const runResearchPaperWorkflow = durableWorkflow
         {
           ...phaseArgs,
           phaseOrder,
-          workflowManaged: true,
         },
         { retry: true },
       );
@@ -231,7 +224,6 @@ export const runResearchPaperWorkflow = durableWorkflow
           phaseOrder: -1,
           executionAttemptId,
           executionFence,
-          workflowManaged: true,
           error: summary,
         },
         { retry: true },

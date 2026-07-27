@@ -10,10 +10,8 @@ export async function finishAutonomousCycleHandler(
     cycle: number;
     userId: string;
     executionEpoch?: number;
-    workflowManaged?: boolean;
   },
 ): Promise<"continue" | "terminal"> {
-  try {
     const session = await ctx.runQuery(internal.autonomous.queries.getSession, {
       sessionId: args.sessionId,
     });
@@ -48,15 +46,4 @@ export async function finishAutonomousCycleHandler(
       return "terminal";
     }
     return "continue";
-  } catch (error) {
-    if (args.workflowManaged) throw error;
-    await ctx.runMutation(internal.autonomous.mutations.completeSession, {
-      sessionId: args.sessionId,
-      status: "failed",
-      error: error instanceof Error ? error.message : String(error),
-      stopReason: "Autonomous consensus check failed",
-      executionEpoch: args.executionEpoch,
-    });
-    throw error;
-  }
 }

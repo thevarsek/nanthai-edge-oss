@@ -33,7 +33,6 @@ import {
   normalizeOpenRouterMessages,
   resolveSnapshotRequireZdr,
   resolveWebSearchToolIntent,
-  SUBAGENT_RECOVERY_LEASE_MS,
 } from "./shared";
 import { SubagentStreamWriter } from "./stream_writer";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
@@ -93,27 +92,18 @@ function toRecordedToolResults(
 async function markBatchWaitingAndArrangeParentResume(
   ctx: ActionCtx,
   batchId: Id<"subagentBatches">,
-  workflowManaged: boolean,
 ): Promise<void> {
-  if (workflowManaged) {
-    await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
-      batchId,
-      status: "waiting_to_resume",
-      expectedCurrentStatus: "running_children",
-      continuationScheduledAt: Date.now(),
-    });
-    return;
-  }
-  await ctx.runMutation(
-    internal.subagents.parent_resume_gate.markBatchWaitingAndArmParentResume,
-    { batchId },
-  );
+  await ctx.runMutation(internal.subagents.mutations.updateBatchStatus, {
+    batchId,
+    status: "waiting_to_resume",
+    expectedCurrentStatus: "running_children",
+    continuationScheduledAt: Date.now(),
+  });
 }
 
 async function maybeFailStaleStreamingRun(
   ctx: ActionCtx,
   runId: Id<"subagentRuns">,
-  workflowManaged = false,
 ): Promise<boolean> {
   const run = await ctx.runQuery(internal.subagents.queries.getRunInternal, { runId });
   if (!run || run.status !== "streaming" || !isSubagentLeaseStale(run.updatedAt, Date.now())) {
@@ -179,7 +169,6 @@ async function maybeFailStaleStreamingRun(
     await markBatchWaitingAndArrangeParentResume(
       ctx,
       finalizeResult.batchId,
-      workflowManaged,
     );
   }
   return true;
@@ -215,17 +204,10 @@ export async function runSubagentRunHandler(
   ctx: ActionCtx,
   args: {
     runId: Id<"subagentRuns">;
-    workflowManaged?: boolean;
     executionAttemptId?: Id<"executionAttempts">;
     executionFence?: number;
   },
 ): Promise<void> {
-  if (
-    args.workflowManaged === true
-    && (args.executionAttemptId === undefined || args.executionFence === undefined)
-  ) {
-    throw new Error("SUBAGENT_WORKFLOW_EXECUTION_FENCE_REQUIRED");
-  }
   const executionToken = args.executionAttemptId !== undefined
     && args.executionFence !== undefined
     ? {
@@ -239,17 +221,12 @@ export async function runSubagentRunHandler(
     ...executionToken,
   });
   if (!claimed) {
-    await maybeFailStaleStreamingRun(ctx, args.runId, args.workflowManaged === true);
+    await maybeFailStaleStreamingRun(ctx, args.runId);
     return;
   }
 
   const run = await ctx.runQuery(internal.subagents.queries.getRunInternal, { runId: args.runId });
   if (!run) return;
-  if (!args.workflowManaged) {
-    await ctx.scheduler.runAfter(SUBAGENT_RECOVERY_LEASE_MS, internal.execution.fanout_queues.enqueueSubagentContinuation, {
-      runId: args.runId,
-    });
-  }
   const batch = await ctx.runQuery(internal.subagents.queries.getBatchInternal, { batchId: run.batchId });
   if (!batch) {
     return;
@@ -355,7 +332,6 @@ export async function runSubagentRunHandler(
       await markBatchWaitingAndArrangeParentResume(
         ctx,
         finalizeResult.batchId,
-        args.workflowManaged === true,
       );
     }
     return;
@@ -415,7 +391,6 @@ export async function runSubagentRunHandler(
       await markBatchWaitingAndArrangeParentResume(
         ctx,
         finalizeResult.batchId,
-        args.workflowManaged === true,
       );
     }
     return;
@@ -809,11 +784,6 @@ export async function runSubagentRunHandler(
           continuation_count: nextContinuationCount,
         },
       });
-      if (!args.workflowManaged) {
-        await ctx.scheduler.runAfter(0, internal.execution.fanout_queues.enqueueSubagentContinuation, {
-          runId: run._id,
-        });
-      }
       return;
     }
 
@@ -870,7 +840,6 @@ export async function runSubagentRunHandler(
       await markBatchWaitingAndArrangeParentResume(
         ctx,
         finalizeResult.batchId,
-        args.workflowManaged === true,
       );
     }
   } catch (error) {
@@ -904,7 +873,6 @@ export async function runSubagentRunHandler(
       await markBatchWaitingAndArrangeParentResume(
         ctx,
         finalizeResult.batchId,
-        args.workflowManaged === true,
       );
     }
   } finally {

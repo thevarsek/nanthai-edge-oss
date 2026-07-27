@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { ConvexError } from "convex/values";
 import * as chatActions from "../chat/actions";
+import * as chatRuntimeActions from "../chat/actions_runtime";
 import {
   deleteChatContinuation,
   deleteSingleChat,
@@ -60,7 +61,11 @@ function buildManageCtx(chat: Record<string, unknown> | null) {
 }
 
 test("chat actions remain registered and previewVoice enforces auth", async () => {
-  assert.equal(typeof (chatActions.runGeneration as any)._handler, "function");
+  assert.equal(typeof (chatRuntimeActions.runGeneration as any)._handler, "function");
+  assert.equal(
+    typeof (chatRuntimeActions.runGenerationParticipant as any)._handler,
+    "function",
+  );
   assert.equal(typeof (chatActions.postProcess as any)._handler, "function");
   assert.equal(typeof (chatActions.generateTitle as any)._handler, "function");
   assert.equal(typeof (chatActions.generateAudioForMessage as any)._handler, "function");

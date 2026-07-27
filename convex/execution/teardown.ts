@@ -2,6 +2,7 @@ import { internalAction, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 import {
   advanceRunTreeTeardown,
   finalizeRunCancellationIfSettled,
@@ -9,17 +10,20 @@ import {
 import {
   cancelComponent,
   cancelOwnedComponents,
+  isAcknowledgedActionDrainSafe,
 } from "./teardown_components";
 import {
   cancelChatExecutionsAndDeleteHandler,
   cancelUserExecutionsHandler,
 } from "./teardown_delete_handlers";
+import { cancelScheduledJobAndDeleteHandler } from "./teardown_scheduled_job";
 
 const ownedComponent = v.object({
   componentRefId: v.optional(v.id("executionComponentRefs")),
   operationId: v.string(),
   adapterId: v.string(),
   cancelSafeAfter: v.optional(v.number()),
+  cancelAcknowledgedAt: v.optional(v.number()),
 });
 const teardownAdvance = v.object({
   components: v.array(ownedComponent),
@@ -87,25 +91,24 @@ export const requestRunTeardown = internalMutation({
   },
 });
 
-export const finishComponentCancellation = internalMutation({
+export async function finishComponentCancellationHandler(
+  ctx: MutationCtx,
   args: {
-    componentRefId: v.id("executionComponentRefs"),
-    cancelled: v.boolean(),
+    componentRefId: Id<"executionComponentRefs">;
+    cancelled: boolean;
   },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const ref = await ctx.db.get(args.componentRefId);
-    if (!ref || ref.status !== "cancel_requested") return null;
-    const now = Date.now();
-    if (!args.cancelled) {
-      await ctx.db.patch(ref._id, { updatedAt: now });
-      return null;
-    }
-    if (requiresActionDrain(ref.adapterId)) {
-      await ctx.db.patch(ref._id, {
-        cancelSafeAfter: ref.cancelSafeAfter ?? now + ACTION_DRAIN_GRACE_MS,
-        updatedAt: now,
-      });
+): Promise<null> {
+  const ref = await ctx.db.get(args.componentRefId);
+  if (!ref || ref.status !== "cancel_requested") return null;
+  const now = Date.now();
+  if (!args.cancelled) {
+    await ctx.db.patch(ref._id, { updatedAt: now });
+    return null;
+  }
+  if (requiresActionDrain(ref.adapterId)) {
+    const cancelSafeAfter = ref.cancelSafeAfter ?? now + ACTION_DRAIN_GRACE_MS;
+    if (cancelSafeAfter > now) {
+      await ctx.db.patch(ref._id, { cancelSafeAfter, updatedAt: now });
       return null;
     }
     await ctx.db.patch(ref._id, {
@@ -115,7 +118,23 @@ export const finishComponentCancellation = internalMutation({
     });
     await finalizeRunCancellationIfSettled(ctx, ref.runId, now);
     return null;
+  }
+  await ctx.db.patch(ref._id, {
+    status: "cancelled",
+    terminalAt: now,
+    updatedAt: now,
+  });
+  await finalizeRunCancellationIfSettled(ctx, ref.runId, now);
+  return null;
+}
+
+export const finishComponentCancellation = internalMutation({
+  args: {
+    componentRefId: v.id("executionComponentRefs"),
+    cancelled: v.boolean(),
   },
+  returns: v.null(),
+  handler: finishComponentCancellationHandler,
 });
 
 export const reconcilePendingComponentCancellations = internalMutation({
@@ -147,7 +166,9 @@ export const reconcilePendingComponentCancellations = internalMutation({
         }
         if (cancelSafeAfter > now) continue;
       }
-      const cancelled = await cancelComponent(ctx, ref.adapterId, ref.operationId);
+      const cancelled = isAcknowledgedActionDrainSafe(ref, now)
+        ? true
+        : await cancelComponent(ctx, ref.adapterId, ref.operationId);
       if (!isComponentCancellationConfirmed(cancelled, ref.cancelAcknowledgedAt)) {
         await ctx.db.patch(ref._id, { updatedAt: Date.now() });
         continue;
@@ -201,6 +222,7 @@ export const cancelRunTree = internalAction({
       operationId: string;
       adapterId: string;
       cancelSafeAfter?: number;
+      cancelAcknowledgedAt?: number;
       }>;
       done: boolean;
     } = await ctx.runMutation(
@@ -223,85 +245,7 @@ export const cancelRunTree = internalAction({
 export const cancelScheduledJobAndDelete = internalAction({
   args: { jobId: v.id("scheduledJobs"), userId: v.string() },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const job = await ctx.runQuery(internal.scheduledJobs.queries.getJobInternal, {
-      jobId: args.jobId,
-    });
-    if (!job || job.userId !== args.userId) return null;
-    if (job.executionRunId) {
-      const advanced: {
-        components: Array<{
-          componentRefId?: Id<"executionComponentRefs">;
-          operationId: string;
-          adapterId: string;
-        }>;
-        done: boolean;
-      } = await ctx.runMutation(
-        internal.execution.teardown.requestRunTeardown,
-        {
-          runId: job.executionRunId,
-          requestedBy: args.userId,
-          reason: "Scheduled job deleted",
-        },
-      );
-      const confirmed = await cancelOwnedComponents(ctx, advanced.components);
-      if (!advanced.done || !confirmed) {
-        await ctx.scheduler.runAfter(
-          5_000,
-          internal.execution.teardown.cancelScheduledJobAndDelete,
-          args,
-        );
-        return null;
-      }
-    }
-    if (job.activeGenerationJobId) {
-      const generationJob = await ctx.runQuery(
-        internal.chat.queries.getGenerationJobInternal,
-        { jobId: job.activeGenerationJobId },
-      );
-      if (
-        generationJob?.executionRunId
-        && generationJob.executionRunId !== job.executionRunId
-      ) {
-        const advanced: {
-          components: Array<{
-            componentRefId?: Id<"executionComponentRefs">;
-            operationId: string;
-            adapterId: string;
-          }>;
-          done: boolean;
-        } = await ctx.runMutation(
-          internal.execution.teardown.requestRunTeardown,
-          {
-            runId: generationJob.executionRunId,
-            requestedBy: args.userId,
-            reason: "Scheduled job deleted",
-          },
-        );
-        const confirmed = await cancelOwnedComponents(ctx, advanced.components);
-        if (!advanced.done || !confirmed) {
-          await ctx.scheduler.runAfter(
-            5_000,
-            internal.execution.teardown.cancelScheduledJobAndDelete,
-            args,
-          );
-          return null;
-        }
-      }
-    }
-    const deleted = await ctx.runMutation(
-      internal.scheduledJobs.mutations.deleteJobBatchInternal,
-      args,
-    );
-    if (!deleted) {
-      await ctx.scheduler.runAfter(
-        0,
-        internal.execution.teardown.cancelScheduledJobAndDelete,
-        args,
-      );
-    }
-    return null;
-  },
+  handler: cancelScheduledJobAndDeleteHandler,
 });
 
 export const cancelUserExecutions = internalAction({

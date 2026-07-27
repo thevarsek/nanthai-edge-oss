@@ -69,6 +69,7 @@ export const PURGE_TABLES = [
   "generatedMedia",
   "fileAttachments",
   "googleDriveFileGrants",
+  "aiContentReports",
   "messages",
   "memories",
   "personas",

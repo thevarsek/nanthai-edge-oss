@@ -17,8 +17,6 @@ import {
   postProcessArgs,
   previewVoiceArgs,
   pollVideoGenerationArgs,
-  runGenerationArgs,
-  runGenerationParticipantArgs,
   submitVideoGenerationArgs,
 } from "./actions_args";
 import {
@@ -28,8 +26,6 @@ import {
 import { extractMemoriesHandler } from "./actions_extract_memories_handler";
 import { generateTitleHandler } from "./actions_generate_title_handler";
 import { postProcessHandler } from "./actions_post_process_handler";
-import { runGenerationHandler } from "./actions_run_generation_handler";
-import { runGenerationParticipantRuntimeHandler } from "./actions_run_generation_participant_runtime";
 import {
   pollVideoGenerationHandler,
   failVideoWorkflowHandler,
@@ -41,16 +37,6 @@ import {
   captureAssistantResponseFailure,
   captureAssistantResponseStartedEvent,
 } from "./generation_analytics";
-
-export const runGeneration = internalAction({
-  args: runGenerationArgs,
-  handler: runGenerationHandler,
-});
-
-export const runGenerationParticipant = internalAction({
-  args: runGenerationParticipantArgs,
-  handler: runGenerationParticipantRuntimeHandler,
-});
 
 export const postProcess = internalAction({
   args: postProcessArgs,
@@ -170,9 +156,9 @@ export const failVideoWorkflow = internalAction({
 export const pollVideoGeneration = internalAction({
   args: {
     ...pollVideoGenerationArgs,
-    executionAttemptId: v.optional(v.id("executionAttempts")),
-    executionFence: v.optional(v.number()),
-    executionClaimantId: v.optional(v.string()),
+    executionAttemptId: v.id("executionAttempts"),
+    executionFence: v.number(),
+    executionClaimantId: v.string(),
   },
   handler: pollVideoGenerationHandler,
 });

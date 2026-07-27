@@ -50,7 +50,7 @@ test("unclaimed fresh or missing subagent runs do not finalize stale work", asyn
   }
 });
 
-test("claimed subagent run exits after scheduling recovery when its batch disappears", async () => {
+test("claimed subagent run leaves missing-batch recovery to the owning Workflow", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
   await runSubagentRunHandler({
     runMutation: async () => true,
@@ -66,7 +66,7 @@ test("claimed subagent run exits after scheduling recovery when its batch disapp
     },
   } as any, { runId: "run_1" as any });
 
-  assert.deepEqual(scheduled, [{ runId: "run_1" }]);
+  assert.deepEqual(scheduled, []);
 });
 
 test("streaming subagent run cancels when the batch is cancelled during periodic checks", async (t) => {

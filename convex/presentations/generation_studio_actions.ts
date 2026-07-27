@@ -6,7 +6,6 @@ import { MODEL_IDS } from "../lib/model_constants";
 import { withZdrProvider } from "../lib/openrouter_zdr";
 import { createPresentationActionDepsForTest, resolvePresentationAiAccess } from "./action_shared";
 import { loadPresentationPromptAssets } from "./asset_inputs";
-import { failAndResume } from "./deferred_workflow_resume";
 import {
   PresentationLayoutRepairContinuationError,
   applyDeterministicPresentationLayoutRepairs,
@@ -44,15 +43,13 @@ import {
 import { presentationExecutionIdentity } from "./generation_execution_identity";
 import {
   presentationStudioActionContext as studioContext,
-  presentationStudioWorkflowArgs as workflowArgs,
 } from "./generation_studio_action_context";
-import { cancelUnfencedPresentationAction } from "./legacy_action_identity";
 
 const studioArgs = {
   runId: v.id("presentationGenerationRuns"),
   batchId: v.id("presentationGenerationBatches"),
-  executionAttemptId: v.optional(v.id("executionAttempts")),
-  executionFence: v.optional(v.number()),
+  executionAttemptId: v.id("executionAttempts"),
+  executionFence: v.number(),
 };
 
 async function failStudio(
@@ -61,15 +58,12 @@ async function failStudio(
   error: unknown,
 ): Promise<void> {
   const message = safePresentationErrorMessage(error);
-  const changed = await ctx.runMutation(failPresentationFanoutRef, {
+  await ctx.runMutation(failPresentationFanoutRef, {
     runId: context.run._id,
     batchId: context.batch._id,
     ...presentationExecutionIdentity(context.run),
     error: message,
   });
-  if (changed && !context.project.workflowId) {
-    await failAndResume(ctx, workflowArgs(context), error);
-  }
 }
 
 export const runPresentationStudio = internalAction({
@@ -77,10 +71,7 @@ export const runPresentationStudio = internalAction({
   handler: async (ctx, args): Promise<void> => {
     const context = await studioContext(ctx, args);
     if (!context) return;
-    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) {
-      await cancelUnfencedPresentationAction(ctx, args, context.run);
-      return;
-    }
+    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) return;
     if (!(await ctx.runMutation(claimPresentationStudioBatchRef, {
       runId: context.run._id,
       batchId: context.batch._id,
@@ -108,10 +99,7 @@ export const runPresentationStudioRepair = internalAction({
   handler: async (ctx, args): Promise<void> => {
     const context = await studioContext(ctx, args);
     if (!context) return;
-    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) {
-      await cancelUnfencedPresentationAction(ctx, args, context.run);
-      return;
-    }
+    if (!(await presentationGenerationJobIsActive(ctx, context.run.jobId))) return;
     if (!(await ctx.runMutation(claimPresentationStudioBatchRef, {
       runId: context.run._id,
       batchId: context.batch._id,

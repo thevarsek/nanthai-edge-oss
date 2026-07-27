@@ -115,7 +115,6 @@ test("cancelGeneration cancels durable continuation, assistant state, subagent r
       userId: "user_1",
       messageId: "message_1",
       status: "streaming",
-      scheduledFunctionId: "sched_job",
     },
     messages: {
       message_1: {
@@ -127,7 +126,7 @@ test("cancelGeneration cancels durable continuation, assistant state, subagent r
       session_1: { _id: "session_1", status: "planning" },
     },
     continuations: {
-      job_1: { _id: "continuation_1", scheduledFunctionId: "sched_continuation" },
+      job_1: { _id: "continuation_1" },
     },
     streamingRows: [
       { _id: "stream_old", messageId: "message_1", chatId: "chat_1", status: "streaming", content: "old", createdAt: 1, updatedAt: 1 },
@@ -142,7 +141,7 @@ test("cancelGeneration cancels durable continuation, assistant state, subagent r
 
   await cancelGenerationHandler(ctx, { jobId: "job_1" as any });
 
-  assert.deepEqual(cancelledScheduled, ["sched_continuation"]);
+  assert.deepEqual(cancelledScheduled, []);
   assert.ok(deletes.includes("continuation_1"));
   assert.ok(deletes.includes("stream_old"));
   assert.ok(patches.some((entry) => entry.id === "job_1" && entry.patch.status === "cancelled"));
@@ -174,10 +173,10 @@ test("cancelActiveGeneration cancels queued and streaming work but preserves ter
       streaming_msg: { _id: "streaming_msg", chatId: "chat_1", status: "streaming" },
     },
     queuedJobs: [
-      { _id: "queued_job", messageId: "queued_msg", scheduledFunctionId: "sched_queued" },
+      { _id: "queued_job", messageId: "queued_msg" },
     ],
     streamingJobs: [
-      { _id: "streaming_job", messageId: "streaming_msg", scheduledFunctionId: "sched_streaming" },
+      { _id: "streaming_job", messageId: "streaming_msg" },
     ],
     streamingRows: [
       { _id: "stream_overlay", messageId: "streaming_msg", chatId: "chat_1", status: "streaming", content: "", createdAt: 1, updatedAt: 1 },
@@ -198,7 +197,7 @@ test("cancelActiveGeneration cancels queued and streaming work but preserves ter
   const result = await cancelActiveGenerationHandler(ctx, { chatId: "chat_1" as any });
 
   assert.equal(result.cancelledCount, 2);
-  assert.deepEqual(cancelledScheduled, ["sched_queued", "sched_streaming"]);
+  assert.deepEqual(cancelledScheduled, []);
   assert.ok(patches.some((entry) => entry.id === "queued_job" && entry.patch.status === "cancelled"));
   assert.ok(patches.some((entry) => entry.id === "streaming_job" && entry.patch.status === "cancelled"));
   assert.ok(patches.some((entry) => entry.id === "queued_msg" && entry.patch.status === "cancelled"));

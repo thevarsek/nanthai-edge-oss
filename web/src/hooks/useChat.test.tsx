@@ -163,6 +163,30 @@ describe("useChat", () => {
     expect(result.current.isGenerating).toBe(false);
   });
 
+  it("stops showing generation as soon as canonical cancellation is requested", () => {
+    convexMocks.queryResults = [
+      chat(),
+      [message({ content: "", status: "cancelled" })],
+      [],
+      [],
+      [{
+        runId: "run_cancelling",
+        kind: "generation",
+        state: "cancelling",
+        placement: "cloud",
+        updatedAt: 6,
+        cancelAvailable: false,
+        cancelRequested: true,
+        needsInput: false,
+        needsPermission: false,
+      } satisfies ExecutionProjection],
+    ];
+
+    const { result } = renderHook(() => useChat(chatId));
+
+    expect(result.current.isGenerating).toBe(false);
+  });
+
   it("strips local-only participant ids when sending and retrying", async () => {
     convexMocks.queryResults = [chat(), [], [], [], []];
     convexMocks.mutations[0]!.mockResolvedValue({ userMessageId: "user_msg", assistantMessageIds: ["assistant_msg"] });

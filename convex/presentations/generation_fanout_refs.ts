@@ -9,28 +9,25 @@ import type { ParsedPresentationSlide } from "./types";
 export type StudioActionArgs = {
   runId: Id<"presentationGenerationRuns">;
   batchId: Id<"presentationGenerationBatches">;
-  executionAttemptId?: Id<"executionAttempts">;
-  executionFence?: number;
+  executionAttemptId: Id<"executionAttempts">;
+  executionFence: number;
 }
 
 export type CuratorActionArgs = {
   runId: Id<"presentationGenerationRuns">;
-  executionAttemptId?: Id<"executionAttempts">;
-  executionFence?: number;
+  executionAttemptId: Id<"executionAttempts">;
+  executionFence: number;
 }
 
 export type CuratorTaskActionArgs = {
   taskId: Id<"presentationCuratorTasks">;
-  executionAttemptId?: Id<"executionAttempts">;
-  executionFence?: number;
+  executionAttemptId: Id<"executionAttempts">;
+  executionFence: number;
 }
 
 type ExecutionIdentity = {
   executionAttemptId: Id<"executionAttempts">;
   executionFence: number;
-};
-export type AdoptedPresentationExecution = ExecutionIdentity & {
-  executionRunId: Id<"executionRuns">;
 };
 type StudioMutationArgs = Omit<
   StudioActionArgs,
@@ -104,18 +101,6 @@ export const getPresentationCuratorTaskContextRef = internalRef<
     task: Doc<"presentationCuratorTasks">;
   }) | null
 >("presentations/generation_fanout_queries:getPresentationCuratorTaskContext");
-
-export const adoptLegacyPresentationExecutionRef = internalRef<
-  "mutation",
-  { runId: Id<"presentationGenerationRuns"> },
-  AdoptedPresentationExecution | null
->("presentations/legacy_execution_adoption:adoptLegacyPresentationExecution");
-
-export const cancelAdoptedLegacyPresentationExecutionRef = internalRef<
-  "mutation",
-  { runId: Id<"presentationGenerationRuns"> } & ExecutionIdentity,
-  boolean
->("presentations/legacy_execution_adoption:cancelAdoptedLegacyPresentationExecution");
 
 export const startPresentationFanoutRef = internalRef<
   "mutation",

@@ -19,10 +19,6 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES,
   ingestDriveFile,
 } from "./ingest";
-import {
-  resolveSnapshotRequireZdr,
-  resolveWebSearchToolIntent,
-} from "../subagents/shared";
 
 type DrivePickerBatch = {
   userId: string;
@@ -30,28 +26,12 @@ type DrivePickerBatch = {
   paramsSnapshot?: { workflowResumeEventId?: string };
 };
 
-export function shouldUseLegacySchedulerResume(
-  orchestrationEngine: string | undefined,
-  workflowResumeEventId?: string,
-): boolean {
-  return orchestrationEngine === "legacy_scheduler"
-    || (!orchestrationEngine && !workflowResumeEventId);
-}
-
 async function scheduleWorkflowSignalRetry(
   ctx: ActionCtx,
   batchId: Id<"drivePickerBatches">,
   userId: string,
   attempt = 0,
 ): Promise<void> {
-  const ownership = await ctx.runQuery(
-    internal.drive_picker.ownership.getResumeOwnership,
-    { batchId, userId },
-  );
-  if (shouldUseLegacySchedulerResume(
-    ownership?.orchestrationEngine,
-    ownership?.workflowResumeEventId,
-  )) return;
   await ctx.scheduler.runAfter(
     500,
     internal.drive_picker.ownership.retryWorkflowResumeGate,
@@ -167,38 +147,7 @@ export const attachPickedDriveFiles = action({
       return { success: true, status: "resuming", attachedCount: attachments.length };
     }
 
-    // Production-drain compatibility is only valid when the persisted attempt
-    // explicitly says it is scheduler-owned. A missing/stale Workflow event is
-    // retried; it must never start a second generation engine.
-    if (!shouldUseLegacySchedulerResume(resume.orchestrationEngine)) {
-      await scheduleWorkflowSignalRetry(ctx, args.batchId, userId);
-      return { success: true, status: "resuming", attachedCount: attachments.length };
-    }
-
-    const scheduledFunctionId = await ctx.scheduler.runAfter(0, internal.chat.actions_runtime.runGeneration, {
-      chatId: resume.chatId,
-      userMessageId: resume.userMessageId,
-      assistantMessageIds: resume.assistantMessageIds,
-      generationJobIds: resume.generationJobIds,
-      participants: [resume.participant],
-      userId: resume.userId,
-      expandMultiModelGroups: false,
-      webSearchEnabled: resolveWebSearchToolIntent(resume.paramsSnapshot ?? {}),
-      requireZdrOverride: resolveSnapshotRequireZdr(resume.paramsSnapshot ?? {}),
-      enabledIntegrations: resume.paramsSnapshot?.enabledIntegrations ?? [],
-      turnSkillOverrides: resume.paramsSnapshot?.turnSkillOverrides,
-      turnIntegrationOverrides: resume.paramsSnapshot?.turnIntegrationOverrides,
-      subagentsEnabled: false,
-      drivePickerBatchId: args.batchId,
-      analytics: resume.paramsSnapshot?.analytics,
-      analyticsSource: resume.paramsSnapshot?.analyticsSource,
-    });
-
-    await ctx.runMutation(internal.drive_picker.mutations.scheduleResume, {
-      batchId: args.batchId,
-      scheduledFunctionId,
-    });
-
+    await scheduleWorkflowSignalRetry(ctx, args.batchId, userId);
     return { success: true, status: "resuming", attachedCount: attachments.length };
   },
 });

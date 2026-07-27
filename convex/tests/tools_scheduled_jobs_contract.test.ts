@@ -30,6 +30,7 @@ test("createScheduledJob blocks free users", async () => {
 test("createScheduledJob resolves the user's default model and returns a schedule summary", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   let queryCount = 0;
+  const nextRunAt = Date.UTC(2026, 6, 27, 15, 0, 0);
 
   const result = await createScheduledJob.execute(
     {
@@ -38,7 +39,8 @@ test("createScheduledJob resolves the user's default model and returns a schedul
         runQuery: async () => {
           queryCount += 1;
           if (queryCount === 1) return true;
-          return "anthropic/claude-sonnet-4";
+          if (queryCount === 2) return "anthropic/claude-sonnet-4";
+          return { nextRunAt };
         },
         runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
           mutations.push(args);
@@ -58,7 +60,81 @@ test("createScheduledJob resolves the user's default model and returns a schedul
   assert.equal(result.success, true);
   assert.equal(mutations[0]?.modelId, "anthropic/claude-sonnet-4");
   assert.equal((result.data as any).schedule, "daily at 08:00 UTC");
+  assert.equal((result.data as any).nextRunAt, "2026-07-27T15:00:00.000Z");
   assert.match((result.data as any).message, /Created scheduled job "Morning Summary"/);
+});
+
+test("createScheduledJob inherits the invoking model when the user did not request an override", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+  let queryCount = 0;
+
+  const result = await createScheduledJob.execute(
+    {
+      userId: "user_1",
+      modelId: "openai/gpt-5.6-terra",
+      ctx: {
+        runQuery: async () => {
+          queryCount += 1;
+          return queryCount === 1
+            ? true
+            : { nextRunAt: Date.UTC(2026, 6, 27, 15, 15, 0) };
+        },
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          mutations.push(args);
+          return "job_1";
+        },
+      },
+    } as any,
+    {
+      name: "Same-model canary",
+      prompt: "Reply with CANARY_OK.",
+      recurrence: { type: "manual" },
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal(queryCount, 2);
+  assert.equal(mutations[0]?.modelId, "openai/gpt-5.6-terra");
+});
+
+test("createScheduledJob strips unused recurrence fields before the strict mutation boundary", async () => {
+  const mutations: Array<Record<string, unknown>> = [];
+
+  const result = await createScheduledJob.execute(
+    {
+      userId: "user_1",
+      modelId: "google/gemini-2.5-flash",
+      ctx: {
+        runQuery: async () => true,
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          mutations.push(args);
+          return "job_1";
+        },
+      },
+    } as any,
+    {
+      name: "Quarter-hour Canary",
+      prompt: "Reply with CANARY_OK.",
+      modelId: "openai/gpt-5.5",
+      steps: [],
+      recurrence: {
+        type: "cron",
+        minutes: 0,
+        hourUTC: 0,
+        minuteUTC: 0,
+        dayOfWeek: 0,
+        expression: "*/15 * * * *",
+      },
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.equal((result.data as any).stepCount, 1);
+  assert.equal(mutations[0]?.modelId, "openai/gpt-5.5");
+  assert.deepEqual(mutations[0]?.recurrence, {
+    type: "cron",
+    expression: "*/15 * * * *",
+  });
 });
 
 test("createScheduledJob accepts multi-step payloads without requiring legacy model defaults", async () => {
@@ -90,7 +166,7 @@ test("createScheduledJob accepts multi-step payloads without requiring legacy mo
   );
 
   assert.equal(result.success, true);
-  assert.equal(queryCount, 1);
+  assert.equal(queryCount, 2);
   assert.equal((mutations[0]?.steps as Array<unknown>)?.length, 2);
   assert.equal(mutations[0]?.modelId, undefined);
   assert.equal((result.data as any).stepCount, 2);
@@ -227,6 +303,45 @@ test("updateScheduledJob omits null recurrence to preserve existing schedule", a
   assert.equal(result.success, true);
   assert.equal(updates[0]?.recurrence, undefined);
   assert.equal(updates[0]?.status, "active");
+});
+
+test("updateScheduledJob strips unused recurrence fields before the strict mutation boundary", async () => {
+  const updates: Array<Record<string, unknown>> = [];
+  let queryCount = 0;
+  const result = await updateScheduledJob.execute(
+    {
+      userId: "user_1",
+      ctx: {
+        runQuery: async () => {
+          queryCount += 1;
+          if (queryCount === 1) return true;
+          return [{ _id: "job_1", name: "Morning Summary" }];
+        },
+        runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+          updates.push(args);
+          return null;
+        },
+      },
+    } as any,
+    {
+      jobId: "job_1",
+      recurrence: {
+        type: "daily",
+        minutes: 0,
+        hourUTC: 8,
+        minuteUTC: 30,
+        dayOfWeek: 0,
+        expression: "",
+      },
+    },
+  );
+
+  assert.equal(result.success, true);
+  assert.deepEqual(updates[0]?.recurrence, {
+    type: "daily",
+    hourUTC: 8,
+    minuteUTC: 30,
+  });
 });
 
 test("updateScheduledJob forwards personaId and targetFolderId, including explicit clears", async () => {

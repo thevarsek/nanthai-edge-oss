@@ -94,11 +94,13 @@ queues provide backpressure; they are not user quotas.
 - Effects: `convex/execution/operations.ts`,
   `convex/tools/effect_policy_inventory.ts`
 - Client lifecycle: `convex/execution/projection.ts`, `queries.ts`
-- Legacy removal gate: `execution/queries:getLegacyOrchestrationDrainState`
+- M48 retirement audit:
+  [M48 Legacy Orchestration Retirement](../milestones/M48-legacy-orchestration-retirement.md)
+  and its retained symbol/data ledger
 
-The gate's deletion procedure and symbol-classification rules live in
-[M48 Legacy Orchestration Retirement](../milestones/M48-legacy-orchestration-retirement.md).
-A single zero result starts the evidence window; it does not authorize removal.
+M48 completed the legacy deletion procedure and removed the drain sentinel
+last. The ledger remains the historical proof; it is not a runtime extension
+point.
 
 Prefer extending these helpers or an existing domain Workflow over creating a
 new parallel abstraction.
@@ -140,10 +142,9 @@ Every new durable workload needs focused coverage for:
 - exactly-once domain finalization and artifact/effect publication;
 - run-tree deletion and component cleanup;
 - live-shaped canonical client projection when lifecycle fields change; and
-- legacy adoption only when the workload has pre-M47 in-flight records.
+- historical attempt-engine decoding where the workload exposes audit history.
 
 Run the complete Convex test/typecheck/lint gates after the focused suite. Do
-not remove compatibility fields or handlers until the production drain query
-returns both `inspectionComplete: true` and `drainComplete: true` throughout
-M48's recorded soak and all of M48's client, data, rollback, and call-graph gates
-also pass.
+not add compatibility fields, scheduler handoffs, or predecessor-adoption
+handlers in new workloads. M48 completed their staged removal after its
+production client, data, rollback, call-graph, and drain gates passed.

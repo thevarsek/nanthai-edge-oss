@@ -18,7 +18,7 @@ export interface CreateAutonomousMessageArgs extends Record<string, unknown> {
   userId: string;
   modelId: string;
   participantId: string;
-  participantName: string;
+  participantName?: string;
   personaId?: Id<"personas"> | null;
   parentMessageIds: Id<"messages">[];
   moderatorDirective?: string;
@@ -94,7 +94,7 @@ export const createAutonomousMessage = internalMutation({
     userId: v.string(),
     modelId: v.string(),
     participantId: v.string(),
-    participantName: v.string(),
+    participantName: v.optional(v.string()),
     personaId: v.optional(v.union(v.id("personas"), v.null())),
     parentMessageIds: v.array(v.id("messages")),
     moderatorDirective: v.optional(v.string()),

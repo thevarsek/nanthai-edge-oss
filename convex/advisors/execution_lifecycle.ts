@@ -115,12 +115,6 @@ export async function cancelAdvisorForExecutionRun(
     .take(20);
   const now = Date.now();
   for (const run of runs) {
-    if (run.scheduledFunctionId) {
-      await ctx.scheduler.cancel(run.scheduledFunctionId).catch(() => undefined);
-    }
-    if (run.watchdogScheduledFunctionId) {
-      await ctx.scheduler.cancel(run.watchdogScheduledFunctionId).catch(() => undefined);
-    }
     if (!isTerminalAdvisorRun(run.status)) {
       await ctx.db.patch(run._id, {
         status: "cancelled",

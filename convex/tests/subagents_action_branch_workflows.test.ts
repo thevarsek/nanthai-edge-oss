@@ -78,7 +78,7 @@ function makeClaimedRunCtx(options: {
   };
 }
 
-test("unclaimed stale legacy subagents arm durable parent resume when all children are terminal", async () => {
+test("stale Workflow-owned subagents hand terminal batches back to the parent Workflow", async () => {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
 
@@ -139,7 +139,8 @@ test("unclaimed stale legacy subagents arm durable parent resume when all childr
   ));
   assert.ok(mutations.some((args) =>
     args.batchId === "batch_1"
-    && Object.keys(args).length === 1
+    && args.status === "waiting_to_resume"
+    && args.expectedCurrentStatus === "running_children"
   ));
   assert.ok(scheduled.some((entry) =>
     entry.event === "assistant_response_started"
@@ -215,8 +216,7 @@ test("claimed subagent run marks itself cancelled when its batch was cancelled",
 
   await runSubagentRunHandler(ctx, { runId: "run_1" as any });
 
-  assert.equal(scheduled.length, 1);
-  assert.deepEqual(scheduled[0]?.args, { runId: "run_1" });
+  assert.equal(scheduled.length, 0);
   assert.ok(mutations.some((args) =>
     args.runId === "run_1"
     && args.status === "cancelled"
@@ -246,7 +246,7 @@ test("claimed subagent run stores an explicit empty-response fallback without re
   assert.equal(state.scheduled.some((args) => args.batchId === "batch_1"), false);
 });
 
-test("claimed legacy subagent stream failures arm parent resume through the mutation boundary", async (t) => {
+test("Workflow-owned subagent failures hand terminal batches back through the mutation boundary", async (t) => {
   t.after(() => mock.restoreAll());
   mock.method(globalThis, "fetch", async () => {
     throw "subagent transport failed";
@@ -264,7 +264,8 @@ test("claimed legacy subagent stream failures arm parent resume through the muta
   assert.equal(failed?.error, "subagent transport failed");
   assert.ok(state.mutations.some((args) =>
     args.batchId === "batch_1"
-    && Object.keys(args).length === 1
+    && args.status === "waiting_to_resume"
+    && args.expectedCurrentStatus === "running_children"
   ));
   assert.equal(state.scheduled.some((args) => args.batchId === "batch_1"), false);
 });

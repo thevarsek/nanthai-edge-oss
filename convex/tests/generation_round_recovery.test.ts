@@ -233,8 +233,10 @@ test("canceled generation Workflows are acknowledged without starting recovery",
         withIndex: () => ({
           unique: async () => ({
             _id: "component_1",
-            status: "active",
+            status: "cancel_requested",
             operationId: "workflow_1",
+            cancelSafeAfter: 9_999_999_999_999,
+            cancelAcknowledgedAt: 456,
           }),
         }),
       }),
@@ -282,7 +284,8 @@ test("canceled generation Workflows are acknowledged without starting recovery",
   assert.equal(recoveryStarts, 0);
   assert.equal(interruptedAttempts, 0);
   assert.equal(patches[0]?.value.status, "cancel_requested");
-  assert.equal(typeof patches[0]?.value.cancelAcknowledgedAt, "number");
+  assert.equal(patches[0]?.value.cancelSafeAfter, 9_999_999_999_999);
+  assert.equal(patches[0]?.value.cancelAcknowledgedAt, 456);
 });
 
 test("failed generation Workflow completion settles quietly while its chat is deleting", async () => {

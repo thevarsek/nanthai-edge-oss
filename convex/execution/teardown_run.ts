@@ -11,6 +11,7 @@ export interface OwnedComponent {
   operationId: string;
   adapterId: string;
   cancelSafeAfter?: number;
+  cancelAcknowledgedAt?: number;
 }
 
 export interface CancelRunStateResult {
@@ -200,6 +201,7 @@ export async function cancelRunState(
         operationId: component.operationId,
         adapterId: component.adapterId,
         cancelSafeAfter: component.cancelSafeAfter,
+        cancelAcknowledgedAt: component.cancelAcknowledgedAt,
       });
     }
   }

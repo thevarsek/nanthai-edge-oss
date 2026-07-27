@@ -128,9 +128,6 @@ export async function deleteChatGraph(
     .withIndex("by_chat", (query) => query.eq("chatId", chatId))
     .take(DELETE_BATCH_SIZE);
   for (const continuation of continuations) {
-    if (continuation.scheduledFunctionId) {
-      await ctx.scheduler.cancel(continuation.scheduledFunctionId).catch(() => undefined);
-    }
     await ctx.db.delete(continuation._id);
   }
   if (continuations.length === DELETE_BATCH_SIZE) hasMore = true;
@@ -217,9 +214,6 @@ export async function deleteChatGraph(
     .withIndex("by_chat_status", (q) => q.eq("chatId", chatId))
     .take(DELETE_BATCH_SIZE);
   for (const job of generationJobs) {
-    if (job.scheduledFunctionId) {
-      await ctx.scheduler.cancel(job.scheduledFunctionId).catch(() => undefined);
-    }
     await ctx.db.delete(job._id);
   }
   if (generationJobs.length === DELETE_BATCH_SIZE) hasMore = true;

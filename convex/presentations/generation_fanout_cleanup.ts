@@ -2,17 +2,12 @@ import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import type { WorkId } from "@convex-dev/workpool";
 import { interactiveWorkpool } from "../execution/components";
-import {
-  terminalizeLegacyPresentationExecution,
-  type LegacyPresentationTerminalOutcome,
-} from "./legacy_execution_lifecycle";
 
 export async function failPresentationRunState(
   ctx: MutationCtx,
   run: Doc<"presentationGenerationRuns">,
   error: string,
   now: number,
-  terminalOutcome: Exclude<LegacyPresentationTerminalOutcome, "completed"> = "failed",
 ): Promise<void> {
   await ctx.db.patch(run._id, {
     status: "failed",
@@ -55,10 +50,4 @@ export async function failPresentationRunState(
       updatedAt: now,
     })
   ));
-  await terminalizeLegacyPresentationExecution(
-    ctx,
-    run,
-    terminalOutcome,
-    error,
-  );
 }

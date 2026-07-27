@@ -1,156 +1,114 @@
-import {
-  Brain,
-  Search,
-  Eye,
-  Pin,
-  Clock,
-} from "lucide-react";
-import {
-  MockPanel,
-  SkeletonLine,
-  IconSlot,
-  AccentDot,
-  SkeletonDivider,
-} from "./IllustrationPrimitives";
+import { Network } from "lucide-react";
+import { IconSlot, MockPanel } from "./IllustrationPrimitives";
 
-/* ------------------------------------------------------------------ */
-/*  Memories Illustration                                              */
-/*  Shows categorised memory entries, retrieval mode badges,          */
-/*  a pending review item, and a pinned memory.                       */
-/* ------------------------------------------------------------------ */
-
-function RetrievalBadge({ mode }: { mode: "always-on" | "contextual" }) {
-  const isAlways = mode === "always-on";
-  return (
-    <span
-      className={`rounded-full px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-wide ${
-        isAlways
-          ? "bg-[rgba(var(--edge-cyan-rgb,20,184,166),0.12)] text-[var(--edge-cyan)]"
-          : "bg-[rgba(var(--edge-fg),0.06)] efg-30"
-      }`}
-    >
-      {isAlways ? "Always On" : "Contextual"}
-    </span>
-  );
+interface GraphNode {
+  x: number;
+  y: number;
+  r: number;
+  color: string;
+  halo?: boolean;
 }
 
-function MockMemoryEntry({
-  category,
-  categoryColor,
-  content,
-  mode,
-  pinned,
-  pending,
-}: {
-  category: string;
-  categoryColor: string;
-  content: string;
-  mode: "always-on" | "contextual";
-  pinned?: boolean;
-  pending?: boolean;
-}) {
+const nodes: GraphNode[] = [
+  { x: 160, y: 103, r: 7, color: "var(--edge-cyan)", halo: true },
+  { x: 99, y: 66, r: 5, color: "var(--edge-blue)" },
+  { x: 225, y: 64, r: 5, color: "var(--edge-coral)" },
+  { x: 222, y: 145, r: 5, color: "var(--edge-amber)" },
+  { x: 93, y: 145, r: 5, color: "var(--edge-lilac)" },
+  { x: 49, y: 49, r: 2.5, color: "var(--edge-blue)" },
+  { x: 68, y: 94, r: 3, color: "var(--edge-blue)" },
+  { x: 112, y: 26, r: 2.5, color: "var(--edge-cyan)" },
+  { x: 164, y: 35, r: 3, color: "var(--edge-cyan)" },
+  { x: 251, y: 29, r: 2.5, color: "var(--edge-coral)" },
+  { x: 274, y: 79, r: 3, color: "var(--edge-coral)" },
+  { x: 274, y: 137, r: 2.5, color: "var(--edge-amber)" },
+  { x: 248, y: 180, r: 3, color: "var(--edge-amber)" },
+  { x: 173, y: 177, r: 2.5, color: "var(--edge-cyan)" },
+  { x: 117, y: 188, r: 3, color: "var(--edge-lilac)" },
+  { x: 45, y: 165, r: 2.5, color: "var(--edge-lilac)" },
+];
+
+const edges = [
+  [0, 1], [0, 2], [0, 3], [0, 4], [1, 2], [1, 4], [2, 3], [3, 4],
+  [1, 5], [1, 6], [1, 7], [1, 8], [2, 8], [2, 9], [2, 10],
+  [3, 11], [3, 12], [3, 13], [4, 13], [4, 14], [4, 15],
+] as const;
+
+function RelationshipMap() {
   return (
     <div
-      className={`flex items-start gap-2.5 py-2.5 ${
-        pending ? "opacity-60" : ""
-      }`}
+      className="relative overflow-hidden rounded-xl border border-[rgba(var(--edge-fg),0.07)] bg-[rgba(var(--edge-fg),0.015)]"
+      role="img"
+      aria-label="Stylised graph of connected memories"
     >
-      <AccentDot color={categoryColor} size={7} className="mt-1.5 shrink-0" />
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-          <span
-            className="rounded-full px-2 py-0.5 text-[7px] font-semibold uppercase tracking-wider"
-            style={{ backgroundColor: `${categoryColor}15`, color: categoryColor }}
-          >
-            {category}
-          </span>
-          <RetrievalBadge mode={mode} />
-          {pending && (
-            <span className="rounded-full px-1.5 py-0.5 text-[7px] font-semibold uppercase tracking-wide bg-[rgba(var(--edge-amber-rgb,251,191,36),0.12)] text-[var(--edge-amber)]">
-              Pending
-            </span>
-          )}
-        </div>
-        <p className="text-[10px] efg-45 leading-relaxed">{content}</p>
-      </div>
-      <div className="flex flex-col items-center gap-1 mt-0.5 shrink-0">
-        {pinned && <IconSlot icon={Pin} size={9} className="text-[var(--edge-cyan)]" />}
-        <IconSlot icon={Eye} size={10} className="efg-15" />
-      </div>
+      <div className="absolute inset-x-0 top-0 h-24 bg-[radial-gradient(circle_at_50%_0%,rgba(var(--edge-cyan-rgb),0.07),transparent_72%)]" />
+      <svg className="relative h-56 w-full" viewBox="0 0 320 210">
+        {edges.map(([from, to]) => (
+          <line
+            key={`${from}-${to}`}
+            x1={nodes[from].x}
+            y1={nodes[from].y}
+            x2={nodes[to].x}
+            y2={nodes[to].y}
+            stroke="rgba(var(--edge-fg),0.10)"
+            strokeWidth="1"
+          />
+        ))}
+        {nodes.map((node, index) => (
+          <g key={index}>
+            {node.halo ? (
+              <circle
+                cx={node.x}
+                cy={node.y}
+                r={17}
+                fill={node.color}
+                fillOpacity={0.08}
+              />
+            ) : null}
+            <circle
+              cx={node.x}
+              cy={node.y}
+              r={node.r}
+              fill={node.color}
+              fillOpacity={node.r >= 5 ? 0.22 : 0.6}
+              stroke={node.color}
+              strokeWidth={node.r >= 5 ? 1.5 : 0}
+            />
+          </g>
+        ))}
+      </svg>
     </div>
   );
 }
 
 export function MemoriesIllustration() {
   return (
-    <MockPanel showDots title="Memories" className="max-w-sm mx-auto">
-      {/* Search */}
-      <div className="flex items-center gap-2 rounded-lg border border-[rgba(var(--edge-fg),0.08)] bg-[rgba(var(--edge-fg),0.02)] px-2.5 py-2 mb-3">
-        <IconSlot icon={Search} size={12} className="efg-25" />
-        <SkeletonLine width="40%" height="xs" shade="light" />
-      </div>
-
-      {/* Category tabs — showing actual category names */}
-      <div className="flex gap-1.5 mb-3 overflow-x-auto">
-        {[
-          { label: "All", active: true },
-          { label: "Preferences", active: false },
-          { label: "Work", active: false },
-          { label: "Writing Style", active: false },
-          { label: "Goals", active: false },
-        ].map((tab, i) => (
-          <div
-            key={i}
-            className={`rounded-full px-2.5 py-1 text-[9px] font-medium shrink-0 ${
-              tab.active
-                ? "bg-[var(--edge-cyan)] text-white"
-                : "bg-[rgba(var(--edge-fg),0.05)] efg-30"
-            }`}
-          >
-            {tab.label}
-          </div>
-        ))}
-      </div>
-
-      {/* Memory entries */}
-      <div className="rounded-xl border border-[rgba(var(--edge-fg),0.06)] bg-[rgba(var(--edge-fg),0.02)] px-3">
-        <MockMemoryEntry
-          category="Preferences"
-          categoryColor="var(--edge-cyan)"
-          content="Prefers concise bullet-point answers over long paragraphs."
-          mode="always-on"
-          pinned
-        />
-        <SkeletonDivider />
-        <MockMemoryEntry
-          category="Work"
-          categoryColor="var(--edge-coral)"
-          content="Currently building a multi-model AI chat app using Convex."
-          mode="contextual"
-        />
-        <SkeletonDivider />
-        <MockMemoryEntry
-          category="Writing Style"
-          categoryColor="var(--edge-amber)"
-          content="Writing style is direct and avoids unnecessary filler."
-          mode="contextual"
-          pending
-        />
-      </div>
-
-      {/* Footer stats */}
-      <div className="flex items-center justify-between mt-3 px-1">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <IconSlot icon={Brain} size={12} className="efg-25" />
-            <span className="text-[9px] efg-30">23 saved</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <IconSlot icon={Clock} size={11} className="efg-20" />
-            <span className="text-[9px] efg-25">1 pending review</span>
-          </div>
+    <MockPanel showDots title="Memory map" className="mx-auto max-w-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.12em] efg-35">
+          <IconSlot icon={Network} size={10} />
+          Relationships
         </div>
-        <span className="text-[8px] efg-20">Pro</span>
+        <span className="rounded-full bg-[rgba(var(--edge-fg),0.04)] px-2 py-1 text-[8px] efg-25">
+          23 memories
+        </span>
+      </div>
+
+      <RelationshipMap />
+
+      <div className="mt-3 flex items-center justify-center gap-4 text-[8px] efg-25">
+        <span className="flex items-center gap-1.5">
+          <i className="h-1.5 w-1.5 rounded-full bg-[var(--edge-blue)]" />
+          Preferences
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="h-1.5 w-1.5 rounded-full bg-[var(--edge-coral)]" />
+          Context
+        </span>
+        <span className="flex items-center gap-1.5">
+          <i className="h-1.5 w-1.5 rounded-full bg-[var(--edge-amber)]" />
+          Goals
+        </span>
       </div>
     </MockPanel>
   );

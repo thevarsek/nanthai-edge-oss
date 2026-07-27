@@ -2,6 +2,7 @@ import { Id } from "../_generated/dataModel";
 import { QueryCtx } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
 import { getAuthorizedChat, getAuthorizedMessage } from "./query_helpers";
+import { publicParticipantName } from "./queries_handlers_public";
 import {
   getStreamingMessageByMessageId,
   isTerminalMessageStatus,
@@ -210,7 +211,7 @@ export async function getStreamingContentHandler(
       reasoning: streaming.reasoning,
       status: streaming.status,
       modelId: msg.modelId,
-      participantName: msg.participantName,
+      participantName: publicParticipantName(msg),
       toolCalls: streaming.toolCalls,
       ...(streaming.activeToolCallIds !== undefined
         ? { activeToolCallIds: streaming.activeToolCallIds }
@@ -224,7 +225,7 @@ export async function getStreamingContentHandler(
     reasoning: msg.reasoning,
     status: msg.status,
     modelId: msg.modelId,
-    participantName: msg.participantName,
+    participantName: publicParticipantName(msg),
     toolCalls: msg.toolCalls,
     usage: msg.usage,
   };

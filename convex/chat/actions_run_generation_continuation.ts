@@ -10,10 +10,10 @@ export async function scheduleGenerationContinuation(
   args: RunGenerationParticipantArgs,
   checkpoint: GenerationContinuationCheckpoint,
 ): Promise<void> {
-  if (args.workflowManaged && !args.workflowResumeEventId) {
+  if (!args.workflowManaged || !args.workflowResumeEventId) {
     throw new Error("GENERATION_WORKFLOW_ROUND_KEY_REQUIRED");
   }
-  const roundKey = args.workflowResumeEventId ?? checkpoint.roundKey;
+  const roundKey = args.workflowResumeEventId;
   const durableCheckpoint: GenerationContinuationCheckpoint = args.executionAttemptId &&
     args.executionFence !== undefined
     ? {
@@ -35,23 +35,5 @@ export async function scheduleGenerationContinuation(
     jobId: args.participant.jobId,
     userId: args.userId,
     checkpoint: durableCheckpoint,
-  });
-
-  if (args.workflowManaged) return;
-
-  const scheduledId = await ctx.scheduler.runAfter(
-    0,
-    internal.chat.actions_runtime.runGenerationParticipant,
-    {
-      ...args,
-      resumeExpected: true,
-      // Phase 1 TTFT: fresh hop #2 measurement for each continuation
-      enqueuedAt: Date.now(),
-    },
-  );
-
-  await ctx.runMutation(internal.chat.mutations.setGenerationContinuationScheduled, {
-    jobId: args.participant.jobId,
-    scheduledFunctionId: scheduledId,
   });
 }

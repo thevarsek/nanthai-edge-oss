@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { mockState, renderRoute } from "@/test/criticalRoutesCoverage";
+import { MemoryRouter } from "react-router-dom";
+import { mockQueryEndpoint, mockState, renderRoute } from "@/test/criticalRoutesCoverage";
 import { MemoryPage } from "./MemoryPage";
 
 describe("MemoryPage shell behavior", () => {
@@ -103,6 +104,54 @@ describe("MemoryPage shell behavior", () => {
     fireEvent.click(screen.getByText("memory_clear_all"));
     fireEvent.click(screen.getByRole("button", { name: "memory_delete_all" }));
     expect(mockState.mutation).toHaveBeenCalledWith({});
+  });
+
+  it("switches to the bounded graph and selects a memory node", () => {
+    mockState.page = "memory";
+    mockState.queryData.memories = [{
+      _id: "mem_graph",
+      content: "Prefers topology-first memory graphs",
+      category: "preferences",
+      retrievalMode: "contextual",
+      scopeType: "allPersonas",
+      tags: ["graph"],
+    }];
+    mockQueryEndpoint("memory/graph:get", {
+      mode: "all",
+      nodes: [{
+        id: "mem_graph",
+        content: "Prefers topology-first memory graphs",
+        category: "preferences",
+        retrievalMode: "contextual",
+        tags: ["graph"],
+        importanceScore: 0.9,
+        reinforcementCount: 3,
+        updatedAt: 1_750_000_000_000,
+        isSuperseded: false,
+      }],
+      edges: [],
+      truncated: { candidates: false, nodes: false, edges: false },
+    });
+
+    const rendered = renderRoute(<MemoryPage />);
+    fireEvent.click(screen.getByText("memory_view_all"));
+    fireEvent.click(screen.getByRole("button", { name: "Graph" }));
+
+    expect(screen.getByRole("application", { name: "Memory relationship graph" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Prefers topology-first memory graphs" }));
+    expect(screen.getByText("Focus neighborhood")).toBeInTheDocument();
+    expect(screen.getByText("90%")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Focus neighborhood"));
+    mockQueryEndpoint("memory/graph:get", undefined);
+    rendered.rerender(
+      <MemoryRouter initialEntries={["/app/settings/memory"]}>
+        <MemoryPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("application", { name: "Memory relationship graph" })).toBeInTheDocument();
+    expect(screen.getByText("Updating graph")).toBeInTheDocument();
   });
 
   it("cleans up uploaded storage when memory extraction fails after upload", async () => {

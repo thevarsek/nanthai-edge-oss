@@ -6,7 +6,6 @@ import {
   claimGenerationContinuationHandler,
   clearGenerationContinuationHandler,
   saveGenerationContinuationHandler,
-  setGenerationContinuationScheduledHandler,
 } from "../chat/mutations_generation_continuation_handlers";
 
 function continuationCheckpoint(overrides: Record<string, unknown> = {}) {
@@ -36,44 +35,6 @@ function continuationCheckpoint(overrides: Record<string, unknown> = {}) {
     ...overrides,
   } as any;
 }
-
-test("setGenerationContinuationScheduledHandler does not overwrite a claimed continuation", async () => {
-  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
-  const continuation = {
-    _id: "cont_1",
-    status: "running",
-  };
-  const job = {
-    _id: "job_1",
-  };
-
-  const ctx = {
-    db: {
-      query: (_table: string) => ({
-        withIndex: (_index: string, _apply: unknown) => ({
-          first: async () => continuation,
-        }),
-      }),
-      get: async (id: string) => (id === "job_1" ? job : null),
-      patch: async (id: string, value: Record<string, unknown>) => {
-        patches.push({ id, value });
-      },
-    },
-    scheduler: {},
-  } as any;
-
-  await setGenerationContinuationScheduledHandler(ctx, {
-    jobId: "job_1" as any,
-    scheduledFunctionId: "sched_1" as any,
-  });
-
-  assert.deepEqual(patches, [{
-    id: "job_1",
-    value: {
-      scheduledFunctionId: "sched_1",
-    },
-  }]);
-});
 
 test("saveGenerationContinuationHandler inserts new checkpoints and patches existing ones", async () => {
   const inserted: Array<{ table: string; value: Record<string, unknown> }> = [];
@@ -161,16 +122,12 @@ test("claimGenerationContinuationHandler covers missing, terminal, active-lease,
   );
 
   continuation = { _id: "cont_terminal" };
-  job = { _id: "job_1", status: "completed", scheduledFunctionId: "sched_1" };
+  job = { _id: "job_1", status: "completed" };
   assert.equal(
     await claimGenerationContinuationHandler(ctx, { jobId: "job_1" as any }),
     null,
   );
   assert.deepEqual(deletes, ["cont_terminal"]);
-  assert.deepEqual(patches.at(-1), {
-    id: "job_1",
-    value: { scheduledFunctionId: undefined },
-  });
 
   continuation = {
     _id: "cont_running",
@@ -213,7 +170,7 @@ test("claimGenerationContinuationHandler covers missing, terminal, active-lease,
     partialContent: "draft",
     partialReasoning: "reason",
   };
-  job = { _id: "job_1", status: "streaming", scheduledFunctionId: "sched_2" };
+  job = { _id: "job_1", status: "streaming" };
 
   const claimed = await claimGenerationContinuationHandler(ctx, { jobId: "job_1" as any });
 
@@ -226,67 +183,11 @@ test("claimGenerationContinuationHandler covers missing, terminal, active-lease,
     && entry.value.status === "running"
     && typeof entry.value.leaseExpiresAt === "number"
   ));
-  assert.ok(patches.some((entry) =>
-    entry.id === "job_1"
-    && entry.value.scheduledFunctionId === undefined
-  ));
 });
 
-test("setGenerationContinuationScheduledHandler respects opt-out and updates waiting continuations", async () => {
-  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
-  let continuation: Record<string, unknown> | null = { _id: "cont_1", status: "waiting" };
-  let job: Record<string, unknown> | null = { _id: "job_1" };
-  const ctx = {
-    db: {
-      query: () => ({
-        withIndex: () => ({
-          first: async () => continuation,
-        }),
-      }),
-      get: async () => job,
-      patch: async (id: string, value: Record<string, unknown>) => {
-        patches.push({ id, value });
-      },
-    },
-    scheduler: {},
-  } as any;
-
-  await setGenerationContinuationScheduledHandler(ctx, {
-    jobId: "job_1" as any,
-    scheduledFunctionId: "sched_1" as any,
-  });
-  continuation = null;
-  job = null;
-  await setGenerationContinuationScheduledHandler(ctx, {
-    jobId: "job_1" as any,
-    scheduledFunctionId: "sched_2" as any,
-    updateContinuation: false,
-  });
-
-  assert.ok(patches.some((entry) =>
-    entry.id === "cont_1"
-    && entry.value.status === "waiting"
-    && entry.value.scheduledFunctionId === "sched_1"
-  ));
-  assert.ok(patches.some((entry) =>
-    entry.id === "job_1"
-    && entry.value.scheduledFunctionId === "sched_1"
-  ));
-  assert.equal(patches.some((entry) => entry.value.scheduledFunctionId === "sched_2"), false);
-});
-
-test("clear and cancel continuation handlers remove durable state and stale scheduled ids", async () => {
-  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+test("clear and cancel continuation handlers remove canonical durable state", async () => {
   const deletes: string[] = [];
-  const cancelled: string[] = [];
-  let continuation: Record<string, unknown> | null = {
-    _id: "cont_1",
-    scheduledFunctionId: "sched_from_continuation",
-  };
-  let job: Record<string, unknown> | null = {
-    _id: "job_1",
-    scheduledFunctionId: "sched_from_job",
-  };
+  let continuation: Record<string, unknown> | null = { _id: "cont_1" };
   const ctx = {
     db: {
       query: () => ({
@@ -294,35 +195,18 @@ test("clear and cancel continuation handlers remove durable state and stale sche
           first: async () => continuation,
         }),
       }),
-      get: async () => job,
-      patch: async (id: string, value: Record<string, unknown>) => {
-        patches.push({ id, value });
-      },
       delete: async (id: string) => {
         deletes.push(id);
-      },
-    },
-    scheduler: {
-      cancel: async (id: string) => {
-        cancelled.push(id);
-        throw new Error("already gone");
       },
     },
   } as any;
 
   await clearGenerationContinuationHandler(ctx, { jobId: "job_1" as any });
   continuation = { _id: "cont_2" };
-  job = { _id: "job_1", scheduledFunctionId: "sched_from_job" };
   await cancelGenerationContinuationHandler(ctx, { jobId: "job_1" as any });
   continuation = null;
-  job = null;
   await clearGenerationContinuationHandler(ctx, { jobId: "job_1" as any });
   await cancelGenerationContinuationHandler(ctx, { jobId: "job_1" as any });
 
   assert.deepEqual(deletes, ["cont_1", "cont_2"]);
-  assert.deepEqual(cancelled, ["sched_from_job"]);
-  assert.ok(patches.some((entry) =>
-    entry.id === "job_1"
-    && entry.value.scheduledFunctionId === undefined
-  ));
 });

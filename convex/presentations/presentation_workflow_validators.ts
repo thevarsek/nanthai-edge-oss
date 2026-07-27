@@ -7,7 +7,7 @@ export const deferredWorkflowArgsValidator = {
   toolCallId: v.string(),
   modelId: v.string(),
   requireZdrOverride: v.optional(v.boolean()),
-  workflowResumeEventId: v.optional(v.string()),
+  workflowResumeEventId: v.string(),
 };
 
 export const workflowArgsValidator = {

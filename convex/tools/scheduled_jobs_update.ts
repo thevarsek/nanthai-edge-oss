@@ -1,8 +1,8 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
-import type { Recurrence } from "../scheduledJobs/recurrence";
 import type { ScheduledJobSearchMode, ScheduledJobStepConfig } from "../scheduledJobs/shared";
 import { createTool } from "./registry";
+import { normalizeToolRecurrence } from "./scheduled_jobs_recurrence";
 
 type ScheduledJobStepArg = {
   title?: unknown;
@@ -171,6 +171,16 @@ export const updateScheduledJob = createTool({
           reasoningEffort: typeof step.reasoningEffort === "string" ? step.reasoningEffort : undefined,
         }))
       : undefined;
+    const recurrence = args.recurrence == null
+      ? undefined
+      : normalizeToolRecurrence(args.recurrence);
+    if (args.recurrence != null && !recurrence) {
+      return {
+        success: false,
+        data: null,
+        error: "Invalid 'recurrence'. Include a supported 'type' and its required fields.",
+      };
+    }
 
     try {
       const status = args.status === "active"
@@ -191,7 +201,7 @@ export const updateScheduledJob = createTool({
             ? (args.personaId.trim() ? args.personaId as Id<"personas"> : null)
             : undefined,
           steps,
-          recurrence: args.recurrence == null ? undefined : args.recurrence as Recurrence,
+          recurrence,
           timezone: typeof args.timezone === "string" ? args.timezone : undefined,
           targetFolderId: typeof args.targetFolderId === "string"
             ? (args.targetFolderId.trim() ? args.targetFolderId as Id<"folders"> : null)

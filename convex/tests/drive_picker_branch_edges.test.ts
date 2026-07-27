@@ -8,7 +8,6 @@ import {
   completeBatch,
   createBatch,
   getBatchForUser,
-  scheduleResume,
 } from "../drive_picker/mutations";
 
 function makeRows() {
@@ -18,7 +17,12 @@ function makeRows() {
       { _id: "source", userId: "user_1", chatId: "chat_1", attachments: [{ storageId: "s_existing" }] },
       { _id: "streaming", status: "pending" },
     ],
-    generationJobs: [{ _id: "job", streamingMessageId: "streaming", status: "pending" }],
+    generationJobs: [{
+      _id: "job",
+      streamingMessageId: "streaming",
+      status: "pending",
+    }],
+    executionAttempts: [] as any[],
     drivePickerBatches: [{
       _id: "batch",
       parentMessageId: "parent",
@@ -27,7 +31,10 @@ function makeRows() {
       chatId: "chat_1",
       userId: "user_1",
       status: "awaiting_pick",
-      paramsSnapshot: { searchMode: "web" },
+      paramsSnapshot: {
+        searchMode: "web",
+        workflowResumeEventId: "event_1",
+      },
       participantSnapshot: { participant: { assistantMessageId: "parent", modelId: "model" } },
     }],
     fileAttachments: [] as any[],
@@ -71,7 +78,17 @@ function makeDb(rows = makeRows()) {
   };
 }
 
-test("Drive picker batch creation, lookup, cancellation, completion, and scheduling branch by lifecycle", async () => {
+function makeCanonicalDb() {
+  const store = makeDb();
+  store.rows.generationJobs[0].executionAttemptId = "attempt";
+  store.rows.executionAttempts.push({
+    _id: "attempt",
+    orchestrationEngine: "convex_workflow",
+  });
+  return store;
+}
+
+test("Drive picker batch creation, lookup, cancellation, and completion branch by lifecycle", async () => {
   const createdRows = makeRows();
   createdRows.drivePickerBatches = [];
   const created = makeDb(createdRows);
@@ -107,9 +124,6 @@ test("Drive picker batch creation, lookup, cancellation, completion, and schedul
 
   await (completeBatch as any)._handler({ db: store.db }, { batchId: "missing", status: "failed" });
   await (completeBatch as any)._handler({ db: store.db }, { batchId: "batch", status: "completed" });
-  await (scheduleResume as any)._handler({ db: store.db }, { batchId: "missing", scheduledFunctionId: "sched_1" });
-  await (scheduleResume as any)._handler({ db: store.db }, { batchId: "batch", scheduledFunctionId: "sched_1" });
-  assert.equal(store.patches.some((patch) => patch.id === "job" && patch.patch.scheduledFunctionId === "sched_1"), true);
 });
 
 test("Drive picker append validates ownership, state, source rows, snapshots, and attachment dedupe", async () => {
@@ -135,7 +149,7 @@ test("Drive picker append validates ownership, state, source rows, snapshots, an
     (error: unknown) => error instanceof ConvexError && error.data?.code === "VALIDATION",
   );
 
-  const missingSnapshot = makeDb();
+  const missingSnapshot = makeCanonicalDb();
   missingSnapshot.rows.drivePickerBatches[0].participantSnapshot = {};
   await assert.rejects(
     (appendAttachmentsAndMarkResuming as any)._handler({ db: missingSnapshot.db }, {
@@ -147,9 +161,25 @@ test("Drive picker append validates ownership, state, source rows, snapshots, an
     (error: unknown) => error instanceof ConvexError && error.data?.code === "INTERNAL_ERROR",
   );
 
-  const success = makeDb();
+  const legacyOwned = makeCanonicalDb();
+  legacyOwned.rows.executionAttempts[0].orchestrationEngine = "legacy_scheduler";
+  await assert.rejects(
+    (appendAttachmentsAndMarkResuming as any)._handler({ db: legacyOwned.db }, {
+      batchId: "batch",
+      userId: "user_1",
+      pickedFileIds: [],
+      attachments: [],
+    }),
+    (error: unknown) => error instanceof ConvexError
+      && error.data?.code === "INTERNAL_ERROR",
+  );
+
+  const success = makeCanonicalDb();
   success.rows.generationJobs[0].streamingMessageId = undefined;
-  const resumed = await (appendAttachmentsAndMarkResuming as any)._handler({ db: success.db }, {
+  const resumed = await (appendAttachmentsAndMarkResuming as any)._handler({
+    db: success.db,
+    scheduler: { runAfter: async () => "scheduled_1" },
+  }, {
     batchId: "batch",
     userId: "user_1",
     pickedFileIds: ["drive_1"],

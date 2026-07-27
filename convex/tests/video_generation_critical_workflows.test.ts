@@ -514,7 +514,7 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
     Object.keys(entry).sort().join(",") === "status,videoJobId"
   );
   assert.deepEqual(providerTerminalMarks.map((entry) => entry.status), ["failed", "completed"]);
-  assert.ok(scheduled.some((entry) => entry.delay === 15000));
+  assert.equal(scheduled.some((entry) => entry.delay > 0), false);
 });
 
 test("video submit failure finalizes generation and drive-picker batch", async () => {

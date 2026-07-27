@@ -49,7 +49,7 @@ export async function runResearchRegenerationWorkflowHandler(
     );
     await step.runAction(
       internal.search.workflow_durable.runSynthesisAction,
-      { ...phaseArgs, phaseOrder: phaseOrder++, workflowManaged: true },
+      { ...phaseArgs, phaseOrder: phaseOrder++ },
       failClosedProviderActionOptions,
     );
     await step.runMutation(
@@ -58,12 +58,12 @@ export async function runResearchRegenerationWorkflowHandler(
     );
     await step.runAction(
       internal.search.workflow_durable.runPaperArchitectureAction,
-      { ...phaseArgs, phaseOrder: phaseOrder++, workflowManaged: true },
+      { ...phaseArgs, phaseOrder: phaseOrder++ },
       failClosedProviderActionOptions,
     );
     await step.runAction(
       internal.search.workflow_durable.runPaperHandoffAction,
-      { ...phaseArgs, phaseOrder, workflowManaged: true },
+      { ...phaseArgs, phaseOrder },
       { retry: true },
     );
     await step.runMutation(
@@ -86,7 +86,6 @@ export async function runResearchRegenerationWorkflowHandler(
         phaseOrder: args.phaseOrder,
         executionAttemptId,
         executionFence,
-        workflowManaged: true,
         error: summary,
       },
       { retry: true },
