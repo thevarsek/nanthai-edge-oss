@@ -15,7 +15,10 @@ import {
   requireBoundedText,
   safePresentationErrorMessage,
 } from "./limits";
-import { parsePresentationPlan } from "./model_parsing";
+import {
+  parsePresentationPlan,
+  parseRepairedPresentationPlan,
+} from "./model_parsing";
 import { buildPlanningMessages, buildPlanningRepairMessages } from "./prompts";
 import { loadPresentationPromptAssets } from "./asset_inputs";
 import { DeferredPresentationRepair } from "./deferred_repair";
@@ -128,7 +131,7 @@ export async function planProjectHandler(
         },
       );
       effectiveModelIds.push(repaired.modelId ?? ai.modelId);
-      parsed = parsePresentationPlan(repaired.content);
+      parsed = parseRepairedPresentationPlan(repaired.content);
     }
     const completed: ProjectRevisionResult = await ctx.runMutation(
       completePlanningRef,
