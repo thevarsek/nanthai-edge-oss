@@ -41,7 +41,7 @@ test("cleanStale dispatches timed-out candidates to the fenced cleanup mutation"
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const cancelled: string[] = [];
-  const scheduled: string[] = [];
+  const scheduled: Array<Record<string, unknown>> = [];
 
   const queuedJob = {
     _id: "job_1",
@@ -103,8 +103,12 @@ test("cleanStale dispatches timed-out candidates to the fenced cleanup mutation"
       cancel: async (id: string) => {
         cancelled.push(id);
       },
-      runAfter: async (_delay: number, _fn: unknown) => {
-        scheduled.push("runAfter");
+      runAfter: async (
+        _delay: number,
+        _fn: unknown,
+        args: Record<string, unknown>,
+      ) => {
+        scheduled.push(args);
       },
     },
   }, {});
@@ -112,12 +116,20 @@ test("cleanStale dispatches timed-out candidates to the fenced cleanup mutation"
   assert.deepEqual(patches, []);
   assert.deepEqual(inserts, []);
   assert.deepEqual(cancelled, []);
-  assert.deepEqual(scheduled, ["runAfter"]);
+  assert.deepEqual(scheduled, [
+    { jobId: "job_1" },
+    {
+      queuedCursor: "queued-next",
+      queuedDone: true,
+      streamingDone: false,
+    },
+  ]);
 });
 
 test("cleanStale dispatches streaming candidates for per-job timestamp evaluation", async () => {
   const now = Date.now();
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
 
   await (cleanStale as any)._handler({
     db: {
@@ -147,11 +159,25 @@ test("cleanStale dispatches streaming candidates for per-job timestamp evaluatio
     },
     scheduler: {
       cancel: async () => undefined,
-      runAfter: async () => undefined,
+      runAfter: async (
+        _delay: number,
+        _fn: unknown,
+        args: Record<string, unknown>,
+      ) => {
+        scheduled.push(args);
+      },
     },
-  }, {});
+  }, { queuedDone: true });
 
   assert.deepEqual(patches, []);
+  assert.deepEqual(scheduled, [
+    { jobId: "job_streaming" },
+    {
+      streamingCursor: "streaming-next",
+      queuedDone: true,
+      streamingDone: true,
+    },
+  ]);
 });
 
 test("cleanStale self-schedules a continuation when either candidate batch hits the cap", async () => {
@@ -189,4 +215,60 @@ test("cleanStale self-schedules a continuation when either candidate batch hits 
 
   assert.equal(followUps.length, 76);
   assert.ok(followUps.every((entry) => entry.delay === 0));
+});
+
+test("cleanStale runs only one paginated query in each mutation invocation", async () => {
+  const paginatedStatuses: string[] = [];
+  const followUps: Array<Record<string, unknown>> = [];
+  const ctx = {
+    db: {
+      query: (table: string) => {
+        assert.equal(table, "generationJobs");
+        return {
+          withIndex: (_index: string, apply: (q: any) => unknown) => {
+            let status = "";
+            apply({
+              eq: (_field: string, value: string) => {
+                status = value;
+                return {};
+              },
+            });
+            return {
+              paginate: async () => {
+                paginatedStatuses.push(status);
+                assert.equal(
+                  paginatedStatuses.length,
+                  1,
+                  "Convex permits one paginated query per mutation invocation",
+                );
+                return {
+                  page: [],
+                  continueCursor: `${status}-done`,
+                  isDone: true,
+                };
+              },
+            };
+          },
+        };
+      },
+    },
+    scheduler: {
+      runAfter: async (
+        _delay: number,
+        _fn: unknown,
+        args: Record<string, unknown>,
+      ) => {
+        followUps.push(args);
+      },
+    },
+  };
+
+  await (cleanStale as any)._handler(ctx, {});
+
+  assert.deepEqual(paginatedStatuses, ["queued"]);
+  assert.deepEqual(followUps, [{
+    queuedCursor: "queued-done",
+    queuedDone: true,
+    streamingDone: false,
+  }]);
 });

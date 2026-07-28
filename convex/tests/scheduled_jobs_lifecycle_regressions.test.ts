@@ -100,5 +100,12 @@ test("stale cleanup dispatches scheduled execution candidates to fenced per-job 
   } as any;
 
   await (cleanStale as any)._handler(ctx, {});
-  assert.deepEqual(scheduled, [{ jobId: "gen_1" }]);
+  assert.deepEqual(scheduled, [
+    { jobId: "gen_1" },
+    {
+      queuedCursor: "queued-done",
+      queuedDone: true,
+      streamingDone: false,
+    },
+  ]);
 });

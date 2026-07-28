@@ -20,43 +20,62 @@ export const cleanStale = internalMutation({
     queuedDone: v.optional(v.boolean()),
     streamingDone: v.optional(v.boolean()),
   },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const now = Date.now();
 
     const BATCH_PER_STATUS = 75;
-    const [queuedPage, streamingPage] = await Promise.all([
-      args.queuedDone
-        ? Promise.resolve({ page: [], continueCursor: args.queuedCursor ?? "", isDone: true })
-        : ctx.db
+    if (!args.queuedDone) {
+      const queuedPage = await ctx.db
         .query("generationJobs")
         .withIndex("by_status", (q) => q.eq("status", "queued"))
-        .paginate({ cursor: args.queuedCursor ?? null, numItems: BATCH_PER_STATUS }),
-      args.streamingDone
-        ? Promise.resolve({ page: [], continueCursor: args.streamingCursor ?? "", isDone: true })
-        : ctx.db
-        .query("generationJobs")
-        .withIndex("by_status", (q) => q.eq("status", "streaming"))
-        .paginate({ cursor: args.streamingCursor ?? null, numItems: BATCH_PER_STATUS }),
-    ]);
-    for (const job of [...queuedPage.page, ...streamingPage.page]) {
-      await ctx.scheduler.runAfter(0, internal.jobs.cleanup_generation.cleanStaleGenerationJob, {
-        jobId: job._id,
-      });
-    }
+        .paginate({ cursor: args.queuedCursor ?? null, numItems: BATCH_PER_STATUS });
+      for (const job of queuedPage.page) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.jobs.cleanup_generation.cleanStaleGenerationJob,
+          { jobId: job._id },
+        );
+      }
 
-    if (!queuedPage.isDone || !streamingPage.isDone) {
       await ctx.scheduler.runAfter(0, internal.jobs.cleanup.cleanStale, {
         queuedCursor: queuedPage.continueCursor,
-        streamingCursor: streamingPage.continueCursor,
         queuedDone: queuedPage.isDone,
-        streamingDone: streamingPage.isDone,
+        streamingDone: args.streamingDone ?? false,
+        ...(args.streamingCursor === undefined
+          ? {}
+          : { streamingCursor: args.streamingCursor }),
       });
+      return null;
+    }
+
+    if (!args.streamingDone) {
+      const streamingPage = await ctx.db
+        .query("generationJobs")
+        .withIndex("by_status", (q) => q.eq("status", "streaming"))
+        .paginate({ cursor: args.streamingCursor ?? null, numItems: BATCH_PER_STATUS });
+      for (const job of streamingPage.page) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.jobs.cleanup_generation.cleanStaleGenerationJob,
+          { jobId: job._id },
+        );
+      }
+
+      await ctx.scheduler.runAfter(0, internal.jobs.cleanup.cleanStale, {
+        streamingCursor: streamingPage.continueCursor,
+        queuedDone: true,
+        streamingDone: streamingPage.isDone,
+        ...(args.queuedCursor === undefined
+          ? {}
+          : { queuedCursor: args.queuedCursor }),
+      });
+      return null;
     }
 
     // ── Orphaned continuation reaping ────────────────────────────────────
     // Clean up generationContinuations rows whose parent job is already
     // terminal, or whose lease expired long ago with no re-claim.
-    if (args.queuedCursor || args.streamingCursor) return;
     const ORPHAN_BATCH = 100;
     const orphanCutoff = now - GENERATION_CONTINUATION_LEASE_MS * 2; // 24 min grace
 
@@ -99,5 +118,6 @@ export const cleanStale = internalMutation({
     if (orphansCleaned > 0) {
       console.log(`Cleaned ${orphansCleaned} orphaned generation continuations`);
     }
+    return null;
   },
 });
