@@ -144,6 +144,10 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     executionAttemptId: args.executionAttemptId,
     executionFence: args.executionFence,
     workflowResumeEventId: args.workflowResumeEventId,
+    generationEnqueuedAt: args.generationEnqueuedAt,
+    coordinatorStartedAt: args.coordinatorStartedAt,
+    participantStartedAt: args.participantStartedAt,
+    workflowStartAsync: args.workflowStartAsync,
   };
   if (args.requireZdrOverride === true) {
     generationArgs.requireZdrOverride = true;
@@ -273,9 +277,11 @@ export async function runGenerationParticipantRuntimeHandler(
     ...attachmentTriggeredReadToolNames(persistedAttachments),
     ...attachmentTriggeredDocumentWorkspaceToolNames(persistedAttachments),
   ]));
-  const routedArgs: RunGenerationParticipantArgs = driveResumeMessage
-    ? { ...args, directToolNames: routingDirectToolNames }
-    : args;
+  const routedArgs: RunGenerationParticipantArgs = {
+    ...args,
+    participantStartedAt: args.participantStartedAt ?? participantStartedAt,
+    ...(driveResumeMessage ? { directToolNames: routingDirectToolNames } : {}),
+  };
   if (requiresNodeWorker({
     directToolNames: routingDirectToolNames,
     activeProfiles: continuationPreview?.activeProfiles ?? [],
@@ -352,6 +358,10 @@ export async function runGenerationParticipantRuntimeHandler(
         executionFence: claimedArgs.executionFence,
         workflowManaged: claimedArgs.workflowManaged,
         workflowResumeEventId: claimedArgs.workflowResumeEventId,
+        generationEnqueuedAt: continuationState.group.generationEnqueuedAt,
+        coordinatorStartedAt: continuationState.group.coordinatorStartedAt,
+        participantStartedAt: continuationState.group.participantStartedAt,
+        workflowStartAsync: continuationState.group.workflowStartAsync,
         resumeExpected: true,
       }
     : claimedArgs;
@@ -405,6 +415,7 @@ export async function runGenerationParticipantRuntimeHandler(
         startedAnalyticsCapture = captureAssistantResponseStarted(ctx, effectiveArgs, {
           isResume: false,
           schedulerHop2Ms,
+          runtime: "v8",
         }, imageTerminalAnalytics);
       }
     }
@@ -473,6 +484,14 @@ export async function runGenerationParticipantRuntimeHandler(
       },
       isPro: effectiveArgs.isPro,
       runtimeProfile: "mobileBasic",
+      runtimeKind: "v8",
+      latencyAnchors: {
+        generationEnqueuedAt: effectiveArgs.generationEnqueuedAt,
+        coordinatorStartedAt: effectiveArgs.coordinatorStartedAt,
+        participantEnqueuedAt: effectiveArgs.enqueuedAt,
+        participantStartedAt: effectiveArgs.participantStartedAt,
+        workflowStartAsync: effectiveArgs.workflowStartAsync,
+      },
       apiKey,
       requestMessagesOverride: continuationState?.messages,
       requireZdrOverride: effectiveArgs.requireZdrOverride,

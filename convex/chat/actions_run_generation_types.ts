@@ -60,6 +60,11 @@ export interface RunGenerationArgs extends Record<string, unknown> {
   turnIntegrationOverrides?: Array<{ integrationId: string; enabled: boolean }>;
   // Phase 1 TTFT instrumentation: scheduler hop #1 measurement
   enqueuedAt?: number;
+  dispatchRecovery?: boolean;
+  generationEnqueuedAt?: number;
+  coordinatorStartedAt?: number;
+  participantStartedAt?: number;
+  workflowStartAsync?: boolean;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
   executionAttemptId?: Id<"executionAttempts">;

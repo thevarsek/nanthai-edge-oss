@@ -276,6 +276,62 @@ describe("useChat", () => {
     );
   });
 
+  it("captures send-to-first-visible-token timing from the streaming subscription", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000);
+      convexMocks.queryResults = [chat(), [], [], [], []];
+      convexMocks.mutations[0]!.mockResolvedValue({
+        userMessageId: "user_msg",
+        assistantMessageIds: ["assistant_msg"],
+      });
+      const { result, rerender } = renderHook(() => useChat(chatId));
+
+      await act(async () => {
+        await result.current.sendMessage({
+          chatId,
+          text: "hello",
+          participants: [{ modelId: "openai/gpt-4.1" }],
+        });
+      });
+
+      vi.setSystemTime(1_600);
+      convexMocks.queryResults = [
+        chat(),
+        [message({
+          _id: "assistant_msg" as Id<"messages">,
+          content: "",
+          status: "streaming",
+          modelId: "openai/gpt-4.1",
+        })],
+        [{
+          messageId: "assistant_msg" as Id<"messages">,
+          content: "first visible chunk",
+          status: "streaming",
+        } satisfies StreamingMessage],
+        [],
+        [],
+      ];
+      rerender();
+
+      expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
+        "assistant_first_token",
+        expect.objectContaining({
+          assistant_message_id: "assistant_msg",
+          model_id: "openai/gpt-4.1",
+          source: "send",
+          first_visible_kind: "content",
+          ttft_ms: 600,
+          mutation_ack_ms: 0,
+          post_ack_to_first_token_ms: 600,
+          client_event_id: "message_send_attempted-test-event",
+        }),
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("passes management mutation args through to Convex", async () => {
     convexMocks.queryResults = [chat(), [], [], [], []];
     const { result } = renderHook(() => useChat(chatId));

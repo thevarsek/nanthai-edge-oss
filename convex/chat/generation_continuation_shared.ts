@@ -55,6 +55,10 @@ export interface RunGenerationParticipantArgs extends Record<string, unknown> {
   integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
   // Phase 1 TTFT instrumentation: scheduler hop #2 measurement (refreshed on each continuation)
   enqueuedAt?: number;
+  generationEnqueuedAt?: number;
+  coordinatorStartedAt?: number;
+  participantStartedAt?: number;
+  workflowStartAsync?: boolean;
   analytics?: AnalyticsClientMetadata;
   analyticsSource?: GenerationAnalyticsSource;
 }
@@ -77,6 +81,10 @@ export interface GenerationContinuationGroupSnapshot {
   drivePickerBatchId?: Id<"drivePickerBatches">;
   executionAttemptId?: Id<"executionAttempts">;
   executionFence?: number;
+  generationEnqueuedAt?: number;
+  coordinatorStartedAt?: number;
+  participantStartedAt?: number;
+  workflowStartAsync?: boolean;
   imageConfig?: ImageGenerationConfig;
   // Pre-resolved overrides preserved across continuations
   chatSkillOverrides?: Array<{ skillId: Id<"skills">; state: "always" | "available" | "never" }>;

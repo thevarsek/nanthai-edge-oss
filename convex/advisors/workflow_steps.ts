@@ -13,7 +13,7 @@ import {
 import type { DataModel, Id } from "../_generated/dataModel";
 import { finalizeAdvisorRun } from "./lifecycle";
 import { reconcileOwnedWorkflowHandler } from "../execution/workflow_lifecycle";
-import { startGenerationDispatchHandler } from "../chat/generation_dispatch_workflow";
+import { enqueueRunGeneration } from "../chat/run_generation_queue";
 import { terminalizeExecutionComponentByOperation } from "../execution/component_refs";
 import { scheduleAdvisorSynthesisWatchdog } from "./workflow_watchdog";
 import { scheduleWorkpoolCompletionWatchdog } from
@@ -216,7 +216,7 @@ export const dispatchDeferredGeneration = internalMutation({
     const snapshot = batch.generationSnapshot as DeferredGenerationSnapshot;
     const operationIds: string[] = [];
     if (snapshot.kind === "generation" && snapshot.args) {
-      const operationId = await startGenerationDispatchHandler(
+      const operationId = await enqueueRunGeneration(
         ctx,
         { ...snapshot.args, enqueuedAt: Date.now() },
       );

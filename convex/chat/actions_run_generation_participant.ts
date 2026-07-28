@@ -116,6 +116,7 @@ import {
   shouldGroundDocumentRelativeDate,
 } from "./docx_edit_routing";
 import { finalizeResearchPaperOutput } from "../search/research_output";
+import { captureAssistantResponseFirstPatch } from "./generation_analytics";
 
 const PARALLEL_SUBAGENTS_SKILL_SLUG = "parallel-subagents";
 
@@ -139,6 +140,9 @@ export function presentationContextForToolExecution(
 }
 
 export type GenerationLatencyMetrics = {
+  scheduler_hop_1_ms?: number;
+  coordinator_dispatch_ms?: number;
+  scheduler_hop_2_ms?: number;
   participant_preflight_duration_ms?: number;
   system_prompt_duration_ms?: number;
   memory_lookup_duration_ms?: number;
@@ -148,6 +152,13 @@ export type GenerationLatencyMetrics = {
   tool_execution_duration_ms?: number;
   ttft_ms?: number;
   first_reasoning_token_ms?: number;
+  server_enqueue_to_first_delta_ms?: number;
+  coordinator_start_to_first_delta_ms?: number;
+  participant_start_to_first_delta_ms?: number;
+  first_streaming_patch_ms?: number;
+  server_enqueue_to_first_patch_ms?: number;
+  coordinator_start_to_first_patch_ms?: number;
+  participant_start_to_first_patch_ms?: number;
   tool_round_count?: number;
   tool_call_count?: number;
   compaction_count?: number;
@@ -265,6 +276,14 @@ export interface GenerateForParticipantParams {
    *  in progressive tool registry rebuilds. AUDIT-7: replaces hardcoded `true`. */
   isPro: boolean;
   runtimeProfile: "mobileBasic";
+  runtimeKind?: "v8" | "node";
+  latencyAnchors?: {
+    generationEnqueuedAt?: number;
+    coordinatorStartedAt?: number;
+    participantEnqueuedAt?: number;
+    participantStartedAt?: number;
+    workflowStartAsync?: boolean;
+  };
   apiKey: string;
   /** Optional prebuilt OpenRouter request messages for resumed flows. */
   requestMessagesOverride?: OpenRouterMessage[];
@@ -391,6 +410,8 @@ export async function generateForParticipant(
     toolRegistry,
     requestMessagesOverride,
     runtimeProfile,
+    runtimeKind = "v8",
+    latencyAnchors = {},
     progressiveTools,
     isPro,
     apiKey,
@@ -418,7 +439,25 @@ export async function generateForParticipant(
   // which cost ~150–230ms of sequential round-trips. The only data that
   // actually depends on another is the system-prompt building the
   // skill-augmented prompt, which is pure CPU once persona is fetched.
-  const latencyMetrics: GenerationLatencyMetrics = {};
+  const elapsed = (startedAt: number | undefined, endedAt: number): number | undefined =>
+    startedAt === undefined ? undefined : endedAt - startedAt;
+  const latencyMetrics: GenerationLatencyMetrics = {
+    scheduler_hop_1_ms:
+      latencyAnchors.generationEnqueuedAt !== undefined
+        && latencyAnchors.coordinatorStartedAt !== undefined
+        ? latencyAnchors.coordinatorStartedAt - latencyAnchors.generationEnqueuedAt
+        : undefined,
+    coordinator_dispatch_ms:
+      latencyAnchors.coordinatorStartedAt !== undefined
+        && latencyAnchors.participantEnqueuedAt !== undefined
+        ? latencyAnchors.participantEnqueuedAt - latencyAnchors.coordinatorStartedAt
+        : undefined,
+    scheduler_hop_2_ms:
+      latencyAnchors.participantEnqueuedAt !== undefined
+        && latencyAnchors.participantStartedAt !== undefined
+        ? latencyAnchors.participantStartedAt - latencyAnchors.participantEnqueuedAt
+        : undefined,
+  };
   const preflightStartedAt = Date.now();
   const hasPreResolved = preResolvedOverrides?.resolved === true;
   const needsPersonaForSkills = !hasPreResolved && participant.personaId != null;
@@ -1112,6 +1151,38 @@ export async function generateForParticipant(
           lastExecutionHeartbeatAt = now;
         }
       },
+      afterPatch: async (patchKind) => {
+        if (latencyMetrics.first_streaming_patch_ms !== undefined) return;
+        const now = Date.now();
+        latencyMetrics.first_streaming_patch_ms =
+          now - openRouterRequestStartedAt;
+        latencyMetrics.server_enqueue_to_first_patch_ms = elapsed(
+          latencyAnchors.generationEnqueuedAt,
+          now,
+        );
+        latencyMetrics.coordinator_start_to_first_patch_ms = elapsed(
+          latencyAnchors.coordinatorStartedAt,
+          now,
+        );
+        latencyMetrics.participant_start_to_first_patch_ms = elapsed(
+          latencyAnchors.participantStartedAt,
+          now,
+        );
+        await captureAssistantResponseFirstPatch(ctx, {
+          userId: args.userId,
+          chatId: String(args.chatId),
+          messageId: String(participant.messageId),
+          jobId: String(participant.jobId),
+          modelId: participant.modelId,
+          source: args.analyticsSource
+            ?? (args.subagentBatchId ? "subagent_parent_resume" : "chat_generation"),
+          analytics: args.analytics,
+          runtime: runtimeKind,
+          workflowStartAsync: latencyAnchors.workflowStartAsync,
+          patchKind,
+          latencies: latencyMetrics,
+        });
+      },
       transformContent: clampMessageContent,
       transformStreamingContent: (content) => clampMessageContent(stripCitationBlock(content)),
       shouldPersistReasoning: shouldPersistParticipantReasoning,
@@ -1128,14 +1199,27 @@ export async function generateForParticipant(
     } = {
       onDelta: async (delta) => {
         if (!hasLoggedFirstDelta && delta.length > 0) {
+          const now = Date.now();
           hasLoggedFirstDelta = true;
-          latencyMetrics.ttft_ms = Date.now() - openRouterRequestStartedAt;
+          latencyMetrics.ttft_ms = now - openRouterRequestStartedAt;
+          latencyMetrics.server_enqueue_to_first_delta_ms = elapsed(
+            latencyAnchors.generationEnqueuedAt,
+            now,
+          );
+          latencyMetrics.coordinator_start_to_first_delta_ms = elapsed(
+            latencyAnchors.coordinatorStartedAt,
+            now,
+          );
+          latencyMetrics.participant_start_to_first_delta_ms = elapsed(
+            latencyAnchors.participantStartedAt,
+            now,
+          );
           ttftLog("[generation] first delta received", {
             chatId: args.chatId,
             messageId: participant.messageId,
             jobId: participant.jobId,
             modelId: participant.modelId,
-            durationMs: Date.now() - openRouterRequestStartedAt,
+            durationMs: latencyMetrics.ttft_ms,
           });
         }
         await writer.handleContentDeltaBoundary(delta.length);

@@ -2,22 +2,11 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
+import { BACKEND_ANALYTICS_EVENTS } from "./backend_event_names";
 import { captureBackendAnalytics } from "./posthog";
 
 const backendAnalyticsEventValidator = v.union(
-  v.literal("assistant_response_started"),
-  v.literal("assistant_response_completed"),
-  v.literal("assistant_response_failed"),
-  v.literal("message_continued"),
-  v.literal("video_generation_requested"),
-  v.literal("advisor_consultation_started"),
-  v.literal("advisor_consultation_completed"),
-  v.literal("advisor_consultation_failed"),
-  v.literal("advisor_kept_for_chat"),
-  v.literal("advisor_removed_from_chat"),
-  v.literal("backend_ai_operation_started"),
-  v.literal("backend_ai_operation_completed"),
-  v.literal("backend_ai_operation_failed"),
+  ...BACKEND_ANALYTICS_EVENTS.map((event) => v.literal(event)),
 );
 
 const backendAnalyticsPropertyValidator = v.union(

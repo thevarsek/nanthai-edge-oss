@@ -40,6 +40,12 @@ const TERMINAL_GENERATION_STATUSES = new Set([
   "timedOut",
 ]);
 
+export function generationParticipantWorkflowStartsAsync(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.CHAT_GENERATION_WORKFLOW_START_ASYNC === "true";
+}
+
 export const startGenerationWorkflow = internalMutation({
   args: generationParticipantWorkflowArgs,
   returns: v.union(v.string(), v.null()),
@@ -61,8 +67,10 @@ export const startGenerationWorkflow = internalMutation({
       job.executionRunId as Id<"executionRuns">,
     );
     if (existing) return existing.operationId;
+    const startAsync = generationParticipantWorkflowStartsAsync();
     const workflowArgs: GenerationParticipantWorkflowArgs = {
       ...args,
+      workflowStartAsync: startAsync,
       journalProtocolVersion: 1,
     };
     const workflowId = String(await durableWorkflow.start(
@@ -70,7 +78,7 @@ export const startGenerationWorkflow = internalMutation({
       internal.chat.generation_workflow.runGenerationParticipantWorkflow,
       workflowArgs,
       {
-        startAsync: true,
+        startAsync,
         onComplete: generationWorkflowCompletionRef,
         context: { participantArgs: workflowArgs },
       },

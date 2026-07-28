@@ -133,6 +133,10 @@ function toRunGenerationArgs(args: RunGenerationParticipantArgs): RunGenerationA
     executionAttemptId: args.executionAttemptId,
     executionFence: args.executionFence,
     workflowResumeEventId: args.workflowResumeEventId,
+    generationEnqueuedAt: args.generationEnqueuedAt,
+    coordinatorStartedAt: args.coordinatorStartedAt,
+    participantStartedAt: args.participantStartedAt,
+    workflowStartAsync: args.workflowStartAsync,
   };
   if (args.requireZdrOverride === true) {
     generationArgs.requireZdrOverride = true;
@@ -246,6 +250,10 @@ export async function runGenerationParticipantHandler(
         executionFence: claimedArgs.executionFence,
         workflowManaged: claimedArgs.workflowManaged,
         workflowResumeEventId: claimedArgs.workflowResumeEventId,
+        generationEnqueuedAt: continuationState.group.generationEnqueuedAt,
+        coordinatorStartedAt: continuationState.group.coordinatorStartedAt,
+        participantStartedAt: continuationState.group.participantStartedAt,
+        workflowStartAsync: continuationState.group.workflowStartAsync,
         resumeExpected: true,
       }
     : claimedArgs;
@@ -323,6 +331,7 @@ export async function runGenerationParticipantHandler(
             schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
               ? Date.now() - effectiveArgs.enqueuedAt
               : null,
+            runtime: "node",
           });
         }
         await finalizeParticipantFailureAndCleanup(ctx, effectiveArgs, error);
@@ -377,6 +386,7 @@ export async function runGenerationParticipantHandler(
           schedulerHop2Ms: typeof effectiveArgs.enqueuedAt === "number"
             ? Date.now() - effectiveArgs.enqueuedAt
             : null,
+          runtime: "node",
         }, imageTerminalAnalytics);
       }
     }
@@ -445,6 +455,14 @@ export async function runGenerationParticipantHandler(
       },
       isPro: effectiveArgs.isPro,
       runtimeProfile: "mobileBasic",
+      runtimeKind: "node",
+      latencyAnchors: {
+        generationEnqueuedAt: effectiveArgs.generationEnqueuedAt,
+        coordinatorStartedAt: effectiveArgs.coordinatorStartedAt,
+        participantEnqueuedAt: effectiveArgs.enqueuedAt,
+        participantStartedAt: effectiveArgs.participantStartedAt,
+        workflowStartAsync: effectiveArgs.workflowStartAsync,
+      },
       apiKey,
       requestMessagesOverride: continuationState?.messages,
       requireZdrOverride: effectiveArgs.requireZdrOverride,

@@ -73,7 +73,6 @@ export async function runGenerationHandler(
   ctx: ActionCtx,
   args: RunGenerationArgs,
   deps: RunGenerationHandlerDeps = defaultRunGenerationHandlerDeps,
-  options: { deferTerminalFailureToWorkflow?: boolean } = {},
 ): Promise<void> {
   const actionStartTime = deps.now();
   const scheduledParticipants: Array<{
@@ -193,6 +192,8 @@ export async function runGenerationHandler(
           integrationDefaults: userDefaults?.integrationDefaults,
           // Phase 1 instrumentation: scheduler hop #2 latency measurement
           enqueuedAt: deps.now(),
+          generationEnqueuedAt: args.enqueuedAt,
+          coordinatorStartedAt: actionStartTime,
         };
       if (execution) {
         Object.assign(participantArgs, {
@@ -253,10 +254,10 @@ export async function runGenerationHandler(
       durationMs,
       error: error instanceof Error ? error.message : String(error),
     });
-    if (options.deferTerminalFailureToWorkflow) {
-      // Successfully started participant Workflows are idempotently discovered
-      // on retry. Leave them running and let the outer durable Workflow retry
-      // only the coordinator work that did not finish.
+    if (args.dispatchRecovery === true) {
+      // A watchdog replay may rediscover a participant Workflow that another
+      // coordinator already started. Preserve all active drivers and let the
+      // next bounded watchdog pass handle only participants still stranded.
       throw error;
     }
     for (const scheduledParticipant of scheduledParticipants) {

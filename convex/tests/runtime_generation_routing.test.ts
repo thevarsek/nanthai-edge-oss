@@ -128,6 +128,9 @@ test("requiresNodeWorker returns true for media generation, node tools, or node 
   assert.equal(requiresNodeWorker({
     directToolNames: ["fetch_image", "search_chats"], activeProfiles: [], hasVideoGeneration: false, hasAudioOutput: false,
   }), false);
+  assert.equal(requiresNodeWorker({
+    directToolNames: ["spawn_subagents"], activeProfiles: ["subagents"], hasVideoGeneration: false, hasAudioOutput: false,
+  }), false);
 });
 
 test("runGenerationParticipantRuntimeHandler delegates to Node when continuation has node-required profiles", async () => {

@@ -6,7 +6,6 @@ export const run = internalAction({
   args: {
     target: v.union(
       v.literal("generation_workflow"),
-      v.literal("generation_dispatch"),
       v.literal("subagent_workflow"),
       v.literal("owned_workflow"),
       v.literal("advisor_synthesis"),
@@ -18,11 +17,6 @@ export const run = internalAction({
     if (args.target === "generation_workflow") {
       await ctx.runMutation(
         internal.chat.workflow_events.reconcileGenerationWorkflowCompletion,
-        args.payload,
-      );
-    } else if (args.target === "generation_dispatch") {
-      await ctx.runMutation(
-        internal.chat.generation_dispatch_workflow.reconcileGenerationDispatch,
         args.payload,
       );
     } else if (args.target === "subagent_workflow") {

@@ -345,6 +345,10 @@ export const saveGenerationContinuationArgs = {
       drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
       executionAttemptId: v.optional(v.id("executionAttempts")),
       executionFence: v.optional(v.number()),
+      generationEnqueuedAt: v.optional(v.number()),
+      coordinatorStartedAt: v.optional(v.number()),
+      participantStartedAt: v.optional(v.number()),
+      workflowStartAsync: v.optional(v.boolean()),
       imageConfig: v.optional(imageConfigValidator),
       // Pre-resolved overrides preserved across continuations (M30 skill tri-state + preflight consolidation)
       chatSkillOverrides: v.optional(v.array(skillOverrideEntry)),

@@ -187,9 +187,21 @@ function errorLabel(error: unknown): string {
 export async function captureAssistantResponseStarted(
   ctx: BackendAnalyticsSchedulingCtx,
   args: RunGenerationParticipantArgs,
-  options: { isResume: boolean; schedulerHop2Ms: number | null },
+  options: {
+    isResume: boolean;
+    schedulerHop2Ms: number | null;
+    runtime: "v8" | "node";
+  },
   terminalAnalytics?: DedicatedImageGenerationAnalytics,
 ): Promise<void> {
+  const schedulerHop1Ms = args.generationEnqueuedAt !== undefined
+      && args.coordinatorStartedAt !== undefined
+    ? args.coordinatorStartedAt - args.generationEnqueuedAt
+    : null;
+  const coordinatorDispatchMs = args.coordinatorStartedAt !== undefined
+      && args.enqueuedAt !== undefined
+    ? args.enqueuedAt - args.coordinatorStartedAt
+    : null;
   await scheduleBackendAnalytics(ctx, args.userId, "assistant_response_started", {
     chat_id: String(args.chatId),
     message_id: String(args.participant.messageId),
@@ -201,10 +213,49 @@ export async function captureAssistantResponseStarted(
     integration_count: args.effectiveIntegrations.length,
     subagents_enabled: args.allowSubagents === true,
     is_resume: options.isResume,
+    generation_runtime: options.runtime,
+    workflow_start_async: args.workflowStartAsync ?? null,
+    scheduler_hop_1_ms: schedulerHop1Ms,
+    coordinator_dispatch_ms: coordinatorDispatchMs,
     scheduler_hop_2_ms: options.schedulerHop2Ms,
     ...terminalAnalytics?.properties,
     ...analyticsClientProperties(args.analytics),
   });
+}
+
+export async function captureAssistantResponseFirstPatch(
+  ctx: BackendAnalyticsSchedulingCtx,
+  args: {
+    userId: string;
+    chatId: string;
+    messageId: string;
+    jobId: string;
+    modelId: string;
+    source: AssistantResponseSource;
+    analytics?: AnalyticsClientMetadata;
+    runtime: "v8" | "node";
+    workflowStartAsync?: boolean;
+    patchKind: "content" | "reasoning";
+    latencies: Record<string, number | undefined>;
+  },
+): Promise<void> {
+  await scheduleBackendAnalytics(
+    ctx,
+    args.userId,
+    "assistant_response_first_patch",
+    {
+      chat_id: args.chatId,
+      message_id: args.messageId,
+      job_id: args.jobId,
+      model_id: args.modelId,
+      source: args.source,
+      generation_runtime: args.runtime,
+      workflow_start_async: args.workflowStartAsync ?? null,
+      patch_kind: args.patchKind,
+      ...args.latencies,
+      ...analyticsClientProperties(args.analytics),
+    },
+  );
 }
 
 export async function captureAssistantResponseStartedEvent(

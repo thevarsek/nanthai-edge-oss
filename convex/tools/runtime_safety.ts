@@ -7,10 +7,17 @@ export const RUNTIME_SAFE_TOOL_NAMES = new Set<string>([
   "search_chats",
   "load_skill",
   "list_skills",
+  "spawn_subagents",
   "web_search",
 ]);
 
-const RUNTIME_SAFE_PROFILE_IDS = new Set<SkillToolProfileId>();
+// `spawn_subagents` only validates a bounded task list and returns a durable
+// deferred handoff. The V8 participant owns the fenced batch/checkpoint writes
+// after that result, so merely making subagents available must not force an
+// otherwise ordinary turn through Node before the model chooses the tool.
+const RUNTIME_SAFE_PROFILE_IDS = new Set<SkillToolProfileId>([
+  "subagents",
+]);
 
 export function classifyToolRuntimeSafety(toolName: string): RuntimeSafety {
   return RUNTIME_SAFE_TOOL_NAMES.has(toolName) ? "runtime-safe" : "node-required";

@@ -35,6 +35,21 @@ Use the interactive pool for user-visible fan-out, the background pool for
 post-response work, and the maintenance pool for bulk/index/repair work. These
 queues provide backpressure; they are not user quotas.
 
+## Chat V8 / Node runtime boundary
+
+The first bounded chat coordinator and runtime-safe participant round are
+latency-sensitive V8 actions registered in
+`convex/chat/actions_runtime.ts`. That module must not declare `"use node"`.
+Media generation, document and connected-integration tools, and expanded
+profiles that require Node delegate through the explicit sibling action in
+`convex/chat/actions_node.ts` after runtime-safety preflight.
+
+Do not move the whole registration module into Node to resolve an import
+boundary. Extract V8-safe routing logic, inject the Node-only callback, or add a
+narrow Node action. The regression guard lives in
+`convex/tests/runtime_boundary_v8_participant.test.ts`; a development deploy is
+also required because Convex bundling is the final runtime-boundary check.
+
 ## Required lifecycle
 
 1. Keep domain tables as product truth. Workflow and Workpool history are
@@ -104,6 +119,28 @@ point.
 
 Prefer extending these helpers or an existing domain Workflow over creating a
 new parallel abstraction.
+
+### Interactive chat dispatch and `startAsync`
+
+Interactive chat generation schedules the bounded V8 coordinator action
+directly. Do not wrap that coordinator in a one-step Workflow: participant
+Workflows already own ordered rounds, tool waits, continuation handoffs, and
+recovery.
+
+Participant Workflows start inline by default (`startAsync: false`) to remove
+the Workpool enqueue hop before the first provider round. Set
+`CHAT_GENERATION_WORKFLOW_START_ASYNC=true` as the rollback switch if Convex
+component pressure or canary metrics require restoring asynchronous start.
+This switch applies only to interactive generation participants; unrelated
+Workflow/Workpool workloads keep their own execution policy.
+
+Making a deferred capability available must not itself force a runtime
+promotion. In particular, `spawn_subagents` is V8-safe: it validates a bounded
+task list and returns a deferred handoff that the participant commits through
+the normal fenced checkpoint path. Keep the `subagents` profile in V8 until the
+model actually selects the tool. Node-required profiles such as documents,
+workspace, connected integrations, or media still cross the explicit
+`actions_node.ts` boundary before their Node-only work executes.
 
 ## Exact Convex validator boundaries
 

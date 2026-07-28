@@ -136,11 +136,14 @@ capacity pressure: the affected production sample had Workpool backlog `0`, whil
 the missing continuation and a Workflow attempt in `waiting` state identified the
 checkpoint race.
 
-The same sample also measured roughly one second in the dispatch Workflow hop and
-roughly 2.9 seconds in the participant Workflow hop before participant execution.
-M47 therefore does add visible scheduled-execution latency on Starter/S16; it does
-not change the provider's own TTFT once the request is dispatched. Treat prolonged
-`waiting` with no continuation as a correctness incident, not ordinary queueing.
+The same sample also measured roughly one second in the then-current dispatch
+Workflow hop and roughly 2.9 seconds in the participant Workflow hop before
+participant execution. The 2026-07-28 latency canary removed that one-step
+dispatch Workflow in favor of a direct bounded V8 coordinator action and made
+interactive participant Workflow start inline by default. Participant
+Workflows still own all durable provider rounds and handoffs. Treat prolonged
+`waiting` with no continuation as a correctness incident, not ordinary
+queueing.
 
 That result was the first M48 observation, not deletion authorization. The
 subsequent repeated observations, representative traffic, maximum in-flight

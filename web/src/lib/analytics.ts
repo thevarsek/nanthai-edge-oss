@@ -46,6 +46,7 @@ export type AnalyticsEvent =
   | "message_send_attempted"
   | "message_sent"
   | "message_send_failed"
+  | "assistant_first_token"
   | "message_retry_requested"
   | "message_retry_failed"
   | "response_copied"

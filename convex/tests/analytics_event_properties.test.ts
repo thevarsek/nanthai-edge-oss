@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BACKEND_ANALYTICS_EVENTS } from "../analytics/backend_event_names";
 
 import { analyticsClientProperties } from "../analytics/client_metadata";
 import {
@@ -427,4 +428,10 @@ test("captureBackendAnalytics posts to the public PostHog ingestion endpoint", a
   assert.ok(!serializedPayload.includes("user_1"));
   assert.ok(!serializedPayload.includes("ada@example.com"));
   assert.ok(!serializedPayload.includes("Ada Lovelace"));
+});
+test("backend analytics event contract includes the first committed patch milestone", () => {
+  assert.equal(
+    BACKEND_ANALYTICS_EVENTS.includes("assistant_response_first_patch"),
+    true,
+  );
 });

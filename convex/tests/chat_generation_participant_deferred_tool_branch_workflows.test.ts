@@ -205,7 +205,10 @@ test("generateForParticipant persists deferred subagent batches and starts each 
     mutations.filter((args) => typeof args.runId === "string"),
     [{ runId: "run_child_1" }, { runId: "run_child_2" }],
   );
-  assert.deepEqual(scheduled, []);
+  assert.deepEqual(
+    scheduled.filter((payload) => payload.event !== "assistant_response_first_patch"),
+    [],
+  );
 });
 
 test("Workflow subagent handoff commits a deferred parent checkpoint before child enqueue", async (t) => {
@@ -294,7 +297,10 @@ test("generateForParticipant stores deferred Drive picker batches without creati
   const driveBatch = mutations.find((args) => args.toolCallId === "call_drive");
   assert.equal(driveBatch?.parentMessageId, "msg_assistant");
   assert.equal((driveBatch?.paramsSnapshot as any).turnIntegrationOverrides[0].integrationId, "drive");
-  assert.deepEqual(scheduled, []);
+  assert.deepEqual(
+    scheduled.filter((payload) => payload.event !== "assistant_response_first_patch"),
+    [],
+  );
 });
 
 test("Workflow Drive picker handoff checkpoints ownership before waiting for selection", async (t) => {
@@ -400,7 +406,10 @@ test("generateForParticipant hands off after a completed tool round when invocat
   assert.match(String(((handoffs[0]?.toolResults as unknown[])?.[0] as any)?.result), /inspected/);
   assert.equal(handoffs[0]?.continuationCount, 1);
   assert.equal(mutations.some((args) => args.status === "completed"), false);
-  assert.deepEqual(scheduled, []);
+  assert.deepEqual(
+    scheduled.filter((payload) => payload.event !== "assistant_response_first_patch"),
+    [],
+  );
 });
 
 test("generateForParticipant keeps prior continuation tools in the live projection", async (t) => {

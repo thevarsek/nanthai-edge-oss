@@ -28,6 +28,8 @@ export interface StreamWriterOptions {
    * run cancellation checks or other side-effects. Throw to abort the stream.
    */
   beforePatch?: () => Promise<void>;
+  /** Called after a content or reasoning mutation commits successfully. */
+  afterPatch?: (kind: "content" | "reasoning") => Promise<void>;
   /**
    * Transform content before writing to DB (e.g. clampMessageContent).
    * Defaults to identity.
@@ -56,6 +58,7 @@ export class StreamWriter {
   private executionAttemptId: Id<"executionAttempts"> | undefined;
   private executionFence: number | undefined;
   private beforePatch: (() => Promise<void>) | undefined;
+  private afterPatch: ((kind: "content" | "reasoning") => Promise<void>) | undefined;
   private transformContent: (content: string) => string;
   private transformStreamingContent: (content: string) => string;
   private shouldPersistReasoning: (totalReasoning: string) => boolean;
@@ -82,6 +85,7 @@ export class StreamWriter {
     this.executionAttemptId = opts.executionAttemptId;
     this.executionFence = opts.executionFence;
     this.beforePatch = opts.beforePatch;
+    this.afterPatch = opts.afterPatch;
     this.transformContent = opts.transformContent ?? ((c) => c);
     this.transformStreamingContent = opts.transformStreamingContent ?? this.transformContent;
     this.shouldPersistReasoning =
@@ -139,6 +143,9 @@ export class StreamWriter {
       content: this.transformStreamingContent(this._totalContent),
       status: "streaming",
     });
+    if (this.afterPatch) {
+      await this.afterPatch("content");
+    }
     this.lastPatchedContentLength = this._totalContent.length;
     this.lastPatchedContentAtMs = nowMs;
     this.contentStartedAtMs = nowMs;
@@ -187,6 +194,9 @@ export class StreamWriter {
         reasoning: this._totalReasoning,
       },
     );
+    if (this.afterPatch) {
+      await this.afterPatch("reasoning");
+    }
     this.lastPatchedReasoningLength = this._totalReasoning.length;
     this.lastPatchedReasoningAtMs = nowMs;
     this.reasoningStartedAtMs = nowMs;

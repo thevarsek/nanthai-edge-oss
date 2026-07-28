@@ -9,6 +9,7 @@ import {
   runGenerationParticipantWorkflowHandler,
 } from "../chat/generation_workflow";
 import {
+  generationParticipantWorkflowStartsAsync,
   startGenerationSuccessorHandler,
   type GenerationParticipantWorkflowArgs,
 } from "../chat/workflow_events";
@@ -39,6 +40,16 @@ function workflowArgs(
     durableChain,
   };
 }
+
+test("interactive participant Workflow starts inline by default with env rollback", () => {
+  assert.equal(generationParticipantWorkflowStartsAsync({}), false);
+  assert.equal(generationParticipantWorkflowStartsAsync({
+    CHAT_GENERATION_WORKFLOW_START_ASYNC: "false",
+  }), false);
+  assert.equal(generationParticipantWorkflowStartsAsync({
+    CHAT_GENERATION_WORKFLOW_START_ASYNC: "true",
+  }), true);
+});
 
 test("generation Workflow chains without imposing a tool-round terminal limit", async () => {
   const eventNames: string[] = [];

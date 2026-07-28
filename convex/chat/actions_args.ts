@@ -75,6 +75,9 @@ export const runGenerationArgs = {
   turnIntegrationOverrides: v.optional(v.array(integrationOverrideEntry)),
   // Phase 1 TTFT: scheduler hop #1 latency measurement (enqueue → handler entry)
   enqueuedAt: v.optional(v.number()),
+  // Watchdog replay: preserve any participant Workflow discovered or started
+  // before a later coordinator step fails.
+  dispatchRecovery: v.optional(v.boolean()),
   analytics: v.optional(analyticsClientMetadataValidator),
   analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;
@@ -114,6 +117,11 @@ export const runGenerationParticipantArgs = {
   integrationDefaults: v.optional(v.array(integrationOverrideEntry)),
   // Phase 1 TTFT: scheduler hop #2 latency measurement (coordinator dispatch → participant entry)
   enqueuedAt: v.optional(v.number()),
+  // End-to-end latency anchors retained through participant Workflow/continuations.
+  generationEnqueuedAt: v.optional(v.number()),
+  coordinatorStartedAt: v.optional(v.number()),
+  participantStartedAt: v.optional(v.number()),
+  workflowStartAsync: v.optional(v.boolean()),
   analytics: v.optional(analyticsClientMetadataValidator),
   analyticsSource: v.optional(analyticsSourceValidator),
 } satisfies PropertyValidators;

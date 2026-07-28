@@ -1,4 +1,7 @@
+import type { BackendAnalyticsEvent } from "./backend_event_names";
 import { deriveAnalyticsIdForClerkUserId } from "./analytics_id";
+
+export type { BackendAnalyticsEvent } from "./backend_event_names";
 
 export type PostHogProperty = string | number | boolean | null | undefined;
 export type PostHogProperties = Record<string, PostHogProperty>;
@@ -18,21 +21,6 @@ const SENSITIVE_IDENTITY_PROPERTY_KEYS = new Set([
   "userId",
   "user_id",
 ]);
-
-export type BackendAnalyticsEvent =
-  | "assistant_response_started"
-  | "assistant_response_completed"
-  | "assistant_response_failed"
-  | "message_continued"
-  | "video_generation_requested"
-  | "advisor_consultation_started"
-  | "advisor_consultation_completed"
-  | "advisor_consultation_failed"
-  | "advisor_kept_for_chat"
-  | "advisor_removed_from_chat"
-  | "backend_ai_operation_started"
-  | "backend_ai_operation_completed"
-  | "backend_ai_operation_failed";
 
 export async function captureBackendAnalytics(
   clerkUserId: string,

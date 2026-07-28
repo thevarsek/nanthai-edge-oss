@@ -2,12 +2,11 @@
 // =============================================================================
 // Regression guard for the V8 / Node runtime split.
 //
-// `actions_run_generation_participant.ts` runs in the Convex V8 runtime. It
-// MUST NOT statically import any module that declares `"use node"`, otherwise
-// the entire participant orchestration is forced into the Node runtime — which
-// breaks `npx convex dev/deploy` because Node-only built-ins (`node:path`,
-// `tls`, `node:crypto`, etc.) start being pulled in transitively from leaf
-// modules like `runtime/service_pdf.ts` and `tools/google/gmail_manual_client.ts`.
+// `actions_runtime.ts` registers the bounded coordinator and participant
+// actions in the Convex V8 runtime. `actions_run_generation_participant.ts`
+// implements the bounded participant path there. Neither may declare
+// `"use node"` or statically import a Node registration module: Node-required
+// work delegates through `actions_node.ts` only after runtime-safety preflight.
 //
 // This test failed historically when commit 91fad321 added
 //   import { buildProgressiveToolRegistry } from "../tools/progressive_registry";
@@ -145,6 +144,50 @@ test("V8 generation participant must not statically import any \"use node\" modu
       offenders
         .map((o) => `  - "${o.specifier}" -> ${o.resolved}`)
         .join("\n"),
+  );
+});
+
+test("bounded generation action registrations remain in V8", () => {
+  const runtimeFile = "chat/actions_runtime.ts";
+  const runtimeSource = readConvexSource(runtimeFile);
+  const nodeFile = "chat/actions_node.ts";
+  const nodeSource = readConvexSource(nodeFile);
+
+  assert.equal(
+    declaresUseNode(runtimeSource),
+    false,
+    `${runtimeFile} is the bounded V8 entry point. Node-required work must ` +
+      `delegate through ${nodeFile} after runtime-safety preflight.`,
+  );
+  assert.equal(
+    declaresUseNode(nodeSource),
+    true,
+    `${nodeFile} must remain the explicit Node-only sibling action.`,
+  );
+  assert.doesNotMatch(
+    runtimeSource,
+    /actions_run_generation_participant_action/,
+    `${runtimeFile} must not import the Node participant handler directly.`,
+  );
+  assert.match(
+    runtimeSource,
+    /actions_run_generation_participant_runtime/,
+    `${runtimeFile} must register the runtime-routing handler.`,
+  );
+});
+
+test("the deferred subagent capability remains V8-safe until the model chooses it", () => {
+  const runtimeSafety = readConvexSource("tools/runtime_safety.ts");
+  const runtimeRegistry = readConvexSource("tools/progressive_registry_runtime.ts");
+  const spawnTool = readConvexSource("tools/spawn_subagents.ts");
+
+  assert.match(runtimeSafety, /"spawn_subagents"/);
+  assert.match(runtimeSafety, /"subagents"/);
+  assert.match(runtimeRegistry, /registry\.register\(spawnSubagents\)/);
+  assert.equal(
+    declaresUseNode(spawnTool),
+    false,
+    "spawn_subagents returns a deferred checkpoint request and must remain V8-safe",
   );
 });
 

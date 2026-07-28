@@ -1,8 +1,11 @@
+import { v } from "convex/values";
 import { internalMutation } from "../_generated/server";
 import { runGenerationArgs } from "../chat/actions_args";
-import { startGenerationDispatchHandler } from "../chat/generation_dispatch_workflow";
+import { enqueueRunGeneration as enqueueRunGenerationHandler } from
+  "../chat/run_generation_queue";
 
 export const enqueueRunGeneration = internalMutation({
   args: runGenerationArgs,
-  handler: startGenerationDispatchHandler,
+  returns: v.string(),
+  handler: enqueueRunGenerationHandler,
 });

@@ -10,6 +10,7 @@ import {
   createChatMergeCache,
   reconcileStreamingMessages,
 } from "@/hooks/useChat.streaming";
+import { useFirstVisibleResponseAnalytics } from "@/hooks/useChat.ttft";
 import {
   analyticsErrorLabel,
   captureAnalytics,
@@ -446,6 +447,10 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
     },
     [rawMessages, streamingMessages, mergeCache],
   );
+  const registerFirstVisibleResponse = useFirstVisibleResponseAnalytics(
+    chatId,
+    messages,
+  );
 
   const isLoading = chat === undefined || rawMessages === undefined;
   const legacyIsGenerating = (activeJobs?.length ?? 0) > 0 ||
@@ -470,6 +475,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
   // ── Action wrappers ────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (args: SendMessageArgs) => {
+      const sendStartedAtMs = Date.now();
       const analytics = createAnalyticsClientMetadata("message_send_attempted", window.location.pathname);
       const hasAudioAttachment = args.attachments?.some(sendAttachmentIsAudio) ?? false;
       const hasImageAttachment = args.attachments?.some(sendAttachmentIsImage) ?? false;
@@ -520,6 +526,14 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
           assistant_message_ids: result.assistantMessageIds.map(String),
           assistant_message_count: result.assistantMessageIds.length,
         });
+        registerFirstVisibleResponse({
+          clientEventId: analytics.clientEventId,
+          startedAtMs: sendStartedAtMs,
+          mutationAckAtMs: Date.now(),
+          assistantMessageIds: result.assistantMessageIds,
+          modelIds: args.participants.map((participant) => participant.modelId),
+          source: "send",
+        });
         return result;
       } catch (error) {
         captureAnalytics("message_send_failed", {
@@ -531,7 +545,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
         throw error;
       }
     },
-    [sendMessageMutation],
+    [registerFirstVisibleResponse, sendMessageMutation],
   );
 
   const cancelGeneration = useCallback(
@@ -565,6 +579,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
       };
       analyticsSnapshot?: RetryAnalyticsSnapshot;
     }) => {
+      const retryStartedAtMs = Date.now();
       const analytics = createAnalyticsClientMetadata("message_retry_requested", window.location.pathname);
       const { analyticsSnapshot, ...retryArgs } = args;
       const participants = retryArgs.participants;
@@ -589,16 +604,28 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
         ...retryArgs,
         analytics,
         participants: participants?.map(stripLocalParticipantFields),
-      }).catch((error: unknown) => {
-        captureAnalytics("message_retry_failed", {
-          ...analyticsProperties,
-          error_type: error instanceof Error ? error.name : "unknown",
-          error_label: analyticsErrorLabel(error),
+      }).then((result) => {
+        registerFirstVisibleResponse({
+          clientEventId: analytics.clientEventId,
+          startedAtMs: retryStartedAtMs,
+          mutationAckAtMs: Date.now(),
+          assistantMessageIds: result.assistantMessageIds,
+          modelIds: participants?.map((participant) => participant.modelId)
+            ?? analyticsSnapshot?.modelIds?.split(",")
+            ?? [],
+          source: "retry",
         });
-        throw error;
-      });
+        return result;
+      }).catch((error: unknown) => {
+          captureAnalytics("message_retry_failed", {
+            ...analyticsProperties,
+            error_type: error instanceof Error ? error.name : "unknown",
+            error_label: analyticsErrorLabel(error),
+          });
+          throw error;
+        });
     },
-    [chatId, retryMessageMutation],
+    [chatId, registerFirstVisibleResponse, retryMessageMutation],
   );
 
   const deleteMessage = useCallback(

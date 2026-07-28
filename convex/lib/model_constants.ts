@@ -37,13 +37,12 @@ export const MODEL_IDS = {
  * `lib/openrouter_request.buildRequestBody`, so ZDR and other caller-provided
  * fields are preserved.
  *
- * We intentionally do NOT set `preferred_max_latency` here: a hard p90 cap
- * filters out endpoints whose recent p90 exceeds the threshold, which can
- * collapse the endpoint set to zero (especially when combined with top-level
- * `cache_control` that already restricts routing to a single provider, e.g.
- * Anthropic-native), producing a 404 "No endpoints found". Sorting alone is
- * sufficient — OpenRouter picks the lowest-latency provider without hard
- * exclusions.
+ * We intentionally do NOT set `preferred_max_latency` here. OpenRouter treats
+ * that field as a rolling performance preference: endpoints outside the
+ * threshold are deprioritized, not excluded. Sorting alone gives this path the
+ * simpler policy we want — try the lowest-latency eligible provider first —
+ * while avoiding another routing preference whose value has not been measured
+ * against NanthAI production traffic.
  *
  * Set this constant to `null` to fully disable provider sorting (one-line
  * revert if we observe regressions).

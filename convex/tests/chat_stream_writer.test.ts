@@ -146,6 +146,21 @@ test("beforePatch throwing aborts the patch", async () => {
   assert.equal(calls.length, 0);
 });
 
+test("afterPatch runs only after a successful committed patch", async () => {
+  const calls: string[] = [];
+  const { writer } = createWriter({
+    beforePatch: async () => {
+      calls.push("before");
+    },
+    afterPatch: async (kind) => {
+      calls.push(`after:${kind}`);
+    },
+  });
+  await writer.appendContent("a".repeat(40));
+  await writer.patchContentIfNeeded();
+  assert.deepEqual(calls, ["before", "after:content"]);
+});
+
 // ---------------------------------------------------------------------------
 // Tests — reasoning accumulation and patching
 // ---------------------------------------------------------------------------

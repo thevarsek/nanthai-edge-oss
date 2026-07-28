@@ -1,4 +1,8 @@
-"use node";
+// V8 runtime boundary for bounded chat coordination and participant rounds.
+// Do not add "use node" here: Node-required media, document, integration, and
+// expanded-profile work must delegate through actions_node.ts after the
+// runtime-safety preflight. Keeping this registration module in V8 avoids
+// paying a Node action startup before every provider request.
 
 import { internalAction } from "../_generated/server";
 import {
@@ -11,16 +15,6 @@ import { runGenerationParticipantRuntimeHandler } from "./actions_run_generation
 export const runGeneration = internalAction({
   args: runGenerationArgs,
   handler: runGenerationHandler,
-});
-
-export const runGenerationForDurableDispatch = internalAction({
-  args: runGenerationArgs,
-  handler: async (ctx, args) => await runGenerationHandler(
-    ctx,
-    args,
-    undefined,
-    { deferTerminalFailureToWorkflow: true },
-  ),
 });
 
 export const runGenerationParticipant = internalAction({

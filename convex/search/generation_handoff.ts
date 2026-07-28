@@ -1,8 +1,11 @@
 import { v, type ObjectType } from "convex/values";
 import { runGenerationArgs } from "../chat/actions_args";
-import { startGenerationDispatchHandler } from
-  "../chat/generation_dispatch_workflow";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { enqueueRunGeneration } from "../chat/run_generation_queue";
+import {
+  internalMutation,
+  internalQuery,
+  type MutationCtx,
+} from "../_generated/server";
 import { isCurrentResearchExecution } from "./execution_lifecycle";
 
 const commitGenerationHandoffArgs = {
@@ -21,9 +24,9 @@ type CommitGenerationHandoffArgs = ObjectType<
 >;
 
 export async function commitGenerationHandoffHandler(
-  ctx: Parameters<typeof startGenerationDispatchHandler>[0],
+  ctx: MutationCtx,
   args: CommitGenerationHandoffArgs,
-  startGeneration = startGenerationDispatchHandler,
+  startGeneration = enqueueRunGeneration,
 ): Promise<string> {
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new Error("SEARCH_SESSION_NOT_FOUND");

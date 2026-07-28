@@ -121,6 +121,8 @@ test("runGenerationHandler intersects enabled integrations and schedules per-par
     skillDefaults: undefined,
     integrationDefaults: undefined,
     enqueuedAt: 123,
+    generationEnqueuedAt: undefined,
+    coordinatorStartedAt: 123,
   });
   assert.deepEqual(mutationCalls, []);
 });
@@ -225,7 +227,7 @@ test("runGenerationHandler cancels already scheduled participants when a later d
   assert.deepEqual(mutationCalls, [{ jobId: "job_1" }]);
 });
 
-test("durable dispatch rethrows coordinator failure without cancelling or terminalizing started participants", async () => {
+test("watchdog recovery preserves participant workflows when a later dispatch fails", async () => {
   const cancelledOperationIds: string[] = [];
   const failureCalls: unknown[] = [];
   let dispatchCount = 0;
@@ -236,24 +238,22 @@ test("durable dispatch rethrows coordinator failure without cancelling or termin
     execution: {
       dispatchParticipant: async () => {
         dispatchCount += 1;
-        if (dispatchCount === 1) return "workflow_1";
-        throw new Error("transient coordinator failure");
+        if (dispatchCount === 1) return "existing_workflow_1";
+        throw new Error("transient recovery failure");
       },
       cancelParticipant: async (_ctx: unknown, operationId: string) => {
         cancelledOperationIds.push(operationId);
       },
     },
   });
-  const ctx = createCtxWithGenCtx(buildGenCtx());
 
   await assert.rejects(
     runGenerationHandler(
-      ctx,
-      buildArgs(),
+      createCtxWithGenCtx(buildGenCtx()),
+      { ...buildArgs(), dispatchRecovery: true },
       deps,
-      { deferTerminalFailureToWorkflow: true },
     ),
-    /transient coordinator failure/,
+    /transient recovery failure/,
   );
   assert.deepEqual(cancelledOperationIds, []);
   assert.deepEqual(failureCalls, []);
