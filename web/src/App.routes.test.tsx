@@ -127,6 +127,10 @@ vi.mock("./pages/features/IntegrationsPage", () => ({
   IntegrationsPage: () => <div>feature-integrations-page</div>,
 }));
 
+vi.mock("./pages/features/RemoteMcpServersPage", () => ({
+  RemoteMcpServersPage: () => <div>feature-remote-mcp-page</div>,
+}));
+
 vi.mock("./pages/features/PersonasPage", () => ({
   PersonasPage: () => <div>feature-personas-page</div>,
 }));
@@ -326,6 +330,10 @@ describe("App routes", () => {
     const integrationsRoute = renderAt("/features/integrations");
     expect(await screen.findByText("feature-integrations-page")).toBeInTheDocument();
     integrationsRoute.unmount();
+
+    const remoteMcpRoute = renderAt("/features/remote-mcp");
+    expect(await screen.findByText("feature-remote-mcp-page")).toBeInTheDocument();
+    remoteMcpRoute.unmount();
 
     const personasFeatureRoute = renderAt("/features/personas");
     expect(await screen.findByText("feature-personas-page")).toBeInTheDocument();

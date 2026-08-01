@@ -106,7 +106,7 @@ export function ToolCallAccordion({
         const isComplete = Boolean(result) || isImplicitlyComplete;
         const isError = result?.isError;
         const skillCard = skillSummary(tc, result);
-        const toolName = getToolName(tc.name, (key) => t(key));
+        const toolName = tc.displayName || getToolName(tc.name, (key) => t(key));
 
         return (
           <div
@@ -137,8 +137,13 @@ export function ToolCallAccordion({
                 <Wrench size={12} className="text-muted shrink-0" />
               )}
 
-              <span className="font-medium text-muted flex-1">
-                {toolName}
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium text-muted">{toolName}</span>
+                {tc.source === "remote_mcp" && tc.integrationName && (
+                  <span className="block truncate text-[10px] text-secondary">
+                    {tc.integrationName} · {t("remote_mcp_label")}
+                  </span>
+                )}
               </span>
 
               <span className="text-[10px] text-secondary">
@@ -163,7 +168,7 @@ export function ToolCallAccordion({
                 )}
                 {!skillCard && (
                   <p className="rounded-lg border border-border/20 bg-surface-2/30 px-3 py-2 text-[11px] text-muted">
-                    {isPending ? "Tool is running…" : isError ? "Tool returned an error." : isComplete ? "Completed successfully." : "Waiting to resume."}
+                    {isPending ? t("tool_is_running") : isError ? t("tool_returned_error") : isComplete ? t("completed_successfully") : t("waiting_to_resume")}
                   </p>
                 )}
                 <button

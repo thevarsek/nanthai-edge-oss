@@ -10,6 +10,7 @@ import { deleteChatPresentationDataBatch } from
   "./manage_delete_presentation_helpers";
 import { deleteGeneratedMediaForChatBatch } from "./manage_generated_media_helpers";
 import { deleteChatExecutionBatch } from "../execution/chat_cleanup";
+import { deleteChatMcpInvocationsBatch } from "../mcp/chat_cleanup";
 import { deleteForChatBatch as deleteAnalyticsForChatBatch } from "../analytics_workflows/cleanup";
 import {
   storageHasContentReferences,
@@ -67,6 +68,7 @@ export async function deleteChatGraph(
   hasMore = await deleteChatAdvisorDataBatch(ctx, chatId, DELETE_BATCH_SIZE);
   hasMore = await deleteChatPresentationDataBatch(ctx, chatId) || hasMore;
   hasMore = await deleteChatExecutionBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;
+  hasMore = await deleteChatMcpInvocationsBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;
 
   hasMore = await deleteAnalyticsForChatBatch(
     ctx,

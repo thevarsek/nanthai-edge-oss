@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-scheduled-encryption-key";
+
 import {
   createJob,
   createJobTriggerToken,

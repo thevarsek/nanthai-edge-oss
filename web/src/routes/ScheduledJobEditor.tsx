@@ -117,6 +117,11 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
   const [error, setError] = useState<string | null>(null);
 
   const folders = (useQuery(api.folders.queries.list) ?? []) as FolderRow[];
+  const remoteMcpConnections = useQuery(api.mcp.queries.listActiveConnectionOptions, {}) ?? [];
+  const originalRemoteMcpIntegrationIds = useMemo(
+    () => new Set((job ? jobToSteps(job) : []).flatMap((step) => step.remoteMcpIntegrationIds)),
+    [job],
+  );
   const createJob = useMutation(api.scheduledJobs.mutations.createJob);
   const updateJob = useMutation(api.scheduledJobs.mutations.updateJob);
   type CreateJobArgs = Parameters<typeof createJob>[0];
@@ -239,7 +244,9 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
     setIsSaving(true);
     try {
       const recurrence = buildRecurrencePayload(recurrenceType, intervalMinutes, dailyHour, dailyMinute, weeklyDay, cronExpression);
-      const stepsPayload = buildStepsPayload(steps);
+      const knownRemoteMcpIntegrationIds = new Set(originalRemoteMcpIntegrationIds);
+      for (const connection of remoteMcpConnections) knownRemoteMcpIntegrationIds.add(connection.integrationId);
+      const stepsPayload = buildStepsPayload(steps, knownRemoteMcpIntegrationIds);
       if (isEditing && job) {
         await updateJob({
           jobId: job._id,
@@ -325,7 +332,11 @@ export function ScheduledJobEditor({ job, onDone }: ScheduledJobEditorProps) {
           {currentStepToolError && (
             <SF error>{currentStepToolError}</SF>
           )}
-          <StepIntegrationsSection step={currentStep} onChange={patchStep} />
+          <StepIntegrationsSection
+            step={currentStep}
+            remoteMcpConnections={remoteMcpConnections}
+            onChange={patchStep}
+          />
           <StepSearchSection step={currentStep} onChange={patchStep} />
           <StepKnowledgeBaseSection step={currentStep} onChange={patchStep} />
           <StepOptionsSection step={currentStep} onChange={patchStep} />

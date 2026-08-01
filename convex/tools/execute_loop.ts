@@ -56,6 +56,10 @@ export interface RecordedToolCall {
   id: string;
   name: string;
   arguments: string;
+  source?: "remote_mcp";
+  displayName?: string;
+  integrationId?: string;
+  integrationName?: string;
 }
 
 /** A recorded tool result for structured persistence. */

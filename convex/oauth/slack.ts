@@ -20,6 +20,11 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import {
+  assertEncryptedSecret,
+  decryptOAuthCredentials,
+  encryptOAuthCredentials,
+} from "../lib/secret_crypto";
 
 // ---------------------------------------------------------------------------
 // Slack OAuth Constants
@@ -86,8 +91,6 @@ export const exchangeSlackCode = action({
     });
 
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Slack token exchange HTTP failed:", errorText);
       throw new ConvexError({
         code: "EXTERNAL_SERVICE",
         message: `Slack token exchange failed (HTTP ${tokenResponse.status})`,
@@ -121,10 +124,9 @@ export const exchangeSlackCode = action({
       result.authed_user?.refresh_token ?? result.refresh_token ?? "";
 
     if (!result.ok || !accessToken) {
-      console.error("Slack token exchange failed:", result.error ?? "no token");
       throw new ConvexError({
         code: "EXTERNAL_SERVICE",
-        message: `Slack token exchange failed: ${result.error ?? "no access token returned"}`,
+        message: "Slack token exchange failed. Please try again.",
       });
     }
 
@@ -173,10 +175,15 @@ export const exchangeSlackCode = action({
       ? Date.now() + expiresInSeconds * 1000
       : Date.now() + NON_EXPIRING_MS;
 
-    await ctx.runMutation(internal.oauth.slack.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken,
       refreshToken,
+      provider: "slack",
+    });
+    await ctx.runMutation(internal.oauth.slack.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt,
       scopes,
       displayName,
@@ -200,16 +207,21 @@ export const exchangeSlackCode = action({
 export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
-    refreshToken: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
     expiresAt: v.number(),
     scopes: v.array(v.string()),
     displayName: v.optional(v.string()),
     workspaceId: v.optional(v.string()),
     workspaceName: v.optional(v.string()),
     expectedLastRefreshedAt: v.optional(v.number()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
   },
   handler: async (ctx, args) => {
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
     const existing = await ctx.db
       .query("oauthConnections")
       .withIndex("by_user_provider", (q) =>
@@ -218,6 +230,8 @@ export const upsertConnection = internalMutation({
       .unique();
 
     const now = Date.now();
+
+    if (args.expectedConnectionId && existing?._id !== args.expectedConnectionId) return null;
 
     if (existing) {
       if (args.expectedLastRefreshedAt !== undefined) {
@@ -228,8 +242,8 @@ export const upsertConnection = internalMutation({
       }
 
       await ctx.db.patch(existing._id, {
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken || existing.refreshToken,
         expiresAt: args.expiresAt,
         scopes: args.scopes,
         displayName: args.displayName,
@@ -238,6 +252,9 @@ export const upsertConnection = internalMutation({
         status: "active",
         errorMessage: undefined,
         lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       });
       return existing._id;
     }
@@ -245,8 +262,8 @@ export const upsertConnection = internalMutation({
     return await ctx.db.insert("oauthConnections", {
       userId: args.userId,
       provider: "slack",
-      accessToken: args.accessToken,
-      refreshToken: args.refreshToken,
+      accessToken: args.encryptedAccessToken,
+      refreshToken: args.encryptedRefreshToken,
       expiresAt: args.expiresAt,
       scopes: args.scopes,
       displayName: args.displayName,
@@ -255,6 +272,9 @@ export const upsertConnection = internalMutation({
       status: "active",
       connectedAt: now,
       lastRefreshedAt: now,
+      secretEnvelopeVersion: args.secretEnvelopeVersion,
+      secretKeyId: args.secretKeyId,
+      secretMigratedAt: now,
     });
   },
 });
@@ -316,10 +336,16 @@ export const disconnectSlack = action({
 
     // Try to revoke the token with Slack (best-effort)
     try {
+      const credentials = await decryptOAuthCredentials({
+        userId,
+        provider: "slack",
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+      });
       await fetch("https://slack.com/api/auth.revoke", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${connection.accessToken}`,
+          Authorization: `Bearer ${credentials.accessToken}`,
           "Content-Type": "application/x-www-form-urlencoded",
         },
       });
@@ -375,6 +401,8 @@ export const markConnectionExpired = internalMutation({
   args: {
     userId: v.string(),
     errorMessage: v.optional(v.string()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
+    expectedLastRefreshedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const connection = await ctx.db
@@ -384,7 +412,12 @@ export const markConnectionExpired = internalMutation({
       )
       .unique();
 
-    if (connection) {
+    if (
+      connection
+      && (!args.expectedConnectionId || connection._id === args.expectedConnectionId)
+      && (args.expectedLastRefreshedAt === undefined
+        || (connection.lastRefreshedAt ?? 0) === args.expectedLastRefreshedAt)
+    ) {
       await ctx.db.patch(connection._id, {
         status: "expired",
         errorMessage: args.errorMessage ?? "Token refresh failed",

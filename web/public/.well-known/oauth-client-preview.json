@@ -1,0 +1,20 @@
+{
+  "client_id": "https://m49-egress--nanthai-edge.netlify.app/.well-known/oauth-client-preview.json",
+  "client_name": "NanthAI Remote MCP (Development)",
+  "client_uri": "https://m49-egress--nanthai-edge.netlify.app",
+  "logo_uri": "https://m49-egress--nanthai-edge.netlify.app/icons/icon-192.png",
+  "redirect_uris": [
+    "https://m49-egress--nanthai-edge.netlify.app/oauth/mcp/callback"
+  ],
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "token_endpoint_auth_method": "none",
+  "code_challenge_methods_supported": [
+    "S256"
+  ]
+}

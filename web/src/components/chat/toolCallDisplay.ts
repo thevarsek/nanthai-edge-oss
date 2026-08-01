@@ -82,7 +82,10 @@ const MAX_DISPLAY_LENGTH = 8_000;
 export function getToolName(name: string, translate?: (key: string) => string): string {
   const translationKey = TOOL_TRANSLATION_KEYS[name];
   if (translationKey && translate) return translate(translationKey);
-  return TOOL_DISPLAY[name] ?? name.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+  const remoteMcpName = /^mcp_[a-z0-9]{10}_(.+)$/.exec(name)?.[1];
+  const displaySource = remoteMcpName ?? name;
+  return TOOL_DISPLAY[name]
+    ?? displaySource.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function shouldRedactKey(key: string): boolean {

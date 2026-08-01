@@ -119,8 +119,8 @@ export const getJobInternal = internalQuery({
   },
 });
 
-/** Internal: get the user's API key from userSecrets. */
-export const getUserApiKey = internalQuery({
+/** Internal: get the user's encrypted API key from userSecrets. */
+export const getEncryptedUserApiKey = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     const secret = await ctx.db
@@ -130,6 +130,9 @@ export const getUserApiKey = internalQuery({
     return secret?.apiKey ?? null;
   },
 });
+
+/** @deprecated Use getEncryptedUserApiKey. Retained for in-flight function compatibility. */
+export const getUserApiKey = getEncryptedUserApiKey;
 
 /** Internal: resolve active trigger token by hash for API endpoint auth. */
 export const getActiveTriggerTokenByHash = internalQuery({

@@ -254,4 +254,36 @@ export const executionSchemaTables = {
     .index("by_user_status", ["userId", "status", "updatedAt"])
     .index("by_chat", ["chatId", "updatedAt"])
     .index("by_chat_status", ["chatId", "status", "updatedAt"]),
+
+  secretCryptoRotations: defineTable({
+    sourceKeyIds: v.array(v.string()),
+    targetKeyId: v.string(),
+    status: v.union(
+      v.literal("dry_run"),
+      v.literal("running"),
+      v.literal("verifying"),
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("cancelled"),
+    ),
+    table: v.union(
+      v.literal("oauthConnections"),
+      v.literal("userSecrets"),
+      v.literal("mcpCredentials"),
+    ),
+    cursor: v.optional(v.string()),
+    scannedCount: v.number(),
+    migratedCount: v.number(),
+    conflictCount: v.number(),
+    failureCount: v.number(),
+    lastSafeErrorCode: v.optional(v.string()),
+    startedAt: v.number(),
+    updatedAt: v.number(),
+    completedAt: v.optional(v.number()),
+    executionRunId: v.optional(v.id("executionRuns")),
+    executionAttemptId: v.optional(v.id("executionAttempts")),
+  })
+    .index("by_status", ["status", "updatedAt"])
+    .index("by_target", ["targetKeyId", "updatedAt"])
+    .index("by_run", ["executionRunId"]),
 };

@@ -10,8 +10,8 @@ import type { Id } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
 import {
   isAllowedVideoUploadMimeType,
+  hashVideoOutputUploadToken,
   MAX_VIDEO_OUTPUT_UPLOAD_BYTES,
-  VIDEO_OUTPUT_UPLOAD_TTL_MS,
 } from "./chat/video_output_upload_policy";
 import { stripeWebhook } from "./stripe/webhook";
 import { triggerScheduledJob } from "./scheduledJobs/http";
@@ -28,9 +28,10 @@ export async function handleVideoOutputUpload(
     return new Response("Missing token parameter", { status: 400 });
   }
 
+  const tokenHash = await hashVideoOutputUploadToken(token);
   const session = await ctx.runQuery(
-    internal.chat.queries.getVideoOutputUploadByToken,
-    { token },
+    internal.chat.queries.getVideoOutputUploadByTokenHash,
+    { tokenHash },
   );
   if (!session) {
     return new Response("Invalid upload token", { status: 404 });
@@ -38,7 +39,7 @@ export async function handleVideoOutputUpload(
   if (session.status !== "pending") {
     return new Response("Upload token already used", { status: 409 });
   }
-  if (Date.now() - session.createdAt > VIDEO_OUTPUT_UPLOAD_TTL_MS) {
+  if (session.expiresAt <= Date.now()) {
     return new Response("Upload token expired", { status: 410 });
   }
 
@@ -64,7 +65,13 @@ export async function handleVideoOutputUpload(
   try {
     accepted = await ctx.runMutation(
       internal.chat.mutations.completeVideoOutputUpload,
-      { token, storageId, mimeType, sizeBytes: blob.size },
+      {
+        uploadId: session._id,
+        expectedTokenHash: tokenHash,
+        storageId,
+        mimeType,
+        sizeBytes: blob.size,
+      },
     );
   } catch (error) {
     await ctx.storage.delete(storageId).catch(() => undefined);

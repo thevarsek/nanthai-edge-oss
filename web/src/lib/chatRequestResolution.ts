@@ -19,6 +19,7 @@ export interface SharedPreferences {
   hasSeenIdeascapeHelp?: boolean;
   showBalanceInChat?: boolean;
   showAdvancedStats?: boolean;
+  integrationDefaults?: Array<{ integrationId: string; enabled: boolean }>;
   defaultVideoAspectRatio?: string;
   defaultVideoDuration?: number;
   defaultVideoResolution?: string;

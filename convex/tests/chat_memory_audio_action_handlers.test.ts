@@ -132,7 +132,7 @@ test("extractMemoriesHandler reinforces duplicates, supersedes conflicts, and st
 
   const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
-  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
   const reinforceRef = getFunctionName(internal.chat.mutations.reinforceMemory);
   const supersedeRef = getFunctionName(internal.chat.mutations.supersedeMemory);
   const createRef = getFunctionName(internal.chat.mutations.createMemory);
@@ -278,7 +278,7 @@ test("extractMemoriesHandler skips privacy-sensitive and low-score candidates", 
 
   const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
-  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
   const createRef = getFunctionName(internal.chat.mutations.createMemory);
   const mutationCalls: Array<{ ref: string; args: Record<string, unknown> }> = [];
   const scheduled: Record<string, unknown>[] = [];
@@ -336,7 +336,7 @@ test("extractMemoriesHandler uses ZDR-safe default model and provider when ZDR i
 
   const getUserMemoriesRef = getFunctionName(internal.chat.queries.getUserMemories);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
-  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const getUserApiKeyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
 
   await extractMemoriesHandler({
     runQuery: async (ref: unknown) => {
@@ -419,7 +419,7 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
   const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
   const chatRef = getFunctionName(internal.chat.queries.getChatInternal);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
-  const keyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
   const patchAudioRef = getFunctionName(internal.chat.mutations.patchMessageAudio);
   const mutations: Array<{ ref: string; args: Record<string, unknown> }> = [];
 
@@ -502,7 +502,7 @@ test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZD
   const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
   const chatRef = getFunctionName(internal.chat.queries.getChatInternal);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
-  const keyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
   const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
 
   await generateAudioForMessageHandler({
@@ -565,9 +565,9 @@ test("generateAudioForMessageHandler clears in-progress flags when synthesis fai
           }
           if (
             name === getFunctionName(internal.chat.queries.getUserPreferences) ||
-            name === getFunctionName(internal.scheduledJobs.queries.getUserApiKey)
+            name === getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey)
           ) {
-            return name.endsWith("getUserApiKey") ? "sk-test" : null;
+            return name.endsWith("getEncryptedUserApiKey") ? "sk-test" : null;
           }
           throw new Error(`unexpected query ${name}`);
         },

@@ -53,6 +53,7 @@ import {
   skillOverrideEntry,
   integrationOverrideEntry,
   retryContract,
+  recordedToolCall,
 } from "./schema_validators";
 import { presentationContextValidator } from "./presentations/validators";
 
@@ -225,6 +226,7 @@ export const coreSchemaTables = {
       ),
     ),
     presentationContext: v.optional(presentationContextValidator),
+    mcpInvocationIds: v.optional(v.array(v.id("mcpInvocations"))),
     enabledIntegrations: v.optional(v.array(v.string())),
     source: v.optional(messageSource),
     sourceJobId: v.optional(v.id("scheduledJobs")),
@@ -236,15 +238,7 @@ export const coreSchemaTables = {
     searchContext: v.optional(v.any()), // Cached search queries + results for retry
     searchSessionId: v.optional(v.id("searchSessions")),
     // M10 — Tool Execution Metadata
-    toolCalls: v.optional(
-      v.array(
-        v.object({
-          id: v.string(), // Tool call ID from OpenRouter
-          name: v.string(), // Tool function name
-          arguments: v.string(), // JSON-stringified arguments
-        }),
-      ),
-    ),
+    toolCalls: v.optional(v.array(recordedToolCall)),
     toolResults: v.optional(
       v.array(
         v.object({
@@ -410,15 +404,7 @@ export const coreSchemaTables = {
     content: v.string(),
     reasoning: v.optional(v.string()),
     status: messageStatus,
-    toolCalls: v.optional(
-      v.array(
-        v.object({
-          id: v.string(),
-          name: v.string(),
-          arguments: v.string(),
-        }),
-      ),
-    ),
+    toolCalls: v.optional(v.array(recordedToolCall)),
     activeToolCallIds: v.optional(v.array(v.string())),
     toolResults: v.optional(
       v.array(
@@ -478,15 +464,7 @@ export const coreSchemaTables = {
     assembledCheckpoint: v.optional(v.any()),
     requestMessages: v.any(),
     usage: v.optional(usageObject),
-    toolCalls: v.optional(
-      v.array(
-        v.object({
-          id: v.string(),
-          name: v.string(),
-          arguments: v.string(),
-        }),
-      ),
-    ),
+    toolCalls: v.optional(v.array(recordedToolCall)),
     toolResults: v.optional(
       v.array(
         v.object({
@@ -530,6 +508,11 @@ export const coreSchemaTables = {
       v.object({
         kind: v.literal("drive_picker"),
         batchId: v.id("drivePickerBatches"),
+      }),
+      v.object({
+        kind: v.literal("remote_mcp"),
+        invocationId: v.id("mcpInvocations"),
+        toolCallId: v.string(),
       }),
     )),
     createdAt: v.number(),
@@ -989,15 +972,7 @@ export const coreSchemaTables = {
     content: v.optional(v.string()),
     reasoning: v.optional(v.string()),
     usage: v.optional(usageObject),
-    toolCalls: v.optional(
-      v.array(
-        v.object({
-          id: v.string(),
-          name: v.string(),
-          arguments: v.string(),
-        }),
-      ),
-    ),
+    toolCalls: v.optional(v.array(recordedToolCall)),
     toolResults: v.optional(
       v.array(
         v.object({
@@ -1064,8 +1039,7 @@ export const coreSchemaTables = {
     chatId: v.id("chats"),
     userId: v.string(),
     openRouterJobId: v.string(),
-    pollingUrl: v.string(),
-    outputUploadToken: v.optional(v.string()),
+    outputUploadId: v.optional(v.id("videoOutputUploads")),
     status: videoJobStatus,
     model: v.string(),
     prompt: v.string(),
@@ -1098,7 +1072,7 @@ export const coreSchemaTables = {
 
   /** Tracks provider uploads for ZDR video models that cannot return hosted output URLs. */
   videoOutputUploads: defineTable({
-    token: v.string(),
+    tokenHash: v.string(),
     messageId: v.id("messages"),
     chatId: v.id("chats"),
     userId: v.string(),
@@ -1107,12 +1081,13 @@ export const coreSchemaTables = {
     mimeType: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
     createdAt: v.number(),
+    expiresAt: v.number(),
     uploadedAt: v.optional(v.number()),
     executionRunId: v.optional(v.id("executionRuns")),
     executionAttemptId: v.optional(v.id("executionAttempts")),
     executionFence: v.optional(v.number()),
   })
-    .index("by_token", ["token"])
+    .index("by_token_hash", ["tokenHash"])
     .index("by_chat", ["chatId", "createdAt"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_messageId", ["messageId"]),

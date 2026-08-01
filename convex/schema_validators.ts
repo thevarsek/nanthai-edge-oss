@@ -16,6 +16,16 @@ export const messageRole = v.union(
   v.literal("system"),
 );
 
+export const recordedToolCall = v.object({
+  id: v.string(),
+  name: v.string(),
+  arguments: v.string(),
+  source: v.optional(v.literal("remote_mcp")),
+  displayName: v.optional(v.string()),
+  integrationId: v.optional(v.string()),
+  integrationName: v.optional(v.string()),
+});
+
 export const documentSource = v.union(
   v.literal("upload"),
   v.literal("generated"),
@@ -614,6 +624,7 @@ export const deferredToolKind = v.union(
   v.literal("drive_picker"),
   v.literal("presentation_workflow"),
   v.literal("analytics_workflow"),
+  v.literal("remote_mcp"),
 );
 
 export const toolMemoryBranchScope = v.union(

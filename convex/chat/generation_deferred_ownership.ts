@@ -109,6 +109,25 @@ export async function reconcileGenerationDeferredOwnership(
     return;
   }
 
+  if (ownership.kind === "remote_mcp") {
+    const invocation = await ctx.db.get(ownership.invocationId);
+    if (
+      !invocation
+      || invocation.userId !== args.userId
+      || invocation.generationJobId !== args.jobId
+      || invocation.toolCallId !== ownership.toolCallId
+    ) {
+      throw new Error("GENERATION_REMOTE_MCP_OWNERSHIP_MISMATCH");
+    }
+    if (invocation.parentResumeEventId !== args.eventId) {
+      await ctx.db.patch(invocation._id, {
+        parentResumeEventId: args.eventId,
+        updatedAt: Date.now(),
+      });
+    }
+    return;
+  }
+
   const run = await ctx.db.get(ownership.analyticsRunId);
   if (!run || run.jobId !== args.jobId || run.userId !== args.userId) {
     throw new Error("GENERATION_ANALYTICS_OWNERSHIP_MISMATCH");

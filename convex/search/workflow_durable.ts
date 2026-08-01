@@ -305,7 +305,7 @@ async function completedWorkflowPhase(
     internal.search.queries.getSearchPhases,
     { sessionId: args.sessionId },
   );
-  return phases.some((phase) =>
+  return phases.some((phase: { phaseOrder: number; phaseType: string; iteration?: number }) =>
     phase.phaseOrder === args.phaseOrder
     && phase.phaseType === phaseType
     && (args.depthIteration === undefined || phase.iteration === args.depthIteration),

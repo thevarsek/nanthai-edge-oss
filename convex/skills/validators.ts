@@ -3,7 +3,7 @@
 // Deterministic validation for skill instructions.
 //
 // Scans raw instruction text for banned runtime patterns (bash, filesystem,
-// browser, MCP, raw fetch, bundled scripts) and returns structured warnings
+// browser, unmanaged MCP processes, raw fetch, bundled scripts) and returns structured warnings
 // and incompatibility codes. Used at save time before LLM compilation.
 // =============================================================================
 
@@ -62,10 +62,9 @@ const BANNED_PATTERNS: BannedPattern[] = [
   },
   {
     code: "USES_MCP",
-    message: "Skill references MCP servers or external process management which is not available in NanthAI.",
+    message: "Skill references launching an MCP server or external process management which is not available in NanthAI.",
     patterns: [
-      /\bMCP\s+server\b/i,
-      /\bmodel\s+context\s+protocol\b/i,
+      /\b(?:start|launch|run|host|deploy|spawn|execute|bring\s+up)\b(?:\s+(?:an?|the|local|new|background|remote|external)){0,4}\s+(?:MCP|model\s+context\s+protocol)\s+server\b/i,
       /\bspawn\s+(?:a\s+)?process\b/i,
       /\bchild_process\b/i,
       /\bsubprocess\b/i,

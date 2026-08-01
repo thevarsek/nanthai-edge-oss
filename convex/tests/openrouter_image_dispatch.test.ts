@@ -224,7 +224,7 @@ test("image provider failures survive a durable cancellation query failure", asy
       }),
       (error: unknown) =>
         error instanceof ConvexError &&
-        String(error.data?.message).includes("Provider rejected the image request") &&
+        String(error.data?.message).includes("OpenRouter request failed (HTTP 400)") &&
         !String(error.data?.message).includes("durable cancellation read unavailable"),
     );
   } finally {

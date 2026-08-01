@@ -101,11 +101,10 @@ export const calendarList = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Calendar list failed (HTTP ${response.status}): ${errorText}`,
+          error: `Calendar list failed (HTTP ${response.status}).`,
         };
       }
 
@@ -295,11 +294,10 @@ export const calendarCreate = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Calendar create failed (HTTP ${response.status}): ${errorText}`,
+          error: `Calendar create failed (HTTP ${response.status}).`,
         };
       }
 
@@ -416,11 +414,10 @@ export const calendarDelete = createTool({
         };
       }
 
-      const errorText = await response.text();
       return {
         success: false,
         data: null,
-        error: `Calendar delete failed (HTTP ${response.status}): ${errorText}`,
+        error: `Calendar delete failed (HTTP ${response.status}).`,
       };
     } catch (e) {
       const capabilityError = googleCapabilityToolError(e);

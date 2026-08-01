@@ -11,6 +11,10 @@ import {
   getGoogleConnection,
 } from "../oauth/google";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY = "oauth-test-key";
+process.env.CONVEX_SECRET_ENCRYPTION_ACTIVE_KID = "k1";
+process.env.CONVEX_SECRET_LEGACY_READ_MODE = "migrate";
+
 function buildAuth(userId: string | null = "user_1") {
   return {
     getUserIdentity: async () => (userId ? { subject: userId } : null),
@@ -82,7 +86,8 @@ test("Google OAuth exchange rejects missing tokens and falls back when profile l
     });
 
     assert.deepEqual(result, { success: true, email: null });
-    assert.equal(mutations[0]?.refreshToken, "");
+    assert.equal(mutations[0]?.encryptedRefreshToken, "");
+    assert.match(String(mutations[0]?.encryptedAccessToken), /^enc:v2:k1:/);
     assert.equal(mutations[0]?.email, undefined);
     assert.equal(mutations[0]?.displayName, undefined);
     assert.deepEqual(mutations[0]?.scopes, [

@@ -1,86 +1,115 @@
-import { Check } from "lucide-react";
+import { BarChart3, FileText, Terminal } from "lucide-react";
+import { Toggle } from "@/components/shared/Toggle";
 import type { SkillMetadataSelection } from "./SkillMetadataSelection";
-import {
-  SKILL_INTEGRATION_OPTIONS,
-  requiredCapabilitiesForSkill,
-  requiredToolProfilesForSkill,
-} from "./SkillMetadataSelection";
+import type { RemoteMcpConnectionOption } from "@/lib/remoteMcp";
+import { IntegrationRow } from "./PersonaEditorHelpers";
+import { SKILL_INTEGRATION_OPTIONS } from "./SkillMetadataSelection";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   selection: SkillMetadataSelection;
+  remoteMcpConnections?: RemoteMcpConnectionOption[];
   onChange: (selection: SkillMetadataSelection) => void;
 }
 
-function ToggleRow({
+function ToolRoutingRow({
+  icon,
   label,
   selected,
-  onClick,
+  onChange,
 }: {
+  icon: React.ReactNode;
   label: string;
   selected: boolean;
-  onClick: () => void;
+  onChange: (selected: boolean) => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
-    >
-      <div className={`w-4 h-4 rounded border ${selected ? "border-accent bg-accent" : "border-border/60"}`}>
-        {selected && <Check size={14} className="text-white" />}
-      </div>
-      <span className="text-sm flex-1">{label}</span>
-    </button>
-  );
-}
-
-function PreviewRow({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between px-4 py-2.5">
-      <span className="text-sm text-muted">{label}</span>
-      <span className="text-sm text-foreground/70 text-right">{value}</span>
+    <div className="flex items-center gap-3 px-4 py-3">
+      <span className="flex w-[22px] flex-shrink-0 items-center justify-center text-primary">{icon}</span>
+      <span className="min-w-0 flex-1 text-sm">{label}</span>
+      <Toggle checked={selected} onChange={onChange} ariaLabel={label} />
     </div>
   );
 }
 
-export function SkillEditorMetadataSection({ selection, onChange }: Props) {
-  const requiredToolProfiles = requiredToolProfilesForSkill(selection);
-  const requiredCapabilities = requiredCapabilitiesForSkill(selection);
+function integrationSlug(integrationId: string): string {
+  if (integrationId === "drive") return "google-drive";
+  if (integrationId === "calendar") return "google-calendar";
+  if (integrationId === "ms_calendar") return "ms-calendar";
+  if (integrationId === "apple_calendar") return "apple-calendar";
+  return integrationId;
+}
+
+export function SkillEditorMetadataSection({ selection, remoteMcpConnections = [], onChange }: Props) {
+  const { t } = useTranslation();
+  const integrationOptions = [
+    ...SKILL_INTEGRATION_OPTIONS.map((option) => ({
+      ...option,
+      slug: integrationSlug(option.id),
+      remoteMcp: false,
+      subtitle: undefined as string | undefined,
+    })),
+    ...remoteMcpConnections.map((connection) => ({
+      id: connection.integrationId,
+      label: connection.displayName,
+      slug: connection.integrationId,
+      remoteMcp: true,
+      subtitle: `${connection.endpointHost} · ${t("remote_mcp_allowed_items", { count: connection.allowedItemCount })}`,
+    })),
+  ];
+  const knownIntegrationIds = new Set(integrationOptions.map((option) => option.id));
+  for (const integrationId of selection.selectedIntegrationIds) {
+    if (!knownIntegrationIds.has(integrationId)) {
+      integrationOptions.push({
+        id: integrationId,
+        label: t("unavailable_integration"),
+        slug: integrationId,
+        remoteMcp: integrationId.startsWith("mcp:"),
+        subtitle: t("remote_mcp_skill_disconnected_help"),
+      });
+    }
+  }
 
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        <label className="text-xs font-medium text-foreground/50 uppercase tracking-wide">Tool routing</label>
+        <label className="text-xs font-medium text-foreground/50 uppercase tracking-wide">{t("tool_routing")}</label>
         <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-          <ToggleRow
-            label="Uses Documents"
+          <ToolRoutingRow
+            icon={<FileText size={20} />}
+            label={t("skill_uses_documents")}
             selected={selection.usesDocuments}
-            onClick={() => onChange({ ...selection, usesDocuments: !selection.usesDocuments })}
+            onChange={(usesDocuments) => onChange({ ...selection, usesDocuments })}
           />
-          <ToggleRow
-            label="Uses Data Analysis"
+          <ToolRoutingRow
+            icon={<BarChart3 size={20} />}
+            label={t("skill_uses_data_analysis")}
             selected={selection.usesDataAnalysis}
-            onClick={() => onChange({ ...selection, usesDataAnalysis: !selection.usesDataAnalysis })}
+            onChange={(usesDataAnalysis) => onChange({ ...selection, usesDataAnalysis })}
           />
-          <ToggleRow
-            label="Uses Coding Workspace"
+          <ToolRoutingRow
+            icon={<Terminal size={20} />}
+            label={t("skill_uses_coding_workspace")}
             selected={selection.usesCodingWorkspace}
-            onClick={() => onChange({ ...selection, usesCodingWorkspace: !selection.usesCodingWorkspace })}
+            onChange={(usesCodingWorkspace) => onChange({ ...selection, usesCodingWorkspace })}
           />
         </div>
       </div>
 
       <div className="space-y-2">
-        <label className="text-xs font-medium text-foreground/50 uppercase tracking-wide">Connected apps</label>
+        <label className="text-xs font-medium text-foreground/50 uppercase tracking-wide">{t("connected_apps")}</label>
         <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-          {SKILL_INTEGRATION_OPTIONS.map((option) => {
+          {integrationOptions.map((option) => {
             const selected = selection.selectedIntegrationIds.has(option.id);
             return (
-              <ToggleRow
+              <IntegrationRow
                 key={option.id}
+                slug={option.slug}
                 label={option.label}
-                selected={selected}
-                onClick={() => {
+                subtitle={option.subtitle}
+                remoteMcp={option.remoteMcp}
+                checked={selected}
+                onChange={() => {
                   const nextIds = new Set(selection.selectedIntegrationIds);
                   if (selected) nextIds.delete(option.id);
                   else nextIds.add(option.id);
@@ -90,27 +119,6 @@ export function SkillEditorMetadataSection({ selection, onChange }: Props) {
             );
           })}
         </div>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-xs font-medium text-foreground/50 uppercase tracking-wide">Metadata preview</label>
-        <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-          <PreviewRow
-            label="Profiles"
-            value={requiredToolProfiles.length > 0 ? requiredToolProfiles.join(", ") : "None"}
-          />
-          <PreviewRow
-            label="Capabilities"
-            value={requiredCapabilities.length > 0 ? requiredCapabilities.join(", ") : "None"}
-          />
-          <PreviewRow
-            label="Integrations"
-            value={selection.selectedIntegrationIds.size > 0 ? Array.from(selection.selectedIntegrationIds).sort().join(", ") : "None"}
-          />
-        </div>
-        <p className="text-xs text-muted px-1">
-          The backend revalidates and normalizes this metadata when you save.
-        </p>
       </div>
     </div>
   );

@@ -211,6 +211,45 @@ describe("ScheduledJobEditorHelpers", () => {
     expect(onChange).toHaveBeenCalledWith({ slackEnabled: false });
   });
 
+  it("renders and toggles active Remote MCP targets", () => {
+    const onChange = vi.fn();
+    render(
+      <StepIntegrationsSection
+        step={createDraftStep()}
+        remoteMcpConnections={[{
+          connectionId: "connection_1",
+          integrationId: "mcp:cloudflare-docs",
+          displayName: "Cloudflare docs",
+          endpointHost: "docs.mcp.cloudflare.com",
+          allowedItemCount: 2,
+        }]}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByText("Cloudflare docs")).toBeInTheDocument();
+    expect(screen.getByText("docs.mcp.cloudflare.com · 2 allowed items")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "google-drive logo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Cloudflare docs" }));
+    expect(onChange).toHaveBeenCalledWith({ remoteMcpIntegrationIds: ["mcp:cloudflare-docs"] });
+  });
+
+  it("keeps unavailable Remote MCP targets visible so an edited job can clear them", () => {
+    const onChange = vi.fn();
+    render(
+      <StepIntegrationsSection
+        step={{ ...createDraftStep(), remoteMcpIntegrationIds: ["mcp:removed-server"] }}
+        remoteMcpConnections={[]}
+        onChange={onChange}
+      />,
+    );
+
+    expect(screen.getByText("Unavailable Remote MCP server")).toBeInTheDocument();
+    expect(screen.queryByText("mcp:removed-server")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Unavailable Remote MCP server" }));
+    expect(onChange).toHaveBeenCalledWith({ remoteMcpIntegrationIds: [] });
+  });
+
   it("updates step list ordering controls and selected task fields", () => {
     const onSelect = vi.fn();
     const onAdd = vi.fn();

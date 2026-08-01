@@ -19,12 +19,35 @@ import {
   slugify,
 } from "./validators";
 import { normalizeSkillMetadata, validateToolProfileIds } from "./tool_profiles";
+import {
+  isRemoteMcpIntegrationId,
+  unknownOwnedRemoteMcpIntegrationIds,
+} from "../mcp/integration_targets";
 
 const skillRuntimeModeValidator = v.union(
   v.literal("textOnly"),
   v.literal("toolAugmented"),
   v.literal("sandboxAugmented"),
 );
+
+async function assertRemoteMcpOverridesAvailable(
+  ctx: MutationCtx,
+  userId: string,
+  overrides: Array<{ integrationId: string; enabled: boolean }>,
+): Promise<void> {
+  const unknown = await unknownOwnedRemoteMcpIntegrationIds(
+    ctx,
+    userId,
+    overrides.filter((entry) => entry.enabled).map((entry) => entry.integrationId),
+    { activeOnly: true },
+  );
+  if (unknown.length > 0) {
+    throw new ConvexError({
+      code: "MCP_INTEGRATION_UNAVAILABLE",
+      message: "A selected Remote MCP server is disabled or disconnected.",
+    });
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -120,8 +143,8 @@ interface SkillMetadataArgs {
 }
 
 async function validateAndNormalizeSkillMetadata(
-  _ctx: MutationCtx,
-  _userId: string,
+  ctx: MutationCtx,
+  userId: string,
   args: SkillMetadataArgs,
   existing?: {
     instructionsRaw: string;
@@ -222,7 +245,10 @@ async function validateAndNormalizeSkillMetadata(
       message: `Unknown tool profile IDs: ${unknownProfiles.join(", ")}. Check the profile IDs and try again.`,
     });
   }
-  const unknownIntegrations = validateIntegrationIds(requiredIntegrationIds);
+  const unknownIntegrations = [
+    ...validateIntegrationIds(requiredIntegrationIds.filter((id) => !isRemoteMcpIntegrationId(id))),
+    ...await unknownOwnedRemoteMcpIntegrationIds(ctx, userId, requiredIntegrationIds),
+  ];
   if (unknownIntegrations.length > 0) {
     throw new ConvexError({
       code: "UNKNOWN_INTEGRATIONS" as const,
@@ -933,6 +959,7 @@ export const setPersonaIntegrationOverrides = mutation({
     const persona = await ctx.db.get(personaId);
     if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
     if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await assertRemoteMcpOverridesAvailable(ctx, userId, integrationOverrides);
 
     await ctx.db.patch(personaId, {
       integrationOverrides,
@@ -975,6 +1002,7 @@ export const setChatIntegrationOverrides = mutation({
     const chat = await ctx.db.get(chatId);
     if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
     if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await assertRemoteMcpOverridesAvailable(ctx, userId, integrationOverrides);
 
     await ctx.db.patch(chatId, {
       integrationOverrides,
@@ -1023,6 +1051,7 @@ export const setChatIntegrationOverridesInternal = internalMutation({
     const chat = await ctx.db.get(chatId);
     if (!chat) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found." });
     if (chat.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await assertRemoteMcpOverridesAvailable(ctx, userId, integrationOverrides);
     await ctx.db.patch(chatId, { integrationOverrides, updatedAt: Date.now() });
   },
 });
@@ -1037,6 +1066,7 @@ export const setPersonaIntegrationOverridesInternal = internalMutation({
     const persona = await ctx.db.get(personaId);
     if (!persona) throw new ConvexError({ code: "NOT_FOUND" as const, message: "Persona not found." });
     if (persona.userId !== userId) throw new ConvexError({ code: "NOT_AUTHORIZED" as const, message: "Not authorized." });
+    await assertRemoteMcpOverridesAvailable(ctx, userId, integrationOverrides);
     await ctx.db.patch(personaId, { integrationOverrides, updatedAt: Date.now() });
   },
 });

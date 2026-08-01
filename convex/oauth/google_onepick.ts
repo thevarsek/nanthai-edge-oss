@@ -4,6 +4,7 @@ import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
 import { resolveGoogleOAuthClientConfigForRedirect } from "./google_client_config";
 import { googleScopesForIntegration, mergeGoogleScopes } from "./google_capabilities";
+import { encryptOAuthCredentials } from "../lib/secret_crypto";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
@@ -32,8 +33,6 @@ export const exchangeGoogleOnePickCode = action({
       body: new URLSearchParams(tokenParams),
     });
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Google OnePick token exchange failed:", errorText);
       throw new ConvexError({
         code: "EXTERNAL_SERVICE",
         message: `Google OnePick token exchange failed (HTTP ${tokenResponse.status})`,
@@ -65,10 +64,15 @@ export const exchangeGoogleOnePickCode = action({
       console.warn("Failed to fetch Google user info after OnePick exchange");
     }
 
-    await ctx.runMutation(internal.oauth.google.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? "",
+      provider: "google",
+    });
+    await ctx.runMutation(internal.oauth.google.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt: Date.now() + (tokens.expires_in ?? 3600) * 1000,
       scopes: mergeGoogleScopes(
         googleScopesForIntegration("drive"),

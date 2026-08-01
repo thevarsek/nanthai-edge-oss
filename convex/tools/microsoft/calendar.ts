@@ -27,7 +27,10 @@ async function getUserMailboxTimezone(
     const response = await fetch(`${GRAPH_API}/mailboxSettings/timeZone`, {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      await response.body?.cancel();
+      return undefined;
+    }
     const data = (await response.json()) as { value?: string };
     return data.value;
   } catch {
@@ -129,11 +132,11 @@ export const msCalendarList = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Calendar list failed (HTTP ${response.status}): ${errorText}`,
+          error: `Calendar list failed (HTTP ${response.status}).`,
         };
       }
 
@@ -335,11 +338,11 @@ export const msCalendarCreate = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Calendar create failed (HTTP ${response.status}): ${errorText}`,
+          error: `Calendar create failed (HTTP ${response.status}).`,
         };
       }
 
@@ -436,6 +439,7 @@ export const msCalendarDelete = createTool({
 
       // 404 = event not found or already deleted
       if (response.status === 404) {
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
@@ -443,11 +447,11 @@ export const msCalendarDelete = createTool({
         };
       }
 
-      const errorText = await response.text();
+      await response.body?.cancel();
       return {
         success: false,
         data: null,
-        error: `Calendar delete failed (HTTP ${response.status}): ${errorText}`,
+        error: `Calendar delete failed (HTTP ${response.status}).`,
       };
     } catch (e) {
       return {

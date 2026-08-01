@@ -122,6 +122,14 @@
   [headers.values]
     Cache-Control = "no-cache"
 
+[[headers]]
+  for = "/.well-known/oauth-client.json"
+  [headers.values]
+    Cache-Control = "public, max-age=3600, must-revalidate"
+    Content-Type = "application/json; charset=utf-8"
+    Access-Control-Allow-Origin = "*"
+    X-Content-Type-Options = "nosniff"
+
 # Authenticated and callback routes must never enter a search index. Header-level
 # noindex works even when the shared SPA document initially says index/follow.
 [[headers]]

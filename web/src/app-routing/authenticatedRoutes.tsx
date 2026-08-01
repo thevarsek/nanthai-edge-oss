@@ -56,6 +56,14 @@ const OpenRouterRequiredPage = lazy(() =>
     default: module.OpenRouterRequiredPage,
   })),
 );
+const RemoteMcpPage = lazy(() =>
+  import("@/routes/RemoteMcpPage").then((module) => ({ default: module.RemoteMcpPage })),
+);
+const RemoteMcpOAuthCallbackPage = lazy(() =>
+  import("@/routes/RemoteMcpOAuthCallbackPage").then((module) => ({
+    default: module.RemoteMcpOAuthCallbackPage,
+  })),
+);
 
 function suspended(element: ReactNode) {
   return <AppRouteBoundary>{element}</AppRouteBoundary>;
@@ -79,6 +87,7 @@ const appChildren: RouteObject[] = [
   { path: "settings/knowledge", element: suspended(<KnowledgeBasePage />) },
   { path: "settings/providers", element: suspended(<ProviderListPage />) },
   { path: "settings/favorites", element: suspended(<ManageFavoritesPage />) },
+  { path: "settings/remote-mcp", element: suspended(<RemoteMcpPage />) },
   { path: "*", element: <AppNotFound homeTarget="/app" /> },
 ];
 
@@ -107,6 +116,14 @@ export const authenticatedRoutes: RouteObject[] = [
     element: (
       <AuthGuard requireOnboarding={false}>
         {suspended(<OpenRouterRequiredPage />)}
+      </AuthGuard>
+    ),
+  },
+  {
+    path: "/oauth/mcp/callback",
+    element: (
+      <AuthGuard requireOnboarding={false}>
+        {suspended(<RemoteMcpOAuthCallbackPage />)}
       </AuthGuard>
     ),
   },

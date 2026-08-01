@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { getFunctionName } from "convex/server";
 
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
   continueScheduledJobExecutionHandler,
@@ -129,7 +131,10 @@ test("legacy continuation enqueues the next step through the durable generation 
     ],
   });
   const ctx = {
-    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+    runQuery: async (ref: unknown, args: Record<string, unknown>) => {
+      if (getFunctionName(ref as never) === getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey)) {
+        return "sk-test";
+      }
       if (args.messageId)
         return { _id: args.messageId, content: "Previous answer" };
       return job;
@@ -213,7 +218,7 @@ test("continueScheduledJobExecution handles missing API keys as execution failur
   });
 
   assert.equal(mutationArgs[0]?.startedAt, 5000);
-  assert.match(String(mutationArgs[0]?.error), /No API key found/);
+  assert.match(String(mutationArgs[0]?.error), /No OpenRouter API key found/);
   assert.equal(scheduled[0]?.chatId, "chat_1");
 });
 

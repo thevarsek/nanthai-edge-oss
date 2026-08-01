@@ -183,10 +183,7 @@ export async function validateClozeApiKey(
   }
 
   if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `Cloze API error ${response.status}: ${body.slice(0, 200) || response.statusText}`,
-    );
+    throw new Error(`Cloze API request failed (HTTP ${response.status}).`);
   }
 
   const envelope = (await response.json().catch(() => ({}))) as Record<

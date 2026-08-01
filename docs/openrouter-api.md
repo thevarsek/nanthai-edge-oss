@@ -14,7 +14,7 @@ See also [OpenRouter Images API](./openrouter-image-api.md) and [OpenRouter Advi
 | `POST` | `https://openrouter.ai/api/v1/images` | Dedicated buffered image generation |
 | `POST` | `https://openrouter.ai/api/v1/chat/completions` | Chat completions (streaming) |
 | `GET` | `https://openrouter.ai/api/v1/credits` | Check user credits/balance |
-| `POST` | `https://openrouter.ai/api/v1/auth/keys` | Exchange OAuth code for API key |
+| `POST` | `https://openrouter.ai/api/v1/auth/keys` | Convex-only exchange of a one-time OAuth code for an API key |
 | `GET` | `https://openrouter.ai/auth` | OAuth authorization page |
 
 ## OAuth PKCE Flow
@@ -32,11 +32,20 @@ See also [OpenRouter Images API](./openrouter-image-api.md) and [OpenRouter Advi
  5. User authorizes on OpenRouter
  6. Redirect to: nanthai-edge://auth/callback?code={authorization_code}&state={state}
  7. Verify callback `state` exactly matches originally generated state
- 8. POST https://openrouter.ai/api/v1/auth/keys
+ 8. Client calls Convex action oauth/openrouter:exchangeAndStore
+    Args: { "code": "{code}", "codeVerifier": "{verifier}" }
+ 9. Convex POSTs https://openrouter.ai/api/v1/auth/keys
     Body: { "code": "{code}", "code_verifier": "{verifier}", "code_challenge_method": "S256" }
- 9. Response: { "key": "<your-openrouter-api-key>" }
-10. Store key in Keychain and clear temporary verifier/state
+10. Convex validates the response and immediately encrypts the returned key into
+    the authenticated user's userSecrets row using contextual enc:v2 storage
+11. Convex returns only { "connected": true }; clear temporary verifier/state
 ```
+
+Updated clients never receive or persist the OpenRouter API key. The temporary
+`scheduledJobs/mutations:upsertApiKey` path exists only for released-client
+compatibility and encrypts immediately. See
+[`credential-security-rotation.md`](credential-security-rotation.md) for the
+canonical envelope and key lifecycle.
 
 ## Chat Completion Request
 

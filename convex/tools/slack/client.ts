@@ -271,14 +271,14 @@ export async function callSlackMcpTool(
     clientInfo: { name: "NanthAI", version: "1.0.0" },
   });
 
-  const { response: initResponse, parsed: initParsed } = await mcpFetch(
+  const { response: initResponse } = await mcpFetch(
     toolCtx,
     accessToken,
     initReq,
   );
 
   if (!initResponse.ok) {
-    const errorText = initParsed?.error?.message ?? `HTTP ${initResponse.status}`;
+    const errorText = `HTTP ${initResponse.status}`;
     if (initResponse.status === 401 || initResponse.status === 403) {
       throw new Error(
         `Slack authentication failed. The user may need to reconnect Slack. (${errorText})`,
@@ -327,7 +327,7 @@ export async function callSlackMcpTool(
   );
 
   if (!callResponse.ok) {
-    const errorText = callParsed?.error?.message ?? `HTTP ${callResponse.status}`;
+    const errorText = `HTTP ${callResponse.status}`;
     if (callResponse.status === 401 || callResponse.status === 403) {
       throw new Error(
         `Slack authentication failed during tool call. The user may need to reconnect Slack. (${errorText})`,
@@ -337,7 +337,6 @@ export async function callSlackMcpTool(
   }
 
   if (callParsed?.error) {
-    const errMsg = callParsed.error.message;
     // Handle missing_scope errors gracefully
     if (
       typeof callParsed.error.data === "string" &&
@@ -347,13 +346,13 @@ export async function callSlackMcpTool(
         content: [
           {
             type: "text",
-            text: `This action requires a Slack scope the user didn't grant. Ask them to reconnect Slack with additional permissions. Error: ${errMsg}`,
+            text: "This action requires a Slack scope the user didn't grant. Ask them to reconnect Slack with additional permissions.",
           },
         ],
         isError: true,
       };
     }
-    throw new Error(`Slack MCP tool error: ${errMsg}`);
+    throw new Error("Slack MCP tool call failed.");
   }
 
   const result = callParsed?.result as SlackMcpToolResult | undefined;

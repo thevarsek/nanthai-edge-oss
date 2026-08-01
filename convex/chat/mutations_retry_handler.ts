@@ -17,6 +17,7 @@ import {
   SendParticipantConfig,
 } from "./mutation_send_helpers";
 import { reuseAdvisorBatchForRetry } from "../advisors/retry";
+import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
 import {
   buildRetryContract,
   cloneRetryContract,
@@ -365,6 +366,25 @@ export async function retryMessageHandler(
       participants: effectiveRetryContract.participants,
       enabledIntegrations: effectiveRetryContract.enabledIntegrations,
       subagentsEnabled: effectiveRetryContract.subagentsEnabled,
+    });
+  }
+
+  const retryRemoteIntegrations = [
+    ...(effectiveRetryContract.enabledIntegrations ?? []),
+    ...(effectiveRetryContract.turnIntegrationOverrides ?? [])
+      .filter((entry) => entry.enabled)
+      .map((entry) => entry.integrationId),
+  ];
+  const unavailableRemoteIntegrations = await unknownOwnedRemoteMcpIntegrationIds(
+    ctx,
+    userId,
+    retryRemoteIntegrations,
+    { activeOnly: true },
+  );
+  if (unavailableRemoteIntegrations.length > 0) {
+    throw new ConvexError({
+      code: "MCP_INTEGRATION_UNAVAILABLE",
+      message: "A Remote MCP server used by this retry is disabled or disconnected.",
     });
   }
 

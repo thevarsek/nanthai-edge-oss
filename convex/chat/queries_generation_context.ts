@@ -91,6 +91,10 @@ export async function getGenerationContextHandler(
       )
       .first(),
   );
+  const mcpConnectionsPromise = ctx.db
+    .query("mcpConnections")
+    .withIndex("by_user_status", (q) => q.eq("userId", args.userId).eq("status", "active"))
+    .collect();
 
   // ── Batch 3: Persona docs (parallel, deduplicated by caller) ───────────
   const personaPromises = args.personaIds.map(async (personaId) => {
@@ -121,8 +125,9 @@ export async function getGenerationContextHandler(
   });
 
   // Await batches 2 & 3 together
-  const [connections, personaPairs] = await Promise.all([
+  const [connections, mcpConnections, personaPairs] = await Promise.all([
     Promise.all(connectionPromises),
+    mcpConnectionsPromise,
     Promise.all(personaPromises),
   ]);
 
@@ -160,6 +165,7 @@ export async function getGenerationContextHandler(
         break;
     }
   }
+  connectedIntegrationIds.push(...mcpConnections.map((connection) => connection.integrationId));
 
   // ── Build personas map ─────────────────────────────────────────────────
   const personasById: Record<string, Record<string, unknown> | null> = {};

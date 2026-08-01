@@ -132,7 +132,6 @@ test("video job and generated-media handlers persist lifecycle metadata", async 
     chatId: "chat_1",
     userId: "user_1",
     openRouterJobId: "or_job_1",
-    pollingUrl: "https://openrouter.ai/jobs/or_job_1",
     model: "video/model",
     prompt: "make a product clip",
     videoConfig: { aspectRatio: "16:9", duration: 8, generateAudio: true },

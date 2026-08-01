@@ -8,14 +8,16 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   const entries = (crons as any).crons;
 
   assert.deepEqual(Object.keys(entries).sort(), [
-      "checkSlackMcpDrift",
-      "cleanOldJobRuns",
-      "cleanOrphanedStreamingMessages",
-      "cleanStaleJobs",
+    "checkSlackMcpDrift",
+    "cleanOldJobRuns",
+    "cleanOrphanedStreamingMessages",
+    "cleanStaleJobs",
     "cleanStaleSandboxSessions",
-      "cleanStaleSearchPhases",
-      "cleanupAccountDeletionTombstones",
-      "consolidateMemories",
+    "cleanStaleSearchPhases",
+    "cleanupAccountDeletionTombstones",
+    "cleanupExpiredMcpOAuthTransactions",
+    "consolidateMemories",
+    "ensureSecretCryptoRotation",
     "reconcileExecutionCancellations",
     "refreshModelCatalog",
     "syncArtificialAnalysis",
@@ -52,10 +54,18 @@ test("schema exposes the indexes and fields that shared clients depend on", () =
   const scheduledIndexes = tables.scheduledJobs.indexes.map(
     (index: { indexDescriptor: string }) => index.indexDescriptor,
   );
+  const videoJobFields = tables.videoJobs.validator.fields;
+  const videoJobIndexes = tables.videoJobs.indexes.map(
+    (index: { indexDescriptor: string }) => index.indexDescriptor,
+  );
+  const videoUploadFields = tables.videoOutputUploads.validator.fields;
+  const videoUploadIndexes = tables.videoOutputUploads.indexes.map(
+    (index: { indexDescriptor: string }) => index.indexDescriptor,
+  );
 
   assert.ok("workspaceId" in oauthFields);
   assert.ok("workspaceName" in oauthFields);
-  assert.deepEqual(oauthIndexes, ["by_user", "by_user_provider", "by_status"]);
+  assert.deepEqual(oauthIndexes, ["by_user", "by_user_provider", "by_status", "by_secret_key"]);
   assert.deepEqual(messageSearch, {
     indexDescriptor: "search_content",
     searchField: "content",
@@ -74,4 +84,11 @@ test("schema exposes the indexes and fields that shared clients depend on", () =
     "by_active_execution",
     "by_status",
   ]);
+  assert.equal("outputUploadToken" in videoJobFields, false);
+  assert.equal("pollingUrl" in videoJobFields, false);
+  assert.equal(videoJobIndexes.includes("by_output_upload_token"), false);
+  assert.equal("token" in videoUploadFields, false);
+  assert.ok("tokenHash" in videoUploadFields);
+  assert.ok("expiresAt" in videoUploadFields);
+  assert.equal(videoUploadIndexes.includes("by_token"), false);
 });

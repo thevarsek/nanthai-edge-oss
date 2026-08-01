@@ -39,18 +39,24 @@ describe("useChatOverrides", () => {
       skillOverrides: [{ skillId: "skill_research", state: "available" as const }],
       integrationOverrides: [{ integrationId: "drive", enabled: true }],
     };
+    const settingsIntegrationDefaults = [
+      { integrationId: "gmail", enabled: true },
+      { integrationId: "drive", enabled: false },
+    ];
     const { result } = renderHook(() => useChatOverrides({
       chat: null,
       chatId: undefined,
       activePersona,
+      settingsIntegrationDefaults,
       updateChat: updateChat as UseChatReturn["updateChat"],
     }));
 
     await waitFor(() => {
       expect(result.current.enabledSkillIds.has("skill_research")).toBe(true);
       expect(result.current.enabledIntegrations.has("drive")).toBe(true);
+      expect(result.current.enabledIntegrations.has("gmail")).toBe(true);
     });
-    expect(result.current.badges).toMatchObject({ skills: 1, integrations: 1, parameters: 0 });
+    expect(result.current.badges).toMatchObject({ skills: 1, integrations: 2, parameters: 0 });
 
     act(() => {
       result.current.setParamOverrides({
@@ -68,7 +74,7 @@ describe("useChatOverrides", () => {
 
     expect(result.current.skillOverrides.get("skill_research")).toBe("never");
     expect(result.current.integrationOverrides.get("drive")).toBe(false);
-    expect(result.current.badges).toMatchObject({ skills: 0, integrations: 0, parameters: 1 });
+    expect(result.current.badges).toMatchObject({ skills: 0, integrations: 1, parameters: 1 });
 
     await act(async () => {
       await result.current.flushPendingState("chat_created" as Id<"chats">);
@@ -88,7 +94,10 @@ describe("useChatOverrides", () => {
     });
     expect(convexMocks.mutations[1]).toHaveBeenCalledWith({
       chatId: "chat_created",
-      integrationOverrides: [{ integrationId: "drive", enabled: false }],
+      integrationOverrides: [
+        { integrationId: "gmail", enabled: true },
+        { integrationId: "drive", enabled: false },
+      ],
     });
   });
 

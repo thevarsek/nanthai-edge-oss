@@ -296,7 +296,7 @@ test("validateClozeApiKey reports unauthorized and non-ok Cloze responses", asyn
     );
     await assert.rejects(
       validateClozeApiKey("server_key"),
-      /Cloze API error 500/,
+      /Cloze API request failed \(HTTP 500\)\./,
     );
     assert.deepEqual(await validateClozeApiKey("raw_key"), {
       email: "raw@example.com",

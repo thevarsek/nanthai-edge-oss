@@ -10,6 +10,8 @@ import { ChatKBPicker } from "@/components/chat/ChatKBPicker";
 import { useToast } from "@/components/shared/Toast.context";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import type { RemoteMcpConnectionOption } from "@/lib/remoteMcp";
+import { IntegrationRow } from "./PersonaEditorHelpers";
 import {
   type DraftStep,
   type RecurrenceType,
@@ -275,9 +277,10 @@ export function StepParticipantSection({
 // ─── Integrations Section ───────────────────────────────────────────────────
 
 export function StepIntegrationsSection({
-  step, onChange,
+  step, remoteMcpConnections = [], onChange,
 }: {
   step: DraftStep;
+  remoteMcpConnections?: RemoteMcpConnectionOption[];
   onChange: (patch: Partial<DraftStep>) => void;
 }) {
   const { t } = useTranslation();
@@ -332,60 +335,70 @@ export function StepIntegrationsSection({
   };
   const integrationRows = [
     {
+      slug: "gmail",
       label: t("integration_gmail"),
       checked: step.gmailEnabled,
       available: hasGmail,
       onChange: (v: boolean) => { void handleGoogleToggle(v, "gmail", { gmailEnabled: v }); },
     },
     {
+      slug: "google-drive",
       label: t("integration_google_drive"),
       checked: step.driveEnabled,
       available: hasGoogleConnection,
       onChange: (v: boolean) => { void handleGoogleToggle(v, "drive", { driveEnabled: v }); },
     },
     {
+      slug: "google-calendar",
       label: t("integration_google_calendar"),
       checked: step.calendarEnabled,
       available: hasGoogleConnection,
       onChange: (v: boolean) => { void handleGoogleToggle(v, "calendar", { calendarEnabled: v }); },
     },
     {
+      slug: "outlook",
       label: t("integration_outlook"),
       checked: step.outlookEnabled,
       available: hasMicrosoft,
       onChange: (v: boolean) => onChange({ outlookEnabled: v }),
     },
     {
+      slug: "onedrive",
       label: t("integration_onedrive"),
       checked: step.onedriveEnabled,
       available: hasMicrosoft,
       onChange: (v: boolean) => onChange({ onedriveEnabled: v }),
     },
     {
+      slug: "ms-calendar",
       label: t("integration_ms_calendar"),
       checked: step.msCalendarEnabled,
       available: hasMicrosoft,
       onChange: (v: boolean) => onChange({ msCalendarEnabled: v }),
     },
     {
+      slug: "apple-calendar",
       label: t("integration_apple_calendar"),
       checked: step.appleCalendarEnabled,
       available: hasApple,
       onChange: (v: boolean) => onChange({ appleCalendarEnabled: v }),
     },
     {
+      slug: "notion",
       label: t("integration_notion"),
       checked: step.notionEnabled,
       available: hasNotion,
       onChange: (v: boolean) => onChange({ notionEnabled: v }),
     },
     {
+      slug: "cloze",
       label: t("integration_cloze"),
       checked: step.clozeEnabled,
       available: hasCloze,
       onChange: (v: boolean) => onChange({ clozeEnabled: v }),
     },
     {
+      slug: "slack",
       label: t("integration_slack"),
       checked: step.slackEnabled,
       available: hasSlack,
@@ -393,41 +406,64 @@ export function StepIntegrationsSection({
     },
   ];
   const visibleRows = integrationRows.filter((row) => row.available || row.checked);
+  const activeRemoteIds = new Set(remoteMcpConnections.map((connection) => connection.integrationId));
+  const remoteRows = remoteMcpConnections.map((connection) => ({
+    ...connection,
+    available: true,
+    checked: step.remoteMcpIntegrationIds.includes(connection.integrationId),
+  })).concat(
+    step.remoteMcpIntegrationIds
+      .filter((integrationId) => !activeRemoteIds.has(integrationId))
+      .map((integrationId) => ({
+        connectionId: integrationId,
+        integrationId,
+        displayName: t("remote_mcp_unavailable_server"),
+        endpointHost: "",
+        allowedItemCount: 0,
+        available: false,
+        checked: true,
+      })),
+  );
 
   return (
     <div className="space-y-2">
       <SH>{t("integrations_tools_section")}</SH>
       <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
         {visibleRows.map((row) => (
-          <ToggleRow
+          <IntegrationRow
             key={row.label}
+            slug={row.slug}
             label={row.label}
             checked={row.checked}
-            disconnectedMessage={!row.available && row.checked ? t("connect_accounts_message") : undefined}
+            subtitle={!row.available && row.checked ? t("connect_accounts_message") : undefined}
             onChange={row.onChange}
           />
         ))}
-        {visibleRows.length === 0 && (
+        {remoteRows.map((connection) => (
+          <IntegrationRow
+            key={connection.integrationId}
+            slug={connection.integrationId}
+            label={connection.displayName}
+            subtitle={connection.available
+              ? `${connection.endpointHost} · ${t("remote_mcp_allowed_items", { count: connection.allowedItemCount })}`
+              : t("remote_mcp_job_disconnected_help")}
+            remoteMcp
+            checked={connection.checked}
+            onChange={(checked) => {
+              const ids = new Set(step.remoteMcpIntegrationIds);
+              if (checked) ids.add(connection.integrationId);
+              else ids.delete(connection.integrationId);
+              onChange({ remoteMcpIntegrationIds: [...ids].sort() });
+            }}
+          />
+        ))}
+        {visibleRows.length === 0 && remoteRows.length === 0 && (
           <div className="px-4 py-3">
             <p className="text-xs text-muted">{t("connect_accounts_message")}</p>
           </div>
         )}
       </div>
       <SF>{t("enable_step_tools_footer")}</SF>
-    </div>
-  );
-}
-
-function ToggleRow({ label, checked, disconnectedMessage, onChange }: { label: string; checked: boolean; disconnectedMessage?: string; onChange: (v: boolean) => void }) {
-  return (
-    <div className="flex items-center justify-between px-4 py-3">
-      <div>
-        <span className="text-sm">{label}</span>
-        {disconnectedMessage && (
-          <p className="text-xs text-muted mt-0.5">{disconnectedMessage}</p>
-        )}
-      </div>
-      <Toggle checked={checked} onChange={onChange} />
     </div>
   );
 }

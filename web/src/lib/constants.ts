@@ -126,7 +126,7 @@ export const ConvexFns = {
   resumeJob: "scheduledJobs/mutations:resumeJob",
   deleteJob: "scheduledJobs/mutations:deleteJob",
   runJobNow: "scheduledJobs/mutations:runJobNow",
-  upsertApiKey: "scheduledJobs/mutations:upsertApiKey",
+  exchangeAndStoreOpenRouterKey: "oauth/openrouter:exchangeAndStore",
   deleteApiKey: "scheduledJobs/mutations:deleteApiKey",
   fetchOpenRouterCredits: "scheduledJobs/actions:fetchOpenRouterCredits",
 
@@ -177,7 +177,6 @@ export const ConvexFns = {
 /** OpenRouter constants */
 export const OpenRouter = {
   oauthUrl: "https://openrouter.ai/auth",
-  keysUrl: "https://openrouter.ai/api/v1/auth/keys",
   creditsUrl: "https://openrouter.ai/api/v1/credits",
   callbackUrl: import.meta.env.DEV
     ? `${window.location.origin}/openrouter/callback`

@@ -3,7 +3,7 @@ import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 import { localizedPublicDate } from "@/lib/localizedPublicDate";
 
-const lastUpdatedDate = "2026-07-13";
+const lastUpdatedDate = "2026-07-31";
 
 export function PrivacyPage() {
   const { t, i18n } = useTranslation();
@@ -63,7 +63,7 @@ function PrivacyHeader({ lastUpdated }: { lastUpdated: string }) {
 function PrivacyBody() {
   const { t } = useTranslation();
   return (
-    <article className="edge-legal edge-document edge-fade-up edge-stagger-2 mx-auto mt-10 px-1 pb-8 pt-8 md:mt-12 md:px-0 md:pt-10">
+    <article className="edge-legal edge-document edge-fade-up edge-stagger-2 mx-auto mt-10 pb-8 pt-8 md:mt-12 md:pt-10">
       <h2>{t("priv_s1_title")}</h2>
       <p>{t("priv_s1_body")}</p>
 

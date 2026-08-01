@@ -1,15 +1,3 @@
-// convex/oauth/notion.ts
-// =============================================================================
-// Notion OAuth token exchange and connection management.
-// Handles the server-side of the OAuth flow:
-//   1. iOS sends auth code (no PKCE — Notion uses client secret)
-//   2. This action exchanges the code for access/refresh tokens with Notion
-//   3. Tokens are stored in the oauthConnections table
-//
-// Notion uses HTTP Basic Auth (base64 of client_id:client_secret) for the
-// token endpoint, NOT form-encoded client credentials.
-// =============================================================================
-
 import { v, ConvexError } from "convex/values";
 import {
   action,
@@ -19,21 +7,17 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
-
-// ---------------------------------------------------------------------------
-// Notion OAuth Constants
-// ---------------------------------------------------------------------------
-
-const NOTION_TOKEN_URL = "https://api.notion.com/v1/oauth/token";
-
-// ---------------------------------------------------------------------------
-// exchangeNotionCode — Action (needs network access for token exchange)
-//
-// Called by iOS after the user completes the Notion consent screen.
-// Exchanges the authorization code for tokens using HTTP Basic Auth,
-// then stores the connection in the oauthConnections table.
-// ---------------------------------------------------------------------------
-
+import {
+  getNotionOAuthClientConfig,
+  NOTION_OAUTH_REVOKE_URL,
+  NOTION_OAUTH_TOKEN_URL,
+  notionOAuthHeaders,
+} from "./notion_oauth";
+import {
+  assertEncryptedSecret,
+  decryptOAuthCredentials,
+  encryptOAuthCredentials,
+} from "../lib/secret_crypto";
 export const exchangeNotionCode = action({
   args: {
     code: v.string(),
@@ -42,22 +26,11 @@ export const exchangeNotionCode = action({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
 
-    const clientId = process.env.NOTION_CLIENT_ID;
-    const clientSecret = process.env.NOTION_CLIENT_SECRET;
-    if (!clientId || !clientSecret) {
-      throw new ConvexError({ code: "CONFIG_ERROR", message: "Notion OAuth is not configured. Set NOTION_CLIENT_ID and NOTION_CLIENT_SECRET environment variables." });
-    }
+    const clientConfig = getNotionOAuthClientConfig();
 
-    // Notion uses HTTP Basic Auth: base64(client_id:client_secret)
-    const encoded = btoa(`${clientId}:${clientSecret}`);
-
-    const tokenResponse = await fetch(NOTION_TOKEN_URL, {
+    const tokenResponse = await fetch(NOTION_OAUTH_TOKEN_URL, {
       method: "POST",
-      headers: {
-        Authorization: `Basic ${encoded}`,
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
+      headers: notionOAuthHeaders(clientConfig),
       body: JSON.stringify({
         grant_type: "authorization_code",
         code: args.code,
@@ -66,14 +39,13 @@ export const exchangeNotionCode = action({
     });
 
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Notion token exchange failed:", errorText);
       throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Notion token exchange failed (HTTP ${tokenResponse.status})` });
     }
 
     const tokens = (await tokenResponse.json()) as {
       access_token: string;
-      refresh_token?: string;
+      refresh_token?: string | null;
+      expires_in?: number;
       token_type: string;
       bot_id: string;
       workspace_id: string;
@@ -93,7 +65,6 @@ export const exchangeNotionCode = action({
       throw new ConvexError({ code: "EXTERNAL_SERVICE", message: "Notion did not return an access token." });
     }
 
-    // Extract user info from the token response (Notion includes it directly)
     let email: string | undefined;
     let displayName: string | undefined;
     if (tokens.owner?.type === "user" && tokens.owner.user) {
@@ -101,19 +72,21 @@ export const exchangeNotionCode = action({
       email = tokens.owner.user.person?.email ?? undefined;
     }
 
-    // Notion access tokens do NOT expire — there is no refresh_token grant type.
-    // Set a far-future expiry so the token is never treated as "expired" by
-    // shared infrastructure that checks expiresAt. The auth helper in
-    // convex/tools/notion/auth.ts skips refresh entirely for Notion.
-    const expiresAt = Date.now() + 10 * 365 * 24 * 60 * 60 * 1000; // ~10 years
+    const expiresAt = Number.isFinite(tokens.expires_in)
+      ? Date.now() + Math.max(0, tokens.expires_in ?? 0) * 1000
+      : Date.now() + 10 * 365 * 24 * 60 * 60 * 1000;
 
-    // Store or update the connection via internal mutation
-    await ctx.runMutation(internal.oauth.notion.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: tokens.access_token,
-      refreshToken: "", // Notion does not issue refresh tokens
+      refreshToken: tokens.refresh_token ?? "",
+      provider: "notion",
+    });
+    await ctx.runMutation(internal.oauth.notion.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt,
-      scopes: [], // Notion doesn't use scopes — access is page-level
+      scopes: [],
       email,
       displayName,
       workspaceId: tokens.workspace_id,
@@ -128,23 +101,25 @@ export const exchangeNotionCode = action({
   },
 });
 
-// ---------------------------------------------------------------------------
-// upsertConnection — Internal mutation to store/update Notion tokens
-// ---------------------------------------------------------------------------
-
 export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
-    refreshToken: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
     expiresAt: v.number(),
     scopes: v.array(v.string()),
     email: v.optional(v.string()),
     displayName: v.optional(v.string()),
     workspaceId: v.optional(v.string()),
     workspaceName: v.optional(v.string()),
+    expectedLastRefreshedAt: v.optional(v.number()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
   },
   handler: async (ctx, args) => {
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
     const existing = await ctx.db
       .query("oauthConnections")
       .withIndex("by_user_provider", (q) =>
@@ -154,19 +129,28 @@ export const upsertConnection = internalMutation({
 
     const now = Date.now();
 
+    if (args.expectedConnectionId && existing?._id !== args.expectedConnectionId) return null;
+
     if (existing) {
-      // Update existing connection
+      if (args.expectedLastRefreshedAt !== undefined) {
+        const storedRefreshedAt = existing.lastRefreshedAt ?? 0;
+        if (storedRefreshedAt !== args.expectedLastRefreshedAt) {
+          return existing._id;
+        }
+      }
+
       const patch: Record<string, unknown> = {
-        accessToken: args.accessToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken || existing.refreshToken,
         expiresAt: args.expiresAt,
         scopes: args.scopes,
         status: "active",
         errorMessage: undefined,
+        lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       };
-      // Only overwrite refreshToken if Notion sent a new one
-      if (args.refreshToken) {
-        patch.refreshToken = args.refreshToken;
-      }
       if (args.email) patch.email = args.email;
       if (args.displayName) patch.displayName = args.displayName;
       if (args.workspaceId) patch.workspaceId = args.workspaceId;
@@ -174,12 +158,11 @@ export const upsertConnection = internalMutation({
       await ctx.db.patch(existing._id, patch);
       return existing._id;
     } else {
-      // Create new connection
       return await ctx.db.insert("oauthConnections", {
         userId: args.userId,
         provider: "notion",
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken,
         expiresAt: args.expiresAt,
         scopes: args.scopes,
         email: args.email,
@@ -188,16 +171,14 @@ export const upsertConnection = internalMutation({
         workspaceName: args.workspaceName,
         status: "active",
         connectedAt: now,
+        lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       });
     }
   },
 });
-
-// ---------------------------------------------------------------------------
-// getNotionConnection — Public query for iOS to check connection status
-//
-// Returns only metadata (email, status, workspace). Never exposes tokens.
-// ---------------------------------------------------------------------------
 
 export const getNotionConnection = query({
   args: {},
@@ -215,7 +196,6 @@ export const getNotionConnection = query({
       return null;
     }
 
-    // Never return tokens to the client — only metadata
     return {
       id: connection._id,
       email: connection.email ?? null,
@@ -231,14 +211,6 @@ export const getNotionConnection = query({
   },
 });
 
-// ---------------------------------------------------------------------------
-// disconnectNotion — Delete tokens from DB
-//
-// Notion doesn't have a token revoke endpoint. We delete the stored
-// connection. Users can revoke app access from Notion Settings →
-// My connections.
-// ---------------------------------------------------------------------------
-
 export const disconnectNotion = action({
   args: {},
   handler: async (ctx) => {
@@ -253,19 +225,42 @@ export const disconnectNotion = action({
       throw new ConvexError({ code: "NOT_FOUND", message: "No Notion connection found." });
     }
 
-    // Delete the connection from the database
+    let revocation: { headers: Record<string, string>; token: string } | undefined;
+    try {
+      const credentials = await decryptOAuthCredentials({
+        userId,
+        provider: "notion",
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+      });
+      revocation = {
+        headers: notionOAuthHeaders(getNotionOAuthClientConfig()),
+        token: credentials.accessToken,
+      };
+    } catch {
+      // Local deletion remains authoritative if revocation cannot be prepared.
+    }
+
     await ctx.runMutation(internal.oauth.notion.deleteConnection, {
       userId,
     });
 
+    if (revocation) {
+      try {
+        await fetch(NOTION_OAUTH_REVOKE_URL, {
+          method: "POST",
+          redirect: "manual",
+          headers: revocation.headers,
+          body: JSON.stringify({ token: revocation.token }),
+        });
+      } catch {
+        // Remote revocation is best effort after the local credential is gone.
+      }
+    }
+
     return { success: true };
   },
 });
-
-// ---------------------------------------------------------------------------
-// getConnectionInternal — Internal query (returns full record with tokens)
-// Used by actions that need the access/refresh tokens for API calls.
-// ---------------------------------------------------------------------------
 
 export const getConnectionInternal = internalQuery({
   args: { userId: v.string() },
@@ -279,15 +274,12 @@ export const getConnectionInternal = internalQuery({
   },
 });
 
-// ---------------------------------------------------------------------------
-// markConnectionExpired — Internal mutation to flag a connection as expired
-// Called when token refresh fails, so the iOS app can prompt reconnection.
-// ---------------------------------------------------------------------------
-
 export const markConnectionExpired = internalMutation({
   args: {
     userId: v.string(),
     errorMessage: v.optional(v.string()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
+    expectedLastRefreshedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const connection = await ctx.db
@@ -297,7 +289,12 @@ export const markConnectionExpired = internalMutation({
       )
       .unique();
 
-    if (connection) {
+    if (
+      connection
+      && (!args.expectedConnectionId || connection._id === args.expectedConnectionId)
+      && (args.expectedLastRefreshedAt === undefined
+        || (connection.lastRefreshedAt ?? 0) === args.expectedLastRefreshedAt)
+    ) {
       await ctx.db.patch(connection._id, {
         status: "expired",
         errorMessage: args.errorMessage ?? "Token refresh failed",
@@ -305,10 +302,6 @@ export const markConnectionExpired = internalMutation({
     }
   },
 });
-
-// ---------------------------------------------------------------------------
-// deleteConnection — Internal mutation to remove a connection record
-// ---------------------------------------------------------------------------
 
 export const deleteConnection = internalMutation({
   args: { userId: v.string() },

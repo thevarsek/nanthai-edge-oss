@@ -37,7 +37,7 @@ export async function createAndClaimDomainExecution(
   args: {
     userId: string;
     runKey: string;
-    kind: "research" | "scheduled_job" | "advisor" | "autonomous_chat";
+    kind: "research" | "scheduled_job" | "advisor" | "autonomous_chat" | "remote_mcp";
     domainType: string;
     domainId: string;
     claimantId: string;

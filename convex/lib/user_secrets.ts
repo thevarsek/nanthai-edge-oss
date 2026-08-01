@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
+import { decryptSecret, userApiKeySecretContext } from "./secret_crypto";
 
 type UserSecretContext = Pick<ActionCtx, "runQuery">;
 
@@ -8,9 +9,14 @@ export async function getOptionalUserOpenRouterApiKey(
   ctx: UserSecretContext,
   userId: string,
 ): Promise<string | null> {
-  return await ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, {
-    userId,
-  });
+  const encryptedApiKey = await ctx.runQuery(
+    internal.scheduledJobs.queries.getEncryptedUserApiKey,
+    {
+      userId,
+    },
+  );
+  if (!encryptedApiKey) return null;
+  return await decryptSecret(encryptedApiKey, userApiKeySecretContext(userId));
 }
 
 export async function getRequiredUserOpenRouterApiKey(

@@ -46,7 +46,7 @@ export function TermsPage() {
           </p>
         </header>
 
-        <article className="edge-legal edge-document edge-fade-up edge-stagger-2 mx-auto mt-10 px-1 pb-8 pt-8 md:mt-12 md:px-0 md:pt-10">
+        <article className="edge-legal edge-document edge-fade-up edge-stagger-2 mx-auto mt-10 pb-8 pt-8 md:mt-12 md:pt-10">
           <h2>{t("tos_s1_title")}</h2>
           <p>{t("tos_s1_body")}</p>
 

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-auth-encryption-key";
+
 import { ConvexError } from "convex/values";
 import {
   extractFirstStreamingTextFromUnknown,
@@ -180,7 +182,7 @@ test("Slack auth marks connections expired when refresh fails or config is missi
       } as any, "user_1"),
       (error: unknown) => error instanceof ConvexError && error.data?.code === "TOKEN_REFRESH_FAILED",
     );
-    assert.match(String(mutations[0]?.errorMessage), /invalid_refresh_token/);
+    assert.equal(mutations[0]?.errorMessage, "Token refresh failed");
   } finally {
     process.env.SLACK_CLIENT_ID = originalClientId;
     process.env.SLACK_CLIENT_SECRET = originalClientSecret;

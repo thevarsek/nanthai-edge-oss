@@ -45,6 +45,7 @@ function SkillEditorPageContent() {
     api.skills.queries.getSkillDetail,
     skillId ? { skillId: skillId as Id<"skills"> } : "skip",
   );
+  const remoteMcpConnections = useQuery(api.mcp.queries.listActiveConnectionOptions, {});
 
   const createSkill = useMutation(api.skills.mutations.createSkill);
   const updateSkill = useMutation(api.skills.mutations.updateSkill);
@@ -267,6 +268,7 @@ function SkillEditorPageContent() {
 
           <SkillEditorMetadataSection
             selection={form.metadataSelection}
+            remoteMcpConnections={remoteMcpConnections}
             onChange={(metadataSelection) => {
               metadataTouchedRef.current = true;
               setForm((current) => ({

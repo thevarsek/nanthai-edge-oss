@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
+import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
 import type { Doc, Id } from "../_generated/dataModel";
 import { internalAction } from "../_generated/server";
 import { enqueueStep } from "./actions_execution";
@@ -98,12 +99,7 @@ export const initializeScheduledExecution = internalAction({
       occurrenceId: args.occurrenceId,
       invocationSource,
     });
-    const apiKey = await ctx.runQuery(
-      internal.scheduledJobs.queries.getUserApiKey,
-      {
-        userId: job.userId,
-      },
-    );
+    const apiKey = await getOptionalUserOpenRouterApiKey(ctx, job.userId);
     if (!apiKey) {
       await ctx.runMutation(
         internal.scheduledJobs.execution_terminal_commit

@@ -45,6 +45,12 @@ import {
   resolveGenerationProviderDeadline,
 } from "./generation_deadline";
 import { transitionGenerationRound } from "./generation_round_actions";
+import {
+  loadAllowedRemoteMcpToolsForChat,
+  remoteMcpToolCallDisplayMetadata,
+} from "../mcp/chat_registry";
+import { registerRemoteMcpTools } from "../mcp/tool_registry";
+import { scheduleDeferredRemoteMcp } from "../mcp/deferred_workflow_scheduler";
 
 function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -428,15 +434,32 @@ export async function runGenerationParticipantHandler(
       durationMs: Date.now() - preflightStartedAt,
     });
 
-    const toolRegistry = buildProgressiveToolRegistry({
-      enabledIntegrations: effectiveArgs.effectiveIntegrations,
+    const remoteMcpTools = await loadAllowedRemoteMcpToolsForChat(ctx, {
+      userId: effectiveArgs.userId,
+      integrationIds: effectiveArgs.effectiveIntegrations,
       isPro: effectiveArgs.isPro,
-      allowSubagents: effectiveArgs.allowSubagents,
-      disabled: effectiveArgs.disableTools === true,
-      activeProfiles: continuationState?.activeProfiles,
-      directToolNames: effectiveArgs.directToolNames ?? [],
-      webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
+      toolsDisabled: effectiveArgs.disableTools === true,
     });
+    const buildParticipantToolRegistry = (
+      activeProfiles: Parameters<typeof buildProgressiveToolRegistry>[0]["activeProfiles"],
+      directToolNames: string[],
+    ) => {
+      const registry = buildProgressiveToolRegistry({
+        enabledIntegrations: effectiveArgs.effectiveIntegrations,
+        isPro: effectiveArgs.isPro,
+        allowSubagents: effectiveArgs.allowSubagents,
+        disabled: effectiveArgs.disableTools === true,
+        activeProfiles,
+        directToolNames,
+        webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
+      });
+      registerRemoteMcpTools(registry, remoteMcpTools);
+      return registry;
+    };
+    const toolRegistry = buildParticipantToolRegistry(
+      continuationState?.activeProfiles,
+      effectiveArgs.directToolNames ?? [],
+    );
 
     const effectiveDirectToolNames = [...(effectiveArgs.directToolNames ?? [])];
 
@@ -448,6 +471,7 @@ export async function runGenerationParticipantHandler(
       memoryContext,
       modelCapabilities,
       toolRegistry,
+      toolCallDisplayMetadata: remoteMcpToolCallDisplayMetadata(remoteMcpTools),
       progressiveTools: {
         enabledIntegrations: effectiveArgs.effectiveIntegrations,
         allowSubagents: effectiveArgs.allowSubagents,
@@ -484,15 +508,7 @@ export async function runGenerationParticipantHandler(
         skillDefaults: effectiveArgs.skillDefaults,
       },
       onProfilesExpanded: async (toolCalls, results, activeProfiles, _currentRegistry, currentParams, _nextCaps) => {
-        const registry = buildProgressiveToolRegistry({
-          enabledIntegrations: effectiveArgs.effectiveIntegrations,
-          isPro: effectiveArgs.isPro,
-          allowSubagents: effectiveArgs.allowSubagents,
-          disabled: effectiveArgs.disableTools === true,
-          activeProfiles,
-          directToolNames: effectiveDirectToolNames,
-          webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
-        });
+        const registry = buildParticipantToolRegistry(activeProfiles, effectiveDirectToolNames);
         await retrySameRoundProgressiveToolCalls(
           toolCalls as ToolCall[],
           results,
@@ -514,15 +530,7 @@ export async function runGenerationParticipantHandler(
         };
       },
       onDocumentToolsScoped: async ({ activeProfiles, directToolNames }) => {
-        return buildProgressiveToolRegistry({
-          enabledIntegrations: effectiveArgs.effectiveIntegrations,
-          isPro: effectiveArgs.isPro,
-          allowSubagents: effectiveArgs.allowSubagents,
-          disabled: effectiveArgs.disableTools === true,
-          activeProfiles,
-          directToolNames,
-          webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
-        });
+        return buildParticipantToolRegistry(activeProfiles, directToolNames);
       },
       persistInlineAudio: async (audioBase64) => {
         const audioBuffer = Buffer.from(audioBase64, "base64");
@@ -560,6 +568,9 @@ export async function runGenerationParticipantHandler(
                 checkpoint,
                 analyticsRunId,
               );
+            },
+            onDeferredRemoteMcp: async (checkpoint, invocation) => {
+              await scheduleDeferredRemoteMcp(ctx, effectiveArgs, checkpoint, invocation);
             },
           },
     });

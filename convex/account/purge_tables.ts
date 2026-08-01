@@ -1,4 +1,10 @@
 export const PURGE_TABLES = [
+  "mcpInvocations",
+  "mcpCatalogItems",
+  "mcpCatalogSnapshots",
+  "mcpOAuthTransactions",
+  "mcpCredentials",
+  "mcpConnections",
   "researchSearchTasks",
   "researchSearchBatches",
   "searchPhases",
@@ -44,6 +50,7 @@ export const PURGE_TABLES = [
   "deviceTokens",
   "usageRecords",
   "userSecrets",
+  "openRouterExchangeAttempts",
   "kbUploadSessions",
   "purchaseEntitlements",
   "favorites",

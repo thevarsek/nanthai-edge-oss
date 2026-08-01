@@ -24,6 +24,11 @@ import {
 } from "./google_capabilities";
 import { getGoogleAccessToken } from "../tools/google/auth";
 import { fetchDriveMetadata } from "../drive_picker/ingest";
+import {
+  assertEncryptedSecret,
+  decryptOAuthCredentials,
+  encryptOAuthCredentials,
+} from "../lib/secret_crypto";
 
 // ---------------------------------------------------------------------------
 // Google OAuth Constants
@@ -86,8 +91,6 @@ export const exchangeGoogleCode = action({
     });
 
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Google token exchange failed:", errorText);
       throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Google token exchange failed (HTTP ${tokenResponse.status})` });
     }
 
@@ -130,10 +133,15 @@ export const exchangeGoogleCode = action({
     );
 
     // Store or update the connection via internal mutation
-    await ctx.runMutation(internal.oauth.google.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? "",
+      provider: "google",
+    });
+    await ctx.runMutation(internal.oauth.google.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt,
       scopes,
       email,
@@ -152,8 +160,10 @@ export const exchangeGoogleCode = action({
 export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
-    refreshToken: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
     expiresAt: v.number(),
     scopes: v.array(v.string()),
     email: v.optional(v.string()),
@@ -162,8 +172,11 @@ export const upsertConnection = internalMutation({
     // CAS guard: only apply this refresh if lastRefreshedAt hasn't changed
     // since the caller read the row. Prevents parallel refresh races (Bug H-2).
     expectedLastRefreshedAt: v.optional(v.number()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
   },
   handler: async (ctx, args) => {
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
     const existing = await ctx.db
       .query("oauthConnections")
       .withIndex("by_user_provider", (q) =>
@@ -172,6 +185,8 @@ export const upsertConnection = internalMutation({
       .unique();
 
     const now = Date.now();
+
+    if (args.expectedConnectionId && existing?._id !== args.expectedConnectionId) return null;
 
     if (existing) {
       // CAS check: if another tool already refreshed since we read, skip.
@@ -189,17 +204,17 @@ export const upsertConnection = internalMutation({
 
       // Update existing connection
       const patch: Record<string, unknown> = {
-        accessToken: args.accessToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken || existing.refreshToken,
         expiresAt: args.expiresAt,
         scopes: mergedScopes,
         status: "active",
         errorMessage: undefined,
         lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       };
-      // Only overwrite refreshToken if Google sent a new one
-      if (args.refreshToken) {
-        patch.refreshToken = args.refreshToken;
-      }
       if (args.email) patch.email = args.email;
       if (args.displayName) patch.displayName = args.displayName;
       if (args.clientType) patch.clientType = args.clientType;
@@ -210,8 +225,8 @@ export const upsertConnection = internalMutation({
       return await ctx.db.insert("oauthConnections", {
         userId: args.userId,
         provider: "google",
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken,
         expiresAt: args.expiresAt,
         scopes: args.scopes,
         email: args.email,
@@ -220,6 +235,9 @@ export const upsertConnection = internalMutation({
         status: "active",
         connectedAt: now,
         lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       });
     }
   },
@@ -475,9 +493,19 @@ export const disconnectGoogle = action({
 
     // Attempt to revoke the token with Google (best-effort)
     try {
+      const credentials = await decryptOAuthCredentials({
+        userId,
+        provider: "google",
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+      });
       await fetch(
-        `${GOOGLE_REVOKE_URL}?token=${connection.refreshToken || connection.accessToken}`,
-        { method: "POST" },
+        GOOGLE_REVOKE_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams({ token: credentials.refreshToken || credentials.accessToken }),
+        },
       );
     } catch {
       console.warn("Google token revocation failed (non-fatal)");
@@ -522,6 +550,8 @@ export const markConnectionExpired = internalMutation({
   args: {
     userId: v.string(),
     errorMessage: v.optional(v.string()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
+    expectedLastRefreshedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const connection = await ctx.db
@@ -531,7 +561,12 @@ export const markConnectionExpired = internalMutation({
       )
       .unique();
 
-    if (connection) {
+    if (
+      connection
+      && (!args.expectedConnectionId || connection._id === args.expectedConnectionId)
+      && (args.expectedLastRefreshedAt === undefined
+        || (connection.lastRefreshedAt ?? 0) === args.expectedLastRefreshedAt)
+    ) {
       await ctx.db.patch(connection._id, {
         status: "expired",
         errorMessage: args.errorMessage ?? "Token refresh failed",

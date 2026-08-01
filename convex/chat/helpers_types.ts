@@ -35,6 +35,7 @@ export interface ContextMessage {
     slideRevision?: number;
     elementId?: string;
   };
+  mcpInvocationIds?: Id<"mcpInvocations">[];
   toolCalls?: Array<{
     id: string;
     name: string;

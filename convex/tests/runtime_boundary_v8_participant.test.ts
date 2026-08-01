@@ -191,6 +191,20 @@ test("the deferred subagent capability remains V8-safe until the model chooses i
   );
 });
 
+test("Remote MCP proxy tools remain available in V8 and delegate only on selection", () => {
+  const runtimeParticipant = readConvexSource("chat/actions_run_generation_participant_runtime.ts");
+  const mcpRegistry = readConvexSource("mcp/tool_registry.ts");
+
+  assert.equal(
+    declaresUseNode(mcpRegistry),
+    false,
+    "Remote MCP proxy registration must remain V8-safe",
+  );
+  assert.match(runtimeParticipant, /loadAllowedRemoteMcpToolsForChat/);
+  assert.match(runtimeParticipant, /registerRemoteMcpTools\(toolRegistry, remoteMcpTools\)/);
+  assert.match(mcpRegistry, /internal\.mcp\.tool_action\.invokeAllowedTool/);
+});
+
 test("Node sibling action wires onDocumentToolsScoped callback", () => {
   // Lock in the fix shape: actions_run_generation_participant_action.ts must
   // pass an onDocumentToolsScoped callback into generateForParticipant so the

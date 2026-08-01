@@ -3,7 +3,7 @@ import type { TFunction } from "i18next";
 import {
   BookOpen, Brain, CalendarClock, Crown, FileSpreadsheet, Film, FolderOpen,
   GitBranch, Image, Key, MessageSquare, Music, Palette, Plug, Receipt, Search,
-  SlidersHorizontal, Sparkles, UserCircle, Users,
+  ServerCog, SlidersHorizontal, Sparkles, UserCircle, Users,
 } from "lucide-react";
 import { advancedFeatures } from "./advancedFeatureData";
 
@@ -159,6 +159,19 @@ const coreFeatures: FeatureMeta[] = [
     icon: Plug,
     accentClass: "text-[var(--edge-blue)]",
     related: ["automated-tasks", "personas", "knowledge-base"], i18nPrefix: "ig", titleKey: "integrations",
+  },
+  {
+    slug: "remote-mcp",
+    title: "Remote MCP servers",
+    tagline: "Bring compatible tools and context from any supported remote MCP server into Edge.",
+    indexDescription:
+      "Connect HTTPS, stateless MCP 2026-07-28 servers. Review and enable tools, prompts, resources, elicitation, and long-running Tasks for chats, Personas, and Skills.",
+    tier: "pro",
+    icon: ServerCog,
+    accentClass: "text-[var(--edge-cyan)]",
+    related: ["integrations", "personas", "skills-helpers"],
+    i18nPrefix: "mcp",
+    titleKey: "feature_title_remote_mcp",
   },
   {
     slug: "chat-defaults",

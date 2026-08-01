@@ -49,26 +49,3 @@ export function buildOpenRouterAuthUrl(
   });
   return `https://openrouter.ai/auth?${params.toString()}`;
 }
-
-export async function exchangeCodeForKey(
-  code: string,
-  verifier: string,
-): Promise<string> {
-  const response = await fetch("https://openrouter.ai/api/v1/auth/keys", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Referer: "https://nanthai.tech",
-      "X-Title": "NanthAi:Edge",
-    },
-    body: JSON.stringify({ code, code_verifier: verifier, code_challenge_method: "S256" }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`OpenRouter key exchange failed with status ${response.status}. Please try connecting again.`);
-  }
-
-  const data = (await response.json()) as { key: string };
-  if (!data.key) throw new Error("OpenRouter returned no key");
-  return data.key;
-}

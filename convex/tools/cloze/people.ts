@@ -100,11 +100,10 @@ export const clozePersonFind = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze people find failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze people find failed (HTTP ${response.status}).`,
         };
       }
 
@@ -208,11 +207,10 @@ export const clozePersonCount = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze people count failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze people count failed (HTTP ${response.status}).`,
         };
       }
 
@@ -334,11 +332,10 @@ export const clozePersonAdd = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze person add failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze person add failed (HTTP ${response.status}).`,
         };
       }
 
@@ -449,11 +446,10 @@ export const clozePersonChange = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze person change failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze person change failed (HTTP ${response.status}).`,
         };
       }
 

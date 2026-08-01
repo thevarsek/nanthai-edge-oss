@@ -267,6 +267,12 @@ export interface GenerateForParticipantParams {
   /** Optional tool registry. When provided and non-empty, tool definitions
    *  are sent to the model and a tool-call loop executes any requested tools. */
   toolRegistry?: ToolRegistry;
+  toolCallDisplayMetadata?: Record<string, {
+    source: "remote_mcp";
+    displayName: string;
+    integrationId: string;
+    integrationName: string;
+  }>;
   progressiveTools?: {
     enabledIntegrations: string[];
     allowSubagents: boolean;
@@ -317,6 +323,10 @@ export interface GenerateForParticipantParams {
     onDeferredAnalytics?: (
       checkpoint: GenerationContinuationCheckpoint,
       analyticsRunId: Id<"analyticsWorkflowRuns">,
+    ) => Promise<void>;
+    onDeferredRemoteMcp?: (
+      checkpoint: GenerationContinuationCheckpoint,
+      invocation: { invocationId: string; toolCallId: string },
     ) => Promise<void>;
     continuationCount: number;
   };
@@ -1287,15 +1297,18 @@ export async function generateForParticipant(
         activeProgressiveToolCallIDs.add(stableId);
         const existingIndex = progressiveToolCalls.findIndex((tc) => tc.id === stableId);
         if (existingIndex >= 0) {
+          const resolvedName = progressiveToolCalls[existingIndex].name || toolCall.name;
           progressiveToolCalls[existingIndex] = {
             ...progressiveToolCalls[existingIndex],
-            name: progressiveToolCalls[existingIndex].name || toolCall.name,
+            name: resolvedName,
+            ...params.toolCallDisplayMetadata?.[resolvedName],
           };
         } else {
           progressiveToolCalls.push({
             id: stableId,
             name: toolCall.name,
             arguments: "",
+            ...params.toolCallDisplayMetadata?.[toolCall.name],
           });
         }
         await ctx.runMutation(
@@ -1371,6 +1384,7 @@ export async function generateForParticipant(
             id: tc.id,
             name: tc.function.name,
             arguments: tc.function.arguments,
+            ...params.toolCallDisplayMetadata?.[tc.function.name],
           };
           const pendingId = pendingProgressiveToolCallsByIndex.get(index);
           const existingIndex = progressiveToolCalls.findIndex((entry) =>
@@ -1558,7 +1572,10 @@ export async function generateForParticipant(
     });
 
     const result = genResult.streamResult;
-    const collectedToolCalls = genResult.allToolCalls;
+    const collectedToolCalls = genResult.allToolCalls.map((toolCall) => ({
+      ...toolCall,
+      ...params.toolCallDisplayMetadata?.[toolCall.name],
+    }));
     const collectedToolResults = genResult.allToolResults;
     latencyMetrics.openrouter_round_trip_duration_ms =
       Date.now() - openRouterRequestStartedAt;
@@ -1604,6 +1621,9 @@ export async function generateForParticipant(
       );
       const analyticsDeferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "analytics_workflow",
+      );
+      const remoteMcpDeferred = genResult.deferredToolRound.deferredResults.find(
+        (entry) => entry.payload.kind === "remote_mcp",
       );
       const deferredCheckpoint: GenerationContinuationCheckpoint = {
         deferredResumeEventId: args.workflowResumeEventId,
@@ -1669,6 +1689,30 @@ export async function generateForParticipant(
           deferredCheckpoint,
           analyticsRunId as Id<"analyticsWorkflowRuns">,
         );
+        return {
+          deferredForSubagents: false,
+          cancelled: false,
+          failed: false,
+          continued: true,
+          usage: genResult.totalUsage,
+          generationId: result.generationId,
+          latencies: latencyMetrics,
+        };
+      }
+      if (remoteMcpDeferred) {
+        const invocationId = (
+          remoteMcpDeferred.payload.data as { invocationId?: unknown } | undefined
+        )?.invocationId;
+        if (typeof invocationId !== "string" || !continuationHandoff?.onDeferredRemoteMcp) {
+          throw new ConvexError({
+            code: "INTERNAL_ERROR" as const,
+            message: "Remote MCP paused without a durable continuation target.",
+          });
+        }
+        await continuationHandoff.onDeferredRemoteMcp(deferredCheckpoint, {
+          invocationId,
+          toolCallId: remoteMcpDeferred.toolCallId,
+        });
         return {
           deferredForSubagents: false,
           cancelled: false,

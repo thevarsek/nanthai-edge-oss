@@ -12,7 +12,10 @@ import {
 } from "../chat/actions_video_generation";
 import { completeVideoOutputUploadHandler } from "../chat/video_mutation_handlers";
 import { handleVideoOutputUpload } from "../http";
-import { isAllowedVideoUploadMimeType } from "../chat/video_output_upload_policy";
+import {
+  hashVideoOutputUploadToken,
+  isAllowedVideoUploadMimeType,
+} from "../chat/video_output_upload_policy";
 
 const submitArgs = {
   chatId: "chat_1",
@@ -64,13 +67,10 @@ test("video output upload guards accept only video-compatible MIME types", () =>
 
 test("completeVideoOutputUploadHandler only patches pending unexpired sessions", async () => {
   const patches: Array<Record<string, unknown>> = [];
+  const expectedTokenHash = await hashVideoOutputUploadToken("tok");
   const makeCtx = (session: Record<string, unknown> | null) => ({
     db: {
-      query: () => ({
-        withIndex: () => ({
-          first: async () => session,
-        }),
-      }),
+      get: async () => session,
       patch: async (_id: string, value: Record<string, unknown>) => {
         patches.push(value);
       },
@@ -81,8 +81,11 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
     _id: "upload_1",
     status: "pending",
     createdAt: Date.now(),
+    expiresAt: Date.now() + 30 * 60 * 1000,
+    tokenHash: expectedTokenHash,
   }), {
-    token: "tok",
+    uploadId: "upload_1",
+    expectedTokenHash,
     storageId: "storage_1",
     mimeType: "video/mp4",
     sizeBytes: 10,
@@ -91,8 +94,11 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
     _id: "upload_2",
     status: "uploaded",
     createdAt: Date.now(),
+    expiresAt: Date.now() + 30 * 60 * 1000,
+    tokenHash: expectedTokenHash,
   }), {
-    token: "tok",
+    uploadId: "upload_2",
+    expectedTokenHash,
     storageId: "storage_2",
     mimeType: "video/mp4",
     sizeBytes: 10,
@@ -101,8 +107,11 @@ test("completeVideoOutputUploadHandler only patches pending unexpired sessions",
     _id: "upload_3",
     status: "pending",
     createdAt: Date.now() - 31 * 60 * 1000,
+    expiresAt: Date.now() - 60 * 1000,
+    tokenHash: expectedTokenHash,
   }), {
-    token: "tok",
+    uploadId: "upload_3",
+    expectedTokenHash,
     storageId: "storage_3",
     mimeType: "video/mp4",
     sizeBytes: 10,
@@ -174,6 +183,7 @@ test("submitVideoGeneration handles missing prompts and default config failure p
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       successMutations.push(args);
+      if (args.tokenHash) return "upload_1";
       if (args.openRouterJobId) return "video_job_1";
       return undefined;
     },
@@ -204,8 +214,11 @@ test("submitVideoGeneration handles missing prompts and default config failure p
     assert.equal(uploadUrl.pathname, "/video-output-upload");
     const uploadToken = uploadUrl.searchParams.get("token");
     assert.ok(uploadToken);
-    assert.ok(successMutations.some((entry) => entry.token === uploadToken && entry.messageId === "msg_assistant"));
-    assert.ok(successMutations.some((entry) => entry.outputUploadToken === uploadToken));
+    const expectedHash = await hashVideoOutputUploadToken(String(uploadToken));
+    assert.ok(successMutations.some((entry) =>
+      entry.tokenHash === expectedHash && entry.messageId === "msg_assistant" && !("token" in entry)));
+    assert.ok(successMutations.some((entry) =>
+      entry.outputUploadId === "upload_1" && !("outputUploadToken" in entry)));
   } finally {
     globalThis.fetch = originalFetch;
     if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
@@ -239,11 +252,15 @@ test("pollVideoGeneration fails completed jobs when storage URL resolution fails
   const mutations: Array<Record<string, unknown>> = [];
   const responses = [
     new Response(JSON.stringify({
+      id: "or_video_1",
       status: "completed",
       polling_url: "https://poll",
       unsigned_urls: ["https://cdn/video.mp4"],
     }), { status: 200 }),
-    new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
+    new Response(new Uint8Array([1, 2, 3]), {
+      status: 200,
+      headers: { "content-type": "video/mp4" },
+    }),
   ];
   globalThis.fetch = (async () => {
     const next = responses.shift();
@@ -252,7 +269,12 @@ test("pollVideoGeneration fails completed jobs when storage URL resolution fails
   }) as any;
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-      if (args.videoJobId) return { _id: "video_job_1", status: "in_progress", pollCount: 1, pollingUrl: "https://poll" };
+      if (args.videoJobId) return {
+        _id: "video_job_1",
+        status: "in_progress",
+        pollCount: 1,
+        openRouterJobId: "or_video_1",
+      };
       if (args.jobId) return { _id: "job_1", status: "streaming" };
       if (args.userId) return "sk-test";
       return null;
@@ -283,6 +305,7 @@ test("pollVideoGeneration finalizes Grok uploads from tracked output upload stor
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
   globalThis.fetch = (async () => new Response(JSON.stringify({
+    id: "or_video_1",
     status: "completed",
     polling_url: "https://poll",
   }), { status: 200 })) as any;
@@ -293,13 +316,13 @@ test("pollVideoGeneration finalizes Grok uploads from tracked output upload stor
           _id: "video_job_1",
           status: "in_progress",
           pollCount: 1,
-          pollingUrl: "https://poll",
-          outputUploadToken: "upload_tok",
+          openRouterJobId: "or_video_1",
+          outputUploadId: "upload_1",
         };
       }
-      if (args.token) {
+      if (args.uploadId) {
         return {
-          token: "upload_tok",
+          _id: "upload_1",
           status: "uploaded",
           storageId: "storage_uploaded_video",
           mimeType: "video/mp4",
@@ -341,6 +364,7 @@ test("pollVideoGeneration leaves pending Grok upload polling to Workflow", async
   const originalFetch = globalThis.fetch;
   const scheduled: Array<Record<string, unknown>> = [];
   globalThis.fetch = (async () => new Response(JSON.stringify({
+    id: "or_video_1",
     status: "completed",
     polling_url: "https://poll",
   }), { status: 200 })) as any;
@@ -351,11 +375,11 @@ test("pollVideoGeneration leaves pending Grok upload polling to Workflow", async
           _id: "video_job_1",
           status: "in_progress",
           pollCount: 1,
-          pollingUrl: "https://poll",
-          outputUploadToken: "upload_tok",
+          openRouterJobId: "or_video_1",
+          outputUploadId: "upload_1",
         };
       }
-      if (args.token) return { token: "upload_tok", status: "pending" };
+      if (args.uploadId) return { _id: "upload_1", status: "pending" };
       if (args.jobId) return { _id: "job_1", status: "streaming" };
       if (args.userId) return "sk-test";
       return null;
@@ -381,7 +405,7 @@ test("pollVideoGeneration propagates an atomic settlement failure for Workflow r
   const mutations: Array<Record<string, unknown>> = [];
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
-      if (args.videoJobId) return { _id: "video_job_1", status: "in_progress", pollCount: 1, pollingUrl: "https://poll" };
+      if (args.videoJobId) return { _id: "video_job_1", status: "in_progress", pollCount: 1 };
       if (args.jobId) return { _id: "job_1", status: "streaming" };
       if (args.userId) return "";
       return null;

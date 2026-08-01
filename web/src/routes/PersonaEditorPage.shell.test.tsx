@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import { mockState, skill } from "@/test/criticalRoutesCoverage";
+import { mockQueryEndpoint, mockState, skill } from "@/test/criticalRoutesCoverage";
 import { PersonaEditorPage } from "./PersonaEditorPage";
 
 function personaEditorRoute(path: string) {
@@ -134,6 +134,38 @@ describe("PersonaEditorPage shell behavior", () => {
         modelId: "openai/gpt-4.1",
         integrationOverrides: expect.arrayContaining([
           { integrationId: "gmail", enabled: true },
+        ]),
+      }));
+    });
+  });
+
+  it("adds an active Remote MCP server as a Persona integration target", async () => {
+    mockState.page = "persona";
+    mockState.modelSummaries = [
+      { modelId: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai", supportsTools: true },
+    ];
+    mockQueryEndpoint("mcp/queries:listActiveConnectionOptions", [{
+      connectionId: "connection-1",
+      integrationId: "mcp:connection-1",
+      displayName: "Cloudflare Docs",
+      endpointHost: "docs.mcp.cloudflare.com",
+      allowedItemCount: 2,
+    }]);
+    mockState.mutation.mockResolvedValueOnce("persona_1");
+
+    renderPersonaEditor("/app/personas/new");
+
+    fireEvent.change(screen.getByPlaceholderText("persona_name_placeholder"), { target: { value: "MCP Researcher" } });
+    fireEvent.change(screen.getByPlaceholderText("system_prompt_placeholder"), { target: { value: "Use connected documentation tools." } });
+    fireEvent.click(screen.getByText("select_a_model"));
+    fireEvent.click(screen.getByText("GPT 4.1"));
+    fireEvent.click(screen.getByRole("switch", { name: "Cloudflare Docs" }));
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => {
+      expect(mockState.mutation).toHaveBeenCalledWith(expect.objectContaining({
+        integrationOverrides: expect.arrayContaining([
+          { integrationId: "mcp:connection-1", enabled: true },
         ]),
       }));
     });

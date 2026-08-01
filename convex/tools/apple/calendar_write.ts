@@ -79,11 +79,11 @@ export const appleCalendarCreate = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Apple Calendar create failed (HTTP ${response.status}): ${errorText}`,
+          error: `Apple Calendar create failed (HTTP ${response.status}).`,
         };
       }
 
@@ -171,11 +171,11 @@ export const appleCalendarUpdate = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Apple Calendar update failed (HTTP ${response.status}): ${errorText}`,
+          error: `Apple Calendar update failed (HTTP ${response.status}).`,
         };
       }
 
@@ -227,11 +227,11 @@ export const appleCalendarDelete = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Apple Calendar delete failed (HTTP ${response.status}): ${errorText}`,
+          error: `Apple Calendar delete failed (HTTP ${response.status}).`,
         };
       }
 

@@ -25,7 +25,8 @@ import {
   getStreamingContentArgs,
   getUserMemoriesArgs,
   getUserPreferencesArgs,
-  getVideoOutputUploadByTokenArgs,
+  getVideoOutputUploadByTokenHashArgs,
+  getVideoOutputUploadByIdArgs,
   getVideoJobInternalArgs,
   getVideoJobStatusArgs,
   listAllMessagesArgs,
@@ -54,7 +55,8 @@ import {
   getStreamingContentHandler,
   getUserMemoriesHandler,
   getUserPreferencesHandler,
-  getVideoOutputUploadByTokenHandler,
+  getVideoOutputUploadByTokenHashHandler,
+  getVideoOutputUploadByIdHandler,
   getVideoJobInternalHandler,
   getVideoJobStatusHandler,
   listAllMessagesHandler,
@@ -228,9 +230,14 @@ export const getVideoJobInternal = internalQuery({
   handler: getVideoJobInternalHandler,
 });
 
-export const getVideoOutputUploadByToken = internalQuery({
-  args: getVideoOutputUploadByTokenArgs,
-  handler: getVideoOutputUploadByTokenHandler,
+export const getVideoOutputUploadByTokenHash = internalQuery({
+  args: getVideoOutputUploadByTokenHashArgs,
+  handler: getVideoOutputUploadByTokenHashHandler,
+});
+
+export const getVideoOutputUploadById = internalQuery({
+  args: getVideoOutputUploadByIdArgs,
+  handler: getVideoOutputUploadByIdHandler,
 });
 
 export const getVideoJobStatus = query({

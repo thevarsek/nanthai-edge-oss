@@ -126,8 +126,12 @@ export const getVideoJobInternalArgs = {
   videoJobId: v.id("videoJobs"),
 } satisfies PropertyValidators;
 
-export const getVideoOutputUploadByTokenArgs = {
-  token: v.string(),
+export const getVideoOutputUploadByTokenHashArgs = {
+  tokenHash: v.string(),
+} satisfies PropertyValidators;
+
+export const getVideoOutputUploadByIdArgs = {
+  uploadId: v.id("videoOutputUploads"),
 } satisfies PropertyValidators;
 
 export const getVideoJobStatusArgs = {

@@ -108,6 +108,28 @@ describe("public site smoke coverage", () => {
     expect(canonicalHref()).toBe(canonical);
   });
 
+  it("uses inset legal cards and theme-aware licensing links", () => {
+    const privacy = renderPublicPage(<PrivacyPage />);
+
+    expect(privacy.container.querySelector("article.edge-document")).toBeInTheDocument();
+    privacy.unmount();
+
+    const terms = renderPublicPage(<TermsPage />);
+
+    expect(terms.container.querySelector("article.edge-document")).toBeInTheDocument();
+    terms.unmount();
+
+    const licensing = renderPublicPage(<LicensingPage />);
+    const featureLink = licensing.container.querySelector('a[href="/features"].edge-action-link');
+    const sourceLink = licensing.container.querySelector(
+      'a[href="https://github.com/thevarsek/nanthai-edge-oss"].edge-action-link',
+    );
+
+    expect(licensing.container.querySelector("article.edge-document")).toBeInTheDocument();
+    expect(featureLink).toBeInTheDocument();
+    expect(sourceLink).toBeInTheDocument();
+  });
+
   it("renders a representative feature page with site chrome and CTA destinations", () => {
     renderPublicPage(<SearchPage />);
 

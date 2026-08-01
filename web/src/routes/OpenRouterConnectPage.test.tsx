@@ -5,21 +5,19 @@ import { OpenRouterConnectPage } from "./OpenRouterConnectPage";
 
 const {
   authState,
-  exchangeCodeForKey,
+  exchangeAndStore,
   navigate,
   captureAnalytics,
   setOnboardingCompleted,
-  upsertApiKey,
 } = vi.hoisted(() => ({
   authState: {
     isAuthenticated: true,
     isLoading: false,
   },
-  exchangeCodeForKey: vi.fn(async () => "sk-or-key"),
+  exchangeAndStore: vi.fn(async () => ({ connected: true })),
   navigate: vi.fn(),
   captureAnalytics: vi.fn(),
   setOnboardingCompleted: vi.fn(async () => null),
-  upsertApiKey: vi.fn(async () => null),
 }));
 
 vi.mock("react-router-dom", async (importOriginal) => {
@@ -34,10 +32,6 @@ vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
 
-vi.mock("@/lib/pkce", () => ({
-  exchangeCodeForKey,
-}));
-
 vi.mock("@/lib/analytics", () => ({
   analyticsErrorLabel: (error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error",
   captureAnalytics,
@@ -46,7 +40,7 @@ vi.mock("@/lib/analytics", () => ({
 vi.mock("@convex/_generated/api", () => ({
   api: {
     preferences: { mutations: { setOnboardingCompleted: "setOnboardingCompleted" } },
-    scheduledJobs: { mutations: { upsertApiKey: "upsertApiKey" } },
+    oauth: { openrouter: { exchangeAndStore: "exchangeAndStore" } },
   },
 }));
 
@@ -54,8 +48,9 @@ vi.mock("convex/react", () => ({
   useConvexAuth: () => authState,
   useMutation: (mutation: string) => {
     if (mutation === "setOnboardingCompleted") return setOnboardingCompleted;
-    return upsertApiKey;
+    throw new Error(`Unexpected mutation: ${mutation}`);
   },
+  useAction: () => exchangeAndStore,
 }));
 
 vi.mock("@/components/shared/LoadingSpinner", () => ({
@@ -82,9 +77,8 @@ describe("OpenRouterConnectPage", () => {
   beforeEach(() => {
     authState.isAuthenticated = true;
     authState.isLoading = false;
-    exchangeCodeForKey.mockResolvedValue("sk-or-key");
+    exchangeAndStore.mockResolvedValue({ connected: true });
     setOnboardingCompleted.mockResolvedValue(null);
-    upsertApiKey.mockResolvedValue(null);
     sessionStorage.clear();
   });
 
@@ -104,8 +98,10 @@ describe("OpenRouterConnectPage", () => {
     renderConnectPage();
 
     await flushCallbackWork();
-    expect(exchangeCodeForKey).toHaveBeenCalledWith("code_1", "verifier_1");
-    expect(upsertApiKey).toHaveBeenCalledWith({ apiKey: "sk-or-key" });
+    expect(exchangeAndStore).toHaveBeenCalledWith({
+      code: "code_1",
+      codeVerifier: "verifier_1",
+    });
     expect(setOnboardingCompleted).toHaveBeenCalledWith({});
     expect(captureAnalytics).toHaveBeenCalledWith("onboarding_completed", {
       feature_area: "onboarding",
@@ -132,7 +128,10 @@ describe("OpenRouterConnectPage", () => {
     renderConnectPage();
 
     await flushCallbackWork();
-    expect(upsertApiKey).toHaveBeenCalledWith({ apiKey: "sk-or-key" });
+    expect(exchangeAndStore).toHaveBeenCalledWith({
+      code: "code_1",
+      codeVerifier: "verifier_1",
+    });
     expect(setOnboardingCompleted).not.toHaveBeenCalled();
     expect(captureAnalytics).toHaveBeenCalledWith("openrouter_connect_completed", {
       feature_area: "settings",
@@ -178,8 +177,7 @@ describe("OpenRouterConnectPage", () => {
     renderConnectPage("/openrouter/callback?code=code_1&state=wrong");
 
     expect(await screen.findByText("openrouter_err_state_mismatch")).toBeInTheDocument();
-    expect(exchangeCodeForKey).not.toHaveBeenCalled();
-    expect(upsertApiKey).not.toHaveBeenCalled();
+    expect(exchangeAndStore).not.toHaveBeenCalled();
     expect(captureAnalytics).toHaveBeenCalledWith("openrouter_connect_failed", {
       feature_area: "settings",
       source: "settings",
@@ -200,13 +198,13 @@ describe("OpenRouterConnectPage", () => {
 
     renderConnectPage();
 
-    expect(exchangeCodeForKey).not.toHaveBeenCalled();
+    expect(exchangeAndStore).not.toHaveBeenCalled();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(12_000);
     });
 
     expect(screen.getByText("Authentication is taking longer than expected. We’ll keep trying automatically."))
       .toBeInTheDocument();
-    expect(exchangeCodeForKey).not.toHaveBeenCalled();
+    expect(exchangeAndStore).not.toHaveBeenCalled();
   });
 });

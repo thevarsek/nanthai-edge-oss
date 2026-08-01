@@ -6,6 +6,7 @@ import {
   cycleSkillState,
   enabledIntegrationKeysFromOverrides,
   enabledSkillIdsFromOverrides,
+  integrationDefaultsMap,
   integrationOverridesFromChat,
   mapEquals,
   personaIntegrationDefaults,
@@ -52,16 +53,23 @@ describe("useChatOverrides resolution", () => {
   });
 
   test("inherits persona integration defaults until chat has overrides", () => {
-    const personaDefaults = new Map([["drive", true]]);
+    const settingsDefaults = integrationDefaultsMap([
+      { integrationId: "gmail", enabled: true },
+      { integrationId: "drive", enabled: false },
+    ]);
+    const personaDefaults = personaIntegrationDefaults({
+      integrationOverrides: [{ integrationId: "drive", enabled: true }],
+    }, settingsDefaults);
 
     expect(Array.from(integrationOverridesFromChat({} as Chat, personaDefaults).entries())).toEqual([
+      ["gmail", true],
       ["drive", true],
     ]);
     expect(Array.from(integrationOverridesFromChat({
-      integrationOverrides: [{ integrationId: "gmail", enabled: true }],
+      integrationOverrides: [{ integrationId: "gmail", enabled: false }],
     } as Chat, personaDefaults).entries())).toEqual([
+      ["gmail", false],
       ["drive", true],
-      ["gmail", true],
     ]);
   });
 

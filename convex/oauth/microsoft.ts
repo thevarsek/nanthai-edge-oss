@@ -7,8 +7,8 @@
 //   3. Tokens are stored in the oauthConnections table
 //
 // Microsoft uses the /common/ tenant for multi-tenant + personal accounts.
-// The iOS app is a public/native client using PKCE — NO client_secret is
-// sent in any token request (Microsoft rejects it with AADSTS90023).
+// Native clients use PKCE without a secret. Web callbacks are confidential-
+// client exchanges and authenticate with the server-held client secret.
 // =============================================================================
 
 import { v, ConvexError } from "convex/values";
@@ -20,6 +20,11 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import { resolveMicrosoftOAuthClientConfigForRedirect } from "./microsoft_client_config";
+import {
+  assertEncryptedSecret,
+  encryptOAuthCredentials,
+} from "../lib/secret_crypto";
 
 // ---------------------------------------------------------------------------
 // Microsoft OAuth Constants
@@ -50,21 +55,22 @@ export const exchangeMicrosoftCode = action({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
 
-    const clientId = process.env.MICROSOFT_CLIENT_ID;
-    if (!clientId) {
-      throw new ConvexError({ code: "CONFIG_ERROR", message: "Microsoft OAuth is not configured. Set MICROSOFT_CLIENT_ID environment variable." });
-    }
+    const clientConfig = resolveMicrosoftOAuthClientConfigForRedirect(args.redirectUri);
 
     // Build token exchange params.
-    // iOS public client uses PKCE (code_verifier). Public/native clients
-    // must NOT send client_secret — Microsoft rejects with AADSTS90023.
+    // Public/native clients must not send a secret. Web callbacks are
+    // registered as confidential clients and must authenticate the app.
     const tokenParams: Record<string, string> = {
       code: args.code,
-      client_id: clientId,
+      client_id: clientConfig.clientId,
       redirect_uri: args.redirectUri,
       grant_type: "authorization_code",
       code_verifier: args.codeVerifier,
     };
+
+    if (clientConfig.clientSecret) {
+      tokenParams.client_secret = clientConfig.clientSecret;
+    }
 
     const tokenResponse = await fetch(MICROSOFT_TOKEN_URL, {
       method: "POST",
@@ -73,8 +79,6 @@ export const exchangeMicrosoftCode = action({
     });
 
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      console.error("Microsoft token exchange failed:", errorText);
       throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Microsoft token exchange failed (HTTP ${tokenResponse.status})` });
     }
 
@@ -116,14 +120,20 @@ export const exchangeMicrosoftCode = action({
     const scopes = tokens.scope ? tokens.scope.split(" ") : [];
 
     // Store or update the connection via internal mutation
-    await ctx.runMutation(internal.oauth.microsoft.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: tokens.access_token,
       refreshToken: tokens.refresh_token ?? "",
+      provider: "microsoft",
+    });
+    await ctx.runMutation(internal.oauth.microsoft.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt,
       scopes,
       email,
       displayName,
+      clientType: clientConfig.clientType,
     });
 
     return { success: true, email: email ?? null };
@@ -137,17 +147,23 @@ export const exchangeMicrosoftCode = action({
 export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
-    accessToken: v.string(),
-    refreshToken: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
     expiresAt: v.number(),
     scopes: v.array(v.string()),
     email: v.optional(v.string()),
     displayName: v.optional(v.string()),
+    clientType: v.optional(v.union(v.literal("native"), v.literal("web"))),
     // CAS guard: only apply this refresh if lastRefreshedAt hasn't changed
     // since the caller read the row. Prevents parallel refresh races (Bug H-2).
     expectedLastRefreshedAt: v.optional(v.number()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
   },
   handler: async (ctx, args) => {
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
     const existing = await ctx.db
       .query("oauthConnections")
       .withIndex("by_user_provider", (q) =>
@@ -156,6 +172,8 @@ export const upsertConnection = internalMutation({
       .unique();
 
     const now = Date.now();
+
+    if (args.expectedConnectionId && existing?._id !== args.expectedConnectionId) return null;
 
     if (existing) {
       // CAS check: if another tool already refreshed since we read, skip.
@@ -170,19 +188,20 @@ export const upsertConnection = internalMutation({
 
       // Update existing connection
       const patch: Record<string, unknown> = {
-        accessToken: args.accessToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken || existing.refreshToken,
         expiresAt: args.expiresAt,
         scopes: args.scopes,
         status: "active",
         errorMessage: undefined,
         lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       };
-      // Only overwrite refreshToken if Microsoft sent a new one
-      if (args.refreshToken) {
-        patch.refreshToken = args.refreshToken;
-      }
       if (args.email) patch.email = args.email;
       if (args.displayName) patch.displayName = args.displayName;
+      if (args.clientType) patch.clientType = args.clientType;
       await ctx.db.patch(existing._id, patch);
       return existing._id;
     } else {
@@ -190,15 +209,19 @@ export const upsertConnection = internalMutation({
       return await ctx.db.insert("oauthConnections", {
         userId: args.userId,
         provider: "microsoft",
-        accessToken: args.accessToken,
-        refreshToken: args.refreshToken,
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken,
         expiresAt: args.expiresAt,
         scopes: args.scopes,
         email: args.email,
         displayName: args.displayName,
+        clientType: args.clientType,
         status: "active",
         connectedAt: now,
         lastRefreshedAt: now,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       });
     }
   },
@@ -297,6 +320,8 @@ export const markConnectionExpired = internalMutation({
   args: {
     userId: v.string(),
     errorMessage: v.optional(v.string()),
+    expectedConnectionId: v.optional(v.id("oauthConnections")),
+    expectedLastRefreshedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     const connection = await ctx.db
@@ -306,7 +331,12 @@ export const markConnectionExpired = internalMutation({
       )
       .unique();
 
-    if (connection) {
+    if (
+      connection
+      && (!args.expectedConnectionId || connection._id === args.expectedConnectionId)
+      && (args.expectedLastRefreshedAt === undefined
+        || (connection.lastRefreshedAt ?? 0) === args.expectedLastRefreshedAt)
+    ) {
       await ctx.db.patch(connection._id, {
         status: "expired",
         errorMessage: args.errorMessage ?? "Token refresh failed",

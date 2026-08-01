@@ -159,6 +159,43 @@ async function reconcileDomainAfterWorkflowFailure(
         updatedAt: now,
       });
     }
+  } else if (run.domainType === "secret_crypto_rotation") {
+    const rotation = await ctx.db.get(run.domainId as Id<"secretCryptoRotations">);
+    if (rotation && !["completed", "failed", "cancelled"].includes(rotation.status)) {
+      await ctx.db.patch(rotation._id, {
+        status: cancelled ? "cancelled" : "failed",
+        lastSafeErrorCode: cancelled
+          ? "SECRET_ROTATION_CANCELLED"
+          : "SECRET_ROTATION_FAILED",
+        completedAt: now,
+        updatedAt: now,
+      });
+    }
+  } else if (run.domainType === "remote_mcp_invocation") {
+    const invocation = await ctx.db.get(run.domainId as Id<"mcpInvocations">);
+    if (invocation && !["completed", "failed", "cancelled"].includes(invocation.state)) {
+      await ctx.db.patch(invocation._id, {
+        state: cancelled ? "cancelled" : "failed",
+        errorCode: cancelled ? "MCP_CANCELLED" : "MCP_WORKFLOW_FAILED",
+        completedAt: now,
+        updatedAt: now,
+      });
+      if (
+        invocation.generationJobId
+        && invocation.toolCallId
+        && invocation.parentResumeEventId
+      ) {
+        await completeDeferredToolHandler(ctx, {
+          jobId: invocation.generationJobId,
+          userId: invocation.userId,
+          toolCallId: invocation.toolCallId,
+          toolName: invocation.toolAlias ?? "remote_mcp",
+          result: JSON.stringify({ error: summary }),
+          isError: true,
+          eventId: invocation.parentResumeEventId,
+        });
+      }
+    }
   }
 
   if (

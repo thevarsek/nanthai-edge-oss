@@ -15,13 +15,13 @@ User signs in via Clerk OAuth. Clerk provides identity + session tokens for Conv
 | Convex | `lib/auth.ts` (requireAuth, optionalAuth), `auth.config.ts` |
 
 ### 1.2 OpenRouter PKCE Key Exchange
-After Clerk sign-in, user connects OpenRouter API key via PKCE OAuth. Code+verifier exchanged for key, stored in Keychain/Keystore.
+After Clerk sign-in, the user connects OpenRouter through PKCE OAuth. The client validates state and sends the one-time code and verifier to Convex; Convex exchanges the code and stores the resulting API key in a user-bound encrypted envelope. Updated clients never receive or persist the API key.
 
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `OpenRouterConnectionView`, `AuthService`, `OpenRouterKeyExchanger`, `PKCEGenerator`, `KeychainService` |
 | Android | `OpenRouterConnectionRoute`, `OpenRouterKeyRepository`, `PkceGenerator`, `SecureStorage` |
-| Convex | (client-side only; exchange direct with `openrouter.ai`) |
+| Convex | `oauth/openrouter:exchangeAndStore`, `lib/secret_crypto.ts`, `userSecrets` |
 
 ### 1.3 Sign-Out
 Clears Clerk session, revokes API key, logs out of Convex.
@@ -500,7 +500,7 @@ Monitors OpenRouter credit balance, shows low-balance banners/notifications.
 |----------|-----------|
 | iOS | `CreditBalanceCheck`, `LowBalanceBanner`, `NotificationService` (scheduleCreditAlert) |
 | Android | `SettingsProvidersViewModel` |
-| Convex | (client-side OpenRouter API) |
+| Convex | `scheduledJobs/actions:fetchOpenRouterCredits` server-side proxy using the encrypted user credential |
 
 ---
 

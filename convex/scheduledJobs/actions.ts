@@ -1,8 +1,8 @@
 import { v, ConvexError } from "convex/values";
 import { action, internalAction } from "../_generated/server";
-import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
 import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
+import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
 import {
   continueScheduledJobExecutionHandler,
   executeScheduledJobHandler,
@@ -49,10 +49,7 @@ export const fetchOpenRouterCredits = action({
   handler: async (ctx): Promise<{ balance: number }> => {
     const { userId } = await requireAuth(ctx);
 
-    const apiKey: string | null = await ctx.runQuery(
-      internal.scheduledJobs.queries.getUserApiKey,
-      { userId },
-    );
+    const apiKey = await getOptionalUserOpenRouterApiKey(ctx, userId);
     if (!apiKey) {
       throw new ConvexError({ code: "NOT_FOUND", message: "No OpenRouter API key found. Please connect OpenRouter first." });
     }

@@ -22,7 +22,7 @@ export const reconcileCancelledProvider = internalAction({
     if (job.providerTerminalAt !== undefined) return true;
     try {
       const apiKey = await getRequiredUserOpenRouterApiKey(ctx, job.userId);
-      const result = await pollVideoJobStatus(apiKey, job.pollingUrl);
+      const result = await pollVideoJobStatus(apiKey, job.openRouterJobId);
       if (result.status !== "completed" && result.status !== "failed") return false;
       await ctx.runMutation(internal.chat.mutations.markVideoProviderTerminal, {
         videoJobId: args.videoJobId,

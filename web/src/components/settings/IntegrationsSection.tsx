@@ -1,4 +1,4 @@
-import { Puzzle, ChevronRight, Mail } from "lucide-react";
+import { Puzzle, ChevronRight, Mail, Server } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
@@ -25,6 +25,7 @@ function IntegrationDefaultsCard() {
   const { t } = useTranslation();
   const { toast } = useToast();
   const prefs = useQuery(api.preferences.queries.getPreferences, {});
+  const remoteConnections = useQuery(api.mcp.queries.listActiveConnectionOptions, {});
   const setIntegrationDefault = useMutation(api.preferences.mutations.setIntegrationDefault);
   const removeIntegrationDefault = useMutation(api.preferences.mutations.removeIntegrationDefault);
   const isLoading = prefs === undefined;
@@ -40,6 +41,13 @@ function IntegrationDefaultsCard() {
   const latestDesiredDefaultsRef = useRef(new Map<string, boolean | undefined>());
   const serverDefaultsRef = useRef(serverDefaults);
   const defaults = localDefaults ?? serverDefaults;
+  const integrationOptions = useMemo(() => [
+    ...INTEGRATIONS.map((integration) => ({ id: integration.id, label: t(integration.labelKey) })),
+    ...(Array.isArray(remoteConnections) ? remoteConnections.map((connection) => ({
+      id: connection.integrationId,
+      label: connection.displayName,
+    })) : []),
+  ], [remoteConnections, t]);
 
   useEffect(() => {
     serverDefaultsRef.current = serverDefaults;
@@ -119,7 +127,7 @@ function IntegrationDefaultsCard() {
 
   return (
     <div className="rounded-2xl bg-surface-2 overflow-hidden divide-y divide-border/50">
-      {INTEGRATIONS.map((integration) => {
+      {integrationOptions.map((integration) => {
         const current = defaults.get(integration.id);
         const label = current === undefined
           ? t("integration_state_default_disabled")
@@ -140,7 +148,7 @@ function IntegrationDefaultsCard() {
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
           >
             <div className="flex-1">
-              <p className="text-sm">{t(integration.labelKey)}</p>
+              <p className="text-sm">{integration.label}</p>
               <p className="text-xs text-muted mt-0.5">{t("settings_integration_defaults_help")}</p>
             </div>
             <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${className}`}>
@@ -162,6 +170,20 @@ function IntegrationsSubPage() {
       <ProGateWrapper featureId="integrations">
         <ConnectedAccountsSection />
       </ProGateWrapper>
+
+      <div className="space-y-2">
+        <h3 className="text-xs font-medium text-foreground/50 uppercase tracking-wide px-1">{t("remote_mcp_label")}</h3>
+        <div className="rounded-2xl bg-surface-2 overflow-hidden">
+          <a href="/app/settings/remote-mcp" className="flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors">
+            <span className="text-primary"><Server size={16} /></span>
+            <span className="flex-1">
+              <span className="block text-sm">{t("remote_mcp_servers")}</span>
+              <span className="block text-xs text-muted mt-0.5">{t("remote_mcp_integrations_description")}</span>
+            </span>
+            <ChevronRight size={14} className="text-muted" />
+          </a>
+        </div>
+      </div>
 
       <div className="space-y-2">
         <h3 className="text-xs font-medium text-foreground/50 uppercase tracking-wide px-1">{t("default_tool_access")}</h3>

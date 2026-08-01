@@ -59,6 +59,22 @@ crons.interval(
   internal.execution.teardown.reconcilePendingComponentCancellations,
 );
 
+// Disabled unless CONVEX_SECRET_ROTATION_MODE is explicitly set to dry_run or
+// rotate. The cron only owns/resumes work; it never creates encryption keys.
+crons.interval(
+  "ensureSecretCryptoRotation",
+  { hours: 1 },
+  internal.security.secret_rotation_start.ensureSecretCryptoRotation,
+  {},
+);
+
+crons.interval(
+  "cleanupExpiredMcpOAuthTransactions",
+  { hours: 1 },
+  internal.mcp.oauth_mutations.cleanupExpiredOAuthTransactions,
+  {},
+);
+
 crons.cron(
   "cleanupAccountDeletionTombstones",
   "30 5 * * *",

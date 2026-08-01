@@ -83,11 +83,10 @@ export const notionSearch = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Notion search failed (HTTP ${response.status}): ${errorText}`,
+          error: `Notion search failed (HTTP ${response.status}).`,
         };
       }
 
@@ -204,11 +203,10 @@ export const notionReadPage = createTool({
       );
 
       if (!metaResponse.ok) {
-        const errorText = await metaResponse.text();
         return {
           success: false,
           data: null,
-          error: `Failed to get page metadata (HTTP ${metaResponse.status}): ${errorText}`,
+          error: `Failed to get page metadata (HTTP ${metaResponse.status}).`,
         };
       }
 
@@ -253,8 +251,7 @@ export const notionReadPage = createTool({
         content = mdResult.markdown ?? "";
       } else {
         // Markdown API might not be available — fall back to indicating the error
-        const errorText = await markdownResponse.text();
-        content = `[Could not retrieve markdown content (HTTP ${markdownResponse.status}): ${errorText}]`;
+        content = `[Could not retrieve markdown content (HTTP ${markdownResponse.status}).]`;
       }
 
       if (content.length > MAX_READ_CHARS) {
@@ -359,11 +356,10 @@ export const notionCreatePage = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Failed to create Notion page (HTTP ${response.status}): ${errorText}`,
+          error: `Failed to create Notion page (HTTP ${response.status}).`,
         };
       }
 
@@ -472,11 +468,10 @@ export const notionUpdatePage = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Failed to update Notion page (HTTP ${response.status}): ${errorText}`,
+          error: `Failed to update Notion page (HTTP ${response.status}).`,
         };
       }
 
@@ -612,11 +607,10 @@ export const notionDeletePage = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Failed to archive Notion page (HTTP ${response.status}): ${errorText}`,
+          error: `Failed to archive Notion page (HTTP ${response.status}).`,
         };
       }
 
@@ -712,11 +706,10 @@ export const notionUpdateDatabaseEntry = createTool({
       );
 
       if (!metaResponse.ok) {
-        const errorText = await metaResponse.text();
         return {
           success: false,
           data: null,
-          error: `Failed to fetch page metadata (HTTP ${metaResponse.status}): ${errorText}`,
+          error: `Failed to fetch page metadata (HTTP ${metaResponse.status}).`,
         };
       }
 
@@ -764,11 +757,10 @@ export const notionUpdateDatabaseEntry = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Failed to update database entry (HTTP ${response.status}): ${errorText}`,
+          error: `Failed to update database entry (HTTP ${response.status}).`,
         };
       }
 
@@ -959,11 +951,10 @@ export const notionQueryDatabase = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Failed to query Notion database (HTTP ${response.status}): ${errorText}`,
+          error: `Failed to query Notion database (HTTP ${response.status}).`,
         };
       }
 

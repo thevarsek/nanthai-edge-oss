@@ -17,9 +17,14 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
 import { resolveStoredGoogleOAuthClientConfig } from "../../oauth/google_client_config";
 import { deriveGoogleCapabilityFlags } from "../../oauth/google_capabilities";
 import type { ToolResult } from "../registry";
+import {
+  decryptOAuthCredentials,
+  encryptOAuthCredentials,
+} from "../../lib/secret_crypto";
 
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 
@@ -38,7 +43,7 @@ const MAX_REFRESH_RETRIES = 2;
 
 /** Shape of the stored oauthConnections row (as returned by getConnectionInternal). */
 export interface StoredGoogleConnection {
-  _id: string;
+  _id: Id<"oauthConnections">;
   userId: string;
   provider: string;
   accessToken: string;
@@ -116,24 +121,31 @@ export async function getGoogleAccessToken(
   // Allow retries so that if our CAS write is beaten by a concurrent
   // refresh, we can re-read and return the winner's fresh token.
   for (let attempt = 0; attempt <= MAX_REFRESH_RETRIES; attempt++) {
-    const connection = (await ctx.runQuery(
+    const storedConnection = (await ctx.runQuery(
       internal.oauth.google.getConnectionInternal,
       { userId },
     )) as StoredGoogleConnection | null;
 
-    if (!connection) {
+    if (!storedConnection) {
       throw new ConvexError({
         code: "INTEGRATION_NOT_CONNECTED" as const,
         message: "No Google account connected. Ask the user to connect Google in Settings → Connected Accounts.",
       });
     }
 
-    if (connection.status !== "active") {
+    if (storedConnection.status !== "active") {
       throw new ConvexError({
         code: "INTEGRATION_NOT_CONNECTED" as const,
-        message: `Google connection is ${connection.status}. Ask the user to reconnect Google in Settings.`,
+        message: `Google connection is ${storedConnection.status}. Ask the user to reconnect Google in Settings.`,
       });
     }
+    const credentials = await decryptOAuthCredentials({
+      userId,
+      provider: "google",
+      accessToken: storedConnection.accessToken,
+      refreshToken: storedConnection.refreshToken,
+    });
+    const connection: StoredGoogleConnection = { ...storedConnection, ...credentials };
 
     assertGoogleCapabilityGranted(connection, requiredIntegration);
 
@@ -185,12 +197,11 @@ export async function getGoogleAccessToken(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Google token refresh failed:", errorText);
-
       // Mark connection as expired so iOS can prompt reconnection
       await ctx.runMutation(internal.oauth.google.markConnectionExpired, {
         userId,
+        expectedConnectionId: storedConnection._id,
+        expectedLastRefreshedAt: lastRefreshed,
         errorMessage: `Token refresh failed (HTTP ${response.status})`,
       });
 
@@ -212,16 +223,22 @@ export async function getGoogleAccessToken(
     // Persist the refreshed token with CAS guard.
     // Pass `expectedLastRefreshedAt` so that if another tool already wrote
     // a newer refresh, the mutation skips our write (no-op) and we re-read.
-    await ctx.runMutation(internal.oauth.google.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: tokens.access_token,
       refreshToken: connection.refreshToken, // Google doesn't rotate refresh tokens
+      provider: "google",
+    });
+    await ctx.runMutation(internal.oauth.google.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt: newExpiresAt,
       scopes: connection.scopes,
       email: connection.email,
       displayName: connection.displayName,
       clientType: connection.clientType === "web" ? "web" : "native",
       expectedLastRefreshedAt: lastRefreshed,
+      expectedConnectionId: storedConnection._id,
     });
 
     // Re-read to confirm our write landed (or pick up the winner's token).
@@ -232,10 +249,20 @@ export async function getGoogleAccessToken(
 
     if (updated && updated.expiresAt - Date.now() > REFRESH_BUFFER_MS) {
       assertGoogleCapabilityGranted(updated, requiredIntegration);
+      const updatedCredentials = await decryptOAuthCredentials({
+        userId,
+        provider: "google",
+        accessToken: updated.accessToken,
+        refreshToken: updated.refreshToken,
+      });
+      const decryptedUpdated: StoredGoogleConnection = {
+        ...updated,
+        ...updatedCredentials,
+      };
       // Either our write landed or another tool's refresh is already stored.
       return {
-        accessToken: updated.accessToken,
-        connection: updated,
+        accessToken: decryptedUpdated.accessToken,
+        connection: decryptedUpdated,
       };
     }
 

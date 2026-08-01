@@ -24,6 +24,7 @@ export interface DraftStep {
   notionEnabled: boolean;
   clozeEnabled: boolean;
   slackEnabled: boolean;
+  remoteMcpIntegrationIds: string[];
   knowledgeBaseFileIds: string[];
 }
 
@@ -88,6 +89,7 @@ export function createDraftStep(): DraftStep {
     notionEnabled: false,
     clozeEnabled: false,
     slackEnabled: false,
+    remoteMcpIntegrationIds: [],
     knowledgeBaseFileIds: [],
   };
 }
@@ -104,6 +106,7 @@ export function buildIntegrations(step: DraftStep): string[] {
   if (step.notionEnabled) integrations.push("notion");
   if (step.clozeEnabled) integrations.push("cloze");
   if (step.slackEnabled) integrations.push("slack");
+  integrations.push(...step.remoteMcpIntegrationIds.slice().sort());
   return integrations;
 }
 
@@ -131,15 +134,26 @@ export function scheduledJobModelSupportsGoogleIntegrations(
     && isProviderAllowedForGoogle(modelId, summary.provider);
 }
 
-export function buildIntegrationOverrides(step: DraftStep): Array<{ integrationId: string; enabled: boolean }> {
+export function buildIntegrationOverrides(
+  step: DraftStep,
+  knownRemoteMcpIntegrationIds: ReadonlySet<string> = new Set(step.remoteMcpIntegrationIds),
+): Array<{ integrationId: string; enabled: boolean }> {
   const enabled = new Set(buildIntegrations(step));
-  return SCHEDULED_JOB_INTEGRATION_IDS.map((integrationId) => ({
+  const staticOverrides = SCHEDULED_JOB_INTEGRATION_IDS.map((integrationId) => ({
     integrationId,
     enabled: enabled.has(integrationId),
   }));
+  const remoteOverrides = Array.from(knownRemoteMcpIntegrationIds).sort().map((integrationId) => ({
+    integrationId,
+    enabled: enabled.has(integrationId),
+  }));
+  return [...staticOverrides, ...remoteOverrides];
 }
 
-export function buildStepsPayload(steps: DraftStep[]) {
+export function buildStepsPayload(
+  steps: DraftStep[],
+  knownRemoteMcpIntegrationIds?: ReadonlySet<string>,
+) {
   return steps.map((step) => {
     const payload: Record<string, unknown> = {
       prompt: step.prompt.trim(),
@@ -153,7 +167,7 @@ export function buildStepsPayload(steps: DraftStep[]) {
     if (step.selectedPersonaId) payload.personaId = step.selectedPersonaId;
     const integrations = buildIntegrations(step);
     payload.enabledIntegrations = integrations;
-    payload.turnIntegrationOverrides = buildIntegrationOverrides(step);
+    payload.turnIntegrationOverrides = buildIntegrationOverrides(step, knownRemoteMcpIntegrationIds);
     if (step.searchMode === "web" || step.searchMode === "research") {
       payload.searchComplexity = Math.max(1, Math.min(3, step.searchComplexity));
     }
@@ -198,6 +212,7 @@ function draftStepFromRaw(raw: Record<string, unknown>): DraftStep {
     notionEnabled: integrations.includes("notion"),
     clozeEnabled: integrations.includes("cloze"),
     slackEnabled: integrations.includes("slack"),
+    remoteMcpIntegrationIds: integrations.filter((integrationId) => integrationId.startsWith("mcp:")),
     knowledgeBaseFileIds: (raw.knowledgeBaseFileIds as string[] | undefined) ?? [],
   };
 }

@@ -62,6 +62,9 @@ function buildCtx(options?: {
             collect: async () => rowsFor(table).filter((row) =>
               filters.every(([field, value]) => row[field] === value),
             ),
+            take: async (limit: number) => rowsFor(table).filter((row) =>
+              filters.every(([field, value]) => row[field] === value),
+            ).slice(0, limit),
           };
         },
       }),
@@ -107,6 +110,36 @@ test("create persona enforces pro auth and unsets previous defaults", async () =
   assert.equal(state.patches[0].value.isDefault, false);
   assert.equal(state.inserts[0].value.avatarImageStorageId, undefined);
   assert.equal(state.inserts[0].value.isDefault, true);
+});
+
+test("persona integration overrides accept only owned Remote MCP targets", async () => {
+  const owned = buildCtx({
+    tableRows: {
+      ...proRows,
+      mcpConnections: [{
+        _id: "mcp_1",
+        userId: "user_1",
+        integrationId: "mcp:connection-1",
+      }],
+    },
+  });
+  await (create as any)._handler(owned.ctx, {
+    displayName: "MCP Researcher",
+    systemPrompt: "Use the connected documentation server.",
+    integrationOverrides: [{ integrationId: "mcp:connection-1", enabled: true }],
+  });
+  assert.deepEqual(owned.inserts[0]?.value.integrationOverrides, [
+    { integrationId: "mcp:connection-1", enabled: true },
+  ]);
+
+  await assert.rejects(
+    (create as any)._handler(buildCtx({ tableRows: proRows }).ctx, {
+      displayName: "Invalid MCP",
+      systemPrompt: "Use a server the user does not own.",
+      integrationOverrides: [{ integrationId: "mcp:foreign", enabled: true }],
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "UNKNOWN_INTEGRATIONS",
+  );
 });
 
 test("create and update persona persist override arrays atomically with persona fields", async () => {

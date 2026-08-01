@@ -23,7 +23,7 @@ test("submitVideoGenerationHandler sends provider.zdr for ZDR-capable video mode
     } as any;
   }) as any;
 
-  const keyRef = getFunctionName(internal.scheduledJobs.queries.getUserApiKey);
+  const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
   const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
   const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);

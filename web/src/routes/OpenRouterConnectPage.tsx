@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState, useRef } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { useMutation } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { useConvexAuth } from "convex/react";
 import { api } from "@convex/_generated/api";
-import { exchangeCodeForKey } from "@/lib/pkce";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
 
@@ -14,7 +13,8 @@ const AUTH_TIMEOUT_MS = 12000;
 /**
  * Handles the web PKCE callback from OpenRouter at /openrouter/callback.
  * Reads ?code= and ?state= from the URL, verifies state against sessionStorage,
- * exchanges the code for an API key, and stores it to Convex via upsertApiKey.
+ * sends the one-time code and verifier to Convex. The browser never receives
+ * the resulting OpenRouter API key.
  */
 export function OpenRouterConnectPage() {
   const [searchParams] = useSearchParams();
@@ -23,7 +23,7 @@ export function OpenRouterConnectPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [authDelayMessage, setAuthDelayMessage] = useState<string>("");
-  const upsertApiKey = useMutation(api.scheduledJobs.mutations.upsertApiKey);
+  const exchangeAndStore = useAction(api.oauth.openrouter.exchangeAndStore);
   const setOnboardingCompleted = useMutation(api.preferences.mutations.setOnboardingCompleted);
   const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
   const didRun = useRef(false);
@@ -122,7 +122,7 @@ export function OpenRouterConnectPage() {
       }
 
       try {
-        const apiKey = await exchangeCodeForKey(code, storedVerifier);
+        await exchangeAndStore({ code, codeVerifier: storedVerifier });
         const postConnectTarget = sessionStorage.getItem("openrouter_post_connect");
         const postConnectPath = sessionStorage.getItem("openrouter_post_connect_path");
         const postConnectSource = sessionStorage.getItem("openrouter_post_connect_source")
@@ -135,9 +135,6 @@ export function OpenRouterConnectPage() {
         sessionStorage.removeItem("openrouter_post_connect");
         sessionStorage.removeItem("openrouter_post_connect_path");
         sessionStorage.removeItem("openrouter_post_connect_source");
-
-        // Store the API key to Convex (server-side, encrypted at rest)
-        await upsertApiKey({ apiKey });
 
         if (postConnectTarget === "onboarding") {
           await setOnboardingCompleted({});
@@ -184,7 +181,7 @@ export function OpenRouterConnectPage() {
 
     void handleCallback();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthLoading, isAuthenticated, navigate, searchParams, status, t, upsertApiKey]);
+  }, [exchangeAndStore, isAuthLoading, isAuthenticated, navigate, searchParams, status, t]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background px-6">

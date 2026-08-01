@@ -59,7 +59,7 @@ test("onedriveUpload reports Graph upload failures and non-Error storage fetch f
     });
 
     assert.equal(graphFailure.success, false);
-    assert.match(graphFailure.error ?? "", /OneDrive upload failed \(HTTP 507\): quota exceeded/);
+    assert.match(graphFailure.error ?? "", /OneDrive upload failed \(HTTP 507\)\./);
     assert.equal(thrown.success, false);
     assert.equal(thrown.error, "cdn exploded");
   } finally {
@@ -133,7 +133,7 @@ test("onedriveRead handles download failures, small text reads, linked binary fi
     const thrown = await onedriveRead.execute(ctx(), { file_id: "throw_file" });
 
     assert.equal(downloadFailure.success, false);
-    assert.match(downloadFailure.error ?? "", /Failed to download file \(HTTP 403\): blocked/);
+    assert.match(downloadFailure.error ?? "", /Failed to download file \(HTTP 403\)\./);
     assert.equal(smallText.success, true);
     assert.equal((smallText.data as any).content, "select 1;");
     assert.equal((smallText.data as any).truncated, false);

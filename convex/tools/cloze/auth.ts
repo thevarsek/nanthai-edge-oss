@@ -21,6 +21,7 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
+import { decryptOAuthCredentials } from "../../lib/secret_crypto";
 
 /** Shape of the stored oauthConnections row (as returned by getConnectionInternal). */
 export interface StoredClozeConnection {
@@ -87,7 +88,14 @@ export async function getClozeAccessToken(
 
   // API-key connections never expire and have no refresh endpoint.
   if (isApiKeyConnection(connection)) {
-    return { accessToken: connection.accessToken, connection };
+    const credentials = await decryptOAuthCredentials({
+      userId,
+      provider: "cloze",
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+    });
+    const decryptedConnection: StoredClozeConnection = { ...connection, ...credentials };
+    return { accessToken: decryptedConnection.accessToken, connection: decryptedConnection };
   }
 
   // OAuth2 branch — reserved for the future OAuth2 swap. When we ship it,

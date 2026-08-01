@@ -15,6 +15,7 @@ import { FoldersPage } from "./features/FoldersPage";
 import { IdeascapesPage } from "./features/IdeascapesPage";
 import { ImageGenerationPage } from "./features/ImageGenerationPage";
 import { IntegrationsPage } from "./features/IntegrationsPage";
+import { RemoteMcpServersPage } from "./features/RemoteMcpServersPage";
 import { KnowledgeBasePage } from "./features/KnowledgeBasePage";
 import { MemoriesPage } from "./features/MemoriesPage";
 import { MultiModelChatPage } from "./features/MultiModelChatPage";
@@ -102,6 +103,7 @@ const featurePages = [
   { slug: "ideascapes", Page: IdeascapesPage },
   { slug: "image-generation", Page: ImageGenerationPage },
   { slug: "integrations", Page: IntegrationsPage },
+  { slug: "remote-mcp", Page: RemoteMcpServersPage },
   { slug: "knowledge-base", Page: KnowledgeBasePage },
   { slug: "memories", Page: MemoriesPage },
   { slug: "multi-model-chat", Page: MultiModelChatPage },
@@ -131,6 +133,7 @@ describe("public feature pages", () => {
       "Analysis, code & charts",
     );
     expect(featureLink("/features/video-generation")).toHaveTextContent("Video Generation");
+    expect(featureLink("/features/remote-mcp")).toHaveTextContent("Remote MCP servers");
     expect(canonicalHref()).toBe("https://nanthai.tech/features");
   });
 

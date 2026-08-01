@@ -160,11 +160,10 @@ export const driveUpload = createTool({
       );
 
       if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
         return {
           success: false,
           data: null,
-          error: `Drive upload failed (HTTP ${uploadResponse.status}): ${errorText}`,
+          error: `Drive upload failed (HTTP ${uploadResponse.status}).`,
         };
       }
 
@@ -412,11 +411,10 @@ export const driveRead = createTool({
       );
 
       if (!metaResponse.ok) {
-        const errorText = await metaResponse.text();
         return {
           success: false,
           data: null,
-          error: `Failed to get file metadata (HTTP ${metaResponse.status}): ${errorText}`,
+          error: `Failed to get file metadata (HTTP ${metaResponse.status}).`,
         };
       }
 
@@ -442,11 +440,10 @@ export const driveRead = createTool({
         );
 
         if (!exportResponse.ok) {
-          const errorText = await exportResponse.text();
           return {
             success: false,
             data: null,
-            error: `Failed to export ${exportInfo.label} (HTTP ${exportResponse.status}): ${errorText}`,
+            error: `Failed to export ${exportInfo.label} (HTTP ${exportResponse.status}).`,
           };
         }
 
@@ -460,11 +457,10 @@ export const driveRead = createTool({
         );
 
         if (!downloadResponse.ok) {
-          const errorText = await downloadResponse.text();
           return {
             success: false,
             data: null,
-            error: `Failed to download file (HTTP ${downloadResponse.status}): ${errorText}`,
+            error: `Failed to download file (HTTP ${downloadResponse.status}).`,
           };
         }
 
@@ -696,11 +692,10 @@ export const driveMove = createTool({
       );
 
       if (!metaResponse.ok) {
-        const errorText = await metaResponse.text();
         return {
           success: false,
           data: null,
-          error: `Failed to get file metadata (HTTP ${metaResponse.status}): ${errorText}`,
+          error: `Failed to get file metadata (HTTP ${metaResponse.status}).`,
         };
       }
 
@@ -734,11 +729,10 @@ export const driveMove = createTool({
       );
 
       if (!moveResponse.ok) {
-        const errorText = await moveResponse.text();
         return {
           success: false,
           data: null,
-          error: `Drive move failed (HTTP ${moveResponse.status}): ${errorText}`,
+          error: `Drive move failed (HTTP ${moveResponse.status}).`,
         };
       }
 

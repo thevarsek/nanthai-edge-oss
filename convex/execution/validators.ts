@@ -13,6 +13,7 @@ export const executionRunKind = v.union(
   v.literal("analytics"),
   v.literal("maintenance"),
   v.literal("local_runtime"),
+  v.literal("remote_mcp"),
 );
 
 export const executionRunState = v.union(

@@ -90,9 +90,7 @@ export async function fetchLiveMcpTools(accessToken: string): Promise<McpTool[]>
     },
   });
   if (!init.response.ok) {
-    throw new Error(
-      `MCP initialize failed: HTTP ${init.response.status} ${JSON.stringify(init.parsed)}`,
-    );
+    throw new Error(`MCP initialize failed (HTTP ${init.response.status}).`);
   }
   const sessionId = init.response.headers.get("mcp-session-id") ?? undefined;
 
@@ -116,9 +114,7 @@ export async function fetchLiveMcpTools(accessToken: string): Promise<McpTool[]>
     sessionId,
   );
   if (!list.response.ok) {
-    throw new Error(
-      `MCP tools/list failed: HTTP ${list.response.status} ${JSON.stringify(list.parsed)}`,
-    );
+    throw new Error(`MCP tools/list failed (HTTP ${list.response.status}).`);
   }
 
   const result = list.parsed?.result as { tools?: McpTool[] } | undefined;

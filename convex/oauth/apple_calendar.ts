@@ -11,7 +11,10 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
-import { encryptSecret } from "../lib/secret_crypto";
+import {
+  assertEncryptedSecret,
+  encryptOAuthCredentials,
+} from "../lib/secret_crypto";
 
 const NON_EXPIRING_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 type DiscoverAppleCalendarSummariesArgs = {
@@ -70,10 +73,16 @@ export const connectAppleCalendar = action({
       throw new ConvexError({ code: "NOT_FOUND", message: "No Apple calendars were found for this account." });
     }
 
+    const encrypted = await encryptOAuthCredentials({
+      userId,
+      provider: "apple_calendar",
+      accessToken: appSpecificPassword,
+      refreshToken: "",
+    });
     await ctx.runMutation(internal.oauth.apple_calendar.upsertConnection, {
       userId,
       appleId,
-      appSpecificPassword: await encryptSecret(appSpecificPassword),
+      ...encrypted,
       displayName: calendars[0]?.displayName,
     });
 
@@ -89,10 +98,15 @@ export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
     appleId: v.string(),
-    appSpecificPassword: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
     displayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
     const existing = await ctx.db
       .query("oauthConnections")
       .withIndex("by_user_provider", (q) =>
@@ -105,14 +119,17 @@ export const upsertConnection = internalMutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        accessToken: args.appSpecificPassword,
-        refreshToken: "",
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken,
         expiresAt,
         scopes: ["caldav"],
         email: args.appleId,
         displayName: args.displayName,
         status: "active",
         errorMessage: undefined,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       });
       return existing._id;
     }
@@ -120,14 +137,17 @@ export const upsertConnection = internalMutation({
     return await ctx.db.insert("oauthConnections", {
       userId: args.userId,
       provider: "apple_calendar",
-      accessToken: args.appSpecificPassword,
-      refreshToken: "",
+      accessToken: args.encryptedAccessToken,
+      refreshToken: args.encryptedRefreshToken,
       expiresAt,
       scopes: ["caldav"],
       email: args.appleId,
       displayName: args.displayName,
       status: "active",
       connectedAt: now,
+      secretEnvelopeVersion: args.secretEnvelopeVersion,
+      secretKeyId: args.secretKeyId,
+      secretMigratedAt: now,
     });
   },
 });

@@ -5,6 +5,7 @@ import {
   query,
 } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
+import { assertEncryptedSecret } from "../lib/secret_crypto";
 
 const NON_EXPIRING_MS = 10 * 365 * 24 * 60 * 60 * 1000;
 
@@ -38,14 +39,18 @@ export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
     email: v.string(),
-    appPassword: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
   },
   handler: async (ctx, args) => {
     const email = args.email.trim().toLowerCase();
-    const appPassword = args.appPassword.replace(/\s+/g, "");
-    if (!email || !appPassword) {
+    if (!email) {
       throw new ConvexError({ code: "VALIDATION", message: "Gmail address and app password are required." });
     }
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
 
     const existing = await ctx.db
       .query("oauthConnections")
@@ -57,8 +62,8 @@ export const upsertConnection = internalMutation({
     const now = Date.now();
     const expiresAt = now + NON_EXPIRING_MS;
     const patch = {
-      accessToken: appPassword,
-      refreshToken: "",
+      accessToken: args.encryptedAccessToken,
+      refreshToken: args.encryptedRefreshToken,
       expiresAt,
       scopes: ["imap", "smtp"],
       email,
@@ -66,6 +71,9 @@ export const upsertConnection = internalMutation({
       status: "active",
       errorMessage: undefined,
       lastRefreshedAt: now,
+      secretEnvelopeVersion: args.secretEnvelopeVersion,
+      secretKeyId: args.secretKeyId,
+      secretMigratedAt: now,
     };
 
     if (existing) {

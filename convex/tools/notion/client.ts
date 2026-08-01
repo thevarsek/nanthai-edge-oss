@@ -10,6 +10,7 @@
 
 import { internal } from "../../_generated/api";
 import { ToolExecutionContext } from "../registry";
+import { refreshNotionAccessToken } from "./auth";
 
 const NOTION_API = "https://api.notion.com/v1";
 const NOTION_VERSION = "2022-06-28";
@@ -19,6 +20,20 @@ const REQUEST_LEASE_MS = 20_000;
 const MIN_REQUEST_GAP_MS = 350;
 
 const RETRYABLE_STATUS_CODES = new Set([409, 429, 502, 503, 504]);
+
+function resolveNotionApiUrl(path: string): string {
+  const url = new URL(path, `${NOTION_API}/`);
+  if (
+    url.origin !== "https://api.notion.com"
+    || url.username
+    || url.password
+    || url.hash
+    || (url.pathname !== "/v1" && !url.pathname.startsWith("/v1/"))
+  ) {
+    throw new Error("Invalid Notion API URL.");
+  }
+  return url.toString();
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -95,11 +110,9 @@ export async function notionFetch(
   accessToken: string,
   init: RequestInit = {},
 ): Promise<Response> {
-  const url = path.startsWith("http") ? path : `${NOTION_API}${path}`;
-  const headers = {
-    ...notionHeaders(accessToken),
-    ...((init.headers as Record<string, string> | undefined) ?? {}),
-  };
+  const url = resolveNotionApiUrl(path.startsWith("/") ? `${NOTION_API}${path}` : path);
+  let currentAccessToken = accessToken;
+  let refreshedToken = false;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     const requestId = crypto.randomUUID();
@@ -111,8 +124,19 @@ export async function notionFetch(
     try {
       response = await fetch(url, {
         ...init,
-        headers,
+        redirect: "manual",
+        headers: {
+          ...((init.headers as Record<string, string> | undefined) ?? {}),
+          ...notionHeaders(currentAccessToken),
+        },
       });
+
+      if (response.status === 401 && !refreshedToken) {
+        const refreshed = await refreshNotionAccessToken(toolCtx.ctx, toolCtx.userId);
+        currentAccessToken = refreshed.accessToken;
+        refreshedToken = true;
+        continue;
+      }
 
       if (
         !RETRYABLE_STATUS_CODES.has(response.status) ||

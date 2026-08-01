@@ -77,6 +77,7 @@ export const onedriveUpload = createTool({
 
       const fileResponse = await fetch(fileUrl);
       if (!fileResponse.ok) {
+        await fileResponse.body?.cancel();
         return {
           success: false,
           data: null,
@@ -108,11 +109,11 @@ export const onedriveUpload = createTool({
       });
 
       if (!uploadResponse.ok) {
-        const errorText = await uploadResponse.text();
+        await uploadResponse.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `OneDrive upload failed (HTTP ${uploadResponse.status}): ${errorText}`,
+          error: `OneDrive upload failed (HTTP ${uploadResponse.status}).`,
         };
       }
 
@@ -221,11 +222,11 @@ export const onedriveList = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `OneDrive list failed (HTTP ${response.status}): ${errorText}`,
+          error: `OneDrive list failed (HTTP ${response.status}).`,
         };
       }
 
@@ -325,11 +326,11 @@ export const onedriveRead = createTool({
       );
 
       if (!metaResponse.ok) {
-        const errorText = await metaResponse.text();
+        await metaResponse.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Failed to get file metadata (HTTP ${metaResponse.status}): ${errorText}`,
+          error: `Failed to get file metadata (HTTP ${metaResponse.status}).`,
         };
       }
 
@@ -370,11 +371,11 @@ export const onedriveRead = createTool({
       );
 
       if (!downloadResponse.ok) {
-        const errorText = await downloadResponse.text();
+        await downloadResponse.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Failed to download file (HTTP ${downloadResponse.status}): ${errorText}`,
+          error: `Failed to download file (HTTP ${downloadResponse.status}).`,
         };
       }
 
@@ -544,11 +545,11 @@ export const onedriveMove = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
+        await response.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `OneDrive move failed (HTTP ${response.status}): ${errorText}`,
+          error: `OneDrive move failed (HTTP ${response.status}).`,
         };
       }
 

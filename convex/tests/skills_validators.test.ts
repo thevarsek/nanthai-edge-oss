@@ -103,12 +103,32 @@ test("validateSkillInstructions: does not block screenshot as static content nou
   assert.ok(!result.unsupportedCapabilityCodes.includes("USES_BROWSER"));
 });
 
-test("validateSkillInstructions: detects USES_MCP", () => {
+test("validateSkillInstructions: blocks launching an MCP server", () => {
   const result = validateSkillInstructions(
     "Start an MCP server to handle incoming tool requests from the client. Configure the model context protocol."
   );
   assert.equal(result.isCompatible, false);
   assert.ok(result.unsupportedCapabilityCodes.includes("USES_MCP"));
+});
+
+test("validateSkillInstructions: blocks paraphrased MCP process launch instructions", () => {
+  for (const instructions of [
+    "Start the local MCP server and keep it running.",
+    "Execute an MCP server daemon for this task.",
+    "Bring up the MCP server as a background worker.",
+  ]) {
+    const result = validateSkillInstructions(instructions);
+    assert.equal(result.isCompatible, false);
+    assert.ok(result.unsupportedCapabilityCodes.includes("USES_MCP"));
+  }
+});
+
+test("validateSkillInstructions: allows using an authorized Remote MCP target", () => {
+  const result = validateSkillInstructions(
+    "Use the connected Cloudflare Remote MCP server to search documentation, then summarize the result."
+  );
+  assert.equal(result.isCompatible, true);
+  assert.ok(!result.unsupportedCapabilityCodes.includes("USES_MCP"));
 });
 
 test("validateSkillInstructions: detects child_process", () => {
@@ -166,7 +186,7 @@ test("validateSkillInstructions: shell and filesystem patterns are now compatibl
   assert.ok(!result.findings.some((f) => f.code === "USES_FILESYSTEM"));
 });
 
-test("validateSkillInstructions: MCP usage is still blocked regardless of options", () => {
+test("validateSkillInstructions: launching MCP processes is still blocked regardless of options", () => {
   const result = validateSkillInstructions(
     "Start an MCP server and spawn a child_process to serve requests.",
     {},

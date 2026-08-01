@@ -112,11 +112,10 @@ export const outlookSend = createTool({
 
       // Microsoft returns 202 Accepted on successful send
       if (!response.ok && response.status !== 202) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Outlook send failed (HTTP ${response.status}): ${errorText}`,
+          error: `Outlook send failed (HTTP ${response.status}).`,
         };
       }
 
@@ -211,11 +210,10 @@ export const outlookRead = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Outlook read failed (HTTP ${response.status}): ${errorText}`,
+          error: `Outlook read failed (HTTP ${response.status}).`,
         };
       }
 
@@ -368,11 +366,10 @@ export const outlookSearch = createTool({
       );
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Outlook search failed (HTTP ${response.status}): ${errorText}`,
+          error: `Outlook search failed (HTTP ${response.status}).`,
         };
       }
 
@@ -494,11 +491,10 @@ export const outlookDelete = createTool({
               return { id, success: true };
             }
 
-            const errorText = await response.text();
             return {
               id,
               success: false,
-              error: `HTTP ${response.status}: ${errorText}`,
+              error: `Outlook request failed (HTTP ${response.status}).`,
             };
           } catch (e) {
             return {
@@ -629,11 +625,10 @@ export const outlookMove = createTool({
               return { id, success: true, newId: moved.id };
             }
 
-            const errorText = await response.text();
             return {
               id,
               success: false,
-              error: `HTTP ${response.status}: ${errorText}`,
+              error: `Outlook request failed (HTTP ${response.status}).`,
             };
           } catch (e) {
             return {
@@ -731,11 +726,10 @@ export const outlookListFolders = createTool({
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
         return {
           success: false,
           data: null,
-          error: `Outlook list folders failed (HTTP ${response.status}): ${errorText}`,
+          error: `Outlook list folders failed (HTTP ${response.status}).`,
         };
       }
 

@@ -83,6 +83,10 @@ export interface ToolCall {
   id: string;
   name: string;
   arguments: string;
+  source?: "remote_mcp";
+  displayName?: string;
+  integrationId?: string;
+  integrationName?: string;
 }
 
 export interface ToolResult {
@@ -156,6 +160,13 @@ export interface Message {
     sizeBytes?: number;
     driveFileId?: string;
     lastRefreshedAt?: number;
+  }>;
+  mcpInvocationIds?: string[];
+  mcpContextCards?: Array<{
+    invocationId: string;
+    label: string;
+    serverName: string;
+    kind: "prompt" | "resource" | "resource_template";
   }>;
   audioStorageId?: Id<"_storage">;
   audioDurationMs?: number;

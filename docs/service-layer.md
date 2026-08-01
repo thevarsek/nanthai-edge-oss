@@ -15,10 +15,10 @@ Before M8, the app had 8+ protocol-based services (OpenRouterService, ChatServic
 | `NotificationService` | `@MainActor class` | APNs push notification handling — token registration/removal, foreground display, tap-to-navigate deep linking (M13.5). Scheduled-job pushes are emitted only for fully autonomous scheduled executions, not for later user-driven follow-ups inside those chats. M14 added: `scheduleCreditAlert(threshold:)`, `requestAuthorizationIfNeeded()`, `creditAlertsEnabled` toggle. |
 | `CreditBalanceCheck` | `struct` | Pure value type — threshold crossing detection for local credit notifications, UserDefaults persistence of notified thresholds, auto-reset on balance rise (M14) |
 | `ClerkAuthService` | `class` | Clerk identity auth (sign-in/out, session management) |
-| `AuthService` | `class` | OpenRouter PKCE key exchange (legacy, retained for API key provisioning) |
+| `AuthService` | `class` | OpenRouter PKCE authorization state and callback coordination |
 | `ClerkConvexAuthProvider` | `struct` | Bridges Clerk JWT tokens to ConvexMobile auth |
-| `KeychainService` | `class` | Keychain read/write for OpenRouter API key |
-| `OpenRouterKeyExchanger` | `struct` | PKCE code-for-key exchange with OpenRouter |
+| `KeychainService` | `class` | Secure temporary PKCE state and legacy local cleanup; updated clients do not store the OpenRouter key |
+| `OpenRouterKeyExchanger` | `struct` | Sends one-time PKCE material to Convex and receives connection status only |
 
 ## ConvexService (Core)
 
@@ -308,14 +308,18 @@ Branch pills no longer choose a descendant leaf client-side. iOS, Android, and w
 - Job run history via `listJobRuns` subscription
 - Post-M14: multi-step job editing via `ScheduledJobDraftStep` model, `ScheduledJobEditorView+Persistence` and `ScheduledJobEditorView+Sections` extensions
 
-## API Key Server-Side Sync (M13)
+## OpenRouter Server-Side Exchange
 
-OpenRouter API key is synced to the `userSecrets` Convex table for headless scheduled job execution:
+Updated clients retain only temporary PKCE verifier/state material. After the
+callback is validated, `OpenRouterKeyExchanger` calls
+`oauth/openrouter:exchangeAndStore`; Convex exchanges the code, encrypts the key
+into `userSecrets`, and returns connection status without exposing the key.
 
-- **During PKCE exchange**: After the key is stored in Keychain, `upsertApiKey` mutation is called to sync to server
-- **On app launch**: `RootView` bootstrap calls `upsertApiKey` mutation to ensure server copy is current
-- Device Keychain remains canonical; server copy is a sync target
-- Convex access controls restrict reads to the owning user
+The old `scheduledJobs/mutations:upsertApiKey` mutation remains solely for
+released-client compatibility and encrypts immediately. It is not the canonical
+updated-client flow. See
+[`credential-security-rotation.md`](credential-security-rotation.md) for the
+server credential contract.
 
 ## External Integration OAuth Services (M10 Phases B/C/D)
 
@@ -367,7 +371,7 @@ Server-side auth helpers that:
 3. Return a valid access token for API calls
 4. All external API calls use raw `fetch()` — no Node.js SDKs
 
-**Notion auth difference:** Uses HTTP Basic Auth (`Authorization: Basic base64(client_id:client_secret)`) for token refresh instead of form-encoded client credentials. Token endpoint accepts JSON body (`Content-Type: application/json`). All Notion API calls require `Notion-Version: 2022-06-28` header.
+**Notion auth difference:** Uses HTTP Basic Auth (`Authorization: Basic base64(client_id:client_secret)`) for token refresh instead of form-encoded client credentials. Token endpoint accepts JSON body (`Content-Type: application/json`). OAuth requests use the centrally configured Notion API version from `convex/oauth/notion_oauth.ts` (currently `2026-03-11`).
 
 **Slack auth difference:** Slack helpers coordinate workspace-token refresh and preserve workspace metadata for settings UI and tool result labeling.
 
@@ -496,16 +500,16 @@ Abstraction for authentication services. Both `ClerkAuthService` and legacy `Aut
 - `isAuthenticated` / `hasAPIKey` — observable state for UI binding
 - `signOut()` — clears identity session and API key
 - `revokeAPIKey()` — removes only the OpenRouter API key without signing out of Clerk, enabling users to disconnect/reconnect their OpenRouter account from Settings
-- `loadAPIKey()` — retrieves the stored OpenRouter key
+- `loadAPIKey()` — legacy/mock compatibility only; production auth state comes from Convex connection metadata
 
 ### ClerkAuthService
-Manages Clerk identity lifecycle. Conforms to `AuthServiceProtocol`. The `hasAPIKey` property is backed by a private stored `_hasAPIKey: Bool` property (not a computed Keychain read) so that `@Observable` can detect changes and trigger SwiftUI re-renders. The `saveAPIKey(_:)` and `revokeAPIKey()` methods update this stored flag.
+Manages Clerk identity lifecycle. Conforms to `AuthServiceProtocol`. The `hasAPIKey` property is backed by a private stored `_hasAPIKey: Bool` property so `@Observable` can react to Convex connection-state updates. Production does not derive this state by reading an OpenRouter key from Keychain.
 
-### AuthService (Legacy PKCE)
-Retained for OpenRouter API key provisioning via PKCE flow. Uses `ASWebAuthenticationSession` and `PKCEGenerator`.
+### AuthService (PKCE Coordinator)
+Coordinates `ASWebAuthenticationSession`, PKCE verifier/state generation and callback validation. It sends the one-time code and verifier through `OpenRouterKeyExchanger`; it does not receive the resulting API key in the updated flow.
 
 ### KeychainService
-Synchronous C-API wrapper for Keychain operations. Stores OpenRouter API key with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`.
+Synchronous C-API wrapper retained for temporary PKCE state, other approved local secrets and legacy cleanup. Sensitive entries use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; updated clients do not store the OpenRouter API key locally.
 
 ## Removed Services (M8)
 

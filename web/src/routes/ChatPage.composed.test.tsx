@@ -121,6 +121,17 @@ vi.mock("@convex/_generated/api", () => ({
     },
     drive_picker: { actions: { attachPickedDriveFiles: "attachPickedDriveFiles" } },
     knowledge_base: { queries: { getKnowledgeBaseFilesByStorageIds: "getKnowledgeBaseFilesByStorageIds" } },
+    mcp: {
+      actions: { invoke: "invokeMcp" },
+      continuation_actions: { respondToInput: "respondToMcpInput" },
+      queries: {
+        getInvocation: "getMcpInvocation",
+        listActiveConnectionOptions: "listActiveConnectionOptions",
+        listAvailableContent: "listAvailableMcpContent",
+        listPendingForChat: "listPendingMcpForChat",
+      },
+      task_actions: { updateTask: "updateMcpTask" },
+    },
     oauth: { google: { getDrivePickerAccessToken: "getDrivePickerAccessToken" } },
     search: {
       mutations: {
@@ -149,6 +160,7 @@ vi.mock("convex/react", () => ({
   },
   useQuery: (key: string, args: unknown) => {
     if (key === "getKnowledgeBaseFilesByStorageIds" && args !== "skip") return testState.kbFiles;
+    if (key === "listPendingMcpForChat") return [];
     return undefined;
   },
 }));

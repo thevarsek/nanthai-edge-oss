@@ -115,6 +115,11 @@ export type GenerationDeferredOwnership =
   | {
       kind: "drive_picker";
       batchId: Id<"drivePickerBatches">;
+    }
+  | {
+      kind: "remote_mcp";
+      invocationId: Id<"mcpInvocations">;
+      toolCallId: string;
     };
 
 export interface GenerationContinuationCheckpoint {

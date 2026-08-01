@@ -55,6 +55,7 @@ export interface ChatSendOrchestrationState {
   advisorSelections?: AdvisorSelection[];
   advisorBrief?: string;
   presentationContext?: PresentationContext;
+  mcpInvocationIds?: string[];
 }
 
 export interface ChatSendOrchestrationDeps {
@@ -169,6 +170,7 @@ export function buildSendMessageArgs(args: {
   advisorSelections?: AdvisorSelection[];
   advisorBrief?: string;
   presentationContext?: PresentationContext;
+  mcpInvocationIds?: string[];
 }): SendMessageArgs {
   return {
     chatId: args.chatId,
@@ -188,6 +190,7 @@ export function buildSendMessageArgs(args: {
     ...(args.advisorSelections !== undefined ? { advisorSelections: args.advisorSelections } : {}),
     ...(args.advisorBrief ? { advisorBrief: args.advisorBrief } : {}),
     ...(args.presentationContext ? { presentationContext: args.presentationContext } : {}),
+    ...(args.mcpInvocationIds?.length ? { mcpInvocationIds: args.mcpInvocationIds } : {}),
   };
 }
 
@@ -573,6 +576,7 @@ export async function executeChatSend(
       advisorSelections: state.advisorSelections,
       advisorBrief: state.advisorBrief,
       presentationContext: state.presentationContext,
+      mcpInvocationIds: state.mcpInvocationIds,
     }));
   }
 

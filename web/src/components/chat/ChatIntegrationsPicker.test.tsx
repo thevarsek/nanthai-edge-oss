@@ -100,4 +100,27 @@ describe("ChatIntegrationsPicker", () => {
 
     expect(onToggle).not.toHaveBeenCalled();
   });
+
+  it("shows an active Remote MCP server as a normal chat integration", () => {
+    const onToggle = vi.fn();
+    render(
+      <ChatIntegrationsPicker
+        enabledIntegrations={new Set()}
+        onToggle={onToggle}
+        onClose={vi.fn()}
+        connectedProviders={connectedProviders}
+        remoteConnections={[{
+          connectionId: "connection-1",
+          integrationId: "mcp:connection-1",
+          displayName: "Issue tracker",
+          friendlyName: "Issue tracker",
+          endpointHost: "mcp.example.com",
+          allowedItemCount: 3,
+        }]}
+      />,
+    );
+    fireEvent.click(screen.getByText("Issue tracker"));
+    expect(onToggle).toHaveBeenCalledWith("mcp:connection-1");
+    expect(screen.getByText("3 allowed items")).toBeInTheDocument();
+  });
 });

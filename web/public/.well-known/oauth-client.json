@@ -1,0 +1,20 @@
+{
+  "client_id": "https://nanthai.tech/.well-known/oauth-client.json",
+  "client_name": "NanthAI Remote MCP",
+  "client_uri": "https://nanthai.tech",
+  "logo_uri": "https://nanthai.tech/icons/icon-192.png",
+  "redirect_uris": [
+    "https://nanthai.tech/oauth/mcp/callback"
+  ],
+  "grant_types": [
+    "authorization_code",
+    "refresh_token"
+  ],
+  "response_types": [
+    "code"
+  ],
+  "token_endpoint_auth_method": "none",
+  "code_challenge_methods_supported": [
+    "S256"
+  ]
+}

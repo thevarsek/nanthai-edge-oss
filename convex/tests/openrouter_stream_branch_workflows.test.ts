@@ -169,7 +169,7 @@ test("streaming transport preserves structured ConvexError failures for non-retr
     ),
     (error: unknown) => {
       assert.ok(error instanceof ConvexError);
-      return (error as ConvexError<any>).data?.message.includes("provider exploded");
+      return (error as ConvexError<any>).data?.message.includes("OpenRouter request failed (HTTP 500)");
     },
   );
 });

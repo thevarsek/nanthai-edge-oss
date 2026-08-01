@@ -300,7 +300,7 @@ test("video polling completes, stores media, finalizes message, and marks relate
           _creationTime: Date.now() - 12_000,
           status: "in_progress",
           pollCount: 3,
-          pollingUrl: "https://poll",
+          openRouterJobId: "or_video_1",
         };
       }
       if (args.jobId) return { _id: "job_1", status: "completed" };
@@ -355,6 +355,7 @@ test("stale video completion deletes a newly stored orphan and cannot publish", 
   let fenceValidationCount = 0;
   const responses = [
     new Response(JSON.stringify({
+      id: "or_video_1",
       status: "completed",
       polling_url: "https://poll",
       unsigned_urls: ["https://cdn.example/video.mp4"],
@@ -383,7 +384,7 @@ test("stale video completion deletes a newly stored orphan and cannot publish", 
           _id: "video_job_1",
           status: "in_progress",
           pollCount: 1,
-          pollingUrl: "https://poll",
+          openRouterJobId: "or_video_1",
           model: "video/model",
         };
       }
@@ -427,7 +428,7 @@ test("stale video completion deletes a newly stored orphan and cannot publish", 
   ), false);
 });
 
-test("video polling handles cancelled, failed, timeout, and missing-content terminal paths", async () => {
+test("video polling handles cancelled, failed, timeout, and download-failure terminal paths", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<{ delay: number; payload?: Record<string, unknown> }> = [];
@@ -441,7 +442,7 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
           _creationTime: Date.now() - 1_000,
           status: "in_progress",
           pollCount: mode === "timeout" ? 39 : 0,
-          pollingUrl: "https://poll",
+          openRouterJobId: "or_video_1",
         };
       }
       if (args.jobId) return { _id: "job_1", status: mode === "cancelled" ? "cancelled" : "failed" };
@@ -475,6 +476,7 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
 
     mode = "failed";
     globalThis.fetch = (async () => new Response(JSON.stringify({
+      id: "or_video_1",
       status: "failed",
       polling_url: "https://poll",
       error: { message: "provider failed" },
@@ -483,21 +485,30 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
 
     mode = "timeout";
     globalThis.fetch = (async () => new Response(JSON.stringify({
+      id: "or_video_1",
       status: "in_progress",
       polling_url: "https://poll",
     }), { status: 200 })) as any;
     await pollVideoGenerationHandler(ctx, args);
 
     mode = "missing";
-    globalThis.fetch = (async () => new Response(JSON.stringify({
-      status: "completed",
-      polling_url: "https://poll",
-      unsigned_urls: [],
-    }), { status: 200 })) as any;
+    let missingFetchCount = 0;
+    globalThis.fetch = (async () => {
+      missingFetchCount += 1;
+      if (missingFetchCount === 1) {
+        return new Response(JSON.stringify({
+          id: "or_video_1",
+          status: "completed",
+          polling_url: "https://poll",
+        }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as any;
     await pollVideoGenerationHandler(ctx, args);
 
     mode = "progress";
     globalThis.fetch = (async () => new Response(JSON.stringify({
+      id: "or_video_1",
       status: "pending",
       polling_url: "https://poll",
     }), { status: 200 })) as any;
@@ -507,9 +518,9 @@ test("video polling handles cancelled, failed, timeout, and missing-content term
   }
 
   assert.ok(mutations.some((entry) => entry.error === "Cancelled by user"));
-  assert.ok(mutations.some((entry) => entry.error === "provider failed"));
+  assert.ok(mutations.some((entry) => entry.error === "Video generation failed"));
   assert.ok(mutations.some((entry) => String(entry.error).includes("timed out")));
-  assert.ok(mutations.some((entry) => entry.error === "Video completed but no content URL returned"));
+  assert.ok(mutations.some((entry) => entry.error === "Video download failed (HTTP 404)."));
   const providerTerminalMarks = mutations.filter((entry) =>
     Object.keys(entry).sort().join(",") === "status,videoJobId"
   );

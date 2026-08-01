@@ -7,7 +7,7 @@
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
 | Identity Auth | Clerk iOS SDK (`ClerkKit` + `ClerkKitUI`) | Managed identity provider; native sign-in UI, session tokens, user profiles |
-| API Key Provisioning | Native PKCE via `ASWebAuthenticationSession` | Retained for OpenRouter key exchange after Clerk sign-in |
+| API Key Provisioning | Client PKCE authorization + Convex `oauth/openrouter:exchangeAndStore` | Clients validate callback state; Convex exchanges the one-time code and stores the returned key encrypted |
 | Auth State Machine | Two-phase: Clerk identity → OpenRouter key | `Signed Out → Clerk Sign-In → Signed In, No Key → Connect OpenRouter → Fully Active` |
 | Persistence | **Convex** (server-side, realtime subscriptions) | Replaced SwiftData/CloudKit in M8; all data lives in Convex tables |
 | LLM Orchestration | **Convex Actions** (server-side) | All OpenRouter calls, streaming, title gen, memory extraction run on Convex backend |
@@ -16,7 +16,7 @@
 | Streaming | **Server-side** via Convex Actions + `StreamWriter` | Convex writes hot patches into `streamingMessages`, persists tool-call deltas, and finalizes into `messages`. Direct message-row patching and `messageChunks` are both gone. |
 | State | `@Observable` (Observation framework) | Modern SwiftUI, fine-grained updates |
 | Concurrency | Swift structured concurrency (async/await, actors) | Thread-safe, no Combine needed |
-| Secrets | Keychain via Security framework | OS-level encryption for API keys |
+| Secrets | Temporary client PKCE state in Keychain/Keystore; recoverable provider credentials in Convex `enc:v2` envelopes | Updated clients never receive the OpenRouter API key; server credentials use contextual AES-256-GCM and fail-closed writers |
 | Navigation | `NavigationSplitView` (iPad) / `NavigationStack` (iPhone) | Adaptive layout |
 | Navigation (Android) | `ListDetailPaneScaffold` (tablet) / single-pane `NavHost` (phone) | Material 3 Adaptive — M25 |
 | Navigation Coordination | `NavigationCoordinator` with `NavigationPath` | Programmatic navigation, deep linking |
@@ -357,16 +357,16 @@ Google, Microsoft, Notion, and Slack follow the same general iOS → Convex toke
 2. User authorizes → callback with authorization code
 3. iOS calls Convex action (`exchangeGoogleCode` / `exchangeMicrosoftCode` / `exchangeNotionCode` / `exchangeSlackCode`) with code + verifier/state
 4. Convex exchanges code for tokens via provider's token endpoint
-5. Tokens stored in `oauthConnections` table (access + refresh + expiry + scopes + email)
+5. Tokens encrypted into user/provider/field-bound `enc:v2` envelopes in `oauthConnections`; metadata such as expiry, scopes and email remains queryable
 6. Auto-refresh: tool auth helpers check expiry before each API call, refresh transparently
 
 **Key differences:**
 - **Google** uses PKCE + `client_secret` in token exchange (iOS client type)
-- **Microsoft** uses PKCE but does NOT send `client_secret` (public/native client — AADSTS90023 error if included)
-- **Notion** uses HTTP Basic Auth (`base64(client_id:client_secret)`) for token exchange — no PKCE. JSON request body (not form-encoded). OAuth redirect goes through HTTPS relay page at `nanthai.tech` since Notion requires `https://` redirect URIs. No scopes — access is page-level (user chooses during OAuth consent).
-- **Apple Calendar** is not OAuth-based in the current design. iOS collects the Apple Account email that owns the iCloud calendar plus an Apple app-specific password. Convex stores those credentials, discovers the user's CalDAV calendars, and executes server-side event CRUD through a direct CalDAV client isolated behind the Apple action boundary.
+- **Microsoft** uses PKCE. Native/custom-scheme callbacks use the public client without a secret; HTTPS web callbacks use the confidential web client and a server-held client secret. The chosen client type is retained for refresh.
+- **Notion** uses HTTP Basic Auth (`base64(client_id:client_secret)`) for token exchange — no PKCE. JSON request body (not form-encoded). OAuth redirect goes through an HTTPS callback because Notion requires `https://` redirect URIs. No scopes — access is page-level (user chooses during OAuth consent).
+- **Apple Calendar** is not OAuth-based in the current design. iOS collects the Apple Account email that owns the iCloud calendar plus an Apple app-specific password. Convex encrypts those credentials, discovers the user's CalDAV calendars, and executes server-side event CRUD through a direct CalDAV client isolated behind the Apple action boundary.
 - **Slack** uses OAuth 2.0 with `client_secret` in token exchange. Workspace-level authorization — user selects channels during OAuth consent. User token (`xoxp-`) stored in `oauthConnections`. Slack tool calls go through Slack's hosted **Model Context Protocol endpoint** (`https://mcp.slack.com/mcp`), not the Web API — a weekly `checkSlackMcpDrift` cron diffs Slack's live `tools/list` against a committed snapshot (`convex/tools/slack/mcp_tools_snapshot.ts`) to detect upstream schema changes. See [`tool-skill-access.md`](tool-skill-access.md#slack-mcp-tools--hosted-mcp-and-drift-detection) for details.
-- **Cloze** uses API key authentication (no OAuth). User provides their Cloze API key directly; Convex stores it in `oauthConnections` (reusing the same table with `provider: "cloze"`).
+- **Cloze** uses API key authentication (no OAuth). User provides their Cloze API key directly; Convex encrypts it in `oauthConnections` (reusing the same table with `provider: "cloze"`).
 
 **API call pattern:** Google, Microsoft, Notion, and Cloze API calls use raw `fetch()` against provider REST APIs — no Node.js SDKs (`googleapis`, `@microsoft/microsoft-graph-client`). Slack uses raw `fetch()` against Slack's hosted MCP JSON-RPC endpoint instead of the Web API. Apple Calendar uses the repo's direct CalDAV client. Provider implementations load through internal action dispatchers instead of through the progressive registry import graph.
 
@@ -432,13 +432,18 @@ Cross-action continuation system for long-running generation pipelines. When a g
 
 **Cancellation polling:** `isJobCancelled` is an `internalQuery` (pure read) in `chat/queries.ts`. All 7 callers (generation participant, autonomous turns, web search, paper search, synthesis) invoke it via `ctx.runQuery` to avoid OCC contention during streaming. Originally implemented as an `internalMutation`; moved to `internalQuery` to eliminate unnecessary write-transaction contention on hot paths.
 
-### API Key Server-Side Storage
+### OpenRouter Server-Side Exchange and Storage
 
-OpenRouter API key stored in `userSecrets` table for headless scheduled job execution:
+Updated clients validate PKCE callback state and send the one-time code plus
+verifier to `oauth/openrouter:exchangeAndStore`. Convex exchanges them with
+OpenRouter, validates the response, encrypts the returned API key into the
+user-bound `userSecrets` row, and returns only `{ connected: true }`.
 
-- **Sync points**: During PKCE exchange (after key is stored in Keychain) + on every app launch (`upsertApiKey` mutation called in `RootView` bootstrap)
-- **Security**: Convex access controls restrict reads to owning user. Device Keychain remains canonical; server copy is a sync target.
-- **Option 3 strategy** (chosen over env var or per-job encryption)
+The released-client `scheduledJobs/mutations:upsertApiKey` compatibility path
+remains temporarily available but encrypts immediately and never stores
+plaintext. Public queries expose connection state, not ciphertext. See
+[`credential-security-rotation.md`](credential-security-rotation.md) for the
+canonical envelope, key lifecycle, rotation and backup-restoration contract.
 
 ### Pro Gating Infrastructure
 

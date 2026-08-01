@@ -119,7 +119,7 @@ test("notion page mutation tools cover validation, append mode, and archive fail
 
     const failedDelete = await notionDeletePage.execute(toolCtx, { page_id: "page_1" });
     assert.equal(failedDelete.success, false);
-    assert.match(String(failedDelete.error), /archive failed/);
+    assert.match(String(failedDelete.error), /Failed to archive Notion page \(HTTP 500\)\./);
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.setTimeout = originalSetTimeout;

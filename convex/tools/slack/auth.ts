@@ -12,6 +12,11 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
+import {
+  decryptOAuthCredentials,
+  encryptOAuthCredentials,
+} from "../../lib/secret_crypto";
 
 // Initial code exchange uses oauth.v2.user.access (in convex/oauth/slack.ts).
 // Token refresh uses oauth.v2.access per Slack's token rotation docs:
@@ -24,7 +29,7 @@ const MAX_REFRESH_RETRIES = 2;
 
 /** Shape of the stored oauthConnections row. */
 export interface StoredSlackConnection {
-  _id: string;
+  _id: Id<"oauthConnections">;
   userId: string;
   provider: string;
   accessToken: string;
@@ -53,12 +58,12 @@ export async function getSlackAccessToken(
   userId: string,
 ): Promise<{ accessToken: string; connection: StoredSlackConnection }> {
   for (let attempt = 0; attempt <= MAX_REFRESH_RETRIES; attempt++) {
-    const connection = (await ctx.runQuery(
+    const storedConnection = (await ctx.runQuery(
       internal.oauth.slack.getConnectionInternal,
       { userId },
     )) as StoredSlackConnection | null;
 
-    if (!connection) {
+    if (!storedConnection) {
       throw new ConvexError({
         code: "INTEGRATION_NOT_CONNECTED" as const,
         message:
@@ -66,12 +71,19 @@ export async function getSlackAccessToken(
       });
     }
 
-    if (connection.status !== "active") {
+    if (storedConnection.status !== "active") {
       throw new ConvexError({
         code: "INTEGRATION_NOT_CONNECTED" as const,
-        message: `Slack connection is ${connection.status}. Ask the user to reconnect Slack in Settings.`,
+        message: `Slack connection is ${storedConnection.status}. Ask the user to reconnect Slack in Settings.`,
       });
     }
+    const credentials = await decryptOAuthCredentials({
+      userId,
+      provider: "slack",
+      accessToken: storedConnection.accessToken,
+      refreshToken: storedConnection.refreshToken,
+    });
+    const connection: StoredSlackConnection = { ...storedConnection, ...credentials };
 
     const now = Date.now();
     if (!connection.refreshToken || connection.expiresAt - now > REFRESH_BUFFER_MS) {
@@ -138,10 +150,11 @@ export async function getSlackAccessToken(
     ) {
       await ctx.runMutation(internal.oauth.slack.markConnectionExpired, {
         userId,
-        errorMessage:
-          response.ok
-            ? `Token refresh failed${result.error ? `: ${result.error}` : ""}`
-            : `Token refresh failed (HTTP ${response.status})`,
+        expectedConnectionId: storedConnection._id,
+        expectedLastRefreshedAt: lastRefreshed,
+        errorMessage: response.ok
+          ? "Token refresh failed"
+          : `Token refresh failed (HTTP ${response.status})`,
       });
       throw new ConvexError({
         code: "TOKEN_REFRESH_FAILED" as const,
@@ -154,16 +167,22 @@ export async function getSlackAccessToken(
       .map((scope) => scope.trim())
       .filter(Boolean);
 
-    await ctx.runMutation(internal.oauth.slack.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: refreshedAccessToken,
       refreshToken: refreshedRefreshToken,
+      provider: "slack",
+    });
+    await ctx.runMutation(internal.oauth.slack.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt: now + refreshedExpiresIn * 1000,
       scopes: scopes.length > 0 ? scopes : connection.scopes,
       displayName: connection.displayName,
       workspaceId: connection.workspaceId,
       workspaceName: connection.workspaceName,
       expectedLastRefreshedAt: lastRefreshed,
+      expectedConnectionId: storedConnection._id,
     });
 
     const updated = (await ctx.runQuery(
@@ -172,7 +191,17 @@ export async function getSlackAccessToken(
     )) as StoredSlackConnection | null;
 
     if (updated && updated.expiresAt - Date.now() > REFRESH_BUFFER_MS) {
-      return { accessToken: updated.accessToken, connection: updated };
+      const updatedCredentials = await decryptOAuthCredentials({
+        userId,
+        provider: "slack",
+        accessToken: updated.accessToken,
+        refreshToken: updated.refreshToken,
+      });
+      const decryptedUpdated: StoredSlackConnection = {
+        ...updated,
+        ...updatedCredentials,
+      };
+      return { accessToken: decryptedUpdated.accessToken, connection: decryptedUpdated };
     }
   }
 

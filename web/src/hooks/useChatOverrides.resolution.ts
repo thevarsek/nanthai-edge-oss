@@ -81,9 +81,21 @@ export function personaSkillDefaults(persona: SkillPersonaSource | null): Map<st
   return new Map((persona.skillOverrides ?? []).map((entry) => [entry.skillId, entry.state]));
 }
 
-export function personaIntegrationDefaults(persona: SkillPersonaSource | null): Map<string, boolean> {
-  if (!persona) return new Map();
-  return new Map((persona.integrationOverrides ?? []).map((entry) => [entry.integrationId, entry.enabled]));
+export function integrationDefaultsMap(
+  defaults: ReadonlyArray<{ integrationId: string; enabled: boolean }> | null | undefined,
+): Map<string, boolean> {
+  return new Map((defaults ?? []).map((entry) => [entry.integrationId, entry.enabled]));
+}
+
+export function personaIntegrationDefaults(
+  persona: SkillPersonaSource | null,
+  settingsDefaults: ReadonlyMap<string, boolean> = new Map(),
+): Map<string, boolean> {
+  const result = new Map(settingsDefaults);
+  for (const entry of persona?.integrationOverrides ?? []) {
+    result.set(entry.integrationId, entry.enabled);
+  }
+  return result;
 }
 
 export function enabledSkillIdsFromOverrides(overrides: Map<string, SkillOverrideState>): Set<string> {

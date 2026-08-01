@@ -73,6 +73,11 @@ const IntegrationsPage = lazy(() =>
     default: module.IntegrationsPage,
   })),
 );
+const RemoteMcpServersPage = lazy(() =>
+  import("@/pages/features/RemoteMcpServersPage").then((module) => ({
+    default: module.RemoteMcpServersPage,
+  })),
+);
 const PersonasFeaturePage = lazy(() =>
   import("@/pages/features/PersonasPage").then((module) => ({ default: module.PersonasPage })),
 );
@@ -154,6 +159,7 @@ export const publicRoutes: RouteObject[] = [
   { path: "/features/folders", element: suspended(<FoldersPage />) },
   { path: "/features/automated-tasks", element: suspended(<AutomatedTasksPage />) },
   { path: "/features/integrations", element: suspended(<IntegrationsPage />) },
+  { path: "/features/remote-mcp", element: suspended(<RemoteMcpServersPage />) },
   { path: "/features/personas", element: suspended(<PersonasFeaturePage />) },
   { path: "/features/knowledge-base", element: suspended(<KnowledgeBaseFeaturePage />) },
   { path: "/features/memories", element: suspended(<MemoriesFeaturePage />) },

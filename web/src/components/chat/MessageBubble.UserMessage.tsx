@@ -3,7 +3,7 @@
 
 import { memo, useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, CheckCircle, Volume2 } from "lucide-react";
+import { Copy, CheckCircle, Volume2, Server } from "lucide-react";
 import type { Message } from "@/hooks/useChat";
 import { AudioMessageBubble } from "./AudioMessageBubble";
 import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
@@ -87,6 +87,18 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
 
       {message.presentationContext && (
         <PresentationMessageTarget context={message.presentationContext} />
+      )}
+
+      {message.mcpContextCards && message.mcpContextCards.length > 0 && (
+        <div className="flex max-w-[75%] flex-wrap justify-end gap-2">
+          {message.mcpContextCards.map((card) => (
+            <div key={card.invocationId} className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-surface-2 px-3 py-2 text-xs">
+              <Server size={13} className="text-primary" />
+              <span className="font-medium">{card.label}</span>
+              <span className="text-muted">{card.serverName} · {t(`remote_mcp_kind_${card.kind}`, { defaultValue: card.kind.replace("_", " ") })}</span>
+            </div>
+          ))}
+        </div>
       )}
 
       {/* Action bar — iOS: right-aligned (Spacer on left), below bubble */}

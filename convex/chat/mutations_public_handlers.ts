@@ -14,6 +14,11 @@ import {
 import { ttftLog } from "../lib/generation_log";
 import { validateSameModality } from "../lib/modality_utils";
 import { filterParticipantToolOptions } from "../lib/tool_capability";
+import {
+  linkMessageMcpInvocations,
+  resolveMessageMcpInvocations,
+} from "../mcp/message_context";
+import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
 import { MODEL_IDS } from "../lib/model_constants";
 import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { isTerminalSubagentStatus } from "../subagents/shared";
@@ -123,6 +128,7 @@ export interface SendMessageArgs extends Record<string, unknown> {
     slideRevision?: number;
     elementId?: string;
   };
+  mcpInvocationIds?: string[];
   participants: SendParticipantConfig[];
   explicitParentIds?: Id<"messages">[];
   expandMultiModelGroups?: boolean;
@@ -169,13 +175,14 @@ export async function sendMessageHandler(
 
   // Parallel batch 1: chat fetch, attachment normalization, and preferences
   // are independent after auth — run concurrently to reduce sequential reads.
-  const [chat, normalizedAttachments, userPreferences] = await Promise.all([
+  const [chat, normalizedAttachments, userPreferences, mcpInvocationIds] = await Promise.all([
     ctx.db.get(args.chatId),
     normalizeMessageAttachments(ctx, args.attachments),
     ctx.db
       .query("userPreferences")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first(),
+    resolveMessageMcpInvocations(ctx, userId, args.chatId, args.mcpInvocationIds),
   ]);
   if (!chat || chat.userId !== userId) {
     throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
@@ -188,12 +195,31 @@ export async function sendMessageHandler(
   if (
     !trimmedText &&
     (!args.attachments || args.attachments.length === 0) &&
-    !args.recordedAudio
+    !args.recordedAudio &&
+    mcpInvocationIds.length === 0
   ) {
     throw new ConvexError({ code: "VALIDATION" as const, message: "Empty input" });
   }
 
   const effectiveSearchMode = args.searchMode ?? undefined;
+  const requestedRemoteIntegrations = [
+    ...(args.enabledIntegrations ?? []),
+    ...(args.turnIntegrationOverrides ?? [])
+      .filter((entry) => entry.enabled)
+      .map((entry) => entry.integrationId),
+  ];
+  const unavailableRemoteIntegrations = await unknownOwnedRemoteMcpIntegrationIds(
+    ctx,
+    userId,
+    requestedRemoteIntegrations,
+    { activeOnly: true },
+  );
+  if (unavailableRemoteIntegrations.length > 0) {
+    throw new ConvexError({
+      code: "MCP_INTEGRATION_UNAVAILABLE",
+      message: "A selected Remote MCP server is disabled or disconnected.",
+    });
+  }
   const effectiveComplexity = Math.max(1, Math.min(3, Math.round(args.complexity ?? 1)));
 
   if (
@@ -294,8 +320,10 @@ export async function sendMessageHandler(
     audioDurationMs: args.recordedAudio?.durationMs,
     attachments: normalizedAttachments,
     presentationContext: args.presentationContext,
+    mcpInvocationIds: mcpInvocationIds.length > 0 ? mcpInvocationIds : undefined,
     createdAt: now,
   });
+  await linkMessageMcpInvocations(ctx, mcpInvocationIds, userMessageId, args.chatId);
 
   if (trimmedText.length > 0) {
     const prewarmRequiresZdr = await shouldRequireZdrForMemoryPrewarm(ctx, {

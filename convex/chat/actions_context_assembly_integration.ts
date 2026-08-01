@@ -11,6 +11,7 @@ import {
 import { scheduleContextAssemblyLog } from "./context_assembly_log_scheduler";
 import { branchPathIds } from "./helpers_utils";
 import type { ContextMessage } from "./helpers_types";
+import { selectRecentMcpInvocationIds } from "../mcp/context_selection";
 
 export interface GenerationContextAssemblyInput {
   ctx: ActionCtx;
@@ -98,7 +99,9 @@ export async function assembleRequestContextForGeneration(
   const reachableMessageIds = Array.from(
     branchPathIds(String(input.assistantMessageId), messagesById),
   ) as Array<Id<"messages">>;
-  const [toolMemoryQueryRaw, artifactQueryRaw] = await Promise.all([
+  const reachableSet = new Set(reachableMessageIds.map(String));
+  const mcpInvocationIds = selectRecentMcpInvocationIds(input.allMessages, reachableSet);
+  const [toolMemoryQueryRaw, artifactQueryRaw, mcpContexts] = await Promise.all([
     input.ctx.runQuery(internal.tools.artifacts.listToolMemoriesForAssembly, {
       chatId: input.chatId,
       userId: input.userId,
@@ -111,7 +114,18 @@ export async function assembleRequestContextForGeneration(
       reachableMessageIds,
       limit: 80,
     }),
+    input.ctx.runQuery(internal.mcp.queries.getInvocationContextsInternal, {
+      userId: input.userId,
+      invocationIds: mcpInvocationIds,
+    }),
   ]);
+  const legacyMessagesWithMcp = [
+    ...mcpContexts.map((context) => ({
+      role: "user" as const,
+      content: context.contextText,
+    })),
+    ...input.legacyMessages,
+  ];
   const toolMemoryQuery = normalizeAssemblyQueryResult(toolMemoryQueryRaw);
   const artifactQuery = normalizeAssemblyQueryResult(artifactQueryRaw);
   const toolMemoriesRaw = toolMemoryQuery.rows;
@@ -135,7 +149,7 @@ export async function assembleRequestContextForGeneration(
     userId: input.userId,
     participantId: input.participantId,
     modelRunId: String(input.jobId),
-    legacyMessages: input.legacyMessages,
+    legacyMessages: legacyMessagesWithMcp,
     toolMemories,
     rawArtifacts,
     providerContextWindowTokens: input.providerContextWindowTokens,
@@ -186,7 +200,7 @@ export async function assembleRequestContextForGeneration(
       userId: input.userId,
       participantId: input.participantId,
       modelRunId: String(input.jobId),
-      legacyMessages: input.legacyMessages,
+      legacyMessages: legacyMessagesWithMcp,
       toolMemories,
       rawArtifacts,
       providerContextWindowTokens: input.providerContextWindowTokens,
@@ -210,7 +224,7 @@ export async function assembleRequestContextForGeneration(
       userId: input.userId,
       participantId: input.participantId,
       modelRunId: String(input.jobId),
-      legacyMessages: input.legacyMessages,
+      legacyMessages: legacyMessagesWithMcp,
       toolMemories,
       rawArtifacts: rehydratedArtifacts,
       providerContextWindowTokens: input.providerContextWindowTokens,
@@ -220,7 +234,7 @@ export async function assembleRequestContextForGeneration(
     });
   }
   const comparison = compareAssemblyToLegacy({
-    legacyMessages: input.legacyMessages,
+    legacyMessages: legacyMessagesWithMcp,
     assembledMessages: assembly.messages,
   });
 

@@ -9,6 +9,7 @@ import { internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { filterToolIncompatibleOptions } from "../lib/tool_capability";
+import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
 import { isGoogleDataAllowedModel } from "../models/google_data_providers";
 import {
   integrationOverrideEntry,
@@ -36,6 +37,12 @@ import {
   manualOccurrenceId,
   scheduledOccurrenceId,
 } from "./occurrence";
+import {
+  encryptSecret,
+  mutationSafeNonce,
+  parseSecretEnvelope,
+  userApiKeySecretContext,
+} from "../lib/secret_crypto";
 
 const GOOGLE_SCHEDULED_JOB_INTEGRATION_IDS = new Set(["gmail", "drive", "calendar"]);
 const GOOGLE_SCHEDULED_JOB_MODEL_MESSAGE =
@@ -217,6 +224,24 @@ async function validateScheduledSteps(
       userId,
       step.knowledgeBaseFileIds,
     );
+
+    const unavailableRemoteIntegrations = await unknownOwnedRemoteMcpIntegrationIds(
+      ctx,
+      userId,
+      [
+        ...(step.enabledIntegrations ?? []),
+        ...(step.turnIntegrationOverrides ?? [])
+          .filter((entry) => entry.enabled)
+          .map((entry) => entry.integrationId),
+      ],
+      { activeOnly: true },
+    );
+    if (unavailableRemoteIntegrations.length > 0) {
+      throw new ConvexError({
+        code: "MCP_INTEGRATION_UNAVAILABLE",
+        message: `Step ${index + 1} uses a disabled or disconnected Remote MCP server.`,
+      });
+    }
 
     // Silently strip tool-dependent overrides for non-tool-capable models.
     const filtered = await filterToolIncompatibleOptions(ctx, {
@@ -822,20 +847,36 @@ export const upsertApiKey = mutation({
       throw new ConvexError({ code: "VALIDATION" as const, message: "API key cannot be empty." });
     }
     const { userId } = await requireAuth(ctx);
+    const encryptedApiKey = await encryptSecret(
+      args.apiKey.trim(),
+      userApiKeySecretContext(userId),
+      mutationSafeNonce,
+    );
+    const metadata = parseSecretEnvelope(encryptedApiKey);
+    if (!metadata) {
+      throw new ConvexError({ code: "SECRET_ENCRYPTION_NOT_CONFIGURED" as const, message: "Credential encryption is not configured." });
+    }
+    const now = Date.now();
     const existing = await ctx.db
       .query("userSecrets")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .unique();
     if (existing) {
       await ctx.db.patch(existing._id, {
-        apiKey: args.apiKey,
-        updatedAt: Date.now(),
+        apiKey: encryptedApiKey,
+        secretEnvelopeVersion: metadata.envelopeVersion,
+        secretKeyId: metadata.keyId,
+        secretMigratedAt: now,
+        updatedAt: now,
       });
     } else {
       await ctx.db.insert("userSecrets", {
         userId,
-        apiKey: args.apiKey,
-        updatedAt: Date.now(),
+        apiKey: encryptedApiKey,
+        secretEnvelopeVersion: metadata.envelopeVersion,
+        secretKeyId: metadata.keyId,
+        secretMigratedAt: now,
+        updatedAt: now,
       });
     }
   },
@@ -853,6 +894,11 @@ export const deleteApiKey = mutation({
     if (existing) {
       await ctx.db.delete(existing._id);
     }
+    const exchangeAttempt = await ctx.db
+      .query("openRouterExchangeAttempts")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .unique();
+    if (exchangeAttempt) await ctx.db.delete(exchangeAttempt._id);
   },
 });
 

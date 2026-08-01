@@ -4,10 +4,11 @@
 // only shows integrations the user has connected.
 
 import { useTranslation } from "react-i18next";
-import { X, PuzzleIcon } from "lucide-react";
+import { X, PuzzleIcon, Server } from "lucide-react";
 import { Toggle } from "@/components/shared/Toggle";
 import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
+import type { RemoteMcpConnectionOption } from "@/lib/remoteMcp";
 
 // ─── Integration metadata ───────────────────────────────────────────────────
 
@@ -15,8 +16,8 @@ interface IntegrationMeta {
   key: IntegrationKey;
   label: string;
   subtitle: string;
-  logoSlug: string;
-  provider: "gmail" | "google" | "microsoft" | "apple" | "notion" | "cloze" | "slack";
+  logoSlug?: string;
+  provider: "gmail" | "google" | "microsoft" | "apple" | "notion" | "cloze" | "slack" | "remote";
 }
 
 function buildIntegrations(t: ReturnType<typeof useTranslation>["t"]): IntegrationMeta[] {
@@ -63,6 +64,7 @@ interface Props {
   };
   /** When true, Google integration toggles are disabled because chat models are incompatible. */
   googleIntegrationsBlocked?: boolean;
+  remoteConnections?: RemoteMcpConnectionOption[];
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -73,9 +75,17 @@ export function ChatIntegrationsPicker({
   onClose,
   connectedProviders,
   googleIntegrationsBlocked,
+  remoteConnections = [],
 }: Props) {
   const { t } = useTranslation();
-  const ALL_INTEGRATIONS = buildIntegrations(t);
+  const remoteIntegrations: IntegrationMeta[] = remoteConnections
+    .map((connection) => ({
+      key: connection.integrationId as IntegrationKey,
+      label: connection.displayName || connection.friendlyName || connection.serverName || connection.endpointHost,
+      subtitle: t("remote_mcp_allowed_items", { count: connection.allowedItemCount }),
+      provider: "remote",
+    }));
+  const ALL_INTEGRATIONS = [...buildIntegrations(t), ...remoteIntegrations];
   const isBlockedIntegration = (key: IntegrationKey) =>
     googleIntegrationsBlocked === true && GOOGLE_DATA_INTEGRATION_KEYS.has(key);
   const enabledCount = ALL_INTEGRATIONS.filter(
@@ -83,7 +93,7 @@ export function ChatIntegrationsPicker({
   ).length;
   // Filter to only connected integrations
   const available = ALL_INTEGRATIONS.filter(
-    (i) => connectedProviders[i.provider],
+    (i) => i.provider === "remote" || connectedProviders[i.provider],
   );
 
   // Group by provider
@@ -96,7 +106,7 @@ export function ChatIntegrationsPicker({
     {} as Record<string, IntegrationMeta[]>,
   );
 
-  const providerOrder = ["gmail", "google", "microsoft", "apple", "notion", "cloze", "slack"];
+  const providerOrder = ["gmail", "google", "microsoft", "apple", "notion", "cloze", "slack", "remote"];
 
   return (
     <div
@@ -143,7 +153,7 @@ export function ChatIntegrationsPicker({
                 <div key={provider}>
                   <div className="px-5 pt-4 pb-1">
                     <h3 className="text-xs font-medium text-muted uppercase tracking-wide">
-                      {PROVIDER_LABELS[provider] ?? provider}
+                      {provider === "remote" ? t("remote_mcp_servers") : PROVIDER_LABELS[provider] ?? provider}
                     </h3>
                   </div>
                   <div className="divide-y divide-border/30">
@@ -156,7 +166,9 @@ export function ChatIntegrationsPicker({
 	                            onClick={() => !isGoogleBlocked && onToggle(integration.key)}
 	                            className={`flex w-full items-center gap-3 px-5 py-3 text-left transition-colors ${isGoogleBlocked ? "opacity-40" : "cursor-pointer hover:bg-surface-2"}`}
 	                          >
-	                            <IntegrationLogo slug={integration.logoSlug} size={28} className="flex-shrink-0" />
+	                            {integration.logoSlug
+                                ? <IntegrationLogo slug={integration.logoSlug} size={28} className="flex-shrink-0" />
+                                : <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/12 text-primary"><Server size={15} /></span>}
 	                            <div className="flex-1 min-w-0">
 	                              <p id={`chat-integration-${integration.key}`} className="text-sm">{integration.label}</p>
 	                              <p className="text-xs text-muted">{integration.subtitle}</p>

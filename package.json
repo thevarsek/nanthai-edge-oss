@@ -23,6 +23,7 @@
   "dependencies": {
     "@convex-dev/workflow": "^0.4.4",
     "@convex-dev/workpool": "^0.4.8",
+    "@modelcontextprotocol/client": "^2.0.0",
     "@types/mailparser": "^3.4.6",
     "@types/nodemailer": "^8.0.0",
     "@vercel/sandbox": "^1.9.3",

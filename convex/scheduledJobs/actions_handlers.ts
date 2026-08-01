@@ -1,4 +1,3 @@
-import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
@@ -8,6 +7,7 @@ import {
   scheduleFailureNotification,
 } from "./actions_lifecycle";
 import { getScheduledJobSteps } from "./shared";
+import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 
 export async function executeScheduledJobHandler(
   ctx: ActionCtx,
@@ -73,13 +73,7 @@ export async function continueScheduledJobExecutionHandler(
       return;
     }
 
-    const apiKey = await ctx.runQuery(
-      internal.scheduledJobs.queries.getUserApiKey,
-      { userId: job.userId },
-    );
-    if (!apiKey) {
-      throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No API key found — reconnect OpenRouter in Settings" });
-    }
+    await getRequiredUserOpenRouterApiKey(ctx, job.userId);
 
     const assistantMessage = await ctx.runQuery(
       internal.chat.queries.getMessageInternal,

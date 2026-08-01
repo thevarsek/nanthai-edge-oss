@@ -105,7 +105,7 @@ const featureGroups = [
   {
     title: "Automation and connected work",
     description: "Scheduled jobs and connected services for work that should continue outside one chat.",
-    slugs: ["automated-tasks", "integrations"],
+    slugs: ["automated-tasks", "integrations", "remote-mcp"],
   },
   {
     title: "Cost control",

@@ -350,16 +350,19 @@ export async function getVideoJobInternalHandler(
   return await ctx.db.get(args.videoJobId);
 }
 
-export interface GetVideoOutputUploadByTokenArgs extends Record<string, unknown> {
-  token: string;
-}
-
-export async function getVideoOutputUploadByTokenHandler(
+export async function getVideoOutputUploadByTokenHashHandler(
   ctx: QueryCtx,
-  args: GetVideoOutputUploadByTokenArgs,
+  args: { tokenHash: string },
 ): Promise<Doc<"videoOutputUploads"> | null> {
   return await ctx.db
     .query("videoOutputUploads")
-    .withIndex("by_token", (q) => q.eq("token", args.token))
+    .withIndex("by_token_hash", (query) => query.eq("tokenHash", args.tokenHash))
     .first();
+}
+
+export async function getVideoOutputUploadByIdHandler(
+  ctx: QueryCtx,
+  args: { uploadId: Id<"videoOutputUploads"> },
+): Promise<Doc<"videoOutputUploads"> | null> {
+  return await ctx.db.get(args.uploadId);
 }

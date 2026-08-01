@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
 import { Toggle } from "@/components/shared/Toggle";
 import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
-import { AlignLeft, Wrench, Terminal } from "lucide-react";
+import { AlignLeft, Wrench, Terminal, Server } from "lucide-react";
 import type { SkillOverrideState } from "./PersonaEditorForm";
 
 // ── Emoji picker (simple grid) ─────────────────────────────────────────────
@@ -134,15 +134,22 @@ export function SkillOverrideRow({ skill, state, onCycle, disabled = false }: Sk
 interface IntegrationRowProps {
   slug: string;
   label: string;
+  subtitle?: string;
+  remoteMcp?: boolean;
   checked: boolean;
   onChange: (v: boolean) => void;
 }
 
-export function IntegrationRow({ slug, label, checked, onChange }: IntegrationRowProps) {
+export function IntegrationRow({ slug, label, subtitle, remoteMcp = false, checked, onChange }: IntegrationRowProps) {
   return (
     <div className="flex items-center gap-3 px-4 py-3">
-      <IntegrationLogo slug={slug} size={22} className="flex-shrink-0" />
-      <span className="flex-1 text-sm">{label}</span>
+      {remoteMcp
+        ? <Server size={22} className="flex-shrink-0 text-primary" />
+        : <IntegrationLogo slug={slug} size={22} className="flex-shrink-0" />}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm">{label}</span>
+        {subtitle && <span className="mt-0.5 block truncate text-xs text-muted">{subtitle}</span>}
+      </span>
       <Toggle checked={checked} onChange={onChange} ariaLabel={label} />
     </div>
   );

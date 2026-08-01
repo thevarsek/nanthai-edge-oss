@@ -118,7 +118,10 @@ export async function callOpenRouterAdvisorResponses(
       : await deps.processText(await response.text(), callbacks);
 
     if (streamState.error) {
-      throw new ConvexError({ code: "INTERNAL_ERROR", message: streamState.error });
+      throw new ConvexError({
+        code: "INTERNAL_ERROR",
+        message: "OpenRouter response streaming failed. Please try again.",
+      });
     }
     const item = streamState.completedItem;
     const advice = (item?.advice ?? streamState.advice).trim();

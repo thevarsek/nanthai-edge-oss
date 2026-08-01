@@ -7,11 +7,15 @@ import {
   withRefreshedAttachmentUrls,
 } from "./query_helpers";
 import { hydrateDocumentEditAnnotations } from "../documents/docx_edit_annotations";
+import { mcpContextCardsByMessage, type McpContextCard } from "../mcp/message_cards";
 
-function withoutSearchContext<T extends { searchContext?: unknown }>(
+function withoutPrivateMessageFields<T extends {
+  searchContext?: unknown;
+  mcpInvocationIds?: unknown;
+}>(
   message: T,
-): Omit<T, "searchContext"> {
-  const { searchContext: _ignored, ...rest } = message;
+): Omit<T, "searchContext" | "mcpInvocationIds"> {
+  const { searchContext: _searchContext, mcpInvocationIds: _mcpInvocationIds, ...rest } = message;
   return rest;
 }
 
@@ -62,7 +66,9 @@ type ChatListItem = Doc<"chats"> & {
   }>;
 };
 
-type PublicMessage = Omit<Doc<"messages">, "searchContext">;
+type PublicMessage = Omit<Doc<"messages">, "searchContext" | "mcpInvocationIds"> & {
+  mcpContextCards?: McpContextCard[];
+};
 
 function legacyUserSourceScanLimit(limit: number): number {
   return Math.min(MAX_LIST_CHATS_LIMIT, Math.max(limit, limit * LEGACY_USER_SOURCE_SCAN_MULTIPLIER));
@@ -419,6 +425,13 @@ export interface ListMessagesArgs extends Record<string, unknown> {
   before?: number;
 }
 
+const MAX_LIST_MESSAGES_LIMIT = 500;
+
+function listMessagesLimit(limit: number | undefined): number {
+  if (limit === undefined || !Number.isFinite(limit)) return MAX_LIST_MESSAGES_LIMIT;
+  return Math.min(MAX_LIST_MESSAGES_LIMIT, Math.max(1, Math.trunc(limit)));
+}
+
 export async function listMessagesHandler(
   ctx: QueryCtx,
   args: ListMessagesArgs,
@@ -429,7 +442,7 @@ export async function listMessagesHandler(
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== auth.userId) return [];
 
-  const limit = args.limit ?? 500;
+  const limit = listMessagesLimit(args.limit);
   const query = ctx.db
     .query("messages")
     .withIndex("by_chat", (q) => {
@@ -443,6 +456,7 @@ export async function listMessagesHandler(
 
   const newestFirst = await query.take(limit);
   const messages = newestFirst.slice().reverse();
+  const contextCardsByMessage = await mcpContextCardsByMessage(ctx, messages);
 
   // Refresh persona avatar URLs from storage so clients never see expired
   // signed URLs. participantId stores the persona ID when present.
@@ -470,6 +484,7 @@ export async function listMessagesHandler(
 
   return await Promise.all(
     messages.map(async (message) => {
+      const contextCards = contextCardsByMessage.get(String(message._id));
       const publicMessage = withPublicParticipantIdentity(message);
       const withAvatar = publicMessage.participantId && personaAvatarUrls.has(publicMessage.participantId)
         ? {
@@ -479,7 +494,7 @@ export async function listMessagesHandler(
         : publicMessage;
       const refreshed = await withRefreshedAttachmentUrls(ctx, withAvatar);
       const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
-      return withoutSearchContext(hydrated);
+      return { ...withoutPrivateMessageFields(hydrated), mcpContextCards: contextCards };
     }),
   );
 }
@@ -497,12 +512,13 @@ export async function getMessageHandler(
 
   const message = await getAuthorizedMessage(ctx, args.messageId, auth.userId);
   if (!message) return null;
+  const contextCards = (await mcpContextCardsByMessage(ctx, [message])).get(String(message._id));
   const refreshed = await withRefreshedAttachmentUrls(
     ctx,
     withPublicParticipantIdentity(message),
   );
   const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
-  return withoutSearchContext(hydrated);
+  return { ...withoutPrivateMessageFields(hydrated), mcpContextCards: contextCards };
 }
 
 export interface GetGenerationStatusArgs extends Record<string, unknown> {

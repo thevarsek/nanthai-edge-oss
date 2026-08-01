@@ -204,10 +204,14 @@ export const userSchemaTables = {
     // compare-and-swap guard to prevent parallel tool executions from
     // racing on refresh — see Bug H-2.
     lastRefreshedAt: v.optional(v.number()),
+    secretEnvelopeVersion: v.optional(v.literal(2)),
+    secretKeyId: v.optional(v.string()),
+    secretMigratedAt: v.optional(v.number()),
   })
     .index("by_user", ["userId"])
     .index("by_user_provider", ["userId", "provider"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_secret_key", ["secretKeyId"]),
 
   // Per-user/provider outbound request coordination for integration APIs.
   integrationRequestGates: defineTable({
@@ -384,7 +388,18 @@ export const userSchemaTables = {
   userSecrets: defineTable({
     userId: v.string(),
     apiKey: v.string(),
+    secretEnvelopeVersion: v.optional(v.literal(2)),
+    secretKeyId: v.optional(v.string()),
+    secretMigratedAt: v.optional(v.number()),
     updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_secret_key", ["secretKeyId"]),
+
+  openRouterExchangeAttempts: defineTable({
+    userId: v.string(),
+    attemptId: v.string(),
+    createdAt: v.number(),
   }).index("by_user", ["userId"]),
 
   // ── M13.5: Push Notifications ────────────────────────────────────────

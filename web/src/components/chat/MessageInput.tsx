@@ -3,7 +3,7 @@
 // mic.circle.fill record, circular plus button, 14px border radius.
 
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ClipboardEvent } from "react";
-import { ArrowUp, Square, Plus, Mic, Video } from "lucide-react";
+import { ArrowUp, Square, Plus, Mic, Video, Server } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant, PresentationContext } from "@/hooks/useChat";
@@ -23,6 +23,7 @@ import type { AttachmentPreview } from "@/components/chat/MessageInput.attachmen
 import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import { getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
 import { PresentationContextChip } from "@/components/chat/PresentationContextChip";
+import type { StagedRemoteMcpContext } from "@/components/chat/RemoteMcpContentPicker";
 
 export type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 
@@ -35,6 +36,7 @@ interface Props {
     attachments?: AttachmentPreview[];
     advisorSnapshot?: QueuedAdvisorSnapshot;
     presentationContext?: PresentationContext;
+    mcpInvocationIds?: string[];
   }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
   onCreateUploadUrl: () => Promise<string>;
@@ -76,6 +78,10 @@ interface Props {
     label: string;
   };
   onRemovePresentationTarget?: () => void;
+  remoteMcpContexts?: StagedRemoteMcpContext[];
+  onRemoveRemoteMcpContext?: (invocationId: string) => void;
+  onClearRemoteMcpContexts?: () => void;
+  hasRemoteMcpContent?: boolean;
 }
 
 export function MessageInput({
@@ -96,6 +102,10 @@ export function MessageInput({
   restoreQueuedAdvisorSnapshot,
   presentationTarget,
   onRemovePresentationTarget,
+  remoteMcpContexts = [],
+  onRemoveRemoteMcpContext,
+  onClearRemoteMcpContexts,
+  hasRemoteMcpContent = false,
 }: Props) {
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
@@ -170,7 +180,7 @@ export function MessageInput({
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     const outgoingAttachments = [...attachments, ...extraAttachments];
-    if (!trimmed && outgoingAttachments.length === 0) return;
+    if (!trimmed && outgoingAttachments.length === 0 && remoteMcpContexts.length === 0) return;
     if (disabled || isGenerating || isUploading) return;
     if (presentationTarget && participantCount > 1) return;
     if (isAutonomousActive && onIntervene && trimmed) {
@@ -182,6 +192,9 @@ export function MessageInput({
           text: trimmed,
           attachments: outgoingAttachments,
           ...(presentationTarget ? { presentationContext: presentationTarget.context } : {}),
+          ...(remoteMcpContexts.length > 0
+            ? { mcpInvocationIds: remoteMcpContexts.map((context) => context.invocationId) }
+            : {}),
         });
       } catch {
         return;
@@ -190,9 +203,10 @@ export function MessageInput({
     }
     setText("");
     clearAttachments();
+    onClearRemoteMcpContexts?.();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, extraAttachments, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, mention, presentationTarget, participantCount]);
+  }, [text, attachments, extraAttachments, remoteMcpContexts, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount]);
 
   const {
     queuedFollowUps,
@@ -232,7 +246,7 @@ export function MessageInput({
       });
     },
     canCaptureQueuedAdvisorSnapshot,
-    hasEphemeralContext: Boolean(presentationTarget),
+    hasEphemeralContext: Boolean(presentationTarget || remoteMcpContexts.length > 0),
     captureQueuedAdvisorSnapshot,
     restoreQueuedAdvisorSnapshot,
   });
@@ -303,7 +317,7 @@ export function MessageInput({
   );
 
   const artifactWriteBlocked = Boolean(presentationTarget && participantCount > 1);
-  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0) && !disabled && !isGenerating && !isUploading && !artifactWriteBlocked;
+  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0 || remoteMcpContexts.length > 0) && !disabled && !isGenerating && !isUploading && !artifactWriteBlocked;
   const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled && !artifactWriteBlocked;
   const suggestionStorageId = generatedDocumentSuggestion?.storageId;
   const isSuggestionAlreadyAttached = !!suggestionStorageId && (
@@ -392,6 +406,19 @@ export function MessageInput({
         />
       )}
 
+      {remoteMcpContexts.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {remoteMcpContexts.map((context) => (
+            <span key={context.invocationId} className="inline-flex items-center gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2 text-xs">
+              <Server size={13} className="text-primary" />
+              <span className="max-w-56 truncate">{context.label}</span>
+              <span className="text-muted">{context.serverName}</span>
+              <button type="button" aria-label={`Remove ${context.label}`} onClick={() => onRemoveRemoteMcpContext?.(context.invocationId)} className="text-muted hover:text-foreground">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+
       <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} isVideoMode={isVideoMode && supportsFrameImages} onChangeRole={changeAttachmentRole} />
       {extraAttachments.length > 0 && (
         <AttachmentPreviews
@@ -439,6 +466,7 @@ export function MessageInput({
               participantCount={participantCount} hasMessages={hasMessages}
               allParticipantsSupportTools={allParticipantsSupportTools}
               clipboardHasImage={clipboardHasImage}
+              hasRemoteMcpContent={hasRemoteMcpContent}
             />
           )}
         </div>

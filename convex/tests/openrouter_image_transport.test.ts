@@ -179,7 +179,7 @@ test("callOpenRouterImage preserves structured upstream failures", async () => {
       }),
       (error: unknown) =>
         error instanceof ConvexError &&
-        String(error.data?.message).includes("Unsupported image option"),
+        String(error.data?.message).includes("OpenRouter request failed (HTTP 400)"),
     );
   } finally {
     globalThis.fetch = originalFetch;

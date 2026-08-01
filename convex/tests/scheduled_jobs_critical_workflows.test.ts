@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-scheduled-encryption-key";
+
 import { ConvexError } from "convex/values";
+import { decryptSecret, userApiKeySecretContext } from "../lib/secret_crypto";
 import {
   beginExecution,
   cleanOldJobRuns,
@@ -380,7 +383,10 @@ test("scheduled job API key mutations validate, upsert, and delete user secrets"
 
   assert.deepEqual(inserts.map((entry) => entry.table), ["userSecrets"]);
   assert.equal(patches[0]?.id, "secret_1");
-  assert.equal(patches[0]?.patch.apiKey, "sk-second");
+  assert.equal(
+    await decryptSecret(String(patches[0]?.patch.apiKey), userApiKeySecretContext("user_1")),
+    "sk-second",
+  );
   assert.deepEqual(deleted, ["secret_1"]);
 });
 

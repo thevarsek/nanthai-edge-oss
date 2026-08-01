@@ -6,6 +6,7 @@ import type { OpenRouterUsage } from "../lib/openrouter";
 import type { ToolResult } from "./registry";
 import { deleteStoredPayloads, toolRoundCaptureKey } from "./artifact_capture_client";
 import type { ArtifactUsageInput } from "./artifact_persistence";
+import { attachRemoteMcpArtifacts } from "./artifact_mcp_linker";
 
 const INLINE_RAW_BYTE_LIMIT = 96_000;
 
@@ -204,6 +205,7 @@ export async function captureToolRoundArtifacts(
     )] : [];
   });
   if (prepared.decision === "replay") {
+    await attachRemoteMcpArtifacts(input, prepared.artifactIds);
     return prepared.artifactIds;
   }
 
@@ -266,6 +268,7 @@ export async function captureToolRoundArtifacts(
     });
   }
   if (artifacts.length === 0) return [];
+  let committedPayloads = false;
   try {
     const committed = await input.ctx.runMutation(
       internal.tools.artifacts.commitToolArtifactCapture,
@@ -282,11 +285,13 @@ export async function captureToolRoundArtifacts(
       stale: boolean;
       artifactIds: Array<Id<"toolExecutionArtifacts">>;
     };
+    committedPayloads = committed.inserted;
     if (!committed.inserted) await deleteStoredPayloads(input.ctx, storedPayloadIds);
     if (committed.stale) return [];
+    await attachRemoteMcpArtifacts(input, committed.artifactIds);
     return committed.artifactIds;
   } catch (error) {
-    await deleteStoredPayloads(input.ctx, storedPayloadIds);
+    if (!committedPayloads) await deleteStoredPayloads(input.ctx, storedPayloadIds);
     throw error;
   }
 }

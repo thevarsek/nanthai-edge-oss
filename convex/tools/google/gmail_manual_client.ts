@@ -13,7 +13,7 @@ import nodemailer from "nodemailer";
 import { randomUUID } from "node:crypto";
 import type { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
-import { maybeDecryptSecret } from "../../lib/secret_crypto";
+import { decryptSecret, oauthSecretContext } from "../../lib/secret_crypto";
 
 const IMAP_HOST = "imap.gmail.com";
 const IMAP_PORT = 993;
@@ -138,7 +138,11 @@ export async function getGmailManualCredentials(
     });
   }
 
-  return { email: connection.email, appPassword: await maybeDecryptSecret(connection.accessToken) };
+  const appPassword = await decryptSecret(
+    connection.accessToken,
+    oauthSecretContext(userId, "gmail_manual", "accessToken"),
+  );
+  return { email: connection.email, appPassword };
 }
 
 export function createGmailImapClient(credentials: GmailManualCredentials): ImapFlow {

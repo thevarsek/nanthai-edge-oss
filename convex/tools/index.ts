@@ -8,6 +8,17 @@ import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { deriveGoogleCapabilityFlags } from "../oauth/google_capabilities";
 
+async function getConnectionStatus(
+  ctx: ActionCtx,
+  userId: string,
+  provider: string,
+): Promise<{ status: string; scopes: string[] } | null> {
+  return await ctx.runQuery(internal.oauth.connection_status.getConnectionStatus, {
+    userId,
+    provider,
+  });
+}
+
 /**
  * Get Google integrations that are both connected and scope-granted.
  */
@@ -16,10 +27,7 @@ export async function getGrantedGoogleIntegrations(
   userId: string,
 ): Promise<string[]> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.google.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "google");
     if (connection === null || connection.status !== "active") {
       return [];
     }
@@ -38,10 +46,7 @@ export async function checkGmailManualConnection(
   userId: string,
 ): Promise<boolean> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.gmail_manual.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "gmail_manual");
     return connection !== null && connection.status === "active";
   } catch {
     return false;
@@ -56,10 +61,7 @@ export async function checkMicrosoftConnection(
   userId: string,
 ): Promise<boolean> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.microsoft.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "microsoft");
     return connection !== null && connection.status === "active";
   } catch {
     return false;
@@ -74,10 +76,7 @@ export async function checkNotionConnection(
   userId: string,
 ): Promise<boolean> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.notion.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "notion");
     return connection !== null && connection.status === "active";
   } catch {
     return false;
@@ -92,10 +91,7 @@ export async function checkAppleCalendarConnection(
   userId: string,
 ): Promise<boolean> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.apple_calendar.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "apple_calendar");
     return connection !== null && connection.status === "active";
   } catch {
     return false;
@@ -110,10 +106,7 @@ export async function checkClozeConnection(
   userId: string,
 ): Promise<boolean> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.cloze.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "cloze");
     return connection !== null && connection.status === "active";
   } catch {
     return false;
@@ -128,10 +121,7 @@ export async function checkSlackConnection(
   userId: string,
 ): Promise<boolean> {
   try {
-    const connection = await ctx.runQuery(
-      internal.oauth.slack.getConnectionInternal,
-      { userId },
-    );
+    const connection = await getConnectionStatus(ctx, userId, "slack");
     return connection !== null && connection.status === "active";
   } catch {
     return false;

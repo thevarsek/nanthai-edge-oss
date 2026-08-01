@@ -4,7 +4,7 @@ import { v, ConvexError } from "convex/values";
 import { action } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
-import { encryptSecret } from "../lib/secret_crypto";
+import { encryptOAuthCredentials } from "../lib/secret_crypto";
 import { validateGmailManualCredentials } from "../tools/google/gmail_manual_client";
 
 export const connectGmailManual = action({
@@ -31,10 +31,16 @@ export const connectGmailManual = action({
       });
     }
 
+    const encrypted = await encryptOAuthCredentials({
+      userId,
+      provider: "gmail_manual",
+      accessToken: appPassword,
+      refreshToken: "",
+    });
     await ctx.runMutation(internal.oauth.gmail_manual.upsertConnection, {
       userId,
       email,
-      appPassword: await encryptSecret(appPassword),
+      ...encrypted,
     });
 
     return { success: true, email };

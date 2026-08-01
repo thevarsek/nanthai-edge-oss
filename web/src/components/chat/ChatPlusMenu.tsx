@@ -17,6 +17,7 @@ import {
   Zap,
   ClipboardPaste,
   MessageCircleQuestion,
+  Server,
 } from "lucide-react";
 
 // ─── Menu items ─────────────────────────────────────────────────────────────
@@ -33,7 +34,8 @@ export type PlusMenuItem =
   | "participants"
   | "advisors"
   | "subagents"
-  | "autonomous";
+  | "autonomous"
+  | "remoteMcpContent";
 
 interface MenuItemDef {
   id: PlusMenuItem;
@@ -55,6 +57,7 @@ interface Props {
   hasMessages?: boolean;
   allParticipantsSupportTools?: boolean;
   clipboardHasImage?: boolean;
+  hasRemoteMcpContent?: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
@@ -69,6 +72,7 @@ export function ChatPlusMenu({
   hasMessages = false,
   allParticipantsSupportTools = true,
   clipboardHasImage = false,
+  hasRemoteMcpContent = false,
 }: Props) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -148,6 +152,14 @@ export function ChatPlusMenu({
           label: t("knowledge_base"),
           icon: <BookOpen size={16} />,
           badge: badges.knowledgeBase,
+          requiresPro: true,
+        }]
+      : []),
+    ...(isPro && hasRemoteMcpContent
+      ? [{
+          id: "remoteMcpContent" as const,
+          label: t("remote_mcp_context"),
+          icon: <Server size={16} />,
           requiresPro: true,
         }]
       : []),

@@ -119,7 +119,7 @@ test("notion database workflows cover filters, empty results, update payload var
         database_id: "db_1",
       });
       assert.equal(queryFailure.success, false);
-      assert.match(String(queryFailure.error), /bad filter/);
+      assert.match(String(queryFailure.error), /Failed to query Notion database \(HTTP 400\)\./);
 
       const updated = await notionUpdateDatabaseEntry.execute(toolCtx, {
         page_id: "entry_1",

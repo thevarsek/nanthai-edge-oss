@@ -69,6 +69,32 @@ test("scheduled job payload preserves explicit disabled integrations and reasoni
   expect(payload[0]).not.toHaveProperty("reasoningEffort");
 });
 
+test("scheduled job payload preserves Remote MCP integrations in both contract fields", () => {
+  const step = {
+    ...createDraftStep(),
+    prompt: "Search Cloudflare docs",
+    remoteMcpIntegrationIds: ["mcp:cloudflare-docs"],
+  };
+
+  const payload = buildStepsPayload([step]);
+
+  expect(payload[0]?.enabledIntegrations).toEqual(["mcp:cloudflare-docs"]);
+  expect(payload[0]?.turnIntegrationOverrides).toEqual(expect.arrayContaining([
+    { integrationId: "mcp:cloudflare-docs", enabled: true },
+  ]));
+  expect(jobToSteps({ steps: [payload[0] as Record<string, unknown>] })[0]?.remoteMcpIntegrationIds)
+    .toEqual(["mcp:cloudflare-docs"]);
+});
+
+test("scheduled job payload explicitly disables unchecked known Remote MCP integrations", () => {
+  const step = { ...createDraftStep(), prompt: "Run digest" };
+  const payload = buildStepsPayload([step], new Set(["mcp:cloudflare-docs"]));
+
+  expect(payload[0]?.turnIntegrationOverrides).toEqual(expect.arrayContaining([
+    { integrationId: "mcp:cloudflare-docs", enabled: false },
+  ]));
+});
+
 test("scheduled job hydration prefers structured integration overrides", () => {
   const steps = jobToSteps({
     steps: [{

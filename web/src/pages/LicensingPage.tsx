@@ -44,7 +44,7 @@ export function LicensingPage() {
           </p>
           <p className="edge-sans mt-2 text-[0.85rem] font-light leading-[1.8] efg-50">
             {t("lic_note_body")}{" "}
-            <Link to="/features" className="text-[#91efff] hover:underline">
+            <Link to="/features" className="edge-action-link">
               {t("edge_nav_features")}
             </Link>
           </p>
@@ -55,14 +55,14 @@ export function LicensingPage() {
               rel="noreferrer"
               destination="github"
               location="licensing_page"
-              className="text-[#91efff] hover:underline"
+              className="edge-action-link"
             >
               {t("lic_note_github")}
             </TrackedOutboundLink>
           </p>
         </div>
 
-        <article className="edge-legal edge-document edge-fade-up edge-stagger-3 mx-auto mt-10 px-1 pb-8 pt-8 md:mt-12 md:px-0 md:pt-10">
+        <article className="edge-legal edge-document edge-fade-up edge-stagger-3 mx-auto mt-10 pb-8 pt-8 md:mt-12 md:pt-10">
           <h2>{t("lic_s1_title")}</h2>
           <p>{t("lic_s1_body")}</p>
 

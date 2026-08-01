@@ -54,7 +54,7 @@ test("provider reconciliation releases ownership only after provider terminal st
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if (args.videoJobId) return {
-        _id: "video_1", userId: "user_1", pollingUrl: "https://poll",
+        _id: "video_1", userId: "user_1", openRouterJobId: "provider_1",
       };
       if (args.userId) return "sk-test";
       return null;

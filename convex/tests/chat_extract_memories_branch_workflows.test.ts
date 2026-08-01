@@ -41,7 +41,7 @@ function refs() {
   return {
     getUserMemories: getFunctionName(internal.chat.queries.getUserMemories),
     getUserPreferences: getFunctionName(internal.chat.queries.getUserPreferences),
-    getUserApiKey: getFunctionName(internal.scheduledJobs.queries.getUserApiKey),
+    getUserApiKey: getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey),
     createMemory: getFunctionName(internal.chat.mutations.createMemory),
     enqueueMemoryEmbedding: getFunctionName(
       internal.execution.workload_queues.enqueueMemoryEmbedding,

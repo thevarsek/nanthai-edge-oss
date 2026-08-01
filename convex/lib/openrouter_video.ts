@@ -1,19 +1,9 @@
-// convex/lib/openrouter_video.ts
-// =============================================================================
-// OpenRouter Video API client.
-//
-// Three operations:
-//   1. submitVideoJob() — POST /api/v1/videos → job ID + polling URL
-//   2. pollVideoJobStatus() — GET polling URL → status + content URLs
-//   3. downloadVideoContent() — GET content URL → ArrayBuffer (video/mp4)
-//
-// All functions are pure HTTP helpers with no Convex dependencies. They are
-// called by the video generation actions.
-// =============================================================================
-
 import { HTTP_REFERER, X_TITLE } from "./openrouter_constants";
 
-// -- Request types ------------------------------------------------------------
+const OPENROUTER_ORIGIN = "https://openrouter.ai";
+const VIDEO_API_PATH = "/api/v1/videos";
+const MAX_VIDEO_DOWNLOAD_BYTES = 512 * 1024 * 1024;
+const VIDEO_FETCH_TIMEOUT_MS = 5 * 60 * 1000;
 
 export interface VideoFrameImage {
   type: "image_url";
@@ -36,117 +26,168 @@ export interface SubmitVideoJobRequest {
   seed?: number;
   provider?: {
     sort?: "latency" | "throughput" | "price";
-    preferred_max_latency?: {
-      p50?: number;
-      p90?: number;
-      p99?: number;
-    };
+    preferred_max_latency?: { p50?: number; p90?: number; p99?: number };
     zdr?: boolean;
   };
-  output?: {
-    upload_url?: string;
-  };
+  output?: { upload_url?: string };
   frame_images?: VideoFrameImage[];
   input_references?: VideoInputReference[];
 }
 
-// -- Response types -----------------------------------------------------------
-
 export interface SubmitVideoJobResponse {
   id: string;
-  polling_url: string;
   status: "pending";
 }
 
 export interface PollVideoJobResponse {
   id: string;
   generation_id?: string;
-  polling_url: string;
   status: "pending" | "in_progress" | "completed" | "failed";
-  unsigned_urls?: string[];
-  usage?: {
-    cost?: number;
-    is_byok?: boolean;
-  };
-  error?: {
-    message?: string;
-    code?: string;
+  usage?: { cost?: number; is_byok?: boolean };
+  error?: { message?: string; code?: string };
+}
+
+function videoUrl(jobId?: string, content = false): string {
+  const normalizedJobId = jobId?.trim();
+  if (!normalizedJobId || normalizedJobId.length > 512) {
+    throw new Error("OpenRouter returned an invalid video job identifier.");
+  }
+  const suffix = content ? "/content?index=0" : "";
+  return `${OPENROUTER_ORIGIN}${VIDEO_API_PATH}/${encodeURIComponent(normalizedJobId)}${suffix}`;
+}
+
+function openRouterHeaders(apiKey: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${apiKey}`,
+    "HTTP-Referer": HTTP_REFERER,
+    "X-Title": X_TITLE,
   };
 }
 
-// -- Submit -------------------------------------------------------------------
+async function fetchOpenRouterVideo(
+  url: string,
+  apiKey: string,
+  init: RequestInit = {},
+): Promise<{ response: Response; finish: () => void }> {
+  const parsed = new URL(url);
+  if (
+    parsed.origin !== OPENROUTER_ORIGIN
+    || parsed.username
+    || parsed.password
+    || parsed.port
+    || parsed.hash
+    || (parsed.pathname !== VIDEO_API_PATH && !parsed.pathname.startsWith(`${VIDEO_API_PATH}/`))
+  ) {
+    throw new Error("OpenRouter video endpoint validation failed.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), VIDEO_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(parsed.toString(), {
+      ...init,
+      redirect: "manual",
+      signal: controller.signal,
+      headers: { ...openRouterHeaders(apiKey), ...init.headers },
+    });
+    return { response, finish: () => clearTimeout(timeout) };
+  } catch (error) {
+    clearTimeout(timeout);
+    throw error;
+  }
+}
 
 export async function submitVideoJob(
   apiKey: string,
   request: SubmitVideoJobRequest,
 ): Promise<SubmitVideoJobResponse> {
-  const response = await fetch("https://openrouter.ai/api/v1/videos", {
+  const requestResult = await fetchOpenRouterVideo(`${OPENROUTER_ORIGIN}${VIDEO_API_PATH}`, apiKey, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": HTTP_REFERER,
-      "X-Title": X_TITLE,
     },
     body: JSON.stringify(request),
   });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      `Video submission failed: ${response.status} ${response.statusText} — ${errorText}`,
-    );
+  try {
+    const response = requestResult.response;
+    if (!response.ok) {
+      throw new Error(`Video submission failed (HTTP ${response.status}).`);
+    }
+    const data = await response.json() as Partial<SubmitVideoJobResponse>;
+    if (typeof data.id !== "string" || data.status !== "pending") {
+      throw new Error("OpenRouter returned an invalid video submission response.");
+    }
+    return { id: data.id, status: "pending" };
+  } finally {
+    requestResult.finish();
   }
-
-  const data = await response.json();
-  return data as SubmitVideoJobResponse;
 }
-
-// -- Poll ---------------------------------------------------------------------
 
 export async function pollVideoJobStatus(
   apiKey: string,
-  pollingUrl: string,
+  jobId: string,
 ): Promise<PollVideoJobResponse> {
-  const response = await fetch(pollingUrl, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": HTTP_REFERER,
-      "X-Title": X_TITLE,
-    },
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      `Video poll failed: ${response.status} ${response.statusText} — ${errorText}`,
-    );
+  const pollingUrl = videoUrl(jobId);
+  const request = await fetchOpenRouterVideo(pollingUrl, apiKey);
+  try {
+    if (!request.response.ok) {
+      throw new Error(`Video poll failed (HTTP ${request.response.status}).`);
+    }
+    const data = await request.response.json() as PollVideoJobResponse;
+    if (data.id !== jobId || !["pending", "in_progress", "completed", "failed"].includes(data.status)) {
+      throw new Error("OpenRouter returned an invalid video poll response.");
+    }
+    return {
+      id: data.id,
+      status: data.status,
+      generation_id: data.generation_id,
+      usage: data.usage,
+      error: data.error,
+    };
+  } finally {
+    request.finish();
   }
-
-  const data = await response.json();
-  return data as PollVideoJobResponse;
 }
-
-// -- Download -----------------------------------------------------------------
 
 export async function downloadVideoContent(
   apiKey: string,
-  contentUrl: string,
+  jobId: string,
 ): Promise<ArrayBuffer> {
-  const response = await fetch(contentUrl, {
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "HTTP-Referer": HTTP_REFERER,
-      "X-Title": X_TITLE,
-    },
-  });
+  const request = await fetchOpenRouterVideo(videoUrl(jobId, true), apiKey);
+  try {
+    const { response } = request;
+    if (!response.ok) throw new Error(`Video download failed (HTTP ${response.status}).`);
+    const contentType = response.headers.get("Content-Type")?.split(";", 1)[0]?.trim().toLowerCase();
+    if (contentType && contentType !== "application/octet-stream" && !contentType.startsWith("video/")) {
+      throw new Error("OpenRouter returned an unsupported video content type.");
+    }
+    const contentLength = Number(response.headers.get("Content-Length") ?? 0);
+    if (Number.isFinite(contentLength) && contentLength > MAX_VIDEO_DOWNLOAD_BYTES) {
+      throw new Error("OpenRouter video output exceeds the supported size.");
+    }
+    if (!response.body) throw new Error("OpenRouter returned an empty video response.");
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      `Video download failed: ${response.status} ${response.statusText} — ${errorText}`,
-    );
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_VIDEO_DOWNLOAD_BYTES) {
+        await reader.cancel();
+        throw new Error("OpenRouter video output exceeds the supported size.");
+      }
+      chunks.push(value);
+    }
+    if (totalBytes === 0) throw new Error("OpenRouter returned an empty video response.");
+    const output = new Uint8Array(totalBytes);
+    let offset = 0;
+    for (const chunk of chunks) {
+      output.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return output.buffer;
+  } finally {
+    request.finish();
   }
-
-  return await response.arrayBuffer();
 }

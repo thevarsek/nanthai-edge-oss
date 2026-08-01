@@ -211,7 +211,7 @@ class AppleCalendarDAVClient implements AppleDAVClient {
     if (!response.ok && response.status !== 207) {
       throw new ConvexError({
         code: "EXTERNAL_SERVICE" as const,
-        message: `Apple Calendar ${method} failed (HTTP ${response.status}): ${text}`,
+        message: `Apple Calendar ${method} failed (HTTP ${response.status}).`,
       });
     }
     return multistatusResponses(text);

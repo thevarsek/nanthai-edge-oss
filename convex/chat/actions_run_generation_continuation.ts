@@ -13,8 +13,22 @@ export async function scheduleGenerationContinuation(
   if (!args.workflowManaged || !args.workflowResumeEventId) {
     throw new Error("GENERATION_WORKFLOW_ROUND_KEY_REQUIRED");
   }
+  const durableCheckpoint = durableGenerationContinuationCheckpoint(args, checkpoint);
+  await ctx.runMutation(internal.chat.mutations.saveGenerationContinuation, {
+    chatId: args.chatId,
+    messageId: args.participant.messageId,
+    jobId: args.participant.jobId,
+    userId: args.userId,
+    checkpoint: durableCheckpoint,
+  });
+}
+
+export function durableGenerationContinuationCheckpoint(
+  args: RunGenerationParticipantArgs,
+  checkpoint: GenerationContinuationCheckpoint,
+): GenerationContinuationCheckpoint {
   const roundKey = args.workflowResumeEventId;
-  const durableCheckpoint: GenerationContinuationCheckpoint = args.executionAttemptId &&
+  return args.executionAttemptId &&
     args.executionFence !== undefined
     ? {
         ...checkpoint,
@@ -29,11 +43,4 @@ export async function scheduleGenerationContinuation(
         ...checkpoint,
         ...(roundKey ? { roundKey } : {}),
       };
-  await ctx.runMutation(internal.chat.mutations.saveGenerationContinuation, {
-    chatId: args.chatId,
-    messageId: args.participant.messageId,
-    jobId: args.participant.jobId,
-    userId: args.userId,
-    checkpoint: durableCheckpoint,
-  });
 }

@@ -8,6 +8,13 @@ const mockState = vi.hoisted(() => ({
     { _id: "folder_reports", name: "Reports" },
     { _id: "folder_ops", name: "Ops" },
   ],
+  remoteMcpConnections: [] as Array<{
+    connectionId: string;
+    integrationId: string;
+    displayName: string;
+    endpointHost: string;
+    allowedItemCount: number;
+  }>,
   modelSummaries: [
     { modelId: "openai/gpt-4o", name: "GPT-4o", provider: "openai", supportsTools: true, hasZdrEndpoint: true },
     { modelId: "anthropic/claude-3-haiku", name: "Haiku", provider: "anthropic", supportsTools: false, hasZdrEndpoint: true },
@@ -20,7 +27,9 @@ const mockState = vi.hoisted(() => ({
 }));
 
 vi.mock("convex/react", () => ({
-  useQuery: () => mockState.folders,
+  useQuery: (_query: unknown, args: unknown) => args === undefined
+    ? mockState.folders
+    : mockState.remoteMcpConnections,
   useMutation: () => {
     const index = mockState.mutationHookIndex++;
     return index % 2 === 0 ? mockState.createJob : mockState.updateJob;
@@ -123,6 +132,7 @@ beforeEach(() => {
   mockState.updateJob.mockReset();
   mockState.createJob.mockResolvedValue(null);
   mockState.updateJob.mockResolvedValue(null);
+  mockState.remoteMcpConnections = [];
 });
 
 describe("ScheduledJobEditor shell", () => {

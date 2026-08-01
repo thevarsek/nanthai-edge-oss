@@ -17,6 +17,7 @@ import { v } from "convex/values";
 import { internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { fetchLiveMcpTools } from "./mcp_probe";
+import { decryptOAuthCredentials } from "../../lib/secret_crypto";
 
 export const listSlackMcpTools = internalAction({
   args: { userId: v.string() },
@@ -29,7 +30,13 @@ export const listSlackMcpTools = internalAction({
       throw new Error(`No Slack connection for user ${userId}.`);
     }
 
-    const tools = await fetchLiveMcpTools(connection.accessToken);
+    const credentials = await decryptOAuthCredentials({
+      userId,
+      provider: "slack",
+      accessToken: connection.accessToken,
+      refreshToken: connection.refreshToken,
+    });
+    const tools = await fetchLiveMcpTools(credentials.accessToken);
 
     for (const tool of tools) {
       console.log(

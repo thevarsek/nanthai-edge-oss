@@ -15,6 +15,11 @@ import {
   getNotionConnection,
   upsertConnection as upsertNotionConnection,
 } from "../oauth/notion";
+import { testEncryptedOAuthArgs } from "./helpers/credential_envelopes";
+
+process.env.CONVEX_SECRET_ENCRYPTION_KEY = "oauth-test-key";
+process.env.CONVEX_SECRET_ENCRYPTION_ACTIVE_KID = "k1";
+process.env.CONVEX_SECRET_LEGACY_READ_MODE = "migrate";
 
 function authCtx(subject = "user_1") {
   return {
@@ -70,7 +75,9 @@ test("Slack OAuth actions cover config, HTTP, token, auth-test, and disconnect b
   globalThis.fetch = (async () => new Response(JSON.stringify({ ok: false, error: "invalid_code" }), { status: 200 })) as any;
   await assert.rejects(
     (exchangeSlackCode as any)._handler(authCtx(), { code: "code", redirectUri: "app://slack" }),
-    (error: unknown) => error instanceof ConvexError && /invalid_code/.test(String(error.data?.message)),
+    (error: unknown) => error instanceof ConvexError
+      && error.data?.code === "EXTERNAL_SERVICE"
+      && error.data?.message === "Slack token exchange failed. Please try again.",
   );
 
   const mutations: Array<Record<string, unknown>> = [];
@@ -126,8 +133,7 @@ test("Slack and Notion OAuth mutations and public metadata queries preserve life
   const slack = oauthDb(slackExisting);
   assert.equal(await (upsertSlackConnection as any)._handler({ db: slack.db }, {
     userId: "user_1",
-    accessToken: "new",
-    refreshToken: "refresh",
+    ...testEncryptedOAuthArgs(),
     expiresAt: 20,
     scopes: ["chat:write"],
     expectedLastRefreshedAt: 5,
@@ -155,8 +161,8 @@ test("Slack and Notion OAuth mutations and public metadata queries preserve life
   const notion = oauthDb(notionExisting);
   await (upsertNotionConnection as any)._handler({ db: notion.db }, {
     userId: "user_1",
-    accessToken: "notion-token",
-    refreshToken: "",
+    ...testEncryptedOAuthArgs(),
+    encryptedRefreshToken: "",
     expiresAt: 99,
     scopes: [],
     email: "",

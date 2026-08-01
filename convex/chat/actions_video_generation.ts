@@ -30,6 +30,11 @@ import {
   downloadVideoContent,
   type SubmitVideoJobRequest,
 } from "../lib/openrouter_video";
+import {
+  createVideoOutputUploadToken,
+  hashVideoOutputUploadToken,
+  VIDEO_OUTPUT_UPLOAD_TTL_MS,
+} from "./video_output_upload_policy";
 import { OPENROUTER_DEFAULT_PROVIDER_SORT } from "../lib/model_constants";
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import type { VideoConfig } from "./actions_run_generation_types";
@@ -492,11 +497,13 @@ export async function submitVideoGenerationHandler(
     if (generateAudio !== undefined) {
       request.generate_audio = generateAudio;
     }
-    let outputUploadToken: string | undefined;
+    let outputUploadId: Id<"videoOutputUploads"> | undefined;
     if (modelRequiresOutputUploadUrl(participant.modelId)) {
-      outputUploadToken = crypto.randomUUID();
-      await ctx.runMutation(internal.chat.mutations.createVideoOutputUploadSession, {
-        token: outputUploadToken,
+      const outputUploadToken = createVideoOutputUploadToken();
+      const tokenHash = await hashVideoOutputUploadToken(outputUploadToken);
+      outputUploadId = await ctx.runMutation(internal.chat.mutations.createVideoOutputUploadSession, {
+        tokenHash,
+        expiresAt: Date.now() + VIDEO_OUTPUT_UPLOAD_TTL_MS,
         messageId: participant.messageId,
         chatId,
         userId,
@@ -620,8 +627,7 @@ export async function submitVideoGenerationHandler(
         chatId,
         userId,
         openRouterJobId: submission.id,
-        pollingUrl: submission.polling_url,
-        outputUploadToken,
+        outputUploadId,
         model: participant.modelId,
         prompt: userMessage.content,
         videoConfig: vc ? {
@@ -786,7 +792,7 @@ export async function pollVideoGenerationHandler(
     const apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
 
     // 3. Poll OpenRouter
-    const pollResult = await pollVideoJobStatus(apiKey, videoJob.pollingUrl);
+    const pollResult = await pollVideoJobStatus(apiKey, videoJob.openRouterJobId);
     await validatePollFence(ctx, args);
 
     // 4. Update the videoJobs row with poll count.
@@ -804,7 +810,7 @@ export async function pollVideoGenerationHandler(
           ? "in_progress"
           : "pending",
       pollCount: newPollCount,
-      error: pollResult.error?.message,
+      error: pollResult.status === "failed" ? "Video generation failed" : undefined,
       ...pollExecutionFields(args),
     });
 
@@ -824,7 +830,8 @@ export async function pollVideoGenerationHandler(
       await handleVideoCompleted(ctx, args, pollResult, apiKey, {
         _creationTime: videoJob._creationTime,
         createdAt: videoJob.createdAt,
-        outputUploadToken: videoJob.outputUploadToken,
+        openRouterJobId: videoJob.openRouterJobId,
+        outputUploadId: videoJob.outputUploadId,
         pollCount: newPollCount,
         model: videoJob.model,
       });
@@ -832,7 +839,7 @@ export async function pollVideoGenerationHandler(
     }
 
     if (pollResult.status === "failed") {
-      const errorMsg = pollResult.error?.message ?? "Video generation failed";
+      const errorMsg = "Video generation failed";
       await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
         videoJobId,
         messageId,
@@ -969,26 +976,26 @@ export async function pollVideoGenerationHandler(
 async function handleVideoCompleted(
   ctx: ActionCtx,
   args: PollVideoGenerationArgs,
-  pollResult: { unsigned_urls?: string[]; usage?: { cost?: number; is_byok?: boolean }; generation_id?: string },
+  pollResult: { usage?: { cost?: number; is_byok?: boolean }; generation_id?: string },
   apiKey: string,
   videoJob: {
     _creationTime?: number;
     createdAt?: number;
-    outputUploadToken?: string;
+    openRouterJobId: string;
+    outputUploadId?: Id<"videoOutputUploads">;
     pollCount: number;
     model?: string;
   },
 ): Promise<void> {
   const { chatId, messageId, jobId, userId } = args;
 
-  const contentUrl = pollResult.unsigned_urls?.[0];
   let storageId: Id<"_storage"> | undefined;
   let storedByThisAction = false;
   let storedMimeType = "video/mp4";
   let storedSizeBytes: number | undefined;
 
-  if (contentUrl) {
-    const videoData = await downloadVideoContent(apiKey, contentUrl);
+  if (!videoJob.outputUploadId) {
+    const videoData = await downloadVideoContent(apiKey, videoJob.openRouterJobId);
     await validatePollFence(ctx, args);
     const blob = new Blob([videoData], { type: storedMimeType });
     storageId = await ctx.storage.store(blob);
@@ -1000,10 +1007,10 @@ async function handleVideoCompleted(
       await ctx.storage.delete(storageId).catch(() => undefined);
       throw error;
     }
-  } else if (videoJob.outputUploadToken) {
+  } else {
     const upload = await ctx.runQuery(
-      internal.chat.queries.getVideoOutputUploadByToken,
-      { token: videoJob.outputUploadToken },
+      internal.chat.queries.getVideoOutputUploadById,
+      { uploadId: videoJob.outputUploadId },
     );
     if (upload?.storageId) {
       await validatePollFence(ctx, args);
@@ -1016,7 +1023,7 @@ async function handleVideoCompleted(
   }
 
   if (!storageId) {
-    const errorMsg = videoJob.outputUploadToken
+    const errorMsg = videoJob.outputUploadId
       ? "Video completed but provider upload did not arrive"
       : "Video completed but no content URL returned";
     // Mark the videoJob as failed — OpenRouter said "completed" but gave no URL

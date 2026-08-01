@@ -41,6 +41,7 @@ export function PersonaEditorPage() {
     api.personas.queries.get,
     isNew ? "skip" : { personaId: personaId as Id<"personas"> },
   );
+  const remoteMcpConnections = useQuery(api.mcp.queries.listActiveConnectionOptions, {});
 
   const createPersona = useMutation(api.personas.mutations.create);
   const updatePersona = useMutation(api.personas.mutations.update);
@@ -613,6 +614,25 @@ export function PersonaEditorPage() {
             footer={t("slack_integration_footer")}
           >
             <IntegrationRow slug="slack" label={t("integration_slack")} checked={form.enabledIntegrations.has("slack")} onChange={() => toggleIntegration("slack")} />
+          </SettingsSection>
+        )}
+
+        {(remoteMcpConnections?.length ?? 0) > 0 && (
+          <SettingsSection
+            header={t("remote_mcp_servers")}
+            footer={t("remote_mcp_persona_help")}
+          >
+            {remoteMcpConnections?.map((connection) => (
+              <IntegrationRow
+                key={connection.integrationId}
+                slug="remote-mcp"
+                remoteMcp
+                label={connection.displayName}
+                subtitle={t("remote_mcp_allowed_items", { count: connection.allowedItemCount })}
+                checked={form.enabledIntegrations.has(connection.integrationId as IntegrationKey)}
+                onChange={() => void toggleIntegration(connection.integrationId as IntegrationKey)}
+              />
+            ))}
           </SettingsSection>
         )}
 

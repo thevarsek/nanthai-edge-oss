@@ -3,11 +3,16 @@ import test from "node:test";
 
 import { ConvexError } from "convex/values";
 
+import { decryptSecret, oauthSecretContext } from "../lib/secret_crypto";
 import { getMicrosoftAccessToken, StoredMicrosoftConnection } from "../tools/microsoft/auth";
+
+process.env.CONVEX_SECRET_ENCRYPTION_KEY = "microsoft-auth-test-key";
+process.env.CONVEX_SECRET_ENCRYPTION_ACTIVE_KID = "k1";
+process.env.CONVEX_SECRET_LEGACY_READ_MODE = "migrate";
 
 function connection(overrides: Partial<StoredMicrosoftConnection> = {}): StoredMicrosoftConnection {
   return {
-    _id: "ms_1",
+    _id: "ms_1" as StoredMicrosoftConnection["_id"],
     userId: "user_1",
     provider: "microsoft",
     accessToken: "stored_access",
@@ -93,6 +98,8 @@ test("getMicrosoftAccessToken marks provider refresh failures as expired", async
     );
     assert.deepEqual(mutations, [{
       userId: "user_1",
+      expectedConnectionId: "ms_1",
+      expectedLastRefreshedAt: 0,
       errorMessage: "Token refresh failed (HTTP 401)",
     }]);
   } finally {
@@ -130,7 +137,13 @@ test("getMicrosoftAccessToken keeps the old refresh token when Microsoft does no
     } as any, "user_1");
 
     assert.equal(result.accessToken, "fresh");
-    assert.equal(mutations[0].refreshToken, "stored_refresh");
+    assert.equal(
+      await decryptSecret(
+        String(mutations[0].encryptedRefreshToken),
+        oauthSecretContext("user_1", "microsoft", "refreshToken"),
+      ),
+      "stored_refresh",
+    );
   } finally {
     process.env.MICROSOFT_CLIENT_ID = originalClientId;
     globalThis.fetch = originalFetch;

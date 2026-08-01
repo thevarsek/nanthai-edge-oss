@@ -24,6 +24,7 @@ import { SearchModePanel, type SearchModeState } from "@/components/chat/SearchM
 import { useModelSummaries } from "@/hooks/useSharedData";
 import { buildModelNameMap, getModelDisplayName } from "@/lib/modelDisplay";
 import { formatCost, type CostBreakdown } from "@/hooks/useChatCosts";
+import type { RemoteMcpConnectionOption } from "@/lib/remoteMcp";
 
 import type { TFunction } from "i18next";
 
@@ -249,6 +250,7 @@ export interface ChatModalPanelsProps {
   };
   enabledIntegrations: Set<IntegrationKey>; toggleIntegration: (k: IntegrationKey) => void;
   connectedProviders: { gmail: boolean; google: boolean; microsoft: boolean; apple: boolean; notion: boolean; cloze: boolean; slack: boolean };
+  remoteMcpConnections?: RemoteMcpConnectionOption[];
   googleIntegrationsBlocked?: boolean;
   enabledSkillIds: Set<string>; toggleSkill: (id: Id<"skills">) => void;
   skillOverrides: Map<string, SkillOverrideState>; cycleSkill: (id: Id<"skills">) => void;
@@ -281,7 +283,7 @@ export function ChatModalPanels(p: ChatModalPanelsProps) {
         <ChatParametersDrawer overrides={p.paramOverrides} onChange={p.setParamOverrides} onClose={p.closePanel} defaults={p.paramDefaults} />
       )}
       {p.activePanel === "integrations" && (
-        <ChatIntegrationsPicker enabledIntegrations={p.enabledIntegrations} onToggle={p.toggleIntegration} onClose={p.closePanel} connectedProviders={p.connectedProviders} googleIntegrationsBlocked={p.googleIntegrationsBlocked} />
+        <ChatIntegrationsPicker enabledIntegrations={p.enabledIntegrations} onToggle={p.toggleIntegration} onClose={p.closePanel} connectedProviders={p.connectedProviders} remoteConnections={p.remoteMcpConnections ?? []} googleIntegrationsBlocked={p.googleIntegrationsBlocked} />
       )}
       {p.activePanel === "skills" && (
         <ChatSkillsPicker skillOverrides={p.skillOverrides} onCycleSkill={p.cycleSkill} onClose={p.closePanel} />

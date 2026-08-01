@@ -20,7 +20,12 @@ export interface ToolResult {
 }
 
 export interface ToolDeferredPayload {
-  kind: "spawn_subagents" | "drive_picker" | "presentation_workflow" | "analytics_workflow";
+  kind:
+    | "spawn_subagents"
+    | "drive_picker"
+    | "presentation_workflow"
+    | "analytics_workflow"
+    | "remote_mcp";
   data: unknown;
 }
 

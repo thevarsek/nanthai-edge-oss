@@ -11,6 +11,7 @@ import {
   integrationOverrideEntry,
   loadedSkillStates,
   terminalErrorCode,
+  recordedToolCall,
 } from "../schema_validators";
 import { analyticsClientMetadataValidator } from "../analytics/client_metadata";
 import { advisorSelection } from "../advisors/validators";
@@ -78,6 +79,7 @@ export const sendMessageArgs = {
   recordedAudio: v.optional(recordedAudioValidator),
   attachments: v.optional(v.array(attachmentValidator)),
   presentationContext: v.optional(presentationContextValidator),
+  mcpInvocationIds: v.optional(v.array(v.string())),
   participants: v.array(participantValidator),
   explicitParentIds: v.optional(v.array(v.id("messages"))),
   expandMultiModelGroups: v.optional(v.boolean()),
@@ -195,11 +197,7 @@ export const finalizeGenerationArgs = {
   videoUrls: v.optional(v.array(v.string())),
   userId: v.string(),
   // M10 — Tool execution metadata
-  toolCalls: v.optional(v.array(v.object({
-    id: v.string(),
-    name: v.string(),
-    arguments: v.string(),
-  }))),
+  toolCalls: v.optional(v.array(recordedToolCall)),
   toolResults: v.optional(v.array(v.object({
     toolCallId: v.string(),
     toolName: v.string(),
@@ -325,6 +323,11 @@ export const saveGenerationContinuationArgs = {
         kind: v.literal("drive_picker"),
         batchId: v.id("drivePickerBatches"),
       }),
+      v.object({
+        kind: v.literal("remote_mcp"),
+        invocationId: v.id("mcpInvocations"),
+        toolCallId: v.string(),
+      }),
     )),
     participant: generationParticipantValidator,
     group: v.object({
@@ -382,11 +385,7 @@ export const saveGenerationContinuationArgs = {
         cacheDiscount: v.optional(v.number()),
       }),
     ),
-    toolCalls: v.array(v.object({
-      id: v.string(),
-      name: v.string(),
-      arguments: v.string(),
-    })),
+    toolCalls: v.array(recordedToolCall),
     toolResults: v.array(v.object({
       toolCallId: v.string(),
       toolName: v.string(),
@@ -484,11 +483,7 @@ export const updateMessageToolCallsArgs = {
   streamingMessageId: v.optional(v.id("streamingMessages")),
   executionAttemptId: v.optional(v.id("executionAttempts")),
   executionFence: v.optional(v.number()),
-  toolCalls: v.array(v.object({
-    id: v.string(),
-    name: v.string(),
-    arguments: v.string(),
-  })),
+  toolCalls: v.array(recordedToolCall),
   activeToolCallIds: v.optional(v.array(v.string())),
   toolResults: v.optional(v.array(v.object({
     toolCallId: v.string(),
@@ -592,8 +587,7 @@ export const createVideoJobArgs = {
   chatId: v.id("chats"),
   userId: v.string(),
   openRouterJobId: v.string(),
-  pollingUrl: v.string(),
-  outputUploadToken: v.optional(v.string()),
+  outputUploadId: v.optional(v.id("videoOutputUploads")),
   model: v.string(),
   prompt: v.string(),
   videoConfig: v.optional(v.object({
@@ -612,8 +606,7 @@ export type CreateVideoJobArgs = {
   chatId: Id<"chats">;
   userId: string;
   openRouterJobId: string;
-  pollingUrl: string;
-  outputUploadToken?: string;
+  outputUploadId?: Id<"videoOutputUploads">;
   model: string;
   prompt: string;
   videoConfig?: {
@@ -628,7 +621,8 @@ export type CreateVideoJobArgs = {
 };
 
 export const createVideoOutputUploadSessionArgs = {
-  token: v.string(),
+  tokenHash: v.string(),
+  expiresAt: v.number(),
   messageId: v.id("messages"),
   chatId: v.id("chats"),
   userId: v.string(),
@@ -638,7 +632,8 @@ export const createVideoOutputUploadSessionArgs = {
 } satisfies PropertyValidators;
 
 export type CreateVideoOutputUploadSessionArgs = {
-  token: string;
+  tokenHash: string;
+  expiresAt: number;
   messageId: Id<"messages">;
   chatId: Id<"chats">;
   userId: string;
@@ -648,14 +643,16 @@ export type CreateVideoOutputUploadSessionArgs = {
 };
 
 export const completeVideoOutputUploadArgs = {
-  token: v.string(),
+  uploadId: v.id("videoOutputUploads"),
+  expectedTokenHash: v.string(),
   storageId: v.id("_storage"),
   mimeType: v.string(),
   sizeBytes: v.number(),
 } satisfies PropertyValidators;
 
 export type CompleteVideoOutputUploadArgs = {
-  token: string;
+  uploadId: Id<"videoOutputUploads">;
+  expectedTokenHash: string;
   storageId: Id<"_storage">;
   mimeType: string;
   sizeBytes: number;

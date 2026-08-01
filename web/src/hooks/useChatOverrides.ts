@@ -20,6 +20,7 @@ import {
   DEFAULT_OVERRIDES,
   enabledIntegrationKeysFromOverrides,
   enabledSkillIdsFromOverrides,
+  integrationDefaultsMap,
   integrationOverridesFromChat,
   personaIntegrationDefaults,
   personaSkillDefaults,
@@ -70,6 +71,7 @@ interface UseChatOverridesArgs {
   chat: Chat | null | undefined;
   chatId: Id<"chats"> | undefined;
   activePersona: SkillPersonaSource | null;
+  settingsIntegrationDefaults?: ReadonlyArray<IntegrationOverrideEntry> | null;
   updateChat: UseChatReturn["updateChat"];
 }
 
@@ -79,6 +81,7 @@ export function useChatOverrides({
   chat,
   chatId,
   activePersona,
+  settingsIntegrationDefaults,
   updateChat,
 }: UseChatOverridesArgs) {
   const setChatSkillOverrides = useMutation(api.skills.mutations.setChatSkillOverrides);
@@ -104,9 +107,14 @@ export function useChatOverrides({
     [activePersona],
   );
 
+  const settingsIntegrationDefaultsMap = useMemo(
+    () => integrationDefaultsMap(settingsIntegrationDefaults),
+    [settingsIntegrationDefaults],
+  );
+
   const personaIntegrationDefaultsMap = useMemo(
-    () => personaIntegrationDefaults(activePersona),
-    [activePersona],
+    () => personaIntegrationDefaults(activePersona, settingsIntegrationDefaultsMap),
+    [activePersona, settingsIntegrationDefaultsMap],
   );
 
   // ── Resolved from chat (server state) ───────────────────────────────────

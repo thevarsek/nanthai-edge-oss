@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-scheduled-encryption-key";
+
 import { ConvexError } from "convex/values";
+import { decryptSecret, userApiKeySecretContext } from "../lib/secret_crypto";
 import {
   createJobTriggerToken,
   createJob,
@@ -468,9 +471,11 @@ test("upsertApiKey patches existing secret and deleteApiKey removes it when pres
   await (deleteApiKey as any)._handler({
     auth: buildAuth(),
     db: {
-      query: () => ({
+      query: (table: string) => ({
         withIndex: () => ({
-          unique: async () => ({ _id: "secret_1", userId: "user_1", apiKey: "sk-new" }),
+          unique: async () => table === "userSecrets"
+            ? { _id: "secret_1", userId: "user_1", apiKey: "sk-new" }
+            : null,
         }),
       }),
       delete: async (id: string) => {
@@ -480,7 +485,10 @@ test("upsertApiKey patches existing secret and deleteApiKey removes it when pres
   }, {});
 
   assert.equal(patches[0]?.id, "secret_1");
-  assert.equal(patches[0]?.value.apiKey, "sk-new");
+  assert.equal(
+    await decryptSecret(String(patches[0]?.value.apiKey), userApiKeySecretContext("user_1")),
+    "sk-new",
+  );
   assert.deepEqual(deleted, ["secret_1"]);
 });
 

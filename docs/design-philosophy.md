@@ -17,7 +17,7 @@ NanthAI Edge replaces a React + Supabase web app (chatology-nanthai, 200+ users)
 | 5 | **Internet Search** | Multi-tier internet search (`basic`, `web`, `paper`) with lightweight search and deep research flows |
 | 6 | **Convex-Backed Runtime** | Long-running generation + tool execution continue while app is backgrounded, with realtime UI updates |
 | 7 | **Folder Organization** | Chats organized into user-created folders |
-| 8 | **OpenRouter OAuth PKCE** | Native auth flow — user gets their own API key, stored in Keychain |
+| 8 | **OpenRouter OAuth PKCE** | Clients validate PKCE state; Convex exchanges the code and encrypts the API key at rest |
 
 ## Design Philosophy — iMessage as Golden Standard
 

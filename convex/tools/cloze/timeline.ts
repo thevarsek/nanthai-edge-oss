@@ -88,11 +88,10 @@ export const clozeAddNote = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze add note failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze add note failed (HTTP ${response.status}).`,
         };
       }
 
@@ -186,11 +185,10 @@ export const clozeAddTodo = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze add todo failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze add todo failed (HTTP ${response.status}).`,
         };
       }
 
@@ -274,11 +272,10 @@ export const clozeTimeline = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze timeline failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze timeline failed (HTTP ${response.status}).`,
         };
       }
 
@@ -380,11 +377,10 @@ export const clozeSaveDraft = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze save draft failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze save draft failed (HTTP ${response.status}).`,
         };
       }
 
@@ -445,11 +441,10 @@ export const clozeAboutMe = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze about me failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze about me failed (HTTP ${response.status}).`,
         };
       }
 

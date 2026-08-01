@@ -73,6 +73,6 @@ export function openRouterErrorDetails(
 
   return {
     code: "INTERNAL_ERROR",
-    message: `OpenRouter API error (${status}): ${message}`,
+    message: `OpenRouter request failed (HTTP ${status}). Please try again or reconnect OpenRouter in Settings.`,
   };
 }

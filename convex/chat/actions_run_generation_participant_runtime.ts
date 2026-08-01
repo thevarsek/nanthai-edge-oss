@@ -43,6 +43,12 @@ import {
   attachmentTriggeredReadToolNames,
 } from "./helpers_attachment_utils";
 import type { ContextAttachment } from "./helpers_types";
+import {
+  loadAllowedRemoteMcpToolsForChat,
+  remoteMcpToolCallDisplayMetadata,
+} from "../mcp/chat_registry";
+import { registerRemoteMcpTools } from "../mcp/tool_registry";
+import { scheduleDeferredRemoteMcp } from "../mcp/deferred_workflow_scheduler";
 
 export function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -462,12 +468,19 @@ export async function runGenerationParticipantRuntimeHandler(
       durationMs: Date.now() - preflightStartedAt,
     });
 
+    const remoteMcpTools = await loadAllowedRemoteMcpToolsForChat(ctx, {
+      userId: effectiveArgs.userId,
+      integrationIds: effectiveArgs.effectiveIntegrations,
+      isPro: effectiveArgs.isPro,
+      toolsDisabled: effectiveArgs.disableTools === true,
+    });
     const toolRegistry = buildRuntimeBaseToolRegistry({
       isPro: effectiveArgs.isPro,
       disabled: effectiveArgs.disableTools === true,
       allowSubagents: effectiveArgs.allowSubagents,
       webSearchToolEnabled: effectiveArgs.webSearchEnabled === true,
     });
+    registerRemoteMcpTools(toolRegistry, remoteMcpTools);
 
     const result = await generateForParticipant({
       ctx,
@@ -477,6 +490,7 @@ export async function runGenerationParticipantRuntimeHandler(
       memoryContext,
       modelCapabilities,
       toolRegistry,
+      toolCallDisplayMetadata: remoteMcpToolCallDisplayMetadata(remoteMcpTools),
       progressiveTools: {
         enabledIntegrations: effectiveArgs.effectiveIntegrations,
         allowSubagents: effectiveArgs.allowSubagents,
@@ -523,6 +537,9 @@ export async function runGenerationParticipantRuntimeHandler(
             continuationCount,
             onHandoff: async (checkpoint) => {
               await scheduleGenerationContinuation(ctx, effectiveArgs, checkpoint);
+            },
+            onDeferredRemoteMcp: async (checkpoint, invocation) => {
+              await scheduleDeferredRemoteMcp(ctx, effectiveArgs, checkpoint, invocation);
             },
           },
     });

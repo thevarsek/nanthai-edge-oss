@@ -19,6 +19,12 @@
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../../_generated/server";
 import { internal } from "../../_generated/api";
+import type { Id } from "../../_generated/dataModel";
+import {
+  decryptOAuthCredentials,
+  encryptOAuthCredentials,
+} from "../../lib/secret_crypto";
+import { resolveStoredMicrosoftOAuthClientConfig } from "../../oauth/microsoft_client_config";
 
 const MICROSOFT_TOKEN_URL =
   "https://login.microsoftonline.com/common/oauth2/v2.0/token";
@@ -38,7 +44,7 @@ const MAX_REFRESH_RETRIES = 2;
 
 /** Shape of the stored oauthConnections row (as returned by getConnectionInternal). */
 export interface StoredMicrosoftConnection {
-  _id: string;
+  _id: Id<"oauthConnections">;
   userId: string;
   provider: string;
   accessToken: string;
@@ -52,6 +58,7 @@ export interface StoredMicrosoftConnection {
   lastUsedAt?: number;
   errorMessage?: string;
   lastRefreshedAt?: number;
+  clientType?: string;
 }
 
 /**
@@ -73,24 +80,31 @@ export async function getMicrosoftAccessToken(
   // Allow retries so that if our CAS write is beaten by a concurrent
   // refresh, we can re-read and return the winner's fresh token.
   for (let attempt = 0; attempt <= MAX_REFRESH_RETRIES; attempt++) {
-    const connection = (await ctx.runQuery(
+    const storedConnection = (await ctx.runQuery(
       internal.oauth.microsoft.getConnectionInternal,
       { userId },
     )) as StoredMicrosoftConnection | null;
 
-    if (!connection) {
+    if (!storedConnection) {
       throw new ConvexError({
         code: "INTEGRATION_NOT_CONNECTED" as const,
         message: "No Microsoft account connected. Ask the user to connect Microsoft in Settings → Connected Accounts.",
       });
     }
 
-    if (connection.status !== "active") {
+    if (storedConnection.status !== "active") {
       throw new ConvexError({
         code: "INTEGRATION_NOT_CONNECTED" as const,
-        message: `Microsoft connection is ${connection.status}. Ask the user to reconnect Microsoft in Settings.`,
+        message: `Microsoft connection is ${storedConnection.status}. Ask the user to reconnect Microsoft in Settings.`,
       });
     }
+    const credentials = await decryptOAuthCredentials({
+      userId,
+      provider: "microsoft",
+      accessToken: storedConnection.accessToken,
+      refreshToken: storedConnection.refreshToken,
+    });
+    const connection: StoredMicrosoftConnection = { ...storedConnection, ...credentials };
 
     // Check if access token needs refresh
     const now = Date.now();
@@ -121,21 +135,17 @@ export async function getMicrosoftAccessToken(
       });
     }
 
-    const clientId = process.env.MICROSOFT_CLIENT_ID;
-    if (!clientId) {
-      throw new ConvexError({
-        code: "MISSING_CONFIG" as const,
-        message: "MICROSOFT_CLIENT_ID environment variable not set.",
-      });
-    }
+    const clientConfig = resolveStoredMicrosoftOAuthClientConfig(connection.clientType);
 
-    // Public/native clients must NOT send client_secret — Microsoft rejects
-    // with AADSTS90023. Only client_id + refresh_token + grant_type are needed.
     const refreshParams: Record<string, string> = {
-      client_id: clientId,
+      client_id: clientConfig.clientId,
       grant_type: "refresh_token",
       refresh_token: connection.refreshToken,
     };
+
+    if (clientConfig.clientSecret) {
+      refreshParams.client_secret = clientConfig.clientSecret;
+    }
 
     const response = await fetch(MICROSOFT_TOKEN_URL, {
       method: "POST",
@@ -144,12 +154,12 @@ export async function getMicrosoftAccessToken(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Microsoft token refresh failed:", errorText);
-
+      await response.body?.cancel();
       // Mark connection as expired so iOS can prompt reconnection
       await ctx.runMutation(internal.oauth.microsoft.markConnectionExpired, {
         userId,
+        expectedConnectionId: storedConnection._id,
+        expectedLastRefreshedAt: lastRefreshed,
         errorMessage: `Token refresh failed (HTTP ${response.status})`,
       });
 
@@ -175,15 +185,22 @@ export async function getMicrosoftAccessToken(
     // Persist the refreshed token with CAS guard.
     // Pass `expectedLastRefreshedAt` so that if another tool already wrote
     // a newer refresh, the mutation skips our write (no-op) and we re-read.
-    await ctx.runMutation(internal.oauth.microsoft.upsertConnection, {
+    const encrypted = await encryptOAuthCredentials({
       userId,
       accessToken: tokens.access_token,
       refreshToken: newRefreshToken,
+      provider: "microsoft",
+    });
+    await ctx.runMutation(internal.oauth.microsoft.upsertConnection, {
+      userId,
+      ...encrypted,
       expiresAt: newExpiresAt,
       scopes: connection.scopes,
       email: connection.email,
       displayName: connection.displayName,
+      clientType: connection.clientType === "web" ? "web" : "native",
       expectedLastRefreshedAt: lastRefreshed,
+      expectedConnectionId: storedConnection._id,
     });
 
     // Re-read to confirm our write landed (or pick up the winner's token).
@@ -193,10 +210,20 @@ export async function getMicrosoftAccessToken(
     )) as StoredMicrosoftConnection | null;
 
     if (updated && updated.expiresAt - Date.now() > REFRESH_BUFFER_MS) {
+      const updatedCredentials = await decryptOAuthCredentials({
+        userId,
+        provider: "microsoft",
+        accessToken: updated.accessToken,
+        refreshToken: updated.refreshToken,
+      });
+      const decryptedUpdated: StoredMicrosoftConnection = {
+        ...updated,
+        ...updatedCredentials,
+      };
       // Either our write landed or another tool's refresh is already stored.
       return {
-        accessToken: updated.accessToken,
-        connection: updated,
+        accessToken: decryptedUpdated.accessToken,
+        connection: decryptedUpdated,
       };
     }
 

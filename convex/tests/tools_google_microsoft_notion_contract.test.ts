@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-provider-encryption-key";
+
 import {
   assertGoogleCapabilityGranted,
   getGoogleAccessToken,
@@ -8,9 +10,13 @@ import {
   MissingGoogleCapabilityError,
 } from "../tools/google/auth";
 import { getMicrosoftAccessToken } from "../tools/microsoft/auth";
-import { getNotionAccessToken } from "../tools/notion/auth";
+import {
+  getNotionAccessToken,
+  refreshNotionAccessToken,
+} from "../tools/notion/auth";
 import { getSlackAccessToken } from "../tools/slack/auth";
 import { notionFetch, notionHeaders } from "../tools/notion/client";
+import { decryptOAuthCredentials } from "../lib/secret_crypto";
 
 function jsonResponse(status: number, payload: unknown, headers?: Record<string, string>) {
   return {
@@ -159,8 +165,15 @@ test("getGoogleAccessToken refreshes expired tokens and persists the refreshed v
     assert.equal(result.accessToken, "fresh_from_db");
     assert.equal(mutations.length, 1);
     assert.equal(mutations[0]?.userId, "user_1");
-    assert.equal(mutations[0]?.accessToken, "fresh_from_provider");
-    assert.equal(mutations[0]?.refreshToken, "refresh_1");
+    assert.equal(mutations[0]?.expectedConnectionId, "google_1");
+    const stored = await decryptOAuthCredentials({
+      userId: "user_1",
+      provider: "google",
+      accessToken: String(mutations[0]?.encryptedAccessToken),
+      refreshToken: String(mutations[0]?.encryptedRefreshToken),
+    });
+    assert.equal(stored.accessToken, "fresh_from_provider");
+    assert.equal(stored.refreshToken, "refresh_1");
     assert.equal(mutations[0]?.clientType, "native");
   } finally {
     process.env.GOOGLE_CLIENT_ID = originalClientId;
@@ -201,6 +214,8 @@ test("getGoogleAccessToken marks the connection expired when the refresh request
 
     assert.deepEqual(mutations, [{
       userId: "user_1",
+      expectedConnectionId: "google_1",
+      expectedLastRefreshedAt: 0,
       errorMessage: "Token refresh failed (HTTP 401)",
     }]);
   } finally {
@@ -211,8 +226,10 @@ test("getGoogleAccessToken marks the connection expired when the refresh request
 
 test("getMicrosoftAccessToken refreshes expired tokens and stores rotated refresh tokens", async () => {
   const originalClientId = process.env.MICROSOFT_CLIENT_ID;
+  const originalClientSecret = process.env.MICROSOFT_CLIENT_SECRET;
   const originalFetch = globalThis.fetch;
   process.env.MICROSOFT_CLIENT_ID = "microsoft_client";
+  process.env.MICROSOFT_CLIENT_SECRET = "microsoft_secret";
 
   const queryResults = [
     {
@@ -228,6 +245,7 @@ test("getMicrosoftAccessToken refreshes expired tokens and stores rotated refres
       status: "active",
       connectedAt: 1,
       lastRefreshedAt: 0,
+      clientType: "web",
     },
     {
       _id: "ms_1",
@@ -242,6 +260,7 @@ test("getMicrosoftAccessToken refreshes expired tokens and stores rotated refres
       status: "active",
       connectedAt: 1,
       lastRefreshedAt: Date.now(),
+      clientType: "web",
     },
   ];
   const mutations: Array<Record<string, unknown>> = [];
@@ -253,6 +272,7 @@ test("getMicrosoftAccessToken refreshes expired tokens and stores rotated refres
     );
     const params = new URLSearchParams(String(init?.body));
     assert.equal(params.get("client_id"), "microsoft_client");
+    assert.equal(params.get("client_secret"), "microsoft_secret");
     assert.equal(params.get("refresh_token"), "refresh_1");
     return jsonResponse(200, {
       access_token: "fresh_from_provider",
@@ -272,10 +292,18 @@ test("getMicrosoftAccessToken refreshes expired tokens and stores rotated refres
 
     assert.equal(result.accessToken, "fresh_from_db");
     assert.equal(mutations.length, 1);
-    assert.equal(mutations[0]?.refreshToken, "refresh_2");
-    assert.equal(mutations[0]?.accessToken, "fresh_from_provider");
+    const stored = await decryptOAuthCredentials({
+      userId: "user_1",
+      provider: "microsoft",
+      accessToken: String(mutations[0]?.encryptedAccessToken),
+      refreshToken: String(mutations[0]?.encryptedRefreshToken),
+    });
+    assert.equal(stored.refreshToken, "refresh_2");
+    assert.equal(stored.accessToken, "fresh_from_provider");
+    assert.equal(mutations[0]?.clientType, "web");
   } finally {
     process.env.MICROSOFT_CLIENT_ID = originalClientId;
+    process.env.MICROSOFT_CLIENT_SECRET = originalClientSecret;
     globalThis.fetch = originalFetch;
   }
 });
@@ -345,6 +373,125 @@ test("getNotionAccessToken returns the stored token and rejects inactive connect
   );
 });
 
+test("refreshNotionAccessToken rotates and encrypts both user-scoped tokens", async () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  process.env.NOTION_CLIENT_ID = "notion_client";
+  process.env.NOTION_CLIENT_SECRET = "notion_secret";
+
+  let storedConnection: Record<string, unknown> = {
+    _id: "notion_1",
+    userId: "user_1",
+    provider: "notion",
+    accessToken: "stale_access",
+    refreshToken: "refresh_1",
+    expiresAt: 1,
+    scopes: [],
+    status: "active",
+    connectedAt: 1,
+    lastRefreshedAt: 0,
+  };
+  const mutations: Array<Record<string, unknown>> = [];
+
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    assert.equal(url, "https://api.notion.com/v1/oauth/token");
+    const headers = init?.headers as Record<string, string>;
+    assert.match(headers.Authorization, /^Basic /);
+    assert.equal(headers["Notion-Version"], "2026-03-11");
+    assert.deepEqual(JSON.parse(String(init?.body)), {
+      grant_type: "refresh_token",
+      refresh_token: "refresh_1",
+    });
+    return jsonResponse(200, {
+      access_token: "fresh_access",
+      refresh_token: "refresh_2",
+    });
+  }) as any;
+
+  try {
+    const result = await refreshNotionAccessToken({
+      runQuery: async () => storedConnection,
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+        if (args.encryptedAccessToken) {
+          storedConnection = {
+            ...storedConnection,
+            accessToken: args.encryptedAccessToken,
+            refreshToken: args.encryptedRefreshToken,
+            lastRefreshedAt: 10,
+          };
+        }
+      },
+    } as any, "user_1");
+
+    assert.equal(result.accessToken, "fresh_access");
+    assert.equal(mutations[0]?.expectedLastRefreshedAt, 0);
+    const credentials = await decryptOAuthCredentials({
+      userId: "user_1",
+      provider: "notion",
+      accessToken: String(mutations[0]?.encryptedAccessToken),
+      refreshToken: String(mutations[0]?.encryptedRefreshToken),
+    });
+    assert.deepEqual(credentials, {
+      accessToken: "fresh_access",
+      refreshToken: "refresh_2",
+    });
+  } finally {
+    process.env = originalEnv;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("refreshNotionAccessToken adopts a concurrent rotated token after provider rejection", async () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  process.env.NOTION_CLIENT_ID = "notion_client";
+  process.env.NOTION_CLIENT_SECRET = "notion_secret";
+  const queryResults = [
+    {
+      _id: "notion_1",
+      userId: "user_1",
+      provider: "notion",
+      accessToken: "stale_access",
+      refreshToken: "refresh_1",
+      expiresAt: 1,
+      scopes: [],
+      status: "active",
+      connectedAt: 1,
+      lastRefreshedAt: 0,
+    },
+    {
+      _id: "notion_1",
+      userId: "user_1",
+      provider: "notion",
+      accessToken: "winner_access",
+      refreshToken: "winner_refresh",
+      expiresAt: 2,
+      scopes: [],
+      status: "active",
+      connectedAt: 1,
+      lastRefreshedAt: 10,
+    },
+  ];
+  let mutationCalled = false;
+  globalThis.fetch = (async () => jsonResponse(400, { error: "invalid_grant" })) as any;
+
+  try {
+    const result = await refreshNotionAccessToken({
+      runQuery: async () => queryResults.shift() ?? null,
+      runMutation: async () => {
+        mutationCalled = true;
+      },
+    } as any, "user_1");
+
+    assert.equal(result.accessToken, "winner_access");
+    assert.equal(mutationCalled, false);
+  } finally {
+    process.env = originalEnv;
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("getSlackAccessToken refreshes rotated user tokens and stores the new refresh token", async () => {
   const originalEnv = { ...process.env };
   const originalFetch = globalThis.fetch;
@@ -412,8 +559,14 @@ test("getSlackAccessToken refreshes rotated user tokens and stores the new refre
 
     assert.equal(result.accessToken, "fresh_from_db");
     assert.equal(mutations.length, 1);
-    assert.equal(mutations[0]?.refreshToken, "refresh_2");
-    assert.equal(mutations[0]?.accessToken, "fresh_from_provider");
+    const stored = await decryptOAuthCredentials({
+      userId: "user_1",
+      provider: "slack",
+      accessToken: String(mutations[0]?.encryptedAccessToken),
+      refreshToken: String(mutations[0]?.encryptedRefreshToken),
+    });
+    assert.equal(stored.refreshToken, "refresh_2");
+    assert.equal(stored.accessToken, "fresh_from_provider");
     assert.deepEqual(mutations[0]?.scopes, ["chat:write", "search:read.public"]);
     assert.equal(mutations[0]?.expectedLastRefreshedAt, 0, "OCC guard must forward lastRefreshedAt from the stale connection");
   } finally {
@@ -527,4 +680,78 @@ test("notionFetch retries transport failures with backoff and exposes canonical 
     globalThis.fetch = originalFetch;
     globalThis.setTimeout = originalSetTimeout;
   }
+});
+
+test("notionFetch refreshes once after a 401 and retries with the rotated token", async () => {
+  const originalEnv = { ...process.env };
+  const originalFetch = globalThis.fetch;
+  process.env.NOTION_CLIENT_ID = "notion_client";
+  process.env.NOTION_CLIENT_SECRET = "notion_secret";
+
+  let storedConnection: Record<string, unknown> = {
+    _id: "notion_1",
+    userId: "user_1",
+    provider: "notion",
+    accessToken: "stale_access",
+    refreshToken: "refresh_1",
+    expiresAt: 1,
+    scopes: [],
+    status: "active",
+    connectedAt: 1,
+    lastRefreshedAt: 0,
+  };
+  const apiAuthorizations: string[] = [];
+
+  globalThis.fetch = (async (url: string, init?: RequestInit) => {
+    if (url === "https://api.notion.com/v1/oauth/token") {
+      return jsonResponse(200, {
+        access_token: "fresh_access",
+        refresh_token: "refresh_2",
+      });
+    }
+
+    apiAuthorizations.push(
+      String((init?.headers as Record<string, string>).Authorization),
+    );
+    return apiAuthorizations.length === 1
+      ? jsonResponse(401, { object: "error" })
+      : jsonResponse(200, { ok: true });
+  }) as any;
+
+  try {
+    const response = await notionFetch({
+      userId: "user_1",
+      ctx: {
+        runQuery: async () => storedConnection,
+        runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+          if (args.leaseMs) return { granted: true, waitMs: 0 };
+          if (args.encryptedAccessToken) {
+            storedConnection = {
+              ...storedConnection,
+              accessToken: args.encryptedAccessToken,
+              refreshToken: args.encryptedRefreshToken,
+              lastRefreshedAt: 10,
+            };
+          }
+          return undefined;
+        },
+      },
+    } as any, "/search", "stale_access");
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(apiAuthorizations, [
+      "Bearer stale_access",
+      "Bearer fresh_access",
+    ]);
+  } finally {
+    process.env = originalEnv;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("notionFetch rejects credential-bearing requests outside the exact API origin", async () => {
+  await assert.rejects(
+    () => notionFetch({ userId: "user_1", ctx: {} } as any, "https://evil.example/v1/pages", "token"),
+    /Invalid Notion API URL/,
+  );
 });

@@ -4,7 +4,6 @@ import { assertCurrentFence, terminalizeExecution } from "../execution/control_p
 import { GENERATED_MEDIA_REFERENCE_TRACKING_VERSION } from "../lib/generated_media_reference_tracking";
 import type { FinalizeGenerationArgs } from "./mutations_internal_handlers";
 import { finalizeGenerationHandler } from "./mutations_internal_handlers";
-import { VIDEO_OUTPUT_UPLOAD_TTL_MS } from "./video_output_upload_policy";
 
 type VideoFence = {
   executionAttemptId?: Id<"executionAttempts">;
@@ -16,8 +15,7 @@ type CreateVideoJobArgs = VideoFence & {
   chatId: Id<"chats">;
   userId: string;
   openRouterJobId: string;
-  pollingUrl: string;
-  outputUploadToken?: string;
+  outputUploadId?: Id<"videoOutputUploads">;
   model: string;
   prompt: string;
   videoConfig?: {
@@ -64,8 +62,7 @@ export async function createVideoJobHandler(
     chatId: args.chatId,
     userId: args.userId,
     openRouterJobId: args.openRouterJobId,
-    pollingUrl: args.pollingUrl,
-    outputUploadToken: args.outputUploadToken,
+    outputUploadId: args.outputUploadId,
     status: "pending",
     model: args.model,
     prompt: args.prompt,
@@ -81,16 +78,17 @@ export async function createVideoJobHandler(
 export async function createVideoOutputUploadSessionHandler(
   ctx: MutationCtx,
   args: VideoFence & {
-    token: string;
+    tokenHash: string;
+    expiresAt: number;
     messageId: Id<"messages">;
     chatId: Id<"chats">;
     userId: string;
     executionRunId?: Id<"executionRuns">;
   },
-): Promise<void> {
+): Promise<Id<"videoOutputUploads">> {
   await assertOptionalVideoFence(ctx, args);
-  await ctx.db.insert("videoOutputUploads", {
-    token: args.token,
+  return await ctx.db.insert("videoOutputUploads", {
+    tokenHash: args.tokenHash,
     messageId: args.messageId,
     chatId: args.chatId,
     userId: args.userId,
@@ -99,24 +97,24 @@ export async function createVideoOutputUploadSessionHandler(
     executionAttemptId: args.executionAttemptId,
     executionFence: args.executionFence,
     createdAt: Date.now(),
+    expiresAt: args.expiresAt,
   });
 }
 
 export async function completeVideoOutputUploadHandler(
   ctx: MutationCtx,
   args: {
-    token: string;
+    uploadId: Id<"videoOutputUploads">;
+    expectedTokenHash: string;
     storageId: Id<"_storage">;
     mimeType: string;
     sizeBytes: number;
   },
 ): Promise<boolean> {
-  const session = await ctx.db
-    .query("videoOutputUploads")
-    .withIndex("by_token", (query) => query.eq("token", args.token))
-    .first();
+  const session = await ctx.db.get(args.uploadId);
   if (!session || session.status !== "pending") return false;
-  if (Date.now() - session.createdAt > VIDEO_OUTPUT_UPLOAD_TTL_MS) return false;
+  if (session.tokenHash !== args.expectedTokenHash) return false;
+  if (session.expiresAt <= Date.now()) return false;
   await ctx.db.patch(session._id, {
     status: "uploaded",
     storageId: args.storageId,

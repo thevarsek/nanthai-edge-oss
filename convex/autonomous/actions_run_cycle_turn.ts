@@ -289,9 +289,11 @@ export async function runParticipantTurn(
       throw new Error(CANCELLED_TURN_ERROR);
     }
     jobId = createdJobId;
+    const activeMessageId = createdMessageId;
+    const activeJobId = createdJobId;
 
     await ctx.runMutation(internal.chat.mutations.updateJobStatus, {
-      jobId,
+      jobId: activeJobId,
       executionAttemptId,
       executionFence,
       status: "streaming",
@@ -310,7 +312,7 @@ export async function runParticipantTurn(
 
     const baseRequestMessages = deps.buildRequestMessages({
       messages: currentMessages,
-      excludeMessageId: messageId,
+      excludeMessageId: activeMessageId,
       systemPrompt: effectiveSystemPrompt,
       memoryContext: resolvedMemoryContext || memoryContext,
       expandMultiModelGroups: false,
@@ -346,8 +348,8 @@ export async function runParticipantTurn(
       ctx,
       chatId,
       userId,
-      assistantMessageId: messageId,
-      jobId,
+      assistantMessageId: activeMessageId,
+      jobId: activeJobId,
       participantId: participant.participantId,
       legacyMessages: baseRequestMessages,
       allMessages: currentMessages,
@@ -363,7 +365,7 @@ export async function runParticipantTurn(
     });
 
     if (promotedRequest.messages.length === 0) {
-      await cleanupTransientTurnEntities(ctx, messageId, jobId);
+      await cleanupTransientTurnEntities(ctx, activeMessageId, activeJobId);
       return { kind: "skipped" };
     }
 
@@ -423,13 +425,12 @@ export async function runParticipantTurn(
     let cancellationCheckCounter = 0;
 
     const assertTurnStillActive = async () => {
-      if (!jobId) return;
       await assertSessionEpochActive();
       cancellationCheckCounter += 1;
       if (cancellationCheckCounter % 2 !== 0) return;
       const isCancelled = await ctx.runQuery(
         internal.chat.queries.isJobCancelled,
-        { jobId },
+        { jobId: activeJobId },
       );
       if (!isCancelled) return;
       await markTurnCancelled();
@@ -438,7 +439,7 @@ export async function runParticipantTurn(
 
     const writer = deps.createStreamWriter({
       ctx,
-      messageId,
+      messageId: activeMessageId,
       executionAttemptId,
       executionFence,
       beforePatch: assertTurnStillActive,
@@ -448,10 +449,10 @@ export async function runParticipantTurn(
     await assertTurnStillActive();
     let shouldCaptureStarted = false;
     try {
-      shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, jobId);
+      shouldCaptureStarted = await markGenerationJobAnalyticsStarted(ctx, activeJobId);
     } catch (error) {
       console.warn("[analytics] failed to mark autonomous turn analytics start", {
-        jobId,
+        jobId: activeJobId,
         error: error instanceof Error ? error.message : String(error),
       });
       shouldCaptureStarted = true;
@@ -463,8 +464,8 @@ export async function runParticipantTurn(
     await captureAssistantResponseStartedEvent(ctx, {
       userId,
       chatId: String(chatId),
-      messageId: String(messageId),
-      jobId: String(jobId),
+      messageId: String(activeMessageId),
+      jobId: String(activeJobId),
       modelId: participant.modelId,
       source: imageTerminalAnalytics?.source ?? "autonomous_discussion",
       participantCount: 1,
@@ -493,8 +494,8 @@ export async function runParticipantTurn(
         sessionId,
         userId,
         chatId,
-        messageId,
-        jobId,
+        messageId: activeMessageId,
+        jobId: activeJobId,
         modelId: participant.modelId,
         participantId: participant.participantId,
         personaId: participant.personaId,
@@ -511,7 +512,7 @@ export async function runParticipantTurn(
         executionAttemptId,
         executionFence,
       });
-      return { kind: "completed", messageId };
+      return { kind: "completed", messageId: activeMessageId };
     }
 
     const result = await deps.callOpenRouterStreaming(
@@ -547,8 +548,8 @@ export async function runParticipantTurn(
     const finalContent = result.content.trim();
     if (!finalContent && result.reasoning) {
       await finalizeTransientTurnFailure(ctx, {
-        messageId,
-        jobId,
+        messageId: activeMessageId,
+        jobId: activeJobId,
         chatId,
         userId,
         reason: "Model returned reasoning only without a visible response.",
@@ -556,8 +557,8 @@ export async function runParticipantTurn(
       await captureAssistantResponseFailure(ctx, {
         userId,
         chatId: String(chatId),
-        messageId: String(messageId),
-        jobId: String(jobId),
+        messageId: String(activeMessageId),
+        jobId: String(activeJobId),
         modelId: participant.modelId,
         source: "autonomous_discussion",
         error: new Error("Model returned reasoning only without a visible response."),
@@ -574,8 +575,8 @@ export async function runParticipantTurn(
       };
     } else if (!finalContent && result.imageUrls.length === 0) {
       await finalizeTransientTurnFailure(ctx, {
-        messageId,
-        jobId,
+        messageId: activeMessageId,
+        jobId: activeJobId,
         chatId,
         userId,
         reason: "Model returned an empty response after retries.",
@@ -583,8 +584,8 @@ export async function runParticipantTurn(
       await captureAssistantResponseFailure(ctx, {
         userId,
         chatId: String(chatId),
-        messageId: String(messageId),
-        jobId: String(jobId),
+        messageId: String(activeMessageId),
+        jobId: String(activeJobId),
         modelId: participant.modelId,
         source: "autonomous_discussion",
         error: new Error("Model returned an empty response after retries."),
@@ -602,8 +603,8 @@ export async function runParticipantTurn(
     }
 
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
-      messageId,
-      jobId,
+      messageId: activeMessageId,
+      jobId: activeJobId,
       chatId,
       content: finalContent,
       status: "completed",
@@ -618,8 +619,8 @@ export async function runParticipantTurn(
     await captureAssistantResponseCompleted(ctx, {
       userId,
       chatId: String(chatId),
-      messageId: String(messageId),
-      jobId: String(jobId),
+      messageId: String(activeMessageId),
+      jobId: String(activeJobId),
       modelId: participant.modelId,
       source: "autonomous_discussion",
       usage: result.usage,
@@ -636,7 +637,7 @@ export async function runParticipantTurn(
       },
     });
 
-    return { kind: "completed", messageId };
+    return { kind: "completed", messageId: activeMessageId };
   } catch (error) {
     if (isCancelledTurnError(error)) {
       await markTurnCancelled();

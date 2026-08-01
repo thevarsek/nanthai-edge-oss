@@ -15,6 +15,7 @@ import { ingestDriveFile } from "../drive_picker/ingest";
 import type { ActionCtx } from "../_generated/server";
 import { getMicrosoftConnection, upsertConnection as upsertMicrosoftConnection } from "../oauth/microsoft";
 import { getNotionConnection } from "../oauth/notion";
+import { testEncryptedOAuthArgs } from "./helpers/credential_envelopes";
 
 function buildAuth(userId: string | null = "user_1") {
   return {
@@ -45,8 +46,8 @@ test("google upsertConnection merges scopes and preserves existing refresh token
     },
   }, {
     userId: "user_1",
-    accessToken: "access_new",
-    refreshToken: "",
+    ...testEncryptedOAuthArgs(),
+    encryptedRefreshToken: "",
     expiresAt: 123,
     scopes: ["https://www.googleapis.com/auth/drive.file"],
     expectedLastRefreshedAt: 10,
@@ -57,7 +58,7 @@ test("google upsertConnection merges scopes and preserves existing refresh token
     "https://www.googleapis.com/auth/drive.file",
     "openid",
   ]);
-  assert.equal(patches[0]?.patch.refreshToken, undefined);
+  assert.equal(patches[0]?.patch.refreshToken, "refresh_old");
 });
 
 test("microsoft upsertConnection uses CAS guard to skip stale refresh writes", async () => {
@@ -81,8 +82,7 @@ test("microsoft upsertConnection uses CAS guard to skip stale refresh writes", a
     },
   }, {
     userId: "user_1",
-    accessToken: "access_new",
-    refreshToken: "refresh_new",
+    ...testEncryptedOAuthArgs(),
     expiresAt: 999,
     scopes: ["Mail.Read"],
     expectedLastRefreshedAt: 10,

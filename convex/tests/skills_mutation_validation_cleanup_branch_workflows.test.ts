@@ -70,6 +70,7 @@ function buildCtx(options?: {
           order: () => chain,
           first: async () => queryRows(table, filters)[0] ?? null,
           collect: async () => queryRows(table, filters),
+          take: async (limit: number) => queryRows(table, filters).slice(0, limit),
         };
         return chain;
       },
@@ -102,6 +103,37 @@ test("skill metadata validation rejects unknown tool, profile, integration, and 
       (error: unknown) => error instanceof ConvexError && error.data?.code === testCase.code,
     );
   }
+});
+
+test("skill metadata accepts only Remote MCP targets owned by the skill owner", async () => {
+  const owned = buildCtx({
+    tableRows: {
+      mcpConnections: [{
+        _id: "mcp_1",
+        userId: "user_1",
+        integrationId: "mcp:connection-1",
+      }],
+    },
+  });
+  await (createSkillInternal as any)._handler(owned.ctx, {
+    userId: "user_1",
+    name: "Cloudflare Research",
+    summary: "Searches documentation",
+    instructionsRaw: "Use the connected Cloudflare Remote MCP tools to answer documentation questions.",
+    requiredIntegrationIds: ["mcp:connection-1"],
+  });
+  assert.deepEqual(owned.inserts[0]?.value.requiredIntegrationIds, ["mcp:connection-1"]);
+
+  await assert.rejects(
+    (createSkillInternal as any)._handler(buildCtx().ctx, {
+      userId: "user_1",
+      name: "Foreign MCP",
+      summary: "Invalid target",
+      instructionsRaw: "Use the selected Remote MCP tools to answer the question.",
+      requiredIntegrationIds: ["mcp:someone-elses-connection"],
+    }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "UNKNOWN_INTEGRATIONS",
+  );
 });
 
 test("public skill creation enforces pro auth, duplicate slugs, and stores normalized user-authored skills", async () => {

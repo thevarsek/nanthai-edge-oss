@@ -31,6 +31,12 @@ import {
   getSlackConnection,
   markConnectionExpired as markSlackConnectionExpired,
 } from "../oauth/slack";
+import { decryptOAuthCredentials } from "../lib/secret_crypto";
+import { testEncryptedOAuthArgs } from "./helpers/credential_envelopes";
+
+process.env.CONVEX_SECRET_ENCRYPTION_KEY = "oauth-test-key";
+process.env.CONVEX_SECRET_ENCRYPTION_ACTIVE_KID = "k1";
+process.env.CONVEX_SECRET_LEGACY_READ_MODE = "migrate";
 
 function buildAuth(userId: string | null = "user_1") {
   return {
@@ -143,8 +149,8 @@ test("exchangeGoogleOnePickCode uses web client secret without PKCE verifier", a
     assert.equal(tokenBody.get("client_id"), "web_client");
     assert.equal(tokenBody.get("client_secret"), "web_secret");
     assert.equal(tokenBody.get("code_verifier"), null);
-    assert.equal(mutations[0]?.accessToken, "access_onepick");
-    assert.equal(mutations[0]?.refreshToken, "");
+    assert.match(String(mutations[0]?.encryptedAccessToken), /^enc:v2:k1:/);
+    assert.equal(mutations[0]?.encryptedRefreshToken, "");
     assert.deepEqual(mutations[0]?.scopes, [
       "https://www.googleapis.com/auth/drive.file",
       "https://www.googleapis.com/auth/userinfo.email",
@@ -210,13 +216,13 @@ test("exchangeGoogleCode rejects legacy Google Gmail requests", async () => {
 
 test("disconnectGoogle revokes the stored token and deleteConnection is idempotent", async () => {
   const originalFetch = globalThis.fetch;
-  const fetches: string[] = [];
+  const fetches: Array<{ url: string; body: string }> = [];
   const mutations: Array<Record<string, unknown>> = [];
   const deleted: string[] = [];
 
   try {
-    globalThis.fetch = (async (url: string | URL) => {
-      fetches.push(String(url));
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      fetches.push({ url: String(url), body: String(init?.body ?? "") });
       return { ok: true } as Response;
     }) as typeof fetch;
 
@@ -245,7 +251,8 @@ test("disconnectGoogle revokes the stored token and deleteConnection is idempote
     }, { userId: "user_1" });
 
     assert.deepEqual(result, { success: true });
-    assert.match(fetches[0] ?? "", /token=refresh_google/);
+    assert.equal(fetches[0]?.url, "https://oauth2.googleapis.com/revoke");
+    assert.equal(new URLSearchParams(fetches[0]?.body).get("token"), "refresh_google");
     assert.deepEqual(mutations[0], { userId: "user_1" });
     assert.deepEqual(deleted, []);
   } finally {
@@ -257,6 +264,7 @@ test("getDrivePickerAccessToken refreshes expired Drive tokens before returning 
   const originalFetch = globalThis.fetch;
   const originalEnv = { ...process.env };
   const mutations: Record<string, unknown>[] = [];
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
   const queryResults = [
     {
       _id: "google_1",
@@ -319,7 +327,7 @@ test("getDrivePickerAccessToken refreshes expired Drive tokens before returning 
     }, {});
 
     assert.equal(result.accessToken, "fresh_picker_token");
-    assert.equal(mutations[0]?.accessToken, "fresh_from_provider");
+    assert.match(String(mutations[0]?.encryptedAccessToken), /^enc:v2:k1:/);
     assert.equal(mutations[0]?.clientType, "web");
   } finally {
     globalThis.fetch = originalFetch;
@@ -350,8 +358,7 @@ test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS 
 
   const staleGoogle = await (upsertGoogleConnection as any)._handler({ db: googleDb }, {
     userId: "user_1",
-    accessToken: "stale_access",
-    refreshToken: "new_refresh_should_not_write",
+    ...testEncryptedOAuthArgs(),
     expiresAt: 100,
     scopes: ["https://www.googleapis.com/auth/drive.file"],
     expectedLastRefreshedAt: 1,
@@ -361,8 +368,8 @@ test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS 
 
   await (upsertGoogleConnection as any)._handler({ db: googleDb }, {
     userId: "user_1",
-    accessToken: "fresh_access",
-    refreshToken: "",
+    ...testEncryptedOAuthArgs(),
+    encryptedRefreshToken: "",
     expiresAt: 200,
     scopes: ["https://www.googleapis.com/auth/drive.file"],
     email: "new@example.com",
@@ -373,7 +380,7 @@ test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS 
   const googlePatch = googlePatches.at(0) as { id: string; patch: Record<string, unknown> } | undefined;
   assert.ok(googlePatch);
   assert.equal(googlePatch.id, "google_1");
-  assert.equal(googlePatch.patch.refreshToken, undefined);
+  assert.equal(googlePatch.patch.refreshToken, "old_refresh");
   assert.equal(googlePatch.patch.email, "new@example.com");
   assert.equal(googlePatch.patch.clientType, "web");
   assert.deepEqual(
@@ -402,8 +409,7 @@ test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS 
   };
   const staleMicrosoft = await (upsertMicrosoftConnection as any)._handler({ db: microsoftDb }, {
     userId: "user_1",
-    accessToken: "stale_access",
-    refreshToken: "rotated_refresh",
+    ...testEncryptedOAuthArgs(),
     expiresAt: 100,
     scopes: ["Calendars.ReadWrite"],
     expectedLastRefreshedAt: 6,
@@ -413,8 +419,8 @@ test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS 
 
   await (upsertMicrosoftConnection as any)._handler({ db: microsoftDb }, {
     userId: "user_1",
-    accessToken: "fresh_access",
-    refreshToken: "",
+    ...testEncryptedOAuthArgs(),
+    encryptedRefreshToken: "",
     expiresAt: 200,
     scopes: ["Calendars.ReadWrite"],
     displayName: "MS User",
@@ -422,9 +428,49 @@ test("Google and Microsoft upserts preserve refresh tokens and ignore stale CAS 
   });
   const microsoftPatch = microsoftPatches.at(0) as Record<string, unknown> | undefined;
   assert.ok(microsoftPatch);
-  assert.equal(microsoftPatch.refreshToken, undefined);
+  assert.equal(microsoftPatch.refreshToken, "old_refresh");
   assert.deepEqual(microsoftPatch.scopes, ["Calendars.ReadWrite"]);
   assert.equal(microsoftPatch.displayName, "MS User");
+});
+
+test("Google refresh writes cannot recreate or expire a replaced connection", async () => {
+  let insertCount = 0;
+  const missingDb = {
+    query: () => ({ withIndex: () => ({ unique: async () => null }) }),
+    insert: async () => {
+      insertCount += 1;
+      return "unexpected";
+    },
+  };
+  const refreshResult = await (upsertGoogleConnection as any)._handler({ db: missingDb }, {
+    userId: "user_1",
+    ...testEncryptedOAuthArgs(),
+    expiresAt: 200,
+    scopes: ["openid"],
+    expectedLastRefreshedAt: 42,
+    expectedConnectionId: "google_old",
+  });
+  assert.equal(refreshResult, null);
+  assert.equal(insertCount, 0);
+
+  const patches: Record<string, unknown>[] = [];
+  const replacementDb = {
+    query: () => ({
+      withIndex: () => ({
+        unique: async () => ({ _id: "google_new", lastRefreshedAt: 99 }),
+      }),
+    }),
+    patch: async (_id: string, values: Record<string, unknown>) => {
+      patches.push(values);
+    },
+  };
+  await (markGoogleConnectionExpired as any)._handler({ db: replacementDb }, {
+    userId: "user_1",
+    expectedConnectionId: "google_old",
+    expectedLastRefreshedAt: 42,
+    errorMessage: "stale refresh failed",
+  });
+  assert.deepEqual(patches, []);
 });
 
 test("Google Drive grant cleanup removes only unreferenced cached blobs and tolerates missing storage", async () => {
@@ -559,11 +605,64 @@ test("exchangeMicrosoftCode requires config and disconnect helpers delete stored
 
     assert.deepEqual(exchange, { success: true, email: "user@example.com" });
     assert.equal(mutations[0]?.displayName, "MS User");
+    assert.equal(mutations[0]?.clientType, "native");
     assert.deepEqual(disconnect, { success: true });
     assert.deepEqual(mutations[1], { userId: "user_1" });
   } finally {
     globalThis.fetch = originalFetch;
     process.env.MICROSOFT_CLIENT_ID = originalClientId;
+  }
+});
+
+test("exchangeMicrosoftCode authenticates confidential web callbacks", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  const requests: RequestInit[] = [];
+  const mutations: Record<string, unknown>[] = [];
+
+  try {
+    process.env.MICROSOFT_CLIENT_ID = "microsoft_client";
+    process.env.MICROSOFT_CLIENT_SECRET = "microsoft_secret";
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      if (String(url).includes("/token")) {
+        requests.push(init ?? {});
+        return {
+          ok: true,
+          json: async () => ({
+            access_token: "access_ms",
+            refresh_token: "refresh_ms",
+            expires_in: 3600,
+            token_type: "Bearer",
+            scope: "Mail.Read",
+          }),
+        } as Response;
+      }
+
+      return {
+        ok: true,
+        json: async () => ({ userPrincipalName: "user@example.com" }),
+      } as Response;
+    }) as typeof fetch;
+
+    await (exchangeMicrosoftCode as any)._handler({
+      auth: buildAuth(),
+      runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
+        mutations.push(args);
+      },
+    }, {
+      code: "code_web",
+      codeVerifier: "verifier_web",
+      redirectUri: "http://localhost:5174/oauth/microsoft/callback",
+    });
+
+    const tokenBody = new URLSearchParams(String(requests[0]?.body ?? ""));
+    assert.equal(tokenBody.get("client_id"), "microsoft_client");
+    assert.equal(tokenBody.get("client_secret"), "microsoft_secret");
+    assert.equal(tokenBody.get("code_verifier"), "verifier_web");
+    assert.equal(mutations[0]?.clientType, "web");
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
   }
 });
 
@@ -624,7 +723,7 @@ test("exchangeMicrosoftCode handles missing access tokens and non-fatal profile 
     });
 
     assert.deepEqual(result, { success: true, email: null });
-    assert.equal(mutations[0]?.accessToken, "access_ms");
+    assert.match(String(mutations[0]?.encryptedAccessToken), /^enc:v2:k1:/);
     assert.deepEqual(mutations[0]?.scopes, []);
     assert.equal(mutations[0]?.email, undefined);
     assert.equal(mutations[0]?.displayName, undefined);
@@ -638,16 +737,19 @@ test("exchangeNotionCode persists workspace metadata and public query returns it
   const originalFetch = globalThis.fetch;
   const originalEnv = { ...process.env };
   const mutations: Record<string, unknown>[] = [];
+  const requests: Array<{ url: string; init?: RequestInit }> = [];
 
   try {
     process.env.NOTION_CLIENT_ID = "notion_client";
     process.env.NOTION_CLIENT_SECRET = "notion_secret";
-    globalThis.fetch = (async (_url: string | URL, init?: RequestInit) => {
+    globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {
+      requests.push({ url: String(url), init });
       assert.match(String(init?.headers && (init.headers as Record<string, string>).Authorization), /^Basic /);
       return {
         ok: true,
         json: async () => ({
           access_token: "access_notion",
+          refresh_token: "refresh_notion",
           bot_id: "bot_1",
           workspace_id: "workspace_1",
           workspace_name: "NanthAI",
@@ -695,7 +797,11 @@ test("exchangeNotionCode persists workspace metadata and public query returns it
     }, {});
     const disconnect = await (disconnectNotion as any)._handler({
       auth: buildAuth(),
-      runQuery: async () => ({ _id: "oauth_notion" }),
+      runQuery: async () => ({
+        _id: "oauth_notion",
+        accessToken: mutations[0]?.encryptedAccessToken,
+        refreshToken: mutations[0]?.encryptedRefreshToken,
+      }),
       runMutation: async (_fn: unknown, args: Record<string, unknown>) => {
         mutations.push(args);
       },
@@ -707,6 +813,18 @@ test("exchangeNotionCode persists workspace metadata and public query returns it
       workspaceName: "NanthAI",
     });
     assert.equal(mutations[0]?.workspaceId, "workspace_1");
+    const storedCredentials = await decryptOAuthCredentials({
+      userId: "user_1",
+      provider: "notion",
+      accessToken: String(mutations[0]?.encryptedAccessToken),
+      refreshToken: String(mutations[0]?.encryptedRefreshToken),
+    });
+    assert.equal(storedCredentials.refreshToken, "refresh_notion");
+    assert.equal(
+      (requests[0]?.init?.headers as Record<string, string> | undefined)?.["Notion-Version"],
+      "2026-03-11",
+    );
+    assert.equal(requests[1]?.url, "https://api.notion.com/v1/oauth/revoke");
     assert.equal(query?.workspaceName, "NanthAI");
     assert.equal(query?.workspaceId, "workspace_1");
     assert.deepEqual(disconnect, { success: true });
@@ -833,8 +951,8 @@ test("exchangeSlackCode stores rotating user tokens and public query returns met
       workspaceName: "NanthAI",
     });
     assert.equal(slackTokenCodeVerifier, "verifier_1");
-    assert.equal(mutations[0]?.accessToken, "xoxe.xoxp-access");
-    assert.equal(mutations[0]?.refreshToken, "xoxe-refresh");
+    assert.match(String(mutations[0]?.encryptedAccessToken), /^enc:v2:k1:/);
+    assert.match(String(mutations[0]?.encryptedRefreshToken), /^enc:v2:k1:/);
     assert.deepEqual(mutations[0]?.scopes, ["chat:write", "search:read.public"]);
     assert.equal(query?.workspaceName, "NanthAI");
     assert.equal(query?.displayName, "Slack User");

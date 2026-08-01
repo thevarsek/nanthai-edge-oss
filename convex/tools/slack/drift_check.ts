@@ -18,6 +18,7 @@
 import { internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { fetchLiveMcpTools, type McpTool } from "./mcp_probe";
+import { decryptOAuthCredentials } from "../../lib/secret_crypto";
 import {
   SLACK_MCP_TOOLS_SNAPSHOT,
   type SlackMcpToolShape,
@@ -122,13 +123,15 @@ export const checkSlackMcpDrift = internalAction({
 
     let liveTools: McpTool[];
     try {
-      liveTools = await fetchLiveMcpTools(connection.accessToken);
-    } catch (err) {
-      console.warn(
-        `[slack-drift] Live tools/list failed — cannot check drift: ${
-          err instanceof Error ? err.message : String(err)
-        }`,
-      );
+      const credentials = await decryptOAuthCredentials({
+        userId: connection.userId,
+        provider: "slack",
+        accessToken: connection.accessToken,
+        refreshToken: connection.refreshToken,
+      });
+      liveTools = await fetchLiveMcpTools(credentials.accessToken);
+    } catch {
+      console.warn("[slack-drift] Live tools/list failed; drift check skipped.");
       return { skipped: true, reason: "live_fetch_failed" };
     }
 

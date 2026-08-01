@@ -92,6 +92,16 @@ import { PaywallModal } from "@/components/shared/PaywallModal";
 import type { PlusMenuItem } from "@/components/chat/ChatPlusMenu";
 import type { PersonaItem } from "@/components/chat/ChatParticipantPicker.helpers";
 import type { QueuedAdvisorSnapshot } from "@/advisors/types";
+import { RemoteMcpPendingPanel } from "@/components/chat/RemoteMcpPendingPanel";
+import {
+  RemoteMcpContentPicker,
+  type StagedRemoteMcpContext,
+} from "@/components/chat/RemoteMcpContentPicker";
+import {
+  enabledRemoteMcpConnectionIds as resolveEnabledRemoteMcpConnectionIds,
+  filterRemoteMcpContentForEnabledConnections,
+  stagedRemoteMcpContextsForChat,
+} from "@/lib/remoteMcp";
 
 export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
@@ -104,6 +114,10 @@ export function ChatPage() {
   const typedChatId = chatId as Id<"chats"> | undefined;
   const typedPrefs = prefs as SharedPreferences | undefined;
   const isPro = !!(proStatus as { isPro?: boolean } | undefined)?.isPro;
+  const remoteMcpConnections = useQuery(api.mcp.queries.listActiveConnectionOptions, {});
+  const remoteMcpContent = useQuery(api.mcp.queries.listAvailableContent, {});
+  const [showRemoteMcpContent, setShowRemoteMcpContent] = useState(false);
+  const [stagedRemoteMcpContexts, setStagedRemoteMcpContexts] = useState<StagedRemoteMcpContext[]>([]);
   const showAdvancedStats = typedPrefs?.showAdvancedStats === true;
   const { messageCosts, totalCost, breakdown } = useChatCosts(typedChatId, showAdvancedStats);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -139,8 +153,29 @@ export function ChatPage() {
     chat,
     chatId: typedChatId,
     activePersona,
+    settingsIntegrationDefaults: typedPrefs?.integrationDefaults,
     updateChat,
   });
+  const enabledRemoteMcpConnectionIds = useMemo(
+    () => resolveEnabledRemoteMcpConnectionIds(remoteMcpConnections, overrides.enabledIntegrations),
+    [overrides.enabledIntegrations, remoteMcpConnections],
+  );
+  const enabledRemoteMcpContent = useMemo(
+    () => filterRemoteMcpContentForEnabledConnections(remoteMcpContent, enabledRemoteMcpConnectionIds),
+    [enabledRemoteMcpConnectionIds, remoteMcpContent],
+  );
+  const enabledRemoteMcpConnectionIdSet = useMemo(
+    () => new Set(enabledRemoteMcpConnectionIds),
+    [enabledRemoteMcpConnectionIds],
+  );
+  const visibleStagedRemoteMcpContexts = useMemo(
+    () => stagedRemoteMcpContextsForChat(
+      stagedRemoteMcpContexts,
+      chatId,
+      enabledRemoteMcpConnectionIdSet,
+    ),
+    [chatId, enabledRemoteMcpConnectionIdSet, stagedRemoteMcpContexts],
+  );
   const [showSlashPalette, setShowSlashPalette] = useState(false);
   const [documentPreview, setDocumentPreview] = useState<DocumentPreviewSelection | null>(null);
   const [stagedPresentationTarget, setStagedPresentationTarget] = useState<{
@@ -178,6 +213,14 @@ export function ChatPage() {
     const alreadyEnabled = overrides.enabledIntegrations.has(key);
     if (alreadyEnabled) {
       overrides.toggleIntegration(key);
+      const disabledConnectionId = remoteMcpConnections?.find(
+        (connection) => connection.integrationId === key,
+      )?.connectionId;
+      if (disabledConnectionId) {
+        setStagedRemoteMcpContexts((current) => current.filter(
+          (context) => context.connectionId !== disabledConnectionId,
+        ));
+      }
       return;
     }
 
@@ -209,7 +252,7 @@ export function ChatPage() {
     }
 
     overrides.toggleIntegration(key);
-  }, [gmailManualConnection?.status, googleConnection, overrides, t, toast]);
+  }, [gmailManualConnection?.status, googleConnection, overrides, remoteMcpConnections, t, toast]);
   const handleSlashSelectIntegration = useCallback(async (key: IntegrationKey) => {
     if (key === "gmail" && gmailManualConnection?.status !== "active") {
       toast({ message: t("connect_gmail_app_password_first"), variant: "error" });
@@ -406,6 +449,10 @@ export function ChatPage() {
       advisors.open();
       return;
     }
+    if (item === "remoteMcpContent") {
+      setShowRemoteMcpContent(true);
+      return;
+    }
     overrides.handlePlusMenuSelect(item);
   }, [advisors, overrides]);
   const plusMenuBadges = useMemo(() => ({
@@ -533,12 +580,17 @@ export function ChatPage() {
   }, [convexComplexity, isResearchPaper, participants.length, toast]);
 
   const handleSend = useCallback(
-    async ({ text, attachments, advisorSnapshot, presentationContext }: {
+    async ({ text, attachments, advisorSnapshot, presentationContext, mcpInvocationIds }: {
       text: string;
       attachments?: ChatAttachment[];
       advisorSnapshot?: QueuedAdvisorSnapshot;
       presentationContext?: PresentationContext;
+      mcpInvocationIds?: string[];
     }) => {
+      if (isResearchPaper && (mcpInvocationIds?.length ?? 0) > 0) {
+        toast({ message: t("remote_mcp_context_normal_chat_only"), variant: "error" });
+        return false;
+      }
       if (advisorSnapshot === undefined && !advisors.canSendCurrentSelection) {
         toast({ message: t("advisor_loading"), variant: "error" });
         return false;
@@ -565,6 +617,7 @@ export function ChatPage() {
           advisorSelections,
           advisorBrief,
           presentationContext,
+          mcpInvocationIds,
         },
         deps: {
           validateAttachmentCount: validateSendState,
@@ -886,6 +939,12 @@ export function ChatPage() {
         generatedDocumentSuggestion={generatedDocumentSuggestion}
         presentationTarget={activePresentationTarget ?? undefined}
         onRemovePresentationTarget={() => setStagedPresentationTarget(null)}
+        remoteMcpContexts={visibleStagedRemoteMcpContexts}
+        onRemoveRemoteMcpContext={(invocationId) => setStagedRemoteMcpContexts((current) =>
+          current.filter((context) => context.invocationId !== invocationId),
+        )}
+        onClearRemoteMcpContexts={() => setStagedRemoteMcpContexts([])}
+        hasRemoteMcpContent={(enabledRemoteMcpContent?.length ?? 0) > 0}
         onRemoveExtra={(i) => {
           const sid = kbAttachmentsForDisplay[i]?.storageId;
           if (sid) overrides.toggleKBFile(sid);
@@ -900,6 +959,7 @@ export function ChatPage() {
           activePanel={overrides.activePanel} closePanel={overrides.closePanel}
           paramOverrides={overrides.paramOverrides} setParamOverrides={overrides.setParamOverrides} paramDefaults={paramDefaults}
           enabledIntegrations={overrides.enabledIntegrations} toggleIntegration={(key) => { void handleIntegrationToggle(key); }} connectedProviders={connectedProviders} googleIntegrationsBlocked={googleIntegrationsBlocked}
+          remoteMcpConnections={remoteMcpConnections ?? []}
           enabledSkillIds={overrides.enabledSkillIds} toggleSkill={overrides.toggleSkill}
           skillOverrides={overrides.skillOverrides} cycleSkill={overrides.cycleSkill}
           selectedKBFileIds={overrides.selectedKBFileIds} toggleKBFile={overrides.toggleKBFile}
@@ -916,6 +976,18 @@ export function ChatPage() {
         {advisors.state.surface === "paywall" && (
           <PaywallModal feature={t("advisors")} onClose={advisors.close} />
         )}
+        {showRemoteMcpContent && typedChatId && (
+          <RemoteMcpContentPicker
+            chatId={typedChatId}
+            enabledConnectionIds={enabledRemoteMcpConnectionIds}
+            onClose={() => setShowRemoteMcpContent(false)}
+            onAttach={(context) => setStagedRemoteMcpContexts((current) => [
+              ...current.filter((entry) => entry.invocationId !== context.invocationId),
+              context,
+            ])}
+          />
+        )}
+        {typedChatId && <RemoteMcpPendingPanel chatId={typedChatId} />}
       </>}
       renameDialog={<RenameChatDialog isOpen={showRename} currentTitle={chat?.title ?? ""} onClose={() => setShowRename(false)} onRename={handleRename} />}
       retryPicker={retryDifferentMessageId ? (

@@ -104,11 +104,10 @@ export const clozeProjectFind = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze project find failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze project find failed (HTTP ${response.status}).`,
         };
       }
 
@@ -254,11 +253,10 @@ export const clozeProjectChange = createTool({
       );
 
       if (!response.ok) {
-        const text = await response.text().catch(() => "");
         return {
           success: false,
           data: null,
-          error: `Cloze project change failed (HTTP ${response.status}): ${text.slice(0, 500)}`,
+          error: `Cloze project change failed (HTTP ${response.status}).`,
         };
       }
 

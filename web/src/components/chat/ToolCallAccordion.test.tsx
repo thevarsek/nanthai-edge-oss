@@ -61,6 +61,28 @@ describe("ToolCallAccordion", () => {
     expect(screen.getByText("(1/2)")).toBeInTheDocument();
   });
 
+  it("shows friendly Remote MCP server and tool names", () => {
+    render(
+      <ToolCallAccordion
+        toolCalls={[{
+          id: "call_mcp",
+          name: "mcp_c7f4b61d4d_search_cloudflare_documentation",
+          arguments: "{}",
+          source: "remote_mcp",
+          displayName: "Search Cloudflare documentation",
+          integrationId: "mcp:connection-1",
+          integrationName: "Cloudflare Docs",
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /used 1 tool/i }));
+
+    expect(screen.getByText("Search Cloudflare documentation")).toBeInTheDocument();
+    expect(screen.getByText("Cloudflare Docs · Remote MCP")).toBeInTheDocument();
+    expect(screen.queryByText(/mcp_c7f4b61d4d/)).not.toBeInTheDocument();
+  });
+
   it("renders trace metadata without tool calls", () => {
     render(<ToolCallAccordion toolCalls={[]} loadedSkillIds={["skill_a"]} usedIntegrationIds={["drive"]} />);
 

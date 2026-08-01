@@ -12,6 +12,25 @@ import { mutation, internalMutation, type MutationCtx } from "../_generated/serv
 import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
+import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
+
+async function assertOwnedRemoteMcpTargets(
+  ctx: MutationCtx,
+  userId: string,
+  overrides: Array<{ integrationId: string }> | undefined,
+): Promise<void> {
+  const unknown = await unknownOwnedRemoteMcpIntegrationIds(
+    ctx,
+    userId,
+    overrides?.map((override) => override.integrationId) ?? [],
+  );
+  if (unknown.length > 0) {
+    throw new ConvexError({
+      code: "UNKNOWN_INTEGRATIONS",
+      message: `Unknown Remote MCP server targets: ${unknown.join(", ")}.`,
+    });
+  }
+}
 
 /** Create a new persona. */
 export const create = mutation({
@@ -39,6 +58,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
+    await assertOwnedRemoteMcpTargets(ctx, userId, args.integrationOverrides);
     const now = Date.now();
 
     // If marking as default, unset other defaults
@@ -103,6 +123,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
+    await assertOwnedRemoteMcpTargets(ctx, userId, args.integrationOverrides);
     const persona = await ctx.db.get(args.personaId);
     if (!persona || persona.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Persona not found or unauthorized" });

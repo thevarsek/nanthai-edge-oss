@@ -9,7 +9,7 @@ export const INTEGRATION_KEYS = [
   "apple_calendar", "notion", "cloze", "slack",
 ] as const;
 
-export type IntegrationKey = (typeof INTEGRATION_KEYS)[number];
+export type IntegrationKey = (typeof INTEGRATION_KEYS)[number] | `mcp:${string}`;
 
 export interface FormState {
   displayName: string;
@@ -62,7 +62,7 @@ export function defaultForm(): FormState {
 export function integrationSetFromArray(arr: string[] | undefined): Set<IntegrationKey> {
   if (!arr) return new Set();
   const valid = new Set<string>(INTEGRATION_KEYS);
-  return new Set(arr.filter((k) => valid.has(k)) as IntegrationKey[]);
+  return new Set(arr.filter((k) => valid.has(k) || k.startsWith("mcp:")) as IntegrationKey[]);
 }
 
 export function integrationSetToArray(s: Set<IntegrationKey>): string[] {

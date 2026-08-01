@@ -162,7 +162,7 @@ export async function callOpenRouterImage(
       if (parsed.error) {
         throw new ConvexError({
           code: "INTERNAL_ERROR" as const,
-          message: extractErrorMessage({ error: parsed.error }),
+          message: "OpenRouter image generation failed. Please try again.",
         });
       }
 

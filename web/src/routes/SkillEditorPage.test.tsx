@@ -6,6 +6,13 @@ import { SkillEditorPage } from "./SkillEditorPage";
 const mockState = vi.hoisted(() => ({
   params: {} as Record<string, string>,
   existingSkill: undefined as unknown,
+  remoteMcpConnections: [] as Array<{
+    connectionId: string;
+    integrationId: string;
+    displayName: string;
+    endpointHost: string;
+    allowedItemCount: number;
+  }>,
   createSkill: vi.fn(async () => ({ validationWarnings: [] as string[] })),
   updateSkill: vi.fn(async () => ({ validationWarnings: [] as string[] })),
   mutationIndex: 0,
@@ -29,7 +36,11 @@ vi.mock("react-router-dom", async (importOriginal) => {
 });
 
 vi.mock("convex/react", () => ({
-  useQuery: (_query: unknown, args: unknown) => (args === "skip" ? undefined : mockState.existingSkill),
+  useQuery: (_query: unknown, args: unknown) => {
+    if (args === "skip") return undefined;
+    if (args && typeof args === "object" && "skillId" in args) return mockState.existingSkill;
+    return mockState.remoteMcpConnections;
+  },
   useMutation: () => {
     const next = mockState.mutationIndex % 2;
     mockState.mutationIndex += 1;
@@ -56,6 +67,7 @@ function renderEditor() {
 beforeEach(() => {
   mockState.params = {};
   mockState.existingSkill = undefined;
+  mockState.remoteMcpConnections = [];
   mockState.mutationIndex = 0;
   mockState.createSkill.mockReset();
   mockState.createSkill.mockResolvedValue({ validationWarnings: [] });
@@ -117,9 +129,9 @@ describe("SkillEditorPage", () => {
 
     expect(screen.getByDisplayValue("Existing Skill")).toBeInTheDocument();
     fireEvent.click(screen.getByText("skill_runtime_workspace_label"));
-    fireEvent.click(screen.getByText("Uses Coding Workspace"));
-    fireEvent.click(screen.getByText("Google Drive"));
-    fireEvent.click(screen.getByText("Slack"));
+    fireEvent.click(screen.getByRole("switch", { name: "skill_uses_coding_workspace" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Google Drive" }));
+    fireEvent.click(screen.getByRole("switch", { name: "Slack" }));
     fireEvent.click(screen.getByText("save"));
 
     await waitFor(() => {
@@ -133,6 +145,39 @@ describe("SkillEditorPage", () => {
       }));
     });
     expect(mockState.navigate).toHaveBeenCalledWith("/app/settings/skills");
+  });
+
+  it("adds an active Remote MCP server as a skill integration target", async () => {
+    mockState.remoteMcpConnections = [{
+      connectionId: "connection-1",
+      integrationId: "mcp:connection-1",
+      displayName: "Cloudflare Docs",
+      endpointHost: "docs.mcp.cloudflare.com",
+      allowedItemCount: 2,
+    }];
+    renderEditor();
+
+    fireEvent.change(screen.getByPlaceholderText("skill_name_placeholder"), { target: { value: "Cloudflare Research" } });
+    fireEvent.change(screen.getByPlaceholderText("skill_instructions_placeholder"), {
+      target: { value: "Use the connected Cloudflare Remote MCP tools to find relevant documentation." },
+    });
+    fireEvent.click(screen.getByRole("switch", { name: "Cloudflare Docs" }));
+    fireEvent.click(screen.getByText("save"));
+
+    await waitFor(() => {
+      expect(mockState.createSkill).toHaveBeenCalledWith(expect.objectContaining({
+        requiredIntegrationIds: ["mcp:connection-1"],
+      }));
+    });
+  });
+
+  it("presents skill routing as end-user switches without internal metadata", () => {
+    renderEditor();
+
+    expect(screen.getByRole("switch", { name: "skill_uses_documents" })).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Google Drive" })).toBeInTheDocument();
+    expect(screen.queryByText("Metadata preview")).not.toBeInTheDocument();
+    expect(screen.queryByText(/backend revalidates/i)).not.toBeInTheDocument();
   });
 
   it("renders a not-found state instead of a blank edit form when the skill lookup returns null", () => {

@@ -157,6 +157,21 @@ export const deleteUserTableBatch = internalMutation({
         : { deleted, cursor: page.continueCursor, done: page.isDone };
     }
 
+    if (tableName === "mcpInvocations") {
+      const rows = await ctx.db
+        .query("mcpInvocations")
+        .withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(BATCH_SIZE);
+      for (const row of rows) {
+        for (const item of row.contentItems ?? []) {
+          if (item.storageId) await ctx.storage.delete(item.storageId).catch(() => undefined);
+        }
+        await ctx.db.delete(row._id);
+        deleted++;
+      }
+      return { deleted };
+    }
+
     if (tableName === "nodePositions") {
       // nodePositions has userId but only by_chat/by_chat_message indexes
       // Cascade via user's chats

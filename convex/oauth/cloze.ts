@@ -8,6 +8,10 @@ import {
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
 import { validateClozeApiKey } from "../tools/cloze/client";
+import {
+  assertEncryptedSecret,
+  encryptOAuthCredentials,
+} from "../lib/secret_crypto";
 
 // Cloze API keys do not expire. We mirror the Apple Calendar pattern and
 // stamp a 10-year expiry so the generic oauthConnections TTL logic never
@@ -58,9 +62,15 @@ export const connectCloze = action({
       });
     }
 
+    const encrypted = await encryptOAuthCredentials({
+      userId,
+      provider: "cloze",
+      accessToken: apiKey,
+      refreshToken: "",
+    });
     await ctx.runMutation(internal.oauth.cloze.upsertConnection, {
       userId,
-      apiKey,
+      ...encrypted,
       email: profile.email,
       displayName: label ?? profile.displayName,
     });
@@ -76,11 +86,16 @@ export const connectCloze = action({
 export const upsertConnection = internalMutation({
   args: {
     userId: v.string(),
-    apiKey: v.string(),
+    encryptedAccessToken: v.string(),
+    encryptedRefreshToken: v.string(),
+    secretEnvelopeVersion: v.literal(2),
+    secretKeyId: v.string(),
     email: v.optional(v.string()),
     displayName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    assertEncryptedSecret(args.encryptedAccessToken);
+    assertEncryptedSecret(args.encryptedRefreshToken, true);
     const existing = await ctx.db
       .query("oauthConnections")
       .withIndex("by_user_provider", (q) =>
@@ -93,14 +108,17 @@ export const upsertConnection = internalMutation({
 
     if (existing) {
       await ctx.db.patch(existing._id, {
-        accessToken: args.apiKey,
-        refreshToken: "",
+        accessToken: args.encryptedAccessToken,
+        refreshToken: args.encryptedRefreshToken || existing.refreshToken,
         expiresAt,
         scopes: [API_KEY_SCOPE_MARKER],
         email: args.email,
         displayName: args.displayName,
         status: "active",
         errorMessage: undefined,
+        secretEnvelopeVersion: args.secretEnvelopeVersion,
+        secretKeyId: args.secretKeyId,
+        secretMigratedAt: now,
       });
       return existing._id;
     }
@@ -108,14 +126,17 @@ export const upsertConnection = internalMutation({
     return await ctx.db.insert("oauthConnections", {
       userId: args.userId,
       provider: "cloze",
-      accessToken: args.apiKey,
-      refreshToken: "",
+      accessToken: args.encryptedAccessToken,
+      refreshToken: args.encryptedRefreshToken,
       expiresAt,
       scopes: [API_KEY_SCOPE_MARKER],
       email: args.email,
       displayName: args.displayName,
       status: "active",
       connectedAt: now,
+      secretEnvelopeVersion: args.secretEnvelopeVersion,
+      secretKeyId: args.secretKeyId,
+      secretMigratedAt: now,
     });
   },
 });

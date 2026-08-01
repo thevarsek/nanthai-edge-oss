@@ -298,6 +298,7 @@ export const createVideoJob = internalMutation({
 
 export const createVideoOutputUploadSession = internalMutation({
   args: createVideoOutputUploadSessionArgs,
+  returns: v.id("videoOutputUploads"),
   handler: createVideoOutputUploadSessionHandler,
 });
 

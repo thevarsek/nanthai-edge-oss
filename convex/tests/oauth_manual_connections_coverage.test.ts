@@ -14,6 +14,7 @@ import {
   connectGmailManual,
   disconnectGmailManual,
 } from "../oauth/gmail_manual_actions";
+import { testEncryptedOAuthArgs } from "./helpers/credential_envelopes";
 
 function buildAuth(userId: string | null = "user_1") {
   return {
@@ -104,7 +105,7 @@ test("Cloze connection mutations create, patch, expire, query, and delete rows",
     { db: createdDb.db },
     {
       userId: "user_1",
-      apiKey: "cloze_key_1",
+      ...testEncryptedOAuthArgs(),
       email: "user@example.com",
       displayName: "Primary Cloze",
     },
@@ -129,13 +130,13 @@ test("Cloze connection mutations create, patch, expire, query, and delete rows",
     { db: existingDb.db },
     {
       userId: "user_1",
-      apiKey: "cloze_key_2",
+      ...testEncryptedOAuthArgs(),
       email: "new@example.com",
       displayName: "Updated Cloze",
     },
   );
   assert.equal(patchedId, "oauth_existing");
-  assert.equal(existingDb.patches[0]?.value.accessToken, "cloze_key_2");
+  assert.match(String(existingDb.patches[0]?.value.accessToken), /^enc:v2:k1:/);
   assert.equal(existingDb.patches[0]?.value.errorMessage, undefined);
 
   await (markClozeConnectionExpired as any)._handler(

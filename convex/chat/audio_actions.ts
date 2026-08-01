@@ -25,6 +25,7 @@ import {
   captureBackendAIOperationStarted,
 } from "../analytics/backend_events";
 import type { OpenRouterUsage } from "../lib/openrouter";
+import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
 
 const PREVIEW_TEXT = "This is a preview of your selected voice for NanthAI Edge.";
 const AUDIO_MODEL_ID = "openai/gpt-audio-mini";
@@ -189,7 +190,7 @@ export async function generateAudioForMessageHandler(
         zdr_required: requireZdr,
       },
     });
-    const apiKey = await ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId });
+    const apiKey = await getOptionalUserOpenRouterApiKey(ctx, userId);
     if (!apiKey) {
       throw new ConvexError({ code: "MISSING_API_KEY" as const, message: "No OpenRouter API key available for audio generation." });
     }
@@ -298,7 +299,7 @@ export async function previewVoiceHandler(
 ): Promise<{ audioBase64: string; transcript: string; mimeType: string }> {
   const { userId } = await requireAuth(ctx);
   const [apiKey, preferences] = await Promise.all([
-    ctx.runQuery(internal.scheduledJobs.queries.getUserApiKey, { userId }),
+    getOptionalUserOpenRouterApiKey(ctx, userId),
     ctx.runQuery(internal.chat.queries.getUserPreferences, { userId }),
   ]);
   if (!apiKey) {

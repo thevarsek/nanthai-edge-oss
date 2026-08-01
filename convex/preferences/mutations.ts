@@ -12,6 +12,7 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { optionalAuth, requireAuth, requirePro } from "../lib/auth";
 import { validateImagePreferenceWrite } from "./image_defaults";
+import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
 
 
 // Batch size for paginating chat subagent-override resets. Kept small enough
@@ -465,6 +466,18 @@ export const setIntegrationDefault = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
+    const unknown = await unknownOwnedRemoteMcpIntegrationIds(
+      ctx,
+      userId,
+      [args.integrationId],
+      { activeOnly: args.enabled },
+    );
+    if (unknown.length > 0) {
+      throw new ConvexError({
+        code: "MCP_INTEGRATION_UNAVAILABLE",
+        message: "This Remote MCP server is not available.",
+      });
+    }
     const now = Date.now();
 
     const prefs = await ctx.db

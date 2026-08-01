@@ -174,7 +174,7 @@ export async function callOpenRouterNonStreaming(
 
         console.error("[openrouter:nonstream] HTTP error", {
           model: currentModel, status: response.status, durationMs: deps.now() - startTime,
-          msgCount, error: errorMessage,
+          msgCount,
         });
         throw new ConvexError(openRouterErrorDetails(response.status, errorMessage));
       }
@@ -186,7 +186,7 @@ export async function callOpenRouterNonStreaming(
       } catch {
         throw new ConvexError({
           code: "INTERNAL_ERROR" as const,
-          message: `OpenRouter returned invalid JSON: ${responseText.slice(0, 200)}`,
+          message: "OpenRouter returned an invalid response. Please try again.",
         });
       }
 
@@ -224,7 +224,6 @@ export async function callOpenRouterNonStreaming(
         }
         console.error("[openrouter:nonstream] 200-wrapped error", {
           model: currentModel, durationMs: deps.now() - startTime, msgCount,
-          error: errorMessage,
         });
         throw new ConvexError(openRouterErrorDetails(200, errorMessage));
       }

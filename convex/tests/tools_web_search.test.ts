@@ -126,7 +126,7 @@ test("web_search fails closed when OpenRouter rejects the required web plugin", 
       assert.ok(error instanceof ConvexError);
       const data = error.data as { code?: string; message?: string };
       assert.equal(data.code, "INTERNAL_ERROR");
-      assert.match(data.message ?? "", /Unsupported parameter plugins/);
+      assert.match(data.message ?? "", /OpenRouter request failed \(HTTP 400\)/);
       return true;
     },
   );

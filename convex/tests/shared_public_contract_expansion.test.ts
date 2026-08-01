@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-shared-encryption-key";
+
 import { setUserCapabilityInternal } from "../capabilities/mutations";
 import {
   getModel,
@@ -20,9 +22,10 @@ import {
   upsertConnection as upsertGmailManualConnection,
 } from "../oauth/gmail_manual";
 import {
+  decryptSecret,
+  encryptOAuthCredentials,
   encryptSecret,
-  maybeDecryptSecret,
-  maybeEncryptSecret,
+  oauthSecretContext,
 } from "../lib/secret_crypto";
 import { listByChat } from "../nodePositions/queries";
 import { getDeviceTokens } from "../push/queries";
@@ -237,6 +240,12 @@ test("apple calendar connection helpers redact secrets and delete idempotently",
   const inserts: Array<Record<string, unknown>> = [];
   const deleted: string[] = [];
 
+  const encrypted = await encryptOAuthCredentials({
+    userId: "user_1",
+    provider: "apple_calendar",
+    accessToken: "secret",
+    refreshToken: "",
+  });
   await (upsertAppleCalendarConnection as any)._handler({
     db: {
       query: () => ({
@@ -252,7 +261,7 @@ test("apple calendar connection helpers redact secrets and delete idempotently",
   }, {
     userId: "user_1",
     appleId: "user@example.com",
-    appSpecificPassword: "secret",
+    ...encrypted,
     displayName: "Personal",
   });
 
@@ -300,6 +309,12 @@ test("manual Gmail connection helpers redact app password and delete idempotentl
   const inserts: Array<Record<string, unknown>> = [];
   const deleted: string[] = [];
 
+  const encrypted = await encryptOAuthCredentials({
+    userId: "user_1",
+    provider: "gmail_manual",
+    accessToken: "secret-app-password",
+    refreshToken: "",
+  });
   await (upsertGmailManualConnection as any)._handler({
     db: {
       query: () => ({
@@ -315,7 +330,7 @@ test("manual Gmail connection helpers redact app password and delete idempotentl
   }, {
     userId: "user_1",
     email: "USER@example.com",
-    appPassword: "secret-app-password",
+    ...encrypted,
   });
 
   const connection = await (getGmailManualConnection as any)._handler({
@@ -356,21 +371,24 @@ test("manual Gmail connection helpers redact app password and delete idempotentl
 
   assert.equal(inserts[0]?.provider, "gmail_manual");
   assert.equal(inserts[0]?.email, "user@example.com");
-  assert.equal(inserts[0]?.accessToken, "secret-app-password");
+  assert.equal(String(inserts[0]?.accessToken).startsWith("enc:v2:k1:"), true);
   assert.equal("accessToken" in (connection ?? {}), false);
   assert.equal("refreshToken" in (connection ?? {}), false);
   assert.equal((connection as any)?.email, "user@example.com");
   assert.deepEqual(deleted, ["oauth_gmail_manual"]);
 });
 
-test("manual Gmail secret encryption preserves plaintext fallback when no env key is configured", async () => {
+test("legacy migration mode reads plaintext without permitting plaintext writes", async () => {
   const originalEncryptionKey = process.env.CONVEX_SECRET_ENCRYPTION_KEY;
   delete process.env.CONVEX_SECRET_ENCRYPTION_KEY;
 
   try {
-    const secret = await maybeEncryptSecret("existing-app-password");
-    assert.equal(secret, "existing-app-password");
-    assert.equal(await maybeDecryptSecret(secret), "existing-app-password");
+    const context = oauthSecretContext("user_1", "gmail_manual", "accessToken");
+    assert.equal(await decryptSecret("existing-app-password", context), "existing-app-password");
+    await assert.rejects(
+      encryptSecret("existing-app-password", context),
+      (error: any) => error?.data?.code === "SECRET_ENCRYPTION_NOT_CONFIGURED",
+    );
   } finally {
     if (originalEncryptionKey !== undefined) {
       process.env.CONVEX_SECRET_ENCRYPTION_KEY = originalEncryptionKey;
@@ -384,7 +402,10 @@ test("required app-password encryption fails closed with structured ConvexError"
 
   try {
     await assert.rejects(
-      encryptSecret("new-app-password"),
+      encryptSecret(
+        "new-app-password",
+        oauthSecretContext("user_1", "gmail_manual", "accessToken"),
+      ),
       (error: any) => error?.data?.code === "SECRET_ENCRYPTION_NOT_CONFIGURED",
     );
   } finally {
@@ -399,10 +420,11 @@ test("manual Gmail secret encryption round trips when env key is configured", as
   process.env.CONVEX_SECRET_ENCRYPTION_KEY = "test-encryption-key";
 
   try {
-    const secret = await maybeEncryptSecret("new-app-password");
-    assert.equal(secret.startsWith("enc:v1:"), true);
+    const context = oauthSecretContext("user_1", "gmail_manual", "accessToken");
+    const secret = await encryptSecret("new-app-password", context);
+    assert.equal(secret.startsWith("enc:v2:k1:"), true);
     assert.notEqual(secret, "new-app-password");
-    assert.equal(await maybeDecryptSecret(secret), "new-app-password");
+    assert.equal(await decryptSecret(secret, context), "new-app-password");
   } finally {
     if (originalEncryptionKey === undefined) {
       delete process.env.CONVEX_SECRET_ENCRYPTION_KEY;
@@ -417,7 +439,10 @@ test("apple calendar credentials decrypt encrypted app-specific password", async
   process.env.CONVEX_SECRET_ENCRYPTION_KEY = "test-encryption-key";
 
   try {
-    const encryptedPassword = await maybeEncryptSecret("apple-app-password");
+    const encryptedPassword = await encryptSecret(
+      "apple-app-password",
+      oauthSecretContext("user_1", "apple_calendar", "accessToken"),
+    );
     const credentials = await getAppleCalendarCredentials({
       runQuery: async () => ({
         _id: "oauth_apple",

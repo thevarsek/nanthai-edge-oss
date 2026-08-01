@@ -211,6 +211,7 @@ code, pre, .nanth-mono {
   --edge-legal-body: rgba(226, 230, 237, 0.75);
   --edge-legal-strong: #ffffff;
   --edge-legal-link: var(--edge-cyan);
+  --edge-action-link: #91efff;
 
   /* CTA button (white on dark, dark on light) */
   --edge-cta-bg: #ffffff;
@@ -267,6 +268,7 @@ code, pre, .nanth-mono {
   --edge-legal-body: rgba(42, 42, 60, 0.72);
   --edge-legal-strong: #1A1A2E;
   --edge-legal-link: #0090A0;
+  --edge-action-link: #006b78;
 
   --edge-cta-bg: #1A1A2E;
   --edge-cta-fg: #FFFFFF;
@@ -738,9 +740,14 @@ code, pre, .nanth-mono {
 /* ── Legal pages ─────────────────────────────────────────────────── */
 
 .edge-document {
-  border-top: 1px solid rgba(var(--edge-fg), 0.08);
+  overflow: hidden;
+  border: 1px solid var(--edge-glass-border);
+  border-radius: 1rem;
   background:
-    linear-gradient(180deg, rgba(var(--edge-fg), 0.018), transparent 18rem);
+    linear-gradient(180deg, rgba(var(--edge-fg), 0.025), transparent 18rem),
+    var(--edge-surface-elevated);
+  padding-inline: clamp(1.25rem, 4vw, 2.5rem);
+  box-shadow: 0 20px 60px rgba(var(--edge-fg), 0.035);
 }
 
 .edge-legal {
@@ -783,6 +790,18 @@ code, pre, .nanth-mono {
 .edge-legal a { color: var(--edge-legal-link); text-decoration: none; }
 .edge-legal a:hover { text-decoration: underline; }
 .edge-legal strong { color: var(--edge-legal-strong); }
+
+.edge-action-link {
+  color: var(--edge-action-link);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 55%, transparent);
+  text-underline-offset: 0.2em;
+}
+
+.edge-action-link:hover {
+  text-decoration-color: currentColor;
+}
 
 /* ── App-specific animations ────────────────────────────────────── */
 
