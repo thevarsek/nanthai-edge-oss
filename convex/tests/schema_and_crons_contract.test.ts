@@ -15,6 +15,7 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "cleanStaleSandboxSessions",
     "cleanStaleSearchPhases",
     "cleanupAccountDeletionTombstones",
+    "cleanupExpiredChatUploadSessions",
     "cleanupExpiredMcpOAuthTransactions",
     "consolidateMemories",
     "ensureSecretCryptoRotation",

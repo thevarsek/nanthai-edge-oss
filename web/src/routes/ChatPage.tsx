@@ -313,6 +313,9 @@ export function ChatPage() {
 
   const createChat = useMutation(api.chat.mutations.createChat);
   const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
+  const createChatUploadUrl = useMutation(api.chat.mutations.createChatUploadUrl);
+  const bindChatUploadSession = useMutation(api.chat.mutations.bindChatUploadSession);
+  const cleanupChatUploadSession = useMutation(api.chat.mutations.cleanupChatUploadSession);
   const getDrivePickerAccessToken = useAction(api.oauth.google.getDrivePickerAccessToken);
   const attachPickedDriveFiles = useAction(api.drive_picker.actions.attachPickedDriveFiles);
   const forkChat = useMutation(api.chat.manage.forkChat);
@@ -340,6 +343,9 @@ export function ChatPage() {
     allParticipantsSupportTools,
     isVideoMode,
     supportsFrameImages,
+    supportsVision,
+    supportsFileInput,
+    supportsAudioInput,
     googleIntegrationsBlocked,
     isMultiModel,
   } = useChatParticipantsConfig({
@@ -923,7 +929,10 @@ export function ChatPage() {
         ) : null}
       composer={<MessageInput
         chatId={typedChatId ?? ("" as Id<"chats">)} participants={participants} isGenerating={isGenerating}
-        onSend={handleSend} onCancel={handleCancel} onCreateUploadUrl={() => createUploadUrl({})}
+        onSend={handleSend} onCancel={handleCancel}
+        onCreateUploadUrl={() => createChatUploadUrl({})}
+        onBindUploadSession={async (uploadSessionId, storageId) => { await bindChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, storageId: storageId as Id<"_storage"> }); }}
+        onCleanupUploadSession={async (uploadSessionId, storageId) => { await cleanupChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, ...(storageId ? { storageId: storageId as Id<"_storage"> } : {}) }); }}
         onPlusMenuSelect={handlePlusMenuSelect} plusMenuBadges={plusMenuBadges} isPro={isPro}
         hasConnectedIntegrations={hasConnectedIntegrations} participantCount={participants.length} hasMessages={hasMessages}
         mentionSuggestions={mentionSuggestions} disabled={!!typedChatId && isLoading} isAutonomousActive={isAutonomousActive}
@@ -931,6 +940,9 @@ export function ChatPage() {
         allParticipantsSupportTools={allParticipantsSupportTools}
         isVideoMode={isVideoMode}
         supportsFrameImages={supportsFrameImages}
+        supportsVision={supportsVision}
+        supportsFileInput={supportsFileInput}
+        supportsAudioInput={supportsAudioInput}
         onTextChange={handleComposerTextChange}
         extraAttachments={kbAttachmentsForDisplay}
         canCaptureQueuedAdvisorSnapshot={advisors.canCaptureQueuedSnapshot}

@@ -47,6 +47,14 @@ test("sendMessageHandler rejects complexity-3 web search attachments before writ
               }),
             };
           }
+          if (table === "fileAttachments") {
+            return {
+              withIndex: () => ({
+                take: async () => [{ userId: "user_1", storageId: "storage_audio" }],
+                first: async () => ({ userId: "user_1", storageId: "storage_audio" }),
+              }),
+            };
+          }
           return {
             withIndex: () => ({
               first: async () => null,
@@ -59,6 +67,7 @@ test("sendMessageHandler rejects complexity-3 web search attachments before writ
       },
       storage: {
         getUrl: async () => "https://example.com/audio.m4a",
+        getMetadata: async () => ({ size: 1024, contentType: "audio/m4a" }),
       },
     } as any;
 
@@ -123,6 +132,14 @@ test("sendMessageHandler rejects mixed recorded and uploaded audio sources", asy
               }),
             };
           }
+          if (table === "fileAttachments") {
+            return {
+              withIndex: () => ({
+                take: async () => [{ userId: "user_1", storageId: "storage_audio" }],
+                first: async () => ({ userId: "user_1", storageId: "storage_audio" }),
+              }),
+            };
+          }
           return {
             withIndex: () => ({
               order: () => ({
@@ -139,6 +156,7 @@ test("sendMessageHandler rejects mixed recorded and uploaded audio sources", asy
     },
     storage: {
       getUrl: async () => "https://example.com/audio.m4a",
+      getMetadata: async () => ({ size: 1024, contentType: "audio/m4a" }),
     },
   } as any;
 

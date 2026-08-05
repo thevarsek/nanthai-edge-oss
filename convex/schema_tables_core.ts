@@ -928,6 +928,21 @@ export const coreSchemaTables = {
     .index("by_user", ["userId", "createdAt"])
     .index("by_user_storage", ["userId", "storageId"]),
 
+  chatUploadSessions: defineTable({
+    userId: v.string(),
+    storageId: v.optional(v.id("_storage")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("consumed"),
+      v.literal("cancelled"),
+    ),
+    createdAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_user_storage", ["userId", "storageId"])
+    .index("by_status_createdAt", ["status", "createdAt"]),
+
   subagentBatches: defineTable({
     parentMessageId: v.id("messages"),
     sourceUserMessageId: v.id("messages"),

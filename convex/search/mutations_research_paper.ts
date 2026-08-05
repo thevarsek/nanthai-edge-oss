@@ -97,6 +97,9 @@ export const startResearchPaper = mutation({
     }
 
     const complexity = Math.max(1, Math.min(3, Math.round(args.complexity)));
+    if (complexity === 3 && (args.attachments?.length ?? 0) > 0) {
+      throw new ConvexError({ code: "VALIDATION", message: "Complexity 3 search does not support attachments." });
+    }
     const retryContract = buildRetryContract({
       participants: [args.participant],
       searchMode: "paper",
@@ -106,6 +109,7 @@ export const startResearchPaper = mutation({
     });
     const normalizedAttachments = await normalizeMessageAttachments(
       ctx,
+      userId,
       args.attachments,
     );
     const audioAttachmentCount = normalizedAttachments?.filter((attachment) =>
@@ -113,9 +117,6 @@ export const startResearchPaper = mutation({
     ).length ?? 0;
     if (args.recordedAudio && audioAttachmentCount > 0) {
       throw new ConvexError({ code: "VALIDATION", message: "Choose one audio source before sending." });
-    }
-    if (complexity === 3 && (normalizedAttachments?.length ?? 0) > 0) {
-      throw new ConvexError({ code: "VALIDATION", message: "Complexity 3 search does not support attachments." });
     }
 
     const expandMultiModelGroups = args.expandMultiModelGroups ?? true;

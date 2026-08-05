@@ -54,6 +54,62 @@ function deferred<T>() {
 }
 
 describe("useAttachments", () => {
+  it("accepts audio-only models and binds the chat upload session", async () => {
+    const onCreateUploadUrl = vi.fn(async () => ({
+      uploadUrl: "https://uploads.example/audio",
+      uploadSessionId: "chat_session_1",
+    }));
+    const onBindUploadSession = vi.fn(async () => {});
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ storageId: "storage_audio" }),
+      { status: 200 },
+    )));
+
+    const { result } = renderHook(() => useAttachments(
+      onCreateUploadUrl,
+      false,
+      false,
+      false,
+      false,
+      true,
+      onBindUploadSession,
+    ));
+    const audio = new File(["audio"], "voice.m4a", { type: "audio/mp4" });
+
+    await act(async () => { await result.current.handleFiles([audio]); });
+
+    expect(result.current.attachments[0]).toMatchObject({
+      storageId: "storage_audio",
+      uploadSessionId: "chat_session_1",
+      type: "audio",
+    });
+    expect(onBindUploadSession).toHaveBeenCalledWith("chat_session_1", "storage_audio");
+  });
+
+  it("cleans a staged upload when the attachment is removed", async () => {
+    const onCleanupUploadSession = vi.fn(async () => {});
+    const { result } = renderHook(() => useAttachments(
+      async () => ({ uploadUrl: "https://uploads.example/file", uploadSessionId: "session_remove" }),
+      false,
+      false,
+      true,
+      true,
+      false,
+      undefined,
+      onCleanupUploadSession,
+    ));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      JSON.stringify({ storageId: "storage_remove" }),
+      { status: 200 },
+    )));
+    await act(async () => {
+      await result.current.handleFiles([new File(["x"], "remove.pdf", { type: "application/pdf" })]);
+    });
+
+    act(() => { result.current.removeAttachment(0); });
+    expect(onCleanupUploadSession).toHaveBeenCalledWith("session_remove", "storage_remove");
+  });
+
   it("keeps uploading true until overlapping upload batches finish", async () => {
     const uploadUrls = ["https://uploads.example/first", "https://uploads.example/second"];
     const onCreateUploadUrl = vi.fn(async () => uploadUrls.shift() ?? "https://uploads.example/fallback");

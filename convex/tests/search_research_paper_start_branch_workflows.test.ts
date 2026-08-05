@@ -30,6 +30,9 @@ function buildCtx(options: {
               if (table === "userPreferences") return { _id: "prefs_1", titleModelId: options.titleModelId };
               return null;
             },
+            take: async () => table === "fileAttachments"
+              ? [{ userId: "user_1", storageId: "audio_storage" }]
+              : [],
             collect: async () => table === "chatParticipants"
               ? options.participants ?? [{ _id: "participant_1", chatId: "chat_1" }]
               : [],
@@ -53,7 +56,10 @@ function buildCtx(options: {
           return "scheduled_1";
         },
       },
-      storage: { getUrl: async (storageId: string) => `https://files.example/${storageId}` },
+      storage: {
+        getUrl: async (storageId: string) => `https://files.example/${storageId}`,
+        getMetadata: async () => ({ size: 1024, contentType: null }),
+      },
     } as any,
   };
 }

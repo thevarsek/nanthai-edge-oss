@@ -27,6 +27,7 @@ export const attachmentValidator = v.object({
   type: v.string(),
   url: v.optional(v.string()),
   storageId: v.optional(v.id("_storage")),
+  uploadSessionId: v.optional(v.id("chatUploadSessions")),
   name: v.optional(v.string()),
   mimeType: v.optional(v.string()),
   sizeBytes: v.optional(v.number()),
@@ -71,6 +72,11 @@ export const createChatArgs = {
   mode: v.union(v.literal("chat"), v.literal("ideascape")),
   folderId: v.optional(v.string()),
   participants: v.optional(v.array(participantValidator)),
+} satisfies PropertyValidators;
+
+export const chatUploadSessionArgs = {
+  uploadSessionId: v.id("chatUploadSessions"),
+  storageId: v.optional(v.id("_storage")),
 } satisfies PropertyValidators;
 
 export const sendMessageArgs = {

@@ -280,7 +280,6 @@ export async function deleteKnowledgeBaseFileHandler(
 
   const hasOtherRefs = await storageHasOtherFileAttachmentReferences(
     ctx,
-    userId,
     args.storageId,
     fileAtt._id,
   );

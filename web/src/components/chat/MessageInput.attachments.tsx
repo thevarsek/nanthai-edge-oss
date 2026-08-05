@@ -135,7 +135,7 @@ export function HiddenFileInputs({ fileInputRef, imageInputRef, cameraInputRef, 
 }) {
   return (
     <>
-      <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.pptx" onChange={onSelect} className="hidden" />
+      <input ref={fileInputRef} type="file" multiple accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.pptx,.md,.eml,audio/*,video/*" onChange={onSelect} className="hidden" />
       <input ref={imageInputRef} type="file" multiple accept="image/*" onChange={onSelect} className="hidden" />
       <input ref={cameraInputRef} type="file" accept="image/*" capture="environment" onChange={onSelect} className="hidden" />
     </>

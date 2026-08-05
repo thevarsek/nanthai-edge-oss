@@ -92,7 +92,6 @@ export async function deleteDriveGrantCacheForStorage(
 
 export async function storageHasOtherFileAttachmentReferences(
   ctx: MutationCtx,
-  userId: string,
   storageId: Id<"_storage">,
   excludingFileAttachmentId?: Id<"fileAttachments">,
 ): Promise<boolean> {
@@ -101,7 +100,5 @@ export async function storageHasOtherFileAttachmentReferences(
     .withIndex("by_storage", (q) => q.eq("storageId", storageId))
     .take(2);
 
-  return refs.some(
-    (ref) => ref.userId === userId && ref._id !== excludingFileAttachmentId,
-  );
+  return refs.some((ref) => ref._id !== excludingFileAttachmentId);
 }

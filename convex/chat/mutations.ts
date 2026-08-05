@@ -38,6 +38,7 @@ import {
   updateMessageToolCallsArgs,
   updateVideoJobPollArgs,
   updateVideoJobStatusArgs,
+  chatUploadSessionArgs,
 } from "./mutations_args";
 import {
   cancelGenerationContinuationHandler,
@@ -86,6 +87,12 @@ import {
 import { deleteKnowledgeBaseFileArgs } from "../knowledge_base/mutations_args";
 import { deleteKnowledgeBaseFileHandler } from "../knowledge_base/mutations";
 import { assertCurrentFence } from "../execution/control_plane";
+import {
+  bindChatUploadSessionHandler,
+  cleanupChatUploadSessionHandler,
+  cleanupExpiredChatUploadSessionsHandler,
+  createChatUploadUrlHandler,
+} from "./upload_handlers";
 
 export const createChat = mutation({
   args: createChatArgs,
@@ -97,6 +104,36 @@ export const createUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: createUploadUrlHandler,
+});
+
+export const createChatUploadUrl = mutation({
+  args: {},
+  returns: v.object({
+    uploadUrl: v.string(),
+    uploadSessionId: v.id("chatUploadSessions"),
+  }),
+  handler: createChatUploadUrlHandler,
+});
+
+export const bindChatUploadSession = mutation({
+  args: {
+    uploadSessionId: v.id("chatUploadSessions"),
+    storageId: v.id("_storage"),
+  },
+  returns: v.null(),
+  handler: bindChatUploadSessionHandler,
+});
+
+export const cleanupChatUploadSession = mutation({
+  args: chatUploadSessionArgs,
+  returns: v.null(),
+  handler: cleanupChatUploadSessionHandler,
+});
+
+export const cleanupExpiredChatUploadSessions = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: cleanupExpiredChatUploadSessionsHandler,
 });
 
 export const sendMessage = mutation({

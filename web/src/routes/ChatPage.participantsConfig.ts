@@ -22,6 +22,9 @@ interface ModelSummary {
   supportedFrameImages?: unknown[] | null;
   hasZdrEndpoint?: boolean;
   provider?: string | null;
+  architecture?: { modality?: string };
+  supportedParameters?: string[];
+  mediaCapabilities?: { image?: { maxInputReferences?: number } };
 }
 
 interface ChatParticipantsConfigSnapshotArgs {
@@ -43,6 +46,9 @@ interface ChatParticipantsConfigSnapshot {
   allParticipantsSupportTools: boolean;
   isVideoMode: boolean;
   supportsFrameImages: boolean;
+  supportsVision: boolean;
+  supportsFileInput: boolean;
+  supportsAudioInput: boolean;
   googleIntegrationsBlocked: boolean;
   isMultiModel: boolean;
 }
@@ -94,9 +100,53 @@ export function chatParticipantsConfigSnapshot({
     allParticipantsSupportTools: participantsSupportTools(participants, modelSummaries),
     isVideoMode: participantsUseVideo(participants, modelSummaries),
     supportsFrameImages: participantsSupportFrameImages(participants, modelSummaries),
+    supportsVision: participantsSupportVision(participants, modelSummaries),
+    supportsFileInput: participantsSupportFileInput(participants, modelSummaries),
+    supportsAudioInput: participantsSupportAudioInput(participants, modelSummaries),
     googleIntegrationsBlocked: googleIntegrationsBlockedForParticipants(participants, modelSummaries),
     isMultiModel: participants.length > 1,
   };
+}
+
+export function participantsSupportVision(
+  participants: Participant[],
+  modelSummaries: ModelSummary[] | undefined,
+): boolean {
+  if (!modelSummaries) return true;
+  return participants.every((participant) => {
+    const summary = modelSummaries.find((item) => item.modelId === participant.modelId);
+    if (!summary) return true;
+    if ((summary.mediaCapabilities?.image?.maxInputReferences ?? 0) > 0) return true;
+    if (summary.supportsVideo === true && (summary.supportedFrameImages?.length ?? 0) > 0) return true;
+    const inputModality = summary.architecture?.modality?.split("->")[0] ?? "";
+    return inputModality.includes("image");
+  });
+}
+
+export function participantsSupportFileInput(
+  participants: Participant[],
+  modelSummaries: ModelSummary[] | undefined,
+): boolean {
+  if (!modelSummaries) return true;
+  return participants.every((participant) => {
+    const summary = modelSummaries.find((item) => item.modelId === participant.modelId);
+    if (!summary) return true;
+    const inputModality = summary.architecture?.modality?.split("->")[0] ?? "";
+    return summary.supportedParameters?.includes("file") === true || inputModality.includes("file");
+  });
+}
+
+export function participantsSupportAudioInput(
+  participants: Participant[],
+  modelSummaries: ModelSummary[] | undefined,
+): boolean {
+  if (!modelSummaries) return true;
+  return participants.every((participant) => {
+    const summary = modelSummaries.find((item) => item.modelId === participant.modelId);
+    if (!summary) return true;
+    const inputModality = summary.architecture?.modality?.split("->")[0] ?? "";
+    return inputModality.includes("audio") || participant.modelId.includes("gpt-audio");
+  });
 }
 
 export function participantsSupportTools(

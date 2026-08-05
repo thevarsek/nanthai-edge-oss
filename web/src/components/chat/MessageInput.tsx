@@ -18,7 +18,7 @@ import {
 } from "@/components/chat/MessageInput.attachments";
 import { PendingFollowUpCard } from "@/components/chat/PendingFollowUpCard";
 import { useQueuedFollowUp } from "@/components/chat/MessageInput.queue.hook";
-import { useAttachments } from "@/components/chat/MessageInput.attachments.hook";
+import { MAX_TOTAL_ATTACHMENT_BYTES, useAttachments, type ChatUploadSession } from "@/components/chat/MessageInput.attachments.hook";
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import { getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
@@ -39,7 +39,9 @@ interface Props {
     mcpInvocationIds?: string[];
   }) => boolean | void | Promise<boolean | void>;
   onCancel: () => void | Promise<void>;
-  onCreateUploadUrl: () => Promise<string>;
+  onCreateUploadUrl: () => Promise<string | ChatUploadSession>;
+  onBindUploadSession?: (uploadSessionId: string, storageId: string) => Promise<void>;
+  onCleanupUploadSession?: (uploadSessionId: string, storageId?: string) => Promise<void>;
   onPlusMenuSelect?: (item: PlusMenuItem) => void;
   disabled?: boolean;
   plusMenuBadges?: Partial<Record<PlusMenuItem, number>>;
@@ -55,6 +57,12 @@ interface Props {
   isVideoMode?: boolean;
   /** Whether the active video model supports frame images (image-to-video). */
   supportsFrameImages?: boolean;
+  /** Whether the active participants accept image input. */
+  supportsVision?: boolean;
+  /** Whether the active participants accept document/file input. */
+  supportsFileInput?: boolean;
+  /** Whether the active participants accept audio input. */
+  supportsAudioInput?: boolean;
   /** Called when text changes — used for slash command detection. */
   onTextChange?: (text: string) => void;
   /**
@@ -92,6 +100,7 @@ export function MessageInput({
   mentionSuggestions = [], isAutonomousActive = false,
   onIntervene, onSendRecording, allParticipantsSupportTools = true,
   isVideoMode = false, supportsFrameImages = true,
+  supportsVision = true, supportsFileInput = true, supportsAudioInput = false,
   onTextChange: onTextChangeProp,
   extraAttachments = [],
   onRemoveExtra,
@@ -106,10 +115,13 @@ export function MessageInput({
   onRemoveRemoteMcpContext,
   onClearRemoteMcpContexts,
   hasRemoteMcpContent = false,
+  onBindUploadSession,
+  onCleanupUploadSession,
 }: Props) {
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
+  const [dropTargeted, setDropTargeted] = useState(false);
   const [dismissedSuggestionStorageIds, setDismissedSuggestionStorageIds] = useState<Set<string>>(() => new Set());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const skipNextDraftPersistRef = useRef(false);
@@ -117,8 +129,17 @@ export function MessageInput({
 
   const {
     attachments, setAttachments, isUploading, uploadError, setUploadError, fileInputRef, imageInputRef, cameraInputRef,
-    handleFileSelect, handlePasteFiles, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
-  } = useAttachments(onCreateUploadUrl, isVideoMode, supportsFrameImages);
+    handleFileSelect, handleFiles, handlePasteFiles, removeAttachment, changeAttachmentRole, applyVideoRoles, clear: clearAttachments,
+  } = useAttachments(
+    onCreateUploadUrl,
+    isVideoMode,
+    supportsFrameImages,
+    supportsVision,
+    supportsFileInput,
+    supportsAudioInput,
+    onBindUploadSession,
+    onCleanupUploadSession,
+  );
 
   // Hydrate composer from the per-chat draft store when chatId changes.
   // Survives in-session navigation (see web/src/stores/chatDraftStore.ts).
@@ -180,8 +201,16 @@ export function MessageInput({
   const handleSend = useCallback(async () => {
     const trimmed = text.trim();
     const outgoingAttachments = [...attachments, ...extraAttachments];
+    const totalAttachmentBytes = outgoingAttachments.reduce(
+      (sum, attachment) => sum + (attachment.sizeBytes ?? 0),
+      0,
+    );
     if (!trimmed && outgoingAttachments.length === 0 && remoteMcpContexts.length === 0) return;
     if (disabled || isGenerating || isUploading) return;
+    if (totalAttachmentBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
+      setUploadError("Attachments are too large. The maximum total size is 25 MB.");
+      return;
+    }
     if (presentationTarget && participantCount > 1) return;
     if (isAutonomousActive && onIntervene && trimmed) {
       onIntervene(trimmed);
@@ -206,7 +235,7 @@ export function MessageInput({
     onClearRemoteMcpContexts?.();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, extraAttachments, remoteMcpContexts, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount]);
+  }, [text, attachments, extraAttachments, remoteMcpContexts, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount, setUploadError]);
 
   const {
     queuedFollowUps,
@@ -278,6 +307,24 @@ export function MessageInput({
     [handlePasteFiles],
   );
 
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (e.dataTransfer.types.includes("Files")) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = "copy";
+    }
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (!e.dataTransfer.types.includes("Files")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setDropTargeted(false);
+      void handleFiles(Array.from(e.dataTransfer.files));
+    },
+    [handleFiles],
+  );
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (mention.isActive) {
@@ -317,7 +364,12 @@ export function MessageInput({
   );
 
   const artifactWriteBlocked = Boolean(presentationTarget && participantCount > 1);
-  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0 || remoteMcpContexts.length > 0) && !disabled && !isGenerating && !isUploading && !artifactWriteBlocked;
+  const totalAttachmentBytes = [...attachments, ...extraAttachments].reduce(
+    (sum, attachment) => sum + (attachment.sizeBytes ?? 0),
+    0,
+  );
+  const attachmentsWithinLimit = totalAttachmentBytes <= MAX_TOTAL_ATTACHMENT_BYTES;
+  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0 || remoteMcpContexts.length > 0) && attachmentsWithinLimit && !disabled && !isGenerating && !isUploading && !artifactWriteBlocked;
   const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled && !artifactWriteBlocked;
   const suggestionStorageId = generatedDocumentSuggestion?.storageId;
   const isSuggestionAlreadyAttached = !!suggestionStorageId && (
@@ -342,7 +394,22 @@ export function MessageInput({
   }
 
   return (
-    <div className="border-t border-border/30 bg-background px-4 py-3">
+    <div
+      className="relative border-t border-border/30 bg-background px-4 py-3"
+      onDragEnter={(e) => {
+        if (e.dataTransfer.types.includes("Files")) setDropTargeted(true);
+      }}
+      onDragOver={handleDragOver}
+      onDragLeave={(e) => {
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTargeted(false);
+      }}
+      onDrop={handleDrop}
+    >
+      {dropTargeted && (
+        <div className="pointer-events-none absolute inset-1 z-10 flex items-center justify-center rounded-xl border-2 border-dashed border-primary bg-primary/10 text-sm font-medium text-primary">
+          Drop files to attach
+        </div>
+      )}
       {queuedFollowUps.map((queuedFollowUp) => (
         <PendingFollowUpCard
           key={queuedFollowUp.id}
@@ -466,6 +533,9 @@ export function MessageInput({
               participantCount={participantCount} hasMessages={hasMessages}
               allParticipantsSupportTools={allParticipantsSupportTools}
               clipboardHasImage={clipboardHasImage}
+              supportsVision={supportsVision}
+              supportsFileInput={supportsFileInput}
+              supportsAudioInput={supportsAudioInput}
               hasRemoteMcpContent={hasRemoteMcpContent}
             />
           )}

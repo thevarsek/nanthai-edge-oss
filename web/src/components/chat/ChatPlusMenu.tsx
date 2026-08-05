@@ -57,6 +57,9 @@ interface Props {
   hasMessages?: boolean;
   allParticipantsSupportTools?: boolean;
   clipboardHasImage?: boolean;
+  supportsVision?: boolean;
+  supportsFileInput?: boolean;
+  supportsAudioInput?: boolean;
   hasRemoteMcpContent?: boolean;
 }
 
@@ -72,6 +75,9 @@ export function ChatPlusMenu({
   hasMessages = false,
   allParticipantsSupportTools = true,
   clipboardHasImage = false,
+  supportsVision = true,
+  supportsFileInput = true,
+  supportsAudioInput = false,
   hasRemoteMcpContent = false,
 }: Props) {
   const { t } = useTranslation();
@@ -123,29 +129,36 @@ export function ChatPlusMenu({
         }]
       : []),
     // ─── Divider: attachments section ───
-    {
-      id: "image" as const,
-      label: t("photo_library"),
-      icon: <Image size={16} />,
-      dividerBefore: true,
-    },
-    {
-      id: "camera" as const,
-      label: t("camera"),
-      icon: <Camera size={16} />,
-    },
-    ...(clipboardHasImage
+    ...(supportsVision
+      ? [
+          {
+            id: "image" as const,
+            label: t("photo_library"),
+            icon: <Image size={16} />,
+            dividerBefore: true,
+          },
+          {
+            id: "camera" as const,
+            label: t("camera"),
+            icon: <Camera size={16} />,
+          },
+          ...(clipboardHasImage
+            ? [{
+                id: "pasteImage" as const,
+                label: t("paste_image", "Paste Image"),
+                icon: <ClipboardPaste size={16} />,
+              }]
+            : []),
+        ]
+      : []),
+    ...(supportsFileInput || supportsAudioInput
       ? [{
-          id: "pasteImage" as const,
-          label: t("paste_image", "Paste Image"),
-          icon: <ClipboardPaste size={16} />,
+          id: "file" as const,
+          label: t("file"),
+          icon: <FileText size={16} />,
+          dividerBefore: !supportsVision,
         }]
       : []),
-    {
-      id: "file" as const,
-      label: t("file"),
-      icon: <FileText size={16} />,
-    },
     ...(isPro
       ? [{
           id: "knowledgeBase" as const,

@@ -50,7 +50,7 @@ export function attachmentTriggeredReadToolNames(
 
   const toolNames = new Set<string>();
   for (const attachment of attachments) {
-    if (attachment.type !== "document" || !attachment.storageId) {
+    if ((attachment.type !== "document" && attachment.type !== "pdf") || !attachment.storageId) {
       continue;
     }
 
@@ -70,7 +70,7 @@ export function attachmentTriggeredDocumentWorkspaceToolNames(
   attachments: ContextAttachment[] | undefined,
 ): string[] {
   if (!attachments?.some((attachment) =>
-    attachment.type === "document" &&
+    (attachment.type === "document" || attachment.type === "pdf") &&
     !!attachment.storageId &&
     isReadableDocumentMime(attachment.mimeType, attachment.name)
   )) {
@@ -192,7 +192,7 @@ function attachmentToParts(
 
   // For document types with a storageId, inject a MIME-aware text description
   // so the model uses the correct read/edit tool.
-  if (attachment.type === "document" && attachment.storageId) {
+  if ((attachment.type === "document" || attachment.type === "pdf") && attachment.storageId) {
     const filename = attachment.name ?? "document";
     const mime = attachment.mimeType ?? "application/octet-stream";
     const toolInfo = documentToolsForMime(mime, filename);

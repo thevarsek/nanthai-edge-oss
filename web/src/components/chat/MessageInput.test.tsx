@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
@@ -58,6 +58,8 @@ describe("MessageInput", () => {
     clearChatDraft("chat_upload_success");
     clearChatDraft("chat_upload_image_camera");
     clearChatDraft("chat_upload_partial");
+    clearChatDraft("chat_drop");
+    clearChatDraft("chat_paste");
     clearChatDraft("chat_restore_a");
     clearChatDraft("chat_restore_b");
     clearChatDraft("chat_switch_a");
@@ -395,5 +397,59 @@ describe("MessageInput", () => {
     }));
     await user.click(screen.getByRole("button", { name: "Remove presentation target" }));
     expect(onRemovePresentationTarget).toHaveBeenCalledTimes(1);
+  });
+
+  it("uploads files dropped onto the composer", async () => {
+    const onCreateUploadUrl = vi.fn(async () => "https://uploads.example/drop");
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ storageId: "storage_drop" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    const { container } = renderMessageInput({
+      chatId: "chat_drop" as Id<"chats">,
+      onCreateUploadUrl,
+    });
+    const droppedFile = new File(["dropped"], "dropped.txt", { type: "text/plain" });
+    const composer = container.firstElementChild as HTMLDivElement;
+
+    fireEvent.drop(composer, {
+      dataTransfer: { types: ["Files"], files: [droppedFile], dropEffect: "copy" },
+    });
+
+    await waitFor(() => expect(screen.getByText("dropped.txt")).toBeInTheDocument());
+    expect(onCreateUploadUrl).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith("https://uploads.example/drop", {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: droppedFile,
+    });
+  });
+
+  it("attaches pasted images while preserving mixed clipboard text", async () => {
+    const onCreateUploadUrl = vi.fn(async () => "https://uploads.example/paste");
+    const fetch = vi.fn(async () => new Response(JSON.stringify({ storageId: "storage_paste" }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    renderMessageInput({
+      chatId: "chat_paste" as Id<"chats">,
+      onCreateUploadUrl,
+    });
+    const image = new File(["image"], "clipboard.png", { type: "image/png" });
+    const getData = vi.fn((format: string) => format === "text/plain" ? "caption" : "");
+    const preventDefault = vi.fn();
+
+    fireEvent.paste(screen.getByRole("textbox"), {
+      clipboardData: {
+        items: [{ kind: "file", type: "image/png", getAsFile: () => image }],
+        getData,
+      },
+      preventDefault,
+    });
+
+    await waitFor(() => expect(screen.getByText("clipboard.png")).toBeInTheDocument());
+    expect(getData).toHaveBeenCalledWith("text/plain");
+    expect(preventDefault).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith("https://uploads.example/paste", {
+      method: "POST",
+      headers: { "Content-Type": "image/png" },
+      body: image,
+    });
   });
 });

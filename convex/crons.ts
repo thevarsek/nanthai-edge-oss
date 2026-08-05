@@ -41,6 +41,13 @@ crons.interval(
   {},
 );
 
+crons.interval(
+  "cleanupExpiredChatUploadSessions",
+  { hours: 1 },
+  internal.chat.mutations.cleanupExpiredChatUploadSessions,
+  {},
+);
+
 // Reap old streaming projections whose message is gone or terminal. Normal
 // finalization deletes these immediately; this is a low-cost repair net for
 // interrupted historical cleanup.

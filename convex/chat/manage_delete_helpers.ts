@@ -395,7 +395,6 @@ export async function deleteChatGraph(
   for (const attachment of fileAttachments) {
     const hasOtherRefs = await storageHasOtherFileAttachmentReferences(
       ctx,
-      attachment.userId,
       attachment.storageId,
       attachment._id,
     );

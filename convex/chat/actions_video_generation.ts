@@ -408,11 +408,11 @@ export async function submitVideoGenerationHandler(
 
       let defaultRoleIndex = 0; // tracks smart-default assignment position
       for (const attachment of imageAttachments) {
-        // Resolve URL: prefer direct url, fall back to storage
-        let imageUrl: string | undefined = attachment.url;
-        if (!imageUrl && attachment.storageId) {
-          imageUrl = await ctx.storage.getUrl(attachment.storageId) ?? undefined;
-        }
+        // Storage-backed attachments are canonicalized from their storage ID.
+        // Never consume a separately supplied URL for the validated blob.
+        const imageUrl = attachment.storageId
+          ? await ctx.storage.getUrl(attachment.storageId) ?? undefined
+          : attachment.url;
         if (!imageUrl) continue; // skip attachments with no resolvable URL
 
         // Determine role: explicit videoRole wins, otherwise smart defaults

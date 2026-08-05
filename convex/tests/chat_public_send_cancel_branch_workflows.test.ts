@@ -77,6 +77,7 @@ function buildCtx(options?: {
     },
     storage: {
       getUrl: async () => options?.storageUrl ?? "https://files.example/report.pdf",
+      getMetadata: async () => ({ size: 1024, contentType: null }),
       generateUploadUrl: async () => "https://uploads.example/new",
     },
   } as any;
@@ -97,6 +98,7 @@ function proTableRows(): Record<string, Row[]> {
     messages: [],
     cachedModels: [{ _id: "model_1", modelId: "model_tools", supportsTools: true }],
     userPreferences: [{ _id: "prefs_1", userId: "user_1", titleModelId: "   " }],
+    fileAttachments: [{ _id: "file_1", userId: "user_1", storageId: "storage_report" }],
   };
 }
 
@@ -198,6 +200,7 @@ test("sendMessageHandler accepts uploaded audio as the only source without text 
       messages: [],
       cachedModels: [],
       userPreferences: [],
+      fileAttachments: [{ _id: "file_audio", userId: "user_1", storageId: "storage_audio" }],
     },
     storageUrl: "https://files.example/audio.m4a",
   });

@@ -9,6 +9,7 @@ export type ChatVideoRole = "first_frame" | "last_frame" | "reference";
 
 export interface ChatAttachment {
   storageId?: Id<"_storage">;
+  uploadSessionId?: string;
   url?: string;
   name: string;
   type: string;
@@ -80,6 +81,7 @@ export function serializeChatAttachments(
   return attachments.map((attachment) => ({
     type: attachment.type,
     storageId: attachment.storageId,
+    uploadSessionId: attachment.uploadSessionId,
     url: attachment.url,
     name: attachment.name,
     mimeType: attachment.mimeType,

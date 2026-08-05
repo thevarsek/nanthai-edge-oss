@@ -18,6 +18,7 @@ function buildCtx(options?: {
   records?: Record<string, Row>;
   tableRows?: Record<string, Row[]>;
   storageUrl?: string | null;
+  storageMetadata?: { size: number; contentType: string | null } | null;
 }) {
   const records = new Map(Object.entries(options?.records ?? {}));
   const tableRows = new Map(Object.entries(options?.tableRows ?? {}));
@@ -54,6 +55,7 @@ function buildCtx(options?: {
     },
     storage: {
       getUrl: async () => options?.storageUrl ?? null,
+      getMetadata: async () => options?.storageMetadata ?? { size: 512, contentType: "application/pdf" },
     },
     scheduler: {
       cancel: async (id: string) => {
@@ -70,30 +72,39 @@ function buildCtx(options?: {
 }
 
 test("normalizeMessageAttachments resolves uploaded files, base64 sizes, and validation failures", async () => {
-  const uploaded = buildCtx({ storageUrl: "https://files.example/report.pdf" });
-  const normalized = await normalizeMessageAttachments(uploaded.ctx, [
+  const uploaded = buildCtx({
+    storageUrl: "https://files.example/report.pdf",
+    tableRows: { fileAttachments: [{ userId: "user_1", storageId: "storage_1" }] },
+  });
+  const normalized = await normalizeMessageAttachments(uploaded.ctx, "user_1", [
     {
-      type: "document",
+      type: "pdf",
       storageId: "storage_1" as any,
+      url: "https://stale.example/report.pdf",
       name: "  ",
       mimeType: "application/pdf",
     },
     {
       type: "image",
-      url: "A".repeat(68),
+      url: `data:image/png;base64,${"A".repeat(68)}`,
       videoRole: "reference",
     },
   ]);
 
   assert.equal(normalized?.[0].url, "https://files.example/report.pdf");
+  assert.equal(normalized?.[0].type, "document");
   assert.equal(normalized?.[0].name, "attachment");
-  assert.equal(normalized?.[0].sizeBytes, 0);
+  assert.equal(normalized?.[0].sizeBytes, 512);
+  assert.equal(normalized?.[0].mimeType, "application/pdf");
   assert.equal(normalized?.[1].sizeBytes, 51);
   assert.equal(normalized?.[1].videoRole, "reference");
-  assert.equal(await normalizeMessageAttachments(uploaded.ctx, undefined), undefined);
+  assert.equal(await normalizeMessageAttachments(uploaded.ctx, "user_1", undefined), undefined);
 
   await assert.rejects(
-    () => normalizeMessageAttachments(buildCtx({ storageUrl: null }).ctx, [
+    () => normalizeMessageAttachments(buildCtx({
+      storageUrl: null,
+      tableRows: { fileAttachments: [{ userId: "user_1", storageId: "missing" }] },
+    }).ctx, "user_1", [
       { type: "document", storageId: "missing" as any },
     ]),
     (err) =>
@@ -102,15 +113,60 @@ test("normalizeMessageAttachments resolves uploaded files, base64 sizes, and val
       /upload failed/i.test(err.data.message),
   );
   await assert.rejects(
-    () => normalizeMessageAttachments(buildCtx().ctx, [
+    () => normalizeMessageAttachments(buildCtx().ctx, "user_1", [
       {
         type: "document",
-        url: "https://files.example/huge.bin",
+        url: "data:application/octet-stream;base64,A",
         sizeBytes: 26 * 1024 * 1024,
       },
     ]),
     /25 MB/i,
   );
+  await assert.rejects(
+    () => normalizeMessageAttachments(buildCtx({
+      storageUrl: "https://files.example/oversized.bin",
+      storageMetadata: { size: 26 * 1024 * 1024, contentType: "application/octet-stream" },
+      tableRows: { fileAttachments: [{ userId: "user_1", storageId: "oversized" }] },
+    }).ctx, "user_1", [
+      { type: "document", storageId: "oversized" as any, sizeBytes: 1 },
+    ]),
+    /25 MB/i,
+  );
+});
+
+test("normalizeMessageAttachments enforces storage ownership and consumes chat upload sessions", async () => {
+  const foreign = buildCtx({
+    records: { foreign_storage: { _id: "foreign_storage", userId: "user_other" } },
+    tableRows: { fileAttachments: [{ userId: "user_other", storageId: "foreign_storage" }] },
+  });
+  await assert.rejects(
+    () => normalizeMessageAttachments(foreign.ctx, "user_1", [{
+      type: "document",
+      storageId: "foreign_storage" as any,
+    }]),
+    /not owned/i,
+  );
+
+  const ownedSession = buildCtx({
+    records: {
+      upload_session: {
+        _id: "upload_session",
+        userId: "user_1",
+        storageId: "storage_new",
+        status: "pending",
+      },
+    },
+    storageUrl: "https://files.example/new.pdf",
+  });
+  const normalized = await normalizeMessageAttachments(ownedSession.ctx, "user_1", [{
+    type: "document",
+    storageId: "storage_new" as any,
+    uploadSessionId: "upload_session" as any,
+  }]);
+  assert.equal(normalized?.[0].uploadSessionId, "upload_session");
+  assert.equal(ownedSession.patches[0].id, "upload_session");
+  assert.equal(ownedSession.patches[0].value.status, "consumed");
+  assert.equal(typeof ownedSession.patches[0].value.consumedAt, "number");
 });
 
 test("resolveParentMessageIdsForSend validates explicit parents and expands multi-model groups", async () => {

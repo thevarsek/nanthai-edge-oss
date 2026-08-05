@@ -15,6 +15,7 @@ type RawAttachment = {
   type: string;
   url?: string;
   storageId?: Id<"_storage">;
+  uploadSessionId?: Id<"chatUploadSessions">;
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
@@ -27,6 +28,7 @@ export type NormalizedAttachment = {
   type: string;
   url: string;
   storageId?: Id<"_storage">;
+  uploadSessionId?: Id<"chatUploadSessions">;
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
@@ -50,39 +52,118 @@ export type SendParticipantConfig = {
 
 function looksLikeBase64(value: string): boolean {
   if (!value) return false;
-  const compact = value.replace(/\s+/g, "");
+  const encoded = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value;
+  const compact = encoded.replace(/\s+/g, "");
   return compact.length >= 64 && /^[A-Za-z0-9+/=]+$/.test(compact);
+}
+
+function estimatedBase64Size(value: string): number {
+  const encoded = value.includes(",") ? value.slice(value.indexOf(",") + 1) : value;
+  return Math.floor((encoded.replace(/\s+/g, "").length * 3) / 4);
 }
 
 export async function normalizeMessageAttachments(
   ctx: MutationCtx,
+  userId: string,
   attachments: RawAttachment[] | undefined,
 ) : Promise<NormalizedAttachment[] | undefined> {
+  const consumedSessionIds = new Set<Id<"chatUploadSessions">>();
   const normalizedAttachments = attachments
     ? await Promise.all(
       attachments.map(async (attachment) => {
-        let resolvedUrl = attachment.url?.trim();
-        if ((!resolvedUrl || resolvedUrl.length === 0) && attachment.storageId) {
-          resolvedUrl = await ctx.storage.getUrl(attachment.storageId) ?? undefined;
+        const storageMetadata = attachment.storageId
+          ? await ctx.storage.getMetadata(attachment.storageId)
+          : null;
+        if (attachment.storageId && !storageMetadata) {
+          throw new ConvexError({
+            code: "VALIDATION",
+            message: "Attachment upload failed. Please retry.",
+          });
         }
-        if (!resolvedUrl || resolvedUrl.length === 0) {
+        if (attachment.uploadSessionId && !attachment.storageId) {
+          throw new ConvexError({
+            code: "VALIDATION",
+            message: "Upload session must reference a stored attachment.",
+          });
+        }
+        if (!attachment.storageId) {
+          const url = attachment.url?.trim() ?? "";
+          if (!url.startsWith("data:") && attachment.sizeBytes === undefined) {
+            throw new ConvexError({
+              code: "VALIDATION",
+              message: "Attachment size is required for remote attachments.",
+            });
+          }
+        }
+        if (attachment.storageId) {
+          if (attachment.uploadSessionId) {
+            const session = await ctx.db.get(attachment.uploadSessionId);
+            if (
+              !session ||
+              session.userId !== userId ||
+              session.status !== "pending" ||
+              session.storageId !== attachment.storageId
+            ) {
+              throw new ConvexError({
+                code: "FORBIDDEN",
+                message: "Attachment upload is missing or not owned by user.",
+              });
+            }
+            if (!consumedSessionIds.has(attachment.uploadSessionId)) {
+              consumedSessionIds.add(attachment.uploadSessionId);
+              await ctx.db.patch(attachment.uploadSessionId, {
+                status: "consumed",
+                consumedAt: Date.now(),
+              });
+            }
+          } else {
+            const existingAttachment = await ctx.db
+              .query("fileAttachments")
+              .withIndex("by_storage", (q) => q.eq("storageId", attachment.storageId!))
+              .take(20);
+            if (!existingAttachment.some((row) => row.userId === userId)) {
+              throw new ConvexError({
+                code: "FORBIDDEN",
+                message: "Attachment upload is missing or not owned by user.",
+              });
+            }
+          }
+        }
+        const resolvedUrl = attachment.storageId
+          ? await ctx.storage.getUrl(attachment.storageId) ?? undefined
+          : attachment.url?.trim();
+        if (
+          !resolvedUrl ||
+          resolvedUrl.length === 0 ||
+          (attachment.storageId && !storageMetadata)
+        ) {
           throw new ConvexError({ code: "VALIDATION", message: "Attachment upload failed. Please retry." });
         }
 
+        const sizeBytes =
+          storageMetadata?.size ??
+          attachment.sizeBytes ??
+          (looksLikeBase64(resolvedUrl)
+            ? estimatedBase64Size(resolvedUrl)
+            : 0);
+        if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 0) {
+          throw new ConvexError({
+            code: "VALIDATION",
+            message: "Attachment size is invalid.",
+          });
+        }
+
         return {
-          type: attachment.type,
+          type: attachment.type === "pdf" ? "document" : attachment.type,
           url: resolvedUrl,
           storageId: attachment.storageId,
           name:
             attachment.name && attachment.name.trim().length > 0
               ? attachment.name
               : "attachment",
-          mimeType: attachment.mimeType,
-          sizeBytes:
-            attachment.sizeBytes ??
-            (looksLikeBase64(resolvedUrl)
-              ? Math.floor((resolvedUrl.length * 3) / 4)
-              : 0),
+          mimeType: storageMetadata?.contentType ?? attachment.mimeType,
+          uploadSessionId: attachment.uploadSessionId,
+          sizeBytes,
           driveFileId: attachment.driveFileId,
           lastRefreshedAt: attachment.lastRefreshedAt,
           videoRole: attachment.videoRole,
@@ -96,7 +177,7 @@ export async function normalizeMessageAttachments(
       const size =
         attachment.sizeBytes ??
         (looksLikeBase64(attachment.url ?? "")
-          ? Math.floor(((attachment.url ?? "").length * 3) / 4)
+          ? estimatedBase64Size(attachment.url ?? "")
           : 0);
       return sum + size;
     }, 0);

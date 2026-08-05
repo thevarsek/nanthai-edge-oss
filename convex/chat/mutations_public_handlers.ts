@@ -106,6 +106,7 @@ export interface SendMessageAttachment {
   type: string;
   url?: string;
   storageId?: Id<"_storage">;
+  uploadSessionId?: Id<"chatUploadSessions">;
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
@@ -164,6 +165,13 @@ export async function sendMessageHandler(
   args: SendMessageArgs,
 ): Promise<SendMessageResult> {
   const { userId } = await requireAuth(ctx);
+  const requestedComplexity = Math.max(1, Math.min(3, Math.round(args.complexity ?? 1)));
+  if (args.searchMode === "web" && requestedComplexity === 3 && (args.attachments?.length ?? 0) > 0) {
+    throw new ConvexError({
+      code: "VALIDATION" as const,
+      message: "Complexity 3 search does not support attachments.",
+    });
+  }
   const now = Date.now();
   ttftLog("[generation] sendMessage accepted", {
     chatId: args.chatId,
@@ -177,7 +185,7 @@ export async function sendMessageHandler(
   // are independent after auth — run concurrently to reduce sequential reads.
   const [chat, normalizedAttachments, userPreferences, mcpInvocationIds] = await Promise.all([
     ctx.db.get(args.chatId),
-    normalizeMessageAttachments(ctx, args.attachments),
+    normalizeMessageAttachments(ctx, userId, args.attachments),
     ctx.db
       .query("userPreferences")
       .withIndex("by_user", (q) => q.eq("userId", userId))

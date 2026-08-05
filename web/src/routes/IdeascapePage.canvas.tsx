@@ -39,6 +39,7 @@ import { dedupeChatAttachments, serializeResearchParticipant } from "@/routes/Ch
 import { attachmentTypeForMime } from "@/components/chat/MessageInput.attachments.utils";
 import { displayMessageContent } from "@/lib/persistedGenerationError";
 import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
+import { participantsSupportAudioInput, participantsSupportFileInput, participantsSupportVision } from "@/routes/ChatPage.participantsConfig";
 import { useAdvisorComposer } from "@/hooks/useAdvisorComposer";
 import { AdvisorComposerChips } from "@/components/chat/AdvisorComposerChips";
 import { AdvisorPicker } from "@/components/chat/AdvisorPicker";
@@ -296,6 +297,9 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const upsertPosition = useMutation(api.nodePositions.mutations.upsert);
   const upsertPreferences = useMutation(api.preferences.mutations.upsertPreferences);
   const createUploadUrl = useMutation(api.chat.mutations.createUploadUrl);
+  const createChatUploadUrl = useMutation(api.chat.mutations.createChatUploadUrl);
+  const bindChatUploadSession = useMutation(api.chat.mutations.bindChatUploadSession);
+  const cleanupChatUploadSession = useMutation(api.chat.mutations.cleanupChatUploadSession);
 
   const [viewport, setViewport] = useState<CanvasViewport>(() => loadViewport(chatId as string));
   const [selectedIds, setSelectedIds] = useState<Set<Id<"messages">>>(new Set());
@@ -459,6 +463,18 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       return summary?.supportsVideo === true && (summary.supportedFrameImages?.length ?? 0) > 0;
     });
   }, [participants, modelSummaries, isVideoMode]);
+  const supportsVision = useMemo(
+    () => participantsSupportVision(participants, modelSummaries),
+    [participants, modelSummaries],
+  );
+  const supportsFileInput = useMemo(
+    () => participantsSupportFileInput(participants, modelSummaries),
+    [participants, modelSummaries],
+  );
+  const supportsAudioInput = useMemo(
+    () => participantsSupportAudioInput(participants, modelSummaries),
+    [participants, modelSummaries],
+  );
 
   type KBAttachment = typeof kbAttachments[number] & { videoRole?: "first_frame" | "last_frame" | "reference" };
 
@@ -838,7 +854,12 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           isGenerating={isGenerating}
           onSend={({ text, attachments, advisorSnapshot }) => handleSendComposer({ text, attachments, advisorSnapshot })}
           onCancel={() => void cancelGeneration({ chatId })}
-          onCreateUploadUrl={() => createUploadUrl({})}
+          onCreateUploadUrl={() => createChatUploadUrl({})}
+          onBindUploadSession={async (uploadSessionId, storageId) => { await bindChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, storageId: storageId as Id<"_storage"> }); }}
+          onCleanupUploadSession={async (uploadSessionId, storageId) => { await cleanupChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, ...(storageId ? { storageId: storageId as Id<"_storage"> } : {}) }); }}
+          supportsVision={supportsVision}
+          supportsFileInput={supportsFileInput}
+          supportsAudioInput={supportsAudioInput}
           onSendRecording={async (result: RecordingResult) => {
             if (!advisors.canSendCurrentSelection) {
               toast({ message: t("advisor_loading"), variant: "error" });
