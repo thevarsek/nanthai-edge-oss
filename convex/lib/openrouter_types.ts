@@ -188,11 +188,21 @@ export interface NonStreamResult {
   generationId: string | null;
   /** URL citation annotations, when OpenRouter includes them. */
   annotations: PerplexityAnnotation[];
+  /** Parsed file annotations emitted by OpenRouter's file-parser plugin. */
+  fileAnnotations?: FileAnnotation[];
 }
 
-// ---------------------------------------------------------------------------
-// Perplexity annotation types (shared by streaming + non-streaming paths)
-// ---------------------------------------------------------------------------
+// Annotation types
+
+/** Parsed PDF/file payload returned by OpenRouter's file-parser plugin. */
+export interface FileAnnotation {
+  type: "file";
+  file: {
+    hash: string;
+    name?: string;
+    content: Array<{ type: "text"; text: string } | { type: "image_url"; image_url: { url: string } }>;
+  };
+}
 
 /** A single Perplexity URL citation annotation. */
 export interface PerplexityAnnotation {
@@ -269,6 +279,8 @@ export interface RetryConfig {
   fallbackModel?: string;
   /** Whether to retry on unsupported parameter errors. Default: true */
   retryOnUnsupportedParam?: boolean;
+  /** Recover already-parsed file annotations when downstream inference fails. */
+  recoverFileAnnotationsOnError?: boolean;
   /**
    * Maximum retries for transient network errors (socket closed, fetch failed,
    * connection reset). Default: 1

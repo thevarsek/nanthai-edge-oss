@@ -34,13 +34,11 @@ import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } 
 import { captureFeatureUsage } from "@/lib/featureAnalytics";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import {
-  useChatScroll, useChatSearchWiring, useMentionSuggestions, useSubagentOverride,
+  useChatScroll, useMentionSuggestions, useSubagentOverride,
   useSearchMode,
 } from "@/routes/ChatPage.helpers";
 import { ChatHeader, EmptyChatState, ChatModalPanels } from "@/routes/ChatPage.header";
 import { SlashCommandPalette, TurnOverrideChips } from "@/components/chat/SlashCommandPalette";
-import { ChatSearchContext } from "@/components/chat/ChatSearchContext";
-import { ChatSearchBar } from "@/components/chat/ChatSearchBar";
 import { DocumentPreviewPanel, type DocumentPreviewSelection } from "@/components/chat/DocumentPreviewPanel";
 import { PresentationArtifactPanel } from "@/components/chat/PresentationArtifactPanel";
 import type { GeneratedFileOpenRequest } from "@/components/chat/GeneratedFilesCard";
@@ -121,6 +119,7 @@ export function ChatPage() {
   const showAdvancedStats = typedPrefs?.showAdvancedStats === true;
   const { messageCosts, totalCost, breakdown } = useChatCosts(typedChatId, showAdvancedStats);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesScrollContainerRef = useRef<HTMLDivElement>(null);
   const trackedOpenChatIdRef = useRef<string | null>(null);
   const {
     participants: convexParticipants,
@@ -288,18 +287,6 @@ export function ChatPage() {
     [messages, resolvedPath],
   );
   const groupedMessages = useMessageGrouping(visibleMessages);
-  const {
-    scrollContainerRef: chatSearchScrollContainerRef,
-    searchCtx: chatSearchCtx,
-    isOpen: chatSearchIsOpen,
-    query: chatSearchQuery,
-    setQuery: setChatSearchQuery,
-    matches: chatSearchMatches,
-    currentIndex: chatSearchCurrentIndex,
-    next: chatSearchNext,
-    prev: chatSearchPrev,
-    close: closeChatSearch,
-  } = useChatSearchWiring(visibleMessages, chatId);
   const showPendingResponsePlaceholder = shouldShowPendingResponsePlaceholder({ isGenerating, visibleMessages });
 
   // Auto-refresh credit balance when generation completes (true → false transition)
@@ -830,11 +817,11 @@ export function ChatPage() {
     });
   }, [visibleMessages]);
   const handleJumpToNext = useCallback((targetMessageId: Id<"messages">) => {
-    const el = chatSearchScrollContainerRef.current?.querySelector(
+    const el = messagesScrollContainerRef.current?.querySelector(
       `[data-message-id="${targetMessageId}"]`,
     );
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [chatSearchScrollContainerRef]);
+  }, []);
 
   const mentionSuggestions = useMentionSuggestions(participants);
 
@@ -854,20 +841,8 @@ export function ChatPage() {
       />}
       messageArea={<AudioPlaybackProvider defaultAudioSpeed={typedPrefs?.defaultAudioSpeed}>
         <AutoAudioWatcher messages={visibleMessages} isLoading={isLoading} />
-          <ChatSearchContext.Provider value={chatSearchCtx}>
           <SearchSessionContext.Provider value={searchSessionCtx}>
-          {chatSearchIsOpen && (
-            <ChatSearchBar
-              query={chatSearchQuery}
-              onQueryChange={setChatSearchQuery}
-              matchCount={chatSearchMatches.length}
-              currentIndex={chatSearchCurrentIndex}
-              onNext={chatSearchNext}
-              onPrev={chatSearchPrev}
-              onClose={closeChatSearch}
-            />
-          )}
-          <div ref={chatSearchScrollContainerRef} data-ph-block data-ph-mask className="h-full overflow-y-auto px-4 py-4 space-y-4">
+          <div ref={messagesScrollContainerRef} data-ph-block data-ph-mask className="h-full overflow-y-auto px-4 py-4 space-y-4">
             {visibleMessages.length === 0 ? <EmptyChatState /> : groupedMessages.map((group) =>
               group.type === "single" ? (
                 <div key={group.message._id} data-message-id={group.message._id}>
@@ -890,7 +865,6 @@ export function ChatPage() {
             <div ref={messagesEndRef} />
           </div>
           </SearchSessionContext.Provider>
-          </ChatSearchContext.Provider>
         </AudioPlaybackProvider>}
       sidePanel={liveDocumentPreview?.file?.presentationProjectId ? (
         <PresentationArtifactPanel

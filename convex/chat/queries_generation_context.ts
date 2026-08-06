@@ -45,7 +45,7 @@ export interface GenerationContext {
 }
 
 // ---------------------------------------------------------------------------
-// Provider list — must stay in sync with tools/index.ts helpers.
+// Supported OAuth providers.
 // ---------------------------------------------------------------------------
 
 const OAUTH_PROVIDERS = [

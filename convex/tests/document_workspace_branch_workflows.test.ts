@@ -46,6 +46,8 @@ function toolCtx(options: {
         if ("chatId" in args) {
           return options.docs ?? [scopedDoc()];
         }
+        if ("leaseExpiresAt" in args) return { state: "claimed" };
+        if ("status" in args) return true;
         return null;
       },
       runQuery: async () => Object.hasOwn(options, "version")
@@ -183,6 +185,8 @@ test("readDocument records string extraction failures from storage writes", asyn
       runMutation: async (_name: unknown, args: Record<string, unknown>) => {
         mutationCalls.push({ args });
         if ("chatId" in args) return [scopedDoc({ extractionStatus: "pending" })];
+        if ("leaseExpiresAt" in args) return { state: "claimed" };
+        if ("status" in args) return true;
         return null;
       },
       runQuery: async () => ({
@@ -246,6 +250,7 @@ test("readDocument extracts uncached PDFs through the isolated PDF action", asyn
   assert.equal((result.data as any).content, "PDF text content");
   assert.equal((result.data as any).pageCount, 3);
   assert.deepEqual(actionCalls, [{
+    versionId: "version_1",
     storageId: "storage_source",
     filename: "Brief.pdf",
     toolContext: {

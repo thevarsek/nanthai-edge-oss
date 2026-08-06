@@ -1,5 +1,3 @@
-import { Helmet } from "react-helmet-async";
-
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 import {
@@ -50,7 +48,7 @@ export function HomePage() {
         <link rel="alternate" type="text/markdown" href="https://nanthai.tech/llms/edge-home.md" />
       </Seo>
 
-      <Helmet>
+      <>
         <script type="application/ld+json">
           {JSON.stringify(
             buildOrganizationJsonLd({
@@ -84,7 +82,7 @@ export function HomePage() {
             },
           })}
         </script>
-      </Helmet>
+      </>
 
       <HomeHeroSection />
       <HomeHowItWorksSection />

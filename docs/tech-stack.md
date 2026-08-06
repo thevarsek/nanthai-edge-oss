@@ -28,7 +28,7 @@
 | Icons | Lucide React | App controls and route UI |
 | PWA | `vite-plugin-pwa`, Workbox | Installability and service worker support |
 | i18n | i18next + React bindings | Locale files under `web/src/i18n` |
-| SEO/static pages | React Helmet Async | Public feature, privacy, terms, support, and licensing pages |
+| SEO/static pages | React 19 document metadata + build-time SEO shell | `Seo.tsx` renders native `<title>`, `<meta>`, and `<link>` elements for public routes |
 | Analytics | PostHog JS | Optional browser analytics |
 
 ## Convex Backend

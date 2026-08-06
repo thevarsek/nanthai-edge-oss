@@ -1,5 +1,3 @@
-import { Helmet } from "react-helmet-async";
-
 type SeoProps = {
   title: string;
   description: string;
@@ -25,7 +23,7 @@ export function Seo({
   const canonicalUrl = canonical ?? url;
 
   return (
-    <Helmet>
+    <>
       <title>{title}</title>
       <meta name="description" content={description} />
       {keywordsStr && <meta name="keywords" content={keywordsStr} />}
@@ -47,6 +45,6 @@ export function Seo({
       <meta name="twitter:image" content={image} />
 
       {children}
-    </Helmet>
+    </>
   );
 }

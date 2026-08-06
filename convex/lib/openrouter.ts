@@ -18,6 +18,7 @@ export { resolvePerplexityCitations } from "./openrouter_types";
 export type {
   ChatRequestParameters,
   ContentPart,
+  FileAnnotation,
   NonStreamResult,
   OnDelta,
   OnReasoningDelta,

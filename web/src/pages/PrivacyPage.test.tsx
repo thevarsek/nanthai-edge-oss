@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import { HelmetProvider } from "react-helmet-async";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { PrivacyPage } from "./PrivacyPage";
@@ -11,11 +10,9 @@ vi.mock("@clerk/react", () => ({
 describe("PrivacyPage", () => {
   it("renders required legal content and canonical metadata", async () => {
     render(
-      <HelmetProvider>
-        <MemoryRouter>
-          <PrivacyPage />
-        </MemoryRouter>
-      </HelmetProvider>,
+      <MemoryRouter>
+        <PrivacyPage />
+      </MemoryRouter>,
     );
 
     expect(screen.getByRole("heading", { name: /plain-language view/i })).toBeInTheDocument();

@@ -1,44 +1,13 @@
 "use node";
 
-import {
-  makeFunctionReference,
-  type FunctionReference,
-} from "convex/server";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { extractDocxContent } from "./docx_reader";
 import { createTool, ToolExecutionContext } from "./registry";
-import { serializableToolContext, type SerializableToolContext } from "./proxy_context";
+import { extractVersion } from "./document_extraction";
 import {
   normalizeWhitespace,
   ScopedDocument,
 } from "../documents/shared";
-
-type ExtractionPayload = {
-  text: string;
-  markdown?: string;
-  pageCount?: number;
-  wordCount?: number;
-};
-
-type ExtractPdfVersionArgs = {
-  storageId: Id<"_storage">;
-  filename: string;
-  toolContext: SerializableToolContext;
-};
-
-const extractPdfVersionRef = makeFunctionReference<
-  "action",
-  ExtractPdfVersionArgs,
-  ExtractionPayload
->(
-  "documents/pdf_extraction_actions:extractPdfVersion",
-) as unknown as FunctionReference<
-  "action",
-  "internal",
-  ExtractPdfVersionArgs,
-  ExtractionPayload
->;
 
 const DEFAULT_READ_DOCUMENT_CHARS = 60_000;
 const MAX_READ_DOCUMENT_CHARS = 120_000;
@@ -106,109 +75,6 @@ export function resolveScopedDocument(
     doc.driveFileId === value ||
     doc.filename.toLowerCase() === value.toLowerCase()
   ) ?? null;
-}
-
-async function extractVersion(
-  toolCtx: ToolExecutionContext,
-  doc: ScopedDocument,
-): Promise<ExtractionPayload> {
-  if (!doc.versionId) {
-    throw new Error("Document has no current version.");
-  }
-  const version = await toolCtx.ctx.runQuery(
-    internal.documents.queries.getVersionForExtraction,
-    { versionId: doc.versionId },
-  );
-  if (!version) {
-    throw new Error("Document version not found.");
-  }
-
-  if (version.extractionStatus === "ready" && version.extractionTextStorageId) {
-    const textBlob = await toolCtx.ctx.storage.get(version.extractionTextStorageId);
-    const markdownBlob = version.extractionMarkdownStorageId
-      ? await toolCtx.ctx.storage.get(version.extractionMarkdownStorageId)
-      : null;
-    if (textBlob) {
-      return {
-        text: await textBlob.text(),
-        markdown: markdownBlob ? await markdownBlob.text() : undefined,
-        pageCount: version.pageCount,
-        wordCount: version.wordCount,
-      };
-    }
-  }
-
-  await toolCtx.ctx.runMutation(internal.documents.mutations.updateVersionExtraction, {
-    versionId: doc.versionId,
-    status: "extracting",
-  });
-
-  let unsupported = false;
-  try {
-    const mime = version.mimeType.toLowerCase();
-    const filename = version.filename.toLowerCase();
-    let payload: ExtractionPayload;
-
-    if (mime === "application/pdf" || filename.endsWith(".pdf")) {
-      payload = await toolCtx.ctx.runAction(extractPdfVersionRef, {
-        storageId: version.storageId,
-        filename: version.filename,
-        toolContext: serializableToolContext(toolCtx),
-      });
-    } else if (
-      mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-      filename.endsWith(".docx")
-    ) {
-      const blob = await toolCtx.ctx.storage.get(version.storageId);
-      if (!blob) throw new Error("Document bytes not found.");
-      const extracted = await extractDocxContent(await blob.arrayBuffer());
-      payload = {
-        text: extracted.text,
-        markdown: extracted.markdown,
-        wordCount: extracted.wordCount,
-      };
-    } else if (mime.startsWith("text/") || filename.endsWith(".csv") || filename.endsWith(".json")) {
-      const blob = await toolCtx.ctx.storage.get(version.storageId);
-      if (!blob) throw new Error("Document bytes not found.");
-      const text = await blob.text();
-      payload = {
-        text,
-        markdown: text,
-        wordCount: text.split(/\s+/).filter(Boolean).length,
-      };
-    } else {
-      unsupported = true;
-      throw new Error(`Unsupported readable document type: ${version.mimeType}`);
-    }
-
-    const textStorageId = await toolCtx.ctx.storage.store(
-      new Blob([payload.text], { type: "text/plain;charset=utf-8" }),
-    );
-    const markdownStorageId = payload.markdown
-      ? await toolCtx.ctx.storage.store(
-        new Blob([payload.markdown], { type: "text/markdown;charset=utf-8" }),
-      )
-      : undefined;
-
-    await toolCtx.ctx.runMutation(internal.documents.mutations.updateVersionExtraction, {
-      versionId: doc.versionId,
-      status: "ready",
-      extractionTextStorageId: textStorageId as Id<"_storage">,
-      extractionMarkdownStorageId: markdownStorageId as Id<"_storage"> | undefined,
-      extractionByteLength: new TextEncoder().encode(payload.text).byteLength,
-      pageCount: payload.pageCount,
-      wordCount: payload.wordCount,
-    });
-
-    return payload;
-  } catch (error) {
-    await toolCtx.ctx.runMutation(internal.documents.mutations.updateVersionExtraction, {
-      versionId: doc.versionId,
-      status: unsupported ? "unsupported" : "error",
-      extractionError: error instanceof Error ? error.message : String(error),
-    });
-    throw error;
-  }
 }
 
 export const listDocuments = createTool({

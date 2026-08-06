@@ -58,6 +58,8 @@ export interface ToolExecutionContext {
   generationKey?: string;
   modelId?: string;
   requireZdr?: boolean;
+  /** Absolute provider cutoff inherited from the owning generation action. */
+  providerDeadlineAtMs?: number;
   sandboxSessionId?: string;
   workspaceSandbox?: unknown;
   workspaceSandboxCleanup?: () => Promise<void>;

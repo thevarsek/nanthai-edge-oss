@@ -15,10 +15,9 @@ Before M8, the app had 8+ protocol-based services (OpenRouterService, ChatServic
 | `NotificationService` | `@MainActor class` | APNs push notification handling — token registration/removal, foreground display, tap-to-navigate deep linking (M13.5). Scheduled-job pushes are emitted only for fully autonomous scheduled executions, not for later user-driven follow-ups inside those chats. M14 added: `scheduleCreditAlert(threshold:)`, `requestAuthorizationIfNeeded()`, `creditAlertsEnabled` toggle. |
 | `CreditBalanceCheck` | `struct` | Pure value type — threshold crossing detection for local credit notifications, UserDefaults persistence of notified thresholds, auto-reset on balance rise (M14) |
 | `ClerkAuthService` | `class` | Clerk identity auth (sign-in/out, session management) |
-| `AuthService` | `class` | OpenRouter PKCE authorization state and callback coordination |
 | `ClerkConvexAuthProvider` | `struct` | Bridges Clerk JWT tokens to ConvexMobile auth |
-| `KeychainService` | `class` | Secure temporary PKCE state and legacy local cleanup; updated clients do not store the OpenRouter key |
-| `OpenRouterKeyExchanger` | `struct` | Sends one-time PKCE material to Convex and receives connection status only |
+| `KeychainService` | `class` | Local-secret and legacy cleanup for Clerk sign-out/account deletion; iOS OpenRouter PKCE material stays in memory |
+| `PreviewAuthService` | `@Observable class` | Small mutable `AuthServiceProtocol` fake used only by previews and focused tests |
 
 ## ConvexService (Core)
 
@@ -63,12 +62,6 @@ final class ConvexService {
         yielding type: T.Type
     ) async throws -> T
 
-    // One-shot optional query (M9.5)
-    func queryOptional<T: Decodable>(
-        _ function: String,
-        with args: [String: ConvexEncodable?] = [:],
-        yielding type: T.Type
-    ) async throws -> T?
 }
 ```
 
@@ -136,8 +129,8 @@ final class SharedAppDataStore {
     func hasCapability(_ capability: String) -> Bool
 
     // Credit balance
-    func updateCreditBalance(_ balance: Double)
-    func refreshCreditBalance(apiKey: String) async
+    func updateCreditBalance(_ balance: Double?)
+    func refreshCreditBalance() async
 }
 ```
 
@@ -310,10 +303,11 @@ Branch pills no longer choose a descendant leaf client-side. iOS, Android, and w
 
 ## OpenRouter Server-Side Exchange
 
-Updated clients retain only temporary PKCE verifier/state material. After the
-callback is validated, `OpenRouterKeyExchanger` calls
-`oauth/openrouter:exchangeAndStore`; Convex exchanges the code, encrypts the key
-into `userSecrets`, and returns connection status without exposing the key.
+On iOS, `OpenRouterConnectionView` retains the PKCE verifier/state in memory for
+the lifetime of the browser flow. `OpenRouterConnectionFlow` validates the
+callback, then the view calls `oauth/openrouter:exchangeAndStore` through
+`ConvexService`. Convex exchanges the code, encrypts the key into `userSecrets`,
+and returns connection status without exposing the key.
 
 The old `scheduledJobs/mutations:upsertApiKey` mutation remains solely for
 released-client compatibility and encrypts immediately. It is not the canonical
@@ -323,37 +317,22 @@ server credential contract.
 
 ## External Integration OAuth Services (M10 Phases B/C/D)
 
-### Google Connection (`GoogleConnectionViewModel`)
+### OAuth Connection Coordinator
 
-`@MainActor @Observable` ViewModel that manages the Google Workspace OAuth lifecycle:
-- `connect()` — Opens `ASWebAuthenticationSession` with Google consent screen, handles PKCE callback, calls `exchangeGoogleCode` Convex action
-- `disconnect()` — Calls `disconnectGoogle` Convex action to revoke tokens and delete `oauthConnections` row
-- Connection status tracked via `SharedAppDataStore.hasGoogleConnection` (subscribed globally)
+`OAuthConnectionCoordinator<Connection>` is the shared `@MainActor @Observable`
+owner for Google, Microsoft, Notion, and Slack connection state. It owns one
+optional connection subscription, connect/disconnect progress, cancellation,
+and user-facing errors. `OAuthConnectionProvider` supplies the provider-specific
+authorization URL, callback validation, PKCE policy, exchange action, and
+disconnect action. Source-compatible `GoogleConnectionViewModel`,
+`MicrosoftConnectionViewModel`, `NotionConnectionViewModel`, and
+`SlackConnectionViewModel` typealiases keep existing views narrow.
 
-### Microsoft Connection (`MicrosoftConnectionViewModel`)
-
-Same pattern as Google, with key differences:
-- Uses Microsoft's `/common/oauth2/v2.0/authorize` endpoint for multi-tenant + personal accounts
-- **No `client_secret` sent** in token exchange (public/native client — AADSTS90023 error if included)
-- Needs `offline_access` scope for refresh tokens
-- `Mail.Send` is a separate permission (unlike Google where `gmail.modify` covers send)
-
-### Notion Connection (`NotionConnectionViewModel`)
-
-Same general pattern as Google/Microsoft, with key differences:
-- **No PKCE** — Notion doesn't use PKCE. State parameter is generated for CSRF protection only.
-- **HTTPS relay redirect** — Notion requires `https://` redirect URIs. OAuth redirects to `https://nanthai.tech/oauth/notion/callback` which relays to the app's custom URL scheme (`tech.nanthai.NanthAi-Edge://oauth/notion/callback`).
-- **HTTP Basic Auth** for token exchange — `Authorization: Basic base64(client_id:client_secret)`, JSON request body (not form-encoded).
-- **No scopes** — access is page-level; user chooses which pages to share during OAuth consent.
-- **Conservative token expiry** — Notion doesn't return `expires_in`; we set a 1-hour expiry to trigger proactive refresh.
-- **User info from token response** — `owner.user.name` and `owner.user.person.email` embedded in the token exchange response, no separate userinfo endpoint needed.
-
-### Slack Connection (`SlackConnectionViewModel`)
-
-Slack follows the same user-initiated native auth pattern as the other OAuth providers, with provider-specific details handled server-side:
-- Uses Slack OAuth 2.0 consent and Convex token exchange via `oauth/slack.ts`
-- Persists workspace metadata (`workspaceId`, `workspaceName`) alongside the token row for connected-account UI
-- Connection status tracked via `SharedAppDataStore.hasSlackConnection`
+- Google, Microsoft, and Slack use PKCE; Notion uses state validation without PKCE.
+- Google scopes vary by the requested integration; Microsoft uses the public-client exchange contract.
+- Notion retains its HTTPS relay redirect and server-side Basic Auth exchange.
+- Slack persists workspace metadata through the existing Convex OAuth action.
+- Connection status remains available through the coordinator subscription and `SharedAppDataStore`.
 
 ### Cloze Connection (`ClozeConnectionViewModel`)
 
@@ -496,20 +475,16 @@ struct ClerkConvexAuthProvider: AuthProvider {
 ## Auth Services
 
 ### AuthServiceProtocol
-Abstraction for authentication services. Both `ClerkAuthService` and legacy `AuthService` conform. Key contract:
+Abstraction for authentication state. Production uses `ClerkAuthService`; previews and focused tests use `PreviewAuthService`. Key contract:
 - `isAuthenticated` / `hasAPIKey` — observable state for UI binding
 - `signOut()` — clears identity session and API key
 - `revokeAPIKey()` — removes only the OpenRouter API key without signing out of Clerk, enabling users to disconnect/reconnect their OpenRouter account from Settings
-- `loadAPIKey()` — legacy/mock compatibility only; production auth state comes from Convex connection metadata
 
 ### ClerkAuthService
 Manages Clerk identity lifecycle. Conforms to `AuthServiceProtocol`. The `hasAPIKey` property is backed by a private stored `_hasAPIKey: Bool` property so `@Observable` can react to Convex connection-state updates. Production does not derive this state by reading an OpenRouter key from Keychain.
 
-### AuthService (PKCE Coordinator)
-Coordinates `ASWebAuthenticationSession`, PKCE verifier/state generation and callback validation. It sends the one-time code and verifier through `OpenRouterKeyExchanger`; it does not receive the resulting API key in the updated flow.
-
 ### KeychainService
-Synchronous C-API wrapper retained for temporary PKCE state, other approved local secrets and legacy cleanup. Sensitive entries use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; updated clients do not store the OpenRouter API key locally.
+Synchronous C-API wrapper retained for approved local-secret and legacy cleanup during Clerk sign-out/account deletion. Stored entries use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`; the iOS OpenRouter flow keeps PKCE material in memory and never stores the API key locally.
 
 ## Removed Services (M8)
 
@@ -545,7 +520,6 @@ These services were deleted — their logic now lives in Convex backend function
 |------|------|---------|
 | `ChatRequestParameters` | `OpenRouterServiceTypes.swift` | Parameter struct used by ChatViewModel for preference cascade |
 | `OpenRouterTypes` | `OpenRouterTypes.swift` | `OpenRouterModel` for model picker display |
-| `OpenRouterMetadataTypes` | `OpenRouterMetadataTypes.swift` | Credits response type for Settings |
 
 ## Error Handling
 

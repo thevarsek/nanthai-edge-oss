@@ -12,6 +12,7 @@ export const MODEL_IDS = {
   memoryExtraction: "openai/gpt-4.1-mini",
   memoryExtractionFallback: "openai/gpt-4.1",
   memoryImportExtraction: "openai/gpt-4.1-mini",
+  pdfOcrExtraction: "google/gemini-3.1-flash-lite",
   searchQueryGeneration: "openai/gpt-5-mini",
   searchResearchOrchestration: "openai/gpt-5-mini",
   compaction: "google/gemini-3.1-flash-lite-preview",

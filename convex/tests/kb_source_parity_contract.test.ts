@@ -104,14 +104,14 @@ test("KB function paths — clients reference knowledge_base/* (not chat/*) for 
   // the failure shows up at test time instead.
   const targets: Array<{ file: string; mustContain: string[]; mustNotContain: string[] }> = [
     {
-      file: "web/src/lib/constants.ts",
+      file: "web/src/routes/KnowledgeBasePage.tsx",
       mustContain: [
-        "knowledge_base/queries:listKnowledgeBaseFiles",
-        "knowledge_base/mutations:deleteKnowledgeBaseFile",
+        "api.knowledge_base.queries.listKnowledgeBaseFiles",
+        "api.knowledge_base.mutations.deleteKnowledgeBaseFile",
       ],
       mustNotContain: [
-        "chat/queries:listKnowledgeBaseFiles",
-        "chat/mutations:deleteKnowledgeBaseFile",
+        "api.chat.queries.listKnowledgeBaseFiles",
+        "api.chat.mutations.deleteKnowledgeBaseFile",
       ],
     },
     {

@@ -26,7 +26,8 @@ const isAccountDeletionStartedRef = makeFunctionReference<"query">(
 //                     startResearchPaper, regeneratePaper
 //   memory_writes   — all memory mutations (enable, update mode/model, clear)
 //                     Note: memory *reads* (list) are free.
-//   tool_registry   — buildToolRegistry(isPro:false) returns empty registry;
+//   tool_registry   — buildProgressiveToolRegistry({ isPro: false, ... })
+//                     returns an empty registry;
 //                     free users never trigger tool calls. Server pipelines
 //                     call with no options → all tools available.
 //

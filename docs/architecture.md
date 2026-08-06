@@ -16,7 +16,7 @@
 | Streaming | **Server-side** via Convex Actions + `StreamWriter` | Convex writes hot patches into `streamingMessages`, persists tool-call deltas, and finalizes into `messages`. Direct message-row patching and `messageChunks` are both gone. |
 | State | `@Observable` (Observation framework) | Modern SwiftUI, fine-grained updates |
 | Concurrency | Swift structured concurrency (async/await, actors) | Thread-safe, no Combine needed |
-| Secrets | Temporary client PKCE state in Keychain/Keystore; recoverable provider credentials in Convex `enc:v2` envelopes | Updated clients never receive the OpenRouter API key; server credentials use contextual AES-256-GCM and fail-closed writers |
+| Secrets | In-memory iOS PKCE state; Android Keystore-backed ephemeral PKCE state; recoverable provider credentials in Convex `enc:v2` envelopes | Updated clients never receive the OpenRouter API key; iOS Keychain is retained for local-secret cleanup rather than OpenRouter PKCE persistence; server credentials use contextual AES-256-GCM and fail-closed writers |
 | Navigation | `NavigationSplitView` (iPad) / `NavigationStack` (iPhone) | Adaptive layout |
 | Navigation (Android) | `ListDetailPaneScaffold` (tablet) / single-pane `NavHost` (phone) | Material 3 Adaptive — M25 |
 | Navigation Coordination | `NavigationCoordinator` with `NavigationPath` | Programmatic navigation, deep linking |
@@ -145,7 +145,7 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `chat/audio_shared` | constants, pcmToWav, voice helpers, isLyriaModel, parseMp3DurationMs | Audio constants, encoder, 6-voice catalog (M20), Lyria model IDs + MP3 frame parser (M26) |
 | `chat/mutations_internal_handlers` | auto-audio scheduling after finalization | Resolves auto-audio preferences and schedules `generateAudioForMessage` when an assistant message completes without inline Lyria audio |
 | `chat/audio_public_handlers` | requestAudioGeneration, getMessageAudioUrl | Public mutation/query handlers for audio (M20) |
-| `tools/` | registry, execute_loop, progressive_registry, profile registries, action proxies, index | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. M43 provider/document proxies keep analyzer-fragile implementations out of ordinary chat action initialization. |
+| `tools/` | registry, registry types, execute_loop, progressive_registry, profile registries, action proxies | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. M43 provider/document proxies keep analyzer-fragile implementations out of ordinary chat action initialization. |
 | `runtime/` | just-bash client, Pyodide/Vercel Sandbox analytics, chart helpers | Per-generation workspace, notebook-style Python analytics, artifact export (M19, rewritten M27). |
 | `capabilities/` | queries, mutations, shared helpers | Account capability model layered on top of purchase entitlements (M19). |
 | `skills/tool_profiles.ts` | skill profile normalization helpers | Derives `requiredToolProfiles`, runtime mode, and capability consistency for built-in and user-authored skills (post-M19). |
@@ -342,7 +342,7 @@ Effective integrations sent as `enabledIntegrations` in sendMessage args
     ↓
 Backend: parallel check Google + Microsoft + Notion + Apple Calendar + Slack + Cloze connection status
     ↓
-Intersection: only integrations with active connections are passed to buildToolRegistry()
+Intersection: only integrations with active connections are passed as `enabledIntegrations` to `buildProgressiveToolRegistry(...)`
     ↓
 Tool registry includes only relevant tool groups
 ```
@@ -718,7 +718,7 @@ Returning users: `onboardingCompleted: true` in Convex preferences takes precede
 | `getProStatus()` | Public query. Returns entitlement-backed Pro status for native client UI gating. |
 | `checkProStatus` (internalQuery) | Takes `userId: string`. Used by generation actions for server-side Pro gating. |
 
-**`requirePro(ctx, userId)`** in `convex/lib/auth.ts`: Resolves active entitlement state from `purchaseEntitlements` (with a temporary migration fallback for legacy tester rows). Throws `ConvexError("Pro subscription required")` if false. Called from: autonomous session start, memory extraction, advanced search, scheduled job execution, `buildToolRegistry(isPro: false)` path.
+**`requirePro(ctx, userId)`** in `convex/lib/auth.ts`: Resolves active entitlement state from `purchaseEntitlements` (with a temporary migration fallback for legacy tester rows). Throws `ConvexError("Pro subscription required")` if false. Called from autonomous session start, memory extraction, advanced search, and scheduled job execution. Tool availability is gated separately: `buildProgressiveToolRegistry({ isPro: false })` returns an empty registry.
 
 ### PaywallView
 

@@ -2,12 +2,13 @@
 // Expandable tool invocation + result display for all tool types.
 
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Wrench, CheckCircle, AlertCircle, Loader } from "lucide-react";
+import { ChevronDown, ChevronRight, Wrench, CheckCircle, AlertCircle, Loader, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { ToolCall, ToolResult } from "@/hooks/useChat";
 import { renderToolResult } from "./ToolResultRenderers.router";
 import {
   formatToolPayloadForDisplay,
+  getToolIconName,
   getToolName,
   skillSummary,
 } from "./toolCallDisplay";
@@ -107,6 +108,7 @@ export function ToolCallAccordion({
         const isError = result?.isError;
         const skillCard = skillSummary(tc, result);
         const toolName = tc.displayName || getToolName(tc.name, (key) => t(key));
+        const toolIconName = getToolIconName(tc.name);
 
         return (
           <div
@@ -135,6 +137,14 @@ export function ToolCallAccordion({
                 <CheckCircle size={12} className="text-green-400 shrink-0" />
               ) : (
                 <Wrench size={12} className="text-muted shrink-0" />
+              )}
+              {toolIconName === "document" && (
+                <FileText
+                  aria-hidden="true"
+                  data-tool-icon="document"
+                  size={12}
+                  className="text-muted shrink-0"
+                />
               )}
 
               <span className="min-w-0 flex-1">

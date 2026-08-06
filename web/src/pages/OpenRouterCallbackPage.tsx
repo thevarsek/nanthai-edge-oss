@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { Helmet } from "react-helmet-async";
 import { useTranslation } from "react-i18next";
 
 const EDGE_DEEP_LINK_BASE = "nanthai-edge://auth/callback";
@@ -18,13 +17,13 @@ export function OpenRouterCallbackPage() {
 
   return (
     <>
-      <Helmet>
+      <>
         <title>Redirecting to NanthAI Edge</title>
         <meta httpEquiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
         <meta httpEquiv="Pragma" content="no-cache" />
         <meta httpEquiv="Expires" content="0" />
         <meta name="robots" content="noindex, nofollow, noarchive" />
-      </Helmet>
+      </>
       <div className="flex min-h-screen items-center justify-center px-6">
         <div className="max-w-md space-y-4 text-center">
           <h1 className="text-xl font-semibold text-white">{t("opening_nanthai_edge")}</h1>

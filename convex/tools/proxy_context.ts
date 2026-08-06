@@ -13,6 +13,7 @@ export type SerializableToolContext = {
   generationKey?: string;
   modelId?: string;
   requireZdr?: boolean;
+  providerDeadlineAtMs?: number;
 };
 
 export function serializableToolContext(
@@ -36,6 +37,9 @@ export function serializableToolContext(
   }
   if (toolCtx.modelId !== undefined) context.modelId = toolCtx.modelId;
   if (toolCtx.requireZdr !== undefined) context.requireZdr = toolCtx.requireZdr;
+  if (toolCtx.providerDeadlineAtMs !== undefined) {
+    context.providerDeadlineAtMs = toolCtx.providerDeadlineAtMs;
+  }
   return context;
 }
 
@@ -49,4 +53,5 @@ export const serializableToolContextValidator = v.object({
   generationKey: v.optional(v.string()),
   modelId: v.optional(v.string()),
   requireZdr: v.optional(v.boolean()),
+  providerDeadlineAtMs: v.optional(v.number()),
 });

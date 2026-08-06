@@ -24,6 +24,9 @@ const TOOL_DISPLAY: Record<string, string> = {
   data_python_sandbox: "Python Sandbox",
   generate_chart: "Generate Chart",
   generate_docx: "Generate Document",
+  read_docx: "Read Document",
+  read_document: "Read Document",
+  read_pdf: "Read PDF",
   generate_xlsx: "Generate Spreadsheet",
   generate_pptx: "Generate Presentation",
   create_presentation: "Create Presentation",
@@ -45,12 +48,23 @@ const TOOL_DISPLAY: Record<string, string> = {
 const TOOL_TRANSLATION_KEYS: Record<string, string> = {
   web_search: "web_search",
   load_skill: "load_skill",
+  read_docx: "read_document",
+  read_document: "read_document",
+  read_pdf: "read_pdf",
   generate_pptx: "generate_presentation",
   create_presentation: "create_presentation",
   edit_presentation: "edit_presentation",
   read_presentation: "read_presentation",
   read_pptx: "read_presentation",
 };
+
+export type ToolIconName = "document";
+
+const DOCUMENT_READER_TOOLS = new Set(["read_docx", "read_document", "read_pdf"]);
+
+export function getToolIconName(name: string): ToolIconName | null {
+  return DOCUMENT_READER_TOOLS.has(name) ? "document" : null;
+}
 
 const SKILL_TOOLS = new Set([
   "load_skill",

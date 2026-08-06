@@ -179,7 +179,6 @@ vi.mock("@/hooks/useAdvisorComposer", () => ({
 }));
 vi.mock("@/routes/ChatPage.helpers", () => ({
   useChatScroll: () => undefined,
-  useChatSearchWiring: () => ({ scrollContainerRef: { current: null }, searchCtx: { query: "", queryLength: 0, matches: [], focusedGlobalIndex: -1 }, isOpen: false, query: "", setQuery: vi.fn(), matches: [], currentIndex: 0, next: vi.fn(), prev: vi.fn(), close: vi.fn() }),
   useMentionSuggestions: () => [],
   useSearchMode: () => ({ searchMode: { mode: "none", complexity: 1 }, setSearchMode: vi.fn(), globeColor: "text-muted" }),
   useSubagentOverride: () => ({ subagentOverride: "default", effectiveSubagentsEnabled: false, handleSubagentOverrideChange: vi.fn() }),

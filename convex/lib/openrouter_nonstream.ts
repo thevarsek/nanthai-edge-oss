@@ -4,10 +4,15 @@ import { extractErrorMessage, openRouterErrorDetails } from "./openrouter_error"
 import { extractContentFromNonStreamingPayload } from "./openrouter_sse";
 import { buildRequestBody } from "./openrouter_request";
 import { normalizeUnsupportedParameterName, parseUnsupportedParameter, stripParameter } from "./openrouter_param_retry";
-import { ChatRequestParameters, NonStreamResult, OpenRouterMessage, PerplexityAnnotation, RetryConfig } from "./openrouter_types";
+import { ChatRequestParameters, NonStreamResult, OpenRouterMessage, RetryConfig } from "./openrouter_types";
 import { DeepPartial, mergeTestDeps } from "./test_deps";
 import { assertChatCompletionsRequest } from "./openrouter_modality";
 import { assertRetryDelayFits, createNonStreamingDeadline, nextAttemptTimeoutMs } from "./openrouter_nonstream_deadline";
+import {
+  extractFileAnnotationsFromPayload,
+  extractUrlAnnotationsFromPayload,
+  recoverFileAnnotationsFromErrorPayload,
+} from "./openrouter_file_annotations";
 
 const defaultOpenRouterNonStreamingDeps = {
   fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
@@ -29,23 +34,6 @@ export function createOpenRouterNonStreamingDepsForTest(
   return mergeTestDeps(defaultOpenRouterNonStreamingDeps, overrides);
 }
 
-function extractAnnotationsFromPayload(
-  parsed: Record<string, unknown>,
-): PerplexityAnnotation[] {
-  const choices = parsed.choices as
-    | Array<{ message?: { annotations?: unknown[] } }>
-    | undefined;
-  const rawAnnotations = choices?.[0]?.message?.annotations;
-  if (!Array.isArray(rawAnnotations)) return [];
-
-  return rawAnnotations.filter((ann): ann is PerplexityAnnotation => {
-    if (!ann || typeof ann !== "object") return false;
-    const data = ann as Record<string, unknown>;
-    const citation = data.url_citation as Record<string, unknown> | undefined;
-    return data.type === "url_citation" && typeof citation?.url === "string";
-  });
-}
-
 /**
  * Call OpenRouter without streaming (for title generation, etc.).
  */
@@ -58,7 +46,11 @@ export async function callOpenRouterNonStreaming(
   deps: OpenRouterNonStreamingDeps = defaultOpenRouterNonStreamingDeps,
 ): Promise<NonStreamResult> {
   assertChatCompletionsRequest(params);
-  const { fallbackModel, retryOnUnsupportedParam = true } = retryConfig;
+  const {
+    fallbackModel,
+    recoverFileAnnotationsOnError = false,
+    retryOnUnsupportedParam = true,
+  } = retryConfig;
   const deadline = createNonStreamingDeadline(retryConfig, deps.now());
   const { startedAt: startTime } = deadline;
 
@@ -103,6 +95,10 @@ export async function callOpenRouterNonStreaming(
       const responseText = await response.text();
 
       if (!response.ok) {
+        if (recoverFileAnnotationsOnError) {
+          const recovery = recoverFileAnnotationsFromErrorPayload(responseText, currentModel);
+          if (recovery) return recovery;
+        }
         const errorMessage = deps.extractErrorMessage(
           responseText,
         );
@@ -130,12 +126,11 @@ export async function callOpenRouterNonStreaming(
             deps.parseUnsupportedParameter(responseText) ??
             deps.parseUnsupportedParameter(errorMessage);
           if (paramName) {
-            const stripped = deps.stripParameter(
-              paramName,
-              currentParams,
-            );
             const normalizedName = deps
               .normalizeUnsupportedParameterName(paramName);
+            const stripped = recoverFileAnnotationsOnError && normalizedName === "plugins"
+              ? null
+              : deps.stripParameter(paramName, currentParams);
             if (
               stripped &&
               !strippedParams.has(normalizedName) &&
@@ -192,18 +187,21 @@ export async function callOpenRouterNonStreaming(
 
       // Check for 200-wrapped error
       if (parsed.error) {
+        if (recoverFileAnnotationsOnError) {
+          const recovery = recoverFileAnnotationsFromErrorPayload(parsed, currentModel);
+          if (recovery) return recovery;
+        }
         const errorMessage = deps.extractErrorMessage(parsed);
         if (retryOnUnsupportedParam) {
           const paramName =
             deps.parseUnsupportedParameter(parsed) ??
             deps.parseUnsupportedParameter(errorMessage);
           if (paramName) {
-            const stripped = deps.stripParameter(
-              paramName,
-              currentParams,
-            );
             const normalizedName = deps
               .normalizeUnsupportedParameterName(paramName);
+            const stripped = recoverFileAnnotationsOnError && normalizedName === "plugins"
+              ? null
+              : deps.stripParameter(paramName, currentParams);
             if (
               stripped &&
               !strippedParams.has(normalizedName) &&
@@ -231,13 +229,16 @@ export async function callOpenRouterNonStreaming(
       const extracted = deps.extractContentFromNonStreamingPayload(parsed);
       const result: NonStreamResult = {
         content: extracted.content,
-        modelId: currentModel,
+        modelId: typeof parsed.model === "string" && parsed.model.trim().length > 0
+          ? parsed.model
+          : currentModel,
         usage: extracted.usage,
         finishReason: extracted.finishReason,
         audioBase64: extracted.audioBase64,
         audioTranscript: extracted.audioTranscript,
         generationId: typeof parsed.id === "string" && parsed.id.length > 0 ? parsed.id : null,
-        annotations: extractAnnotationsFromPayload(parsed),
+        annotations: extractUrlAnnotationsFromPayload(parsed),
+        fileAnnotations: extractFileAnnotationsFromPayload(parsed),
       };
 
       const durationMs = deps.now() - startTime;

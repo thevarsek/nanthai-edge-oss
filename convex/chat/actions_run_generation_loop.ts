@@ -346,6 +346,7 @@ export async function runGenerationWithCompaction(
       registry: currentToolRegistry,
       toolCtx: {
         ...toolCtx,
+        providerDeadlineAtMs: actionRetryConfig.absoluteDeadlineAtMs,
         operationScope: toolCtx.operationScope
           ? `${toolCtx.operationScope}:segment:${currentOperationSegment}`
           : undefined,

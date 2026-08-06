@@ -120,7 +120,7 @@ struct ConvexMessage: Codable, Identifiable, Hashable {
 }
 ```
 
-Additional DTOs: `ConvexChatParticipant`, `ConvexPersona`, `ConvexFolder`, `ConvexCachedModel`, `ConvexModelSummary` (lightweight projection — M9.5), `ConvexMemory`, `ConvexNodePosition`, `ConvexUserPreferences`, `ConvexModelSettings`, `ConvexGenerationJob`, `ConvexAutonomousSession`, `ConvexSearchSession`, `ConvexToolCall`, `ConvexToolResult`, `ConvexGeneratedFile` (M10), `ConvexGeneratedChart` (M19), `ConvexOAuthConnection` (M10), `ConvexScheduledJob` (M13), `ConvexJobRun` (M13), `ConvexUserSecrets` (M13), `ConvexProStatus` (M16), `ConvexFavorite`, `ConvexSkill` (M18), and account-capability payloads returned by `capabilities/queries:getAccountCapabilitiesPublic`.
+Additional DTOs: `ConvexChatParticipant`, `ConvexPersona`, `ConvexFolder`, `ConvexCachedModel`, `ConvexModelSummary` (lightweight projection — M9.5), `ConvexMemory`, `ConvexNodePosition`, `ConvexUserPreferences`, `ConvexModelSettings`, `ConvexAutonomousSession`, `ConvexSearchSession`, `ConvexToolCall`, `ConvexToolResult`, `ConvexGeneratedFile` (M10), `ConvexGeneratedChart` (M19), `ConvexOAuthConnection` (M10), `ConvexScheduledJob` (M13), `ConvexJobRun` (M13), `ConvexUserSecrets` (M13), `ConvexProStatus` (M16), `ConvexFavorite`, `ConvexSkill` (M18), and account-capability payloads returned by `capabilities/queries:getAccountCapabilitiesPublic`.
 
 `ConvexSkill` now also carries optional profile-routing metadata:
 
@@ -301,7 +301,7 @@ The model catalog is no longer just a cached OpenRouter pricing/capabilities lis
 - `convex/models/artificial_analysis_apply.ts` — match, normalize, score, and patch guidance fields
 - `convex/models/openrouter_usecase_sync.ts` — fetch/store OpenRouter trend hints
 - `convex/models/guidance_matching.ts` — family-based OpenRouter ↔ AA matcher
-- `convex/models/guidance_scoring*.ts` — normalized picker scores, ranks, labels, wizard scoring
+- `convex/models/guidance_scoring.ts` and `guidance_scoring_labels.ts` — normalized picker scores, ranks, and semantic labels. Wizard blends are client-local in iOS `ModelChoiceWizardProjection.swift`, Android `ModelChoiceWizardDialog.kt`, and web `ModelPickerHelpers.utils.ts`.
 - `convex/models/queries.ts` — `listModels`, `listModelSummaries`, `getModel`
 
 ### Mobile numeric gotcha

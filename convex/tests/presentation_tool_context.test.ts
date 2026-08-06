@@ -16,6 +16,7 @@ function toolContext(): ToolExecutionContext {
     userMessageId: "user_1",
     modelId: "test/model",
     requireZdr: true,
+    providerDeadlineAtMs: 123_456,
     presentationContext: {
       projectId: "project_1" as never,
       projectRevision: 7,
@@ -69,6 +70,7 @@ test("selected presentation context overrides omissions and rejects mismatches",
 test("presentation proxy context preserves target and turn privacy constraint", () => {
   const serialized = serializableToolContext(toolContext());
   assert.equal(serialized.requireZdr, true);
+  assert.equal(serialized.providerDeadlineAtMs, 123_456);
   assert.deepEqual(serialized.presentationContext, toolContext().presentationContext);
   assert.equal("ctx" in serialized, false);
 });

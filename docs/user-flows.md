@@ -11,7 +11,7 @@ User signs in via Clerk OAuth. Clerk provides identity + session tokens for Conv
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `OnboardingView`, `OnboardingClerkSignInView`, `OnboardingAuthRouter`, `ClerkAuthService`, `ClerkConvexAuthProvider`, `RootView` |
-| Android | `AuthRoute`, `OnboardingSignInLanding`, `OnboardingCarousel`, `RealClerkAuthBridge`, `ClerkConvexAuthProvider`, `AuthRepository` |
+| Android | `AuthRoute`, `OnboardingSignInLanding`, `OnboardingCarousel`, `RealClerkAuthBridge`, `ClerkConvexAuthProvider`, `NanthAiRootViewModel` |
 | Convex | `lib/auth.ts` (requireAuth, optionalAuth), `auth.config.ts` |
 
 ### 1.2 OpenRouter PKCE Key Exchange
@@ -19,7 +19,7 @@ After Clerk sign-in, the user connects OpenRouter through PKCE OAuth. The client
 
 | Platform | Key Files |
 |----------|-----------|
-| iOS | `OpenRouterConnectionView`, `AuthService`, `OpenRouterKeyExchanger`, `PKCEGenerator`, `KeychainService` |
+| iOS | `OpenRouterConnectionView`, `OpenRouterConnectionFlow`, `ConvexService`, `PKCEGenerator` |
 | Android | `OpenRouterConnectionRoute`, `OpenRouterKeyRepository`, `PkceGenerator`, `SecureStorage` |
 | Convex | `oauth/openrouter:exchangeAndStore`, `lib/secret_crypto.ts`, `userSecrets` |
 
@@ -29,7 +29,7 @@ Clears Clerk session, revokes API key, logs out of Convex.
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ClerkAuthService`, `SettingsViewModel`, `AuthServiceProtocol` |
-| Android | `AuthRepository`, `SettingsViewModel` |
+| Android | `ClerkAuthBridge`, `SettingsViewModel`, `NanthAiRootViewModel` |
 | Convex | `push/mutations:removeDeviceToken` |
 
 ### 1.4 Account Deletion
@@ -60,7 +60,7 @@ User types or speaks a message. Persisted, then generation job kicked off server
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ChatViewModel+Sending`, `MessageInput`, `ChatView+Content` |
-| Android | `ChatDetailViewModel` (performSend), `ChatDetailComposerComponents`, `ChatRepository` |
+| Android | `ChatDetailViewModel`, `ChatSendActionOwner` (performSend), `ChatDetailComposerComponents`, `ChatRepository` |
 | Convex | `chat/mutations:sendMessage`, `chat/actions:runGeneration` |
 
 ### 2.3 Receive Response (Streaming)
@@ -69,7 +69,7 @@ Server streams SSE tokens via Convex real-time subscriptions. Stable history com
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ChatViewModel+Subscriptions`, `StreamingRenderEngine`, `MessageBubble` |
-| Android | `ChatDetailViewModel`, `ChatDetailMessageComponents`, `ChatRepository` |
+| Android | `ChatDetailViewModel`, `ChatTimelineStateOwner`, `ChatDetailMessageComponents`, `ConvexGateway` |
 | Convex | `chat/queries:listMessages`, `chat/queries:listStreamingMessages`, `chat/queries:getStreamingContent`, `chat/stream_writer.ts`, `chat/actions_run_generation_handler.ts`, `chat/actions_run_generation_loop.ts` |
 
 ### 2.4 Cancel / Interrupt Generation
@@ -196,7 +196,7 @@ User previews a TTS voice sample from settings.
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `SettingsViewModel`, `ChatParametersView` |
-| Android | `ChatDetailViewModel`, `ChatRepository` (previewVoice) |
+| Android | `ChatDefaultsRoute`, `ConvexGateway` (previewVoice) |
 | Convex | `chat/actions:previewVoice`, `chat/audio_actions.ts` (previewVoiceHandler) |
 
 ---
@@ -326,7 +326,7 @@ Current backend behavior:
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ChatViewModel+Sending` (sendResearchPaper), `ResearchProgressView` |
-| Android | `ChatDetailViewModel`, `ChatRepository` (startResearchPaper) |
+| Android | `ChatSendActionOwner`, `ChatRepository` (startResearchPaper) |
 | Convex | `search/mutations:startResearchPaper`, `search/workflow.ts:researchPaperPipeline`, `search/workflow_nonstream_phases.ts`, `search/workflow_paper_phase.ts` |
 
 ---
@@ -379,7 +379,7 @@ Create, edit, delete personas with system prompts, avatars, model bindings, skil
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `PersonaListView`, `PersonaDetailView`, `PersonaEditorView` (+ Sections, Logic) |
-| Android | `PersonasListRoute`, `PersonasListViewModel`, `PersonasRepository` |
+| Android | `PersonasListRoute`, `PersonasListViewModel`, `ConvexGateway` |
 | Convex | `personas/mutations:create`, `personas/mutations:update`, `personas/mutations:remove` |
 
 ### 9.3 Generation Parameters
@@ -427,7 +427,7 @@ User connects external services via OAuth PKCE. Code exchanged through Convex ba
 
 | Platform | Key Files |
 |----------|-----------|
-| iOS | `GoogleConnectionViewModel`, `MicrosoftConnectionViewModel`, `NotionConnectionViewModel`, `AppleCalendarConnectionViewModel`, `SlackConnectionViewModel`, `ClozeConnectionViewModel`, `SettingsConnectedAccountsSection` |
+| iOS | `OAuthConnectionCoordinator`, `OAuthConnectionProvider`, `AppleCalendarConnectionViewModel`, `ClozeConnectionViewModel`, `SettingsConnectedAccountsSection` |
 | Android | `SettingsIntegrationsViewModel`, `SettingsIntegrationsRoute`, `IntegrationAuthRepository` |
 | Convex | `oauth/google:exchangeGoogleCode`, `oauth/microsoft:exchangeMicrosoftCode`, `oauth/notion:exchangeNotionCode`, `oauth/apple_calendar:connectAppleCalendar`, `oauth/slack:exchangeSlackCode`, `oauth/cloze:storeClozeApiKey` |
 
@@ -512,7 +512,7 @@ Recurring AI task with prompt, model, schedule, optional KB files.
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `ScheduledJobEditorView` (+ Sections, Logic, Persistence), `ScheduledJobsViewModel` |
-| Android | `ScheduledJobsEditorScreen`, `ScheduledJobsListViewModel`, `ScheduledJobsRepository` |
+| Android | `ScheduledJobsEditorScreen`, `ScheduledJobsListViewModel`, `ConvexGateway` |
 | Convex | `scheduledJobs/mutations:createJob`, `scheduledJobs/mutations:updateJob`, `scheduledJobs/mutations:deleteJob` |
 
 ### 13.2 Pause / Resume / Run Now
@@ -559,7 +559,7 @@ Model spawns parallel sub-tasks. Real-time subscription to batch progress.
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `SubagentBatchPanel`, `ChatViewModel+Subscriptions` |
-| Android | `ChatDetailViewModel`, `ChatDetailInlineComponents`, `ChatRepository` (watchSubagentBatch) |
+| Android | `ChatDetailAdvancedMessageComponents`, `ConvexGateway` (watchSubagentBatch) |
 | Convex | `subagents/mutations:createBatch`, `subagents/actions:runSubagentRun`, `subagents/queries:getBatchView`, `tools/spawn_subagents.ts` |
 
 ---

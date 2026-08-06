@@ -97,6 +97,8 @@ test("readDocument marks extraction errors terminal instead of leaving versions 
             extractionStatus: "pending",
           }];
         }
+        if ("leaseExpiresAt" in args) return { state: "claimed" };
+        if ("status" in args) return true;
         return null;
       },
       runQuery: async () => ({
@@ -145,6 +147,8 @@ test("readDocument extracts text to out-of-row storage and returns full content"
             extractionStatus: "pending",
           }];
         }
+        if ("leaseExpiresAt" in args) return { state: "claimed" };
+        if ("status" in args) return true;
         return null;
       },
       runQuery: async () => ({
@@ -244,6 +248,8 @@ test("readDocument marks unsupported readable-looking rows as unsupported", asyn
             extractionStatus: "pending",
           }];
         }
+        if ("leaseExpiresAt" in args) return { state: "claimed" };
+        if ("status" in args) return true;
         return null;
       },
       runQuery: async () => ({

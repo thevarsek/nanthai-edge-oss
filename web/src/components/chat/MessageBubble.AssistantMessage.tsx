@@ -21,10 +21,8 @@ import { ImageGenerationPlaceholder } from "./ImageGenerationPlaceholder";
 import { ImageGenerationPartialSummary } from "./ImageGenerationPartialSummary";
 import { MessageAttachments } from "./MessageAttachments";
 import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
-import { useChatSearchContext } from "./ChatSearchContext";
 import { useSearchSessionContext } from "./SearchSessionContext";
 import { isSessionActive } from "@/hooks/useSearchSessions";
-import { getMatchesForMessage } from "@/hooks/useChatSearch";
 import { useStreaming } from "@/hooks/useStreaming";
 import type { Message, Participant } from "@/hooks/useChat";
 import { useAction, useMutation } from "convex/react";
@@ -36,7 +34,7 @@ import { useModelSummaries } from "@/hooks/useSharedData";
 import { buildModelNameMap, getModelDisplayName } from "@/lib/modelDisplay";
 import { formatCost } from "@/hooks/useChatCosts";
 import { convexErrorMessage } from "@/lib/convexErrors";
-import { statusBadgeClass, tonePanelClass, workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
+import { tonePanelClass, workspaceIconBlockClass, workspaceSurfaceClass } from "@/lib/uiTokens";
 import { getAssistantDisplayIdentity } from "./MessageBubble.assistantIdentity";
 import { captureFeatureUsage, captureResponseCopied } from "@/lib/featureAnalytics";
 import { copyToClipboard } from "@/lib/clipboard";
@@ -309,7 +307,6 @@ export const AssistantMessage = memo(function AssistantMessage({
   const [documentEditError, setDocumentEditError] = useState<{ editId: string; message: string } | null>(null);
   const [selectedDocumentCitation, setSelectedDocumentCitation] = useState<DocumentCitation | null>(null);
   const copyResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const searchCtx = useChatSearchContext();
   const { sessionMap, onCancel, onRegenerate } = useSearchSessionContext();
   const audio = useAudioPlaybackContext();
   const resolveDocumentEdit = useAction(api.documents.actions.resolveDocumentEdit);
@@ -328,12 +325,6 @@ export const AssistantMessage = memo(function AssistantMessage({
     [message, participants, modelNameMap],
   );
 
-  const messageMatches = useMemo(
-    () => getMatchesForMessage(message._id, searchCtx.matches),
-    [message._id, searchCtx.matches],
-  );
-  const hasMatches = messageMatches.length > 0;
-  const hasFocusedMatch = messageMatches.some((m) => m.globalIndex === searchCtx.focusedGlobalIndex);
 
   const handleCopy = useCallback(async () => {
     await copyToClipboard(copyText);
@@ -428,14 +419,8 @@ export const AssistantMessage = memo(function AssistantMessage({
     [message.documentCitations],
   );
 
-  const outerClass = hasFocusedMatch
-    ? "flex gap-3 group rounded-lg ring-2 ring-primary bg-primary/5 -mx-2 px-2 py-1 transition-all duration-200"
-    : hasMatches
-    ? "flex gap-3 group rounded-lg ring-1 ring-primary/30 bg-primary/5 -mx-2 px-2 py-1 transition-all duration-200"
-    : "flex gap-3 group";
-
   return (
-    <div className={outerClass} data-testid="assistant-message" data-message-id={message._id}>
+    <div className="flex gap-3 group" data-testid="assistant-message" data-message-id={message._id}>
       {/* Avatar — iOS: 28x28 */}
       <div className="shrink-0 mt-1">
         {assistantIdentity.hasPersonaDisplay ? (
@@ -464,11 +449,6 @@ export const AssistantMessage = memo(function AssistantMessage({
           <p className="text-xs text-muted">
             {assistantIdentity.label}
           </p>
-          {hasMatches && (
-             <span className={statusBadgeClass("running", "px-1.5 py-0.5")}>
-              {messageMatches.length === 1 ? t("n_matches", { count: messageMatches.length }) : t("n_matches_plural", { count: messageMatches.length })}
-            </span>
-          )}
         </div>
 
         {message.moderatorDirective && (

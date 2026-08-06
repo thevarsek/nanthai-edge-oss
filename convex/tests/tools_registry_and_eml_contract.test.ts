@@ -4,15 +4,6 @@ import test from "node:test";
 import { generateEml } from "../tools/generate_eml";
 import { readEml } from "../tools/read_eml";
 import {
-  checkClozeConnection,
-  checkGmailManualConnection,
-  checkAppleCalendarConnection,
-  checkMicrosoftConnection,
-  checkNotionConnection,
-  checkSlackConnection,
-  getGrantedGoogleIntegrations,
-} from "../tools/index";
-import {
   registerBaseTools,
   registerProfileTools,
 } from "../tools/progressive_registry_profiles";
@@ -190,53 +181,6 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
   );
   assert.equal(large.success, true);
   assert.match(String((large.data as any).warning), /large/);
-});
-
-test("tool connection helpers return granted integrations and tolerate query failures", async () => {
-  const integrations = await getGrantedGoogleIntegrations(
-    {
-      runQuery: async () => ({
-        status: "active",
-        scopes: [
-          "https://www.googleapis.com/auth/drive.file",
-        ],
-      }),
-    } as any,
-    "user_1",
-  );
-
-  const microsoft = await checkMicrosoftConnection(
-    { runQuery: async () => ({ status: "active" }) } as any,
-    "user_1",
-  );
-  const notion = await checkNotionConnection(
-    { runQuery: async () => null } as any,
-    "user_1",
-  );
-  const apple = await checkAppleCalendarConnection(
-    { runQuery: async () => { throw new Error("missing"); } } as any,
-    "user_1",
-  );
-  const gmailManual = await checkGmailManualConnection(
-    { runQuery: async () => ({ status: "active" }) } as any,
-    "user_1",
-  );
-  const clozeInactive = await checkClozeConnection(
-    { runQuery: async () => ({ status: "expired" }) } as any,
-    "user_1",
-  );
-  const slackThrows = await checkSlackConnection(
-    { runQuery: async () => { throw new Error("offline"); } } as any,
-    "user_1",
-  );
-
-  assert.deepEqual(integrations, ["drive"]);
-  assert.equal(microsoft, true);
-  assert.equal(notion, false);
-  assert.equal(apple, false);
-  assert.equal(gmailManual, true);
-  assert.equal(clozeInactive, false);
-  assert.equal(slackThrows, false);
 });
 
 test("progressive registry profiles add only the tools unlocked by profile and runtime", () => {

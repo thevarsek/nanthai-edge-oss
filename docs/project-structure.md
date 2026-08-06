@@ -84,7 +84,7 @@ nanthai-edge-oss/
 |------|------------|
 | Add/change database tables | `convex/schema.ts` and `convex/schema_tables_*.ts` |
 | Change chat send/stream behavior | `convex/chat/` |
-| Add an AI tool | `convex/tools/registry.ts`, `convex/tools/index.ts`, and the relevant provider/tool module |
+| Add an AI tool | `convex/tools/registry.ts`, `convex/tools/progressive_registry*.ts`, and the relevant provider proxy/tool module |
 | Change skills | `convex/skills/` and `convex/skills/catalog/` |
 | Change OpenRouter request behavior | `convex/lib/openrouter*.ts` and `convex/chat/actions_run_generation_*` |
 | Change model picker/catalog behavior | `convex/models/` and `web/src` picker/settings surfaces |

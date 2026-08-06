@@ -232,48 +232,6 @@ export const ensureDocumentsForChat = internalMutation({
   },
 });
 
-export const updateVersionExtraction = internalMutation({
-  args: {
-    versionId: v.id("documentVersions"),
-    status: v.union(
-      v.literal("pending"),
-      v.literal("extracting"),
-      v.literal("ready"),
-      v.literal("error"),
-      v.literal("unsupported"),
-    ),
-    extractionTextStorageId: v.optional(v.id("_storage")),
-    extractionMarkdownStorageId: v.optional(v.id("_storage")),
-    extractionByteLength: v.optional(v.number()),
-    extractionError: v.optional(v.string()),
-    pageCount: v.optional(v.number()),
-    wordCount: v.optional(v.number()),
-  },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const version = await ctx.db.get(args.versionId);
-    if (!version) return null;
-    await ctx.db.patch(args.versionId, {
-      extractionStatus: args.status,
-      extractionTextStorageId: args.extractionTextStorageId,
-      extractionMarkdownStorageId: args.extractionMarkdownStorageId,
-      extractionByteLength: args.extractionByteLength,
-      extractionError: args.extractionError,
-      pageCount: args.pageCount,
-      wordCount: args.wordCount,
-    });
-    const document = await ctx.db.get(version.documentId);
-    if (!document?.currentVersionId || document.currentVersionId === args.versionId) {
-      await ctx.db.patch(version.documentId, {
-        status: args.status === "error" || args.status === "unsupported" ? "error" : "ready",
-        lastExtractedAt: args.status === "ready" ? Date.now() : undefined,
-        updatedAt: Date.now(),
-      });
-    }
-    return null;
-  },
-});
-
 export const syncDocumentFoldersForChat = internalMutation({
   args: {
     userId: v.string(),

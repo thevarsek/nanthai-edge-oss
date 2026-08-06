@@ -2,6 +2,7 @@ import { internalQuery, query } from "../_generated/server";
 import { v } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
+import { documentExtractionMethod } from "../schema_validators";
 
 export const getVersionForExtraction = internalQuery({
   args: {
@@ -18,6 +19,7 @@ export const getVersionForExtraction = internalQuery({
       mimeType: v.string(),
       versionNumber: v.number(),
       extractionStatus: v.string(),
+      extractionMethod: v.optional(documentExtractionMethod),
       extractionTextStorageId: v.optional(v.id("_storage")),
       extractionMarkdownStorageId: v.optional(v.id("_storage")),
       pageCount: v.optional(v.number()),
@@ -36,6 +38,7 @@ export const getVersionForExtraction = internalQuery({
       mimeType: version.mimeType,
       versionNumber: version.versionNumber,
       extractionStatus: version.extractionStatus,
+      extractionMethod: version.extractionMethod,
       extractionTextStorageId: version.extractionTextStorageId,
       extractionMarkdownStorageId: version.extractionMarkdownStorageId,
       pageCount: version.pageCount,

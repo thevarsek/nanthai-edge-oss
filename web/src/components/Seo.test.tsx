@@ -1,9 +1,7 @@
 import { render } from "@testing-library/react";
-import { HelmetProvider } from "react-helmet-async";
 import { beforeEach, describe, expect, it } from "vitest";
 import { Seo } from "./Seo";
 import { buildBreadcrumbsJsonLd, buildOrganizationJsonLd } from "@/lib/seo";
-import { removeBuildTimeSeoShell } from "@/lib/seoShell";
 
 function metaContent(selector: string) {
   return document.querySelector(selector)?.getAttribute("content");
@@ -16,16 +14,14 @@ describe("Seo", () => {
 
   it("generates canonical title, description, social, and keyword metadata", () => {
     render(
-      <HelmetProvider>
-        <Seo
-          title="Feature Title | NanthAI Edge"
-          description="Feature description"
-          url="https://nanthai.tech/features/search?ref=share"
-          canonical="https://nanthai.tech/features/search"
-          image="https://nanthai.tech/feature.png"
-          keywords={["AI search", "research"]}
-        />
-      </HelmetProvider>,
+      <Seo
+        title="Feature Title | NanthAI Edge"
+        description="Feature description"
+        url="https://nanthai.tech/features/search?ref=share"
+        canonical="https://nanthai.tech/features/search"
+        image="https://nanthai.tech/feature.png"
+        keywords={["AI search", "research"]}
+      />,
     );
 
     expect(document.title).toBe("Feature Title | NanthAI Edge");
@@ -39,9 +35,7 @@ describe("Seo", () => {
 
   it("falls back to URL as canonical and builds structured data helpers", () => {
     render(
-      <HelmetProvider>
-        <Seo title="Fallback" description="Fallback description" url="https://nanthai.tech/fallback" />
-      </HelmetProvider>,
+      <Seo title="Fallback" description="Fallback description" url="https://nanthai.tech/fallback" />,
     );
 
     expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute("href", "https://nanthai.tech/fallback");
@@ -61,28 +55,29 @@ describe("Seo", () => {
     });
   });
 
-  it("replaces the build-time SEO shell metadata without leaving duplicates", () => {
-    document.head.innerHTML = `
-      <meta name="description" content="Build-time description" data-rh="true" data-seo-shell="true" />
-      <meta property="og:title" content="Build-time title" data-rh="true" data-seo-shell="true" />
-      <link rel="canonical" href="https://nanthai.tech/features" data-rh="true" data-seo-shell="true" />
-    `;
-    removeBuildTimeSeoShell("/features/search");
-
-    render(
-      <HelmetProvider>
-        <Seo
-          title="Search & Research — NanthAI Edge"
-          description="Localized client description"
-          url="https://nanthai.tech/features/search"
-        />
-      </HelmetProvider>,
+  it("reconciles private-route metadata after client navigation without duplicates", () => {
+    const rendered = render(
+      <>
+        <title>NanthAI Edge | AI Workspace</title>
+        <meta name="description" content="Default app description" />
+        <meta name="robots" content="index, follow" />
+      </>,
     );
 
+    rendered.rerender(
+      <Seo
+        title="Search & Research — NanthAI Edge"
+        description="Localized client description"
+        url="https://nanthai.tech/features/search"
+      />,
+    );
+
+    expect(document.querySelectorAll("title")).toHaveLength(1);
     expect(document.querySelectorAll('meta[name="description"]')).toHaveLength(1);
     expect(document.querySelectorAll('meta[property="og:title"]')).toHaveLength(1);
     expect(document.querySelectorAll('link[rel="canonical"]')).toHaveLength(1);
     expect(metaContent('meta[name="description"]')).toBe("Localized client description");
+    expect(metaContent('meta[name="robots"]')).toContain("max-image-preview:large");
     expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute(
       "href",
       "https://nanthai.tech/features/search",

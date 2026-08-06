@@ -1,15 +1,12 @@
 // routes/ChatPage.helpers.tsx
-// Extracted hooks for ChatPage: scroll, search wiring, mentions, search mode, subagent override.
+// Extracted hooks for ChatPage: scroll, mentions, search mode, subagent override.
 // Components (ChatHeader, EmptyChatState, ChatModalPanels) are in ChatPage.header.tsx.
 
-import { useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, type RefObject } from "react";
 import type { Chat, Participant, UseChatReturn } from "@/hooks/useChat";
 import type { MentionSuggestion } from "@/hooks/useMentionAutocomplete";
 import type { SubagentOverride } from "@/components/chat/ChatSubagentsDrawer";
 import type { Id } from "@convex/_generated/dataModel";
-import type { ChatSearchContextValue } from "@/components/chat/ChatSearchContext";
-import { useChatSearch, type ChatSearchState, type ChatSearchActions } from "@/hooks/useChatSearch";
-import type { Message } from "@/hooks/useChat";
 import type { SearchModeState, SearchComplexity } from "@/components/chat/SearchModePanel";
 
 // ─── Auto-scroll hook ─────────────────────────────────────────────────────────
@@ -21,76 +18,6 @@ export function useChatScroll(
     if (!isGenerating) endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messageCount, isGenerating, endRef]);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: "instant" }); }, [chatId, endRef]);
-}
-
-// ─── In-chat search wiring ────────────────────────────────────────────────────
-
-export interface ChatSearchWiring extends ChatSearchState, ChatSearchActions {
-  scrollContainerRef: RefObject<HTMLDivElement | null>;
-  searchCtx: ChatSearchContextValue;
-}
-
-export function useChatSearchWiring(
-  visibleMessages: Message[],
-  chatId: string | undefined,
-): ChatSearchWiring {
-  const {
-    isOpen,
-    query,
-    matches,
-    currentIndex,
-    currentMessageId,
-    open,
-    close,
-    setQuery,
-    next,
-    prev,
-  } = useChatSearch(visibleMessages);
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "f") {
-        e.preventDefault();
-        if (isOpen) close();
-        else open();
-      }
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, close, open]);
-
-  useEffect(() => { close(); }, [chatId, close]);
-
-  useEffect(() => {
-    if (!currentMessageId || !scrollContainerRef.current) return;
-    const el = scrollContainerRef.current.querySelector(
-      `[data-message-id="${currentMessageId}"]`,
-    );
-    el?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [currentMessageId, currentIndex]);
-
-  const searchCtx = useMemo<ChatSearchContextValue>(() => ({
-    query,
-    queryLength: query.trim().length,
-    matches,
-    focusedGlobalIndex: matches[currentIndex]?.globalIndex ?? -1,
-  }), [query, matches, currentIndex]);
-
-  return {
-    isOpen,
-    query,
-    matches,
-    currentIndex,
-    currentMessageId,
-    open,
-    close,
-    setQuery,
-    next,
-    prev,
-    scrollContainerRef,
-    searchCtx,
-  };
 }
 
 // ─── Mention suggestions hook ─────────────────────────────────────────────────

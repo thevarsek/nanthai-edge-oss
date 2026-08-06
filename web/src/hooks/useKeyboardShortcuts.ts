@@ -5,7 +5,6 @@ interface KeyboardShortcutsOptions {
   onNewChat?: () => void;
   onNewFolder?: () => void;
   onOpenModelPicker?: () => void;
-  onFocusSearch?: () => void;
   onDeleteChat?: () => void;
   onCloseChat?: () => void;
   onToggleSidebar?: () => void;
@@ -21,7 +20,6 @@ interface KeyboardShortcutsOptions {
  *   Cmd/Ctrl + Shift+N  → new folder
  *   Cmd/Ctrl + K        → open model picker
  *   Cmd/Ctrl + ,        → navigate to /app/settings
- *   Cmd/Ctrl + F        → focus search
  *   Cmd/Ctrl + Delete   → delete selected chat
  *   Cmd/Ctrl + B        → toggle sidebar
  *   Cmd/Ctrl + W        → close current chat (navigate to chat list)
@@ -31,7 +29,6 @@ export function useKeyboardShortcuts({
   onNewChat,
   onNewFolder,
   onOpenModelPicker,
-  onFocusSearch,
   onDeleteChat,
   onCloseChat,
   onToggleSidebar,
@@ -77,11 +74,6 @@ export function useKeyboardShortcuts({
           e.preventDefault();
           void navigate("/app/settings");
           break;
-        case "f":
-        case "F":
-          e.preventDefault();
-          onFocusSearch?.();
-          break;
         case "b":
         case "B":
           e.preventDefault();
@@ -108,5 +100,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [navigate, onNewChat, onNewFolder, onOpenModelPicker, onFocusSearch, onDeleteChat, onCloseChat, onToggleSidebar, onEscape]);
+  }, [navigate, onNewChat, onNewFolder, onOpenModelPicker, onDeleteChat, onCloseChat, onToggleSidebar, onEscape]);
 }

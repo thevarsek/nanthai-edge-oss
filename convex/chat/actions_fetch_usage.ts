@@ -31,7 +31,7 @@ const BACKOFF_DELAYS = [2000, 4000, 8000];
  * Full response shape from the OpenRouter Generations API.
  * See: https://openrouter.ai/docs/api/api-reference/generations/get-generation
  */
-interface GenerationData {
+export interface GenerationData {
   id: string;
   tokens_prompt?: number | null;
   tokens_completion?: number | null;

@@ -55,6 +55,11 @@ export const documentExtractionStatus = v.union(
   v.literal("unsupported"),
 );
 
+export const documentExtractionMethod = v.union(
+  v.literal("pypdf"),
+  v.literal("mistral_ocr"),
+);
+
 export const documentSyncState = v.union(
   v.literal("current"),
   v.literal("updated_from_drive"),

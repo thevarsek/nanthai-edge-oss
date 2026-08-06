@@ -5,50 +5,6 @@ import {
   cancelInFlightAutonomousTurns,
   resolveInitialParentMessageIds,
 } from "../autonomous/session_helpers";
-import {
-  completeSessionFailedIfRunning,
-  shouldSessionContinue,
-} from "../autonomous/actions_run_cycle_session";
-
-test("shouldSessionContinue proxies the shouldContinue mutation result", async () => {
-  const ctx = {
-    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
-      assert.equal(args.sessionId, "session_1");
-      return true;
-    },
-  } as any;
-
-  const result = await shouldSessionContinue(ctx, "session_1" as any);
-  assert.equal(result, true);
-});
-
-test("completeSessionFailedIfRunning only completes sessions still marked running", async () => {
-  const calls: Record<string, unknown>[] = [];
-  const runningCtx = {
-    runQuery: async () => ({ _id: "session_1", status: "running" }),
-    runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
-      calls.push(args);
-    },
-  } as any;
-  const pausedCtx = {
-    runQuery: async () => ({ _id: "session_1", status: "paused" }),
-    runMutation: async () => {
-      throw new Error("should not complete a paused session");
-    },
-  } as any;
-
-  await completeSessionFailedIfRunning(runningCtx, "session_1" as any, "boom");
-  await completeSessionFailedIfRunning(pausedCtx, "session_1" as any, "ignored");
-
-  assert.deepEqual(calls, [
-    {
-      sessionId: "session_1",
-      status: "failed",
-      error: "boom",
-      stopReason: "Autonomous cycle failed",
-    },
-  ]);
-});
 
 test("resolveInitialParentMessageIds prefers an in-chat active leaf and keeps multimodel siblings", async () => {
   const messages = [

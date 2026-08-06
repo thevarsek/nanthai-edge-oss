@@ -38,7 +38,6 @@ describe("useKeyboardShortcuts", () => {
       onNewChat: vi.fn(),
       onNewFolder: vi.fn(),
       onOpenModelPicker: vi.fn(),
-      onFocusSearch: vi.fn(),
       onDeleteChat: vi.fn(),
       onToggleSidebar: vi.fn(),
       onEscape: vi.fn(),
@@ -49,7 +48,7 @@ describe("useKeyboardShortcuts", () => {
     expect(keydown("N", { ctrlKey: true, shiftKey: true }).defaultPrevented).toBe(true);
     expect(keydown("k", { metaKey: true }).defaultPrevented).toBe(true);
     expect(keydown(",", { ctrlKey: true }).defaultPrevented).toBe(true);
-    expect(keydown("f", { metaKey: true }).defaultPrevented).toBe(true);
+    expect(keydown("f", { metaKey: true }).defaultPrevented).toBe(false);
     expect(keydown("b", { ctrlKey: true }).defaultPrevented).toBe(true);
     expect(keydown("Backspace", { metaKey: true }).defaultPrevented).toBe(true);
     keydown("Escape");
@@ -57,7 +56,6 @@ describe("useKeyboardShortcuts", () => {
     expect(actions.onNewChat).toHaveBeenCalledTimes(1);
     expect(actions.onNewFolder).toHaveBeenCalledTimes(1);
     expect(actions.onOpenModelPicker).toHaveBeenCalledTimes(1);
-    expect(actions.onFocusSearch).toHaveBeenCalledTimes(1);
     expect(actions.onToggleSidebar).toHaveBeenCalledTimes(1);
     expect(actions.onDeleteChat).toHaveBeenCalledTimes(1);
     expect(actions.onEscape).toHaveBeenCalledTimes(1);

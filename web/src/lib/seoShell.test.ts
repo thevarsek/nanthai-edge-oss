@@ -4,10 +4,10 @@ import { isPublicSeoPath, removeBuildTimeSeoShell } from "./seoShell";
 describe("build-time SEO shell cleanup", () => {
   beforeEach(() => {
     document.head.innerHTML = `
-      <title>NanthAI Edge | AI Workspace</title>
-      <meta name="description" content="Build-time description" />
+      <title data-seo-shell="true">NanthAI Edge | AI Workspace</title>
+      <meta name="description" content="Build-time description" data-seo-shell="true" />
       <meta name="theme-color" content="#000000" />
-      <link rel="canonical" href="https://nanthai.tech/" />
+      <link rel="canonical" href="https://nanthai.tech/" data-seo-shell="true" />
     `;
   });
 

@@ -6,8 +6,8 @@ import {
   commitProposedDocxEdits,
   makeCurrentVersion,
   syncDocumentFoldersForChat,
-  updateVersionExtraction,
 } from "../documents/mutations";
+import { updateVersionExtraction } from "../documents/extraction_mutations";
 
 const auth = {
   getUserIdentity: async () => ({ subject: "user_1" }),
@@ -93,7 +93,7 @@ test("document extraction updates handle missing versions, ready timestamps, and
   assert.equal(await (updateVersionExtraction as any)._handler({ db: dbFor({}).db }, {
     versionId: "missing",
     status: "ready",
-  }), null);
+  }), false);
 
   const ready = dbFor({
     documents: [{ _id: "doc_1", status: "pending", currentVersionId: "version_1" }],

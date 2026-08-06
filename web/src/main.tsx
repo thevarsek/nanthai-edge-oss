@@ -1,6 +1,5 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { HelmetProvider } from "react-helmet-async";
 import { BrowserRouter } from "react-router-dom";
 import { ClerkProvider, useAuth } from "@clerk/react";
 import { ConvexProviderWithClerk } from "convex/react-clerk";
@@ -12,7 +11,7 @@ import { ToastProvider } from "./components/shared/Toast";
 import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import { AnalyticsBridge } from "./components/analytics/AnalyticsBridge";
 import { ConsentBridge } from "./components/analytics/ConsentBridge";
-import { removeBuildTimeSeoShell } from "./lib/seoShell";
+import { removeBuildTimeSeoShellElements } from "./lib/seoShell";
 import { initialization as i18nInitialization } from "./i18n";
 import "./index.css";
 
@@ -25,7 +24,7 @@ if (!CONVEX_URL) throw new Error("VITE_CONVEX_URL is not set");
 const convex = new ConvexReactClient(CONVEX_URL);
 
 if (typeof window !== "undefined") {
-  removeBuildTimeSeoShell(window.location.pathname);
+  removeBuildTimeSeoShellElements();
   registerSW({ immediate: true });
 }
 
@@ -33,28 +32,26 @@ async function renderApp() {
   await i18nInitialization;
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <HelmetProvider>
-        <ClerkProvider
-          publishableKey={CLERK_KEY}
-          afterSignOutUrl="/"
-          signInForceRedirectUrl="/app"
-          signUpForceRedirectUrl="/app"
-        >
-          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-            <BrowserRouter>
-              <ConsentBridge />
-              <AnalyticsBridge />
-              <SharedDataProvider>
-                <ToastProvider>
-                  <ErrorBoundary level="app">
-                    <App />
-                  </ErrorBoundary>
-                </ToastProvider>
-              </SharedDataProvider>
-            </BrowserRouter>
-          </ConvexProviderWithClerk>
-        </ClerkProvider>
-      </HelmetProvider>
+      <ClerkProvider
+        publishableKey={CLERK_KEY}
+        afterSignOutUrl="/"
+        signInForceRedirectUrl="/app"
+        signUpForceRedirectUrl="/app"
+      >
+        <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+          <BrowserRouter>
+            <ConsentBridge />
+            <AnalyticsBridge />
+            <SharedDataProvider>
+              <ToastProvider>
+                <ErrorBoundary level="app">
+                  <App />
+                </ErrorBoundary>
+              </ToastProvider>
+            </SharedDataProvider>
+          </BrowserRouter>
+        </ConvexProviderWithClerk>
+      </ClerkProvider>
     </StrictMode>,
   );
 }

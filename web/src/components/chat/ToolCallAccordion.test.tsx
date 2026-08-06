@@ -83,6 +83,23 @@ describe("ToolCallAccordion", () => {
     expect(screen.queryByText(/mcp_c7f4b61d4d/)).not.toBeInTheDocument();
   });
 
+  it("renders localized document reader aliases with document icons", () => {
+    const { container } = render(
+      <ToolCallAccordion
+        toolCalls={[
+          { id: "call_document", name: "read_document", arguments: "{}" },
+          { id: "call_pdf", name: "read_pdf", arguments: "{}" },
+        ]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /used 2 tools/i }));
+
+    expect(screen.getByText("Read Document")).toBeInTheDocument();
+    expect(screen.getByText("Read PDF")).toBeInTheDocument();
+    expect(container.querySelectorAll('[data-tool-icon="document"]')).toHaveLength(2);
+  });
+
   it("renders trace metadata without tool calls", () => {
     render(<ToolCallAccordion toolCalls={[]} loadedSkillIds={["skill_a"]} usedIntegrationIds={["drive"]} />);
 
