@@ -76,7 +76,7 @@ Workflow cannot make a single uninterrupted process live longer than Convex's ac
 5. reconcile/attach exactly once;
 6. start the next Workflow round.
 
-M45 will implement Pi first on a user's machine, then permit other adapters. NanthAI does not keep an uncharged hosted VM open per user.
+M45 will implement Codex first on a user's machine, then Pi RPC as the contrasting adapter before later harnesses. NanthAI does not keep an uncharged hosted VM open per user. The adapter order does not alter this Workflow detachment boundary.
 
 ## Lifecycle and rollback
 

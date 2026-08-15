@@ -13,6 +13,7 @@ import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
 import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
+import { assertUniquePersonaDisplayName } from "./name_uniqueness";
 
 async function assertOwnedRemoteMcpTargets(
   ctx: MutationCtx,
@@ -59,6 +60,7 @@ export const create = mutation({
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
     await assertOwnedRemoteMcpTargets(ctx, userId, args.integrationOverrides);
+    await assertUniquePersonaDisplayName(ctx, userId, args.displayName);
     const now = Date.now();
 
     // If marking as default, unset other defaults
@@ -127,6 +129,9 @@ export const update = mutation({
     const persona = await ctx.db.get(args.personaId);
     if (!persona || persona.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Persona not found or unauthorized" });
+    }
+    if (args.displayName !== undefined) {
+      await assertUniquePersonaDisplayName(ctx, userId, args.displayName, args.personaId);
     }
 
     const now = Date.now();
@@ -216,6 +221,7 @@ export const createPersonaInternal = internalMutation({
   },
   returns: v.id("personas"),
   handler: async (ctx, args) => {
+    await assertUniquePersonaDisplayName(ctx, args.userId, args.displayName);
     const now = Date.now();
 
     return await ctx.db.insert("personas", {

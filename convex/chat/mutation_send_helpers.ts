@@ -38,6 +38,7 @@ export type NormalizedAttachment = {
 };
 
 export type SendParticipantConfig = {
+  participantKey?: string;
   modelId: string;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;
@@ -294,6 +295,62 @@ export function normalizeParticipants(
   defaultModelId: string,
 ): SendParticipantConfig[] {
   return participants.length > 0 ? participants : [{ modelId: defaultModelId }];
+}
+
+function withoutParticipantKey(
+  participant: SendParticipantConfig,
+): SendParticipantConfig {
+  const generationParticipant = { ...participant };
+  delete generationParticipant.participantKey;
+  return generationParticipant;
+}
+
+export function selectMentionedParticipants(
+  participants: SendParticipantConfig[],
+  mentionedParticipantKeys: string[] | undefined,
+): SendParticipantConfig[] {
+  if (!mentionedParticipantKeys || mentionedParticipantKeys.length === 0) {
+    return participants.map(withoutParticipantKey);
+  }
+
+  const requestedKeys = new Set<string>();
+  for (const key of mentionedParticipantKeys) {
+    if (!key || requestedKeys.has(key)) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: "The mentioned participants are invalid. Refresh the chat and try again.",
+      });
+    }
+    requestedKeys.add(key);
+  }
+
+  const participantsByKey = new Map<string, SendParticipantConfig>();
+  for (const participant of participants) {
+    const key = participant.participantKey;
+    if (!key) continue;
+    if (participantsByKey.has(key)) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: "The mentioned participants are invalid. Refresh the chat and try again.",
+      });
+    }
+    participantsByKey.set(key, participant);
+  }
+
+  for (const requestedKey of requestedKeys) {
+    if (!participantsByKey.has(requestedKey)) {
+      throw new ConvexError({
+        code: "VALIDATION",
+        message: "A mentioned participant is no longer available. Refresh the chat and try again.",
+      });
+    }
+  }
+
+  return participants
+    .filter((participant) =>
+      participant.participantKey !== undefined && requestedKeys.has(participant.participantKey),
+    )
+    .map(withoutParticipantKey);
 }
 
 export async function createAssistantMessagesAndJobs(

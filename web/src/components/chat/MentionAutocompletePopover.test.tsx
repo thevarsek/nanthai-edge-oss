@@ -30,6 +30,7 @@ describe("MentionAutocompletePopover", () => {
       <MentionAutocompletePopover
         suggestions={[
           {
+            participantKey: "participant_1",
             modelId: "openai/gpt-5",
             displayName: "GPT-5",
             subtitle: "OpenAI",
@@ -53,12 +54,14 @@ describe("MentionAutocompletePopover", () => {
       <MentionAutocompletePopover
         suggestions={[
           {
+            participantKey: "participant_1",
             modelId: "openai/gpt-5",
             displayName: "GPT-5",
             subtitle: "OpenAI",
             isPersona: false,
           },
           {
+            participantKey: "participant_2",
             modelId: "anthropic/claude",
             displayName: "Claude",
             subtitle: "Anthropic",
@@ -75,6 +78,7 @@ describe("MentionAutocompletePopover", () => {
       <MentionAutocompletePopover
         suggestions={[
           {
+            participantKey: "participant_2",
             modelId: "anthropic/claude",
             displayName: "Claude",
             subtitle: "Anthropic",

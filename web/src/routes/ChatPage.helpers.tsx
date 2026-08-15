@@ -8,6 +8,7 @@ import type { MentionSuggestion } from "@/hooks/useMentionAutocomplete";
 import type { SubagentOverride } from "@/components/chat/ChatSubagentsDrawer";
 import type { Id } from "@convex/_generated/dataModel";
 import type { SearchModeState, SearchComplexity } from "@/components/chat/SearchModePanel";
+import { participantKey } from "@/lib/autonomousParticipants";
 
 // ─── Auto-scroll hook ─────────────────────────────────────────────────────────
 export function useChatScroll(
@@ -24,7 +25,8 @@ export function useChatScroll(
 
 export function useMentionSuggestions(participants: Participant[]): MentionSuggestion[] {
   return useMemo<MentionSuggestion[]>(
-    () => participants.map((p) => ({
+    () => participants.map((p, index) => ({
+      participantKey: participantKey(p, index),
       displayName: p.personaName ?? p.modelId.split("/").pop() ?? p.modelId,
       subtitle: p.personaName ? p.modelId.split("/").pop() ?? p.modelId : p.modelId.split("/")[0] ?? "",
       isPersona: !!p.personaId,

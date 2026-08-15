@@ -195,7 +195,7 @@ describe("ChatPage send flow helpers", () => {
     expect(buildVideoConfig(false, undefined)).toBeUndefined();
   });
 
-  it("builds sendMessage args without changing the Convex wire shape", () => {
+  it("builds sendMessage args with explicit mention routing", () => {
     const presentationContext = {
       projectId: "presentation_1",
       projectRevision: 5,
@@ -207,6 +207,7 @@ describe("ChatPage send flow helpers", () => {
       chatId,
       text: "hello",
       participants: [participant],
+      mentionedParticipantKeys: ["participant_1"],
       attachments: [imageAttachment],
       recordedAudio: {
         storageId,
@@ -233,6 +234,7 @@ describe("ChatPage send flow helpers", () => {
       chatId,
       text: "hello",
       participants: [participant],
+      mentionedParticipantKeys: ["participant_1"],
       enabledIntegrations: ["gmail", "drive"],
       advisorSelections: [advisorSelection],
       advisorBrief: "Review the evidence",

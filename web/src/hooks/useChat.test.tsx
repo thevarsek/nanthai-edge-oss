@@ -187,7 +187,7 @@ describe("useChat", () => {
     expect(result.current.isGenerating).toBe(false);
   });
 
-  it("strips local-only participant ids when sending and retrying", async () => {
+  it("maps local participant ids to send-only routing keys", async () => {
     convexMocks.queryResults = [chat(), [], [], [], []];
     convexMocks.mutations[0]!.mockResolvedValue({ userMessageId: "user_msg", assistantMessageIds: ["assistant_msg"] });
     convexMocks.mutations[2]!.mockResolvedValue({ assistantMessageIds: ["retry_msg"] });
@@ -224,6 +224,7 @@ describe("useChat", () => {
     }));
     expect(convexMocks.mutations[0]).toHaveBeenCalledWith(expect.objectContaining({
       participants: [expect.objectContaining({
+        participantKey: "local-participant",
         modelId: "openai/gpt-4.1",
         personaId: "persona_1",
         personaName: "Analyst",
@@ -234,6 +235,9 @@ describe("useChat", () => {
       messageId,
       participants: [expect.not.objectContaining({ id: "local-participant" })],
       enabledIntegrations: ["drive"],
+    }));
+    expect(convexMocks.mutations[2]).toHaveBeenCalledWith(expect.objectContaining({
+      participants: [expect.not.objectContaining({ participantKey: "local-participant" })],
     }));
     expect(analyticsMocks.captureAnalytics).toHaveBeenCalledWith(
       "message_sent",

@@ -8,6 +8,8 @@ import { useState, useCallback, useMemo, type RefObject } from "react";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface MentionSuggestion {
+  /** Turn-scoped key that identifies the participant in the send payload. */
+  participantKey: string;
   /** Display name (persona name or model short name). */
   displayName: string;
   /** Subtitle text (model ID for personas, provider for bare models). */
@@ -77,6 +79,26 @@ function findTrigger(text: string, cursorPos: number): MentionTrigger | null {
 /** Replace spaces with underscores for mention token (matches iOS). */
 function mentionToken(displayName: string): string {
   return displayName.replace(/\s+/g, "_");
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function mentionedParticipantKeys(
+  text: string,
+  suggestions: MentionSuggestion[],
+): string[] {
+  const keys = new Set<string>();
+  for (const suggestion of suggestions) {
+    const token = escapeRegExp(mentionToken(suggestion.displayName));
+    const pattern = new RegExp(
+      `(?:^|\\s)@${token}(?![\\p{L}\\p{N}_])`,
+      "iu",
+    );
+    if (pattern.test(text)) keys.add(suggestion.participantKey);
+  }
+  return Array.from(keys);
 }
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────

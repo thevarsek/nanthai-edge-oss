@@ -53,6 +53,9 @@ export const recordedAudioValidator = v.object({
 });
 
 export const participantValidator = v.object({
+  // Turn-scoped client key used only to route explicit @mentions. It is
+  // stripped before generation state is persisted or dispatched.
+  participantKey: v.optional(v.string()),
   modelId: v.string(),
   personaId: v.optional(v.union(v.id("personas"), v.null())),
   personaName: v.optional(v.union(v.string(), v.null())),
@@ -87,6 +90,7 @@ export const sendMessageArgs = {
   presentationContext: v.optional(presentationContextValidator),
   mcpInvocationIds: v.optional(v.array(v.string())),
   participants: v.array(participantValidator),
+  mentionedParticipantKeys: v.optional(v.array(v.string())),
   explicitParentIds: v.optional(v.array(v.id("messages"))),
   expandMultiModelGroups: v.optional(v.boolean()),
   webSearchEnabled: v.optional(v.boolean()),

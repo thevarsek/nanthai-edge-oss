@@ -27,6 +27,7 @@ import { Defaults } from "@/lib/constants";
 import type { RecordingResult } from "@/hooks/useAudioRecorder";
 import type { Participant } from "@/hooks/useChat";
 import type { AutonomousSettings } from "@/hooks/useAutonomous";
+import { mentionedParticipantKeys } from "@/hooks/useMentionAutocomplete";
 import {
   DEFAULT_PARAMETER_OVERRIDES,
   buildBaseParticipants,
@@ -748,6 +749,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           chatId,
           text,
           participants,
+          mentionedParticipantKeys: mentionedParticipantKeys(text, mentionSuggestions),
           attachments: mergedAttachments,
           recordedAudio,
           explicitParentIds,
@@ -774,7 +776,7 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
       overrides.clearTurnOverrides();
       return true;
     },
-    [chatId, selectedIds, focusedId, participants, kbAttachmentsForDisplay, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast, advisors, t],
+    [chatId, selectedIds, focusedId, participants, mentionSuggestions, kbAttachmentsForDisplay, sendMessage, startResearchPaper, overrides, effectiveSubagentsEnabled, webSearchEnabled, isVideoMode, typedPrefs, convexSearchMode, convexComplexity, isResearchPaper, toast, advisors, t],
   );
 
   const dismissHelp = useCallback(() => {

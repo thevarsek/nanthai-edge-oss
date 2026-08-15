@@ -319,6 +319,7 @@ export interface SendMessageArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
   text: string;
   participants: Participant[];
+  mentionedParticipantKeys?: string[];
   attachments?: Array<{
     type: string;
     url?: string;
@@ -368,6 +369,16 @@ function stripLocalParticipantFields(participant: Participant): Omit<Participant
     maxTokens: participant.maxTokens,
     includeReasoning: participant.includeReasoning,
     reasoningEffort: participant.reasoningEffort,
+  };
+}
+
+function serializeSendParticipant(
+  participant: Participant,
+  index: number,
+): Omit<Participant, "id"> & { participantKey: string } {
+  return {
+    participantKey: participant.id ?? String(index),
+    ...stripLocalParticipantFields(participant),
   };
 }
 
@@ -526,7 +537,7 @@ export function useChat(chatId: Id<"chats"> | null | undefined): UseChatReturn {
               }
             : undefined,
           analytics,
-          participants: args.participants.map(stripLocalParticipantFields),
+          participants: args.participants.map(serializeSendParticipant),
         });
         captureAnalytics("message_sent", {
           ...analyticsProperties,

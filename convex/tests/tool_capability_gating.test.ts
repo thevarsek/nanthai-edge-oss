@@ -143,9 +143,15 @@ test("createPersonaInternal creates persona without integration fields (M30 migr
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const ctx = {
     db: {
-      ...buildCtx({
-        "openai/gpt-5": { supportsTools: false },
-      }).db,
+      query: (table: string) => {
+        assert.equal(table, "personas");
+        return {
+          withIndex: (_index: string, apply: (query: any) => any) => {
+            apply({ eq: () => ({}) });
+            return { collect: async () => [] };
+          },
+        };
+      },
       insert: async (table: string, value: Record<string, unknown>) => {
         inserts.push({ table, value });
         return "persona_1";

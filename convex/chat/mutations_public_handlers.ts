@@ -37,6 +37,7 @@ import {
   normalizeParticipants,
   resolveParentMessageIdsForSend,
   scheduleCancelledAssistantResponseAnalytics,
+  selectMentionedParticipants,
   SendParticipantConfig,
 } from "./mutation_send_helpers";
 import { enqueueRunGeneration } from "./run_generation_queue";
@@ -131,6 +132,7 @@ export interface SendMessageArgs extends Record<string, unknown> {
   };
   mcpInvocationIds?: string[];
   participants: SendParticipantConfig[];
+  mentionedParticipantKeys?: string[];
   explicitParentIds?: Id<"messages">[];
   expandMultiModelGroups?: boolean;
   webSearchEnabled?: boolean;
@@ -238,9 +240,9 @@ export async function sendMessageHandler(
     throw new ConvexError({ code: "VALIDATION" as const, message: "Complexity 3 search does not support attachments." });
   }
 
-  const participants = normalizeParticipants(
-    args.participants,
-    DEFAULT_CHAT_MODEL,
+  const participants = selectMentionedParticipants(
+    normalizeParticipants(args.participants, DEFAULT_CHAT_MODEL),
+    args.mentionedParticipantKeys,
   );
 
   // M29: Enforce same-modality constraint when multiple participants are present.

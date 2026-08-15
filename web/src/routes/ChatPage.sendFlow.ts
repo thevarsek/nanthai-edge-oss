@@ -44,6 +44,7 @@ export interface ChatSendOrchestrationState {
   selectedAttachments: ChatAttachment[];
   kbAttachmentsForDisplay: ChatAttachment[];
   participants: Participant[];
+  mentionedParticipantKeys?: string[];
   turnOverrideArgs: TurnOverrideArgs;
   enabledIntegrations: ReadonlySet<string>;
   subagentsEnabled: boolean;
@@ -159,6 +160,7 @@ export function buildSendMessageArgs(args: {
   chatId: Id<"chats">;
   text: string;
   participants: Participant[];
+  mentionedParticipantKeys?: string[];
   attachments: ChatAttachment[];
   recordedAudio?: RecordedAudioPayload;
   turnOverrideArgs: TurnOverrideArgs;
@@ -178,6 +180,9 @@ export function buildSendMessageArgs(args: {
     chatId: args.chatId,
     text: args.text,
     participants: args.participants,
+    ...(args.mentionedParticipantKeys?.length
+      ? { mentionedParticipantKeys: args.mentionedParticipantKeys }
+      : {}),
     attachments: serializeChatAttachments(args.attachments, { includeVideoRole: true }),
     ...(args.recordedAudio ? { recordedAudio: args.recordedAudio } : {}),
     ...args.turnOverrideArgs,
@@ -566,6 +571,7 @@ export async function executeChatSend(
       chatId,
       text,
       participants: state.participants,
+      mentionedParticipantKeys: state.mentionedParticipantKeys,
       attachments: mergedAttachments,
       turnOverrideArgs: state.turnOverrideArgs,
       enabledIntegrations: state.enabledIntegrations,
@@ -675,6 +681,7 @@ export async function executeRecordedAudioSend(
       chatId,
       text,
       participants: state.participants,
+      mentionedParticipantKeys: state.mentionedParticipantKeys,
       attachments: mergedAttachments,
       recordedAudio,
       turnOverrideArgs: state.turnOverrideArgs,

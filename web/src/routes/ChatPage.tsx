@@ -33,6 +33,7 @@ import { useToast } from "@/components/shared/Toast.context";
 import { analyticsErrorLabel, captureAnalytics, createAnalyticsClientMetadata } from "@/lib/analytics";
 import { captureFeatureUsage } from "@/lib/featureAnalytics";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { mentionedParticipantKeys } from "@/hooks/useMentionAutocomplete";
 import {
   useChatScroll, useMentionSuggestions, useSubagentOverride,
   useSearchMode,
@@ -343,6 +344,7 @@ export function ChatPage() {
     modelSummaries: modelSummaries ?? undefined,
     parameterOverrides: overrides.paramOverrides,
   });
+  const mentionSuggestions = useMentionSuggestions(participants);
 
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
     chat, participantCount: participants.length, isPro,
@@ -598,6 +600,7 @@ export function ChatPage() {
           chatId: chatId ?? undefined,
           ...composerAttachmentState({ attachments, kbAttachmentsForDisplay }),
           participants,
+          mentionedParticipantKeys: mentionedParticipantKeys(text, mentionSuggestions),
           turnOverrideArgs,
           enabledIntegrations: overrides.enabledIntegrations,
           subagentsEnabled: effectiveSubagentsEnabled,
@@ -630,7 +633,7 @@ export function ChatPage() {
       }
       return sent;
     },
-    [chatId, ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState, advisors, t, toast],
+    [chatId, ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, mentionSuggestions, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState, advisors, t, toast],
   );
 
   useDrivePickerContinuation({
@@ -822,8 +825,6 @@ export function ChatPage() {
     );
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
-
-  const mentionSuggestions = useMentionSuggestions(participants);
 
   if (typedChatId && isLoading) {
     return <div className="flex-1 flex items-center justify-center"><LoadingSpinner /></div>;

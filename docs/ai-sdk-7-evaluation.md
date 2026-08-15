@@ -67,7 +67,7 @@ Until then, `WorkflowAgent` is not a stronger fit than the implemented design: i
 
 AI SDK 7's harness adapters are useful discovery input for runtime interoperability. Pi, Codex, Claude Code, OpenCode, and future ACP-style runtimes may inform adapter semantics. That does not make `HarnessAgent` or a Vercel VM NanthAI's shared backend.
 
-M45 remains Pi-first because Pi can run on the user's own machine. The M46 protocol is intentionally adapter-neutral so later integrations can expand reach without changing chat, artifact, usage, or client business contracts.
+At this ADR's 2026-07-19 decision date, M45 was Pi-first. The [2026-08-15 M45 decision](../milestones/M45-hybrid-long-running-agent-runtime.md) supersedes that adapter order: Codex is now the first production adapter family and Pi RPC is the contrasting neutrality proof. The M46 protocol remains intentionally adapter-neutral, so this sequencing change does not alter chat, artifact, usage, or client business contracts.
 
 ## References
 

@@ -185,6 +185,42 @@ test("sendMessageHandler ignores historical usage volume and creates web-search 
   assert.ok(scheduled.some((entry) => entry.args.sessionId === searchSession?.id));
 });
 
+test("sendMessageHandler creates jobs only for explicitly mentioned participants", async () => {
+  const { ctx, inserts, scheduled } = buildCtx({
+    records: {
+      chat_1: {
+        _id: "chat_1",
+        userId: "user_1",
+        title: "Existing conversation",
+        messageCount: 2,
+      },
+    },
+    tableRows: {
+      ...proTableRows(),
+      messages: [],
+    },
+  });
+
+  const result = await sendMessageHandler(ctx, {
+    chatId: "chat_1" as any,
+    text: "@Reviewer check this",
+    participants: [
+      { participantKey: "participant_1", modelId: "model_tools", personaName: "Planner" },
+      { participantKey: "participant_2", modelId: "model_tools", personaName: "Reviewer" },
+    ],
+    mentionedParticipantKeys: ["participant_2"],
+  });
+
+  assert.equal(result.assistantMessageIds.length, 1);
+  const assistantMessages = inserts.filter(
+    (entry) => entry.table === "messages" && entry.value.role === "assistant",
+  );
+  assert.deepEqual(assistantMessages.map((entry) => entry.value.participantName), ["Reviewer"]);
+  const generationDispatch = scheduled.find((entry) => Array.isArray(entry.args.assistantMessageIds));
+  assert.equal(generationDispatch?.args.participants.length, 1);
+  assert.equal(generationDispatch?.args.participants[0].participantKey, undefined);
+});
+
 test("sendMessageHandler accepts uploaded audio as the only source without text priming", async () => {
   const { ctx, inserts, scheduled } = buildCtx({
     records: {
