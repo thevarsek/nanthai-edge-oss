@@ -221,6 +221,107 @@ test("sendMessageHandler creates jobs only for explicitly mentioned participants
   assert.equal(generationDispatch?.args.participants[0].participantKey, undefined);
 });
 
+test("Collaboration snapshots backstage Advisors instead of rejecting the send", async () => {
+  const { ctx, inserts, scheduled } = buildCtx({
+    records: {
+      chat_1: {
+        _id: "chat_1",
+        userId: "user_1",
+        title: "Existing conversation",
+        messageCount: 2,
+        groupBehavior: "collaboration",
+      },
+    },
+    tableRows: {
+      ...proTableRows(),
+      messages: [],
+      collaborationExchanges: [],
+      autonomousSessions: [],
+      chatParticipants: [
+        {
+          _id: "participant_1",
+          chatId: "chat_1",
+          userId: "user_1",
+          modelId: "model_tools",
+          sortOrder: 0,
+        },
+        {
+          _id: "participant_2",
+          chatId: "chat_1",
+          userId: "user_1",
+          modelId: "model_tools",
+          sortOrder: 1,
+        },
+      ],
+    },
+  });
+  const selections = [{
+    personaId: "advisor_1",
+    keepAvailable: true,
+    allowWebSearch: false,
+  }];
+
+  const result = await sendMessageHandler(ctx, {
+    chatId: "chat_1" as any,
+    text: "Review this together",
+    participants: [
+      { participantKey: "participant_1", modelId: "model_tools" },
+      { participantKey: "participant_2", modelId: "model_tools" },
+    ],
+    advisorSelections: selections,
+    advisorBrief: "Challenge the implementation plan",
+  } as any);
+
+  assert.deepEqual(result.assistantMessageIds, []);
+  const exchange = inserts.find((entry) =>
+    entry.table === "collaborationExchanges"
+  );
+  assert.deepEqual(exchange?.value.generationSnapshot.advisorSelections, selections);
+  assert.equal(
+    exchange?.value.generationSnapshot.advisorBrief,
+    "Challenge the implementation plan",
+  );
+  assert.ok(scheduled.some((entry) => entry.args.exchangeId === exchange?.id));
+});
+
+test("sendMessageHandler keeps chat-wide subagents on for every tool-capable participant", async () => {
+  const { ctx, inserts, scheduled } = buildCtx({
+    records: {
+      chat_1: {
+        _id: "chat_1",
+        userId: "user_1",
+        title: "Existing conversation",
+        messageCount: 2,
+      },
+    },
+    tableRows: {
+      ...proTableRows(),
+      messages: [],
+    },
+  });
+
+  const result = await sendMessageHandler(ctx, {
+    chatId: "chat_1" as any,
+    text: "Review and implement this together",
+    participants: [
+      { participantKey: "participant_1", modelId: "model_tools", personaName: "Architect" },
+      { participantKey: "participant_2", modelId: "model_tools", personaName: "Implementer" },
+    ],
+    subagentsEnabled: true,
+  });
+
+  assert.equal(result.assistantMessageIds.length, 2);
+  const assistantMessages = inserts.filter(
+    (entry) => entry.table === "messages" && entry.value.role === "assistant",
+  );
+  assert.equal(assistantMessages.length, 2);
+  assert.ok(assistantMessages.every((entry) => entry.value.subagentsEnabled === true));
+  const generationDispatch = scheduled.find((entry) =>
+    Array.isArray(entry.args.assistantMessageIds)
+  );
+  assert.equal(generationDispatch?.args.subagentsEnabled, true);
+});
+
 test("sendMessageHandler accepts uploaded audio as the only source without text priming", async () => {
   const { ctx, inserts, scheduled } = buildCtx({
     records: {

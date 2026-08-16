@@ -119,6 +119,15 @@ vi.mock("@convex/_generated/api", () => ({
         getMessageAudioUrl: "getMessageAudioUrl",
       },
     },
+    collaboration: {
+      mutations: {
+        setGroupBehavior: "setGroupBehavior",
+        stopExchange: "stopExchange",
+      },
+      queries: {
+        getChatState: "getCollaborationState",
+      },
+    },
     drive_picker: { actions: { attachPickedDriveFiles: "attachPickedDriveFiles" } },
     knowledge_base: { queries: { getKnowledgeBaseFilesByStorageIds: "getKnowledgeBaseFilesByStorageIds" } },
     mcp: {
@@ -160,6 +169,9 @@ vi.mock("convex/react", () => ({
   },
   useQuery: (key: string, args: unknown) => {
     if (key === "getKnowledgeBaseFilesByStorageIds" && args !== "skip") return testState.kbFiles;
+    if (key === "getCollaborationState") {
+      return { behavior: "parallel", exchange: null };
+    }
     if (key === "listPendingMcpForChat") return [];
     return undefined;
   },

@@ -508,7 +508,6 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
   const hasConnectedIntegrations = Object.values(connectedProviders).some(Boolean);
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
     chat,
-    participantCount: participants.length,
     isPro,
     subagentsEnabledByDefault: typedPrefs?.subagentsEnabledByDefault ?? false,
     chatId,
@@ -900,7 +899,6 @@ export function CanvasView({ chatId }: { chatId: Id<"chats"> }) {
           isPro={isPro}
           hasConnectedIntegrations={hasConnectedIntegrations}
           participantCount={participants.length}
-          hasMessages={messages.length > 0}
           mentionSuggestions={mentionSuggestions}
           isAutonomousActive={isAutonomousActive}
           onIntervene={autonomous.intervene}

@@ -96,6 +96,42 @@ test("startSessionHandler inserts a running session and schedules the first cycl
   }]);
 });
 
+test("startSessionHandler refuses a second progression owner during Collaboration", async () => {
+  await assert.rejects(
+    startSessionHandler(buildAuthCtx({
+      db: {
+        get: async () => ({
+          _id: "chat_1",
+          userId: "user_1",
+          activeBranchLeafId: "message_1",
+        }),
+        query: (table: string) => ({
+          withIndex: () => ({
+            first: async () => (table === "purchaseEntitlements" ? { _id: "ent_1" } : null),
+            collect: async () => [],
+            order: () => ({
+              take: async () => table === "collaborationExchanges"
+                ? [{ _id: "exchange_1", status: "waiting" }]
+                : [],
+            }),
+          }),
+        }),
+      },
+    }), {
+      chatId: "chat_1" as any,
+      turnOrder: ["participant_1", "participant_2"],
+      maxCycles: 2,
+      pauseBetweenTurns: 1_000,
+      autoStopOnConsensus: false,
+      participantConfigs: [
+        { participantId: "participant_1", modelId: "m1", displayName: "One" },
+        { participantId: "participant_2", modelId: "m2", displayName: "Two" },
+      ],
+    }),
+    /Stop Collaboration before starting Autonomous Discussion/,
+  );
+});
+
 test("resumeSessionHandler completes sessions that already exhausted max cycles", async () => {
   const patches: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];

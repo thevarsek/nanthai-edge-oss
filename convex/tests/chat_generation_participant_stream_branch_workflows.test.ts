@@ -135,35 +135,52 @@ test("generateForParticipant finalizes reasoning-only streams as a visible respo
 
 test("generateForParticipant persists inline audio when the Node persistence hook is available", async (t) => {
   t.after(() => mock.restoreAll());
-  mock.method(globalThis, "fetch", async () => streamResponse([
+  mock.method(globalThis, "fetch", async (_input: unknown, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    assert.deepEqual(body.modalities, ["text", "audio"]);
+    assert.deepEqual(body.audio, { voice: "echo", format: "pcm16" });
+    return streamResponse([
     {
       id: "gen_audio",
       choices: [{
         delta: {
-          content: "Audio ready.",
           audio: { data: "QUJD", transcript: "abc" },
         },
       }],
     },
     { choices: [{ finish_reason: "stop" }] },
-  ])) as any;
+    ]);
+  }) as any;
 
   const { mutations } = await runParticipant({
+    ctxOptions: { userPrefs: { preferredVoice: "echo" } },
+    modelCapabilities: new Map([[
+      "model_1",
+      {
+        ...modelCaps.get("model_1"),
+        hasAudioOutput: true,
+      },
+    ]]),
     persistInlineAudio: async (audioBase64: string) => {
       assert.equal(audioBase64, "QUJD");
       return {
         audioStorageId: "audio_storage_1",
         audioDurationMs: 1234,
         audioGeneratedAt: 456,
+        audioMimeType: "audio/wav",
+        audioSizeBytes: 47,
       };
     },
   });
 
   const finalize = mutations.find((entry) => entry.args.status === "completed")?.args;
-  assert.equal(finalize?.content, "Audio ready.");
+  assert.equal(finalize?.content, "abc");
   assert.equal(finalize?.audioStorageId, "audio_storage_1");
   assert.equal(finalize?.audioDurationMs, 1234);
   assert.equal(finalize?.audioGeneratedAt, 456);
+  assert.equal(finalize?.audioMimeType, "audio/wav");
+  assert.equal(finalize?.audioSizeBytes, 47);
+  assert.equal(finalize?.audioTranscript, "abc");
 });
 
 test("generateForParticipant cancels after periodic stream cancellation checks", async (t) => {

@@ -9,11 +9,6 @@ import { useAudioPlaybackContext } from "./AudioPlaybackContext.hook";
 import type { Message } from "@/hooks/useChat";
 import type { Id } from "@convex/_generated/dataModel";
 
-const LYRIA_MODEL_IDS = new Set([
-  "google/lyria-3-clip-preview",
-  "google/lyria-3-pro-preview",
-]);
-
 interface Props {
   messages: Message[];
   isLoading?: boolean;
@@ -22,11 +17,6 @@ interface Props {
 /** Returns true if the message is a user message with recorded audio. */
 function isAudioUserMessage(m: Message): boolean {
   return m.role === "user" && !!m.audioStorageId;
-}
-
-/** Lyria messages carry their own inline audio — don't auto-play via TTS path. */
-function isLyriaMusic(m: Message): boolean {
-  return !!m.audioStorageId && !!m.modelId && LYRIA_MODEL_IDS.has(m.modelId);
 }
 
 function directAudioParent(message: Message, byId: Map<string, Message>): Message | undefined {
@@ -71,7 +61,7 @@ export function AutoAudioWatcher({ messages, isLoading = false }: Props) {
         !m.audioStorageId ||
         m.status !== "completed" ||
         seenAudioRef.current.has(m._id) ||
-        isLyriaMusic(m)
+        m.audioSource === "model_output"
       ) continue;
 
       // Check the actual parent first; fall back for legacy messages that have no parent ids.

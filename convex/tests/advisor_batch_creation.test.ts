@@ -30,6 +30,14 @@ test("one turn creates one shared batch, persists only keep=true selections, and
     userPreferences: [{ userId: "user_1", defaultModelId: "text_model" }],
     cachedModels: [{ modelId: "text_model", architecture: { modality: "text->text" } }],
     oauthConnections: [],
+    accountDeletionTombstones: [],
+    executionRuns: [{
+      _id: "collaboration_run_1",
+      userId: "user_1",
+      chatId: "chat_1",
+      state: "running",
+      rootRunId: "collaboration_run_1",
+    }],
   };
   const personas: Record<string, TestRow> = {
     persona_1: {
@@ -121,6 +129,7 @@ test("one turn creates one shared batch, persists only keep=true selections, and
       kind: "generation",
       args: { chatId: "chat_1", participants: [] },
     },
+    parentRunId: "collaboration_run_1",
   } as unknown as BatchArgs;
 
   const firstBatch = await createAdvisorBatchForTurn(ctx, args);
@@ -133,6 +142,11 @@ test("one turn creates one shared batch, persists only keep=true selections, and
   assert.equal(tables.advisorBatches.length, 1);
   assert.equal(tables.advisorBatches[0].expectedRunCount, 2);
   assert.equal(tables.advisorRuns.length, 2);
+  assert.equal(
+    tables.executionRuns.find((row) => row.runKey === "advisor:batch_1")
+      ?.parentRunId,
+    "collaboration_run_1",
+  );
   assert.deepEqual(
     patches.filter((entry) => entry.id.startsWith("assistant_")),
     [

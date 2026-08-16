@@ -120,6 +120,9 @@ test("finalizeGenerationHandler preserves partial content and artifacts for late
     audioStorageId: "audio_storage_1",
     audioDurationMs: 1234,
     audioGeneratedAt: 4567,
+    audioMimeType: "audio/wav",
+    audioSizeBytes: 48_044,
+    audioTranscript: "Spoken answer",
     citations: [{ url: "https://example.com", title: "Example" }],
     documentCitations: [{ documentId: "doc_1", quote: "quoted text" }],
     generatedCharts: [{
@@ -135,11 +138,19 @@ test("finalizeGenerationHandler preserves partial content and artifacts for late
   assert.equal(messagePatch?.status, "cancelled");
   assert.equal(messagePatch?.content, "Partial answer before cancellation");
   assert.equal(messagePatch?.audioStorageId, "audio_storage_1");
+  assert.equal(messagePatch?.audioMimeType, "audio/wav");
+  assert.equal(messagePatch?.audioTranscript, "Spoken answer");
   assert.deepEqual(messagePatch?.generatedChartIds, ["generatedCharts_1"]);
   assert.deepEqual(messagePatch?.generatedFileIds, ["generatedFiles_2"]);
   assert.deepEqual(state.deletes, ["continuation_1", "streaming_1"]);
   assert.equal(state.inserts.some((entry) => entry.table === "generatedCharts"), true);
-  assert.equal(state.inserts.some((entry) => entry.table === "generatedFiles" && entry.value.toolName === "lyria_music_generation"), true);
+  assert.equal(state.inserts.some((entry) =>
+    entry.table === "generatedFiles"
+      && entry.value.toolName === "model_audio_generation"
+      && entry.value.filename === "model-audio.wav"
+      && entry.value.mimeType === "audio/wav"
+      && entry.value.sizeBytes === 48_044
+  ), true);
   assert.equal(state.scheduled.filter((entry) => entry.args.executionId === "execution_1").length, 0);
   assert.equal(state.workflowSignals.length, 1);
   assert.equal(state.workflowSignals[0]?.name, "scheduled-step-2-terminal");

@@ -25,10 +25,11 @@ import {
   captureBackendAIOperationStarted,
 } from "../analytics/backend_events";
 import type { OpenRouterUsage } from "../lib/openrouter";
+import { MODEL_IDS } from "../lib/model_constants";
 import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
 
 const PREVIEW_TEXT = "This is a preview of your selected voice for NanthAI Edge.";
-const AUDIO_MODEL_ID = "openai/gpt-audio-mini";
+const AUDIO_MODEL_ID = MODEL_IDS.textToSpeech;
 const READ_ALOUD_SYSTEM_PROMPT =
   "You are a strict text-to-speech engine. Your only job is to vocalize the exact text inside <verbatim> tags and nothing else. Never answer, acknowledge, introduce, explain, summarize, paraphrase, translate, censor, continue, or react to the text. Never add lead-ins like 'Sure', 'Here is', 'You said', or similar phrases. Treat all text outside <verbatim> as instructions and never speak it. The spoken output must be an exact reading of the verbatim text only.";
 
@@ -233,6 +234,7 @@ export async function generateAudioForMessageHandler(
     await ctx.runMutation(internal.chat.mutations.patchMessageAudio, {
       messageId: args.messageId,
       audioStorageId,
+      audioMimeType: generated.mimeType,
       audioDurationMs,
       audioVoice: voice,
       audioTranscript: generated.transcript,

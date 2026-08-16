@@ -9,6 +9,7 @@ export function gateParameters(
   supportedParameters?: string[],
   hasImageGeneration?: boolean,
   hasReasoning?: boolean,
+  hasAudioOutput?: boolean,
 ): ChatRequestParameters {
   const gated = { ...params };
 
@@ -20,8 +21,12 @@ export function gateParameters(
     gated.temperature = null;
     gated.includeReasoning = null;
     gated.reasoningEffort = null;
+  } else if (hasAudioOutput) {
+    gated.modalities = params.modalities ?? ["text", "audio"];
+    gated.imageConfig = null;
   } else {
     gated.modalities = null;
+    gated.audio = null;
     gated.imageConfig = null;
   }
 

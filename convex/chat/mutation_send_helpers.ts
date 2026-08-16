@@ -370,6 +370,16 @@ export async function createAssistantMessagesAndJobs(
     retryContract?: RetryContract;
     analytics?: AnalyticsClientMetadata;
     analyticsSource?: CancelledAnalyticsSource;
+    parentRunId?: Id<"executionRuns">;
+    collaboration?: {
+      exchangeId: Id<"collaborationExchanges">;
+      decisionId: Id<"collaborationDecisions">;
+      wave: number;
+      participants: Array<{
+        chatParticipantId: Id<"chatParticipants">;
+        replyToMessageIds: Id<"messages">[];
+      }>;
+    };
   },
 ): Promise<{
   assistantMessageIds: Id<"messages">[];
@@ -383,7 +393,9 @@ export async function createAssistantMessagesAndJobs(
   const generationJobIds: Id<"generationJobs">[] = [];
   const streamingMessageIds: Id<"streamingMessages">[] = [];
 
-  for (const participant of args.participants) {
+  for (let index = 0; index < args.participants.length; index += 1) {
+    const participant = args.participants[index];
+    const collaboration = args.collaboration?.participants[index];
     const assistantMessageId = await ctx.db.insert("messages", {
       chatId: args.chatId,
       userId: args.userId,
@@ -394,6 +406,11 @@ export async function createAssistantMessagesAndJobs(
       participantName: participant.personaName ?? undefined,
       participantEmoji: participant.personaEmoji ?? undefined,
       participantAvatarImageUrl: participant.personaAvatarImageUrl ?? undefined,
+      chatParticipantId: collaboration?.chatParticipantId,
+      collaborationExchangeId: args.collaboration?.exchangeId,
+      collaborationDecisionId: args.collaboration?.decisionId,
+      collaborationWave: args.collaboration?.wave,
+      collaborationReplyToIds: collaboration?.replyToMessageIds,
       parentMessageIds: args.parentMessageIds,
       multiModelGroupId,
       isMultiModelResponse: isMultiParticipant,
@@ -429,6 +446,10 @@ export async function createAssistantMessagesAndJobs(
       status: "queued",
       analytics: args.analytics,
       analyticsSource: args.analyticsSource,
+      collaborationExchangeId: args.collaboration?.exchangeId,
+      collaborationDecisionId: args.collaboration?.decisionId,
+      collaborationWave: args.collaboration?.wave,
+      chatParticipantId: collaboration?.chatParticipantId,
       createdAt: args.jobCreatedAt,
     });
     await createGenerationExecution(ctx, {
@@ -437,6 +458,7 @@ export async function createAssistantMessagesAndJobs(
       chatId: args.chatId,
       sourceMessageId: assistantMessageId,
       modelId: participant.modelId,
+      parentRunId: args.parentRunId,
       now: args.jobCreatedAt,
     });
     generationJobIds.push(jobId);

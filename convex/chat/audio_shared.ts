@@ -5,17 +5,7 @@ export const DEFAULT_TTS_VOICE = "nova";
 export const STREAMING_TTS_FORMAT = "pcm16";
 export const TTS_WAV_MIME_TYPE = "audio/wav";
 export const TTS_PCM_SAMPLE_RATE_HZ = 24_000;
-
-// ── Lyria (Google Music Generation) ────────────────────────────────────
-export const LYRIA_CLIP_MODEL = "google/lyria-3-clip-preview";
-export const LYRIA_PRO_MODEL = "google/lyria-3-pro-preview";
-export const LYRIA_MP3_MIME_TYPE = "audio/mpeg";
-
-/** Returns true when `modelId` is one of the Lyria music-generation models. */
-export function isLyriaModel(modelId: string | null | undefined): boolean {
-  if (!modelId) return false;
-  return modelId === LYRIA_CLIP_MODEL || modelId === LYRIA_PRO_MODEL;
-}
+export const MP3_MIME_TYPE = "audio/mpeg";
 
 /**
  * Parse the duration of an MP3 buffer by walking MPEG sync frames.
@@ -23,7 +13,7 @@ export function isLyriaModel(modelId: string | null | undefined): boolean {
  * Returns duration in milliseconds, or 0 if no valid frames are found.
  * Handles ID3v2 tags at the start and skips non-sync data gracefully.
  *
- * Supports MPEG-1 Layer III (the format Lyria returns) as well as
+ * Supports MPEG-1 Layer III as well as
  * MPEG-2 and MPEG-2.5 Layer II/III for robustness.
  */
 export function parseMp3DurationMs(buf: Buffer): number {
@@ -106,7 +96,7 @@ export function parseMp3DurationMs(buf: Buffer): number {
         ? bitratesMpeg1L3[bitrateIdx]
         : layerBits === 0b01
           ? bitratesMpeg2L3[bitrateIdx]
-          : 0; // We only need Layer III for Lyria; skip others
+          : 0; // Generated MP3 output is expected to use Layer III.
 
     if (bitrate === 0) {
       offset++;
@@ -203,6 +193,20 @@ export function preferredVoiceFromPreferences(
 ): string {
   const voice = preferences?.preferredVoice?.trim();
   return voice && voice.length > 0 ? voice : DEFAULT_TTS_VOICE;
+}
+
+export function extensionForAudioMimeType(mimeType: string): string {
+  switch (mimeType.toLowerCase()) {
+    case "audio/mpeg":
+    case "audio/mp3":
+      return "mp3";
+    case "audio/flac":
+      return "flac";
+    case "audio/ogg":
+      return "ogg";
+    default:
+      return "wav";
+  }
 }
 
 export function guessAudioInputFormat(

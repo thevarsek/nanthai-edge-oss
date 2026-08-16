@@ -41,6 +41,11 @@ import {
   SendParticipantConfig,
 } from "./mutation_send_helpers";
 import { enqueueRunGeneration } from "./run_generation_queue";
+import {
+  createCollaborationExchange,
+  findActiveCollaborationExchange,
+  joinActiveCollaborationExchange,
+} from "../collaboration/creation";
 
 const DEFAULT_CHAT_MODEL = MODEL_IDS.appDefault;
 
@@ -57,10 +62,22 @@ export async function createChatHandler(
 ): Promise<Id<"chats">> {
   const { userId } = await requireAuth(ctx);
   const now = Date.now();
+  const participants = args.participants != null
+    ? normalizeParticipants(args.participants, DEFAULT_CHAT_MODEL).slice(0, 3)
+    : [];
+  const preferences = participants.length > 1
+    ? await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (query) => query.eq("userId", userId))
+      .first()
+    : null;
   const chatId = await ctx.db.insert("chats", {
     userId,
     title: args.title ?? "New conversation",
     mode: args.mode,
+    groupBehavior: participants.length > 1
+      ? preferences?.defaultGroupBehavior ?? "parallel"
+      : undefined,
     source: "user",
     folderId: args.folderId,
     createdAt: now,
@@ -70,10 +87,6 @@ export async function createChatHandler(
   // When participants is explicitly provided (web), normalize and insert them
   // atomically. When undefined (iOS/Android), skip — those clients add
   // participants separately via addParticipant after chat creation.
-  const participants = args.participants != null
-    ? normalizeParticipants(args.participants, DEFAULT_CHAT_MODEL).slice(0, 3)
-    : [];
-
   if (participants.length > 0) {
     for (let index = 0; index < participants.length; index += 1) {
       const participant = participants[index];
@@ -240,10 +253,24 @@ export async function sendMessageHandler(
     throw new ConvexError({ code: "VALIDATION" as const, message: "Complexity 3 search does not support attachments." });
   }
 
-  const participants = selectMentionedParticipants(
-    normalizeParticipants(args.participants, DEFAULT_CHAT_MODEL),
-    args.mentionedParticipantKeys,
+  const requestedParticipants = normalizeParticipants(
+    args.participants,
+    DEFAULT_CHAT_MODEL,
   );
+  const isCollaborationSend =
+    chat.groupBehavior === "collaboration" && requestedParticipants.length > 1;
+  if (isCollaborationSend && effectiveSearchMode === "web") {
+    throw new ConvexError({
+      code: "VALIDATION",
+      message: "Advanced web research is not yet available in Collaboration.",
+    });
+  }
+  const participants = isCollaborationSend
+    ? selectMentionedParticipants(requestedParticipants, undefined)
+    : selectMentionedParticipants(
+        requestedParticipants,
+        args.mentionedParticipantKeys,
+      );
 
   // M29: Enforce same-modality constraint when multiple participants are present.
   if (participants.length > 1) {
@@ -259,7 +286,7 @@ export async function sendMessageHandler(
   }
 
   const hasPersona = participants.some((p) => p.personaId);
-  const requestedSubagents = args.subagentsEnabled === true && participants.length === 1;
+  const requestedSubagents = args.subagentsEnabled === true;
   const requiresPro = args.searchMode === "web" || hasPersona || requestedSubagents;
 
   // Parallel batch 2: parent resolution and Pro check are independent after
@@ -326,6 +353,8 @@ export async function sendMessageHandler(
     parentMessageIds,
     status: "completed",
     audioStorageId: args.recordedAudio?.storageId,
+    audioMimeType: args.recordedAudio?.mimeType,
+    audioSource: args.recordedAudio ? "recording" : undefined,
     audioTranscript,
     audioDurationMs: args.recordedAudio?.durationMs,
     attachments: normalizedAttachments,
@@ -377,6 +406,92 @@ export async function sendMessageHandler(
         });
       }
     }
+  }
+
+  if (isCollaborationSend) {
+    const [activeExchange, autonomousSessions] = await Promise.all([
+      findActiveCollaborationExchange(ctx, args.chatId),
+      ctx.db
+        .query("autonomousSessions")
+        .withIndex("by_chat", (query) => query.eq("chatId", args.chatId))
+        .collect(),
+    ]);
+    if (autonomousSessions.some((session) =>
+      session.status === "running" || session.status === "paused"
+    )) {
+      throw new ConvexError({
+        code: "CONFLICT",
+        message: "Stop Autonomous Discussion before starting Collaboration.",
+      });
+    }
+    let exchangeId = activeExchange?._id;
+    if (activeExchange) {
+      await joinActiveCollaborationExchange(
+        ctx,
+        activeExchange,
+        userMessageId,
+        args.mentionedParticipantKeys,
+        now,
+      );
+    } else {
+      exchangeId = await createCollaborationExchange(ctx, {
+        userId,
+        chatId: args.chatId,
+        initiatingMessageId: userMessageId,
+        participants: requestedParticipants,
+        mentionedParticipantKeys: args.mentionedParticipantKeys,
+        generationSnapshot: {
+          expandMultiModelGroups,
+          webSearchEnabled: effectiveSearchMode === "normal"
+            ? true
+            : (args.webSearchEnabled ?? false),
+          enabledIntegrations: effectiveIntegrations,
+          subagentsEnabled: effectiveSubagents,
+          turnSkillOverrides: args.turnSkillOverrides,
+          turnIntegrationOverrides: args.turnIntegrationOverrides,
+          videoConfig: args.videoConfig,
+          imageConfig: retryContract.imageConfig,
+          analytics: args.analytics,
+          advisorSelections: args.advisorSelections,
+          advisorBrief: args.advisorBrief,
+          retryContract,
+        },
+        now,
+      });
+      await ctx.db.patch(userMessageId, {
+        collaborationExchangeId: exchangeId,
+      });
+      await ctx.scheduler.runAfter(
+        0,
+        internal.collaboration.workflow_start.startExchange,
+        { exchangeId },
+      );
+    }
+    const shouldSeedTitle =
+      (chat.messageCount ?? 0) === 0 &&
+      trimmedText.length > 0 &&
+      isPlaceholderTitle(chat.title);
+    const seededTitle = shouldSeedTitle ? buildSeedTitle(trimmedText) : "";
+    await ctx.db.patch(chat._id, {
+      updatedAt: now,
+      lastMessageDate: now,
+      messageCount: (chat.messageCount ?? 0) + 1,
+      activeBranchLeafId: userMessageId,
+      activeBranchLeafFocusOrder: undefined,
+      ...(seededTitle ? { title: seededTitle } : {}),
+    });
+    if ((chat.messageCount ?? 0) === 0 && trimmedText.length > 0) {
+      await ctx.scheduler.runAfter(0, internal.chat.actions.generateTitle, {
+        chatId: args.chatId,
+        sourceContent: trimmedText,
+        assistantContent: undefined,
+        titleModel: userPreferences?.titleModelId?.trim() || undefined,
+        seedTitle: seededTitle || undefined,
+        userId,
+        messageId: userMessageId,
+      });
+    }
+    return { userMessageId, assistantMessageIds: [] };
   }
 
   const assistantSetupStartedAt = Date.now();

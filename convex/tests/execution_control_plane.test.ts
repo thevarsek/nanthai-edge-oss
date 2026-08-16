@@ -417,6 +417,13 @@ test("domain workflows dedupe their run key without pretending active components
     claimantId: "research-workflow:workflow_1",
     chatId: "chat_1" as Id<"chats">,
   });
+  assert.deepEqual(Object.keys(execution).sort(), [
+    "attemptId",
+    "claimantId",
+    "fence",
+    "runId",
+  ]);
+  assert.equal("leaseExpiresAt" in execution, false);
   assert.equal(duplicate.runId, execution.runId);
   assert.equal(duplicate.attemptId, execution.attemptId);
   await heartbeatDomainExecution(ctx, execution);

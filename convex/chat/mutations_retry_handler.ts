@@ -405,8 +405,7 @@ export async function retryMessageHandler(
     }
   }
   const hasPersona = participants.some((p) => p.personaId);
-  const requestedSubagents =
-    effectiveRetryContract.subagentsEnabled === true && participants.length === 1;
+  const requestedSubagents = effectiveRetryContract.subagentsEnabled === true;
   const requiresPro =
     effectiveRetryContract.searchMode === "web"
       || effectiveRetryContract.searchMode === "paper"

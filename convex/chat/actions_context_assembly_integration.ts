@@ -12,6 +12,11 @@ import { scheduleContextAssemblyLog } from "./context_assembly_log_scheduler";
 import { branchPathIds } from "./helpers_utils";
 import type { ContextMessage } from "./helpers_types";
 import { selectRecentMcpInvocationIds } from "../mcp/context_selection";
+import {
+  prepareParticipantTurn,
+  type PreparedParticipantTurn,
+  type PreparedTurnCausality,
+} from "./prepared_participant_turn";
 
 export interface GenerationContextAssemblyInput {
   ctx: ActionCtx;
@@ -23,8 +28,9 @@ export interface GenerationContextAssemblyInput {
   legacyMessages: OpenRouterMessage[];
   allMessages: ContextMessage[];
   providerContextWindowTokens?: number;
-  mode?: "read_path" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume";
-  runtimeKind?: "chat_generation" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume" | "scheduled_job";
+  mode?: "read_path" | "autonomous_discussion" | "collaborative_discussion" | "subagent_child" | "subagent_parent_resume";
+  runtimeKind?: "chat_generation" | "autonomous_discussion" | "collaborative_discussion" | "subagent_child" | "subagent_parent_resume" | "scheduled_job";
+  causality?: PreparedTurnCausality;
   subagentBatchId?: Id<"subagentBatches">;
   subagentRunId?: Id<"subagentRuns">;
   parentMessageId?: Id<"messages">;
@@ -92,9 +98,9 @@ function buildExtraExclusionCounts(
   };
 }
 
-export async function assembleRequestContextForGeneration(
+export async function prepareRequestContextForGeneration(
   input: GenerationContextAssemblyInput,
-): Promise<OpenRouterMessage[]> {
+): Promise<PreparedParticipantTurn> {
   const messagesById = new Map(input.allMessages.map((message) => [String(message._id), message]));
   const reachableMessageIds = Array.from(
     branchPathIds(String(input.assistantMessageId), messagesById),
@@ -285,5 +291,12 @@ export async function assembleRequestContextForGeneration(
     decisionSummary: assembly.assemblyPlan.policyDecisions.join("; "),
   });
 
-  return assembly.messages;
+  return prepareParticipantTurn(assembly, input.causality);
+}
+
+export async function assembleRequestContextForGeneration(
+  input: GenerationContextAssemblyInput,
+): Promise<OpenRouterMessage[]> {
+  const prepared = await prepareRequestContextForGeneration(input);
+  return prepared.providerMessages;
 }

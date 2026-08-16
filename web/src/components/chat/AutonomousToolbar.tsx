@@ -5,6 +5,7 @@
 import { Pause, Play, Square, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { AutonomousState } from "@/hooks/useAutonomous";
+import { ChatActivityButton, ChatActivityPanel } from "./ChatActivityPanel";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -22,10 +23,12 @@ export function AutonomousToolbar({ state, onPause, onResume, onStop, onDismiss 
   if (state.status === "inactive" || state.status === "configuring") return null;
 
   return (
-    <div className="mx-3 mb-2 rounded-2xl bg-surface-1/90 backdrop-blur-md border border-border/40 px-4 py-3 space-y-2.5">
-      <StatusRow state={state} />
-      <Controls state={state} onPause={onPause} onResume={onResume} onStop={onStop} onDismiss={onDismiss} />
-    </div>
+    <ChatActivityPanel>
+      <div className="space-y-2.5">
+        <StatusRow state={state} />
+        <Controls state={state} onPause={onPause} onResume={onResume} onStop={onStop} onDismiss={onDismiss} />
+      </div>
+    </ChatActivityPanel>
   );
 }
 
@@ -107,23 +110,23 @@ function Controls({ state, onPause, onResume, onStop, onDismiss }: {
   if (state.status === "active") {
     return (
       <div className="flex gap-2">
-        <ToolbarButton label={t("pause")} icon={<Pause size={14} />} color="orange" onClick={onPause} />
-        <ToolbarButton label={t("stop")} icon={<Square size={14} />} color="red" onClick={onStop} />
+        <ChatActivityButton label={t("pause")} icon={<Pause size={14} />} tone="orange" onClick={onPause} />
+        <ChatActivityButton label={t("stop")} icon={<Square size={14} />} tone="red" onClick={onStop} />
       </div>
     );
   }
   if (state.status === "paused") {
     return (
       <div className="flex gap-2">
-        <ToolbarButton label={t("resume")} icon={<Play size={14} />} color="green" onClick={onResume} />
-        <ToolbarButton label={t("stop")} icon={<Square size={14} />} color="red" onClick={onStop} />
+        <ChatActivityButton label={t("resume")} icon={<Play size={14} />} tone="green" onClick={onResume} />
+        <ChatActivityButton label={t("stop")} icon={<Square size={14} />} tone="red" onClick={onStop} />
       </div>
     );
   }
   if (state.status === "ended") {
     return (
       <div className="flex gap-2">
-        <ToolbarButton label={t("dismiss")} icon={<X size={14} />} color="muted" onClick={onDismiss} />
+        <ChatActivityButton label={t("dismiss")} icon={<X size={14} />} tone="muted" onClick={onDismiss} />
       </div>
     );
   }
@@ -131,28 +134,6 @@ function Controls({ state, onPause, onResume, onStop, onDismiss }: {
 }
 
 // ─── Shared sub-components ──────────────────────────────────────────────────
-
-const COLOR_MAP: Record<string, string> = {
-  orange: "border-orange-500/40 text-orange-400 hover:bg-orange-500/10",
-  green: "border-green-500/40 text-green-400 hover:bg-green-500/10",
-  red: "border-red-500/40 text-red-400 hover:bg-red-500/10",
-  muted: "border-border/40 text-muted hover:bg-surface-2",
-};
-
-function ToolbarButton({ label, icon, color, onClick }: {
-  label: string; icon: React.ReactNode; color: string; onClick: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-medium transition-colors ${COLOR_MAP[color] ?? COLOR_MAP.muted}`}
-    >
-      {icon}
-      {label}
-    </button>
-  );
-}
 
 function PulsingDot({ className }: { className?: string }) {
   return (

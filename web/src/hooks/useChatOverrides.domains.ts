@@ -91,17 +91,21 @@ export function useChatPanelState() {
 
   const handlePlusMenuSelect = useCallback((item: PlusMenuItem) => {
     switch (item) {
+      case "conversationMode":
       case "parameters":
       case "integrations":
       case "skills":
       case "knowledgeBase":
       case "participants":
       case "subagents":
-      case "autonomous":
         setActivePanel(item);
         break;
       case "file":
       case "image":
+      case "camera":
+      case "pasteImage":
+      case "advisors":
+      case "remoteMcpContent":
         break;
     }
   }, []);

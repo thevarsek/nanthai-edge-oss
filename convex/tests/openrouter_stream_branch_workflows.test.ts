@@ -122,6 +122,43 @@ test("streaming transport strips unsupported parameters and retries once per nor
   assert.equal(requestBodies[1]?.temperature, 0.2);
 });
 
+test("streaming transport retries an explicitly rejected PCM16 audio format once with MP3", async () => {
+  const requestBodies: Array<Record<string, unknown>> = [];
+  const deps = createOpenRouterStreamingDepsForTest({
+    fetch: async (_url: RequestInfo | URL, init?: RequestInit) => {
+      requestBodies.push(JSON.parse(String(init?.body)));
+      if (requestBodies.length === 1) {
+        return response(400, JSON.stringify({
+          error: {
+            message: "Unsupported value: 'audio.format' does not support 'pcm16'. Supported values are: 'mp3'.",
+          },
+        }));
+      }
+      return response(200, "data: ok", null);
+    },
+    processSSETextStream: async () => streamResult("audio ok"),
+  });
+
+  const result = await callOpenRouterStreaming(
+    "key",
+    "google/future-audio-model",
+    [{ role: "user", content: "Compose a short instrumental cue." }],
+    {
+      modalities: ["text", "audio"],
+      audio: { voice: "nova", format: "pcm16" },
+    },
+    {},
+    {},
+    deps,
+  );
+
+  assert.equal(result.content, "audio ok");
+  assert.deepEqual(requestBodies.map((body) => body.audio), [
+    { voice: "nova", format: "pcm16" },
+    { voice: "nova", format: "mp3" },
+  ]);
+});
+
 test("streaming transport retries 404 no-endpoints responses without soft provider routing but preserves ZDR", async () => {
   const requestBodies: Array<Record<string, unknown>> = [];
   let fetchCount = 0;

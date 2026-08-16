@@ -140,8 +140,8 @@ export interface GenerationContinuationCheckpoint {
     rehydrationDirectives: Array<Record<string, unknown>>;
     activeProfiles: SkillToolProfileId[];
     loadedSkills: LoadedSkillState[];
-    mode?: "read_path" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume";
-    runtimeKind?: "chat_generation" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume" | "scheduled_job";
+    mode?: "read_path" | "autonomous_discussion" | "collaborative_discussion" | "subagent_child" | "subagent_parent_resume";
+    runtimeKind?: "chat_generation" | "autonomous_discussion" | "collaborative_discussion" | "subagent_child" | "subagent_parent_resume" | "scheduled_job";
     subagentBatchId?: Id<"subagentBatches">;
     subagentRunId?: Id<"subagentRuns">;
     parentMessageId?: Id<"messages">;

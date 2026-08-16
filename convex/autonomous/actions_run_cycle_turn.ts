@@ -38,6 +38,11 @@ import { assertModelAvailable } from "../lib/openrouter_modality";
 import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { adaptMessagesForImageInput } from "../chat/request_message_capabilities";
 import {
+  preferredVoiceFromPreferences,
+  STREAMING_TTS_FORMAT,
+} from "../chat/audio_shared";
+import { persistAutonomousAudioOutput } from "./actions_run_cycle_audio";
+import {
   dedicatedImageGenerationAnalytics,
   type DedicatedImageGenerationAnalytics,
 } from "../chat/image_generation_analytics";
@@ -410,6 +415,15 @@ export async function runParticipantTurn(
       includeReasoning: participant.includeReasoning ?? null,
       reasoningEffort: participant.reasoningEffort ?? null,
       webSearchEnabled,
+      ...(caps?.hasAudioOutput
+        ? {
+            modalities: ["text", "audio"],
+            audio: {
+              voice: preferredVoiceFromPreferences(preferences),
+              format: STREAMING_TTS_FORMAT,
+            },
+          }
+        : {}),
     };
     const gatedParams = withZdrProvider(
       deps.gateParameters(
@@ -417,6 +431,7 @@ export async function runParticipantTurn(
         caps?.supportedParameters,
         caps?.hasImageGeneration,
         caps?.hasReasoning,
+        caps?.hasAudioOutput,
       ),
       requireZdr,
     );
@@ -545,8 +560,8 @@ export async function runParticipantTurn(
     await assertTurnStillActive();
     totalReasoning = writer.totalReasoning;
 
-    const finalContent = result.content.trim();
-    if (!finalContent && result.reasoning) {
+    const finalContent = result.content.trim() || result.audioTranscript.trim();
+    if (!finalContent && result.reasoning && !result.audioBase64) {
       await finalizeTransientTurnFailure(ctx, {
         messageId: activeMessageId,
         jobId: activeJobId,
@@ -573,7 +588,11 @@ export async function runParticipantTurn(
         kind: "failed",
         reason: "Model returned reasoning only without a visible response.",
       };
-    } else if (!finalContent && result.imageUrls.length === 0) {
+    } else if (
+      !finalContent &&
+      result.imageUrls.length === 0 &&
+      !result.audioBase64
+    ) {
       await finalizeTransientTurnFailure(ctx, {
         messageId: activeMessageId,
         jobId: activeJobId,
@@ -602,6 +621,10 @@ export async function runParticipantTurn(
       };
     }
 
+    const persistedAudio = result.audioBase64
+      ? await persistAutonomousAudioOutput(ctx, result.audioBase64)
+      : undefined;
+
     await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
       messageId: activeMessageId,
       jobId: activeJobId,
@@ -611,6 +634,10 @@ export async function runParticipantTurn(
       usage: result.usage ?? undefined,
       reasoning: result.reasoning || totalReasoning || undefined,
       imageUrls: result.imageUrls.length > 0 ? result.imageUrls : undefined,
+      ...persistedAudio,
+      ...(result.audioTranscript
+        ? { audioTranscript: result.audioTranscript }
+        : {}),
       userId,
       ...executionToken,
       skipExecutionTerminalization: true,
@@ -632,6 +659,7 @@ export async function runParticipantTurn(
         participant_id: String(participant.participantId),
         persona_id: participant.personaId ? String(participant.personaId) : null,
         image_count: result.imageUrls.length,
+        audio_output_present: Boolean(result.audioBase64),
         reasoning_present: Boolean(result.reasoning || totalReasoning),
         web_search_enabled: webSearchEnabled,
       },

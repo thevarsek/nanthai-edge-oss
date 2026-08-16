@@ -5,7 +5,11 @@ import { ConvexError } from "convex/values";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
 import { normalizeMemoryRecord } from "../memory/shared";
 import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
-import { isAudioBasedUserMessage, resolveAutoAudioResponseEnabled } from "./audio_shared";
+import {
+  extensionForAudioMimeType,
+  isAudioBasedUserMessage,
+  resolveAutoAudioResponseEnabled,
+} from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
 import { preferCurrentPresentationSnapshot } from "./presentation_generated_file_snapshot";
 import {
@@ -206,10 +210,13 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     locator?: string;
   }>;
   documentEvents?: DocumentEvent[];
-  // M26 — Lyria inline audio
+  // Model-authored inline audio
   audioStorageId?: Id<"_storage">;
   audioDurationMs?: number;
   audioGeneratedAt?: number;
+  audioMimeType?: string;
+  audioSizeBytes?: number;
+  audioTranscript?: string;
   triggerUserMessageId?: Id<"messages">;
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId?: string;
@@ -468,11 +475,14 @@ export async function finalizeGenerationHandler(
   }
   const documentEvents: DocumentEvent[] = args.documentEvents ? [...args.documentEvents] : [];
 
-  // M26: Lyria inline audio — persist audio fields directly onto the message.
+  // Persist model-authored inline audio directly onto the message.
   if (args.audioStorageId) {
     msgPatch.audioStorageId = args.audioStorageId;
+    msgPatch.audioSource = "model_output";
     if (args.audioDurationMs != null) msgPatch.audioDurationMs = args.audioDurationMs;
     if (args.audioGeneratedAt != null) msgPatch.audioGeneratedAt = args.audioGeneratedAt;
+    if (args.audioMimeType) msgPatch.audioMimeType = args.audioMimeType;
+    if (args.audioTranscript) msgPatch.audioTranscript = args.audioTranscript;
   }
 
   // M10: Insert generatedFiles rows and collect their IDs.
@@ -531,17 +541,19 @@ export async function finalizeGenerationHandler(
   }
   if (chartIds && chartIds.length > 0) msgPatch.generatedChartIds = chartIds;
 
-  // M26: Insert a generatedFiles row for Lyria audio so it appears in Knowledge Base.
+  // Insert a generatedFiles row so model-authored audio appears in Knowledge Base.
   if (args.audioStorageId) {
+    const mimeType = args.audioMimeType ?? "audio/mpeg";
+    const extension = extensionForAudioMimeType(mimeType);
     const audioFileId = await ctx.db.insert("generatedFiles", {
       userId: args.userId,
       chatId: args.chatId,
       messageId: args.messageId,
       storageId: args.audioStorageId,
-      filename: "lyria-music.mp3",
-      mimeType: "audio/mpeg",
-      sizeBytes: undefined,
-      toolName: "lyria_music_generation",
+      filename: `model-audio.${extension}`,
+      mimeType,
+      sizeBytes: args.audioSizeBytes,
+      toolName: "model_audio_generation",
       createdAt: now,
     });
     // Append to any existing file IDs.
@@ -804,6 +816,7 @@ export interface UpdateMessageToolCallsArgs extends Record<string, unknown> {
 export interface PatchMessageAudioArgs extends Record<string, unknown> {
   messageId: Id<"messages">;
   audioStorageId: Id<"_storage">;
+  audioMimeType?: string;
   audioDurationMs?: number;
   audioVoice?: string;
   audioTranscript?: string;
@@ -829,6 +842,8 @@ export async function patchMessageAudioHandler(
   }
   await ctx.db.patch(args.messageId, {
     audioStorageId: args.audioStorageId,
+    audioMimeType: args.audioMimeType,
+    audioSource: "read_aloud",
     audioDurationMs: args.audioDurationMs,
     audioVoice: args.audioVoice,
     audioTranscript: args.audioTranscript,

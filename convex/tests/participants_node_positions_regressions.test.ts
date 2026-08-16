@@ -10,7 +10,7 @@ function buildAuth(userId: string | null = "user_1") {
   };
 }
 
-test("updateParticipant clears nullable persona metadata and clears subagent override on multi-model chats", async () => {
+test("updateParticipant clears nullable persona metadata and preserves the chat-wide subagent override", async () => {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
 
   await (updateParticipant as any)._handler({
@@ -51,7 +51,7 @@ test("updateParticipant clears nullable persona metadata and clears subagent ove
     },
   });
   assert.equal(patches[1]?.id, "chat_1");
-  assert.equal(patches[1]?.patch.subagentOverride, undefined);
+  assert.equal("subagentOverride" in (patches[1]?.patch ?? {}), false);
 });
 
 test("setParticipants replaces the full participant set and normalizes sort order", async () => {
@@ -95,7 +95,7 @@ test("setParticipants replaces the full participant set and normalizes sort orde
   assert.deepEqual(deleted, ["old_1", "old_2"]);
   assert.deepEqual(inserts.map((row) => row.sortOrder), [0, 1]);
   assert.equal(inserts[1]?.personaName, "Writer");
-  assert.equal(chatPatches[0]?.subagentOverride, undefined);
+  assert.equal("subagentOverride" in (chatPatches[0] ?? {}), false);
 });
 
 test("node position upsert patches existing rows and remove is idempotent", async () => {

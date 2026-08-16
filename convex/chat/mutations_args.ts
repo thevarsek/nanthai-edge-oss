@@ -253,10 +253,13 @@ export const finalizeGenerationArgs = {
   }))),
   documentCitations: v.optional(v.array(documentCitation)),
   documentEvents: v.optional(v.array(documentEvent)),
-  // M26 — Lyria music generation: inline audio attached during generation
+  // Model-authored inline audio attached during generation
   audioStorageId: v.optional(v.id("_storage")),
   audioDurationMs: v.optional(v.number()),
   audioGeneratedAt: v.optional(v.number()),
+  audioMimeType: v.optional(v.string()),
+  audioSizeBytes: v.optional(v.number()),
+  audioTranscript: v.optional(v.string()),
   triggerUserMessageId: v.optional(v.id("messages")),
   /** OpenRouter generation ID — used post-finalization to fetch authoritative usage. */
   openrouterGenerationId: v.optional(v.string()),
@@ -278,6 +281,7 @@ export const touchMessageAudioPlaybackArgs = {
 export const patchMessageAudioArgs = {
   messageId: v.id("messages"),
   audioStorageId: v.id("_storage"),
+  audioMimeType: v.optional(v.string()),
   audioDurationMs: v.optional(v.number()),
   audioVoice: v.optional(v.string()),
   audioTranscript: v.optional(v.string()),

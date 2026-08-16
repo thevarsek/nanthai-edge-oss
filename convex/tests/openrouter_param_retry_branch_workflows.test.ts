@@ -73,6 +73,7 @@ test("stripParameter clears each retryable OpenRouter setting only when it is pr
     plugins: [{ id: "web" }],
     transforms: ["middle-out"],
     webSearchEnabled: true,
+    responseFormat: { type: "json_object" as const },
   };
 
   assert.equal(stripParameter("temperature", params)?.temperature, null);
@@ -86,6 +87,7 @@ test("stripParameter clears each retryable OpenRouter setting only when it is pr
   assert.equal(strippedPlugins?.plugins, null);
   assert.equal(strippedPlugins?.webSearchEnabled, false);
   assert.equal(stripParameter("transforms", params)?.transforms, null);
+  assert.equal(stripParameter("response_format", params)?.responseFormat, null);
   const strippedWebSearch = stripParameter("web_search", params);
   assert.equal(strippedWebSearch?.webSearchEnabled, false);
   assert.equal(strippedWebSearch?.plugins, null);
@@ -117,5 +119,6 @@ test("stripParameter clears each retryable OpenRouter setting only when it is pr
   assert.equal(stripParameter("plugins", {}), null);
   assert.equal(stripParameter("transforms", { transforms: null }), null);
   assert.equal(stripParameter("web_search", { webSearchEnabled: false }), null);
+  assert.equal(stripParameter("response_format", {}), null);
   assert.equal(stripParameter("unknown_param", params), null);
 });

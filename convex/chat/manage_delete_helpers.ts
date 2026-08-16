@@ -76,6 +76,24 @@ export async function deleteChatGraph(
     ANALYTICS_DELETE_BATCH_SIZE,
   ) || hasMore;
 
+  const collaborationDecisions = await ctx.db
+    .query("collaborationDecisions")
+    .withIndex("by_chat", (query) => query.eq("chatId", chatId))
+    .take(DELETE_BATCH_SIZE);
+  for (const decision of collaborationDecisions) {
+    await ctx.db.delete(decision._id);
+  }
+  if (collaborationDecisions.length === DELETE_BATCH_SIZE) hasMore = true;
+
+  const collaborationExchanges = await ctx.db
+    .query("collaborationExchanges")
+    .withIndex("by_chat", (query) => query.eq("chatId", chatId))
+    .take(DELETE_BATCH_SIZE);
+  for (const exchange of collaborationExchanges) {
+    await ctx.db.delete(exchange._id);
+  }
+  if (collaborationExchanges.length === DELETE_BATCH_SIZE) hasMore = true;
+
   const streamingMessages = await ctx.db
     .query("streamingMessages")
     .withIndex("by_chat", (q) => q.eq("chatId", chatId))

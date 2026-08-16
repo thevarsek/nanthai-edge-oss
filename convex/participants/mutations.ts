@@ -1,6 +1,6 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
-import type { Doc, Id } from "../_generated/dataModel";
+import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
 
 // =============================================================================
@@ -24,18 +24,11 @@ async function assertNoActiveAutonomousSession(
   }
 }
 
-async function patchChatForParticipantCount(
+async function touchChat(
   ctx: MutationCtx,
-  chat: Pick<Doc<"chats">, "_id" | "subagentOverride">,
-  participantCount: number,
+  chatId: Id<"chats">,
 ): Promise<void> {
-  const patch: Record<string, unknown> = {
-    updatedAt: Date.now(),
-  };
-  if (participantCount > 1 && chat.subagentOverride === "enabled") {
-    patch.subagentOverride = undefined;
-  }
-  await ctx.db.patch(chat._id, patch);
+  await ctx.db.patch(chatId, { updatedAt: Date.now() });
 }
 
 /** Add a participant (bare model or persona-backed) to a chat. */
@@ -95,7 +88,7 @@ export const addParticipant = mutation({
       createdAt: Date.now(),
     });
 
-    await patchChatForParticipantCount(ctx, chat, existing.length + 1);
+    await touchChat(ctx, chat._id);
 
     return id;
   },
@@ -139,7 +132,7 @@ export const removeParticipant = mutation({
 
     const chat = await ctx.db.get(participant.chatId);
     if (chat) {
-      await patchChatForParticipantCount(ctx, chat, remaining.length);
+      await touchChat(ctx, chat._id);
     }
   },
 });
@@ -182,11 +175,7 @@ export const updateParticipant = mutation({
       await ctx.db.patch(args.participantId, patch);
       const chat = await ctx.db.get(participant.chatId);
       if (chat) {
-        const siblings = await ctx.db
-          .query("chatParticipants")
-          .withIndex("by_chat", (q) => q.eq("chatId", participant.chatId))
-          .collect();
-        await patchChatForParticipantCount(ctx, chat, siblings.length);
+        await touchChat(ctx, chat._id);
       }
     }
   },
@@ -255,6 +244,6 @@ export const setParticipants = mutation({
       });
     }
 
-    await patchChatForParticipantCount(ctx, chat, args.participants.length);
+    await touchChat(ctx, chat._id);
   },
 });

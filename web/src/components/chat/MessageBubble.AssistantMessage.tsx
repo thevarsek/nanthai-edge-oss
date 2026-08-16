@@ -2,7 +2,7 @@
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video } from "lucide-react";
+import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video, CornerUpLeft } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
@@ -449,6 +449,21 @@ export const AssistantMessage = memo(function AssistantMessage({
           <p className="text-xs text-muted">
             {assistantIdentity.label}
           </p>
+          {message.collaborationWave !== undefined && (
+            <span className="rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+              {t("collaboration_wave_badge", { wave: message.collaborationWave })}
+            </span>
+          )}
+          {(message.collaborationReplyToIds?.length ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] text-muted">
+              <CornerUpLeft size={10} aria-hidden="true" />
+              {message.collaborationReplyToIds?.length === 1
+                ? t("collaboration_replying_to_one")
+                : t("collaboration_replying_to_many", {
+                    count: message.collaborationReplyToIds?.length ?? 0,
+                  })}
+            </span>
+          )}
         </div>
 
         {message.moderatorDirective && (
@@ -541,9 +556,9 @@ export const AssistantMessage = memo(function AssistantMessage({
             <AudioMessageBubble
               messageId={message._id} durationMs={message.audioDurationMs}
               isGenerating={message.audioGenerating} role="assistant"
+              transcript={message.audioTranscript} mimeType={message.audioMimeType}
               playbackState={audio.state} onPlay={handlePlayAudio}
               onPause={audio.pause} onSeek={audio.seek} onCycleSpeed={audio.cycleSpeed}
-              modelId={message.modelId}
             />
           </div>
         )}
@@ -688,8 +703,8 @@ export const AssistantMessage = memo(function AssistantMessage({
             <IconButton label="Fork chat" variant="ghost" size="xs" onClick={onFork}>
               <GitFork size={13} />
             </IconButton>
-            {!(message.modelId && (message.modelId === "google/lyria-3-clip-preview" || message.modelId === "google/lyria-3-pro-preview")) && (
-              <IconButton label={hasAudio ? "Play audio" : "Generate audio"} variant="ghost" size="xs" onClick={handlePlayAudio}>
+            {!hasAudio && (
+              <IconButton label="Generate audio" variant="ghost" size="xs" onClick={handlePlayAudio}>
                 <Volume2 size={13} />
               </IconButton>
             )}

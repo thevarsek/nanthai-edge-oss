@@ -38,6 +38,7 @@ export interface ModelCapabilities {
   supportedParameters?: string[];
   hasImageInput?: boolean;
   hasVideoInput?: boolean;
+  hasAudioOutput?: boolean;
   hasImageGeneration?: boolean;
   imageCapabilities?: {
     maxInputReferences?: number;

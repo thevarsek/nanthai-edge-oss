@@ -5,6 +5,7 @@ interface ChatPageViewProps {
   messageArea: ReactNode;
   sidePanel?: ReactNode;
   autonomousToolbar: ReactNode;
+  collaborationControl: ReactNode;
   balanceIndicator: ReactNode;
   turnOverrideChips: ReactNode;
   composerPalette: ReactNode;
@@ -19,6 +20,7 @@ export function ChatPageView({
   messageArea,
   sidePanel,
   autonomousToolbar,
+  collaborationControl,
   balanceIndicator,
   turnOverrideChips,
   composerPalette,
@@ -37,6 +39,7 @@ export function ChatPageView({
         {sidePanel}
       </div>
       {autonomousToolbar}
+      {collaborationControl}
       {balanceIndicator}
       {turnOverrideChips}
       <div className="relative">

@@ -16,7 +16,6 @@ describe("ChatPlusMenu", () => {
         onSelect={onSelect}
         onClose={onClose}
         isPro
-        hasMessages
         participantCount={1}
         hasConnectedIntegrations
         allParticipantsSupportTools={false}
@@ -40,30 +39,20 @@ describe("ChatPlusMenu", () => {
     expect(onClose).toHaveBeenCalled();
   });
 
-  it("shows autonomous only for pro multi-participant chats with messages", () => {
-    const { rerender } = render(
+  it("groups multi-participant behavior behind Conversation mode", () => {
+    render(
       <ChatPlusMenu
         onSelect={vi.fn()}
         onClose={vi.fn()}
         isPro
-        hasMessages
         participantCount={2}
       />,
     );
 
-    expect(screen.getByRole("button", { name: /autonomous_discussion/i })).toBeInTheDocument();
-
-    rerender(
-      <ChatPlusMenu
-        onSelect={vi.fn()}
-        onClose={vi.fn()}
-        isPro
-        hasMessages={false}
-        participantCount={2}
-      />,
-    );
-
-    expect(screen.queryByRole("button", { name: /autonomous_discussion/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /conversation_mode/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /conversation/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /add_context/i })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /capabilities/i })).toBeInTheDocument();
   });
 
   it("keeps Advisors discoverable for free users with a Pro badge", () => {
@@ -74,5 +63,17 @@ describe("ChatPlusMenu", () => {
     expect(advisors).toHaveTextContent("PRO");
     fireEvent.click(advisors);
     expect(onSelect).toHaveBeenCalledWith("advisors");
+  });
+
+  it("keeps the chat-wide Subagents control in multi-participant chats", () => {
+    render(
+      <ChatPlusMenu
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        isPro
+        participantCount={3}
+      />,
+    );
+    expect(screen.getByRole("button", { name: /subagents/i })).toBeEnabled();
   });
 });

@@ -126,7 +126,6 @@ describe("ChatPage helper hooks", () => {
     })).result;
     const subagents = renderHook(() => useSubagentOverride({
       chat: null,
-      participantCount: 1,
       isPro: true,
       subagentsEnabledByDefault: true,
       chatId: undefined,
@@ -142,17 +141,15 @@ describe("ChatPage helper hooks", () => {
     expect(updateChat).not.toHaveBeenCalled();
   });
 
-  it("resolves subagent availability from pro status, participant count, defaults, and chat overrides", async () => {
+  it("resolves chat-wide subagent availability from pro status, defaults, and chat overrides", async () => {
     const updateChat = vi.fn(async () => null);
     type SubagentProps = {
       override?: "inherit" | "enabled" | "disabled";
-      count: number;
       isPro: boolean;
       defaultOn: boolean;
     };
     const { result, rerender } = renderHook((props: SubagentProps) => useSubagentOverride({
       chat: props.override ? chat({ subagentOverride: props.override }) : chat(),
-      participantCount: props.count,
       isPro: props.isPro,
       subagentsEnabledByDefault: props.defaultOn,
       chatId,
@@ -160,7 +157,6 @@ describe("ChatPage helper hooks", () => {
     }), {
       initialProps: {
         override: "inherit",
-        count: 1,
         isPro: true,
         defaultOn: true,
       } as SubagentProps,
@@ -168,16 +164,13 @@ describe("ChatPage helper hooks", () => {
 
     expect(result.current.effectiveSubagentsEnabled).toBe(true);
 
-    rerender({ override: "enabled", count: 1, isPro: true, defaultOn: false });
+    rerender({ override: "enabled", isPro: true, defaultOn: false });
     expect(result.current.effectiveSubagentsEnabled).toBe(true);
 
-    rerender({ override: "disabled", count: 1, isPro: true, defaultOn: true });
+    rerender({ override: "disabled", isPro: true, defaultOn: true });
     expect(result.current.effectiveSubagentsEnabled).toBe(false);
 
-    rerender({ override: "enabled", count: 2, isPro: true, defaultOn: true });
-    expect(result.current.effectiveSubagentsEnabled).toBe(false);
-
-    rerender({ override: "enabled", count: 1, isPro: false, defaultOn: true });
+    rerender({ override: "enabled", isPro: false, defaultOn: true });
     expect(result.current.effectiveSubagentsEnabled).toBe(false);
 
     await act(async () => result.current.handleSubagentOverrideChange("inherit"));

@@ -144,8 +144,7 @@ export async function runGenerationHandler(
             enabled: true,
           }))
         : undefined);
-    const allowSubagents =
-      args.subagentsEnabled === true && args.participants.length === 1;
+    const allowSubagents = args.subagentsEnabled === true;
 
     for (const participant of args.participants) {
       const participantDispatchStartedAt = deps.now();

@@ -166,4 +166,31 @@ describe("AutoAudioWatcher", () => {
 
     expect(play).not.toHaveBeenCalled();
   });
+
+  test("does not treat model-authored audio as auto-generated read-aloud", () => {
+    const userAudio = message({
+      _id: "u1" as Id<"messages">,
+      role: "user",
+      audioStorageId: "storage_user" as Id<"_storage">,
+      audioSource: "recording",
+    });
+    const pending = message({
+      _id: "a1" as Id<"messages">,
+      role: "assistant",
+      parentMessageIds: ["u1" as Id<"messages">],
+    });
+    const completed = {
+      ...pending,
+      audioStorageId: "storage_model" as Id<"_storage">,
+      audioSource: "model_output" as const,
+    };
+    const { play, rerender } = renderWatcher({
+      messages: [userAudio, pending],
+      isLoading: false,
+    });
+
+    rerender(<AutoAudioWatcher messages={[userAudio, completed]} isLoading={false} />);
+
+    expect(play).not.toHaveBeenCalled();
+  });
 });

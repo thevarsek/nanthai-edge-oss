@@ -27,6 +27,7 @@ import {
 } from "./openrouter_types";
 import { DeepPartial, mergeTestDeps } from "./test_deps";
 import { assertChatCompletionsRequest } from "./openrouter_modality";
+import { shouldRetryAudioFormatWithMp3 } from "./openrouter_audio_format_retry";
 
 const defaultOpenRouterStreamingDeps = {
   fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
@@ -256,6 +257,7 @@ async function streamOnce(
   // stripped. Hard privacy constraints (provider.zdr) are preserved by
   // buildRequestBody.
   let strippedProviderOnce = false;
+  let retriedAudioFormatWithMp3 = false;
 
   while (true) {
     assertStreamingDeadline(deadlineAt, deps.now());
@@ -331,6 +333,28 @@ async function streamOnce(
           });
           assertStreamingDelayFits(deadlineAt, delayMs, deps.now());
           await deps.sleep(delayMs);
+          continue;
+        }
+
+        if (
+          !retriedAudioFormatWithMp3 &&
+          currentParams.audio != null &&
+          shouldRetryAudioFormatWithMp3(
+            response.status,
+            errorText,
+            errorMessage,
+            currentParams,
+          )
+        ) {
+          console.warn("[openrouter:stream] PCM16 audio rejected, retrying with MP3", {
+            model,
+            status: response.status,
+          });
+          currentParams = {
+            ...currentParams,
+            audio: { ...currentParams.audio, format: "mp3" },
+          };
+          retriedAudioFormatWithMp3 = true;
           continue;
         }
 

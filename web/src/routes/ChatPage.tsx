@@ -12,6 +12,7 @@ import { useConnectedAccounts, useSharedData, useCreditBalance, useModelSummarie
 import { useChatOverrides } from "@/hooks/useChatOverrides";
 import { useParticipants } from "@/hooks/useParticipants";
 import { useAutonomous } from "@/hooks/useAutonomous";
+import { useCollaboration } from "@/hooks/useCollaboration";
 import { useSearchSessions } from "@/hooks/useSearchSessions";
 import { useChatCosts } from "@/hooks/useChatCosts";
 import { MessageBubble } from "@/components/chat/MessageBubble";
@@ -22,6 +23,8 @@ import { MessageInput } from "@/components/chat/MessageInput";
 import { BalanceIndicator } from "@/components/chat/BalanceIndicator";
 import type { RecordingResult } from "@/hooks/useAudioRecorder";
 import { AutonomousToolbar } from "@/components/chat/AutonomousToolbar";
+import { CollaborationControl } from "@/components/chat/CollaborationControl";
+import { ConversationModeDrawer } from "@/components/chat/ConversationModeDrawer";
 import { SearchSessionContext } from "@/components/chat/SearchSessionContext";
 import { AudioPlaybackProvider } from "@/components/chat/AudioPlaybackContext";
 import { AutoAudioWatcher } from "@/components/chat/AutoAudioWatcher";
@@ -59,6 +62,7 @@ import {
 import {
   resolvedBranchPath,
   shouldShowPendingResponsePlaceholder,
+  visibleMessagesForCollaboration,
   visibleMessagesForPath,
 } from "@/routes/ChatPage.branchFlow";
 import {
@@ -142,6 +146,7 @@ export function ChatPage() {
     [gmailManualConnection, googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection],
   );
   const { chat, messages, isLoading, isGenerating, sendMessage, cancelGeneration, retryMessage, updateChat, switchBranchAtFork } = useChat(typedChatId ?? null);
+  const collaboration = useCollaboration(typedChatId);
   const activePersona = useMemo(() => {
     const participantPersonaId = convexParticipants.find((participant) => participant.personaId)?.personaId;
     if (participantPersonaId) {
@@ -283,10 +288,16 @@ export function ChatPage() {
     () => resolvedBranchPath(messages, activePath),
     [activePath, messages],
   );
-  const visibleMessages = useMemo(
-    () => visibleMessagesForPath(messages, resolvedPath),
-    [messages, resolvedPath],
-  );
+  const visibleMessages = useMemo(() => {
+    if (collaboration.behavior !== "collaboration") {
+      return visibleMessagesForPath(messages, resolvedPath);
+    }
+    return visibleMessagesForCollaboration(
+      messages,
+      resolvedPath,
+      collaboration.state?.exchange?.id,
+    );
+  }, [collaboration.behavior, collaboration.state?.exchange?.id, messages, resolvedPath]);
   const groupedMessages = useMessageGrouping(visibleMessages);
   const showPendingResponsePlaceholder = shouldShowPendingResponsePlaceholder({ isGenerating, visibleMessages });
 
@@ -347,7 +358,7 @@ export function ChatPage() {
   const mentionSuggestions = useMentionSuggestions(participants);
 
   const { subagentOverride, effectiveSubagentsEnabled, handleSubagentOverrideChange } = useSubagentOverride({
-    chat, participantCount: participants.length, isPro,
+    chat, isPro,
     subagentsEnabledByDefault: typedPrefs?.subagentsEnabledByDefault ?? false,
     chatId: typedChatId, updateChat,
   });
@@ -714,6 +725,10 @@ export function ChatPage() {
   );
 
   const handleCancel = useCallback(() => { if (typedChatId) void cancelGeneration({ chatId: typedChatId }); }, [typedChatId, cancelGeneration]);
+  const handleComposerCancel = useCallback(() => {
+    if (collaboration.isActive) return collaboration.stop();
+    handleCancel();
+  }, [collaboration, handleCancel]);
   const handleRetry = useCallback((messageId: Id<"messages">) => {
     const targetMessage = messages.find((message) => message._id === messageId);
     void retryMessage(buildRetryMessageArgs({
@@ -881,6 +896,10 @@ export function ChatPage() {
         <DocumentPreviewPanel selection={liveDocumentPreview} onClose={() => setDocumentPreview(null)} />
       ) : null}
       autonomousToolbar={<AutonomousToolbar state={autonomous.state} onPause={autonomous.pause} onResume={autonomous.resume} onStop={autonomous.stop} onDismiss={autonomous.dismissEnded} />}
+      collaborationControl={<CollaborationControl
+        collaboration={collaboration}
+        autonomousActive={isAutonomousActive}
+      />}
       balanceIndicator={typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}
       turnOverrideChips={<>
         <TurnOverrideChips
@@ -904,12 +923,13 @@ export function ChatPage() {
         ) : null}
       composer={<MessageInput
         chatId={typedChatId ?? ("" as Id<"chats">)} participants={participants} isGenerating={isGenerating}
-        onSend={handleSend} onCancel={handleCancel}
+        isCollaborationActive={collaboration.isActive}
+        onSend={handleSend} onCancel={handleComposerCancel}
         onCreateUploadUrl={() => createChatUploadUrl({})}
         onBindUploadSession={async (uploadSessionId, storageId) => { await bindChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, storageId: storageId as Id<"_storage"> }); }}
         onCleanupUploadSession={async (uploadSessionId, storageId) => { await cleanupChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, ...(storageId ? { storageId: storageId as Id<"_storage"> } : {}) }); }}
         onPlusMenuSelect={handlePlusMenuSelect} plusMenuBadges={plusMenuBadges} isPro={isPro}
-        hasConnectedIntegrations={hasConnectedIntegrations} participantCount={participants.length} hasMessages={hasMessages}
+        hasConnectedIntegrations={hasConnectedIntegrations} participantCount={participants.length}
         mentionSuggestions={mentionSuggestions} disabled={!!typedChatId && isLoading} isAutonomousActive={isAutonomousActive}
         onIntervene={autonomous.intervene} onSendRecording={handleSendRecording}
         allParticipantsSupportTools={allParticipantsSupportTools}
@@ -942,6 +962,19 @@ export function ChatPage() {
         }}
       />}
       modalPanels={<>
+        {overrides.activePanel === "conversationMode" && (
+          <ConversationModeDrawer
+            behavior={collaboration.behavior}
+            autonomousActive={isAutonomousActive}
+            hasMessages={hasMessages}
+            isPro={isPro}
+            isUpdating={collaboration.isUpdating}
+            error={collaboration.error}
+            onSelectBehavior={collaboration.setBehavior}
+            onConfigureAutonomous={() => overrides.setActivePanel("autonomous")}
+            onClose={overrides.closePanel}
+          />
+        )}
         <ChatModalPanels
           activePanel={overrides.activePanel} closePanel={overrides.closePanel}
           paramOverrides={overrides.paramOverrides} setParamOverrides={overrides.setParamOverrides} paramDefaults={paramDefaults}

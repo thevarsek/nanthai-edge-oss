@@ -24,6 +24,7 @@ import type { DedicatedImageGenerationAnalytics } from "./image_generation_analy
 type AssistantResponseSource =
   | "chat_generation"
   | "autonomous_discussion"
+  | "collaborative_discussion"
   | "subagent_child"
   | "subagent_parent_resume"
   | "web_search"

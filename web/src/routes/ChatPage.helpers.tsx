@@ -128,7 +128,7 @@ export function useSearchMode({
 // ─── Subagent override resolution ─────────────────────────────────────────────
 
 interface UseSubagentOverrideArgs {
-  chat: Chat | null | undefined; participantCount: number; isPro: boolean;
+  chat: Chat | null | undefined; isPro: boolean;
   subagentsEnabledByDefault: boolean; chatId: Id<"chats"> | undefined;
   updateChat: UseChatReturn["updateChat"];
 }
@@ -140,19 +140,18 @@ export interface SubagentOverrideResult {
 }
 
 export function useSubagentOverride({
-  chat, participantCount, isPro, subagentsEnabledByDefault, chatId, updateChat,
+  chat, isPro, subagentsEnabledByDefault, chatId, updateChat,
 }: UseSubagentOverrideArgs): SubagentOverrideResult {
   const subagentOverride: SubagentOverride = chat?.subagentOverride ?? "inherit";
 
   const effectiveSubagentsEnabled = useMemo(() => {
-    if (participantCount !== 1) return false;
     if (!isPro) return false;
     switch (subagentOverride) {
       case "enabled": return true;
       case "disabled": return false;
       case "inherit": return subagentsEnabledByDefault;
     }
-  }, [participantCount, isPro, subagentOverride, subagentsEnabledByDefault]);
+  }, [isPro, subagentOverride, subagentsEnabledByDefault]);
 
   const handleSubagentOverrideChange = useCallback(
     async (override: SubagentOverride) => {

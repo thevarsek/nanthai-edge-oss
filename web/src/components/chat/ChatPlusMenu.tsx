@@ -1,28 +1,23 @@
-// components/chat/ChatPlusMenu.tsx
-// Dropdown menu triggered by the + button in the message input.
-// Mirrors iOS MessageInput.swift plus-menu order exactly.
-
 import { useEffect, useRef, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  SlidersHorizontal,
-  PuzzleIcon,
-  Sparkles,
   BookOpen,
+  Bot,
+  Camera,
+  ClipboardPaste,
   FileText,
   Image,
-  Camera,
-  Users,
-  Bot,
-  Zap,
-  ClipboardPaste,
   MessageCircleQuestion,
+  MessagesSquare,
+  PuzzleIcon,
   Server,
+  SlidersHorizontal,
+  Sparkles,
+  Users,
 } from "lucide-react";
 
-// ─── Menu items ─────────────────────────────────────────────────────────────
-
 export type PlusMenuItem =
+  | "conversationMode"
   | "parameters"
   | "integrations"
   | "skills"
@@ -34,7 +29,6 @@ export type PlusMenuItem =
   | "participants"
   | "advisors"
   | "subagents"
-  | "autonomous"
   | "remoteMcpContent";
 
 interface MenuItemDef {
@@ -42,9 +36,13 @@ interface MenuItemDef {
   label: string;
   icon: ReactNode;
   badge?: number;
-  requiresPro?: boolean;
-  dividerBefore?: boolean;
   disabled?: boolean;
+  requiresPro?: boolean;
+}
+
+interface MenuSection {
+  label: string;
+  items: MenuItemDef[];
 }
 
 interface Props {
@@ -54,7 +52,6 @@ interface Props {
   isPro?: boolean;
   hasConnectedIntegrations?: boolean;
   participantCount?: number;
-  hasMessages?: boolean;
   allParticipantsSupportTools?: boolean;
   clipboardHasImage?: boolean;
   supportsVision?: boolean;
@@ -63,8 +60,6 @@ interface Props {
   hasRemoteMcpContent?: boolean;
 }
 
-// ─── Component ──────────────────────────────────────────────────────────────
-
 export function ChatPlusMenu({
   onSelect,
   onClose,
@@ -72,7 +67,6 @@ export function ChatPlusMenu({
   isPro = false,
   hasConnectedIntegrations = false,
   participantCount = 1,
-  hasMessages = false,
   allParticipantsSupportTools = true,
   clipboardHasImage = false,
   supportsVision = true,
@@ -84,12 +78,12 @@ export function ChatPlusMenu({
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    }
-    function handleEscape(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
-    }
+    const handleClick = (event: MouseEvent) => {
+      if (ref.current && !ref.current.contains(event.target as Node)) onClose();
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
     document.addEventListener("mousedown", handleClick);
     document.addEventListener("keydown", handleEscape);
     return () => {
@@ -98,9 +92,14 @@ export function ChatPlusMenu({
     };
   }, [onClose]);
 
-  // iOS order: Participants, Parameters, Autonomous, divider,
-  // Photo/Camera/File/KB, divider, Subagents, Integrations, Skills
-  const items: MenuItemDef[] = [
+  const conversationItems: MenuItemDef[] = [
+    ...(participantCount >= 2
+      ? [{
+          id: "conversationMode" as const,
+          label: t("conversation_mode"),
+          icon: <MessagesSquare size={16} />,
+        }]
+      : []),
     {
       id: "participants",
       label: t("participants"),
@@ -113,51 +112,29 @@ export function ChatPlusMenu({
       badge: badges.advisors,
       requiresPro: true,
     },
-    {
-      id: "parameters",
-      label: badges.parameters ? t("chat_parameters_on") : t("chat_parameters"),
-      icon: <SlidersHorizontal size={16} />,
-      badge: badges.parameters,
-    },
-    // Autonomous: needs 2+ participants and messages, Pro-gated
-    ...(isPro && participantCount >= 2 && hasMessages
+    ...(isPro
       ? [{
-          id: "autonomous" as const,
-          label: t("autonomous_discussion"),
-          icon: <Zap size={16} />,
-          requiresPro: true,
+          id: "subagents" as const,
+          label: badges.subagents ? t("subagents_on") : t("subagents"),
+          icon: <Bot size={16} />,
+          badge: badges.subagents,
+          disabled: !allParticipantsSupportTools,
         }]
       : []),
-    // ─── Divider: attachments section ───
+  ];
+
+  const contextItems: MenuItemDef[] = [
     ...(supportsVision
       ? [
-          {
-            id: "image" as const,
-            label: t("photo_library"),
-            icon: <Image size={16} />,
-            dividerBefore: true,
-          },
-          {
-            id: "camera" as const,
-            label: t("camera"),
-            icon: <Camera size={16} />,
-          },
+          { id: "image" as const, label: t("photo_library"), icon: <Image size={16} /> },
+          { id: "camera" as const, label: t("camera"), icon: <Camera size={16} /> },
           ...(clipboardHasImage
-            ? [{
-                id: "pasteImage" as const,
-                label: t("paste_image", "Paste Image"),
-                icon: <ClipboardPaste size={16} />,
-              }]
+            ? [{ id: "pasteImage" as const, label: t("paste_image", "Paste Image"), icon: <ClipboardPaste size={16} /> }]
             : []),
         ]
       : []),
     ...(supportsFileInput || supportsAudioInput
-      ? [{
-          id: "file" as const,
-          label: t("file"),
-          icon: <FileText size={16} />,
-          dividerBefore: !supportsVision,
-        }]
+      ? [{ id: "file" as const, label: t("file"), icon: <FileText size={16} /> }]
       : []),
     ...(isPro
       ? [{
@@ -165,36 +142,26 @@ export function ChatPlusMenu({
           label: t("knowledge_base"),
           icon: <BookOpen size={16} />,
           badge: badges.knowledgeBase,
-          requiresPro: true,
         }]
       : []),
     ...(isPro && hasRemoteMcpContent
-      ? [{
-          id: "remoteMcpContent" as const,
-          label: t("remote_mcp_context"),
-          icon: <Server size={16} />,
-          requiresPro: true,
-        }]
+      ? [{ id: "remoteMcpContent" as const, label: t("remote_mcp_context"), icon: <Server size={16} /> }]
       : []),
-    // ─── Divider: tools section ───
-    ...(isPro && participantCount === 1
-      ? [{
-          id: "subagents" as const,
-          label: badges.subagents ? t("subagents_on") : t("subagents"),
-          icon: <Bot size={16} />,
-          badge: badges.subagents,
-          requiresPro: true,
-          dividerBefore: true,
-          disabled: !allParticipantsSupportTools,
-        }]
-      : []),
+  ];
+
+  const capabilityItems: MenuItemDef[] = [
+    {
+      id: "parameters",
+      label: badges.parameters ? t("chat_parameters_on") : t("chat_parameters"),
+      icon: <SlidersHorizontal size={16} />,
+      badge: badges.parameters,
+    },
     ...(hasConnectedIntegrations
       ? [{
           id: "integrations" as const,
           label: t("integrations"),
           icon: <PuzzleIcon size={16} />,
           badge: badges.integrations,
-          dividerBefore: !isPro || participantCount !== 1 ? true : false,
           disabled: !allParticipantsSupportTools,
         }]
       : []),
@@ -204,33 +171,48 @@ export function ChatPlusMenu({
           label: t("skills"),
           icon: <Sparkles size={16} />,
           badge: badges.skills,
-          requiresPro: true,
           disabled: !allParticipantsSupportTools,
         }]
       : []),
   ];
 
+  const sections: MenuSection[] = [
+    { label: t("conversation"), items: conversationItems },
+    { label: t("add_context"), items: contextItems },
+    { label: t("capabilities"), items: capabilityItems },
+  ].filter((section) => section.items.length > 0);
+
   return (
     <div
       ref={ref}
-      className="absolute bottom-full left-0 mb-2 w-56 bg-surface-1 border border-border/50 rounded-xl shadow-xl overflow-hidden z-50"
+      className="absolute bottom-full left-0 z-50 mb-2 max-h-[min(32rem,70vh)] w-64 overflow-y-auto rounded-xl border border-border/50 bg-surface-1 py-1 shadow-xl"
     >
-      <div className="py-1">
-        {items.map((item) => (
-          <div key={item.id}>
-            {item.dividerBefore && (
-              <div className="mx-3 my-1 border-t border-border/30" />
-            )}
+      {sections.map((section, sectionIndex) => (
+        <section
+          key={section.label}
+          aria-label={section.label}
+          className={sectionIndex > 0 ? "border-t border-border/30 pt-1" : undefined}
+        >
+          <p className="px-4 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-muted">
+            {section.label}
+          </p>
+          {section.items.map((item) => (
             <button
+              key={item.id}
               type="button"
-              onClick={() => { if (!item.disabled) { onSelect(item.id); onClose(); } }}
+              onClick={() => {
+                if (!item.disabled) {
+                  onSelect(item.id);
+                  onClose();
+                }
+              }}
               disabled={item.disabled}
-              className={`w-full flex items-center gap-3 px-4 py-2.5 transition-colors text-left ${item.disabled ? "opacity-40 cursor-not-allowed" : "hover:bg-surface-2"}`}
+              className={`flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors ${item.disabled ? "cursor-not-allowed opacity-40" : "hover:bg-surface-2"}`}
             >
-              <span className="text-primary flex-shrink-0">{item.icon}</span>
+              <span className="shrink-0 text-primary">{item.icon}</span>
               <span className="flex-1 text-sm">{item.label}</span>
               {item.badge != null && item.badge > 0 && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/15 text-primary font-medium">
+                <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                   {item.badge}
                 </span>
               )}
@@ -240,9 +222,9 @@ export function ChatPlusMenu({
                 </span>
               )}
             </button>
-          </div>
-        ))}
-      </div>
+          ))}
+        </section>
+      ))}
     </div>
   );
 }

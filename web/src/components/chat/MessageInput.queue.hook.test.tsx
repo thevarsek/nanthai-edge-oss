@@ -8,6 +8,7 @@ function Harness({
   chatId = "chat_1",
   text,
   isGenerating = true,
+  isCollaborationActive = false,
   queuedAttachments = [],
   onSend = vi.fn(),
   onQueueCommitted = vi.fn(),
@@ -18,6 +19,7 @@ function Harness({
   chatId?: string;
   text: string;
   isGenerating?: boolean;
+  isCollaborationActive?: boolean;
   queuedAttachments?: AttachmentPreview[];
   onSend?: (args: {
     text: string;
@@ -32,6 +34,7 @@ function Harness({
   const queue = useQueuedFollowUp({
     chatId,
     isGenerating,
+    isCollaborationActive,
     isAutonomousActive: false,
     text,
     attachmentCount: 0,
@@ -93,6 +96,48 @@ describe("useQueuedFollowUp", () => {
 
     expect(screen.getByText("first")).toBeInTheDocument();
     expect(screen.getByText("second")).toBeInTheDocument();
+  });
+
+  it("persists collaboration follow-ups immediately for the next causal boundary", async () => {
+    const onSend = vi.fn(async () => true);
+    const onQueueCommitted = vi.fn();
+    render(
+      <Harness
+        text="join at the next boundary"
+        isGenerating={false}
+        isCollaborationActive
+        onSend={onSend}
+        onQueueCommitted={onQueueCommitted}
+      />,
+    );
+
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith({
+      text: "join at the next boundary",
+      attachments: [],
+    }));
+    expect(onQueueCommitted).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("join at the next boundary")).not.toBeInTheDocument();
+  });
+
+  it("keeps the collaboration draft when persistence fails", async () => {
+    const onSend = vi.fn(async () => false);
+    const onQueueCommitted = vi.fn();
+    render(
+      <Harness
+        text="keep me"
+        isGenerating={false}
+        isCollaborationActive
+        onSend={onSend}
+        onQueueCommitted={onQueueCommitted}
+      />,
+    );
+
+    act(() => screen.getByRole("button", { name: "queue" }).click());
+
+    await waitFor(() => expect(onSend).toHaveBeenCalledTimes(1));
+    expect(onQueueCommitted).not.toHaveBeenCalled();
   });
 
   it("drains one queued follow-up per completed generation cycle", async () => {

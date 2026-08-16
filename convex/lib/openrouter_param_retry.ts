@@ -47,6 +47,7 @@ function parseUnsupportedParameterFromText(errorMessage: string): string | null 
     "plugins",
     "transforms",
     "web_search",
+    "response_format",
   ];
 
   if (
@@ -210,6 +211,10 @@ export function stripParameter(
       return stripped;
     case "web_search":
       return stripWebSearchParameter(params);
+    case "response_format":
+      if (stripped.responseFormat == null) return null;
+      stripped.responseFormat = null;
+      return stripped;
     default:
       return null; // Unknown parameter, can't strip
   }

@@ -111,7 +111,7 @@ describe("AudioMessageBubble", () => {
     expect(onPlay).not.toHaveBeenCalled();
   });
 
-  it("renders transcript and Lyria download affordance when audio is available", async () => {
+  it("renders transcript and a MIME-aware download for any assistant audio", async () => {
     const convexReact = await import("convex/react");
     vi.mocked(convexReact.useQuery).mockReturnValue("https://example.test/audio.mp3");
 
@@ -120,7 +120,7 @@ describe("AudioMessageBubble", () => {
         messageId={"msg_audio_abcdef" as never}
         role="assistant"
         transcript="generated transcript"
-        modelId="google/lyria-3-pro-preview"
+        mimeType="audio/wav"
         playbackState={basePlayback}
         onPlay={vi.fn()}
         onPause={vi.fn()}
@@ -129,9 +129,9 @@ describe("AudioMessageBubble", () => {
       />,
     );
 
-    expect(screen.getByText("Music")).toBeInTheDocument();
+    expect(screen.getByText("Audio")).toBeInTheDocument();
     expect(screen.getByText("generated transcript")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download MP3" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download audio" })).toBeInTheDocument();
   });
 
   it("audio controls do not submit an enclosing form", async () => {
@@ -144,7 +144,7 @@ describe("AudioMessageBubble", () => {
         <AudioMessageBubble
           messageId={"msg_audio_abcdef" as never}
           role="assistant"
-          modelId="google/lyria-3-pro-preview"
+          mimeType="audio/mpeg"
           playbackState={{
             ...basePlayback,
             activeMessageId: "msg_audio_abcdef" as never,
@@ -159,7 +159,7 @@ describe("AudioMessageBubble", () => {
       </form>,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Download MP3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Download audio" }));
     fireEvent.click(screen.getByRole("button", { name: "Pause" }));
     fireEvent.click(screen.getByRole("button", { name: "1.5x" }));
 

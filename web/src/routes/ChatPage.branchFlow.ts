@@ -15,6 +15,18 @@ export function visibleMessagesForPath(messages: Message[], path: Id<"messages">
   });
 }
 
+export function visibleMessagesForCollaboration(
+  messages: Message[],
+  path: Id<"messages">[],
+  exchangeId?: Id<"collaborationExchanges">,
+): Message[] {
+  const pathIds = new Set(path);
+  return messages.filter((message) =>
+    pathIds.has(message._id) ||
+    (exchangeId !== undefined && message.collaborationExchangeId === exchangeId)
+  );
+}
+
 export function hasVisiblePendingAssistant(messages: Message[]): boolean {
   return messages.some(
     (message) => message.role === "assistant" && (message.status === "pending" || message.status === "streaming"),

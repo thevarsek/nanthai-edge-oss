@@ -70,6 +70,9 @@ export function buildRequestBody(
   if (params.toolChoice != null) {
     body.tool_choice = params.toolChoice;
   }
+  if (params.responseFormat != null) {
+    body.response_format = params.responseFormat;
+  }
 
   // Web search — plugin form (`plugins: [{id:"web"}]`), not the server tool.
   //

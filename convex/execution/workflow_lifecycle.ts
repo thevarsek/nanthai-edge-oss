@@ -3,6 +3,7 @@ import { makeFunctionReference } from "convex/server";
 import { type Infer, v } from "convex/values";
 import { internalMutation, type MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
+import { internal } from "../_generated/api";
 import { terminalizeAttempt } from "./attempts";
 import { completeDeferredToolHandler } from "../chat/workflow_resume_handlers";
 import { finalizeGenerationHandler } from "../chat/mutations_internal_handlers";
@@ -10,6 +11,7 @@ import { ensureNextOccurrenceHandler } from "../scheduledJobs/workflow_schedule"
 import { terminalizeExecution } from "./control_plane";
 import { reconcileAutonomousSessionWorkflowFailure } from
   "../autonomous/execution_lifecycle";
+import { requestRunTreeTeardown } from "./teardown_graph";
 
 export const ownedWorkflowContextValidator = v.object({
   scheduledOccurrence: v.optional(v.object({
@@ -74,6 +76,51 @@ async function reconcileDomainAfterWorkflowFailure(
         summary,
         now,
       });
+    }
+  } else if (run.domainType === "collaboration_exchange") {
+    const exchange = await ctx.db.get(
+      run.domainId as Id<"collaborationExchanges">,
+    );
+    if (
+      exchange &&
+      !["silent", "completed", "limit_reached", "stopped", "failed"].includes(
+        exchange.status,
+      )
+    ) {
+      await ctx.db.patch(exchange._id, {
+        status: cancelled ? "stopped" : "failed",
+        activeParticipantIds: [],
+        terminalReason: cancelled
+          ? "workflow_cancelled"
+          : "scheduler_or_control_plane_failure",
+        error: cancelled ? undefined : summary.slice(0, 2_000),
+        completedAt: now,
+        updatedAt: now,
+      });
+    }
+    if (!cancelled) {
+      const childRuns = await ctx.db
+        .query("executionRuns")
+        .withIndex("by_parent", (query) => query.eq("parentRunId", run._id))
+        .collect();
+      for (const childRun of childRuns) {
+        if (["completed", "failed", "cancelled"].includes(childRun.state)) continue;
+        await requestRunTreeTeardown(
+          ctx,
+          childRun._id,
+          run.userId,
+          "Collaboration coordinator failed",
+        );
+        await ctx.scheduler.runAfter(
+          0,
+          internal.execution.teardown.cancelRunTree,
+          {
+            runId: childRun._id,
+            requestedBy: run.userId,
+            reason: "Collaboration coordinator failed",
+          },
+        );
+      }
     }
   } else if (run.domainType === "search_session") {
     const session = await ctx.db.get(run.domainId as Id<"searchSessions">);

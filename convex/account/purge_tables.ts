@@ -32,6 +32,8 @@ export const PURGE_TABLES = [
   "executionRuns",
   "generationContinuations",
   "generationRoundJournal",
+  "collaborationDecisions",
+  "collaborationExchanges",
   "drivePickerBatches",
   "messageQueryEmbeddings",
   "messageMemoryContexts",

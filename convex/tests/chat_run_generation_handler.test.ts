@@ -109,7 +109,7 @@ test("runGenerationHandler intersects enabled integrations and schedules per-par
     effectiveIntegrations: ["drive", "ms_calendar", "notion"],
     directToolNames: ["read_docx"],
     isPro: false,
-    allowSubagents: false,
+    allowSubagents: true,
     disableTools: undefined,
     searchSessionId: undefined,
     resumeExpected: false,
@@ -392,7 +392,7 @@ test("runGenerationHandler sets isPro=true and allowSubagents=true for pro user 
   assert.equal(scheduledCalls[0].allowSubagents, true);
 });
 
-test("runGenerationHandler disallows subagents when multiple participants even if subagentsEnabled", async () => {
+test("runGenerationHandler exposes chat-wide subagents to every participant", async () => {
   const scheduledCalls: Array<Record<string, unknown>> = [];
 
   const deps = createRunGenerationHandlerDepsForTest({
@@ -419,8 +419,8 @@ test("runGenerationHandler disallows subagents when multiple participants even i
   } as any, deps);
 
   assert.equal(scheduledCalls.length, 2);
-  assert.equal(scheduledCalls[0].allowSubagents, false);
-  assert.equal(scheduledCalls[1].allowSubagents, false);
+  assert.equal(scheduledCalls[0].allowSubagents, true);
+  assert.equal(scheduledCalls[1].allowSubagents, true);
 });
 
 test("runGenerationHandler sanitizes media config and passes turn overrides", async () => {

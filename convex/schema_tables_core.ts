@@ -57,6 +57,7 @@ import {
   recordedToolCall,
 } from "./schema_validators";
 import { presentationContextValidator } from "./presentations/validators";
+import { groupBehavior } from "./collaboration/validators";
 
 const generationJobAnalyticsMetadata = v.object({
   platform: v.union(v.literal("web"), v.literal("ios"), v.literal("android")),
@@ -82,6 +83,7 @@ export const coreSchemaTables = {
     userId: v.string(),
     title: v.optional(v.string()),
     mode: chatMode,
+    groupBehavior: v.optional(groupBehavior),
     folderId: v.optional(v.string()),
     isDeleting: v.optional(v.boolean()),
     deletingAt: v.optional(v.number()),
@@ -179,6 +181,11 @@ export const coreSchemaTables = {
     participantEmoji: v.optional(v.string()),
     participantAvatarImageUrl: v.optional(v.string()),
     autonomousParticipantId: v.optional(v.string()),
+    chatParticipantId: v.optional(v.id("chatParticipants")),
+    collaborationExchangeId: v.optional(v.id("collaborationExchanges")),
+    collaborationDecisionId: v.optional(v.id("collaborationDecisions")),
+    collaborationWave: v.optional(v.number()),
+    collaborationReplyToIds: v.optional(v.array(v.id("messages"))),
     parentMessageIds: v.array(v.id("messages")),
     multiModelGroupId: v.optional(v.string()),
     isMultiModelResponse: v.optional(v.boolean()),
@@ -198,6 +205,12 @@ export const coreSchemaTables = {
     // M29 — Video generation: parallel to imageUrls
     videoUrls: v.optional(v.array(v.string())),
     audioStorageId: v.optional(v.id("_storage")),
+    audioMimeType: v.optional(v.string()),
+    audioSource: v.optional(v.union(
+      v.literal("recording"),
+      v.literal("read_aloud"),
+      v.literal("model_output"),
+    )),
     audioTranscript: v.optional(v.string()),
     audioDurationMs: v.optional(v.number()),
     audioVoice: v.optional(v.string()),
@@ -449,6 +462,10 @@ export const coreSchemaTables = {
     executionRunId: v.optional(v.id("executionRuns")),
     executionAttemptId: v.optional(v.id("executionAttempts")),
     executionFence: v.optional(v.number()),
+    collaborationExchangeId: v.optional(v.id("collaborationExchanges")),
+    collaborationDecisionId: v.optional(v.id("collaborationDecisions")),
+    collaborationWave: v.optional(v.number()),
+    chatParticipantId: v.optional(v.id("chatParticipants")),
     createdAt: v.number(),
   })
     .index("by_message", ["messageId"])

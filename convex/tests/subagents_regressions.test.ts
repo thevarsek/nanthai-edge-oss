@@ -156,7 +156,7 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
   assert.equal(generationSchedule?.subagentsEnabled, false);
 });
 
-test("updateChatHandler rejects enabling subagents on a multi-model chat", async () => {
+test("updateChatHandler enables chat-wide subagents on a multi-model chat", async () => {
   const patches: Array<Record<string, unknown>> = [];
   const ctx = {
     auth: {
@@ -199,15 +199,13 @@ test("updateChatHandler rejects enabling subagents on a multi-model chat", async
     },
   } as any;
 
-  await assert.rejects(
-    updateChatHandler(ctx, {
-      chatId: "chat_1",
-      subagentOverride: "enabled",
-    } as any),
-    /single-model chats/i,
-  );
+  await updateChatHandler(ctx, {
+    chatId: "chat_1",
+    subagentOverride: "enabled",
+  } as any);
 
-  assert.equal(patches.length, 0);
+  assert.equal(patches.length, 1);
+  assert.equal(patches[0].subagentOverride, "enabled");
 });
 
 test("revokeEntitlement clears stale enabled subagent settings", async () => {
@@ -765,7 +763,7 @@ test("runSubagentRunHandler does not emit a duplicate start for continuation res
   assert.ok(scheduled.some((entry) => entry.event === "assistant_response_failed"));
 });
 
-test("addParticipant clears an enabled subagent override when chat becomes multi-model", async () => {
+test("addParticipant preserves the chat-wide subagent override", async () => {
   const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
   const inserts: Array<Record<string, unknown>> = [];
   const ctx = {
@@ -818,5 +816,5 @@ test("addParticipant clears an enabled subagent override when chat becomes multi
   assert.equal(inserts.length, 1);
   const chatPatch = patches.find((entry) => entry.id === "chat_1");
   assert.ok(chatPatch);
-  assert.equal(chatPatch?.value.subagentOverride, undefined);
+  assert.equal("subagentOverride" in (chatPatch?.value ?? {}), false);
 });

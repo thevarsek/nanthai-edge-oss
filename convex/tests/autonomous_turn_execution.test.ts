@@ -195,6 +195,7 @@ test("runParticipantTurn finalizes visible responses and propagates moderator di
     ["reasoning"],
     undefined,
     true,
+    undefined,
   ]);
   assert.deepEqual(streamCalls[0]?.params, {
     temperature: 0.2,

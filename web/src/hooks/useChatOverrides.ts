@@ -58,6 +58,7 @@ export { DEFAULT_OVERRIDES } from "@/hooks/useChatOverrides.resolution";
 // ─── Active panel type ──────────────────────────────────────────────────────
 
 export type ChatPanel =
+  | "conversationMode"
   | "parameters"
   | "integrations"
   | "skills"

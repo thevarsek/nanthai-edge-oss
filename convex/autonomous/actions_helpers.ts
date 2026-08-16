@@ -10,6 +10,11 @@ import {
 } from "../lib/openrouter_zdr";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import { resolveTextAncillaryModel } from "../lib/openrouter_modality";
+import {
+  fallbackModeratorDirective,
+  moderatorDirectiveResponseFormat,
+  normalizeModeratorDirective,
+} from "./moderator_directive";
 
 export interface ParticipantConfig {
   participantId: string;
@@ -59,10 +64,6 @@ function buildRecentDiscussionSummary(
       return `${speaker}: ${message.content}`;
     })
     .join("\n");
-}
-
-function fallbackModeratorDirective(): string {
-  return "Address the strongest unresolved point so far. Take a clear position, add one concrete tradeoff, and avoid repeating earlier arguments.";
 }
 
 async function modelSupportsZdr(
@@ -150,16 +151,30 @@ Requirements:
     }
     messages.push({ role: "user", content: prompt });
 
+    const requestParameters = withZdrProvider({
+      temperature: 0.3,
+      includeReasoning: false,
+      reasoningEffort: "minimal",
+      responseFormat: moderatorDirectiveResponseFormat,
+    }, requireZdr);
     let result = await callOpenRouterNonStreaming(
       apiKey,
       primaryModelId,
       messages,
-      withZdrProvider({ temperature: 0.7, maxTokens: 100 }, requireZdr),
+      requestParameters,
       { fallbackModel: MODEL_IDS.autonomousFallback },
     );
 
-    let directive = result.content.trim();
+    let directive = normalizeModeratorDirective(
+      result.content,
+      result.finishReason,
+    );
     if (!directive && primaryModelId !== MODEL_IDS.autonomousFallback) {
+      console.warn("[autonomous:moderator] invalid response; retrying fallback", {
+        modelId: result.modelId ?? primaryModelId,
+        finishReason: result.finishReason,
+        contentLength: result.content.length,
+      });
       if (requireZdr && !(await modelSupportsZdr(ctx, MODEL_IDS.autonomousFallback))) {
         return fallbackModeratorDirective();
       }
@@ -167,10 +182,13 @@ Requirements:
         apiKey,
         MODEL_IDS.autonomousFallback,
         messages,
-        withZdrProvider({ temperature: 0.7, maxTokens: 100 }, requireZdr),
+        requestParameters,
         { fallbackModel: undefined },
       );
-      directive = result.content.trim();
+      directive = normalizeModeratorDirective(
+        result.content,
+        result.finishReason,
+      );
     }
     return directive || fallbackModeratorDirective();
   } catch (error) {

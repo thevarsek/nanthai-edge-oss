@@ -691,6 +691,7 @@ export const contextAssemblyMode = v.union(
   v.literal("shadow"),
   v.literal("read_path"),
   v.literal("autonomous_discussion"),
+  v.literal("collaborative_discussion"),
   v.literal("subagent_child"),
   v.literal("subagent_parent_resume"),
 );
@@ -698,6 +699,7 @@ export const contextAssemblyMode = v.union(
 export const runtimeKind = v.union(
   v.literal("chat_generation"),
   v.literal("autonomous_discussion"),
+  v.literal("collaborative_discussion"),
   v.literal("subagent_child"),
   v.literal("subagent_parent_resume"),
   v.literal("scheduled_job"),

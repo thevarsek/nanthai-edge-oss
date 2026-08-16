@@ -10,6 +10,7 @@ import { searchOrchestrationSchemaTables } from "./schema_tables_search";
 import { analyticsSchemaTables } from "./schema_tables_analytics";
 import { reportSchemaTables } from "./schema_tables_reports";
 import { mcpSchemaTables } from "./schema_tables_mcp";
+import { collaborationSchemaTables } from "./schema_tables_collaboration";
 
 // =============================================================================
 // NanthAI Edge — Convex Schema
@@ -27,6 +28,7 @@ export default defineSchema({
   ...presentationSchemaTables,
   ...reportSchemaTables,
   ...catalogSchemaTables,
+  ...collaborationSchemaTables,
   ...userSchemaTables,
   ...runtimeSchemaTables,
   ...searchOrchestrationSchemaTables,

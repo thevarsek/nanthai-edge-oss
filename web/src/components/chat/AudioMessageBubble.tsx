@@ -1,17 +1,12 @@
 // components/chat/AudioMessageBubble.tsx — Inline waveform player for voice messages.
-// Used for both user-recorded audio and assistant TTS audio, and Lyria music.
+// Used for user recordings, assistant read-aloud audio, and model-authored audio.
 
 import { useCallback } from "react";
-import { Play, Pause, Loader2, Download, Music } from "lucide-react";
+import { Play, Pause, Loader2, Download, AudioLines } from "lucide-react";
 import { useQuery } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { PlaybackState } from "@/hooks/useAudioPlayback";
 import type { Id } from "@convex/_generated/dataModel";
-
-const LYRIA_MODEL_IDS = new Set([
-  "google/lyria-3-clip-preview",
-  "google/lyria-3-pro-preview",
-]);
 
 interface Props {
   messageId: Id<"messages">;
@@ -29,8 +24,8 @@ interface Props {
   onPause: () => void;
   onSeek: (fraction: number) => void;
   onCycleSpeed: () => void;
-  /** Model ID for Lyria detection. */
-  modelId?: string;
+  /** Backend-authored MIME type for model and TTS audio. */
+  mimeType?: string;
 }
 
 function formatDuration(seconds: number): string {
@@ -41,7 +36,7 @@ function formatDuration(seconds: number): string {
 
 export function AudioMessageBubble({
   messageId, durationMs, isGenerating, role, transcript,
-  playbackState, onPlay, onPause, onSeek, onCycleSpeed, modelId,
+  playbackState, onPlay, onPause, onSeek, onCycleSpeed, mimeType,
 }: Props) {
   const isActive = playbackState.activeMessageId === messageId;
   const isPlaying = isActive && playbackState.isPlaying;
@@ -53,7 +48,6 @@ export function AudioMessageBubble({
     : (durationMs ? durationMs / 1000 : 0);
   const speed = isActive ? playbackState.speed : 1;
 
-  const isLyria = !!(modelId && LYRIA_MODEL_IDS.has(modelId));
   const isUser = role === "user";
   const barColor = isUser ? "bg-white/60" : "bg-primary/60";
   const barActiveColor = isUser ? "bg-white" : "bg-primary";
@@ -76,29 +70,35 @@ export function AudioMessageBubble({
 
   const handleDownload = useCallback(() => {
     if (!audioUrl) return;
+    const extension = mimeType === "audio/mpeg" || mimeType === "audio/mp3"
+      ? "mp3"
+      : mimeType === "audio/flac"
+        ? "flac"
+        : mimeType === "audio/ogg"
+          ? "ogg"
+          : "wav";
     const a = document.createElement("a");
     a.href = audioUrl;
-    a.download = `lyria-music-${messageId.slice(-6)}.mp3`;
+    a.download = `audio-${messageId.slice(-6)}.${extension}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-  }, [audioUrl, messageId]);
+  }, [audioUrl, messageId, mimeType]);
 
   return (
     <div className="flex flex-col gap-1.5 min-w-[200px] max-w-[320px]">
-      {/* Lyria music header */}
-      {isLyria && (
+      {!isUser && (
         <div className="flex items-center gap-1.5 mb-0.5">
-          <Music size={12} className="text-primary" />
-          <span className="text-xs font-semibold text-muted">Music</span>
+          <AudioLines size={12} className="text-primary" />
+          <span className="text-xs font-semibold text-muted">Audio</span>
           <div className="flex-1" />
           {audioUrl && (
             <button
               type="button"
               onClick={handleDownload}
               className="p-0.5 rounded hover:opacity-80 text-muted"
-              title="Download MP3"
-              aria-label="Download MP3"
+              title="Download audio"
+              aria-label="Download audio"
             >
               <Download size={13} />
             </button>

@@ -130,6 +130,10 @@ export const upsertPreferences = mutation({
     expectedPreferenceWriteEpoch: v.optional(v.number()),
     defaultModelId: v.optional(v.string()),
     defaultPersonaId: v.optional(v.union(v.id("personas"), v.null())),
+    defaultGroupBehavior: v.optional(v.union(
+      v.literal("parallel"),
+      v.literal("collaboration"),
+    )),
     clearDefaultPersona: v.optional(v.boolean()),
     sendOnEnter: v.optional(v.boolean()),
     showReasoning: v.optional(v.boolean()),

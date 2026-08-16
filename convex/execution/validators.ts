@@ -14,6 +14,7 @@ export const executionRunKind = v.union(
   v.literal("maintenance"),
   v.literal("local_runtime"),
   v.literal("remote_mcp"),
+  v.literal("collaboration"),
 );
 
 export const executionRunState = v.union(

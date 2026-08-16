@@ -82,7 +82,7 @@ export interface ContextAssemblyInput {
   providerContextWindowTokens?: number;
   exactRehydrationRequested?: boolean;
   continuationMode?: "v1" | "v2";
-  mode?: "shadow" | "read_path" | "autonomous_discussion" | "subagent_child" | "subagent_parent_resume";
+  mode?: "shadow" | "read_path" | "autonomous_discussion" | "collaborative_discussion" | "subagent_child" | "subagent_parent_resume";
   extraExclusionCounts?: Partial<Record<ExclusionReason, number>>;
   now?: number;
 }

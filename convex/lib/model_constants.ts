@@ -7,24 +7,26 @@
 
 export const MODEL_IDS = {
   appDefault: "openai/gpt-5.6-terra",
-  advisorDispatcher: "openai/gpt-4.1-mini",
-  titleGeneration: "openai/gpt-4.1-mini",
-  memoryExtraction: "openai/gpt-4.1-mini",
-  memoryExtractionFallback: "openai/gpt-4.1",
-  memoryImportExtraction: "openai/gpt-4.1-mini",
-  pdfOcrExtraction: "google/gemini-3.1-flash-lite",
-  searchQueryGeneration: "openai/gpt-5-mini",
-  searchResearchOrchestration: "openai/gpt-5-mini",
-  compaction: "google/gemini-3.1-flash-lite-preview",
+  advisorDispatcher: "openai/gpt-5.6-luna",
+  titleGeneration: "openai/gpt-5.6-luna",
+  memoryExtraction: "openai/gpt-5.6-luna",
+  memoryExtractionFallback: "openai/gpt-5-mini",
+  memoryImportExtraction: "openai/gpt-5.6-luna",
+  pdfOcrExtraction: "openai/gpt-5.6-luna",
+  searchQueryGeneration: "openai/gpt-5.6-luna",
+  searchResearchOrchestration: "openai/gpt-5.6-luna",
+  collaborationScheduler: "openai/gpt-5.6-luna",
+  compaction: "openai/gpt-5.6-luna",
+  textToSpeech: "openai/gpt-audio-mini",
   searchPerplexity: {
     quick: "perplexity/sonar",
     thorough: "perplexity/sonar-pro",
     comprehensive: "perplexity/sonar-pro-search",
   },
   /** Cheap model for autonomous consensus detection (YES/NO). */
-  autonomousConsensus: "openai/gpt-5-nano",
+  autonomousConsensus: "openai/gpt-5.6-luna",
   /** Safety-net model when the primary model fails (rate-limit, outage). */
-  autonomousFallback: "openai/gpt-4.1-mini",
+  autonomousFallback: "openai/gpt-5-nano",
   /** Embedding model for memory vector search. */
   embedding: "openai/text-embedding-3-small",
   memoryAlwaysOnLimit: 10,

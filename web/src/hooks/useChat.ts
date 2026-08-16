@@ -133,6 +133,11 @@ export interface Message {
   generatedFileIds?: Id<"generatedFiles">[];
   generatedChartIds?: Id<"generatedCharts">[];
   parentMessageIds?: Id<"messages">[];
+  chatParticipantId?: Id<"chatParticipants">;
+  collaborationExchangeId?: Id<"collaborationExchanges">;
+  collaborationDecisionId?: Id<"collaborationDecisions">;
+  collaborationWave?: number;
+  collaborationReplyToIds?: Id<"messages">[];
   multiModelGroupId?: string;
   isMultiModelResponse?: boolean;
   subagentBatchId?: Id<"subagentBatches">;
@@ -169,6 +174,9 @@ export interface Message {
     kind: "prompt" | "resource" | "resource_template";
   }>;
   audioStorageId?: Id<"_storage">;
+  audioMimeType?: string;
+  audioSource?: "recording" | "read_aloud" | "model_output";
+  audioTranscript?: string;
   audioDurationMs?: number;
   audioGenerating?: boolean;
   citations?: Array<{ url: string; title: string }>;
@@ -243,6 +251,7 @@ export interface Chat {
   _id: Id<"chats">;
   title?: string;
   mode: "chat" | "ideascape";
+  groupBehavior?: "parallel" | "collaboration";
   activeBranchLeafId?: Id<"messages">;
   activeBranchLeafFocusOrder?: number;
   folderId?: string;

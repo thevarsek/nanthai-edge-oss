@@ -5,6 +5,7 @@ import {
   hasVisiblePendingAssistant,
   resolvedBranchPath,
   shouldShowPendingResponsePlaceholder,
+  visibleMessagesForCollaboration,
   visibleMessagesForPath,
 } from "./ChatPage.branchFlow";
 
@@ -23,6 +24,26 @@ describe("ChatPage branch flow helpers", () => {
       "missing" as Id<"messages">,
       "child" as Id<"messages">,
     ])).toEqual([messages[1]]);
+  });
+
+  it("keeps every message in the active Collaboration exchange visible", () => {
+    const exchangeId = "exchange_1" as Id<"collaborationExchanges">;
+    const root = message("root", "user");
+    const speaker = {
+      ...message("speaker"),
+      collaborationExchangeId: exchangeId,
+    };
+    const queuedHuman = {
+      ...message("queued", "user"),
+      collaborationExchangeId: exchangeId,
+    };
+    const unrelated = message("other");
+
+    expect(visibleMessagesForCollaboration(
+      [root, speaker, queuedHuman, unrelated],
+      [root._id, speaker._id],
+      exchangeId,
+    )).toEqual([root, speaker, queuedHuman]);
   });
 
   it("detects pending visible assistant and suppresses duplicate pending placeholder", () => {

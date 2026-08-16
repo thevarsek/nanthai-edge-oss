@@ -33,6 +33,11 @@ test("createChat inserts up to three normalized participants and createUploadUrl
   const chatId = await (createChat as any)._handler({
     auth: buildAuth(),
     db: {
+      query: () => ({
+        withIndex: () => ({
+          first: async () => null,
+        }),
+      }),
       insert: async (table: string, value: Record<string, unknown>) => {
         inserts.push({ table, value });
         return table === "chats" ? "chat_1" : `participant_${inserts.length}`;
@@ -57,6 +62,10 @@ test("createChat inserts up to three normalized participants and createUploadUrl
   });
 
   assert.equal(chatId, "chat_1");
+  assert.equal(
+    inserts.find((entry) => entry.table === "chats")?.value.groupBehavior,
+    "parallel",
+  );
   assert.equal(inserts.filter((entry) => entry.table === "chatParticipants").length, 3);
   assert.equal(uploadUrl, "https://upload.example/url");
 });

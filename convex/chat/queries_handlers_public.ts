@@ -8,6 +8,7 @@ import {
 } from "./query_helpers";
 import { hydrateDocumentEditAnnotations } from "../documents/docx_edit_annotations";
 import { mcpContextCardsByMessage, type McpContextCard } from "../mcp/message_cards";
+import { normalizeModeratorDirective } from "../autonomous/moderator_directive";
 
 function withoutPrivateMessageFields<T extends {
   searchContext?: unknown;
@@ -41,6 +42,17 @@ function withPublicParticipantIdentity<T extends {
   return participantName === message.participantName
     ? message
     : { ...message, participantName };
+}
+
+function withPublicModeratorDirective<T extends {
+  moderatorDirective?: string;
+}>(message: T): T {
+  const moderatorDirective = normalizeModeratorDirective(
+    message.moderatorDirective,
+  );
+  return moderatorDirective === message.moderatorDirective
+    ? message
+    : { ...message, moderatorDirective };
 }
 
 export interface ListChatsArgs extends Record<string, unknown> {
@@ -485,7 +497,9 @@ export async function listMessagesHandler(
   return await Promise.all(
     messages.map(async (message) => {
       const contextCards = contextCardsByMessage.get(String(message._id));
-      const publicMessage = withPublicParticipantIdentity(message);
+      const publicMessage = withPublicParticipantIdentity(
+        withPublicModeratorDirective(message),
+      );
       const withAvatar = publicMessage.participantId && personaAvatarUrls.has(publicMessage.participantId)
         ? {
             ...publicMessage,
@@ -515,7 +529,7 @@ export async function getMessageHandler(
   const contextCards = (await mcpContextCardsByMessage(ctx, [message])).get(String(message._id));
   const refreshed = await withRefreshedAttachmentUrls(
     ctx,
-    withPublicParticipantIdentity(message),
+    withPublicParticipantIdentity(withPublicModeratorDirective(message)),
   );
   const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
   return { ...withoutPrivateMessageFields(hydrated), mcpContextCards: contextCards };

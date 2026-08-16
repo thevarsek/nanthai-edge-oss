@@ -31,6 +31,7 @@ interface Props {
   chatId: Id<"chats">;
   participants: Participant[];
   isGenerating: boolean;
+  isCollaborationActive?: boolean;
   onSend: (args: {
     text: string;
     attachments?: AttachmentPreview[];
@@ -48,7 +49,6 @@ interface Props {
   isPro?: boolean;
   hasConnectedIntegrations?: boolean;
   participantCount?: number;
-  hasMessages?: boolean;
   mentionSuggestions?: MentionSuggestion[];
   isAutonomousActive?: boolean;
   onIntervene?: (text: string) => void;
@@ -94,9 +94,10 @@ interface Props {
 
 export function MessageInput({
   chatId,
-  isGenerating, onSend, onCancel, onCreateUploadUrl, onPlusMenuSelect,
+  isGenerating, isCollaborationActive = false,
+  onSend, onCancel, onCreateUploadUrl, onPlusMenuSelect,
   disabled = false, plusMenuBadges = {}, isPro = false,
-  hasConnectedIntegrations = false, participantCount = 1, hasMessages = false,
+  hasConnectedIntegrations = false, participantCount = 1,
   mentionSuggestions = [], isAutonomousActive = false,
   onIntervene, onSendRecording, allParticipantsSupportTools = true,
   isVideoMode = false, supportsFrameImages = true,
@@ -118,6 +119,7 @@ export function MessageInput({
   onBindUploadSession,
   onCleanupUploadSession,
 }: Props) {
+  const isConversationActive = isGenerating || isCollaborationActive;
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
@@ -206,7 +208,7 @@ export function MessageInput({
       0,
     );
     if (!trimmed && outgoingAttachments.length === 0 && remoteMcpContexts.length === 0) return;
-    if (disabled || isGenerating || isUploading) return;
+    if (disabled || isConversationActive || isUploading) return;
     if (totalAttachmentBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
       setUploadError("Attachments are too large. The maximum total size is 25 MB.");
       return;
@@ -235,7 +237,7 @@ export function MessageInput({
     onClearRemoteMcpContexts?.();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, extraAttachments, remoteMcpContexts, disabled, isGenerating, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount, setUploadError]);
+  }, [text, attachments, extraAttachments, remoteMcpContexts, disabled, isConversationActive, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount, setUploadError]);
 
   const {
     queuedFollowUps,
@@ -248,6 +250,7 @@ export function MessageInput({
   } = useQueuedFollowUp({
     chatId,
     isGenerating,
+    isCollaborationActive,
     isAutonomousActive,
     text,
     attachmentCount: attachments.length,
@@ -369,8 +372,8 @@ export function MessageInput({
     0,
   );
   const attachmentsWithinLimit = totalAttachmentBytes <= MAX_TOTAL_ATTACHMENT_BYTES;
-  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0 || remoteMcpContexts.length > 0) && attachmentsWithinLimit && !disabled && !isGenerating && !isUploading && !artifactWriteBlocked;
-  const canRecord = !!onSendRecording && !isGenerating && !isUploading && !disabled && !artifactWriteBlocked;
+  const canSend = (text.trim().length > 0 || attachments.length > 0 || extraAttachments.length > 0 || remoteMcpContexts.length > 0) && attachmentsWithinLimit && !disabled && !isConversationActive && !isUploading && !artifactWriteBlocked;
+  const canRecord = !!onSendRecording && !isConversationActive && !isUploading && !disabled && !artifactWriteBlocked;
   const suggestionStorageId = generatedDocumentSuggestion?.storageId;
   const isSuggestionAlreadyAttached = !!suggestionStorageId && (
     attachments.some((attachment) => attachment.storageId === suggestionStorageId) ||
@@ -530,7 +533,7 @@ export function MessageInput({
               onClose={() => setShowPlusMenu(false)}
               badges={plusMenuBadges} isPro={isPro}
               hasConnectedIntegrations={hasConnectedIntegrations}
-              participantCount={participantCount} hasMessages={hasMessages}
+              participantCount={participantCount}
               allParticipantsSupportTools={allParticipantsSupportTools}
               clipboardHasImage={clipboardHasImage}
               supportsVision={supportsVision}
@@ -555,7 +558,7 @@ export function MessageInput({
           <textarea
             ref={textareaRef} value={text}
             onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-            placeholder={isAutonomousActive ? t("send_message_intervene") : isGenerating ? t("generating") : t("message")}
+            placeholder={isAutonomousActive ? t("send_message_intervene") : isConversationActive ? t("generating") : t("message")}
             disabled={disabled} rows={1}
             className="w-full resize-none rounded-[14px] bg-surface-2/50 backdrop-blur-sm border border-border/20 px-4 py-2.5 text-sm text-foreground placeholder-foreground/40 focus:outline-none focus:border-primary/50 focus:bg-surface-2/80 transition-colors max-h-48 min-h-[44px] leading-relaxed disabled:opacity-50"
             style={{ height: "auto" }}
@@ -566,14 +569,14 @@ export function MessageInput({
         {canQueueMessage ? (
           <button
             type="button"
-            onClick={queueFollowUp}
+            onClick={() => { void queueFollowUp(); }}
             className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10"
             title={t("queue_follow_up")}
             aria-label={t("queue_follow_up")}
           >
             <Plus size={17} strokeWidth={2.4} />
           </button>
-        ) : isGenerating ? (
+        ) : isConversationActive ? (
           <button type="button" onClick={() => { void onCancel(); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10" title={t("stop_generation")}>
             <Square size={15} fill="currentColor" />
           </button>

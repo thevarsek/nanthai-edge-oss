@@ -9,8 +9,13 @@ export interface ContextMessage {
   content: string;
   modelId?: string;
   participantId?: Id<"personas">;
+  chatParticipantId?: Id<"chatParticipants">;
   participantName?: string;
   autonomousParticipantId?: string;
+  collaborationExchangeId?: Id<"collaborationExchanges">;
+  collaborationDecisionId?: Id<"collaborationDecisions">;
+  collaborationWave?: number;
+  collaborationReplyToIds?: Id<"messages">[];
   parentMessageIds: Id<"messages">[];
   status: string;
   multiModelGroupId?: string;

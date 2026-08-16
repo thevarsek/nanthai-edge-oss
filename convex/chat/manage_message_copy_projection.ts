@@ -37,6 +37,8 @@ export function buildCopiedMessageInsert(
     imageGenerationResult: message.imageGenerationResult,
     videoUrls: message.videoUrls,
     audioStorageId: message.audioStorageId,
+    audioMimeType: message.audioMimeType,
+    audioSource: message.audioSource,
     audioTranscript: message.audioTranscript,
     audioDurationMs: message.audioDurationMs,
     audioVoice: message.audioVoice,

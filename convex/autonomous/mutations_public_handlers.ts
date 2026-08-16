@@ -15,6 +15,7 @@ import {
   scheduleAutonomousTerminalTeardown,
   terminalizeAutonomousSession,
 } from "./execution_lifecycle";
+import { ACTIVE_COLLABORATION_STATUSES } from "../collaboration/constants";
 
 export { assertTurnConfiguration, computeResumeCursor, dedupeParticipantIds };
 
@@ -71,10 +72,17 @@ export async function startSessionHandler(
     });
   }
 
-  const existingSessions = await ctx.db
-    .query("autonomousSessions")
-    .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
-    .collect();
+  const [existingSessions, collaborationExchanges] = await Promise.all([
+    ctx.db
+      .query("autonomousSessions")
+      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
+      .collect(),
+    ctx.db
+      .query("collaborationExchanges")
+      .withIndex("by_chat", (query) => query.eq("chatId", args.chatId))
+      .order("desc")
+      .take(5),
+  ]);
   const hasActive = existingSessions.some(
     (session) => session.status === "running" || session.status === "paused",
   );
@@ -82,6 +90,16 @@ export async function startSessionHandler(
     throw new ConvexError({
       code: "CONFLICT",
       message: "An autonomous session is already active for this chat",
+    });
+  }
+  if (collaborationExchanges.some((exchange) =>
+    ACTIVE_COLLABORATION_STATUSES.has(
+      exchange.status as "queued" | "scheduling" | "dispatching" | "waiting",
+    )
+  )) {
+    throw new ConvexError({
+      code: "CONFLICT",
+      message: "Stop Collaboration before starting Autonomous Discussion.",
     });
   }
 

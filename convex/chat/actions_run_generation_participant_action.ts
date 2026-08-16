@@ -18,7 +18,7 @@ import type { GenerationContext } from "./actions_run_generation_context";
 import type { ModelCapabilities, RunGenerationArgs } from "./actions_run_generation_types";
 import { maybeFinalizeGenerationGroup } from "./actions_run_generation_group_finalize";
 import { scheduleGenerationContinuation } from "./actions_run_generation_continuation";
-import { LYRIA_MP3_MIME_TYPE, parseMp3DurationMs } from "./audio_shared";
+import { normalizeInlineAudioOutput } from "./audio_output_persistence";
 import {
   captureAssistantResponseStarted,
   captureAssistantResponseFailure,
@@ -533,18 +533,16 @@ export async function runGenerationParticipantHandler(
         return buildParticipantToolRegistry(activeProfiles, directToolNames);
       },
       persistInlineAudio: async (audioBase64) => {
-        const audioBuffer = Buffer.from(audioBase64, "base64");
-        let audioDurationMs = parseMp3DurationMs(audioBuffer);
-        if (audioDurationMs === 0) {
-          audioDurationMs = Math.round((audioBuffer.length * 8) / 128000 * 1000);
-        }
+        const normalized = normalizeInlineAudioOutput(audioBase64);
         const audioStorageId = await ctx.storage.store(
-          new Blob([new Uint8Array(audioBuffer)], { type: LYRIA_MP3_MIME_TYPE }),
+          new Blob([new Uint8Array(normalized.bytes)], { type: normalized.mimeType }),
         );
         return {
           audioStorageId: audioStorageId as Id<"_storage">,
-          audioDurationMs,
+          audioDurationMs: normalized.durationMs,
           audioGeneratedAt: Date.now(),
+          audioMimeType: normalized.mimeType,
+          audioSizeBytes: normalized.sizeBytes,
         };
       },
       continuationHandoff: {

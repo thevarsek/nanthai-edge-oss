@@ -11,6 +11,21 @@ function message(overrides: Partial<Message> = {}): Pick<Message, "modelId" | "p
 }
 
 describe("getAssistantDisplayIdentity", () => {
+  it("uses provider identity for bare-model messages", () => {
+    expect(getAssistantDisplayIdentity({
+      message: message(),
+      participants: [{ modelId: "openai/gpt-4o" }],
+      modelDisplayName: "OpenAI: GPT-4o",
+    })).toEqual({
+      personaId: undefined,
+      personaName: undefined,
+      personaEmoji: undefined,
+      personaAvatarImageUrl: undefined,
+      label: "OpenAI: GPT-4o",
+      hasPersonaDisplay: false,
+    });
+  });
+
   it("prefers persisted message identity over duplicate model participants", () => {
     const participants: Participant[] = [
       {

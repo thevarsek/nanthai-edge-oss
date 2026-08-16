@@ -93,7 +93,7 @@ test("updateChatHandler syncs folder-only moves to owned generated documents wit
   assert.equal(state.patches.some((entry) => entry.id === "doc_2"), false);
 });
 
-test("updateChatHandler requires Pro and a single participant before enabling subagents", async () => {
+test("updateChatHandler requires Pro and allows chat-wide subagents with multiple participants", async () => {
   await assert.rejects(
     updateChatHandler(buildCtx({
       chat_1: { _id: "chat_1", userId: "user_1", title: "Research" },
@@ -101,14 +101,19 @@ test("updateChatHandler requires Pro and a single participant before enabling su
     (error: unknown) => error instanceof ConvexError && error.data?.code === "PRO_REQUIRED",
   );
 
-  await assert.rejects(
-    updateChatHandler(buildCtx({
+  const state = buildCtx({
       chat_1: { _id: "chat_1", userId: "user_1", title: "Research" },
       ent_1: { _id: "ent_1", _table: "purchaseEntitlements", userId: "user_1", status: "active" },
       p_1: { _id: "p_1", _table: "chatParticipants", chatId: "chat_1" },
       p_2: { _id: "p_2", _table: "chatParticipants", chatId: "chat_1" },
-    }).ctx, { chatId: "chat_1" as any, subagentOverride: "enabled" }),
-    (error: unknown) => error instanceof ConvexError && error.data?.code === "VALIDATION",
+  });
+  await updateChatHandler(
+    state.ctx,
+    { chatId: "chat_1" as any, subagentOverride: "enabled" },
+  );
+  assert.equal(
+    state.patches.find((entry) => entry.id === "chat_1")?.patch.subagentOverride,
+    "enabled",
   );
 });
 

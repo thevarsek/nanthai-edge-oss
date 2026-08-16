@@ -37,7 +37,7 @@ export async function createAndClaimDomainExecution(
   args: {
     userId: string;
     runKey: string;
-    kind: "research" | "scheduled_job" | "advisor" | "autonomous_chat" | "remote_mcp";
+    kind: "research" | "scheduled_job" | "advisor" | "autonomous_chat" | "remote_mcp" | "collaboration";
     domainType: string;
     domainId: string;
     claimantId: string;
@@ -71,7 +71,12 @@ export async function createAndClaimDomainExecution(
     leaseMs: DOMAIN_EXECUTION_LEASE_MS,
   });
   if (!claimed) throw new Error("DOMAIN_EXECUTION_NOT_CLAIMABLE");
-  return { ...claimed, claimantId: args.claimantId };
+  return {
+    runId: claimed.runId,
+    attemptId: claimed.attemptId,
+    fence: claimed.fence,
+    claimantId: args.claimantId,
+  };
 }
 
 export async function linkDomainComponent(

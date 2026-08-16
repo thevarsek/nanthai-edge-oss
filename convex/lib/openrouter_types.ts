@@ -66,6 +66,17 @@ export type ToolChoice =
   | "required"
   | { type: "function"; function: { name: string } };
 
+export type ResponseFormat =
+  | { type: "json_object" }
+  | {
+      type: "json_schema";
+      json_schema: {
+        name: string;
+        strict: boolean;
+        schema: Record<string, unknown>;
+      };
+    };
+
 // ---------------------------------------------------------------------------
 // Message types
 // ---------------------------------------------------------------------------
@@ -133,6 +144,8 @@ export interface ChatRequestParameters {
   tools?: ToolDefinition[] | null;
   /** Controls which tool the model should call. */
   toolChoice?: ToolChoice | null;
+  /** Constrains non-streaming or streaming output to a JSON response shape. */
+  responseFormat?: ResponseFormat | null;
 }
 
 export interface OpenRouterUsage {

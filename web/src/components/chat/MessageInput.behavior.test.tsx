@@ -34,7 +34,6 @@ function renderInput({
       isPro
       hasConnectedIntegrations
       participantCount={1}
-      hasMessages
     />,
   );
 }

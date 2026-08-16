@@ -52,6 +52,7 @@ export async function createAdvisorBatchForTurn(
     enabledIntegrations?: string[];
     turnIntegrationOverrides?: IntegrationOverrideEntry[];
     generationSnapshot: DeferredGenerationSnapshot;
+    parentRunId?: Id<"executionRuns">;
   },
 ): Promise<Id<"advisorBatches"> | null> {
   const existingBatch = await ctx.db
@@ -227,6 +228,7 @@ export async function createAdvisorBatchForTurn(
     claimantId,
     chatId: args.chat._id,
     sourceMessageId: args.userMessageId,
+    parentRunId: args.parentRunId,
   });
   const parentRun = await ctx.db.get(execution.runId);
   for (const messageId of args.assistantMessageIds) {

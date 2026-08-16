@@ -52,26 +52,10 @@ type UpdateChatResult = {
   activeBranchLeafFocusOrder?: number | null;
 } | null;
 
-async function isSingleParticipantChat(
-  ctx: MutationCtx,
-  chatId: Id<"chats">,
-): Promise<boolean> {
-  const participants = await ctx.db
-    .query("chatParticipants")
-    .withIndex("by_chat", (q) => q.eq("chatId", chatId))
-    .collect();
-  return participants.length <= 1;
-}
-
 async function resolveCopiedSubagentOverride(
-  ctx: MutationCtx,
-  chatId: Id<"chats">,
   override: "enabled" | "disabled" | undefined,
 ): Promise<"enabled" | "disabled" | undefined> {
-  if (override !== "enabled") {
-    return override;
-  }
-  return await isSingleParticipantChat(ctx, chatId) ? "enabled" : undefined;
+  return override;
 }
 
 async function assertOwnedFolder(
@@ -208,9 +192,6 @@ export async function updateChatHandler(
   if (args.subagentOverride !== undefined) {
     if (args.subagentOverride === "enabled") {
       await requirePro(ctx, userId);
-      if (!(await isSingleParticipantChat(ctx, args.chatId))) {
-        throw new ConvexError({ code: "VALIDATION" as const, message: "Subagents are only available in single-model chats." });
-      }
     }
     patch.subagentOverride = args.subagentOverride ?? undefined;
   }
@@ -531,7 +512,7 @@ export async function forkChatHandler(
     mode: chat.mode,
     folderId: chat.folderId,
     source: "user",
-    subagentOverride: await resolveCopiedSubagentOverride(ctx, args.chatId, chat.subagentOverride),
+    subagentOverride: await resolveCopiedSubagentOverride(chat.subagentOverride),
     temperatureOverride: chat.temperatureOverride,
     maxTokensOverride: chat.maxTokensOverride,
     includeReasoningOverride: chat.includeReasoningOverride,
@@ -601,7 +582,7 @@ export async function duplicateChatHandler(
     mode: chat.mode,
     folderId: chat.folderId,
     source: "user",
-    subagentOverride: await resolveCopiedSubagentOverride(ctx, args.chatId, chat.subagentOverride),
+    subagentOverride: await resolveCopiedSubagentOverride(chat.subagentOverride),
     temperatureOverride: chat.temperatureOverride,
     maxTokensOverride: chat.maxTokensOverride,
     includeReasoningOverride: chat.includeReasoningOverride,

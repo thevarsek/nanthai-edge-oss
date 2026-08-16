@@ -68,6 +68,34 @@ test("gateParameters applies image-generation and reasoning support rules", () =
   assert.equal(gatedReasoningFallback.reasoningEffort, null);
 });
 
+test("gateParameters preserves capability-driven audio output without model slugs", () => {
+  const audio = gateParameters(
+    {
+      modalities: ["text", "audio"],
+      audio: { voice: "nova", format: "pcm16" },
+    },
+    ["temperature", "max_tokens"],
+    false,
+    false,
+    true,
+  );
+  const text = gateParameters(
+    {
+      modalities: ["text", "audio"],
+      audio: { voice: "nova", format: "pcm16" },
+    },
+    ["temperature", "max_tokens"],
+    false,
+    false,
+    false,
+  );
+
+  assert.deepEqual(audio.modalities, ["text", "audio"]);
+  assert.deepEqual(audio.audio, { voice: "nova", format: "pcm16" });
+  assert.equal(text.modalities, null);
+  assert.equal(text.audio, null);
+});
+
 test("gateParameters strips tools and toolChoice but keeps webSearchEnabled when model lacks tool support", () => {
   // Model that does NOT support tools (e.g. ERNIE) — tools/toolChoice stripped,
   // webSearchEnabled preserved so buildRequestBody can fall back to plugin API.
@@ -337,6 +365,30 @@ test("buildRequestBody attaches default provider-sort when caller supplies no pr
     { sort: "latency" },
     "provider-sort default must attach when caller omits provider block",
   );
+});
+
+test("buildRequestBody forwards a strict response schema", () => {
+  const messages = [{ role: "user" as const, content: "choose" }];
+  const responseFormat = {
+    type: "json_schema" as const,
+    json_schema: {
+      name: "decision",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: { selected: { type: "boolean" } },
+        required: ["selected"],
+        additionalProperties: false,
+      },
+    },
+  };
+  const body = buildRequestBody(
+    "openai/gpt-5-mini",
+    messages,
+    { responseFormat },
+    false,
+  );
+  assert.deepEqual(body.response_format, responseFormat);
 });
 
 test("buildRequestBody merges caller-supplied ZDR with provider-sort defaults", () => {

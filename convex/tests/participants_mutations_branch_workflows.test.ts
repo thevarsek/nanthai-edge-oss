@@ -108,7 +108,7 @@ test("participant mutations enforce auth, ownership, active autonomous locks, an
   );
 });
 
-test("addParticipant chooses sort order and clears enabled subagent override for multimodel chats", async () => {
+test("addParticipant chooses sort order and preserves chat-wide subagents", async () => {
   const state = buildCtx({
     records: { chat_1: { _id: "chat_1", userId: "user_1", subagentOverride: "enabled" } },
     tableRows: {
@@ -127,7 +127,8 @@ test("addParticipant chooses sort order and clears enabled subagent override for
   assert.equal(id, "chatParticipants_1");
   assert.equal(state.inserts[0].value.sortOrder, 4);
   assert.equal(state.inserts[0].value.personaEmoji, undefined);
-  assert.equal(state.patches.find((entry) => entry.id === "chat_1")?.value.subagentOverride, undefined);
+  const chatPatch = state.patches.find((entry) => entry.id === "chat_1")?.value ?? {};
+  assert.equal("subagentOverride" in chatPatch, false);
 });
 
 test("removeParticipant protects last participant and reorders remaining siblings", async () => {
@@ -225,5 +226,6 @@ test("setParticipants atomically replaces participant rows and validates count b
   assert.deepEqual(state.deletes, ["old_1"]);
   assert.deepEqual(state.inserts.map((entry) => entry.value.sortOrder), [0, 1]);
   assert.equal(state.inserts[0].value.personaEmoji, undefined);
-  assert.equal(state.patches.find((entry) => entry.id === "chat_1")?.value.subagentOverride, undefined);
+  const chatPatch = state.patches.find((entry) => entry.id === "chat_1")?.value ?? {};
+  assert.equal("subagentOverride" in chatPatch, false);
 });

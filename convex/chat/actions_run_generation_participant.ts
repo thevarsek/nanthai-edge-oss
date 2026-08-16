@@ -17,7 +17,11 @@ import {
   buildCurrentDatePrompt,
   buildRequestMessages,
 } from "./helpers";
-import { assembleRequestContextForGeneration } from "./actions_context_assembly_integration";
+import { prepareRequestContextForGeneration } from "./actions_context_assembly_integration";
+import {
+  appendCollaborationHandoff,
+  type PreparedTurnCausality,
+} from "./prepared_participant_turn";
 import { promoteLatestUserVideoUrls } from "./helpers_video_url_utils";
 import {
   GenerationCancelledError,
@@ -40,6 +44,10 @@ import {
   RunGenerationArgs,
 } from "./actions_run_generation_types";
 import { appendCurrentTurnAudioInput } from "./audio_input_request";
+import {
+  preferredVoiceFromPreferences,
+  STREAMING_TTS_FORMAT,
+} from "./audio_shared";
 import { runDedicatedImageGeneration } from "./action_image_generation";
 import { CITATION_SYSTEM_PROMPT_SUFFIX } from "../search/helpers";
 import {
@@ -360,6 +368,8 @@ export interface GenerateForParticipantParams {
     audioStorageId: Id<"_storage">;
     audioDurationMs?: number;
     audioGeneratedAt: number;
+    audioMimeType: string;
+    audioSizeBytes: number;
   }>;
   /** Pre-resolved overrides from coordinator to eliminate duplicate queries. */
   preResolvedOverrides?: {
@@ -871,8 +881,26 @@ export async function generateForParticipant(
         modelCapabilities.get(participant.modelId)?.contextLength ?? 75_000,
     });
     let baseRequestMessages = legacyRequestMessages;
+    let collaborationCausality: PreparedTurnCausality | undefined;
     if (!requestMessagesOverride) {
-      baseRequestMessages = await assembleRequestContextForGeneration({
+      const collaborationMessage = allMessages.find(
+        (message) => message._id === participant.messageId,
+      ) as ContextMessage | undefined;
+      collaborationCausality =
+        collaborationMessage?.collaborationExchangeId &&
+        collaborationMessage.collaborationDecisionId &&
+        collaborationMessage.collaborationWave !== undefined
+          ? {
+              exchangeId: collaborationMessage.collaborationExchangeId,
+              decisionId: collaborationMessage.collaborationDecisionId,
+              wave: collaborationMessage.collaborationWave,
+              frontierMessageIds: collaborationMessage.parentMessageIds,
+              replyToMessageIds:
+                collaborationMessage.collaborationReplyToIds ??
+                collaborationMessage.parentMessageIds,
+            }
+          : undefined;
+      const preparedTurn = await prepareRequestContextForGeneration({
         ctx,
         chatId: args.chatId,
         userId: args.userId,
@@ -882,7 +910,15 @@ export async function generateForParticipant(
         legacyMessages: legacyRequestMessages,
         allMessages: allMessages as unknown as ContextMessage[],
         providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,
+        mode: collaborationMessage?.collaborationExchangeId
+          ? "collaborative_discussion"
+          : "read_path",
+        runtimeKind: collaborationMessage?.collaborationExchangeId
+          ? "collaborative_discussion"
+          : "chat_generation",
+        causality: collaborationCausality,
       });
+      baseRequestMessages = preparedTurn.providerMessages;
     }
     const advisorNotes = await ctx.runQuery(
       internal.advisors.queries.getAdvisorNotesForMessage,
@@ -895,10 +931,14 @@ export async function generateForParticipant(
       provider: caps?.provider,
       hasVideoInput: caps?.hasVideoInput,
     });
-    const requestMessages = await appendCurrentTurnAudioInput(
+    let requestMessages = await appendCurrentTurnAudioInput(
       promotedRequest.messages,
       allMessages.find((message) => message._id === args.userMessageId),
       caps?.hasAudioInput,
+    );
+    requestMessages = appendCollaborationHandoff(
+      requestMessages,
+      collaborationCausality,
     );
     const restoredProfiles = progressiveTools
       ? Array.from(new Set([
@@ -1031,6 +1071,15 @@ export async function generateForParticipant(
       includeReasoning: participant.includeReasoning ?? null,
       reasoningEffort: participant.reasoningEffort ?? null,
       webSearchEnabled: args.webSearchEnabled && !shouldUseMaterializedWebSearch,
+      ...(caps?.hasAudioOutput
+        ? {
+            modalities: ["text", "audio"],
+            audio: {
+              voice: preferredVoiceFromPreferences(userPrefs),
+              format: STREAMING_TTS_FORMAT,
+            },
+          }
+        : {}),
     };
 
     // M10: Inject tool definitions when a registry is available.
@@ -1047,6 +1096,7 @@ export async function generateForParticipant(
       caps?.supportedParameters,
       caps?.hasImageGeneration,
       caps?.hasReasoning,
+      caps?.hasAudioOutput,
     );
     if (caps?.hasImageGeneration) {
       assertOpenRouterImagePrivacy(requireZdr);
@@ -1953,6 +2003,9 @@ export async function generateForParticipant(
     ) {
       totalContent = extractedFromResult.text.trim();
     }
+    if (totalContent.trim().length === 0 && result.audioTranscript.trim().length > 0) {
+      totalContent = result.audioTranscript.trim();
+    }
 
     const rawFinalContent = totalContent.trim();
     const rawContentForCitationParsing = result.content.includes("<CITATIONS>")
@@ -2091,10 +2144,12 @@ export async function generateForParticipant(
     const generatedFilesMeta = extractGeneratedFiles(genResult.allToolResults);
     const generatedChartsMeta = extractGeneratedCharts(genResult.allToolResults);
 
-    // M26: Lyria music generation — persist inline audio from the stream result.
+    // Persist model-authored inline audio from the stream result.
     let audioStorageId: undefined | Id<"_storage">;
     let audioDurationMs: number | undefined;
     let audioGeneratedAt: number | undefined;
+    let audioMimeType: string | undefined;
+    let audioSizeBytes: number | undefined;
     if (result.audioBase64) {
       if (!persistInlineAudio) {
         throw new ConvexError({
@@ -2106,6 +2161,8 @@ export async function generateForParticipant(
       audioStorageId = persistedAudio.audioStorageId;
       audioDurationMs = persistedAudio.audioDurationMs;
       audioGeneratedAt = persistedAudio.audioGeneratedAt;
+      audioMimeType = persistedAudio.audioMimeType;
+      audioSizeBytes = persistedAudio.audioSizeBytes;
     }
 
     const usageToStore = genResult.totalUsage ?? result.usage ?? undefined;
@@ -2132,10 +2189,13 @@ export async function generateForParticipant(
       // Perplexity citations (structured array for rich UI rendering)
       citations: citationsForStorage,
       documentCitations: documentCitations.length > 0 ? documentCitations : undefined,
-      // M26: Lyria inline audio
+      // Model-authored inline audio
       audioStorageId,
       audioDurationMs,
       audioGeneratedAt,
+      audioMimeType,
+      audioSizeBytes,
+      audioTranscript: result.audioTranscript || undefined,
       triggerUserMessageId: args.userMessageId,
       openrouterGenerationId: result.generationId ?? undefined,
       executionAttemptId: args.executionAttemptId,

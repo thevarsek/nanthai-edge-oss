@@ -156,6 +156,26 @@ Examples:
 - branch pill switching belongs in Convex (`chat/manage:switchBranchAtFork`), not per-client leaf-selection heuristics
 - video generation progress, terminal status, and provider-facing failure details come from the shared `videoJobs` contract and message payloads, not per-client heuristics that suppress failed states or rewrite backend errors
 
+### Model-authored audio contract
+
+- Convex derives audio-output eligibility from the synced OpenRouter model
+  capability. Clients never identify audio models by provider or model ID.
+- The chat input remains the ordinary text message context. Convex requests
+  text and audio as output modalities, using streamed PCM16 as the common
+  requested format because OpenRouter does not expose a reliable per-model
+  output-format list.
+- If a provider explicitly rejects streamed PCM16 before emitting output,
+  Convex retries that request once with MP3. Other provider failures and
+  already-started streams are not retried through this format fallback.
+- Providers may return a different encoded format from the requested one.
+  Convex inspects the returned bytes, preserves recognized MP3, WAV, FLAC, or
+  OGG output, and wraps headerless PCM16 in a 24 kHz mono WAV container.
+- Messages expose `audioStorageId`, `audioMimeType`, `audioSource`,
+  `audioTranscript`, and duration metadata. Every client renders inline audio
+  whenever `audioStorageId` exists and uses `audioMimeType` for downloads.
+  `audioSource` distinguishes model-authored output from recorded and generated
+  read-aloud audio; clients must not re-derive that distinction from model IDs.
+
 ## OpenRouter Image and Advisor Contract
 
 - Convex owns dedicated image discovery (`/images/models` plus endpoint details),

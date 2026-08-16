@@ -13,6 +13,7 @@ interface QueuedFollowUp {
 interface Args {
   chatId: string;
   isGenerating: boolean;
+  isCollaborationActive?: boolean;
   isAutonomousActive: boolean;
   text: string;
   attachmentCount: number;
@@ -46,6 +47,7 @@ function copyAdvisorSnapshot(
 export function useQueuedFollowUp({
   chatId,
   isGenerating,
+  isCollaborationActive = false,
   isAutonomousActive,
   text,
   attachmentCount,
@@ -63,7 +65,8 @@ export function useQueuedFollowUp({
 }: Args) {
   const [queuedFollowUps, setQueuedFollowUps] = useState<QueuedFollowUp[]>([]);
   const [queuedActionState, setQueuedActionState] = useState<"idle" | "draining" | "interrupting">("idle");
-  const isGeneratingRef = useRef(isGenerating);
+  const isBusy = isGenerating || isCollaborationActive;
+  const isGeneratingRef = useRef(isBusy);
   const chatIdRef = useRef(chatId);
   const didDrainForCurrentIdleRef = useRef(false);
   const activeQueuedFollowUps = useMemo(
@@ -85,16 +88,16 @@ export function useQueuedFollowUp({
   }, [chatId]);
 
   useEffect(() => {
-    isGeneratingRef.current = isGenerating;
-    if (isGenerating) {
+    isGeneratingRef.current = isBusy;
+    if (isBusy) {
       didDrainForCurrentIdleRef.current = false;
     }
-  }, [isGenerating]);
+  }, [isBusy]);
 
   const canQueueMessage =
     !disabled &&
     !isAutonomousActive &&
-    isGenerating &&
+    isBusy &&
     text.trim().length > 0 &&
     attachmentCount === 0 &&
     !isUploading &&
@@ -102,12 +105,30 @@ export function useQueuedFollowUp({
     !hasEphemeralContext &&
     queuedActionState === "idle";
 
-  const queueFollowUp = useCallback(() => {
+  const queueFollowUp = useCallback(async () => {
     const trimmed = text.trim();
     if (!trimmed || disabled || attachmentCount > 0 || isUploading || !canCaptureQueuedAdvisorSnapshot || hasEphemeralContext) return;
     const capturedAdvisorSnapshot = captureQueuedAdvisorSnapshot?.();
     if (capturedAdvisorSnapshot === null) return;
     const advisorSnapshot = copyAdvisorSnapshot(capturedAdvisorSnapshot);
+    if (isCollaborationActive) {
+      setQueuedActionState("draining");
+      try {
+        const result = await onSend({
+          text: trimmed,
+          attachments: queuedAttachments,
+          ...(advisorSnapshot ? { advisorSnapshot } : {}),
+        });
+        if (result !== false && chatIdRef.current === chatId) {
+          onQueueCommitted();
+        }
+      } catch {
+        // The send path owns user-visible error reporting; keep the draft intact.
+      } finally {
+        setQueuedActionState("idle");
+      }
+      return;
+    }
     setQueuedFollowUps((current) => [
       ...current,
       {
@@ -119,7 +140,7 @@ export function useQueuedFollowUp({
       },
     ]);
     onQueueCommitted();
-  }, [attachmentCount, canCaptureQueuedAdvisorSnapshot, captureQueuedAdvisorSnapshot, chatId, disabled, hasEphemeralContext, isUploading, onQueueCommitted, queuedAttachments, text]);
+  }, [attachmentCount, canCaptureQueuedAdvisorSnapshot, captureQueuedAdvisorSnapshot, chatId, disabled, hasEphemeralContext, isCollaborationActive, isUploading, onQueueCommitted, onSend, queuedAttachments, text]);
 
   const editQueuedFollowUp = useCallback((id?: string) => {
     const queued = activeQueuedFollowUps.find((item) => item.id === id) ?? activeQueuedFollowUps[0];
@@ -174,7 +195,7 @@ export function useQueuedFollowUp({
 
   useEffect(() => {
     const nextQueued = activeQueuedFollowUps[0];
-    if (disabled || isGenerating || !nextQueued || queuedActionState !== "idle") return;
+    if (disabled || isBusy || !nextQueued || queuedActionState !== "idle") return;
     if (didDrainForCurrentIdleRef.current) return;
     didDrainForCurrentIdleRef.current = true;
     setQueuedFollowUps((current) => current.filter((item) => item.id !== nextQueued.id));
@@ -193,7 +214,7 @@ export function useQueuedFollowUp({
         setQueuedActionState("idle");
       }
     })();
-  }, [activeQueuedFollowUps, disabled, isGenerating, queuedActionState, sendQueuedFollowUp]);
+  }, [activeQueuedFollowUps, disabled, isBusy, queuedActionState, sendQueuedFollowUp]);
 
   return {
     queuedFollowUp: activeQueuedFollowUp,

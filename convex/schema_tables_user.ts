@@ -14,6 +14,7 @@ import {
   integrationOverrideEntry,
   favoriteParticipant,
 } from "./schema_validators";
+import { groupBehavior } from "./collaboration/validators";
 
 export const userSchemaTables = {
   /** Immutable write fence installed before an account purge begins. */
@@ -68,6 +69,7 @@ export const userSchemaTables = {
     userId: v.string(),
     defaultModelId: v.optional(v.string()),
     defaultPersonaId: v.optional(v.id("personas")),
+    defaultGroupBehavior: v.optional(groupBehavior),
     sendOnEnter: v.boolean(),
     showReasoning: v.boolean(),
     hapticFeedback: v.boolean(),
