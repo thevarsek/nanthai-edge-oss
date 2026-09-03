@@ -628,6 +628,7 @@ export const deferredToolKind = v.union(
   v.literal("spawn_subagents"),
   v.literal("drive_picker"),
   v.literal("presentation_workflow"),
+  v.literal("video_generation"),
   v.literal("analytics_workflow"),
   v.literal("remote_mcp"),
 );
@@ -770,6 +771,10 @@ export const skillRuntimeMode = v.union(
 export const skillToolProfile = v.union(
   v.literal("presentations"),
   v.literal("docs"),
+  v.literal("imageGeneration"),
+  v.literal("musicGeneration"),
+  v.literal("speechGeneration"),
+  v.literal("videoGeneration"),
   v.literal("analytics"),
   v.literal("workspace"),
   v.literal("persistentRuntime"),

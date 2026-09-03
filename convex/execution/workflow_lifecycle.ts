@@ -12,6 +12,9 @@ import { terminalizeExecution } from "./control_plane";
 import { reconcileAutonomousSessionWorkflowFailure } from
   "../autonomous/execution_lifecycle";
 import { requestRunTreeTeardown } from "./teardown_graph";
+import { clearAudioGenerationForExecutionRun } from "../chat/audio_cleanup";
+import { reconcileToolVideoWorkflowFailure } from
+  "../tools/video_generation_failure";
 
 export const ownedWorkflowContextValidator = v.object({
   scheduledOccurrence: v.optional(v.object({
@@ -41,7 +44,13 @@ async function reconcileDomainAfterWorkflowFailure(
   now: number,
 ): Promise<void> {
   if (!run.domainId) return;
-  if (run.domainType === "advisor_batch") {
+  if (
+    run.domainType === "video_generation"
+    && await reconcileToolVideoWorkflowFailure(ctx, run, summary)
+  ) return;
+  if (run.domainType === "message_speech") {
+    await clearAudioGenerationForExecutionRun(ctx, run);
+  } else if (run.domainType === "advisor_batch") {
     const batch = await ctx.db.get(run.domainId as Id<"advisorBatches">);
     if (batch && !["completed", "failed", "cancelled"].includes(batch.status)) {
       for (const messageId of batch.assistantMessageIds) {

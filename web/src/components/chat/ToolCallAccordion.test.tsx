@@ -61,6 +61,33 @@ describe("ToolCallAccordion", () => {
     expect(screen.getByText("(1/2)")).toBeInTheDocument();
   });
 
+  it("renders skill slugs as readable display names", () => {
+    render(
+      <ToolCallAccordion
+        toolCalls={[{
+          id: "call_skill",
+          name: "load_skill",
+          arguments: "{\"name\":\"image-generation\"}",
+        }]}
+        toolResults={[{
+          toolCallId: "call_skill",
+          toolName: "load_skill",
+          result: JSON.stringify({
+            success: true,
+            data: { name: "Image Generation" },
+          }),
+          isError: false,
+        }]}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /used 1 tool/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Load Skill/ }));
+
+    expect(screen.getByText("Load Image Generation")).toBeInTheDocument();
+    expect(screen.queryByText("Load image-generation")).not.toBeInTheDocument();
+  });
+
   it("shows friendly Remote MCP server and tool names", () => {
     render(
       <ToolCallAccordion

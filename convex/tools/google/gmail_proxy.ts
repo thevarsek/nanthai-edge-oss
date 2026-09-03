@@ -1,6 +1,7 @@
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 import { createActionProxyTool, type ExecuteProxyToolArgs } from "../action_proxy";
 import type { ToolResult } from "../registry";
+import { STORAGE_ATTACHMENTS_PARAMETER } from "../storage_attachment_schema";
 
 type GmailToolName =
   | "gmail_send"
@@ -22,9 +23,43 @@ const executeGmailToolRef = makeFunctionReference<
   ToolResult
 >;
 
-export const gmailSend = createActionProxyTool(executeGmailToolRef, "gmail_send", { name: "gmail_send", description: "Send an email via the user's manually connected Gmail account. Use when the user asks you to send an email, reply to someone, or draft and send a message. The email is sent immediately from the user's Gmail address. Supports plain text and HTML bodies.", parameters: {"type":"object","properties":{"to":{"type":"string","description":"Recipient email address."},"subject":{"type":"string","description":"Email subject line."},"body":{"type":"string","description":"Email body content."},"is_html":{"type":"boolean","description":"Whether the body is HTML."},"cc":{"type":"string","description":"Optional CC recipients, comma-separated."},"bcc":{"type":"string","description":"Optional BCC recipients, comma-separated."}},"required":["to","subject","body"],"additionalProperties":false} });
+export const gmailSend = createActionProxyTool(executeGmailToolRef, "gmail_send", {
+  name: "gmail_send",
+  description: "Send an email via the user's manually connected Gmail account. Use when the user asks you to send an email, reply to someone, or draft and send a message. The email is sent immediately from the user's Gmail address. Supports plain text and HTML bodies and owned file or media attachments.",
+  parameters: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Email subject line." },
+      body: { type: "string", description: "Email body content." },
+      is_html: { type: "boolean", description: "Whether the body is HTML." },
+      cc: { type: "string", description: "Optional CC recipients, comma-separated." },
+      bcc: { type: "string", description: "Optional BCC recipients, comma-separated." },
+      attachments: STORAGE_ATTACHMENTS_PARAMETER,
+    },
+    required: ["to", "subject", "body"],
+    additionalProperties: false,
+  },
+});
 
-export const gmailCreateDraft = createActionProxyTool(executeGmailToolRef, "gmail_create_draft", { name: "gmail_create_draft", description: "Create a draft email in the user's manually connected Gmail Drafts folder using IMAP append. Use when the user asks to draft an email without sending it. The draft is saved for the user to review in Gmail.", parameters: {"type":"object","properties":{"to":{"type":"string","description":"Recipient email address."},"subject":{"type":"string","description":"Email subject line."},"body":{"type":"string","description":"Email body content."},"is_html":{"type":"boolean","description":"Whether the body is HTML."},"cc":{"type":"string","description":"Optional CC recipients, comma-separated."},"bcc":{"type":"string","description":"Optional BCC recipients, comma-separated."}},"required":["to","subject","body"],"additionalProperties":false} });
+export const gmailCreateDraft = createActionProxyTool(executeGmailToolRef, "gmail_create_draft", {
+  name: "gmail_create_draft",
+  description: "Create a draft email in the user's manually connected Gmail Drafts folder using IMAP append. Use when the user asks to draft an email without sending it. The draft is saved for review and may include owned file or generated-media attachments.",
+  parameters: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email address." },
+      subject: { type: "string", description: "Email subject line." },
+      body: { type: "string", description: "Email body content." },
+      is_html: { type: "boolean", description: "Whether the body is HTML." },
+      cc: { type: "string", description: "Optional CC recipients, comma-separated." },
+      bcc: { type: "string", description: "Optional BCC recipients, comma-separated." },
+      attachments: STORAGE_ATTACHMENTS_PARAMETER,
+    },
+    required: ["to", "subject", "body"],
+    additionalProperties: false,
+  },
+});
 
 export const gmailRead = createActionProxyTool(executeGmailToolRef, "gmail_read", { name: "gmail_read", description: "Read recent emails from the user's manually connected Gmail inbox. Returns subject, sender, date, and snippet/body for each email. Search supports a practical subset of Gmail syntax such as from:, to:, subject:, after:, before:, is:unread, is:read, and is:starred.", parameters: {"type":"object","properties":{"query":{"type":"string","description":"Optional Gmail-style search query."},"max_results":{"type":"number","description":"Maximum number of emails to return (default 10, max 20)."},"include_body":{"type":"boolean","description":"Whether to include body text."}},"required":[],"additionalProperties":false} });
 

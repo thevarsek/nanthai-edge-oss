@@ -153,27 +153,38 @@ export const complete = internalMutation({
     resultJson: v.string(),
   },
   returns: v.null(),
-  handler: async (ctx, args) => {
-    const { run } = await assertCurrentFence(ctx, args.attemptId, args.fence);
-    const operation = await ctx.db
-      .query("executionOperations")
-      .withIndex("by_run_operation", (query) =>
-        query.eq("runId", run._id).eq("operationKey", args.operationKey),
-      )
-      .unique();
-    if (!operation) throw new Error("EXECUTION_OPERATION_NOT_FOUND");
-    if (operation.status === "succeeded" || operation.status === "reconciled") return null;
-    const now = Date.now();
-    await ctx.db.patch(operation._id, {
-      status: "succeeded",
-      externalId: args.externalId?.slice(0, 2_000),
-      resultJson: args.resultJson.slice(0, 900_000),
-      completedAt: now,
-      updatedAt: now,
-    });
-    return null;
-  },
+  handler: completeOperationHandler,
 });
+
+export async function completeOperationHandler(
+  ctx: MutationCtx,
+  args: {
+    attemptId: Id<"executionAttempts">;
+    fence: number;
+    operationKey: string;
+    externalId?: string;
+    resultJson: string;
+  },
+): Promise<null> {
+  const { run } = await assertCurrentFence(ctx, args.attemptId, args.fence);
+  const operation = await ctx.db
+    .query("executionOperations")
+    .withIndex("by_run_operation", (query) =>
+      query.eq("runId", run._id).eq("operationKey", args.operationKey),
+    )
+    .unique();
+  if (!operation) throw new Error("EXECUTION_OPERATION_NOT_FOUND");
+  if (operation.status === "succeeded" || operation.status === "reconciled") return null;
+  const now = Date.now();
+  await ctx.db.patch(operation._id, {
+    status: "succeeded",
+    externalId: args.externalId?.slice(0, 2_000),
+    resultJson: args.resultJson.slice(0, 900_000),
+    completedAt: now,
+    updatedAt: now,
+  });
+  return null;
+}
 
 export const resetSafeFailure = internalMutation({
   args: {

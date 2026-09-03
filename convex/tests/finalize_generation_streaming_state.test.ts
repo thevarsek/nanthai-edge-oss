@@ -376,11 +376,13 @@ function buildFinalizeCtx(overrides: {
   chatId?: string;
   messageContent?: string;
   messageStatus?: string;
+  messageGeneratedFileIds?: string[];
   jobStatus?: string;
   chat?: Record<string, unknown>;
   sourceVersion?: Record<string, unknown>;
   sourceDocument?: Record<string, unknown>;
   latestVersion?: Record<string, unknown>;
+  streaming?: Record<string, unknown>;
 } = {}) {
   const mid = overrides.messageId ?? "msg_v";
   const jid = overrides.jobId ?? "job_v";
@@ -393,7 +395,15 @@ function buildFinalizeCtx(overrides: {
     db: {
       get: async (id: string) => {
         if (id === jid) return { _id: id, status: overrides.jobStatus ?? "streaming" };
-        if (id === mid) return { _id: id, modelId: "m", content: overrides.messageContent ?? "", status: overrides.messageStatus ?? "pending" };
+        if (id === mid) {
+          return {
+            _id: id,
+            modelId: "m",
+            content: overrides.messageContent ?? "",
+            status: overrides.messageStatus ?? "pending",
+            generatedFileIds: overrides.messageGeneratedFileIds,
+          };
+        }
         if (id === cid) return { _id: id, ...(overrides.chat ?? {}) };
         if (id === overrides.sourceDocument?._id) return overrides.sourceDocument;
         return null;
@@ -407,10 +417,13 @@ function buildFinalizeCtx(overrides: {
             if (table === "documentVersions" && indexName === "by_document") {
               return overrides.latestVersion ?? null;
             }
+            if (table === "streamingMessages") return overrides.streaming ?? null;
             return null;
           };
           return {
-            collect: async () => [],
+            collect: async () => table === "streamingMessages" && overrides.streaming
+              ? [overrides.streaming]
+              : [],
             first,
             order: () => ({ first }),
           };
@@ -650,4 +663,62 @@ test("finalizeGenerationHandler does not set preview for failed video messages",
   // Failed messages don't update lastMessagePreview at all (status !== "completed")
   const chatPatch = patches.find((entry) => entry.id === cid);
   assert.equal(chatPatch, undefined);
+});
+
+test("finalizeGenerationHandler retains completed media when the next model round fails or is cancelled", async () => {
+  const toolResults = [{
+    toolCallId: "image_call",
+    toolName: "generate_image",
+    result: JSON.stringify({
+      imageUrls: ["https://files.example/generated.png"],
+      imageMimeTypes: ["image/png"],
+      requestedCount: 1,
+      generatedCount: 1,
+    }),
+  }, {
+    toolCallId: "audio_call",
+    toolName: "generate_speech",
+    result: JSON.stringify({
+      generatedFileId: "generated_file_1",
+      audioStorageId: "audio_storage_1",
+      audioMimeType: "audio/mpeg",
+      audioDurationMs: 1200,
+      sizeBytes: 42,
+      audioTranscript: "Hello",
+    }),
+  }];
+  for (const status of ["failed", "cancelled"] as const) {
+    const { ctx, patches, mid, jid, cid } = buildFinalizeCtx({
+      messageGeneratedFileIds: ["document_file_1"],
+      streaming: {
+        _id: `stream_media_${status}`,
+        messageId: "msg_v",
+        chatId: "chat_v",
+        content: "",
+        status: "streaming",
+        toolResults,
+        updatedAt: 100,
+      },
+    });
+
+    await finalizeGenerationHandler(ctx, {
+      messageId: mid as any,
+      jobId: jid as any,
+      chatId: cid as any,
+      content: status === "failed" ? "Error: follow-up model request failed" : "",
+      status,
+      error: status === "failed" ? "follow-up model request failed" : undefined,
+      userId: "user_1",
+    });
+
+    const messagePatch = patches.find((entry) => entry.id === mid)?.value;
+    assert.deepEqual(messagePatch?.toolResults, toolResults);
+    assert.deepEqual(messagePatch?.imageUrls, ["https://files.example/generated.png"]);
+    assert.equal(messagePatch?.audioStorageId, "audio_storage_1");
+    assert.equal(messagePatch?.audioSource, "model_output");
+    assert.deepEqual(messagePatch?.generatedFileIds, [
+      "document_file_1",
+      "generated_file_1",
+    ]);
+  }
 });

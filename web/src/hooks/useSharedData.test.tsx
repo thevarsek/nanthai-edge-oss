@@ -105,6 +105,16 @@ describe("useSharedData subscriptions", () => {
     });
     expect(mockState.queryCalls.every((call) => JSON.stringify((call as { args: unknown }).args) === "{}")).toBe(true);
   });
+
+  it("can include generation-only models in the shared model query", () => {
+    mockState.queryResults = [["speech-model"]];
+
+    expect(renderHook(() => useModelSummaries({ includeGenerationModels: true })).result.current)
+      .toEqual(["speech-model"]);
+    expect((mockState.queryCalls[0] as { args: unknown }).args).toEqual({
+      includeGenerationModels: true,
+    });
+  });
 });
 
 describe("credit balance helpers and hook", () => {

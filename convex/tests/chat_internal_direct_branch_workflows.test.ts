@@ -3,12 +3,12 @@ import test from "node:test";
 
 import {
   markChatCompletionNotifiedHandler,
-  patchMessageAudioHandler,
   updateJobStatusHandler,
   updateMessageContentHandler,
   updateMessageReasoningHandler,
   updateMessageToolCallsHandler,
 } from "../chat/mutations_internal_handlers";
+import { patchMessageAudioHandler } from "../chat/audio_mutation_handlers";
 import {
   createVideoJobHandler,
   insertGeneratedMediaHandler,
@@ -57,6 +57,7 @@ function buildCtx(records: Record<string, Record<string, unknown>> = {}) {
             apply?.(q);
             return {
             first: async () => null,
+            unique: async () => null,
             collect: async () => table === "streamingMessages"
               ? Array.from(rows.values()).filter((row) =>
                 row.table === "streamingMessages" && row.messageId === messageId)
@@ -206,9 +207,16 @@ test("streaming message content updates patch explicit rows or create fallback r
 
 test("patchMessageAudioHandler replaces changed audio blobs and tolerates missing old blobs", async () => {
   const state = buildCtx({
-    message_1: { _id: "message_1", audioStorageId: "audio_old" },
-    message_2: { _id: "message_2", audioStorageId: "audio_throw" },
-    message_3: { _id: "message_3", audioStorageId: "audio_same" },
+    chat_1: { _id: "chat_1", userId: "user_1" },
+    message_1: { _id: "message_1", chatId: "chat_1", audioStorageId: "audio_old" },
+    message_2: { _id: "message_2", chatId: "chat_1", audioStorageId: "audio_throw" },
+    message_3: { _id: "message_3", chatId: "chat_1", audioStorageId: "audio_same" },
+    run_1: { _id: "run_1", userId: "user_1", chatId: "chat_1", activeAttemptId: "attempt_1", state: "running", domainType: "message_speech", sourceMessageId: "message_1" },
+    run_2: { _id: "run_2", userId: "user_1", chatId: "chat_1", activeAttemptId: "attempt_2", state: "running", domainType: "message_speech", sourceMessageId: "message_2" },
+    run_3: { _id: "run_3", userId: "user_1", chatId: "chat_1", activeAttemptId: "attempt_3", state: "running", domainType: "message_speech", sourceMessageId: "message_3" },
+    attempt_1: { _id: "attempt_1", runId: "run_1", fence: 1, status: "running" },
+    attempt_2: { _id: "attempt_2", runId: "run_2", fence: 1, status: "running" },
+    attempt_3: { _id: "attempt_3", runId: "run_3", fence: 1, status: "running" },
   });
 
   await patchMessageAudioHandler(state.ctx, {
@@ -218,14 +226,23 @@ test("patchMessageAudioHandler replaces changed audio blobs and tolerates missin
     audioVoice: "alloy",
     audioTranscript: "hello",
     audioGeneratedAt: 123,
+    executionRunId: "run_1",
+    executionAttemptId: "attempt_1",
+    executionFence: 1,
   } as never);
   await patchMessageAudioHandler(state.ctx, {
     messageId: "message_2",
     audioStorageId: "audio_new_2",
+    executionRunId: "run_2",
+    executionAttemptId: "attempt_2",
+    executionFence: 1,
   } as never);
   await patchMessageAudioHandler(state.ctx, {
     messageId: "message_3",
     audioStorageId: "audio_same",
+    executionRunId: "run_3",
+    executionAttemptId: "attempt_3",
+    executionFence: 1,
   } as never);
 
   assert.deepEqual(state.storageDeletes, ["audio_old", "audio_throw"]);

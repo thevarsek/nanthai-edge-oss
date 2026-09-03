@@ -182,17 +182,21 @@ export function buildLoadedSkillsSystemMessage(
 export function normalizeMessagesForLoadedSkills(
   messages: OpenRouterMessage[],
   loadedSkills: LoadedSkillState[],
+  options: { recoverWhenEmpty?: boolean } = {},
 ): OpenRouterMessage[] {
-  const effectiveLoadedSkills = loadedSkills.length > 0
+  const recoverWhenEmpty = options.recoverWhenEmpty !== false;
+  const effectiveLoadedSkills = loadedSkills.length > 0 || !recoverWhenEmpty
     ? loadedSkills
     : extractLoadedSkillsFromConversation(messages);
-  const recoveredLoadedSkills = effectiveLoadedSkills.length > 0
+  const recoveredLoadedSkills = effectiveLoadedSkills.length > 0 || !recoverWhenEmpty
     ? effectiveLoadedSkills
     : extractLoadedSkillsFromSynthesizedBlock(messages);
   if (recoveredLoadedSkills.length === 0 && messages.some(isLoadedSkillsSystemMessage)) {
-    console.warn(
-      "[loadedSkills] normalizeMessagesForLoadedSkills received a synthesized loaded-skills block without recoverable loadedSkills state; stripping synthesized blocks and raw load_skill transcript",
-    );
+    if (recoverWhenEmpty) {
+      console.warn(
+        "[loadedSkills] normalizeMessagesForLoadedSkills received a synthesized loaded-skills block without recoverable loadedSkills state; stripping synthesized blocks and raw load_skill transcript",
+      );
+    }
     return stripLoadSkillMessages(messages);
   }
 

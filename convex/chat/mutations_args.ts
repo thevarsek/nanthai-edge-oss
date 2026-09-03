@@ -215,6 +215,7 @@ export const finalizeGenerationArgs = {
     isError: v.optional(v.boolean()),
   }))),
   generatedFileIds: v.optional(v.array(v.id("generatedFiles"))),
+  audioGeneratedFileId: v.optional(v.id("generatedFiles")),
   generatedChartIds: v.optional(v.array(v.id("generatedCharts"))),
   generatedFiles: v.optional(v.array(v.object({
     storageId: v.id("_storage"),
@@ -265,6 +266,7 @@ export const finalizeGenerationArgs = {
   openrouterGenerationId: v.optional(v.string()),
   terminalErrorCode: v.optional(terminalErrorCode),
   skipExecutionTerminalization: v.optional(v.boolean()),
+  skipGenerationUsageFetch: v.optional(v.boolean()),
   allowExpiredExecutionLease: v.optional(v.boolean()),
   executionAttemptId: v.optional(v.id("executionAttempts")),
   executionFence: v.optional(v.number()),
@@ -286,6 +288,16 @@ export const patchMessageAudioArgs = {
   audioVoice: v.optional(v.string()),
   audioTranscript: v.optional(v.string()),
   audioGeneratedAt: v.optional(v.number()),
+  executionRunId: v.id("executionRuns"),
+  executionAttemptId: v.id("executionAttempts"),
+  executionFence: v.number(),
+} satisfies PropertyValidators;
+
+export const clearAudioGeneratingArgs = {
+  messageId: v.id("messages"),
+  executionRunId: v.id("executionRuns"),
+  executionAttemptId: v.id("executionAttempts"),
+  executionFence: v.number(),
 } satisfies PropertyValidators;
 
 export const updateJobStatusArgs = {
@@ -332,6 +344,11 @@ export const saveGenerationContinuationArgs = {
       v.object({
         kind: v.literal("analytics"),
         analyticsRunId: v.id("analyticsWorkflowRuns"),
+      }),
+      v.object({
+        kind: v.literal("video"),
+        videoJobId: v.id("videoJobs"),
+        toolCallId: v.string(),
       }),
       v.object({
         kind: v.literal("drive_picker"),
@@ -600,7 +617,7 @@ export const createVideoJobArgs = {
   messageId: v.id("messages"),
   chatId: v.id("chats"),
   userId: v.string(),
-  openRouterJobId: v.string(),
+  openRouterJobId: v.optional(v.string()),
   outputUploadId: v.optional(v.id("videoOutputUploads")),
   model: v.string(),
   prompt: v.string(),
@@ -611,6 +628,7 @@ export const createVideoJobArgs = {
     generateAudio: v.optional(v.boolean()),
   })),
   executionRunId: v.optional(v.id("executionRuns")),
+  generationJobId: v.optional(v.id("generationJobs")),
   executionAttemptId: v.optional(v.id("executionAttempts")),
   executionFence: v.optional(v.number()),
 } satisfies PropertyValidators;
@@ -619,7 +637,7 @@ export type CreateVideoJobArgs = {
   messageId: Id<"messages">;
   chatId: Id<"chats">;
   userId: string;
-  openRouterJobId: string;
+  openRouterJobId?: string;
   outputUploadId?: Id<"videoOutputUploads">;
   model: string;
   prompt: string;
@@ -630,11 +648,13 @@ export type CreateVideoJobArgs = {
     generateAudio?: boolean;
   };
   executionRunId?: Id<"executionRuns">;
+  generationJobId?: Id<"generationJobs">;
   executionAttemptId?: Id<"executionAttempts">;
   executionFence?: number;
 };
 
 export const createVideoOutputUploadSessionArgs = {
+  videoJobId: v.id("videoJobs"),
   tokenHash: v.string(),
   expiresAt: v.number(),
   messageId: v.id("messages"),
@@ -646,6 +666,7 @@ export const createVideoOutputUploadSessionArgs = {
 } satisfies PropertyValidators;
 
 export type CreateVideoOutputUploadSessionArgs = {
+  videoJobId: Id<"videoJobs">;
   tokenHash: string;
   expiresAt: number;
   messageId: Id<"messages">;

@@ -26,9 +26,7 @@ const FILE_PRODUCING_TOOLS = new Set([
   "edit_pdf",
 ]);
 
-export function extractGeneratedFiles(
-  toolResults: RecordedToolResult[],
-): Array<{
+export interface GeneratedFileMetadata {
   storageId: Id<"_storage">;
   originalStorageId?: Id<"_storage">;
   filename: string;
@@ -39,19 +37,12 @@ export function extractGeneratedFiles(
   summary?: string;
   presentationProjectId?: Id<"presentationProjects">;
   presentationRevision?: number;
-}> {
-  const files: Array<{
-    storageId: Id<"_storage">;
-    originalStorageId?: Id<"_storage">;
-    filename: string;
-    mimeType: string;
-    sizeBytes?: number;
-    toolName: string;
-    title?: string;
-    summary?: string;
-    presentationProjectId?: Id<"presentationProjects">;
-    presentationRevision?: number;
-  }> = [];
+}
+
+export function extractGeneratedFiles(
+  toolResults: RecordedToolResult[],
+): GeneratedFileMetadata[] {
+  const files: GeneratedFileMetadata[] = [];
 
   for (const tr of toolResults) {
     if (tr.isError || !FILE_PRODUCING_TOOLS.has(tr.toolName)) continue;

@@ -18,7 +18,7 @@ itself. Tools cannot enumerate the user's entire Drive.
 
 - Find or list the files the user has already shared with NanthAI
 - Read or export the content of a shared file
-- Upload generated files to Drive
+- Upload generated documents, images, audio, or video to Drive
 - Move shared files between folders that are also accessible to NanthAI
 
 ## Reading Drive files
@@ -30,6 +30,8 @@ itself. Tools cannot enumerate the user's entire Drive.
 ## Guidance
 
 - Be explicit about which file or folder is being used.
+- When the user asks to save generated media, pass the storage ID returned by the media tool to \`drive_upload\`; do not expose the internal ID in the final response.
+- Cloud upload preserves the original bytes. Use a filename extension that matches the returned media MIME type unless the media has first been converted by a supported tool.
 - Summarize uploads, reads, and moves so the user can verify the result quickly.
 - If Drive list or read succeeds in the current run, assume Drive action tools are available too when this skill is loaded and the Drive integration is active.
 - Do not claim Drive action tools are unavailable without first checking whether the needed Drive tool can be called.

@@ -5,7 +5,14 @@ export async function storageHasContentReferences(
   ctx: MutationCtx,
   storageId: Id<"_storage">,
 ): Promise<boolean> {
-  const [fileAttachmentRef, generatedFileRef, generatedMediaRef] =
+  const [
+    fileAttachmentRef,
+    generatedFileRef,
+    generatedMediaRef,
+    messageAudioRef,
+    presentationAssetRef,
+    presentationSnapshotRef,
+  ] =
     await Promise.all([
       ctx.db
         .query("fileAttachments")
@@ -19,8 +26,27 @@ export async function storageHasContentReferences(
         .query("generatedMedia")
         .withIndex("by_storageId", (q) => q.eq("storageId", storageId))
         .first(),
+      ctx.db
+        .query("messages")
+        .withIndex("by_audio_storage", (q) => q.eq("audioStorageId", storageId))
+        .first(),
+      ctx.db
+        .query("presentationAssets")
+        .withIndex("by_storage", (q) => q.eq("storageId", storageId))
+        .first(),
+      ctx.db
+        .query("presentationProjects")
+        .withIndex("by_snapshot_storage", (q) => q.eq("snapshotStorageId", storageId))
+        .first(),
     ]);
-  return !!(fileAttachmentRef || generatedFileRef || generatedMediaRef);
+  return !!(
+    fileAttachmentRef ||
+    generatedFileRef ||
+    generatedMediaRef ||
+    messageAudioRef ||
+    presentationAssetRef ||
+    presentationSnapshotRef
+  );
 }
 
 export async function storageHasSourceReferences(

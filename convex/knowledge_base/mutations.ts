@@ -27,6 +27,7 @@ import {
 } from "./mutations_args";
 import {
   deleteDocumentForDeletedRecord,
+  storageHasContentReferences,
   storageHasSourceReferences,
 } from "./delete_helpers";
 import { deleteGeneratedMediaKnowledgeBaseFile } from "./generated_media_delete";
@@ -242,7 +243,9 @@ export async function deleteKnowledgeBaseFileHandler(
     });
     await ctx.db.delete(file._id);
     await deleteDriveGrantCacheForStorage(ctx, userId, args.storageId);
-    await ctx.storage.delete(args.storageId);
+    if (!await storageHasContentReferences(ctx, args.storageId)) {
+      await ctx.storage.delete(args.storageId);
+    }
     return;
   }
 
@@ -291,7 +294,9 @@ export async function deleteKnowledgeBaseFileHandler(
   await ctx.db.delete(fileAtt._id);
   if (!hasOtherRefs) {
     await deleteDriveGrantCacheForStorage(ctx, userId, args.storageId);
-    await ctx.storage.delete(args.storageId);
+    if (!await storageHasContentReferences(ctx, args.storageId)) {
+      await ctx.storage.delete(args.storageId);
+    }
   }
 }
 

@@ -11,7 +11,7 @@ import {
   resolveAutoAudioResponseEnabled,
 } from "./audio_shared";
 import { isPlaceholderTitle } from "./title_helpers";
-import { preferCurrentPresentationSnapshot } from "./presentation_generated_file_snapshot";
+import { ensureGeneratedFileRow } from "./generated_file_registration";
 import {
   deleteStreamingMessageById,
   deleteStreamingMessage,
@@ -24,7 +24,12 @@ import {
 import { assertCurrentFence, terminalizeExecution } from "../execution/control_plane";
 import { assertCurrentExecution } from "../execution/attempts";
 import { notifyScheduledStepTerminal } from "../scheduledJobs/workflow_signals";
-import { assertUserDataWritable } from "../lib/write_fence";
+import { assertUserDataWritable, isUserDataWritable } from "../lib/write_fence";
+import {
+  extractGeneratedToolMedia,
+  mergeRecoveredToolResults,
+  recoverGeneratedMediaOperationResults,
+} from "./generated_media_tool_results";
 
 const CHAT_COMPLETION_PUSH_CATEGORY = "CHAT_COMPLETION";
 
@@ -158,6 +163,8 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   userId: string;
   /** The owned Workflow callback already terminalized the execution attempt. */
   skipExecutionTerminalization?: boolean;
+  /** A dedicated media accounting path already owns this generation ID. */
+  skipGenerationUsageFetch?: boolean;
   allowExpiredExecutionLease?: boolean;
   // M10 — Tool execution metadata
   toolCalls?: Array<{
@@ -172,6 +179,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     isError?: boolean;
   }>;
   generatedFileIds?: Id<"generatedFiles">[];
+  audioGeneratedFileId?: Id<"generatedFiles">;
   generatedChartIds?: Id<"generatedCharts">[];
   /** Raw generated-file metadata — handler inserts rows and derives IDs. */
   generatedFiles?: Array<{
@@ -439,6 +447,44 @@ export async function finalizeGenerationHandler(
   const streamingMessage = await getStreamingMessageByMessageId(ctx, args.messageId);
   const persistedMessage = await ctx.db.get(args.messageId);
 
+  let finalToolResults = args.toolResults ?? streamingMessage?.toolResults;
+  if (
+    (finalStatus === "failed" || finalStatus === "cancelled")
+    && generationJob?.executionRunId
+  ) {
+    const recovered = await recoverGeneratedMediaOperationResults(
+      ctx,
+      generationJob.executionRunId,
+    );
+    if (recovered.length > 0) {
+      finalToolResults = mergeRecoveredToolResults(finalToolResults ?? [], recovered);
+    }
+  }
+  if (finalToolResults?.length) args.toolResults = finalToolResults;
+  if ((finalStatus === "failed" || finalStatus === "cancelled") && finalToolResults) {
+    const recoveredMedia = extractGeneratedToolMedia(finalToolResults);
+    if (!args.imageUrls && recoveredMedia.imageUrls.length > 0) {
+      args.imageUrls = recoveredMedia.imageUrls;
+      args.imageMimeTypes = recoveredMedia.imageMimeTypes;
+      args.imageGenerationResult = recoveredMedia.imageGenerationResult;
+    }
+    if (!args.videoUrls && recoveredMedia.videoUrls.length > 0) {
+      args.videoUrls = recoveredMedia.videoUrls;
+    }
+    if (!args.generatedFileIds && recoveredMedia.generatedFileIds.length > 0) {
+      args.generatedFileIds = recoveredMedia.generatedFileIds;
+    }
+    if (!args.audioStorageId && recoveredMedia.audio) {
+      args.audioStorageId = recoveredMedia.audio.storageId;
+      args.audioGeneratedFileId = recoveredMedia.audio.generatedFileId;
+      args.audioDurationMs = recoveredMedia.audio.durationMs;
+      args.audioGeneratedAt = Date.now();
+      args.audioMimeType = recoveredMedia.audio.mimeType;
+      args.audioSizeBytes = recoveredMedia.audio.sizeBytes;
+      args.audioTranscript = recoveredMedia.audio.transcript;
+    }
+  }
+
   let finalContent = args.content;
   if (!finalContent.trim() && streamingMessage?.content?.trim()) {
     finalContent = streamingMessage.content;
@@ -468,7 +514,7 @@ export async function finalizeGenerationHandler(
   if (args.videoUrls) msgPatch.videoUrls = args.videoUrls;
   const finalToolCalls = args.toolCalls ?? streamingMessage?.toolCalls;
   if (finalToolCalls) msgPatch.toolCalls = finalToolCalls;
-  if (args.toolResults) msgPatch.toolResults = args.toolResults;
+  if (finalToolResults) msgPatch.toolResults = finalToolResults;
   if (args.citations && args.citations.length > 0) msgPatch.citations = args.citations;
   if (args.documentCitations && args.documentCitations.length > 0) {
     msgPatch.documentCitations = args.documentCitations;
@@ -486,25 +532,24 @@ export async function finalizeGenerationHandler(
   }
 
   // M10: Insert generatedFiles rows and collect their IDs.
-  let fileIds = args.generatedFileIds;
+  const existingFileIds = [
+    ...(persistedMessage?.generatedFileIds ?? []),
+    ...(args.generatedFileIds ?? []),
+  ];
+  let fileIds = existingFileIds.length > 0
+    ? Array.from(new Set(existingFileIds))
+    : undefined;
   if (args.generatedFiles && args.generatedFiles.length > 0) {
-    fileIds = [];
+    fileIds ??= [];
     for (const file of args.generatedFiles) {
-      const storedFile = await preferCurrentPresentationSnapshot(ctx, args.userId, file);
-      const id = await ctx.db.insert("generatedFiles", {
+      const registered = await ensureGeneratedFileRow(ctx, {
         userId: args.userId,
         chatId: args.chatId,
         messageId: args.messageId,
-        storageId: storedFile.storageId,
-        filename: storedFile.filename,
-        mimeType: storedFile.mimeType,
-        sizeBytes: storedFile.sizeBytes,
-        toolName: storedFile.toolName,
-        presentationProjectId: storedFile.presentationProjectId,
-        presentationRevision: storedFile.presentationRevision,
-        createdAt: now,
+        file,
       });
-      fileIds.push(id);
+      const { id, file: storedFile } = registered;
+      if (!fileIds.includes(id)) fileIds.push(id);
       const event = await createOrUpdateDocumentForGeneratedFile(ctx, {
         userId: args.userId,
         chatId: args.chatId,
@@ -542,7 +587,11 @@ export async function finalizeGenerationHandler(
   if (chartIds && chartIds.length > 0) msgPatch.generatedChartIds = chartIds;
 
   // Insert a generatedFiles row so model-authored audio appears in Knowledge Base.
-  if (args.audioStorageId) {
+  if (
+    args.audioStorageId &&
+    !args.audioGeneratedFileId &&
+    !args.generatedFiles?.some((file) => file.storageId === args.audioStorageId)
+  ) {
     const mimeType = args.audioMimeType ?? "audio/mpeg";
     const extension = extensionForAudioMimeType(mimeType);
     const audioFileId = await ctx.db.insert("generatedFiles", {
@@ -557,7 +606,7 @@ export async function finalizeGenerationHandler(
       createdAt: now,
     });
     // Append to any existing file IDs.
-    const allFileIds = fileIds ? [...fileIds, audioFileId] : [audioFileId];
+    const allFileIds = Array.from(new Set([...(fileIds ?? []), audioFileId]));
     msgPatch.generatedFileIds = allFileIds;
   }
 
@@ -669,7 +718,11 @@ export async function finalizeGenerationHandler(
   if (!args.usage || finalStatus !== "completed") {
     // Even without SSE-based usage, schedule a Generations API fetch if we
     // have a generation ID — it is the authoritative source for token counts.
-    if (finalStatus === "completed" && args.openrouterGenerationId) {
+    if (
+      finalStatus === "completed"
+      && args.openrouterGenerationId
+      && !args.skipGenerationUsageFetch
+    ) {
       await ctx.scheduler.runAfter(
         2000,
         internal.chat.actions.fetchAndStoreGenerationUsage,
@@ -750,7 +803,7 @@ export async function finalizeGenerationHandler(
   // provide cost data. When SSE already gave us usage, the data is accurate
   // enough and scheduling an extra fetch causes a second reactive update to
   // getChatCostSummary, making the cost display flicker.
-  if (args.openrouterGenerationId && cost == null) {
+  if (args.openrouterGenerationId && cost == null && !args.skipGenerationUsageFetch) {
     await ctx.scheduler.runAfter(
       2000,
       internal.chat.actions.fetchAndStoreGenerationUsage,
@@ -787,8 +840,10 @@ async function maybeScheduleAutoAudio(
     .first();
   if (!resolveAutoAudioResponseEnabled(chat, preferences)) return;
 
-  await ctx.scheduler.runAfter(0, internal.chat.actions.generateAudioForMessage, {
+  await ctx.scheduler.runAfter(0, internal.chat.audio_workflow_start.startAutomaticMessageAudio, {
     messageId,
+    chatId,
+    triggerUserMessageId,
   });
 }
 
@@ -811,45 +866,6 @@ export interface UpdateMessageToolCallsArgs extends Record<string, unknown> {
     result: string;
     isError?: boolean;
   }>;
-}
-
-export interface PatchMessageAudioArgs extends Record<string, unknown> {
-  messageId: Id<"messages">;
-  audioStorageId: Id<"_storage">;
-  audioMimeType?: string;
-  audioDurationMs?: number;
-  audioVoice?: string;
-  audioTranscript?: string;
-  audioGeneratedAt?: number;
-}
-
-export async function patchMessageAudioHandler(
-  ctx: MutationCtx,
-  args: PatchMessageAudioArgs,
-): Promise<void> {
-  // Delete the previous audio storage blob if it differs from the new one,
-  // to avoid orphaned blobs when audio is regenerated.
-  const existing = await ctx.db.get(args.messageId);
-  if (
-    existing?.audioStorageId &&
-    existing.audioStorageId !== args.audioStorageId
-  ) {
-    try {
-      await ctx.storage.delete(existing.audioStorageId);
-    } catch {
-      // Storage blob may already be deleted — continue
-    }
-  }
-  await ctx.db.patch(args.messageId, {
-    audioStorageId: args.audioStorageId,
-    audioMimeType: args.audioMimeType,
-    audioSource: "read_aloud",
-    audioDurationMs: args.audioDurationMs,
-    audioVoice: args.audioVoice,
-    audioTranscript: args.audioTranscript,
-    audioGeneratedAt: args.audioGeneratedAt,
-    audioGenerating: undefined,
-  });
 }
 
 export async function updateMessageToolCallsHandler(
@@ -1294,6 +1310,14 @@ export async function storeAncillaryCostHandler(
   args: StoreAncillaryCostArgs,
 ): Promise<void> {
   const now = Date.now();
+
+  const message = await ctx.db.get(args.messageId);
+  if (
+    !message || message.userId !== args.userId || message.chatId !== args.chatId ||
+    !(await isUserDataWritable(ctx, args.userId, args.chatId))
+  ) {
+    return;
+  }
 
   if (args.idempotencyKey) {
     const existing = await ctx.db

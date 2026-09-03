@@ -23,6 +23,10 @@ const state = vi.hoisted(() => {
     defaultVideoDuration: 5,
     defaultVideoResolution: "720p",
     defaultVideoGenerateAudio: true,
+    defaultImageGenerationModelId: "image/default",
+    defaultMusicGenerationModelId: "music/default",
+    defaultSpeechGenerationModelId: "speech/default",
+    defaultVideoGenerationModelId: "video/default",
     defaultImageCount: 2,
     defaultImageAspectRatio: "1:1",
     defaultImageResolution: "1K",
@@ -43,6 +47,38 @@ const state = vi.hoisted(() => {
       { modelId: "openai/gpt-4.1", name: "GPT 4.1" },
       { modelId: "anthropic/claude-sonnet-4.5", name: "Claude Sonnet" },
       { modelId: "google/gemini-2.5-pro", name: "Gemini Pro" },
+      {
+        modelId: "image/default",
+        name: "Image Default",
+        mediaCapabilities: {
+          image: {
+            counts: [1, 2, 4], aspectRatios: ["1:1", "3:2"], resolutions: ["1K", "2K"], sizes: [],
+            qualities: ["medium", "high"], backgrounds: ["auto", "transparent"], outputFormats: ["png", "webp"],
+            supportsOutputCompression: true, outputCompressionMin: 0, outputCompressionMax: 100, supportsStreaming: true,
+          },
+        },
+      },
+      { modelId: "music/default", name: "Music Default" },
+      {
+        modelId: "speech/default",
+        name: "Speech Default",
+        mediaCapabilities: {
+          speech: {
+            voices: ["nova", "echo"], outputFormats: ["mp3", "pcm"], supportsSpeed: true,
+            speedMin: 0.25, speedMax: 4, supportsInstructions: true, supportsStyle: false,
+          },
+        },
+      },
+      {
+        modelId: "video/default",
+        name: "Video Default",
+        mediaCapabilities: {
+          video: {
+            aspectRatios: ["16:9", "9:16"], resolutions: ["720p", "1080p"], durations: [5, 10],
+            frameImages: [], supportsAudio: true, supportsSeed: false,
+          },
+        },
+      },
     ],
     isPro: true,
     updatePreference: vi.fn(),
@@ -261,11 +297,11 @@ describe("ChatDefaultsSection", () => {
     fireEvent.click(screen.getByText("segment-1.5x"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultAudioSpeed: 1.5 });
 
-    fireEvent.click(screen.getByText("segment-9:16"));
+    fireEvent.change(screen.getByRole("combobox", { name: "video_config_aspect_ratio" }), { target: { value: "9:16" } });
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultVideoAspectRatio: "9:16" });
-    fireEvent.click(screen.getByText("segment-1080p"));
+    fireEvent.change(screen.getByRole("combobox", { name: "video_config_resolution" }), { target: { value: "1080p" } });
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultVideoResolution: "1080p" });
-    fireEvent.click(screen.getByText("segment-10s"));
+    fireEvent.change(screen.getByRole("combobox", { name: "video_config_duration" }), { target: { value: "10" } });
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultVideoDuration: 10 });
 
     fireEvent.change(within(screen.getByTestId("image-default-count")).getByRole("combobox"), {
@@ -305,7 +341,7 @@ describe("ChatDefaultsSection", () => {
       target: { value: "__model_default__" },
     });
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultImageQuality: null });
-    expect(screen.getByText("image_defaults_adaptation_hint")).toBeInTheDocument();
+    expect(screen.getByText(/image_defaults_adaptation_hint/)).toBeInTheDocument();
 
     fireEvent.click(settingSwitch("include_reasoning"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ includeReasoning: false });
@@ -360,7 +396,7 @@ describe("ChatDefaultsSection", () => {
     fireEvent.click(screen.getByText("segment-comprehensive"));
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ defaultSearchComplexity: 3 });
 
-    fireEvent.change(screen.getByLabelText("select-nova"), { target: { value: "echo" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "voice" }), { target: { value: "echo" } });
     expect(state.updatePreferenceImmediate).toHaveBeenCalledWith({ preferredVoice: "echo" });
     fireEvent.click(screen.getByText("audio_preview_voice"));
     await waitFor(() => expect(state.previewVoice).toHaveBeenCalledWith({ voice: "echo" }));

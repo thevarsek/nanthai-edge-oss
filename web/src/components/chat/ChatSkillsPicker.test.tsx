@@ -7,6 +7,18 @@ vi.mock("@/hooks/useSharedData", () => ({
   useVisibleSkills: () => [
     { _id: "skill_research", name: "Research", summary: "Find sources" },
     { _id: "skill_code", name: "Code", summary: "Write patches" },
+    {
+      _id: "skill_music",
+      name: "Music Generation",
+      summary: "Generate music",
+      mediaAvailability: {
+        profile: "musicGeneration",
+        generationKind: "music",
+        modelId: "music/non-zdr",
+        isAvailable: false,
+        reasonCode: "zdr_incompatible_model",
+      },
+    },
   ],
 }));
 
@@ -18,6 +30,7 @@ describe("ChatSkillsPicker", () => {
       <ChatSkillsPicker
         skillOverrides={new Map([["skill_research", "always"]])}
         onCycleSkill={onCycleSkill}
+        onDisableSkill={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -37,6 +50,7 @@ describe("ChatSkillsPicker", () => {
       <ChatSkillsPicker
         skillOverrides={new Map()}
         onCycleSkill={vi.fn()}
+        onDisableSkill={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -45,5 +59,44 @@ describe("ChatSkillsPicker", () => {
 
     expect(screen.getByText("Code")).toBeInTheDocument();
     expect(screen.queryByText("Research")).not.toBeInTheDocument();
+  });
+
+  it("keeps an incompatible media skill visible but prevents activation", () => {
+    const onCycleSkill = vi.fn();
+    const onDisableSkill = vi.fn();
+    render(
+      <ChatSkillsPicker
+        skillOverrides={new Map()}
+        onCycleSkill={onCycleSkill}
+        onDisableSkill={onDisableSkill}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const music = screen.getByRole("button", { name: /Music Generation/i });
+    expect(music).toBeDisabled();
+    expect(screen.getAllByText("Unavailable").length).toBeGreaterThan(0);
+    fireEvent.click(music);
+    expect(onCycleSkill).not.toHaveBeenCalled();
+    expect(onDisableSkill).not.toHaveBeenCalled();
+  });
+
+  it("allows an active incompatible skill to be turned off directly", () => {
+    const onCycleSkill = vi.fn();
+    const onDisableSkill = vi.fn();
+    render(
+      <ChatSkillsPicker
+        skillOverrides={new Map([["skill_music", "always"]])}
+        onCycleSkill={onCycleSkill}
+        onDisableSkill={onDisableSkill}
+        onClose={vi.fn()}
+      />,
+    );
+
+    const music = screen.getByRole("button", { name: /Music Generation/i });
+    expect(music).toBeEnabled();
+    fireEvent.click(music);
+    expect(onDisableSkill).toHaveBeenCalledWith("skill_music" as Id<"skills">);
+    expect(onCycleSkill).not.toHaveBeenCalled();
   });
 });

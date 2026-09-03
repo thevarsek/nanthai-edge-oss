@@ -13,6 +13,7 @@ export const cachedModelsTable = defineTable({
   supportsImages: v.optional(v.boolean()),
   supportsTools: v.optional(v.boolean()),
   supportedParameters: v.optional(v.array(v.string())),
+  supportedVoices: v.optional(v.array(v.string())),
   architecture: v.optional(v.object({
     tokenizer: v.optional(v.string()),
     instructType: v.optional(v.string()),

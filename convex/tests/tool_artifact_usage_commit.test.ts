@@ -45,6 +45,7 @@ test("artifact winner atomically owns usage and retry inserts neither twice", as
   const rows = {
     accountDeletionTombstones: [],
     chats: [{ _id: "chat_1", userId: "user_1" }],
+    messages: [{ _id: "message_1", userId: "user_1", chatId: "chat_1" }],
     generationJobs: [{
       _id: "job_1",
       userId: "user_1",
@@ -80,6 +81,7 @@ test("artifact commit after an account tombstone writes no artifact or usage", a
   const rows = {
     accountDeletionTombstones: [{ _id: "tombstone_1", userId: "user_1" }],
     chats: [{ _id: "chat_1", userId: "user_1" }],
+    messages: [{ _id: "message_1", userId: "user_1", chatId: "chat_1" }],
     generationJobs: [{
       _id: "job_1",
       userId: "user_1",

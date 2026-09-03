@@ -78,14 +78,15 @@ import {
   isZdrEnabled,
   mergeZdrProvider,
 } from "../lib/openrouter_zdr";
-import { assertOpenRouterImagePrivacy } from "../lib/openrouter_image";
 import { assertModelAvailable } from "../lib/openrouter_modality";
 import { injectAdvisorNotes } from "../advisors/notes";
 import { adaptMessagesForImageInput } from "./request_message_capabilities";
 import { RecordedToolCall, RecordedToolResult } from "../tools/execute_loop";
+import { serializeToolResultForStorage } from "../tools/media_tool_result_projection";
 import { captureToolRoundArtifacts } from "../tools/artifact_writer";
 import { runGenerationWithCompaction } from "./actions_run_generation_loop";
 import { extractGeneratedCharts, extractGeneratedFiles } from "./generated_file_helpers";
+import { extractGeneratedToolMedia } from "./generated_media_tool_results";
 import { artifactTurnSystemGuidance } from "../tools/artifact_write_policy";
 import { GenerationContinuationCheckpoint } from "./generation_continuation_shared";
 // NOTE: `buildProgressiveToolRegistry` lives in a "use node" module and must
@@ -105,6 +106,7 @@ import {
 } from "../tools/progressive_registry_shared";
 import { hasNodeRequiredProfiles } from "../tools/runtime_safety";
 import type { SkillToolProfileId } from "../skills/tool_profiles";
+import { MEDIA_GENERATION_PROFILES } from "../skills/media_generation_availability";
 import type { LoadedSkillState } from "../tools/progressive_registry_shared";
 import { normalizeMessagesForLoadedSkills } from "./loaded_skill_prompt";
 import type { Doc } from "../_generated/dataModel";
@@ -328,6 +330,10 @@ export interface GenerateForParticipantParams {
       checkpoint: GenerationContinuationCheckpoint,
       workflow: { projectId: Id<"presentationProjects">; toolCallId: string },
     ) => Promise<void>;
+    onDeferredVideo?: (
+      checkpoint: GenerationContinuationCheckpoint,
+      video: { videoJobId: Id<"videoJobs">; toolCallId: string },
+    ) => Promise<void>;
     onDeferredAnalytics?: (
       checkpoint: GenerationContinuationCheckpoint,
       analyticsRunId: Id<"analyticsWorkflowRuns">,
@@ -347,6 +353,7 @@ export interface GenerateForParticipantParams {
     currentRegistry: ToolRegistry,
     currentParams: ChatRequestParameters,
     caps: ModelCapabilities | undefined,
+    toolCtx: import("../tools/registry").ToolExecutionContext,
   ) => Promise<{
     registry?: ToolRegistry;
     params?: ChatRequestParameters;
@@ -630,6 +637,34 @@ export async function generateForParticipant(
     requireZdr,
   };
 
+  let availableSkillProfiles = progressiveTools
+    ? availableProgressiveProfiles({
+        enabledIntegrations: progressiveTools.enabledIntegrations,
+        isPro,
+        allowSubagents: progressiveTools.allowSubagents,
+      })
+    : undefined;
+  if (availableSkillProfiles) {
+    const mediaAvailability = await ctx.runQuery(
+      internal.skills.queries.getMediaSkillAvailabilityInternal,
+      { userId: args.userId, requireZdr },
+    );
+    const unavailableProfiles = new Set<string>(Array.isArray(mediaAvailability)
+      ? mediaAvailability
+          .filter((entry) => !entry.isAvailable)
+          .map((entry) => entry.profile)
+      : MEDIA_GENERATION_PROFILES);
+    availableSkillProfiles = availableSkillProfiles.filter(
+      (profile) => !unavailableProfiles.has(profile),
+    );
+  }
+  sharedToolCtx.availableSkillProfiles = availableSkillProfiles;
+
+  const profileIsAvailable = (profile: SkillToolProfileId): boolean =>
+    availableSkillProfiles?.includes(profile) ?? true;
+  const loadedSkillIsAvailable = (skill: LoadedSkillState): boolean =>
+    skill.requiredToolProfiles.every(profileIsAvailable);
+
   try {
     assertModelAvailable({
       modelId: participant.modelId,
@@ -738,13 +773,7 @@ export async function generateForParticipant(
           {
             availableCapabilities: [],
             availableIntegrationIds: progressiveTools?.enabledIntegrations ?? [],
-            availableProfiles: progressiveTools
-              ? availableProgressiveProfiles({
-                  enabledIntegrations: progressiveTools.enabledIntegrations,
-                  isPro,
-                  allowSubagents: progressiveTools.allowSubagents,
-                })
-              : undefined,
+            availableProfiles: availableSkillProfiles,
           },
         );
         if (progressiveTools?.allowSubagents === true) {
@@ -845,12 +874,12 @@ export async function generateForParticipant(
     const initiallyLoadedSkills = mergeLoadedSkills(
       historicalLoadedSkills,
       params.restoredLoadedSkills,
-    );
+    ).filter(loadedSkillIsAvailable);
     const initiallyRestoredProfiles = Array.from(new Set([
       ...(params.restoredActiveProfiles ?? []),
       ...initiallyLoadedSkills.flatMap((skill) => skill.requiredToolProfiles),
       ...alwaysSkillProfiles,
-    ]));
+    ])).filter(profileIsAvailable);
     const dateContextProfiles = shouldGroundDocumentRelativeDate(
       currentUserPrompt,
       effectiveDirectToolNames,
@@ -944,16 +973,18 @@ export async function generateForParticipant(
       ? Array.from(new Set([
           ...extractProfilesFromConversation(requestMessages),
           ...initiallyRestoredProfiles,
-        ]))
+        ])).filter(profileIsAvailable)
       : initiallyRestoredProfiles;
     let loadedSkills = mergeLoadedSkills(
       initiallyLoadedSkills,
       extractLoadedSkillsFromConversation(requestMessages),
-    );
+    ).filter(loadedSkillIsAvailable);
     const normalizedRequestMessages = normalizeMessagesForLoadedSkills(
       requestMessages,
       loadedSkills,
+      { recoverWhenEmpty: false },
     );
+    sharedToolCtx.imageContextMessages = normalizedRequestMessages;
     const continuationGroup = buildGenerationContinuationGroup({
       generation: args,
       requireZdr,
@@ -969,7 +1000,10 @@ export async function generateForParticipant(
     if (
       progressiveTools &&
       onDocumentToolsScoped &&
-      (shouldRebuildRegistryForDocumentTools || restoredProfiles.length > 0)
+      (
+        shouldRebuildRegistryForDocumentTools || restoredProfiles.length > 0 ||
+        params.restoredActiveProfiles !== undefined
+      )
     ) {
       const rebuilt = await onDocumentToolsScoped({
         activeProfiles: restoredProfiles,
@@ -1098,10 +1132,6 @@ export async function generateForParticipant(
       caps?.hasReasoning,
       caps?.hasAudioOutput,
     );
-    if (caps?.hasImageGeneration) {
-      assertOpenRouterImagePrivacy(requireZdr);
-    }
-
     if (requireZdr) {
       if (!(caps?.hasZdrEndpoint)) {
         throw new ConvexError({
@@ -1149,6 +1179,7 @@ export async function generateForParticipant(
         maxInputReferences: caps.imageCapabilities?.maxInputReferences,
         supportedParameters: caps.imageCapabilities?.supportedParameters,
         requireZdr,
+        providerDeadlineAt: params.providerDeadlineAt,
         onProviderDispatch: params.onProviderDispatch,
       });
       latencyMetrics.openrouter_round_trip_duration_ms =
@@ -1416,6 +1447,33 @@ export async function generateForParticipant(
     const activeProfiles = new Set<SkillToolProfileId>(
       restoredProfiles,
     );
+    const registerGeneratedFiles = async (
+      toolResults: RecordedToolResult[],
+    ): Promise<void> => {
+      const generatedFiles = extractGeneratedFiles(toolResults);
+      if (
+        generatedFiles.length === 0
+        || !args.executionAttemptId
+        || args.executionFence === undefined
+      ) return;
+      await ctx.runMutation(
+        internal.chat.generated_file_registration.registerGeneratedFilesForToolRound,
+        {
+          userId: args.userId,
+          chatId: args.chatId,
+          messageId: participant.messageId,
+          jobId: participant.jobId,
+          executionAttemptId: args.executionAttemptId,
+          executionFence: args.executionFence,
+          files: generatedFiles,
+        },
+      );
+    };
+
+    // A deferred presentation completes between participant actions. Register
+    // its file before the resumed model can immediately hand it to another
+    // tool such as Gmail, Drive, or document authoring.
+    await registerGeneratedFiles(progressiveToolResults);
 
     const genResult = await runGenerationWithCompaction({
       apiKey,
@@ -1464,7 +1522,10 @@ export async function generateForParticipant(
       onToolRoundComplete: async (_round, results) => {
         activeProgressiveToolCallIDs.clear();
         for (const { toolCallId, result } of results) {
-          if (result.deferred?.kind === "presentation_workflow") {
+          if (
+            result.deferred?.kind === "presentation_workflow" ||
+            result.deferred?.kind === "video_generation"
+          ) {
             activeProgressiveToolCallIDs.add(toolCallId);
             continue;
           }
@@ -1477,7 +1538,7 @@ export async function generateForParticipant(
           const recorded: RecordedToolResult = {
             toolCallId,
             toolName,
-            result: JSON.stringify(payload).slice(0, 50_000),
+            result: serializeToolResultForStorage(toolName, payload, 50_000),
             isError: result.success ? undefined : true,
           };
           const existingIndex = progressiveToolResults.findIndex(
@@ -1500,6 +1561,7 @@ export async function generateForParticipant(
         );
       },
       onToolArtifacts: async (round, toolCalls, results) => {
+        await registerGeneratedFiles(progressiveToolResults);
         const runtimeKind = (args as { subagentBatchId?: Id<"subagentBatches"> }).subagentBatchId
           ? "subagent_parent_resume"
           : "chat_generation";
@@ -1529,17 +1591,27 @@ export async function generateForParticipant(
           results,
         });
       },
-      onPrepareNextTurn: async (round, toolCalls, results, conversationMessages) => {
+      onPrepareNextTurn: async (
+        round,
+        toolCalls,
+        results,
+        conversationMessages,
+        _currentRegistry,
+        _currentParams,
+        roundToolCtx,
+      ) => {
         if (!progressiveTools) return;
 
-        const newProfiles = extractProfilesFromLoadSkillResults(toolCalls, results);
+        const newProfiles = extractProfilesFromLoadSkillResults(toolCalls, results)
+          .filter(profileIsAvailable);
         loadedSkills = mergeLoadedSkills(
           loadedSkills,
           extractLoadedSkillsFromLoadSkillResults(toolCalls, results),
-        );
+        ).filter(loadedSkillIsAvailable);
         const normalizedNextMessages = normalizeMessagesForLoadedSkills(
           conversationMessages,
           loadedSkills,
+          { recoverWhenEmpty: false },
         );
         let changed = false;
         for (const profile of newProfiles) {
@@ -1574,6 +1646,7 @@ export async function generateForParticipant(
           effectiveToolRegistry ?? new ToolRegistry(),
           effectiveParams,
           caps,
+          roundToolCtx,
         );
         if (expanded?.registry) {
           effectiveToolRegistry = expanded.registry;
@@ -1669,6 +1742,9 @@ export async function generateForParticipant(
       const presentationDeferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "presentation_workflow",
       );
+      const videoDeferred = genResult.deferredToolRound.deferredResults.find(
+        (entry) => entry.payload.kind === "video_generation",
+      );
       const analyticsDeferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "analytics_workflow",
       );
@@ -1692,6 +1768,7 @@ export async function generateForParticipant(
         messages: normalizeMessagesForLoadedSkills(
           genResult.deferredToolRound.resumeConversationMessages,
           loadedSkills,
+          { recoverWhenEmpty: false },
         ),
         usage: genResult.totalUsage ?? undefined,
         toolCalls: collectedToolCalls,
@@ -1703,6 +1780,30 @@ export async function generateForParticipant(
         partialContent: writer.totalContent || undefined,
         partialReasoning: writer.totalReasoning || undefined,
       };
+      if (videoDeferred) {
+        const videoJobId = (
+          videoDeferred.payload.data as { videoJobId?: unknown } | undefined
+        )?.videoJobId;
+        if (typeof videoJobId !== "string" || !continuationHandoff?.onDeferredVideo) {
+          throw new ConvexError({
+            code: "INTERNAL_ERROR" as const,
+            message: "Video generation paused without a durable continuation target.",
+          });
+        }
+        await continuationHandoff.onDeferredVideo(deferredCheckpoint, {
+          videoJobId: videoJobId as Id<"videoJobs">,
+          toolCallId: videoDeferred.toolCallId,
+        });
+        return {
+          deferredForSubagents: false,
+          cancelled: false,
+          failed: false,
+          continued: true,
+          usage: genResult.totalUsage,
+          generationId: result.generationId,
+          latencies: latencyMetrics,
+        };
+      }
       if (presentationDeferred) {
         const projectId = (presentationDeferred.payload.data as { projectId?: unknown } | undefined)?.projectId;
         if (typeof projectId !== "string" || !continuationHandoff?.onDeferredPresentation) {
@@ -1951,6 +2052,7 @@ export async function generateForParticipant(
       const continuationMessages = normalizeMessagesForLoadedSkills(
         genResult.continuation.messages,
         loadedSkills,
+        { recoverWhenEmpty: false },
       );
       await continuationHandoff.onHandoff({
         participant,
@@ -2143,6 +2245,7 @@ export async function generateForParticipant(
     // M10: Extract generated file metadata from tool results.
     const generatedFilesMeta = extractGeneratedFiles(genResult.allToolResults);
     const generatedChartsMeta = extractGeneratedCharts(genResult.allToolResults);
+    const generatedToolMedia = extractGeneratedToolMedia(genResult.allToolResults);
 
     // Persist model-authored inline audio from the stream result.
     let audioStorageId: undefined | Id<"_storage">;
@@ -2163,7 +2266,16 @@ export async function generateForParticipant(
       audioGeneratedAt = persistedAudio.audioGeneratedAt;
       audioMimeType = persistedAudio.audioMimeType;
       audioSizeBytes = persistedAudio.audioSizeBytes;
+    } else if (generatedToolMedia.audio) {
+      audioStorageId = generatedToolMedia.audio.storageId;
+      audioDurationMs = generatedToolMedia.audio.durationMs;
+      audioGeneratedAt = Date.now();
+      audioMimeType = generatedToolMedia.audio.mimeType;
+      audioSizeBytes = generatedToolMedia.audio.sizeBytes;
     }
+
+    const allImageUrls = [...persistedImageUrls, ...generatedToolMedia.imageUrls];
+    const allImageMimeTypes = [...imageResult.mimeTypes, ...generatedToolMedia.imageMimeTypes];
 
     const usageToStore = genResult.totalUsage ?? result.usage ?? undefined;
 
@@ -2175,15 +2287,25 @@ export async function generateForParticipant(
       status: "completed",
       usage: usageToStore,
       reasoning: writer.totalReasoning || result.reasoning || undefined,
-      imageUrls: persistedImageUrls.length > 0 ? persistedImageUrls : undefined,
-      imageMimeTypes: imageResult.mimeTypes.length === persistedImageUrls.length &&
-          persistedImageUrls.length > 0
-        ? imageResult.mimeTypes
+      imageUrls: allImageUrls.length > 0 ? allImageUrls : undefined,
+      imageMimeTypes: allImageMimeTypes.length === allImageUrls.length &&
+          allImageUrls.length > 0
+        ? allImageMimeTypes
+        : undefined,
+      imageGenerationResult: generatedToolMedia.imageGenerationResult,
+      videoUrls: generatedToolMedia.videoUrls.length > 0
+        ? generatedToolMedia.videoUrls
         : undefined,
       userId: args.userId,
       // M10: Structured tool data
       toolCalls: collectedToolCalls.length > 0 ? collectedToolCalls : undefined,
       toolResults: collectedToolResults.length > 0 ? collectedToolResults : undefined,
+      generatedFileIds: generatedToolMedia.generatedFileIds.length > 0
+        ? generatedToolMedia.generatedFileIds
+        : undefined,
+      audioGeneratedFileId: generatedToolMedia.audio?.storageId === audioStorageId
+        ? generatedToolMedia.audio?.generatedFileId
+        : undefined,
       generatedFiles: generatedFilesMeta.length > 0 ? generatedFilesMeta : undefined,
       generatedCharts: generatedChartsMeta.length > 0 ? generatedChartsMeta : undefined,
       // Perplexity citations (structured array for rich UI rendering)
@@ -2195,7 +2317,7 @@ export async function generateForParticipant(
       audioGeneratedAt,
       audioMimeType,
       audioSizeBytes,
-      audioTranscript: result.audioTranscript || undefined,
+      audioTranscript: result.audioTranscript || generatedToolMedia.audio?.transcript || undefined,
       triggerUserMessageId: args.userMessageId,
       openrouterGenerationId: result.generationId ?? undefined,
       executionAttemptId: args.executionAttemptId,

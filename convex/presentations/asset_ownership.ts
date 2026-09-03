@@ -34,7 +34,7 @@ async function findOwnedAsset(
   userId: string,
   storageId: Id<"_storage">,
 ): Promise<PresentationAssetMetadata> {
-  const [presentationAsset, attachment, generatedFile] = await Promise.all([
+  const [presentationAsset, attachment, generatedFile, generatedMedia] = await Promise.all([
     ctx.db
       .query("presentationAssets")
       .withIndex("by_user_storage", (query) =>
@@ -48,6 +48,10 @@ async function findOwnedAsset(
     ctx.db
       .query("generatedFiles")
       .withIndex("by_storage", (query) => query.eq("storageId", storageId))
+      .first(),
+    ctx.db
+      .query("generatedMedia")
+      .withIndex("by_storageId", (query) => query.eq("storageId", storageId))
       .first(),
   ]);
   if (presentationAsset) {
@@ -78,6 +82,17 @@ async function findOwnedAsset(
       mimeType: generatedFile.mimeType,
       sizeBytes: generatedFile.sizeBytes ?? 0,
       altText: generatedFile.filename,
+      kind: "attachment",
+    });
+  }
+  if (generatedMedia?.userId === userId && generatedMedia.type === "image") {
+    const extension = generatedMedia.mimeType.toLowerCase().split("/")[1] || "png";
+    return requireImageAsset({
+      storageId,
+      filename: `generated-image.${extension === "jpeg" ? "jpg" : extension}`,
+      mimeType: generatedMedia.mimeType,
+      sizeBytes: generatedMedia.sizeBytes ?? 0,
+      altText: generatedMedia.prompt?.trim() || "Generated image",
       kind: "attachment",
     });
   }

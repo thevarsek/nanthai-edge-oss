@@ -981,7 +981,8 @@ export function ChatPage() {
           enabledIntegrations={overrides.enabledIntegrations} toggleIntegration={(key) => { void handleIntegrationToggle(key); }} connectedProviders={connectedProviders} googleIntegrationsBlocked={googleIntegrationsBlocked}
           remoteMcpConnections={remoteMcpConnections ?? []}
           enabledSkillIds={overrides.enabledSkillIds} toggleSkill={overrides.toggleSkill}
-          skillOverrides={overrides.skillOverrides} cycleSkill={overrides.cycleSkill}
+          skillOverrides={overrides.skillOverrides}
+          cycleSkill={overrides.cycleSkill}
           selectedKBFileIds={overrides.selectedKBFileIds} toggleKBFile={overrides.toggleKBFile}
           chatId={typedChatId} convexParticipants={convexParticipants}
           addParticipant={addParticipant} removeParticipant={removeParticipantMut} setParticipants={setParticipantsMut}

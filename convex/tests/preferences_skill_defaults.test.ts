@@ -22,6 +22,10 @@ function buildAuth(userId: string = "user_1") {
 function buildCtx(
   existingPrefs: Record<string, unknown> | null,
   userId = "user_1",
+  options: {
+    skill?: Record<string, unknown>;
+    models?: Record<string, Record<string, unknown>>;
+  } = {},
 ) {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
@@ -34,20 +38,36 @@ function buildCtx(
     ctx: {
       auth: buildAuth(userId),
       db: {
+        get: async () => options.skill ?? null,
         query: (table: string) => ({
-          withIndex: () => ({
-            first: async () => {
-              if (table === "userPreferences") return currentPrefs;
-              // purchaseEntitlements for requirePro
-              if (table === "purchaseEntitlements") {
-                return { _id: "ent_1", userId, status: "active" };
-              }
-              return null;
-            },
-            filter: () => ({
-              first: async () => ({ _id: "ent_1", userId, status: "active" }),
-            }),
-          }),
+          withIndex: (
+            _index: string,
+            apply?: (query: { eq: (field: string, value: string) => unknown }) => unknown,
+          ) => {
+            let selected = "";
+            const query = {
+              eq: (_field: string, value: string) => {
+                selected = value;
+                return query;
+              },
+            };
+            apply?.(query);
+            return {
+              first: async () => {
+                if (table === "userPreferences") return currentPrefs;
+                if (table === "purchaseEntitlements") {
+                  return { _id: "ent_1", userId, status: "active" };
+                }
+                if (table === "cachedModels") {
+                  return options.models?.[selected] ?? null;
+                }
+                return null;
+              },
+              filter: () => ({
+                first: async () => ({ _id: "ent_1", userId, status: "active" }),
+              }),
+            };
+          },
         }),
         patch: async (id: string, patch: Record<string, unknown>) => {
           patches.push({ id, patch });
@@ -137,6 +157,69 @@ test("setSkillDefault: preserves other entries when upserting", async () => {
   const s2 = sd.find((e: any) => e.skillId === "skill_2");
   assert.equal(s1.state, "always");
   assert.equal(s2.state, "never");
+});
+
+test("setSkillDefault: reports an unavailable selected model without implying ZDR", async () => {
+  const { ctx } = buildCtx(
+    makePrefs({
+      zdrEnabled: false,
+      defaultImageGenerationModelId: "image/retired",
+    }),
+    "user_1",
+    {
+      skill: {
+        name: "Image Generation",
+        requiredToolProfiles: ["imageGeneration"],
+      },
+    },
+  );
+
+  await assert.rejects(
+    (setSkillDefault as any)._handler(ctx, {
+      skillId: "image_skill",
+      state: "available",
+    }),
+    (error: unknown) => error instanceof Error &&
+      "data" in error &&
+      (error.data as { code?: string }).code === "MODEL_UNAVAILABLE" &&
+      !error.message.includes("ZDR"),
+  );
+});
+
+test("setSkillDefault: preserves the ZDR-specific error for incompatible models", async () => {
+  const modelId = "image/non-zdr";
+  const { ctx } = buildCtx(
+    makePrefs({
+      zdrEnabled: true,
+      defaultImageGenerationModelId: modelId,
+    }),
+    "user_1",
+    {
+      skill: {
+        name: "Image Generation",
+        requiredToolProfiles: ["imageGeneration"],
+      },
+      models: {
+        [modelId]: {
+          modelId,
+          supportsImages: true,
+          imageCapabilities: { isAvailable: true },
+          hasZdrEndpoint: false,
+        },
+      },
+    },
+  );
+
+  await assert.rejects(
+    (setSkillDefault as any)._handler(ctx, {
+      skillId: "image_skill",
+      state: "always",
+    }),
+    (error: unknown) => error instanceof Error &&
+      "data" in error &&
+      (error.data as { code?: string }).code === "ZDR_MODEL_UNAVAILABLE" &&
+      error.message.includes("ZDR-compatible"),
+  );
 });
 
 // =============================================================================

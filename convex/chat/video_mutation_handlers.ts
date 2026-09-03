@@ -2,6 +2,11 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { assertCurrentFence, terminalizeExecution } from "../execution/control_plane";
 import { GENERATED_MEDIA_REFERENCE_TRACKING_VERSION } from "../lib/generated_media_reference_tracking";
+import { storageHasContentReferences } from "../knowledge_base/delete_helpers";
+import {
+  ensureVideoProviderReconciliationRef,
+  releaseVideoOutputUpload,
+} from "./video_cleanup";
 import type { FinalizeGenerationArgs } from "./mutations_internal_handlers";
 import { finalizeGenerationHandler } from "./mutations_internal_handlers";
 
@@ -14,7 +19,7 @@ type CreateVideoJobArgs = VideoFence & {
   messageId: Id<"messages">;
   chatId: Id<"chats">;
   userId: string;
-  openRouterJobId: string;
+  openRouterJobId?: string;
   outputUploadId?: Id<"videoOutputUploads">;
   model: string;
   prompt: string;
@@ -25,6 +30,7 @@ type CreateVideoJobArgs = VideoFence & {
     generateAudio?: boolean;
   };
   executionRunId?: Id<"executionRuns">;
+  generationJobId?: Id<"generationJobs">;
 };
 
 type VideoStatusArgs = VideoFence & {
@@ -52,9 +58,24 @@ export async function createVideoJobHandler(
     .withIndex("by_messageId", (query) => query.eq("messageId", args.messageId))
     .first();
   if (existing) {
-    if (existing.openRouterJobId !== args.openRouterJobId) {
+    if (
+      existing.openRouterJobId && args.openRouterJobId &&
+      existing.openRouterJobId !== args.openRouterJobId
+    ) {
       throw new Error("VIDEO_PROVIDER_SUBMISSION_CONFLICT");
     }
+    if (existing.userId !== args.userId || existing.chatId !== args.chatId) {
+      throw new Error("VIDEO_JOB_OWNERSHIP_MISMATCH");
+    }
+    const patch: Record<string, unknown> = {};
+    if (!existing.openRouterJobId && args.openRouterJobId) {
+      patch.openRouterJobId = args.openRouterJobId;
+      patch.status = "in_progress";
+    }
+    if (!existing.outputUploadId && args.outputUploadId) {
+      patch.outputUploadId = args.outputUploadId;
+    }
+    if (Object.keys(patch).length > 0) await ctx.db.patch(existing._id, patch);
     return existing._id;
   }
   return await ctx.db.insert("videoJobs", {
@@ -69,6 +90,7 @@ export async function createVideoJobHandler(
     videoConfig: args.videoConfig,
     pollCount: 0,
     executionRunId: args.executionRunId,
+    generationJobId: args.generationJobId,
     executionAttemptId: args.executionAttemptId,
     executionFence: args.executionFence,
     createdAt: Date.now(),
@@ -78,6 +100,7 @@ export async function createVideoJobHandler(
 export async function createVideoOutputUploadSessionHandler(
   ctx: MutationCtx,
   args: VideoFence & {
+    videoJobId: Id<"videoJobs">;
     tokenHash: string;
     expiresAt: number;
     messageId: Id<"messages">;
@@ -87,7 +110,24 @@ export async function createVideoOutputUploadSessionHandler(
   },
 ): Promise<Id<"videoOutputUploads">> {
   await assertOptionalVideoFence(ctx, args);
-  return await ctx.db.insert("videoOutputUploads", {
+  const job = await ctx.db.get(args.videoJobId);
+  if (
+    !job || job.userId !== args.userId || job.chatId !== args.chatId ||
+    job.messageId !== args.messageId ||
+    (args.executionRunId !== undefined && job.executionRunId !== args.executionRunId)
+  ) {
+    throw new Error("VIDEO_OUTPUT_UPLOAD_OWNERSHIP_MISMATCH");
+  }
+  if (job.outputUploadId) {
+    const existing = await ctx.db.get(job.outputUploadId);
+    if (
+      existing?.tokenHash === args.tokenHash &&
+      existing.messageId === args.messageId && existing.chatId === args.chatId &&
+      existing.userId === args.userId && existing.expiresAt === args.expiresAt
+    ) return existing._id;
+    if (existing) throw new Error("VIDEO_OUTPUT_UPLOAD_CONFLICT");
+  }
+  const uploadId = await ctx.db.insert("videoOutputUploads", {
     tokenHash: args.tokenHash,
     messageId: args.messageId,
     chatId: args.chatId,
@@ -99,6 +139,8 @@ export async function createVideoOutputUploadSessionHandler(
     createdAt: Date.now(),
     expiresAt: args.expiresAt,
   });
+  await ctx.db.patch(job._id, { outputUploadId: uploadId });
+  return uploadId;
 }
 
 export async function completeVideoOutputUploadHandler(
@@ -112,8 +154,12 @@ export async function completeVideoOutputUploadHandler(
   },
 ): Promise<boolean> {
   const session = await ctx.db.get(args.uploadId);
-  if (!session || session.status !== "pending") return false;
-  if (session.tokenHash !== args.expectedTokenHash) return false;
+  if (!session || session.tokenHash !== args.expectedTokenHash) return false;
+  if (session.status === "uploaded") {
+    return session.storageId === args.storageId &&
+      session.mimeType === args.mimeType && session.sizeBytes === args.sizeBytes;
+  }
+  if (session.status !== "pending") return false;
   if (session.expiresAt <= Date.now()) return false;
   await ctx.db.patch(session._id, {
     status: "uploaded",
@@ -125,16 +171,49 @@ export async function completeVideoOutputUploadHandler(
   return true;
 }
 
+export async function discardVideoOutputUploadCandidateHandler(
+  ctx: MutationCtx,
+  args: {
+    uploadId: Id<"videoOutputUploads">;
+    storageId: Id<"_storage">;
+  },
+): Promise<void> {
+  const session = await ctx.db.get(args.uploadId);
+  if (session?.storageId === args.storageId) return;
+  if (await storageHasContentReferences(ctx, args.storageId)) return;
+  await ctx.storage.delete(args.storageId).catch(() => undefined);
+}
+
 export async function updateVideoJobStatusHandler(
   ctx: MutationCtx,
   args: VideoStatusArgs,
 ): Promise<void> {
   await assertOptionalVideoFence(ctx, args);
+  const job = await ctx.db.get(args.videoJobId);
+  if (!job) return;
+  const outputUploadId = job.outputUploadId;
+  const now = Date.now();
   await ctx.db.patch(args.videoJobId, {
     status: args.status,
     error: args.error,
-    lastPolledAt: Date.now(),
+    ...(args.status === "failed" ? { outputUploadId: undefined } : {}),
+    lastPolledAt: now,
   });
+  if (
+    args.status === "failed" && job.openRouterJobId &&
+    job.providerTerminalAt === undefined && job.executionRunId
+  ) {
+    await ensureVideoProviderReconciliationRef(ctx, {
+      runId: job.executionRunId,
+      attemptId: job.executionAttemptId,
+      userId: job.userId,
+      videoJobId: job._id,
+      now,
+    });
+  }
+  if (args.status === "failed" && outputUploadId) {
+    await releaseVideoOutputUpload(ctx, outputUploadId);
+  }
 }
 
 export async function updateVideoJobPollHandler(
@@ -155,6 +234,9 @@ export async function markVideoProviderTerminalHandler(
   args: {
     videoJobId: Id<"videoJobs">;
     status: "completed" | "failed";
+    generationId?: string;
+    cost?: number;
+    isByok?: boolean;
   },
 ): Promise<void> {
   const job = await ctx.db.get(args.videoJobId);
@@ -162,6 +244,9 @@ export async function markVideoProviderTerminalHandler(
   await ctx.db.patch(job._id, {
     providerTerminalAt: Date.now(),
     providerTerminalStatus: args.status,
+    providerGenerationId: args.generationId,
+    providerCost: args.cost,
+    providerIsByok: args.isByok,
     lastPolledAt: Date.now(),
   });
 }
@@ -223,10 +308,13 @@ export async function settleVideoGenerationHandler(
   if (args.status === "completed" && !args.media) {
     throw new Error("VIDEO_COMPLETION_MEDIA_REQUIRED");
   }
+  const outputUploadId = videoJob.outputUploadId;
+  const now = Date.now();
   await ctx.db.patch(args.videoJobId, {
     status: args.status === "completed" ? "completed" : "failed",
     error: args.error,
-    lastPolledAt: Date.now(),
+    outputUploadId: undefined,
+    lastPolledAt: now,
   });
   if (args.media) {
     await ctx.db.insert("generatedMedia", {
@@ -240,6 +328,21 @@ export async function settleVideoGenerationHandler(
       referenceTrackingVersion: GENERATED_MEDIA_REFERENCE_TRACKING_VERSION,
       createdAt: Date.now(),
     });
+  }
+  if (
+    args.status !== "completed" && videoJob.openRouterJobId &&
+    videoJob.providerTerminalAt === undefined && videoJob.executionRunId
+  ) {
+    await ensureVideoProviderReconciliationRef(ctx, {
+      runId: videoJob.executionRunId,
+      attemptId: videoJob.executionAttemptId,
+      userId: videoJob.userId,
+      videoJobId: videoJob._id,
+      now,
+    });
+  }
+  if (outputUploadId) {
+    await releaseVideoOutputUpload(ctx, outputUploadId);
   }
   await finalizeGenerationHandler(ctx, args);
   await terminalizeParentGenerationExecution(ctx, videoJob.executionRunId, args.jobId);

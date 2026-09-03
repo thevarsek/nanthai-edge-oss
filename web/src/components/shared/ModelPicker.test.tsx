@@ -64,6 +64,16 @@ beforeEach(() => {
 });
 
 describe("ModelPicker", () => {
+  it("keeps the model list as the bounded scroll owner", () => {
+    render(<ModelPicker selectedModelId="" onSelect={vi.fn()} onClose={vi.fn()} />);
+
+    expect(screen.getByTestId("model-picker-list")).toHaveClass(
+      "min-h-0",
+      "flex-1",
+      "overflow-y-auto",
+    );
+  });
+
   it("pins the selected model when search filters it out and clears search without selecting", () => {
     const onSelect = vi.fn();
     const onClose = vi.fn();
@@ -111,6 +121,64 @@ describe("ModelPicker", () => {
     expect(screen.queryByText("Free Image")).not.toBeInTheDocument();
     expect(screen.queryByText("Hybrid Image")).not.toBeInTheDocument();
     expect(screen.queryByText("Video Model")).not.toBeInTheDocument();
+    expect(screen.queryByText("Selected")).not.toBeInTheDocument();
+  });
+
+  it("shows only models matching the requested generation capability", () => {
+    mockState.models = [
+      { modelId: "image/model", name: "Image Model", generationCapabilities: { image: true, music: false, speech: false, video: false } },
+      { modelId: "music/model", name: "Music Model", generationCapabilities: { image: false, music: true, speech: false, video: false } },
+      { modelId: "speech/model", name: "Speech Model", generationCapabilities: { image: false, music: false, speech: true, video: false } },
+      { modelId: "video/model", name: "Video Model", generationCapabilities: { image: false, music: false, speech: false, video: true } },
+    ];
+    const commonProps = { selectedModelId: "", onSelect: vi.fn(), onClose: vi.fn() };
+    const { rerender } = render(<ModelPicker {...commonProps} generationKind="image" />);
+
+    expect(screen.getByText("Image Model")).toBeInTheDocument();
+    expect(screen.queryByText("Music Model")).not.toBeInTheDocument();
+    expect(screen.queryByText(/help me choose/i)).not.toBeInTheDocument();
+
+    rerender(<ModelPicker {...commonProps} generationKind="music" />);
+    expect(screen.getByText("Music Model")).toBeInTheDocument();
+    expect(screen.queryByText("Image Model")).not.toBeInTheDocument();
+
+    rerender(<ModelPicker {...commonProps} generationKind="speech" />);
+    expect(screen.getByText("Speech Model")).toBeInTheDocument();
+
+    rerender(<ModelPicker {...commonProps} generationKind="video" />);
+    expect(screen.getByText("Video Model")).toBeInTheDocument();
+  });
+
+  it("keeps incompatible generation models visible but disabled while ZDR is enabled", () => {
+    mockState.prefs = { zdrEnabled: true };
+    mockState.models = [
+      {
+        modelId: "speech/non-zdr",
+        name: "Standard Voice",
+        generationCapabilities: { image: false, music: false, speech: true, video: false },
+        generationZdrCapabilities: { image: false, music: false, speech: false, video: false },
+      },
+      {
+        modelId: "speech/zdr",
+        name: "ZDR Voice",
+        generationCapabilities: { image: false, music: false, speech: true, video: false },
+        generationZdrCapabilities: { image: false, music: false, speech: true, video: false },
+      },
+    ];
+
+    render(
+      <ModelPicker
+        selectedModelId="speech/non-zdr"
+        onSelect={vi.fn()}
+        onClose={vi.fn()}
+        generationKind="speech"
+      />,
+    );
+
+    expect(screen.getByText("ZDR Voice")).toBeInTheDocument();
+    expect(screen.getByText("Standard Voice")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Standard Voice" })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByText(/doesn't support Zero Data Retention/i)).toBeInTheDocument();
     expect(screen.queryByText("Selected")).not.toBeInTheDocument();
   });
 

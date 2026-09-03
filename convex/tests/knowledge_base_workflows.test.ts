@@ -217,6 +217,48 @@ test("deleteKnowledgeBaseFile removes message references but preserves shared st
   assert.ok(events.some((event) => event.op === "delete" && event.id === "fa_1"));
 });
 
+test("deleteKnowledgeBaseFile preserves an upload reused by a presentation", async () => {
+  const rows: Record<string, any[]> = {
+    fileAttachments: [{
+      _id: "fa_1",
+      userId: "user_1",
+      storageId: "storage_shared",
+      filename: "reference.png",
+      mimeType: "image/png",
+    }],
+    generatedFiles: [],
+    generatedMedia: [],
+    messages: [],
+    presentationAssets: [{
+      _id: "asset_1",
+      userId: "user_1",
+      storageId: "storage_shared",
+    }],
+    presentationProjects: [],
+    documents: [],
+    googleDriveFileGrants: [{
+      _id: "grant_1",
+      userId: "user_1",
+      cachedStorageId: "storage_shared",
+    }],
+  };
+  const storageDeletes: string[] = [];
+
+  await deleteKnowledgeBaseFileHandler({
+    auth: buildAuth(),
+    db: buildDb(rows),
+    storage: { delete: async (id: string) => storageDeletes.push(id) },
+  } as unknown as MutationCtx, {
+    source: "upload",
+    storageId: "storage_shared" as Id<"_storage">,
+    fileAttachmentId: "fa_1" as Id<"fileAttachments">,
+  });
+
+  assert.deepEqual(rows.fileAttachments, []);
+  assert.deepEqual(rows.googleDriveFileGrants, []);
+  assert.deepEqual(storageDeletes, []);
+});
+
 test("deleteKnowledgeBaseFile cleans generated media documents, extraction blobs, grant cache, and storage", async () => {
   const rows: Record<string, any[]> = {
     generatedFiles: [],
@@ -284,6 +326,40 @@ test("deleteKnowledgeBaseFile removes copied image references before deleting sh
   assert.deepEqual(rows.messages[1].imageMimeTypes, []);
   assert.deepEqual(rows.generatedMedia, []);
   assert.deepEqual(storageDeletes, ["storage_media"]);
+});
+
+test("deleteKnowledgeBaseFile preserves generated audio reused by a copied message", async () => {
+  const rows: Record<string, any[]> = {
+    generatedFiles: [{
+      _id: "file_1",
+      userId: "user_1",
+      messageId: "message_1",
+      storageId: "shared_audio",
+    }],
+    generatedMedia: [],
+    fileAttachments: [],
+    googleDriveFileGrants: [],
+    documents: [],
+    messages: [
+      { _id: "message_1", generatedFileIds: ["file_1"] },
+      { _id: "message_2", audioStorageId: "shared_audio" },
+    ],
+    presentationAssets: [],
+  };
+  const storageDeletes: string[] = [];
+
+  await deleteKnowledgeBaseFileHandler({
+    auth: buildAuth(),
+    db: buildDb(rows),
+    storage: { delete: async (id: string) => storageDeletes.push(id) },
+  } as unknown as MutationCtx, {
+    source: "generated",
+    storageId: "shared_audio" as Id<"_storage">,
+  });
+
+  assert.deepEqual(rows.generatedFiles, []);
+  assert.deepEqual(rows.messages[0].generatedFileIds, []);
+  assert.deepEqual(storageDeletes, []);
 });
 
 test("listKnowledgeBaseFiles hydrates folder metadata and unfiled filters across upload and Drive rows", async () => {

@@ -14,6 +14,10 @@ import {
   isEligibleModel,
 } from "./model_filters";
 import { projectModelMediaContract } from "./media_capabilities";
+import {
+  projectGenerationCapabilities,
+  projectGenerationZdrCapabilities,
+} from "./generation_capabilities";
 
 /**
  * Safety cap for unfiltered model catalog queries. The OpenRouter catalog
@@ -57,6 +61,7 @@ export const getModel = query({
 export const listModelSummaries = query({
   args: {
     provider: v.optional(v.string()),
+    includeGenerationModels: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const raw = args.provider
@@ -68,7 +73,12 @@ export const listModelSummaries = query({
 
     return filterExcludedOpenRouterProviders(raw)
       .map(projectModelMediaContract)
-      .filter(isEligibleModel)
+      .filter((model) => (
+        isEligibleModel(model) || (
+          args.includeGenerationModels === true
+          && Object.values(projectGenerationCapabilities(model)).some(Boolean)
+        )
+      ))
       .map((m) => ({
         _id: m._id,
         modelId: m.modelId,
@@ -92,6 +102,7 @@ export const listModelSummaries = query({
         // full listModels subscription.
         architecture: m.architecture,
         supportedParameters: m.supportedParameters,
+        supportedVoices: m.supportedVoices,
         // Video frame image support — which frame types this video model
         // accepts (e.g. ["first_frame", "last_frame"]). Empty array means
         // the model is text-to-video only and ignores attached images.
@@ -144,6 +155,8 @@ export const listModelSummaries = query({
             }
           : undefined,
         mediaCapabilities: m.mediaCapabilities,
+        generationCapabilities: projectGenerationCapabilities(m),
+        generationZdrCapabilities: projectGenerationZdrCapabilities(m),
         // Guidance data (optional)
         derivedGuidance: m.derivedGuidance
           ? {

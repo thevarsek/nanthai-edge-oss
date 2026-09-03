@@ -29,6 +29,7 @@ import {
   executeWithLoadedSkillGuard,
   withoutLoadSkillDefinition,
 } from "./load_skill_repeat_guard";
+import { serializeToolResultForStorage } from "./media_tool_result_projection";
 
 const defaultToolCallLoopDeps = {
   callOpenRouterStreaming,
@@ -172,6 +173,7 @@ export interface ToolCallLoopOptions {
     conversationMessages: OpenRouterMessage[],
     currentRegistry: ToolRegistry,
     currentParams: ChatRequestParameters,
+    roundToolCtx: ToolExecutionContext,
   ) => Promise<{
     registry?: ToolRegistry;
     messages?: OpenRouterMessage[];
@@ -215,11 +217,37 @@ function buildToolRoundMessages(
     messages.push({
       role: "tool",
       tool_call_id: toolCallId,
-      content: JSON.stringify(result.success ? result.data : { error: result.error }),
+      content: JSON.stringify(toolResultPayload(result)),
     });
   }
 
   return messages;
+}
+
+function refreshToolResultMessages(
+  messages: OpenRouterMessage[],
+  results: Array<{ toolCallId: string; result: ToolResult }>,
+): OpenRouterMessage[] {
+  const resultsByCallId = new Map(results.map(({ toolCallId, result }) => [
+    toolCallId,
+    JSON.stringify(toolResultPayload(result)),
+  ]));
+  return messages.map((message) => {
+    if (message.role !== "tool" || !message.tool_call_id) return message;
+    const content = resultsByCallId.get(message.tool_call_id);
+    return content === undefined ? message : { ...message, content };
+  });
+}
+
+export function toolResultPayload(result: ToolResult): unknown {
+  if (result.success) return result.data;
+  if (result.data === undefined || result.data === null) {
+    return { error: result.error };
+  }
+  if (typeof result.data === "object" && !Array.isArray(result.data)) {
+    return { error: result.error, ...result.data as Record<string, unknown> };
+  }
+  return { error: result.error, data: result.data };
 }
 
 /**
@@ -280,22 +308,19 @@ export async function runToolCallLoop(
     }
 
     // Execute all tool calls in parallel to minimise round-trip latency.
+    const roundToolCtx: ToolExecutionContext = {
+      ...options.toolCtx,
+      operationScope: options.toolCtx.operationScope
+        ? `${options.toolCtx.operationScope}:round:${round}`
+        : JSON.stringify(conversationMessages),
+    };
     const guardedExecution = await executeWithLoadedSkillGuard(
       currentRegistry,
       currentResult.toolCalls,
-      {
-        ...options.toolCtx,
-        operationScope: options.toolCtx.operationScope
-          ? `${options.toolCtx.operationScope}:round:${round}`
-          : JSON.stringify(conversationMessages),
-      },
+      roundToolCtx,
       loadedSkillSlugs,
     );
     const results = guardedExecution.results;
-
-    if (options.onToolArtifacts) {
-      await options.onToolArtifacts(round, currentResult.toolCalls, results);
-    }
 
     // Append assistant tool-call message + tool results to conversation.
     const baseConversationMessages = conversationMessages;
@@ -314,6 +339,7 @@ export async function runToolCallLoop(
         conversationMessages,
         currentRegistry,
         currentParams,
+        roundToolCtx,
       );
       if (nextTurn?.messages) {
         conversationMessages = nextTurn.messages;
@@ -328,6 +354,15 @@ export async function runToolCallLoop(
         stopBeforeModelCall = true;
       }
     }
+
+    // Progressive profile expansion may retry calls that were unknown in the
+    // initial registry. Keep the model-facing transcript aligned with those
+    // final results while preserving any other message rewrites from the
+    // callback (for example loaded-skill guidance).
+    conversationMessages = refreshToolResultMessages(
+      conversationMessages,
+      results,
+    );
 
     const deferredResults = results.flatMap(({ toolCallId, result }) => {
       if (!result.deferred) return [];
@@ -349,21 +384,25 @@ export async function runToolCallLoop(
       // On failure, preserve any structured `data` alongside the error so clients
       // can react to signals like `requiresDrivePicker`. On success, store the
       // unwrapped data payload (legacy shape).
-      const persistedPayload = result.success
-        ? result.data
-        : result.data !== undefined && result.data !== null
-          ? { error: result.error, ...(typeof result.data === "object" ? result.data as Record<string, unknown> : { data: result.data }) }
-          : { error: result.error };
+      const persistedPayload = toolResultPayload(result);
       allToolResults.push({
         toolCallId,
         toolName,
-        result: truncateForStorage(JSON.stringify(persistedPayload)),
+        result: serializeToolResultForStorage(
+          toolName,
+          persistedPayload,
+          MAX_TOOL_RESULT_STORE_CHARS,
+        ),
         isError: result.success ? undefined : true,
       });
     }
 
     if (options.onToolRoundComplete) {
       await options.onToolRoundComplete(round, results);
+    }
+
+    if (options.onToolArtifacts) {
+      await options.onToolArtifacts(round, currentResult.toolCalls, results);
     }
 
     if (deferredResults.length > 0) {

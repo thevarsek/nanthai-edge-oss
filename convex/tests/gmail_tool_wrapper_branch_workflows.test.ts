@@ -221,6 +221,30 @@ test("Gmail wrappers preserve draft uid and all-success label updates", async ()
   }
 });
 
+test("Gmail draft transport failures propagate for operation reconciliation", async () => {
+  const restore = patchImap({
+    connect: async () => undefined,
+    logout: async () => undefined,
+    list: async () => [{ path: "[Gmail]/Drafts", specialUse: "\\Drafts" }],
+    append: async () => {
+      throw new Error("IMAP connection lost after append");
+    },
+  });
+
+  try {
+    await assert.rejects(
+      () => gmailCreateDraft.execute(toolCtx(), {
+        to: "draft@example.com",
+        subject: "Draft",
+        body: "Draft body",
+      }),
+      /IMAP connection lost after append/,
+    );
+  } finally {
+    restore();
+  }
+});
+
 test("Gmail wrapper errors preserve thrown non-Error values", async () => {
   const disconnected = await gmailRead.execute({
     userId: "user_1",

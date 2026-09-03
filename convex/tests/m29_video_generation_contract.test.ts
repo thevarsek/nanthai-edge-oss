@@ -41,9 +41,15 @@ function buildMultiTableDb(tableData: Record<string, any[]>) {
       withIndex: () => ({
         collect: async () => tableData[table] ?? [],
         first: async () => (tableData[table] ?? [])[0] ?? null,
-        order: (dir: string) => ({
-          take: async (n: number) => (tableData[table] ?? []).slice(0, n),
-        }),
+        order: (dir: string) => {
+          const ordered = dir === "desc"
+            ? [...(tableData[table] ?? [])].reverse()
+            : (tableData[table] ?? []);
+          return {
+            first: async () => ordered[0] ?? null,
+            take: async (n: number) => ordered.slice(0, n),
+          };
+        },
       }),
     }),
   };
@@ -170,6 +176,38 @@ test("getVideoJobStatusHandler returns correct shape for owned video job", async
     lastPolledAt: 2000,
     error: undefined,
   });
+});
+
+test("getVideoJobStatusHandler returns the newest retry for a message", async () => {
+  const result = await getVideoJobStatusHandler(
+    {
+      auth: buildAuth("user_1"),
+      db: buildMultiTableDb({
+        videoJobs: [
+          {
+            messageId: "msg_1",
+            userId: "user_1",
+            status: "failed",
+            pollCount: 10,
+            model: "old/model",
+            createdAt: 1000,
+          },
+          {
+            messageId: "msg_1",
+            userId: "user_1",
+            status: "in_progress",
+            pollCount: 2,
+            model: "new/model",
+            createdAt: 2000,
+          },
+        ],
+      }),
+    } as any,
+    { messageId: "msg_1" as any },
+  );
+
+  assert.equal(result?.model, "new/model");
+  assert.equal(result?.status, "in_progress");
 });
 
 test("getVideoJobStatusHandler includes error field when present", async () => {

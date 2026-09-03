@@ -8,6 +8,7 @@ import { query, internalQuery } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
 import { MODEL_IDS } from "../lib/model_constants";
 import { isUserPro } from "./entitlements";
+import { speechConfigFromPreferences } from "./speech_defaults";
 
 // -- User Preferences ---------------------------------------------------------
 
@@ -28,6 +29,14 @@ export const getPreferences = query({
     return {
       ...preferences,
       defaultModelId: preferences.defaultModelId ?? MODEL_IDS.appDefault,
+      defaultImageGenerationModelId:
+        preferences.defaultImageGenerationModelId ?? MODEL_IDS.imageGeneration,
+      defaultMusicGenerationModelId:
+        preferences.defaultMusicGenerationModelId ?? MODEL_IDS.musicGeneration,
+      defaultSpeechGenerationModelId:
+        preferences.defaultSpeechGenerationModelId ?? MODEL_IDS.speechGeneration,
+      defaultVideoGenerationModelId:
+        preferences.defaultVideoGenerationModelId ?? MODEL_IDS.videoGeneration,
     };
   },
 });
@@ -115,6 +124,41 @@ export const getSkillIntegrationDefaults = internalQuery({
     return {
       skillDefaults: prefs?.skillDefaults ?? undefined,
       integrationDefaults: prefs?.integrationDefaults ?? undefined,
+    };
+  },
+});
+
+/** Internal: resolve model and parameter defaults for model-invoked media tools. */
+export const getMediaGenerationDefaults = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const prefs = await ctx.db
+      .query("userPreferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+    return {
+      imageModelId: prefs?.defaultImageGenerationModelId ?? MODEL_IDS.imageGeneration,
+      musicModelId: prefs?.defaultMusicGenerationModelId ?? MODEL_IDS.musicGeneration,
+      speechModelId: prefs?.defaultSpeechGenerationModelId ?? MODEL_IDS.speechGeneration,
+      videoModelId: prefs?.defaultVideoGenerationModelId ?? MODEL_IDS.videoGeneration,
+      preferredVoice: prefs?.preferredVoice ?? "nova",
+      speechConfig: speechConfigFromPreferences(prefs),
+      imageConfig: {
+        count: prefs?.defaultImageCount,
+        aspectRatio: prefs?.defaultImageAspectRatio,
+        resolution: prefs?.defaultImageResolution,
+        quality: prefs?.defaultImageQuality,
+        background: prefs?.defaultImageBackground,
+        outputFormat: prefs?.defaultImageOutputFormat,
+        outputCompression: prefs?.defaultImageOutputCompression,
+      },
+      videoConfig: {
+        aspectRatio: prefs?.defaultVideoAspectRatio,
+        duration: prefs?.defaultVideoDuration,
+        resolution: prefs?.defaultVideoResolution,
+        generateAudio: prefs?.defaultVideoGenerateAudio,
+      },
+      zdrEnabled: prefs?.zdrEnabled === true,
     };
   },
 });

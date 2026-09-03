@@ -129,6 +129,7 @@ const KNOWN_TOOL_IDS = new Set([
   "generate_xlsx", "read_xlsx", "edit_xlsx",
   "generate_text_file", "read_text_file",
   "generate_eml", "read_eml",
+  "generate_image", "generate_music", "generate_speech", "generate_video",
   "fetch_image",
   "search_chats",
   "create_scheduled_job", "list_scheduled_jobs", "update_scheduled_job", "delete_scheduled_job",
@@ -148,7 +149,7 @@ const KNOWN_TOOL_IDS = new Set([
   "google_calendar_list", "google_calendar_create", "google_calendar_delete",
   "calendar_list", "calendar_create", "calendar_delete",
   // Microsoft
-  "outlook_send", "outlook_read", "outlook_search", "outlook_delete",
+  "outlook_send", "outlook_create_draft", "outlook_read", "outlook_search", "outlook_delete",
   "outlook_move", "outlook_list_folders",
   "onedrive_upload", "onedrive_list", "onedrive_read", "onedrive_move",
   "ms_calendar_list", "ms_calendar_create", "ms_calendar_delete",

@@ -1,5 +1,6 @@
-import { internalQuery, query } from "../_generated/server";
+import { internalQuery, query, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
+import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
 import { projectExecution } from "./projection";
 
@@ -39,6 +40,39 @@ export const getComponentRefInternal = internalQuery({
   args: { componentRefId: v.id("executionComponentRefs") },
   returns: v.union(v.any(), v.null()),
   handler: async (ctx, args) => await ctx.db.get(args.componentRefId),
+});
+
+const isCancellationRequestedArgs = {
+  attemptId: v.id("executionAttempts"),
+  fence: v.number(),
+};
+
+export async function isCancellationRequestedHandler(
+  ctx: QueryCtx,
+  args: { attemptId: Id<"executionAttempts">; fence: number },
+): Promise<boolean> {
+  const attempt = await ctx.db.get(args.attemptId);
+  if (!attempt || attempt.fence !== args.fence) return true;
+  const run = await ctx.db.get(attempt.runId);
+  if (
+    !run
+    || run.activeAttemptId !== attempt._id
+    || ["cancelling", "completed", "failed", "cancelled"].includes(run.state)
+  ) return true;
+  const tombstone = await ctx.db
+    .query("accountDeletionTombstones")
+    .withIndex("by_user", (query) => query.eq("userId", run.userId))
+    .unique();
+  if (tombstone) return true;
+  if (!run.chatId) return false;
+  const chat = await ctx.db.get(run.chatId);
+  return !chat || chat.isDeleting === true;
+}
+
+export const isCancellationRequested = internalQuery({
+  args: isCancellationRequestedArgs,
+  returns: v.boolean(),
+  handler: isCancellationRequestedHandler,
 });
 
 export const listActiveComponentsForUser = internalQuery({

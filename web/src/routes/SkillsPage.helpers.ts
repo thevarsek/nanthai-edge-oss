@@ -1,6 +1,7 @@
 import type { Id } from "@convex/_generated/dataModel";
+import type { SkillWithMediaAvailability } from "@/lib/mediaSkillAvailability";
 
-export interface SkillDoc {
+export interface SkillDoc extends SkillWithMediaAvailability {
   _id: Id<"skills">;
   name: string;
   summary?: string;

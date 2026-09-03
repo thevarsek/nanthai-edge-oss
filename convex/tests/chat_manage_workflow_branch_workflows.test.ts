@@ -17,7 +17,11 @@ function buildCtx(rows: Record<string, Record<string, unknown>> = {}) {
   const tableRows: Record<string, Record<string, unknown>[]> = {
     documents: Object.values(rows).filter((row) => row._table === "documents"),
     chatParticipants: Object.values(rows).filter((row) => row._table === "chatParticipants"),
+    fileAttachments: Object.values(rows).filter((row) => row._table === "fileAttachments"),
     generatedFiles: Object.values(rows).filter((row) => row._table === "generatedFiles"),
+    generatedMedia: Object.values(rows).filter((row) => row._table === "generatedMedia"),
+    messages: Object.values(rows).filter((row) => row._table === "messages"),
+    presentationAssets: Object.values(rows).filter((row) => row._table === "presentationAssets"),
     generatedCharts: Object.values(rows).filter((row) => row._table === "generatedCharts"),
     searchContexts: Object.values(rows).filter((row) => row._table === "searchContexts"),
     searchSessions: Object.values(rows).filter((row) => row._table === "searchSessions"),
@@ -45,6 +49,10 @@ function buildCtx(rows: Record<string, Record<string, unknown>> = {}) {
         delete: async (id: string) => {
           deletes.push(id);
           records.delete(id);
+          for (const values of Object.values(tableRows)) {
+            const index = values.findIndex((row) => row._id === id);
+            if (index >= 0) values.splice(index, 1);
+          }
         },
         query: (table: string) => ({
           withIndex: (_index: string, apply?: (q: any) => unknown) => {
@@ -143,6 +151,30 @@ test("deleteMessageHandler removes generated artifacts, search state, jobs, and 
     "session_1",
     "stream_1",
   ]);
+});
+
+test("deleteMessageHandler preserves generated audio reused by another message", async () => {
+  const state = buildCtx({
+    chat_1: { _id: "chat_1", userId: "user_1" },
+    msg_1: { _id: "msg_1", _table: "messages", chatId: "chat_1" },
+    msg_2: {
+      _id: "msg_2",
+      _table: "messages",
+      chatId: "chat_1",
+      audioStorageId: "shared_audio",
+    },
+    file_1: {
+      _id: "file_1",
+      _table: "generatedFiles",
+      messageId: "msg_1",
+      storageId: "shared_audio",
+    },
+  });
+
+  await deleteMessageHandler(state.ctx, { messageId: "msg_1" as any });
+
+  assert.ok(state.deletes.includes("file_1"));
+  assert.equal(state.storageDeletes.includes("shared_audio"), false);
 });
 
 test("bulk move and pinned reorder skip foreign rows and reject invalid pinned lists", async () => {

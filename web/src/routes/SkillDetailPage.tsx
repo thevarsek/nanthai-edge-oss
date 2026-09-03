@@ -19,6 +19,10 @@ import { ProGateWrapper } from "@/hooks/useProGate";
 import { useVisibleSkills } from "@/hooks/useSharedData";
 import { useToast } from "@/components/shared/Toast.context";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import {
+  mediaSkillUnavailableMessageKey,
+  type MediaSkillAvailability,
+} from "@/lib/mediaSkillAvailability";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -73,6 +77,7 @@ interface SkillFull {
   version: number;
   createdAt: number;
   updatedAt: number;
+  mediaAvailability?: MediaSkillAvailability;
 }
 
 // ─── Detail row ─────────────────────────────────────────────────────────────
@@ -200,6 +205,13 @@ function SkillDetailContent() {
 
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto p-4 space-y-4">
+
+          {skill.mediaAvailability?.isAvailable === false && (
+            <div className="flex gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+              <AlertTriangle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>{t(mediaSkillUnavailableMessageKey(skill))}</span>
+            </div>
+          )}
 
           {/* ── 1. Identity ── */}
           <SectionLabel>{t("skill_section_label")}</SectionLabel>

@@ -85,6 +85,8 @@ export interface VideoCapabilities {
 export interface ModelCapabilities {
   provider?: string;
   supportedParameters?: string[];
+  supportedVoices?: string[];
+  outputModalities?: string[];
   hasImageInput?: boolean;
   hasAudioInput?: boolean;
   hasAudioOutput?: boolean;

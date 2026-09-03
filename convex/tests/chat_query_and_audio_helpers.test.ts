@@ -82,9 +82,8 @@ test("appendCurrentTurnAudioInput appends audio payloads to the latest user mess
   });
 });
 
-test("requestAudioGenerationHandler schedules audio generation once and short-circuits duplicates", async () => {
-  const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
-  const scheduled: Record<string, unknown>[] = [];
+test("requestAudioGenerationHandler starts one owned audio workflow and short-circuits duplicates", async () => {
+  const starts: Record<string, unknown>[] = [];
   const chat = { _id: "chat_1", userId: "user_1" };
   const message = {
     _id: "msg_1",
@@ -104,18 +103,21 @@ test("requestAudioGenerationHandler schedules audio generation once and short-ci
         if (id === "chat_1") return chat;
         return null;
       },
-      patch: async (id: string, value: Record<string, unknown>) => {
-        patches.push({ id, value });
-      },
-    },
-    scheduler: {
-      runAfter: async (_delay: number, _ref: unknown, args: Record<string, unknown>) => {
-        scheduled.push(args);
-      },
     },
   } as any;
 
-  const first = await requestAudioGenerationHandler(ctx, { messageId: "msg_1" as any });
+  const deps = {
+    startMessageAudioWorkflow: async (_ctx: unknown, args: Record<string, unknown>) => {
+      starts.push(args);
+      return { started: true as const, workflowId: "workflow_1" };
+    },
+  } as any;
+
+  const first = await requestAudioGenerationHandler(
+    ctx,
+    { messageId: "msg_1" as any },
+    deps,
+  );
 
   const duplicateCtx = {
     ...ctx,
@@ -134,12 +136,16 @@ test("requestAudioGenerationHandler schedules audio generation once and short-ci
   const duplicate = await requestAudioGenerationHandler(
     duplicateCtx,
     { messageId: "msg_1" as any },
+    deps,
   );
 
   assert.deepEqual(first, { scheduled: true });
   assert.deepEqual(duplicate, { scheduled: true, alreadyExists: true });
-  assert.deepEqual(patches, [{ id: "msg_1", value: { audioGenerating: true } }]);
-  assert.deepEqual(scheduled, [{ messageId: "msg_1" }]);
+  assert.deepEqual(starts, [{
+    messageId: "msg_1",
+    chatId: "chat_1",
+    userId: "user_1",
+  }]);
 });
 
 test("getMessageAudioUrlHandler requires auth and ownership before returning a URL", async () => {

@@ -74,6 +74,7 @@ test("checkpoint validator covers every top-level durable checkpoint field", () 
     "subagents",
     "presentation",
     "analytics",
+    "video",
     "drive_picker",
     "remote_mcp",
   ]);

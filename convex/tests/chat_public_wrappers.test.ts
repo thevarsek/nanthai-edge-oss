@@ -97,6 +97,8 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
   const generatedDeletes: string[] = [];
   const uploadDeletes: string[] = [];
   const patches: Array<{ id: string; value: Record<string, unknown> }> = [];
+  let generatedFileExists = true;
+  let uploadAttachmentExists = true;
 
   await (deleteKnowledgeBaseFile as any)._handler({
     auth: buildAuth(),
@@ -105,6 +107,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
         withIndex: () => ({
           first: async () => (
             table === "generatedFiles"
+              && generatedFileExists
               ? { _id: "gf_1", userId: "user_1", messageId: "msg_1", storageId: "storage_g" }
               : null
           ),
@@ -118,6 +121,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
       },
       delete: async (id: string) => {
         generatedDeletes.push(id);
+        if (id === "gf_1") generatedFileExists = false;
       },
     },
     storage: {
@@ -134,6 +138,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
         withIndex: () => ({
           first: async () => (
             table === "fileAttachments"
+              && uploadAttachmentExists
               ? { _id: "fa_1", userId: "user_1", messageId: "msg_2", storageId: "storage_u" }
               : null
           ),
@@ -153,6 +158,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
       },
       delete: async (id: string) => {
         uploadDeletes.push(id);
+        if (id === "fa_1") uploadAttachmentExists = false;
       },
     },
     storage: {
@@ -173,6 +179,7 @@ test("deleteKnowledgeBaseFile handles generated and uploaded sources", async () 
 
 test("deleteKnowledgeBaseFile removes Drive grant cache for deleted uploaded attachments", async () => {
   const deletes: string[] = [];
+  let attachmentExists = true;
 
   await (deleteKnowledgeBaseFile as any)._handler({
     auth: buildAuth(),
@@ -181,6 +188,7 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted uploaded att
         withIndex: () => ({
           first: async () => (
             table === "fileAttachments"
+              && attachmentExists
               ? { _id: "fa_1", userId: "user_1", messageId: "msg_1", storageId: "storage_drive" }
               : null
           ),
@@ -198,6 +206,7 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted uploaded att
       patch: async () => undefined,
       delete: async (id: string) => {
         deletes.push(id);
+        if (id === "fa_1") attachmentExists = false;
       },
     },
     storage: {
@@ -251,6 +260,7 @@ test("deleteKnowledgeBaseFile preserves shared cached Drive storage until the la
 
 test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared storage rows", async () => {
   const deletes: string[] = [];
+  let attachmentDeleted = false;
 
   await (deleteKnowledgeBaseFile as any)._handler({
     auth: buildAuth(),
@@ -258,7 +268,7 @@ test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared stora
       query: (table: string) => ({
         withIndex: (indexName: string) => ({
           first: async () => {
-            if (table === "fileAttachments") {
+            if (table === "fileAttachments" && !attachmentDeleted) {
               throw new Error("storage fallback should not be used when fileAttachmentId is provided");
             }
             assert.notEqual(indexName, "by_source_storage");
@@ -275,6 +285,7 @@ test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared stora
       patch: async () => undefined,
       delete: async (id: string) => {
         deletes.push(id);
+        if (id === "fa_kb") attachmentDeleted = true;
       },
     },
     storage: {
@@ -289,6 +300,7 @@ test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared stora
 
 test("deleteKnowledgeBaseFile removes Drive grant cache for deleted generated files", async () => {
   const deletes: string[] = [];
+  let generatedFileExists = true;
 
   await (deleteKnowledgeBaseFile as any)._handler({
     auth: buildAuth(),
@@ -297,6 +309,7 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted generated fi
         withIndex: () => ({
           first: async () => (
             table === "generatedFiles"
+              && generatedFileExists
               ? { _id: "gf_1", userId: "user_1", messageId: "msg_1", storageId: "storage_generated" }
               : null
           ),
@@ -311,6 +324,7 @@ test("deleteKnowledgeBaseFile removes Drive grant cache for deleted generated fi
       patch: async () => undefined,
       delete: async (id: string) => {
         deletes.push(id);
+        if (id === "gf_1") generatedFileExists = false;
       },
     },
     storage: {

@@ -39,6 +39,7 @@ type OpenRouterCatalogModel = {
     modality?: string;
   };
   supported_parameters?: string[];
+  supported_voices?: string[] | null;
 };
 
 // -- Sync metadata helpers ----------------------------------------------------
@@ -84,12 +85,17 @@ export const syncFromOpenRouter = internalAction({
   args: {},
   handler: async (ctx) => {
     // Fetch the OpenRouter model catalog
-    const response = await fetch("https://openrouter.ai/api/v1/models", {
+    // OpenRouter defaults this endpoint to text-output models. Include speech
+    // explicitly so dedicated /audio/speech models are cached for every client.
+    const response = await fetch(
+      "https://openrouter.ai/api/v1/models?output_modalities=text,speech",
+      {
       headers: {
         "HTTP-Referer": HTTP_REFERER,
         "X-Title": X_TITLE,
       },
-    });
+      },
+    );
 
     if (!response.ok) {
       console.error(
@@ -104,7 +110,7 @@ export const syncFromOpenRouter = internalAction({
     // Compute a content hash from the fields we actually sync.
     // Sorted by model ID for deterministic ordering.
     const hashInput = rawModels
-      .map((m: OpenRouterCatalogModel) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
+      .map((m: OpenRouterCatalogModel) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${m.architecture?.modality}|${(m.supported_parameters ?? []).join(",")}|${(m.supported_voices ?? []).join(",")}`)
       .sort()
       .join("\n");
     const hashBuffer = await crypto.subtle.digest(
@@ -207,6 +213,7 @@ export const syncFromOpenRouter = internalAction({
           supportsTools:
             (m.supported_parameters ?? []).includes("tools") ?? false,
           supportedParameters: m.supported_parameters ?? [],
+          supportedVoices: m.supported_voices ?? undefined,
           architecture: m.architecture
             ? {
                 tokenizer: m.architecture.tokenizer ?? undefined,
@@ -255,6 +262,7 @@ export const upsertBatch = internalMutation({
         hasZdrEndpoint: v.optional(v.boolean()),
         supportsTools: v.optional(v.boolean()),
         supportedParameters: v.optional(v.array(v.string())),
+        supportedVoices: v.optional(v.array(v.string())),
         architecture: v.optional(
           v.object({
             tokenizer: v.optional(v.string()),
@@ -299,6 +307,7 @@ export const upsertBatch = internalMutation({
             && !deepEqual(existing.hasZdrEndpoint, model.hasZdrEndpoint)
           ) ||
           !primitiveArraysEqual(existing.supportedParameters, model.supportedParameters) ||
+          !primitiveArraysEqual(existing.supportedVoices, model.supportedVoices) ||
           !deepEqual(existing.architecture, model.architecture);
 
         if (changed) {
@@ -315,6 +324,7 @@ export const upsertBatch = internalMutation({
             supportsVideo: model.supportsVideo,
             supportsTools: model.supportsTools,
             supportedParameters: model.supportedParameters,
+            supportedVoices: model.supportedVoices,
             architecture: model.architecture,
             lastSyncedAt: now,
           };
@@ -342,6 +352,7 @@ export const upsertBatch = internalMutation({
           hasZdrEndpoint: model.hasZdrEndpoint,
           supportsTools: model.supportsTools,
           supportedParameters: model.supportedParameters,
+          supportedVoices: model.supportedVoices,
           architecture: model.architecture,
           lastSyncedAt: now,
         });
@@ -368,7 +379,7 @@ export const pruneStaleModels = internalMutation({
     // Skip rows owned by secondary syncs:
     //   - video-only models (video_sync.ts) — `videoCapabilities` present
     //   - image-only models (image_sync.ts) — `imageCapabilities.managedByImageSync`
-    // Both categories are absent from the general /api/v1/models endpoint
+    // Both categories are absent from the text/speech catalogue request above
     // and would otherwise get deleted on every main sync.
     // cachedModels is typically ~300-400 rows, well within a single mutation.
     const allModels = await ctx.db.query("cachedModels").collect();

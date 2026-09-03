@@ -310,4 +310,8 @@ export interface RetryConfig {
    * so active SSE traffic cannot extend provider work into finalization time.
    */
   absoluteDeadlineAtMs?: number;
+  /** Optional cancellation check for provider work owned by a generation job. */
+  isCancelled?: () => Promise<boolean>;
+  /** Optional shorter cancellation poll interval for focused callers/tests. */
+  cancellationPollIntervalMs?: number;
 }

@@ -36,6 +36,9 @@ export async function handleVideoOutputUpload(
   if (!session) {
     return new Response("Invalid upload token", { status: 404 });
   }
+  if (session.status === "uploaded" && session.storageId) {
+    return Response.json({ storageId: session.storageId });
+  }
   if (session.status !== "pending") {
     return new Response("Upload token already used", { status: 409 });
   }
@@ -61,24 +64,38 @@ export async function handleVideoOutputUpload(
   }
 
   const storageId = await ctx.storage.store(new Blob([blob], { type: mimeType }));
+  const completionArgs = {
+    uploadId: session._id,
+    expectedTokenHash: tokenHash,
+    storageId,
+    mimeType,
+    sizeBytes: blob.size,
+  };
   let accepted: boolean;
   try {
     accepted = await ctx.runMutation(
       internal.chat.mutations.completeVideoOutputUpload,
-      {
-        uploadId: session._id,
-        expectedTokenHash: tokenHash,
-        storageId,
-        mimeType,
-        sizeBytes: blob.size,
-      },
+      completionArgs,
     );
-  } catch (error) {
-    await ctx.storage.delete(storageId).catch(() => undefined);
-    throw error;
+  } catch {
+    try {
+      accepted = await ctx.runMutation(
+        internal.chat.mutations.completeVideoOutputUpload,
+        completionArgs,
+      );
+    } catch (error) {
+      await ctx.runMutation(
+        internal.chat.mutations.discardVideoOutputUploadCandidate,
+        { uploadId: session._id, storageId },
+      ).catch(() => undefined);
+      throw error;
+    }
   }
   if (!accepted) {
-    await ctx.storage.delete(storageId).catch(() => undefined);
+    await ctx.runMutation(
+      internal.chat.mutations.discardVideoOutputUploadCandidate,
+      { uploadId: session._id, storageId },
+    ).catch(() => undefined);
     return new Response("Upload token already used or expired", { status: 409 });
   }
 

@@ -4,7 +4,7 @@
 
 ## Schema Overview
 
-The Convex schema is defined across 6 files imported into `convex/schema.ts` — 65 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
+The Convex schema is defined across 12 focused `schema_tables_*.ts` modules imported into `convex/schema.ts` — 91 app tables total, plus Convex system tables such as `_scheduled_functions`. Shared validators live in `schema_validators.ts`. All user-facing records are scoped by `userId` (Clerk `identity.subject`). iOS uses Codable DTO structs in `Models/DTOs/ConvexTypes.swift` plus focused extensions such as `ConvexGeneratedChart.swift`, and Android maps the same records into Kotlin DTOs under `android/app/src/main/java/com/nanthai/edge/data/`.
 
 ### Tables
 
@@ -13,7 +13,7 @@ The schema-history sections later in this file preserve milestone-era table coun
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
 | `chats` | Conversations | title, userId, folderId, activeBranchLeafId, mode (`chatMode` validator: `"chat"` / `"ideascape"`), isPinned, pinnedAt, source (M13), sourceJobId (M13), sourceJobName (M13), subagentOverride, temperatureOverride, maxTokensOverride, includeReasoningOverride, reasoningEffortOverride, webSearchOverride, searchModeOverride, searchComplexityOverride, skillOverrides (M30), integrationOverrides (M30), autoAudioResponseOverride (M20). `activeBranchLeafId` remains the only persisted branch-selection field; per-fork pill switching is resolved canonically by `chat/manage:switchBranchAtFork`. |
-| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (per-message snapshot), turnSkillOverrides (M30), turnIntegrationOverrides (M30), loadedSkillIds (M30), usedIntegrationIds (M30), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), documentCitations (M32), documentEvents (M33), subagentsEnabled, subagentBatchId, audioStorageId (M20), audioTranscript (M20), audioDurationMs (M20), audioVoice (M20), audioGeneratedAt (M20), audioGenerating (M20), audioLastPlayedAt (M20), videoUrls (M29), hasVideo (M29), retryContract (PR #78 — full participant/config snapshot stored at send time for retry use), terminalErrorCode (PR #78 — canonical failure reason: `stream_timeout` / `provider_error` / `cancelled_by_retry` / `cancelled_by_user` / `unknown_error`). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
+| `messages` | Chat messages | chatId, role, content, modelId, parentMessageIds, status, reasoning, userId (M13 — denormalized for search index), searchSessionId (M9), enabledIntegrations (per-message snapshot), turnSkillOverrides (M30), turnIntegrationOverrides (M30), loadedSkillIds (M30), usedIntegrationIds (M30), toolCalls/toolResults (M10), generatedFileIds (M10), generatedChartIds (M19), citations (2026-03-31 Perplexity URL metadata), documentCitations (M32), documentEvents (M33), subagentsEnabled, subagentBatchId, audioStorageId, audioMimeType, audioSource, audioTranscript, audioDurationMs, audioVoice, audioGeneratedAt, audioGenerating, audioLastPlayedAt (M20/M52), videoUrls (M29), hasVideo (M29), retryContract (PR #78 — full participant/config snapshot stored at send time for retry use), terminalErrorCode (PR #78 — canonical failure reason: `stream_timeout` / `provider_error` / `cancelled_by_retry` / `cancelled_by_user` / `unknown_error`). Final assistant output is persisted here; active streaming state is overlaid from `streamingMessages`. |
 | `documents` | Canonical readable document identity (M32) | userId, title, filename, mimeType, source, currentVersionId, originChatId, folderId, sourceStorageId, fileAttachmentId, generatedFileId, generatedMediaId, driveFileId, externalModifiedTime, externalSyncedVersionId, status, syncState, lastExtractedAt. Indexes support user/folder views, current-version lookup, source-storage lookup, generated-file/media linkage, and origin-chat folder sync. |
 | `documentVersions` | Immutable document versions (M32/M33) | documentId, userId, storageId, filename, mimeType, versionNumber, source, parentVersionId, contentHash, extractionStatus, extractionTextStorageId, extractionMarkdownStorageId, extractionByteLength, extractionError, pageCount, wordCount, externalModifiedTime. Extraction output is stored out-of-row in Convex `_storage`. |
 | `documentEditBatches` | Durable DOCX tracked-change proposal batches (M39) | userId, documentId, assistantMessageId?, generatedFileId?, generationKey, baseVersionId, currentVersionId, status, createdAt, updatedAt. Indexes support document timelines, generation-key dedupe, message lookup, and user cleanup. |
@@ -41,10 +41,10 @@ The schema-history sections later in this file preserve milestone-era table coun
 | `memoryRelationships` | Derived, user-scoped memory graph edges | userId, fromMemoryId, toMemoryId, relationType (`related`, `sameTopic`, `supersedes`), source, confidence, sharedTags, timestamps |
 | `messageQueryEmbeddings` | Lease-based per-message query embedding cache | messageId, userId, chatId, provider, modelId, status, embedding, textHash, usage, generationId, errorCode, leaseOwner, leaseExpiresAt, usageRecordedAt, usageRecordedMessageId |
 | `messageMemoryContexts` | Lease-based per-message hydrated memory-context cache | messageId, userId, chatId, status, textHash, memoryQueryText, hydratedHits, usage, generationId, errorCode, leaseOwner, leaseExpiresAt, usageRecordedAt, usageRecordedMessageId |
-| `cachedModels` | OpenRouter model catalog + benchmark guidance cache | modelId, name, provider, canonicalSlug, pricing, contextLength, supportsImages, supportsTools, supportsVideo (M29), videoCapabilities (M29: durations, resolutions, aspectRatios, audio), benchmarkLlm, benchmarkMedia, openRouterUseCases, guidanceMatch, derivedGuidance |
-| `usageRecords` | Per-message API cost tracking (M23) | userId, chatId, messageId, modelId, promptTokens, completionTokens, totalTokens, cost, source (M23: `"generation"` / `"title"` / `"compaction"` / `"memory_extraction"` / `"memory_embedding"` / `"search_query_gen"` / `"search_perplexity"` / `"search_planning"` / `"search_analysis"` / `"search_synthesis"` / `"subagent"`), token breakdowns (cached, reasoning, audio, image, video), upstreamInferenceCost. Indexes: `by_user`, `by_user_model`, `by_chat`, `by_message` (M23) |
+| `cachedModels` | OpenRouter model catalog + benchmark guidance cache | modelId, name, provider, canonicalSlug, pricing, contextLength, supportsImages, supportsTools, supportedVoices, hasZdrEndpoint, imageCapabilities, supportsVideo, videoCapabilities, benchmarkLlm, benchmarkMedia, openRouterUseCases, guidanceMatch, derivedGuidance. M52 generation and ZDR capability summaries are query projections derived from these stored facts. |
+| `usageRecords` | Per-message API cost tracking (M23/M52) | userId, chatId, messageId, modelId, promptTokens, completionTokens, totalTokens, cost, source (including `media_tool_image`, `media_tool_music`, `media_tool_speech`, `media_tool_video`, and direct media-message sources), generationId, idempotencyKey, token breakdowns, upstreamInferenceCost. Indexes include `by_user`, `by_user_model`, `by_chat`, `by_message`, and `by_generation_source`. |
 | `folders` | Chat organization | name, userId, sortOrder |
-| `userPreferences` | Global user settings | defaultModelId, temperature, maxTokens, hapticFeedback, onboardingCompleted (M14), defaultSearchMode (M13.5), defaultSearchComplexity (M13.5), subagentsEnabledByDefault, autoAudioResponse (M20), preferredVoice (M20), showBalanceInChat (post-M21), showAdvancedStats (M23), hasSeenIdeascapeHelp (M17), hasSeenMainHelp (post-M21), defaultVideoDuration (M29), defaultVideoResolution (M29), defaultVideoAspectRatio (M29), defaultVideoAudio (M29), skillDefaults (M30), integrationDefaults (M30), etc. |
+| `userPreferences` | Global user settings | defaultModelId, temperature, maxTokens, search/subagent/audio defaults, `defaultImageGenerationModelId`, `defaultMusicGenerationModelId`, `defaultSpeechGenerationModelId`, `defaultVideoGenerationModelId`, image/video generation controls, speech speed/format/instructions/style controls (M52), showAdvancedStats, skillDefaults, integrationDefaults, zdrEnabled, onboarding and UI state. |
 | `modelSettings` | Per-model overrides | openRouterId, temperature, maxTokens, systemPrompt |
 | `nodePositions` | Ideascape spatial layout | chatId, messageId, x, y, width, height |
 | `oauthConnections` | Encrypted external integration credentials (M10/M24 + credential hardening) | userId, provider (`google`, `microsoft`, `notion`, `slack`, `cloze`, `gmail_manual`, etc.), encrypted `accessToken`/`refreshToken` `enc:v2` envelopes, expiresAt, scopes, email/display/workspace metadata, clientType, status, refresh CAS timestamp, secretEnvelopeVersion, secretKeyId, secretMigratedAt. Indexed by user, user+provider, status and secret key. |
@@ -59,8 +59,8 @@ The schema-history sections later in this file preserve milestone-era table coun
 | `sandboxSessions` | Active Vercel runtime session tracking for sandbox-backed tools. Sessions are keyed by `chatId`, `userId`, and runtime `environment` (`python` / `node`). | userId, chatId, environment, providerSandboxId, provider, status, cwd, lastActiveAt, timeoutMs, internetEnabled, publicTrafficEnabled, failureCount |
 | `sandboxArtifacts` | Runtime artifact bookkeeping for files exported from sandbox-backed tools into durable storage. | userId, chatId, sandboxSessionId, path, filename, mimeType, sizeBytes?, storageId?, isDurable |
 | `sandboxEvents` | Runtime observability trail for sandbox-backed workflows. | sandboxSessionId?, userId, chatId, eventType, details?, createdAt |
-| `videoJobs` | Async video generation tracking (M29) | userId (v.string()), chatId, messageId, model, status (pending/in_progress/completed/failed), error, createdAt. Indexes: `by_messageId`, `by_status_createdAt` |
-| `generatedMedia` | Generated media file metadata (M29) | userId, chatId, messageId, storageId, type (video/audio/image), mimeType, sizeBytes, model, durationSeconds |
+| `videoJobs` | Async video generation tracking (M29/M52) | userId, chatId, messageId, source/tool/generation ownership IDs, workflowId, OpenRouter job ID, model, prompt, capability-adapted config, requireZdr, status, poll state, storage metadata, provider generation/cost metadata, execution run/attempt/fence, terminal error state. Indexed by message, execution run, parent tool, chat, user, and status. |
+| `generatedMedia` | Generated image/video metadata (M29/M52) | userId, chatId, messageId, storageId, type, mimeType, size/dimensions/duration, model, prompt, reference-tracking version. Audio generation continues to use message audio fields plus `generatedFiles`. |
 | `googleDriveFileGrants` | Per-user grant + cached-bytes index for Google Drive files (M24 P6) | userId, fileId, name, mimeType, webViewLink?, size?, grantedAt, lastUsedAt?, cachedStorageId? (cached Drive bytes in Convex `_storage`), cachedModifiedTime? (Drive RFC 3339 modifiedTime at ingest), cachedSizeBytes?, cachedAt?. Indexes: `by_user`, `by_user_file`, `by_user_cached_storage`. Used by chat-flow Drive picker AND KB Drive imports for lazy refresh in `getKBFileContents`. |
 | `drivePickerBatches` | Mid-generation Drive picker pause/resume snapshots (M24) | parentMessageId, sourceUserMessageId, parentJobId, chatId, userId, status, toolCallId, toolCallArguments, toolRoundCalls, toolRoundResults, resumeConversationSeed, paramsSnapshot, participantSnapshot, pickedFileIds?, createdAt, updatedAt. Indexes: `by_parent_message`, `by_parent_job`, `by_user`, `by_chat`. Backs the `requiresDrivePicker` resume flow. |
 | `scheduledJobTriggerTokens` | API trigger tokens for scheduled jobs | userId, jobId, token (hashed), createdAt, lastUsedAt?, revokedAt?. Allows external systems to invoke a scheduled job via authenticated HTTP. |
@@ -199,7 +199,7 @@ The authoritative schema is `convex/schema.ts`. Key design patterns:
 | **Added `oauthConnections` table** | Historical M10 addition. Credential hardening later converted access/refresh values to contextual `enc:v2` envelopes and added secret-envelope metadata plus `by_secret_key`. Notion uses HTTP Basic Auth for token exchange, Slack uses workspace OAuth, and Cloze uses an encrypted API-key value in the same table. |
 | **Added tool fields to `messages`** | `toolCalls` (v.optional array), `toolResults` (v.optional array), `generatedFileIds` (v.optional array of Id<"generatedFiles">). |
 | **Added `enabledIntegrations` to `sendMessageArgs`** | Passed to backend as the per-message effective integration snapshot. M30 keeps this on message/send paths while persona/chat defaults now live in layered override fields. |
-| **Schema split** | At this milestone stage, `convex/schema.ts` imported 4 table definition files. Later advisor and presentation milestones added two more schema files; the current six-file count is recorded in Schema Overview. |
+| **Schema split** | At this milestone stage, `convex/schema.ts` imported 4 table definition files. Later milestones added more focused schema modules; the current count is recorded in Schema Overview. |
 
 ---
 
@@ -380,9 +380,12 @@ Memory categories expanded to 10 (defined in `convex/memory/shared.ts` as single
 
 New shared validator: `scheduledJobStep` (in `schema_validators.ts`).
 
-### `skills` catalog — M36 Seed Cleanup
+### `skills` catalog — M36 Seed Cleanup and M52 Additions
 
-M36 keeps the `skills` table as the single catalog table and consolidates the seeded system catalog to 66 system skills. No schema table was added or removed.
+The `skills` table remains the single catalog table. After M52 adds the four
+media generation skills, the current seed contains 71 system skills: 60 visible
+active, 8 integration-managed active, 2 archived integration compatibility
+rows, and 1 hidden runtime skill. No schema table was added or removed.
 
 The seed action now treats removed system skill IDs as real data cleanup, not only visibility changes. Before hard-deleting removed system skill rows, it prunes references from:
 
@@ -547,4 +550,19 @@ Two new shared validators added:
 | **Account cleanup extended** | Account deletion drains M38 artifact rows, memories, assembly logs, and both raw artifact storage blobs. |
 | **Historical table count: 46 → 49** | 3 new M38 tables: `toolExecutionArtifacts`, `toolMemories`, and `contextAssemblyLogs`. |
 
-*Last updated: 2026-07-19 — Current schema is 65 app tables across 6 schema files. The historical M21 rate-limit entry now records that no `rate_limit` table or NanthAI send quota remains active.*
+---
+
+## M52 Schema and Projection Changes
+
+| Change | Details |
+|--------|---------|
+| **Extended `cachedModels`** | Added `supportedVoices`; image/video capability records remain the persisted source for the query-derived `mediaCapabilities`, `generationCapabilities`, and endpoint-specific `generationZdrCapabilities` projections. |
+| **Extended `userPreferences`** | Added four media default model IDs plus speech speed, output format, instructions, style, and style-degree defaults. Existing image/video controls are reused. Fallback IDs remain centralized in `convex/lib/model_constants.ts`. |
+| **Extended message audio metadata** | `audioMimeType` and `audioSource` let every client render stored audio without model-slug inference. |
+| **Extended `videoJobs` ownership and accounting** | Tool operation, parent-resume, Workflow, execution fence, stored output, provider generation, and provider cost fields support the existing deferred-tool lifecycle and media cost projection. |
+| **No new media handoff table** | Images/videos reuse `generatedMedia`; music/speech reuse message audio fields and `generatedFiles`. `mediaAvailability` is computed on skill queries and is not stored in `skills`. |
+
+M52 adds no new table. The active schema remains 91 app tables across 12 schema
+table modules; the historical counts above remain milestone-era records.
+
+*Last updated: 2026-09-03 — M52 media defaults, capability projections, audio metadata, video ownership, and current 91-table schema count.*

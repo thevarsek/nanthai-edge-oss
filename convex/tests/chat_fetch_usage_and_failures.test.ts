@@ -78,6 +78,32 @@ test("fetchGenerationData retries transient failures and returns canonical usage
   assert.equal(result?.is_byok, true);
 });
 
+test("fetchGenerationData can accept authoritative media cost without token counts", async () => {
+  let calls = 0;
+  const result = await fetchGenerationData(
+    "key",
+    "gen_media",
+    createFetchGenerationDataDepsForTest({
+      fetch: async () => {
+        calls += 1;
+        return jsonResponse(200, {
+          data: {
+            id: "gen_media",
+            tokens_prompt: 0,
+            tokens_completion: 0,
+            total_cost: 0.25,
+          },
+        });
+      },
+      sleep: async () => undefined,
+    }),
+    { acceptCostOnly: true },
+  );
+
+  assert.equal(calls, 1);
+  assert.equal(result?.total_cost, 0.25);
+});
+
 test("fetchGenerationData returns null for malformed, missing, or non-retryable responses", async () => {
   const malformed = await fetchGenerationData("key", "gen_1", createFetchGenerationDataDepsForTest({
     fetch: async () => textResponse(200, "not-json"),

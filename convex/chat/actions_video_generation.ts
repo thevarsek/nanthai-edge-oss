@@ -28,6 +28,7 @@ import {
   submitVideoJob,
   pollVideoJobStatus,
   downloadVideoContent,
+  type PollVideoJobResponse,
   type SubmitVideoJobRequest,
 } from "../lib/openrouter_video";
 import {
@@ -50,10 +51,11 @@ import {
   markGenerationJobStreamingIfActive,
 } from "./generation_start_guard";
 import { resolveVideoAudioParameter } from "./video_generation_capabilities";
+import { recordMediaGenerationUsage } from "../tools/media_generation_usage";
+import { VIDEO_GENERATION_MAX_POLL_COUNT } from "../tools/video_generation_contract";
 
 // -- Constants ----------------------------------------------------------------
 
-const MAX_POLL_COUNT = 40; // ~18 min total
 const VIDEO_OUTPUT_UPLOAD_PATH = "/video-output-upload";
 const TERMINAL_GENERATION_JOB_STATUSES = new Set(["completed", "failed", "cancelled", "timedOut"]);
 
@@ -245,26 +247,45 @@ export async function failVideoWorkflowHandler(
   ctx: ActionCtx,
   args: SubmitVideoGenerationArgs & { error: string },
 ): Promise<void> {
-  const job = await ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
-    jobId: args.participant.jobId,
-  });
-  if (!job || TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) return;
-  await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
-    messageId: args.participant.messageId,
-    jobId: args.participant.jobId,
-    chatId: args.chatId,
-    content: `Error: ${args.error}`,
-    status: "failed",
-    error: args.error,
-    userId: args.userId,
-    triggerUserMessageId: args.userMessageId,
-    ...submitExecutionFields(args),
-  });
-  if (args.execution) {
-    await ctx.runMutation(internal.chat.mutations.closeVideoParentGeneration, {
-      videoRunId: args.execution.runId,
-      generationJobId: args.participant.jobId,
+  const [job, videoJob] = await Promise.all([
+    ctx.runQuery(internal.chat.queries.getGenerationJobInternal, {
+      jobId: args.participant.jobId,
+    }),
+    ctx.runQuery(internal.chat.video_queries.getByMessage, {
+      messageId: args.participant.messageId,
+    }),
+  ]);
+  if (videoJob && videoJob.status !== "completed" && videoJob.status !== "failed") {
+    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
+      videoJobId: videoJob._id,
+      messageId: args.participant.messageId,
+      jobId: args.participant.jobId,
+      chatId: args.chatId,
+      content: `Error: ${args.error}`,
+      status: "failed",
+      error: args.error,
+      userId: args.userId,
+      triggerUserMessageId: args.userMessageId,
+      ...submitExecutionFields(args),
     });
+  } else if (job && !TERMINAL_GENERATION_JOB_STATUSES.has(job.status)) {
+    await ctx.runMutation(internal.chat.mutations.finalizeGeneration, {
+      messageId: args.participant.messageId,
+      jobId: args.participant.jobId,
+      chatId: args.chatId,
+      content: `Error: ${args.error}`,
+      status: "failed",
+      error: args.error,
+      userId: args.userId,
+      triggerUserMessageId: args.userMessageId,
+      ...submitExecutionFields(args),
+    });
+    if (args.execution) {
+      await ctx.runMutation(internal.chat.mutations.closeVideoParentGeneration, {
+        videoRunId: args.execution.runId,
+        generationJobId: args.participant.jobId,
+      });
+    }
   }
   await maybeFinalizeGenerationGroup(ctx, {
     chatId: args.chatId,
@@ -497,22 +518,6 @@ export async function submitVideoGenerationHandler(
     if (generateAudio !== undefined) {
       request.generate_audio = generateAudio;
     }
-    let outputUploadId: Id<"videoOutputUploads"> | undefined;
-    if (modelRequiresOutputUploadUrl(participant.modelId)) {
-      const outputUploadToken = createVideoOutputUploadToken();
-      const tokenHash = await hashVideoOutputUploadToken(outputUploadToken);
-      outputUploadId = await ctx.runMutation(internal.chat.mutations.createVideoOutputUploadSession, {
-        tokenHash,
-        expiresAt: Date.now() + VIDEO_OUTPUT_UPLOAD_TTL_MS,
-        messageId: participant.messageId,
-        chatId,
-        userId,
-        ...submitOwnershipFields(args),
-      });
-      request.output = {
-        upload_url: buildVideoOutputUploadUrl(outputUploadToken),
-      };
-    }
     // Only send resolution if explicitly provided; snap to supported if needed
     if (vc?.resolution) {
       const finalResolution = videoCaps?.supportedResolutions?.length
@@ -551,12 +556,65 @@ export async function submitVideoGenerationHandler(
       return;
     }
 
+    // Establish local ownership before the provider can accept billable work.
+    // The provider ID is adopted with the operation result after dispatch.
+    const videoJobArgs = {
+      messageId: participant.messageId,
+      chatId,
+      userId,
+      model: participant.modelId,
+      prompt: userMessage.content,
+      videoConfig: vc ? {
+        resolution: vc.resolution,
+        aspectRatio: vc.aspectRatio,
+        duration: vc.duration,
+        generateAudio: vc.generateAudio,
+      } : undefined,
+      generationJobId: participant.jobId,
+      ...submitOwnershipFields(args),
+    };
+    const videoJobId = await ctx.runMutation(
+      internal.chat.mutations.createVideoJob,
+      videoJobArgs,
+    );
+    createdVideoJobId = videoJobId;
+
     // 6. Submit to OpenRouter behind the immutable operation journal. OpenRouter's
     // video endpoint does not expose an idempotency key, so an ambiguous dispatch
     // is never replayed automatically.
     let submission: Awaited<ReturnType<typeof submitVideoJob>>;
+    let outputUploadId: Id<"videoOutputUploads"> | undefined;
+    let journalResultJson: string | undefined;
     const execution = args.execution;
     const operationKey = `${String(participant.jobId)}:video-provider-submit`;
+    const createOutputUpload = async (): Promise<Id<"videoOutputUploads"> | undefined> => {
+      if (!modelRequiresOutputUploadUrl(participant.modelId)) return undefined;
+      const outputUploadToken = createVideoOutputUploadToken();
+      const tokenHash = await hashVideoOutputUploadToken(outputUploadToken);
+      const uploadArgs = {
+        videoJobId,
+        tokenHash,
+        expiresAt: Date.now() + VIDEO_OUTPUT_UPLOAD_TTL_MS,
+        messageId: participant.messageId,
+        chatId,
+        userId,
+        ...submitOwnershipFields(args),
+      };
+      let uploadId: Id<"videoOutputUploads">;
+      try {
+        uploadId = await ctx.runMutation(
+          internal.chat.mutations.createVideoOutputUploadSession,
+          uploadArgs,
+        );
+      } catch {
+        uploadId = await ctx.runMutation(
+          internal.chat.mutations.createVideoOutputUploadSession,
+          uploadArgs,
+        );
+      }
+      request.output = { upload_url: buildVideoOutputUploadUrl(outputUploadToken) };
+      return uploadId;
+    };
     if (execution) {
       const requestBytes = new TextEncoder().encode(JSON.stringify(request));
       const digest = await crypto.subtle.digest("SHA-256", requestBytes);
@@ -579,8 +637,17 @@ export async function submitVideoGenerationHandler(
       });
       if (decision.decision === "refuse") throw new Error(decision.reason);
       if (decision.decision === "replay") {
-        submission = JSON.parse(decision.resultJson) as Awaited<ReturnType<typeof submitVideoJob>>;
+        const replayed = JSON.parse(decision.resultJson) as {
+          submission?: Awaited<ReturnType<typeof submitVideoJob>>;
+          outputUploadId?: Id<"videoOutputUploads">;
+        } | Awaited<ReturnType<typeof submitVideoJob>>;
+        submission = "submission" in replayed && replayed.submission
+          ? replayed.submission
+          : replayed as Awaited<ReturnType<typeof submitVideoJob>>;
+        outputUploadId = "submission" in replayed ? replayed.outputUploadId : undefined;
+        journalResultJson = decision.resultJson;
       } else {
+        outputUploadId = await createOutputUpload();
         await ctx.runMutation(internal.execution.operations.markDispatched, {
           attemptId: execution.attemptId,
           fence: execution.fence,
@@ -597,49 +664,41 @@ export async function submitVideoGenerationHandler(
           }).catch(() => undefined);
           throw error;
         }
-        try {
-          await ctx.runMutation(internal.execution.operations.complete, {
-            attemptId: execution.attemptId,
-            fence: execution.fence,
-            operationKey,
-            externalId: submission.id,
-            resultJson: JSON.stringify(submission),
-          });
-        } catch (error) {
-          await ctx.runMutation(internal.execution.operations.recordObservedExternalOutcome, {
-            attemptId: execution.attemptId,
-            operationKey,
-            externalId: submission.id,
-            resultJson: JSON.stringify(submission),
-          }).catch(() => undefined);
-          throw error;
-        }
+        journalResultJson = JSON.stringify({ submission, outputUploadId });
       }
     } else {
+      outputUploadId = await createOutputUpload();
       submission = await submitVideoJob(apiKey, request);
     }
-    // 7. Persist provider ownership immediately after dispatch. This row is
-    // retained even if cancellation wins the following generation-job check.
-    const videoJobId: Id<"videoJobs"> = await ctx.runMutation(
-      internal.chat.mutations.createVideoJob,
-      {
-        messageId: participant.messageId,
-        chatId,
-        userId,
-        openRouterJobId: submission.id,
-        outputUploadId,
-        model: participant.modelId,
-        prompt: userMessage.content,
-        videoConfig: vc ? {
-          resolution: vc.resolution,
-          aspectRatio: vc.aspectRatio,
-          duration: vc.duration,
-          generateAudio: vc.generateAudio,
-        } : undefined,
-        ...submitOwnershipFields(args),
-      },
-    );
-    createdVideoJobId = videoJobId;
+
+    // 7. Adopt the observed provider result and journal state atomically. This
+    // mutation deliberately does not require a live fence so cancellation can
+    // retain ownership of a provider job that has just been accepted.
+    const adoptionArgs = {
+      videoJobId,
+      userId,
+      generationJobId: participant.jobId,
+      openRouterJobId: submission.id,
+      outputUploadId,
+      ...(execution
+        ? {
+            executionAttemptId: execution.attemptId,
+            operationKey,
+            resultJson: journalResultJson,
+          }
+        : {}),
+    };
+    try {
+      await ctx.runMutation(
+        internal.chat.video_submission_mutations.recordDirectVideoSubmissionOutcome,
+        adoptionArgs,
+      );
+    } catch {
+      await ctx.runMutation(
+        internal.chat.video_submission_mutations.recordDirectVideoSubmissionOutcome,
+        adoptionArgs,
+      );
+    }
 
     const latestGenerationJob = await ctx.runQuery(
       internal.chat.queries.getGenerationJobInternal,
@@ -788,12 +847,29 @@ export async function pollVideoGenerationHandler(
       return;
     }
 
-    // 2. Get the user's API key
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
-
-    // 3. Poll OpenRouter
-    const pollResult = await pollVideoJobStatus(apiKey, videoJob.openRouterJobId);
-    await validatePollFence(ctx, args);
+    if (!videoJob.openRouterJobId) {
+      throw new Error("Video provider submission has not completed.");
+    }
+    const providerJobId = videoJob.openRouterJobId;
+    let apiKey: string | undefined;
+    let pollResult: PollVideoJobResponse;
+    const savedProviderTerminalStatus = videoJob.providerTerminalStatus;
+    const providerWasTerminal = videoJob.providerTerminalAt !== undefined &&
+      savedProviderTerminalStatus !== undefined;
+    if (providerWasTerminal) {
+      pollResult = {
+        id: providerJobId,
+        status: savedProviderTerminalStatus ?? "failed",
+        generation_id: videoJob.providerGenerationId,
+        usage: videoJob.providerCost !== undefined || videoJob.providerIsByok !== undefined
+          ? { cost: videoJob.providerCost, is_byok: videoJob.providerIsByok }
+          : undefined,
+      };
+    } else {
+      apiKey = await getRequiredUserOpenRouterApiKey(ctx, userId);
+      pollResult = await pollVideoJobStatus(apiKey, providerJobId);
+      await validatePollFence(ctx, args);
+    }
 
     // 4. Update the videoJobs row with poll count.
     // NOTE: When OpenRouter reports "completed", we keep the videoJob as
@@ -819,10 +895,29 @@ export async function pollVideoGenerationHandler(
     // local poll timeouts, transport errors, and storage failures must remain
     // eligible for provider reconciliation.
     if (pollResult.status === "completed" || pollResult.status === "failed") {
-      await ctx.runMutation(internal.chat.mutations.markVideoProviderTerminal, {
-        videoJobId,
-        status: pollResult.status,
-      });
+      if (!providerWasTerminal) {
+        await ctx.runMutation(internal.chat.mutations.markVideoProviderTerminal, {
+          videoJobId,
+          status: pollResult.status,
+          generationId: pollResult.generation_id,
+          cost: pollResult.usage?.cost,
+          isByok: pollResult.usage?.is_byok,
+        });
+      }
+      await recordMediaGenerationUsage(ctx, {
+        messageId,
+        chatId,
+        userId,
+        modelId: videoJob.model,
+        source: "media_message_video",
+        idempotencyKey: `${String(videoJobId)}:usage`,
+      }, pollResult.usage ? {
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+        cost: pollResult.usage.cost,
+        isByok: pollResult.usage.is_byok,
+      } : null, pollResult.generation_id ?? null);
     }
 
     // 5. Handle terminal states
@@ -830,7 +925,7 @@ export async function pollVideoGenerationHandler(
       await handleVideoCompleted(ctx, args, pollResult, apiKey, {
         _creationTime: videoJob._creationTime,
         createdAt: videoJob.createdAt,
-        openRouterJobId: videoJob.openRouterJobId,
+        openRouterJobId: providerJobId,
         outputUploadId: videoJob.outputUploadId,
         pollCount: newPollCount,
         model: videoJob.model,
@@ -880,7 +975,7 @@ export async function pollVideoGenerationHandler(
     }
 
     // 6. If still pending/in_progress, check max polls
-    if (newPollCount >= MAX_POLL_COUNT) {
+    if (newPollCount >= VIDEO_GENERATION_MAX_POLL_COUNT) {
       const timeoutMsg = `Video generation timed out after ${newPollCount} polls`;
       await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
         videoJobId,
@@ -924,6 +1019,8 @@ export async function pollVideoGenerationHandler(
       error instanceof Error ? error.message : "Unknown error during video poll";
     let modelId: string | null = null;
     let currentVideoStatus: string | null = null;
+    let providerTerminalStatus: string | null = null;
+    let currentPollCount = 0;
     try {
       const videoJob = await ctx.runQuery(
         internal.chat.queries.getVideoJobInternal,
@@ -931,10 +1028,19 @@ export async function pollVideoGenerationHandler(
       );
       modelId = videoJob?.model ?? null;
       currentVideoStatus = videoJob?.status ?? null;
+      providerTerminalStatus = videoJob?.providerTerminalStatus ?? null;
+      currentPollCount = videoJob?.pollCount ?? 0;
     } catch {
       // Best-effort analytics enrichment only.
     }
     if (currentVideoStatus === "completed" || currentVideoStatus === "failed") return;
+    if (
+      providerTerminalStatus === "completed" &&
+      currentPollCount < VIDEO_GENERATION_MAX_POLL_COUNT
+    ) {
+      await validatePollFence(ctx, args);
+      return;
+    }
 
     await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
       videoJobId,
@@ -977,7 +1083,7 @@ async function handleVideoCompleted(
   ctx: ActionCtx,
   args: PollVideoGenerationArgs,
   pollResult: { usage?: { cost?: number; is_byok?: boolean }; generation_id?: string },
-  apiKey: string,
+  apiKey: string | undefined,
   videoJob: {
     _creationTime?: number;
     createdAt?: number;
@@ -994,8 +1100,23 @@ async function handleVideoCompleted(
   let storedMimeType = "video/mp4";
   let storedSizeBytes: number | undefined;
 
-  if (!videoJob.outputUploadId) {
-    const videoData = await downloadVideoContent(apiKey, videoJob.openRouterJobId);
+  if (videoJob.outputUploadId) {
+    const upload = await ctx.runQuery(
+      internal.chat.queries.getVideoOutputUploadById,
+      { uploadId: videoJob.outputUploadId },
+    );
+    if (upload?.storageId) {
+      await validatePollFence(ctx, args);
+      storageId = upload.storageId;
+      storedMimeType = upload.mimeType ?? storedMimeType;
+      storedSizeBytes = upload.sizeBytes;
+    } else if (videoJob.pollCount < VIDEO_GENERATION_MAX_POLL_COUNT) {
+      return;
+    }
+  }
+  if (!storageId) {
+    const downloadApiKey = apiKey ?? await getRequiredUserOpenRouterApiKey(ctx, userId);
+    const videoData = await downloadVideoContent(downloadApiKey, videoJob.openRouterJobId);
     await validatePollFence(ctx, args);
     const blob = new Blob([videoData], { type: storedMimeType });
     storageId = await ctx.storage.store(blob);
@@ -1006,19 +1127,6 @@ async function handleVideoCompleted(
     } catch (error) {
       await ctx.storage.delete(storageId).catch(() => undefined);
       throw error;
-    }
-  } else {
-    const upload = await ctx.runQuery(
-      internal.chat.queries.getVideoOutputUploadById,
-      { uploadId: videoJob.outputUploadId },
-    );
-    if (upload?.storageId) {
-      await validatePollFence(ctx, args);
-      storageId = upload.storageId;
-      storedMimeType = upload.mimeType ?? storedMimeType;
-      storedSizeBytes = upload.sizeBytes;
-    } else if (videoJob.pollCount < MAX_POLL_COUNT) {
-      return;
     }
   }
 
@@ -1062,45 +1170,20 @@ async function handleVideoCompleted(
     return;
   }
 
-  const videoUrl = await ctx.storage.getUrl(storageId);
-  if (!videoUrl) {
-    const errorMsg = "Failed to get storage URL for video";
+  let videoUrl: string | null;
+  try {
+    videoUrl = await ctx.storage.getUrl(storageId);
+  } catch (error) {
     if (storedByThisAction) {
       await ctx.storage.delete(storageId).catch(() => undefined);
     }
-    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
-      videoJobId: args.videoJobId,
-      messageId,
-      jobId,
-      chatId,
-      content: `Error: ${errorMsg}`,
-      status: "failed",
-      error: errorMsg,
-      userId,
-      triggerUserMessageId: args.userMessageId,
-      ...pollExecutionFields(args),
-    });
-
-    await maybeFinalizeGenerationGroup(ctx, {
-      chatId: args.chatId,
-      userMessageId: args.userMessageId,
-      assistantMessageIds: args.assistantMessageIds,
-      generationJobIds: args.generationJobIds,
-      userId,
-      searchSessionId: args.searchSessionId,
-    });
-    await maybeCompleteDrivePickerBatch(ctx, args.drivePickerBatchId, "failed");
-    await captureAssistantResponseFailure(ctx, {
-      userId,
-      chatId: String(chatId),
-      messageId: String(messageId),
-      jobId: String(jobId),
-      modelId: videoJob.model,
-      source: args.analyticsSource ?? "video_generation",
-      error: new Error("Video storage URL unavailable"),
-      analytics: args.analytics,
-    });
-    return;
+    throw error;
+  }
+  if (!videoUrl) {
+    if (storedByThisAction) {
+      await ctx.storage.delete(storageId).catch(() => undefined);
+    }
+    throw new Error("Failed to get storage URL for video");
   }
 
   // 4. Build usage object if available
@@ -1115,30 +1198,37 @@ async function handleVideoCompleted(
     : undefined;
 
   // 5. Publish every durable completion write in one fenced transaction.
+  const publicationArgs = {
+    videoJobId: args.videoJobId,
+    messageId,
+    jobId,
+    chatId,
+    content: "",
+    status: "completed" as const,
+    videoUrls: [videoUrl],
+    userId,
+    triggerUserMessageId: args.userMessageId,
+    media: {
+      storageId,
+      mimeType: storedMimeType,
+      sizeBytes: storedSizeBytes,
+    },
+    ...pollExecutionFields(args),
+  };
   try {
-    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, {
-      videoJobId: args.videoJobId,
-      messageId,
-      jobId,
-      chatId,
-      content: "",
-      status: "completed",
-      videoUrls: [videoUrl],
-      usage,
-      userId,
-      triggerUserMessageId: args.userMessageId,
-      media: {
-        storageId,
-        mimeType: storedMimeType,
-        sizeBytes: storedSizeBytes,
-      },
-      ...pollExecutionFields(args),
-    });
-  } catch (error) {
-    if (storedByThisAction) {
-      await ctx.storage.delete(storageId).catch(() => undefined);
+    await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, publicationArgs);
+  } catch {
+    try {
+      await ctx.runMutation(internal.chat.mutations.settleVideoGeneration, publicationArgs);
+    } catch (error) {
+      if (storedByThisAction) {
+        await ctx.runMutation(
+          internal.tools.media_generation_mutations.deleteUnreferencedMediaStorage,
+          { storageIds: [storageId] },
+        ).catch(() => undefined);
+      }
+      throw error;
     }
-    throw error;
   }
 
   // 6. Finalize the generation group

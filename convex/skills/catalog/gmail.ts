@@ -23,6 +23,7 @@ similar to standard Gmail access but operates over IMAP/SMTP.
 
 - Confirm the target inbox action before changing message state.
 - Use gmail_create_draft when the user asks to draft an email without sending it.
+- Pass owned storage IDs in attachments when the user asks to include generated media or files in a draft or sent message.
 - Summarize what was sent or modified so the user can verify it quickly.
 - If Gmail read or search succeeds in the current run, assume Gmail action tools are available too when this skill is loaded and the Gmail integration is active.
 - Do not claim Gmail action tools are unavailable without first checking whether the needed Gmail tool can be called.

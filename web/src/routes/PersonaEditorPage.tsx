@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import { safeAvatarImageUrl } from "@/lib/avatarUrl";
+import { isMediaSkillUnavailable } from "@/lib/mediaSkillAvailability";
 import {
   EmojiPicker,
   SkillOverrideRow,
@@ -205,6 +206,16 @@ export function PersonaEditorPage() {
       }
 
       return { ...prev, selectedSkillIds: next, skillOverrides: nextOverrides };
+    });
+  }, []);
+
+  const disableSkill = useCallback((skillId: Id<"skills">) => {
+    setForm((prev) => {
+      const selectedSkillIds = new Set(prev.selectedSkillIds);
+      const skillOverrides = new Map(prev.skillOverrides);
+      selectedSkillIds.delete(skillId);
+      skillOverrides.set(skillId, "never");
+      return { ...prev, selectedSkillIds, skillOverrides };
     });
   }, []);
 
@@ -647,11 +658,17 @@ export function PersonaEditorPage() {
                 key={skill._id}
                 skill={skill}
                 state={form.skillOverrides.get(skill._id)}
-                onCycle={() => cycleSkill(skill._id)}
+                onCycle={() => isMediaSkillUnavailable(skill)
+                  ? disableSkill(skill._id)
+                  : cycleSkill(skill._id)}
                 disabled={
-                  !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
-                  && (skill.requiredIntegrationIds ?? []).length > 0
-                  && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
+                  isMediaSkillUnavailable(skill)
+                    ? !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
+                    : (
+                    !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
+                    && (skill.requiredIntegrationIds ?? []).length > 0
+                    && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
+                  )
                 }
               />
             ))}
@@ -669,11 +686,17 @@ export function PersonaEditorPage() {
                 key={skill._id}
                 skill={skill}
                 state={form.skillOverrides.get(skill._id)}
-                onCycle={() => cycleSkill(skill._id)}
+                onCycle={() => isMediaSkillUnavailable(skill)
+                  ? disableSkill(skill._id)
+                  : cycleSkill(skill._id)}
                 disabled={
-                  !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
-                  && (skill.requiredIntegrationIds ?? []).length > 0
-                  && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
+                  isMediaSkillUnavailable(skill)
+                    ? !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
+                    : (
+                    !(form.skillOverrides.get(skill._id) === "available" || form.skillOverrides.get(skill._id) === "always")
+                    && (skill.requiredIntegrationIds ?? []).length > 0
+                    && (skill.requiredIntegrationIds ?? []).every((id) => !form.enabledIntegrations.has(id as IntegrationKey))
+                  )
                 }
               />
             ))}

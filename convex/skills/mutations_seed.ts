@@ -14,6 +14,10 @@ import { skillToolProfile } from "../schema_validators";
 type SkillToolProfile =
   | "presentations"
   | "docs"
+  | "imageGeneration"
+  | "musicGeneration"
+  | "speechGeneration"
+  | "videoGeneration"
   | "analytics"
   | "workspace"
   | "persistentRuntime"

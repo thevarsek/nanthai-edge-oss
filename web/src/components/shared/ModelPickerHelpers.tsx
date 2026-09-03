@@ -50,6 +50,7 @@ export interface ModelSummary {
   hasZdrEndpoint?: boolean;
   architecture?: { modality?: string };
   supportedParameters?: string[];
+  supportedVoices?: string[];
   /** Video-specific pricing (video models don't use token pricing). */
   videoPricing?: {
     perVideoToken?: number;
@@ -61,6 +62,20 @@ export interface ModelSummary {
   imagePricing?: ImagePricing;
   /** Canonical backend projection of model-specific image/video options. */
   mediaCapabilities?: ModelMediaCapabilities;
+  /** Canonical backend projection used by media-generation default pickers. */
+  generationCapabilities?: {
+    image: boolean;
+    music: boolean;
+    speech: boolean;
+    video: boolean;
+  };
+  /** Endpoint-specific ZDR availability for generation tool requests. */
+  generationZdrCapabilities?: {
+    image: boolean;
+    music: boolean;
+    speech: boolean;
+    video: boolean;
+  };
   derivedGuidance?: {
     labels?: string[];
     primaryLabel?: string;
@@ -389,13 +404,14 @@ const PRIORITIES: { value: WizardPriority; labelKey: string; subtitleKey: string
 ];
 
 export function ModelWizard({
-  models, onSelect, onClose, zdrEnforced, googleIntegrationsActive,
+  models, onSelect, onClose, zdrEnforced, googleIntegrationsActive, generationKind,
 }: {
   models: ModelSummary[];
   onSelect: (modelId: string) => void;
   onClose: () => void;
   zdrEnforced?: boolean;
   googleIntegrationsActive?: boolean;
+  generationKind?: keyof NonNullable<ModelSummary["generationCapabilities"]>;
 }) {
   const { t } = useTranslation();
   const [step, setStep] = useState(1);
@@ -410,8 +426,9 @@ export function ModelWizard({
       priority,
       zdrEnforced,
       googleIntegrationsActive,
+      generationKind,
     });
-  }, [googleIntegrationsActive, models, priority, task, zdrEnforced]);
+  }, [generationKind, googleIntegrationsActive, models, priority, task, zdrEnforced]);
 
   const progressPct = step === 1 ? 33 : step === 2 ? 66 : 100;
 
@@ -516,7 +533,7 @@ export function ModelWizard({
                 {results.map((m, i) => {
                   const taskObj = TASKS.find((taskOption) => taskOption.value === task);
                   const orMatch = m.openRouterUseCases?.find((uc) => uc.category === taskObj?.orCategory);
-                  const isZdrDisabled = isWizardModelDisabled(m, zdrEnforced, false);
+                  const isZdrDisabled = isWizardModelDisabled(m, zdrEnforced, false, generationKind);
                   const isGoogleBlocked = isWizardModelDisabled(m, false, googleIntegrationsActive);
                   const isDisabled = isZdrDisabled || isGoogleBlocked;
                   return (

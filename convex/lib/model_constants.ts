@@ -2,7 +2,7 @@
 // =============================================================================
 // Central model IDs used by backend workflows/actions.
 // Keep non-user-editable model defaults in one place.
-// Client fallbacks should stay aligned with these values.
+// Clients consume defaults resolved by Convex and must not duplicate these IDs.
 // =============================================================================
 
 export const MODEL_IDS = {
@@ -17,7 +17,10 @@ export const MODEL_IDS = {
   searchResearchOrchestration: "openai/gpt-5.6-luna",
   collaborationScheduler: "openai/gpt-5.6-luna",
   compaction: "openai/gpt-5.6-luna",
-  textToSpeech: "openai/gpt-audio-mini",
+  imageGeneration: "bytedance-seed/seedream-4.5",
+  musicGeneration: "google/lyria-3-clip-preview",
+  speechGeneration: "deepgram/aura-2",
+  videoGeneration: "bytedance/seedance-2.0-fast",
   searchPerplexity: {
     quick: "perplexity/sonar",
     thorough: "perplexity/sonar-pro",

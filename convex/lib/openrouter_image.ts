@@ -58,6 +58,17 @@ export interface CallOpenRouterImageOptions {
   isCancelled?: () => Promise<boolean>;
   cancellationPollIntervalMs?: number;
   onDispatch?: () => Promise<void>;
+  absoluteDeadlineAtMs?: number;
+}
+
+function imageGenerationTimeoutError(): ConvexError<{
+  code: "TIMEOUT";
+  message: string;
+}> {
+  return new ConvexError({
+    code: "TIMEOUT" as const,
+    message: "Image generation took too long. Please try again.",
+  });
 }
 
 export function assertOpenRouterImagePrivacy(requireZdr: boolean): void {
@@ -77,6 +88,10 @@ export async function callOpenRouterImage(
   let rateLimitRetries = 0;
 
   while (true) {
+    const remainingMs = options.absoluteDeadlineAtMs === undefined
+      ? REQUEST_TIMEOUT_MS
+      : Math.min(REQUEST_TIMEOUT_MS, options.absoluteDeadlineAtMs - Date.now());
+    if (remainingMs <= 0) throw imageGenerationTimeoutError();
     if (await cancellationWasRequested(options.isCancelled)) {
       throw new OpenRouterTransportCancelledError();
     }
@@ -92,7 +107,7 @@ export async function callOpenRouterImage(
       pollIntervalMs: options.cancellationPollIntervalMs,
       onCancelled: () => abort("cancelled"),
     });
-    const timeout = setTimeout(() => abort("timeout"), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => abort("timeout"), remainingMs);
     try {
       await options.onDispatch?.();
       const response = await fetch(OPENROUTER_IMAGE_API_URL, {
@@ -186,10 +201,7 @@ export async function callOpenRouterImage(
       if (error instanceof ConvexError) throw error;
       const name = (error as { name?: unknown })?.name;
       if (name === "AbortError") {
-        throw new ConvexError({
-          code: "TIMEOUT" as const,
-          message: "Image generation took too long. Please try again.",
-        });
+        throw imageGenerationTimeoutError();
       }
       throw error;
     } finally {

@@ -1,13 +1,18 @@
-import { internal } from "../_generated/api";
-import { Id } from "../_generated/dataModel";
-import { MutationCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import type { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { requireAuth } from "../lib/auth";
 import { getAuthorizedMessage } from "./query_helpers";
+import { startMessageAudioWorkflow } from "./audio_workflow_start";
+
+const defaultDeps = { startMessageAudioWorkflow };
+
+export type RequestAudioGenerationDeps = typeof defaultDeps;
 
 export async function requestAudioGenerationHandler(
   ctx: MutationCtx,
   args: { messageId: Id<"messages"> },
+  deps: RequestAudioGenerationDeps = defaultDeps,
 ): Promise<{ scheduled: true; alreadyExists?: true }> {
   const { userId } = await requireAuth(ctx);
   const message = await getAuthorizedMessage(ctx, args.messageId, userId);
@@ -28,11 +33,12 @@ export async function requestAudioGenerationHandler(
     return { scheduled: true, alreadyExists: true };
   }
 
-  // Mark as in-progress before scheduling to prevent duplicate jobs on rapid taps.
-  await ctx.db.patch(args.messageId, { audioGenerating: true });
-
-  await ctx.scheduler.runAfter(0, internal.chat.actions.generateAudioForMessage, {
+  const started = await deps.startMessageAudioWorkflow(ctx, {
     messageId: args.messageId,
+    chatId: message.chatId,
+    userId,
   });
-  return { scheduled: true };
+  return started.started
+    ? { scheduled: true }
+    : { scheduled: true, alreadyExists: true };
 }

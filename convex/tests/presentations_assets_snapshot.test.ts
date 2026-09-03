@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { ConvexError } from "convex/values";
 import { preferCurrentPresentationSnapshot } from "../chat/presentation_generated_file_snapshot";
-import { registerPptxReferenceAsset } from "../presentations/asset_ownership";
+import {
+  registerPptxReferenceAsset,
+  resolveProjectAssets,
+} from "../presentations/asset_ownership";
 import { recordPresentationSnapshotHandler } from "../presentations/snapshot_persistence";
 
 function queryResult(value: unknown) {
@@ -54,6 +57,41 @@ test("reference PPTX images become user-owned presentation assets", async () => 
   assert.equal(inserted[0]?.table, "presentationAssets");
   assert.equal(inserted[0]?.value.kind, "pptx_extracted");
   assert.equal(inserted[0]?.value.sourceStorageId, "source_1");
+});
+
+test("generated images are reusable presentation assets for their owner", async () => {
+  const ctx = {
+    db: {
+      query: (table: string) => {
+        if (table === "generatedMedia") {
+          return queryResult({
+            userId: "user_1",
+            storageId: "generated_image_1",
+            type: "image",
+            mimeType: "image/jpeg",
+            sizeBytes: 2048,
+            prompt: "A cobalt-blue paper airplane on cream",
+          });
+        }
+        return queryResult(null);
+      },
+    },
+  } as any;
+
+  const assets = await resolveProjectAssets(
+    ctx,
+    "user_1",
+    ["generated_image_1" as any],
+  );
+
+  assert.deepEqual(assets, [{
+    storageId: "generated_image_1",
+    filename: "generated-image.jpg",
+    mimeType: "image/jpeg",
+    sizeBytes: 2048,
+    altText: "A cobalt-blue paper airplane on cream",
+    kind: "attachment",
+  }]);
 });
 
 test("browser snapshot persistence is revision checked and refreshes the latest file card", async () => {

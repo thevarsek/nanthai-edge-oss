@@ -36,6 +36,8 @@ export interface NormalizedRunCycleArgs extends Record<string, unknown> {
 export interface ModelCapabilities {
   provider?: string;
   supportedParameters?: string[];
+  supportedVoices?: string[];
+  outputModalities?: string[];
   hasImageInput?: boolean;
   hasVideoInput?: boolean;
   hasAudioOutput?: boolean;

@@ -231,7 +231,7 @@ Audio messages follow the same thin-service pattern. No dedicated AudioService c
 - **Playback**: `ChatViewModel` (or message-level) manages `AVPlayer` instances for audio message playback, with `AVAudioSession` category switching
 - **TTS Generation**: `ChatViewModel` calls `chat/mutations:requestAudioGeneration` to trigger backend TTS; subscribes to the message's `audioStorageId` and `audioGenerating` fields for reactive UI updates
 - **Auto-Audio**: When `autoAudioResponse` is enabled (user preference or per-chat override), the backend automatically generates audio after assistant message completion; iOS auto-plays when the audio URL becomes available
-- **Voice Preference**: `SettingsViewModel` manages `preferredVoice` via `PreferenceWriteBuffer`, and `autoAudioResponse` toggle
+- **Speech Defaults**: `SettingsViewModel` manages the selected speech model, voice, supported synthesis controls, and `autoAudioResponse` via the shared preference write path
 
 ### Android Audio Integration
 
@@ -242,11 +242,16 @@ Audio messages follow the same thin-service pattern. No dedicated AudioService c
 
 ### Backend Audio Pipeline
 
-- `chat/audio_actions.ts` — `generateAudioForMessage` internal action: calls OpenRouter with `gpt-audio-mini` model, receives PCM16 response, encodes to WAV via `pcmToWav()`, stores in Convex `_storage`, patches message fields
-- `chat/audio_actions.ts` — `previewVoice` internal action: generates short TTS samples for voice selection UI
-- `chat/audio_shared.ts` — Audio constants, PCM→WAV encoder, 6-voice catalog (`alloy`, `echo`, `fable`, `nova`, `onyx`, `shimmer`)
+- `chat/audio_message_action.ts` — `generateAudioForMessage` resolves the selected/default speech model, calls the OpenRouter Speech adapter, stores normalized audio in Convex `_storage`, and patches message fields
+- `chat/audio_actions.ts` — `previewVoice` generates short samples with the selected speech model and supported settings
+- `chat/audio_speech.ts` and `lib/openrouter_speech.ts` — capability-aware speech defaults, request construction, provider transport, and encoded-audio normalization
 - `chat/mutations_internal_handlers.ts` — Resolves auto-audio preferences after finalization and schedules `generateAudioForMessage`
 - `chat/audio_public_handlers.ts` — Public mutation (`requestAudioGeneration`) and query (`getMessageAudioUrl`) handlers
+
+M52 media generation follows the same service boundary. The four progressive
+tools call Convex-owned image, music, speech, and video adapters; web, iOS, and
+Android only write shared preferences and render storage-backed message/file
+projections. There is no client-side OpenRouter media service.
 
 ## Context Compaction Engine (M13)
 
@@ -547,4 +552,4 @@ ViewModels catch these and present user-facing error states. The `AppError` enum
 
 ---
 
-*Last updated: 2026-06-14 — M43 Convex action/tool-registry boundary hardening documented: restored Gmail/PPTX/DOCX/PDF/runtime functionality behind proxy/internal-action or dedicated Node runtime boundaries. Structured ConvexError contract, M26 Lyria music generation, and M20 audio message details remain current.*
+*Last updated: 2026-09-03 — M52 selected-model speech and multimedia service boundaries documented; clients remain thin over Convex-owned provider adapters.*

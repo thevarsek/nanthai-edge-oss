@@ -24,6 +24,7 @@ import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { isTerminalSubagentStatus } from "../subagents/shared";
 import { cancelExecutionForGenerationJob } from "../execution/cancellation";
 import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./audio_public_handlers";
+import { cancelActiveMessageAudioForChat } from "./audio_cancel";
 import { isAudioAttachment } from "./audio_shared";
 import { shouldRequireZdrForMemoryPrewarm } from "./memory_prewarm_zdr";
 import { patchStreamingMessageStatus } from "./streaming_state";
@@ -949,6 +950,11 @@ export async function cancelActiveGenerationHandler(
   for (const batch of advisorBatches) {
     await cancelAdvisorBatchRows(ctx, batch);
   }
+
+  cancelledCount += await cancelActiveMessageAudioForChat(ctx, {
+    chatId: args.chatId,
+    userId,
+  });
 
   return { cancelledCount };
 }

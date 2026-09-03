@@ -10,6 +10,11 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { SkillOverrideState } from "@/hooks/useChatOverrides";
 import type { IntegrationKey } from "@/routes/PersonaEditorForm";
 import { useVisibleSkills } from "@/hooks/useSharedData";
+import {
+  isMediaSkillUnavailable,
+  mediaSkillUnavailableMessageKey,
+  type SkillWithMediaAvailability,
+} from "@/lib/mediaSkillAvailability";
 
 // ─── Props ──────────────────────────────────────────────────────────────────
 
@@ -78,7 +83,7 @@ export function SlashCommandPalette({
   const skills = useVisibleSkills();
 
   const allSkills = useMemo(
-    () => (skills ?? []) as Array<{
+    () => (skills ?? []) as Array<SkillWithMediaAvailability & {
       _id: Id<"skills">;
       name: string;
       summary?: string;
@@ -153,11 +158,16 @@ export function SlashCommandPalette({
                     <button
                       type="button"
                       key={skill._id}
+                      disabled={isMediaSkillUnavailable(skill)}
                       onClick={() => { onSelectSkill(skill._id, skill.name); }}
-                      className="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-2 transition-colors text-left"
+                      className="w-full flex items-center gap-2 px-4 py-2 hover:bg-surface-2 transition-colors text-left disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                     >
                       <span className="text-sm">{skill.name}</span>
-                      {skill.summary && (
+                      {isMediaSkillUnavailable(skill) ? (
+                        <span className="text-xs text-amber-600 dark:text-amber-400 truncate">
+                          {t(mediaSkillUnavailableMessageKey(skill))}
+                        </span>
+                      ) : skill.summary && (
                         <span className="text-xs text-muted truncate">{skill.summary}</span>
                       )}
                     </button>

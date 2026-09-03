@@ -3,6 +3,7 @@ import type { MutationCtx } from "../_generated/server";
 import { startAnalyticsRunHandler } from "../analytics_workflows/mutations";
 import { enqueueSubagentHandler } from "../execution/fanout_queues";
 import { startPresentationWorkflowHandler } from "../presentations/presentation_workflow_start";
+import { startToolVideoWorkflowHandler } from "../tools/video_generation_start";
 import type { GenerationDeferredOwnership } from "./generation_continuation_shared";
 
 type ReconcileArgs = {
@@ -18,12 +19,14 @@ type ReconcileDeps = {
   enqueueSubagent: typeof enqueueSubagentHandler;
   startPresentation: typeof startPresentationWorkflowHandler;
   startAnalytics: typeof startAnalyticsRunHandler;
+  startVideo: typeof startToolVideoWorkflowHandler;
 };
 
 const defaultDeps: ReconcileDeps = {
   enqueueSubagent: enqueueSubagentHandler,
   startPresentation: startPresentationWorkflowHandler,
   startAnalytics: startAnalyticsRunHandler,
+  startVideo: startToolVideoWorkflowHandler,
 };
 
 export async function reconcileGenerationDeferredOwnership(
@@ -83,6 +86,24 @@ export async function reconcileGenerationDeferredOwnership(
       toolCallId: ownership.toolCallId,
       modelId: ownership.modelId,
       requireZdrOverride: ownership.requireZdrOverride,
+      workflowResumeEventId: args.eventId,
+    });
+    return;
+  }
+
+  if (ownership.kind === "video") {
+    const videoJob = await ctx.db.get(ownership.videoJobId);
+    if (
+      !videoJob || videoJob.userId !== args.userId ||
+      videoJob.generationJobId !== args.jobId || videoJob.toolCallId !== ownership.toolCallId
+    ) {
+      throw new Error("GENERATION_VIDEO_OWNERSHIP_MISMATCH");
+    }
+    await deps.startVideo(ctx, {
+      videoJobId: ownership.videoJobId,
+      userId: args.userId,
+      jobId: args.jobId,
+      toolCallId: ownership.toolCallId,
       workflowResumeEventId: args.eventId,
     });
     return;

@@ -19,6 +19,7 @@ import { executeGoogleTool } from "../tools/google/actions";
 import * as microsoftRealCalendar from "../tools/microsoft/calendar";
 import * as microsoftRealOneDrive from "../tools/microsoft/onedrive";
 import * as microsoftRealOutlook from "../tools/microsoft/outlook";
+import * as microsoftRealOutlookDraft from "../tools/microsoft/outlook_draft";
 import * as microsoftProxy from "../tools/microsoft/index";
 import { executeMicrosoftTool } from "../tools/microsoft/actions";
 import * as notionReal from "../tools/notion/pages";
@@ -117,6 +118,7 @@ test("provider proxies preserve exact real tool definitions", () => {
     ["gmailModifyLabels", gmailProxyOnly.gmailModifyLabels, gmailReal.gmailModifyLabels],
     ["gmailListLabels", gmailProxyOnly.gmailListLabels, gmailReal.gmailListLabels],
     ["outlookSend", microsoftProxy.outlookSend, microsoftRealOutlook.outlookSend],
+    ["outlookCreateDraft", microsoftProxy.outlookCreateDraft, microsoftRealOutlookDraft.outlookCreateDraft],
     ["outlookRead", microsoftProxy.outlookRead, microsoftRealOutlook.outlookRead],
     ["outlookSearch", microsoftProxy.outlookSearch, microsoftRealOutlook.outlookSearch],
     ["outlookDelete", microsoftProxy.outlookDelete, microsoftRealOutlook.outlookDelete],

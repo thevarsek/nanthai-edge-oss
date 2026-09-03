@@ -2,7 +2,7 @@ import { ConvexError } from "convex/values";
 
 export const IMAGE_QUALITY_VALUES = ["auto", "low", "medium", "high"] as const;
 export const IMAGE_BACKGROUND_VALUES = ["auto", "opaque", "transparent"] as const;
-export const IMAGE_OUTPUT_FORMAT_VALUES = ["auto", "png", "jpeg", "webp"] as const;
+export const IMAGE_OUTPUT_FORMAT_VALUES = ["auto", "png", "jpeg", "webp", "svg"] as const;
 
 export interface ImageGenerationConfig {
   count?: number;

@@ -5,6 +5,11 @@ import { Toggle } from "@/components/shared/Toggle";
 import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
 import { AlignLeft, Wrench, Terminal, Server } from "lucide-react";
 import type { SkillOverrideState } from "./PersonaEditorForm";
+import {
+  isMediaSkillUnavailable,
+  mediaSkillUnavailableMessageKey,
+  type SkillWithMediaAvailability,
+} from "@/lib/mediaSkillAvailability";
 
 // ── Emoji picker (simple grid) ─────────────────────────────────────────────
 
@@ -92,7 +97,13 @@ const SKILL_STATE_CONFIG: Record<SkillOverrideState, { labelKey: string; classNa
 };
 
 interface SkillOverrideRowProps {
-  skill: { _id: Id<"skills">; name: string; summary?: string; scope?: string; runtimeMode?: string };
+  skill: SkillWithMediaAvailability & {
+    _id: Id<"skills">;
+    name: string;
+    summary?: string;
+    scope?: string;
+    runtimeMode?: string;
+  };
   state: SkillOverrideState | undefined;
   onCycle: () => void;
   disabled?: boolean;
@@ -100,6 +111,7 @@ interface SkillOverrideRowProps {
 
 export function SkillOverrideRow({ skill, state, onCycle, disabled = false }: SkillOverrideRowProps) {
   const { t } = useTranslation();
+  const unavailable = isMediaSkillUnavailable(skill);
   return (
     <button
       type="button"
@@ -115,8 +127,17 @@ export function SkillOverrideRow({ skill, state, onCycle, disabled = false }: Sk
         {skill.summary && (
           <p className="text-xs text-muted truncate mt-0.5">{skill.summary}</p>
         )}
+        {unavailable && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+            {t(mediaSkillUnavailableMessageKey(skill))}
+          </p>
+        )}
       </div>
-      {state ? (
+      {unavailable ? (
+        <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-amber-500/15 text-amber-700 dark:text-amber-300">
+          {t("unavailable")}
+        </span>
+      ) : state ? (
         <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${SKILL_STATE_CONFIG[state].className}`}>
           {t(SKILL_STATE_CONFIG[state].labelKey)}
         </span>

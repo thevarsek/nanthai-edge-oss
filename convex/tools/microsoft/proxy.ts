@@ -1,9 +1,11 @@
 import { makeFunctionReference, type FunctionReference } from "convex/server";
 import { createActionProxyTool, type ExecuteProxyToolArgs } from "../action_proxy";
 import type { ToolResult } from "../registry";
+import { STORAGE_ATTACHMENTS_PARAMETER } from "../storage_attachment_schema";
 
 type MicrosoftToolName =
   | "outlook_send"
+  | "outlook_create_draft"
   | "outlook_read"
   | "outlook_search"
   | "outlook_delete"
@@ -30,6 +32,25 @@ const executeMicrosoftToolRef = makeFunctionReference<
 
 export const outlookSend = createActionProxyTool(executeMicrosoftToolRef, "outlook_send", { name: "outlook_send", description: "Send an email via the user's connected Microsoft Outlook account. Use when the user asks you to send an email, reply to someone, or draft and send a message through their Microsoft/Outlook account. The email is sent immediately from the user's Outlook address. Supports plain text and HTML bodies. For CC/BCC, include them in the appropriate fields.", parameters: {"type":"object","properties":{"to":{"type":"string","description":"Recipient email address (e.g. 'user@example.com')."},"subject":{"type":"string","description":"Email subject line."},"body":{"type":"string","description":"Email body content (plain text or HTML)."},"is_html":{"type":"boolean","description":"Whether the body is HTML (default: false for plain text)."},"cc":{"type":"string","description":"CC recipient email address (optional). For multiple, comma-separate."},"bcc":{"type":"string","description":"BCC recipient email address (optional). For multiple, comma-separate."}},"required":["to","subject","body"],"additionalProperties":false} });
 
+export const outlookCreateDraft = createActionProxyTool(executeMicrosoftToolRef, "outlook_create_draft", {
+  name: "outlook_create_draft",
+  description: "Create an Outlook draft for review without sending it. May include user-owned files or generated-media attachments.",
+  parameters: {
+    type: "object",
+    properties: {
+      to: { type: "string", description: "Recipient email addresses, comma-separated." },
+      subject: { type: "string", description: "Email subject line." },
+      body: { type: "string", description: "Email body content." },
+      is_html: { type: "boolean", description: "Whether the body is HTML." },
+      cc: { type: "string", description: "Optional CC recipients, comma-separated." },
+      bcc: { type: "string", description: "Optional BCC recipients, comma-separated." },
+      attachments: STORAGE_ATTACHMENTS_PARAMETER,
+    },
+    required: ["to", "subject", "body"],
+    additionalProperties: false,
+  },
+});
+
 export const outlookRead = createActionProxyTool(executeMicrosoftToolRef, "outlook_read", { name: "outlook_read", description: "Read recent emails from the user's Microsoft Outlook inbox. Returns subject, sender, date, and preview for each email. Use when the user asks to check their Outlook email, see recent messages, or wants you to read their inbox. Optionally filter by folder or use OData query syntax.", parameters: {"type":"object","properties":{"folder":{"type":"string","description":"Mail folder to read from (optional). Common values: 'inbox' (default), 'sentitems', 'drafts', 'deleteditems', 'archive'."},"max_results":{"type":"number","description":"Maximum number of emails to return (default 10, max 20)."},"include_body":{"type":"boolean","description":"Whether to include the full email body text (default: false, only preview)."},"filter":{"type":"string","description":"OData $filter expression (optional). Examples: \"isRead eq false\", \"from/emailAddress/address eq 'boss@company.com'\", \"receivedDateTime ge 2026-01-01T00:00:00Z\"."}},"required":[],"additionalProperties":false} });
 
 export const outlookSearch = createActionProxyTool(executeMicrosoftToolRef, "outlook_search", { name: "outlook_search", description: "Search the user's Outlook emails using Microsoft Graph search. Use when the user asks to find specific emails, search for messages from a person, look for emails about a topic, or find emails within a date range. Uses OData $search for keyword queries and $filter for structured filtering. Examples: search 'invoice' to find emails containing 'invoice', or filter \"from/emailAddress/address eq 'alice@example.com'\".", parameters: {"type":"object","properties":{"query":{"type":"string","description":"Search keyword query (required). Searches subject, body, and other fields. Examples: 'quarterly report', 'from:alice', 'invoice 2026'."},"max_results":{"type":"number","description":"Maximum number of results (default 10, max 20)."}},"required":["query"],"additionalProperties":false} });
@@ -40,7 +61,7 @@ export const outlookMove = createActionProxyTool(executeMicrosoftToolRef, "outlo
 
 export const outlookListFolders = createActionProxyTool(executeMicrosoftToolRef, "outlook_list_folders", { name: "outlook_list_folders", description: "List all mail folders in the user's Outlook account. Use this to discover folder IDs for use with outlook_move. Returns both well-known folders (Inbox, Sent Items, Drafts, etc.) and user-created folders. Each folder has an 'id' (use this for move operations) and a 'displayName' (human-readable).", parameters: {"type":"object","properties":{"parent_folder_id":{"type":"string","description":"Parent folder ID to list child folders of (optional). Omit to list top-level folders."}},"required":[],"additionalProperties":false} });
 
-export const onedriveUpload = createActionProxyTool(executeMicrosoftToolRef, "onedrive_upload", { name: "onedrive_upload", description: "Upload a file to the user's OneDrive. Use when the user asks to save a generated document to OneDrive, upload a file they've created, or back up content to Microsoft OneDrive. Requires a Convex storage ID from a previously generated file (e.g. from generate_docx, generate_xlsx, generate_pptx, etc.).", parameters: {"type":"object","properties":{"storage_id":{"type":"string","description":"Convex storage ID of the file to upload (from a generate_* tool result)."},"filename":{"type":"string","description":"Filename for the file in OneDrive (e.g. 'Report.docx')."},"folder_path":{"type":"string","description":"OneDrive folder path to upload into (optional, defaults to root). Example: '/Documents/Reports'."}},"required":["storage_id","filename"],"additionalProperties":false} });
+export const onedriveUpload = createActionProxyTool(executeMicrosoftToolRef, "onedrive_upload", { name: "onedrive_upload", description: "Upload a file to the user's OneDrive. Use when the user asks to save a generated document or media asset to OneDrive, upload a file they've created, or back up content to Microsoft OneDrive. Requires a Convex storage ID from a previously generated file or media result (e.g. DOCX, XLSX, PPTX, image, audio, or video).", parameters: {"type":"object","properties":{"storage_id":{"type":"string","description":"Convex storage ID of the file or media asset to upload (from a prior tool result)."},"filename":{"type":"string","description":"Filename for the file in OneDrive (e.g. 'Report.docx'). Use an extension matching the source content; this tool does not transcode files."},"folder_path":{"type":"string","description":"OneDrive folder path to upload into (optional, defaults to root). Example: '/Documents/Reports'."}},"required":["storage_id","filename"],"additionalProperties":false} });
 
 export const onedriveList = createActionProxyTool(executeMicrosoftToolRef, "onedrive_list", { name: "onedrive_list", description: "List or search files in the user's OneDrive. Use when the user asks to see their OneDrive files, find a document, or check what's in their Microsoft OneDrive. Supports keyword search and folder browsing.", parameters: {"type":"object","properties":{"query":{"type":"string","description":"Search keyword query (optional). Searches file names and content."},"folder_path":{"type":"string","description":"List files in a specific folder by path (optional, defaults to root). Example: '/Documents/Reports'."},"max_results":{"type":"number","description":"Maximum number of files to return (default 20, max 50)."}},"required":[],"additionalProperties":false} });
 

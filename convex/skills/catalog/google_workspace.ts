@@ -22,6 +22,7 @@ Use this skill for tasks that require Gmail, Google Drive, or Google Calendar.
 - Treat this skill being visible as a signal that at least one Google integration is enabled for the conversation. If authorization is missing, the tool will return a connection error; then ask the user to reconnect the relevant integration.
 - Resolve relative dates such as "last week", "this week", "today", and "tomorrow" from the current date/time context supplied in the system prompt. Use explicit ISO 8601 \`time_min\` and \`time_max\` values for calendar ranges.
 - Be explicit when moving data between Gmail, Drive, and Calendar.
+- Gmail drafts may include owned files or generated media as attachments. Drive uploads may use the storage ID returned by a document or media tool; never expose that internal ID in the final response.
 - Summarize what changed after each action so the user can verify it quickly.`,
   instructionsCompiled: undefined,
   compilationStatus: "compiled",

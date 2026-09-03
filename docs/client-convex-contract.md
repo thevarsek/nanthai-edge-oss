@@ -176,6 +176,40 @@ Examples:
   `audioSource` distinguishes model-authored output from recorded and generated
   read-aloud audio; clients must not re-derive that distinction from model IDs.
 
+### Skill-driven multimedia generation contract (M52)
+
+- `image-generation`, `music-generation`, `speech-generation`, and
+  `video-generation` are normal seeded skills. Once loaded, they expose the
+  matching `generate_image`, `generate_music`, `generate_speech`, or
+  `generate_video` tool through the existing progressive tool loop. Clients do
+  not call OpenRouter generation endpoints directly.
+- Convex resolves each tool's model from the explicit tool argument, then the
+  user's matching default preference, then the matching `MODEL_IDS` entry in
+  `convex/lib/model_constants.ts`. Clients consume the resolved preferences and
+  `listModelSummaries({ includeGenerationModels: true })`; they do not duplicate
+  fallback model IDs.
+- `generationCapabilities`, `generationZdrCapabilities`, and
+  `mediaCapabilities` are backend-authored model projections. Clients render
+  the shared capability surface and keep unsupported controls visible but
+  disabled. Convex removes unsupported optional parameters before transport.
+- A selected model that is incompatible with the user's current ZDR setting
+  remains visible. The matching skill exposes `mediaAvailability`, is excluded
+  from model tool context, and cannot be enabled until the model or ZDR setting
+  changes. Convex never silently substitutes a hidden ZDR-specific model.
+- Generated image/video records and generated audio files reuse the existing
+  message, Convex storage, `generatedMedia`, and `generatedFiles` contracts.
+  The resulting storage-backed artifacts can therefore flow into existing
+  PPTX, Gmail draft, Google Drive, and other attachment-aware tools without a
+  parallel media handoff API.
+- Video submission and polling use the existing owned asynchronous workload
+  path. If the user disconnects OpenRouter before a pending job can continue,
+  the job fails gracefully; M52 does not retain a separate durable credential.
+- Media provider cost is reported through the existing chat cost summary as
+  `breakdown.media`. Missing inline cost may use the existing one-shot provider
+  generation lookup; M52 does not introduce a second retry workload.
+- Personas and normal/basic scheduled tasks reuse the same layered skill
+  resolver and tool registry. They require no media-specific execution path.
+
 ## OpenRouter Image and Advisor Contract
 
 - Convex owns dedicated image discovery (`/images/models` plus endpoint details),

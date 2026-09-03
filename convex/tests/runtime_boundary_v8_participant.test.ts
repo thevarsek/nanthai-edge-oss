@@ -227,6 +227,22 @@ test("Node sibling action wires onDocumentToolsScoped callback", () => {
   );
 });
 
+test("same-round profile expansion preserves the authoritative tool execution context", () => {
+  const participant = readConvexSource("chat/actions_run_generation_participant.ts");
+  const nodeSibling = readConvexSource("chat/actions_run_generation_participant_action.ts");
+
+  assert.match(
+    participant,
+    /onProfilesExpanded\?\.\([\s\S]*?caps,\s*roundToolCtx,\s*\)/,
+    "profile expansion must receive the fenced context used by the original tool round",
+  );
+  assert.match(
+    nodeSibling,
+    /onProfilesExpanded:\s*async\s*\([\s\S]*?toolCtx,\s*\)\s*=>[\s\S]*?retrySameRoundProgressiveToolCalls\([\s\S]*?registry,\s*toolCtx,\s*\)/,
+    "same-round retries must reuse the authoritative participant tool context",
+  );
+});
+
 test("declaresUseNode helper recognises the directive", () => {
   // Self-test for the helper, since the regression guard depends on it.
   assert.equal(declaresUseNode('"use node";\nimport x from "y";\n'), true);

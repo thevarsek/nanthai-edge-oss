@@ -43,7 +43,7 @@ describe("VideoGenerationProgress", () => {
     expect(screen.getByText("10s")).toBeInTheDocument();
   });
 
-  it("renders failed jobs without raw provider error details", () => {
+  it("renders failed jobs with their backend error detail", () => {
     mockUseQuery.mockReturnValue({
       status: "failed",
       createdAt: Date.now() - 65_000,
@@ -53,8 +53,7 @@ describe("VideoGenerationProgress", () => {
     render(<VideoGenerationProgress messageId={messageId} />);
 
     expect(screen.getByText(/video generation failed/i)).toBeInTheDocument();
-    expect(screen.getByText("Generation failed. Tap retry to try again.")).toBeInTheDocument();
-    expect(screen.queryByText("Provider rejected the request")).not.toBeInTheDocument();
+    expect(screen.getByText("Provider rejected the request")).toBeInTheDocument();
     expect(screen.getByText("1m 5s")).toBeInTheDocument();
   });
 });

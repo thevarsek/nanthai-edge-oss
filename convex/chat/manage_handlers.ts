@@ -6,6 +6,7 @@ import { deleteForMessage as deleteAnalyticsForMessage } from "../analytics_work
 import { ConvexError } from "convex/values";
 import { requireAuth, requirePro } from "../lib/auth";
 import { safeDeleteAudioBlob } from "./manage_delete_helpers";
+import { storageHasContentReferences } from "../knowledge_base/delete_helpers";
 import { copyAdvisorData } from "../advisors/copy";
 import { deleteAdvisorDataForMessage } from "../advisors/deletion";
 import { deleteStreamingMessage } from "./streaming_state";
@@ -432,12 +433,10 @@ export async function deleteMessageHandler(
     .withIndex("by_message", (q) => q.eq("messageId", args.messageId))
     .collect();
   for (const file of generatedFiles) {
-    try {
-      await ctx.storage.delete(file.storageId);
-    } catch {
-      // Storage blob may already be deleted — continue cleanup
-    }
     await ctx.db.delete(file._id);
+    if (!await storageHasContentReferences(ctx, file.storageId)) {
+      await ctx.storage.delete(file.storageId).catch(() => undefined);
+    }
   }
 
   await deleteGeneratedMediaForMessage(ctx, args.messageId);

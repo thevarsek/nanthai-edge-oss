@@ -597,6 +597,43 @@ test("normalizeMessagesForLoadedSkills recovers loaded skills from raw transcrip
   assert.match(JSON.stringify(normalized[1]?.content), /Always use heading styles/);
 });
 
+test("normalizeMessagesForLoadedSkills honors an authoritative empty skill set", () => {
+  const normalized = normalizeMessagesForLoadedSkills(
+    [
+      { role: "system", content: "base system" },
+      {
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "call_1",
+          type: "function",
+          function: { name: "load_skill", arguments: "{\"name\":\"image-generation\"}" },
+        }],
+      },
+      {
+        role: "tool",
+        tool_call_id: "call_1",
+        content: JSON.stringify({
+          skill: "image-generation",
+          instructions: "Generate an image.",
+          requiredToolProfiles: ["imageGeneration"],
+          requiredToolIds: ["generate_image"],
+          requiredIntegrationIds: [],
+          requiredCapabilities: [],
+        }),
+      },
+      { role: "user", content: "continue" },
+    ],
+    [],
+    { recoverWhenEmpty: false },
+  );
+
+  assert.deepEqual(normalized, [
+    { role: "system", content: "base system" },
+    { role: "user", content: "continue" },
+  ]);
+});
+
 test("normalizeMessagesForLoadedSkills strips stale synthesized blocks when no loaded skill state is recoverable", () => {
   const normalized = normalizeMessagesForLoadedSkills(
     [

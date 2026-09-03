@@ -211,7 +211,7 @@ const coreFeatures: FeatureMeta[] = [
     title: "Price Transparency",
     tagline: "See the cost of every response, your running total, and your remaining balance — in the chat.",
     indexDescription:
-      "Advanced Stats shows per-message generation cost, a live chat total, and a 4-bucket breakdown (Responses, Memory, Search, Other). Your OpenRouter balance sits right in the header. Full visibility, zero markup.",
+      "Advanced Stats shows per-message generation cost, a live chat total, and a clear breakdown including responses, media generation, memory, and search. Your OpenRouter balance sits right in the header. Full visibility, zero markup.",
     tier: "free",
     icon: Receipt,
     accentClass: "text-[var(--edge-cyan)]",

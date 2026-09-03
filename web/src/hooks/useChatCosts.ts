@@ -11,6 +11,7 @@ export interface CostBreakdown {
   memory: number;
   search: number;
   advisors: number;
+  media: number;
   other: number;
 }
 
@@ -20,7 +21,7 @@ interface ChatCostSummary {
   breakdown: CostBreakdown;
 }
 
-const EMPTY_BREAKDOWN: CostBreakdown = { responses: 0, memory: 0, search: 0, advisors: 0, other: 0 };
+const EMPTY_BREAKDOWN: CostBreakdown = { responses: 0, memory: 0, search: 0, advisors: 0, media: 0, other: 0 };
 
 /**
  * Subscribe to cost data for a chat. Pass `enabled: false` (when the user has
@@ -51,10 +52,10 @@ export function formatCost(cost: number): string {
 }
 
 /**
- * Returns true if a breakdown has any non-zero ancillary bucket (memory/search/other).
+ * Returns true if a breakdown has any non-zero ancillary bucket.
  */
 export function hasAncillaryCosts(breakdown: CostBreakdown): boolean {
-  return breakdown.memory > 0 || breakdown.search > 0 || breakdown.advisors > 0 || breakdown.other > 0;
+  return breakdown.memory > 0 || breakdown.search > 0 || breakdown.advisors > 0 || breakdown.media > 0 || breakdown.other > 0;
 }
 
 export { EMPTY_BREAKDOWN };

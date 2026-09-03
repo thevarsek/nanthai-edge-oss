@@ -12,8 +12,13 @@ export function isWizardModelDisabled(
   model: ModelSummary,
   zdrEnforced?: boolean,
   googleIntegrationsActive?: boolean,
+  generationKind?: keyof NonNullable<ModelSummary["generationCapabilities"]>,
 ): boolean {
-  const isZdrDisabled = zdrEnforced === true && !modelIsZdrEligible(model);
+  const isZdrDisabled = zdrEnforced === true && (
+    generationKind
+      ? model.generationZdrCapabilities?.[generationKind] !== true
+      : !modelIsZdrEligible(model)
+  );
   const isGoogleBlocked = googleIntegrationsActive === true && (
     !model.hasZdrEndpoint ||
     modelHasImageOutput(model) ||
@@ -28,6 +33,7 @@ export function selectWizardResults({
   priority,
   zdrEnforced,
   googleIntegrationsActive,
+  generationKind,
   limit = 3,
 }: {
   models: ModelSummary[];
@@ -35,14 +41,15 @@ export function selectWizardResults({
   priority: WizardPriority;
   zdrEnforced?: boolean;
   googleIntegrationsActive?: boolean;
+  generationKind?: keyof NonNullable<ModelSummary["generationCapabilities"]>;
   limit?: number;
 }): ScoredWizardModel[] {
   const scored = models
     .map((model) => ({ ...model, score: wizardScore(model, task, priority) }))
     .filter((model) => model.score > 0)
     .sort((a, b) => b.score - a.score);
-  const enabled = scored.filter((model) => !isWizardModelDisabled(model, zdrEnforced, googleIntegrationsActive));
-  const blocked = scored.filter((model) => isWizardModelDisabled(model, zdrEnforced, googleIntegrationsActive));
+  const enabled = scored.filter((model) => !isWizardModelDisabled(model, zdrEnforced, googleIntegrationsActive, generationKind));
+  const blocked = scored.filter((model) => isWizardModelDisabled(model, zdrEnforced, googleIntegrationsActive, generationKind));
 
   if (enabled.length === 0) {
     return blocked.slice(0, limit);

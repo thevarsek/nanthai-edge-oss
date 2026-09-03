@@ -143,10 +143,21 @@ export const generateTitleArgs = {
   messageId: v.optional(v.id("messages")), // M23: for ancillary cost attribution
 } satisfies PropertyValidators;
 
+export const messageAudioExecutionValidator = v.object({
+  runId: v.id("executionRuns"),
+  attemptId: v.id("executionAttempts"),
+  fence: v.number(),
+  claimantId: v.string(),
+});
+
 export const generateAudioForMessageArgs = {
   messageId: v.id("messages"),
   previewText: v.optional(v.string()),
   voiceOverride: v.optional(v.string()),
+  // Optional only for deployment compatibility with already-scheduled
+  // pre-Workflow calls. New work always enters through the required Workflow
+  // contract below.
+  execution: v.optional(messageAudioExecutionValidator),
 } satisfies PropertyValidators;
 
 export const previewVoiceArgs = {

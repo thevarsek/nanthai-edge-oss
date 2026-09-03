@@ -2,6 +2,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { cancelAndCleanupForExecutionRun } from "../analytics_workflows/cleanup";
 import { cancelVideoForExecutionRun } from "../chat/video_cleanup";
+import { clearAudioGenerationForExecutionRun } from "../chat/audio_cleanup";
 import { cancelAdvisorForExecutionRun } from "../advisors/execution_lifecycle";
 import { terminalizeAttempt } from "./attempts";
 import { appendRunEventUnchecked } from "./events";
@@ -89,6 +90,7 @@ export async function cancelRunState(
     cancelAdvisorForExecutionRun(ctx, run._id),
   ]);
   const domainCleanupDone = analyticsCleanupDone && advisorCleanupDone;
+  await clearAudioGenerationForExecutionRun(ctx, run);
   await cancelVideoForExecutionRun(ctx, run._id);
   const activeAttempt = run.activeAttemptId ? await ctx.db.get(run.activeAttemptId) : null;
   if (activeAttempt?.componentOperationId) {

@@ -4,6 +4,7 @@ import {
   isImageGenerationAvailable,
   projectModelMediaContract,
 } from "../models/media_capabilities";
+import { projectGenerationCapabilities } from "../models/generation_capabilities";
 
 type MemoryQueryResult = Partial<Doc<"memories">> & {
   _id: Id<"memories">;
@@ -82,6 +83,8 @@ export async function getModelCapabilitiesHandler(
   | {
       provider?: string;
       supportedParameters?: string[];
+      supportedVoices?: string[];
+      outputModalities?: string[];
       hasImageInput?: boolean;
       hasFileInput?: boolean;
       hasAudioInput?: boolean;
@@ -89,6 +92,8 @@ export async function getModelCapabilitiesHandler(
       hasVideoInput?: boolean;
       hasImageGeneration?: boolean;
       hasVideoGeneration?: boolean;
+      hasMusicGeneration?: boolean;
+      hasSpeechGeneration?: boolean;
       hasReasoning?: boolean;
       hasZdrEndpoint?: boolean;
       contextLength?: number;
@@ -106,6 +111,17 @@ export async function getModelCapabilitiesHandler(
         generateAudio: boolean;
         seed: boolean;
       };
+      speechCapabilities?: {
+        voices: string[];
+        outputFormats: Array<"mp3" | "pcm">;
+        supportsSpeed: boolean;
+        speedMin?: number;
+        speedMax?: number;
+        supportsInstructions: boolean;
+        supportsStyle: boolean;
+        styleDegreeMin?: number;
+        styleDegreeMax?: number;
+      };
     }
   | null
 > {
@@ -116,10 +132,18 @@ export async function getModelCapabilitiesHandler(
 
   if (!model) return null;
   const projectedModel = projectModelMediaContract(model);
+  const generationCapabilities = projectGenerationCapabilities(projectedModel);
+  const outputModalities = projectedModel.architecture?.modality
+    ?.split("->", 2)[1]
+    ?.split("+")
+    .map((value) => value.trim())
+    .filter(Boolean) ?? [];
 
   return {
     provider: projectedModel.provider,
     supportedParameters: projectedModel.supportedParameters,
+    supportedVoices: projectedModel.supportedVoices,
+    outputModalities,
     hasImageInput:
       projectedModel.architecture?.modality?.split("->")[0]?.includes("image") ?? false,
     hasFileInput:
@@ -133,6 +157,8 @@ export async function getModelCapabilitiesHandler(
       projectedModel.architecture?.modality?.split("->")[0]?.includes("video") ?? false,
     hasImageGeneration: isImageGenerationAvailable(projectedModel),
     hasVideoGeneration: projectedModel.supportsVideo ?? false,
+    hasMusicGeneration: generationCapabilities.music,
+    hasSpeechGeneration: generationCapabilities.speech,
     hasReasoning:
       projectedModel.supportedParameters?.includes("include_reasoning") ?? false,
     hasZdrEndpoint: projectedModel.hasZdrEndpoint ?? false,
@@ -155,6 +181,7 @@ export async function getModelCapabilitiesHandler(
           seed: projectedModel.videoCapabilities.seed,
         }
       : undefined,
+    speechCapabilities: projectedModel.mediaCapabilities.speech,
   };
 }
 

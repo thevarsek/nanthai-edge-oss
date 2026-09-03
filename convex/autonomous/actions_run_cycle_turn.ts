@@ -33,7 +33,6 @@ import { markGenerationJobAnalyticsStarted } from "../chat/generation_start_guar
 import { normalizeGenerationError } from "../chat/generation_error";
 import { isGenerationCancelledError } from "../chat/generation_helpers";
 import { runAutonomousImageTurn } from "./actions_run_cycle_image";
-import { assertOpenRouterImagePrivacy } from "../lib/openrouter_image";
 import { assertModelAvailable } from "../lib/openrouter_modality";
 import { imageConfigFromPreferences } from "../preferences/image_defaults";
 import { adaptMessagesForImageInput } from "../chat/request_message_capabilities";
@@ -339,9 +338,6 @@ export async function runParticipantTurn(
       capabilities: caps,
       feature: "Autonomous discussion",
     });
-    if (caps?.hasImageGeneration) {
-      assertOpenRouterImagePrivacy(requireZdr);
-    }
     if (requireZdr) {
       assertModelSupportsZdr({
         modelId: participant.modelId,

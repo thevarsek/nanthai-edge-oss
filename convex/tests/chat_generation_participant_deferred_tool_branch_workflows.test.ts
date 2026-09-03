@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
 import { generateForParticipant } from "../chat/actions_run_generation_participant";
-import { createTool, ToolRegistry } from "../tools/registry";
+import {
+  createTool,
+  ToolRegistry,
+  type ToolExecutionContext,
+} from "../tools/registry";
 
 function streamToolCall(toolName: string, callId = "call_1") {
   return {
@@ -31,8 +35,9 @@ function streamToolCall(toolName: string, callId = "call_1") {
 }
 
 function registryWithDeferred(
-  kind: "spawn_subagents" | "drive_picker" | "presentation_workflow",
+  kind: "spawn_subagents" | "drive_picker" | "presentation_workflow" | "video_generation",
   data: unknown,
+  onExecute?: (context: ToolExecutionContext) => void,
 ) {
   const registry = new ToolRegistry();
   registry.register(createTool({
@@ -40,15 +45,20 @@ function registryWithDeferred(
       ? "spawn_subagents"
       : kind === "drive_picker"
         ? "drive_picker"
-        : "create_presentation",
+        : kind === "presentation_workflow"
+          ? "create_presentation"
+          : "generate_video",
     description: "Deferred workflow test tool",
     parameters: { type: "object", properties: {} },
     effectPolicy: { effect: "write", retry: "idempotency_key_required" },
-    execute: async () => ({
-      success: true,
-      data: { accepted: true },
-      deferred: { kind, data },
-    }),
+    execute: async (context) => {
+      onExecute?.(context);
+      return {
+        success: true,
+        data: { accepted: true },
+        deferred: { kind, data },
+      };
+    },
   }));
   return registry;
 }
@@ -68,20 +78,25 @@ function registryWithImmediateTool() {
   return registry;
 }
 
-function makeCtx() {
+function makeCtx(mediaAvailability: unknown[] = [], lifecycleEvents: string[] = []) {
   const mutations: Array<Record<string, unknown>> = [];
   const scheduled: Array<Record<string, unknown>> = [];
+  const queries: Array<Record<string, unknown>> = [];
   return {
     mutations,
     scheduled,
+    queries,
     ctx: {
       runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+        queries.push(args);
         if ("jobId" in args) return false;
+        if ("requireZdr" in args) return mediaAvailability;
         if ("userId" in args) return null;
         return null;
       },
       runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
         mutations.push(args);
+        if (Array.isArray(args.files)) lifecycleEvents.push("generated-files-registered");
         if (typeof args.captureKey === "string" && !("artifacts" in args)) {
           return { decision: "execute", artifactIds: [] };
         }
@@ -121,8 +136,10 @@ async function runParticipant(
   toolRegistry: ToolRegistry,
   overrides: Record<string, unknown> = {},
   argOverrides: Record<string, unknown> = {},
+  mediaAvailability: unknown[] = [],
+  lifecycleEvents: string[] = [],
 ) {
-  const state = makeCtx();
+  const state = makeCtx(mediaAvailability, lifecycleEvents);
   const result = await generateForParticipant({
     ctx: state.ctx,
     args: {
@@ -166,8 +183,48 @@ async function runParticipant(
     progressiveTools: { enabledIntegrations: ["drive"], directToolNames: [], allowSubagents: true },
     ...overrides,
   } as any);
-  return { result, mutations: state.mutations, scheduled: state.scheduled };
+  return {
+    result,
+    mutations: state.mutations,
+    scheduled: state.scheduled,
+    queries: state.queries,
+  };
 }
+
+test("generation filters unavailable media profiles even when ZDR is off", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () =>
+    streamToolCall("spawn_subagents", "call_subagents")) as any;
+  let toolContext: ToolExecutionContext | undefined;
+
+  const { result, queries } = await runParticipant(
+    registryWithDeferred(
+      "spawn_subagents",
+      { tasks: [{ title: "Inspect", prompt: "Inspect the selected model." }] },
+      (context) => { toolContext = context; },
+    ),
+    {
+      progressiveTools: {
+        enabledIntegrations: [],
+        directToolNames: [],
+        allowSubagents: true,
+      },
+    },
+    {},
+    [{
+      profile: "imageGeneration",
+      generationKind: "image",
+      modelId: "image/retired",
+      isAvailable: false,
+      reasonCode: "selected_model_unavailable",
+    }],
+  );
+
+  assert.equal(result.failed, false);
+  assert.ok(queries.some((args) => args.requireZdr === false));
+  assert.equal(toolContext?.availableSkillProfiles?.includes("imageGeneration"), false);
+  assert.equal(toolContext?.availableSkillProfiles?.includes("videoGeneration"), true);
+});
 
 test("generateForParticipant persists deferred subagent batches and starts each child Workflow", async (t) => {
   t.after(() => mock.restoreAll());
@@ -368,6 +425,41 @@ test("generateForParticipant hands deferred presentations to a durable workflow 
   assert.equal(mutations.some((args) => args.status === "completed"), false);
 });
 
+test("generateForParticipant keeps video tools active until durable publication resumes the model", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () =>
+    streamToolCall("generate_video", "call_video")) as any;
+
+  const handoffs: Array<{ checkpoint: Record<string, any>; video: Record<string, unknown> }> = [];
+  const { result, mutations } = await runParticipant(
+    registryWithDeferred("video_generation", { videoJobId: "video_job_1" }),
+    {
+      continuationHandoff: {
+        continuationCount: 1,
+        maxToolRoundsPerInvocation: 1,
+        onHandoff: async () => undefined,
+        onDeferredVideo: async (
+          checkpoint: Record<string, any>,
+          video: Record<string, unknown>,
+        ) => {
+          handoffs.push({ checkpoint, video });
+        },
+      },
+    },
+  );
+
+  assert.equal(result.continued, true);
+  assert.equal(result.deferredForSubagents, false);
+  assert.deepEqual(handoffs[0]?.video, {
+    videoJobId: "video_job_1",
+    toolCallId: "call_video",
+  });
+  assert.equal(handoffs[0]?.checkpoint.continuationCount, 2);
+  const liveUpdate = mutations.find((args) => Array.isArray(args.activeToolCallIds));
+  assert.deepEqual(liveUpdate?.activeToolCallIds, ["call_video"]);
+  assert.equal(mutations.some((args) => args.status === "completed"), false);
+});
+
 test("generateForParticipant hands off after a completed tool round when invocation budget is exhausted", async (t) => {
   t.after(() => mock.restoreAll());
   mock.method(globalThis, "fetch", async () => streamToolCall("inspect_context", "call_inspect")) as any;
@@ -439,6 +531,47 @@ test("generateForParticipant keeps prior continuation tools in the live projecti
     const calls = args.toolCalls as Array<{ id: string }>;
     return calls.map((call) => call.id).join(",") === "call_prior,call_current";
   }));
+});
+
+test("a resumed presentation file is registered before the model can hand it to another tool", async (t) => {
+  t.after(() => mock.restoreAll());
+  const lifecycleEvents: string[] = [];
+  mock.method(globalThis, "fetch", async () => {
+    lifecycleEvents.push("model-called");
+    return streamToolCall("inspect_context", "call_current");
+  }) as any;
+
+  const { mutations } = await runParticipant(registryWithImmediateTool(), {
+    initialToolCalls: [{
+      id: "call_presentation",
+      name: "create_presentation",
+      arguments: "{}",
+    }],
+    initialToolResults: [{
+      toolCallId: "call_presentation",
+      toolName: "create_presentation",
+      result: JSON.stringify({
+        storageId: "storage_deck_1",
+        filename: "generated-deck.pptx",
+        mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      }),
+    }],
+    continuationHandoff: {
+      continuationCount: 1,
+      maxToolRoundsPerInvocation: 1,
+      onHandoff: async () => undefined,
+    },
+  }, {
+    executionAttemptId: "attempt_1",
+    executionFence: 7,
+  }, [], lifecycleEvents);
+
+  assert.deepEqual(lifecycleEvents.slice(0, 2), [
+    "generated-files-registered",
+    "model-called",
+  ]);
+  const registration = mutations.find((args) => Array.isArray(args.files));
+  assert.equal((registration?.files as Array<{ storageId?: string }>)[0]?.storageId, "storage_deck_1");
 });
 
 test("generateForParticipant hands restored presentation profiles from V8 to Node before model use", async (t) => {

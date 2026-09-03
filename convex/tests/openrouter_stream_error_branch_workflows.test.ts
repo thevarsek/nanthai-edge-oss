@@ -160,3 +160,38 @@ test("streaming transport preserves timeout context from AbortError-shaped failu
     /OpenRouter stream timeout.*slow upstream/,
   );
 });
+
+test("streaming transport aborts active provider work when its owner is cancelled", async () => {
+  let cancelled = false;
+  let fetchCount = 0;
+  const deps = createOpenRouterStreamingDepsForTest({
+    fetch: async (_url: RequestInfo | URL, init?: RequestInit) => {
+      fetchCount += 1;
+      setTimeout(() => { cancelled = true; }, 1);
+      return await new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener("abort", () => {
+          reject({ name: "AbortError" });
+        }, { once: true });
+      });
+    },
+  });
+
+  await assert.rejects(
+    () => callOpenRouterStreaming(
+      "key",
+      "google/lyria-3-clip-preview",
+      [{ role: "user", content: "Compose a cue" }],
+      { modalities: ["text", "audio"], audio: { voice: "nova", format: "wav" } },
+      {},
+      {
+        emptyStreamRetries: 0,
+        networkRetries: 0,
+        isCancelled: async () => cancelled,
+        cancellationPollIntervalMs: 25,
+      },
+      deps,
+    ),
+    { name: "OpenRouterTransportCancelledError" },
+  );
+  assert.equal(fetchCount, 1);
+});

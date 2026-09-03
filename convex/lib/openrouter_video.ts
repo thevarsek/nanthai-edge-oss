@@ -47,6 +47,23 @@ export interface PollVideoJobResponse {
   error?: { message?: string; code?: string };
 }
 
+export function normalizeVideoJobError(
+  value: unknown,
+): PollVideoJobResponse["error"] {
+  if (typeof value === "string" && value.trim()) {
+    return { message: value.trim() };
+  }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const error = value as { message?: unknown; code?: unknown };
+  const message = typeof error.message === "string" && error.message.trim()
+    ? error.message.trim()
+    : undefined;
+  const code = typeof error.code === "string" && error.code.trim()
+    ? error.code.trim()
+    : undefined;
+  return message || code ? { message, code } : undefined;
+}
+
 function videoUrl(jobId?: string, content = false): string {
   const normalizedJobId = jobId?.trim();
   if (!normalizedJobId || normalizedJobId.length > 512) {
@@ -132,7 +149,7 @@ export async function pollVideoJobStatus(
     if (!request.response.ok) {
       throw new Error(`Video poll failed (HTTP ${request.response.status}).`);
     }
-    const data = await request.response.json() as PollVideoJobResponse;
+    const data = await request.response.json() as PollVideoJobResponse & { error?: unknown };
     if (data.id !== jobId || !["pending", "in_progress", "completed", "failed"].includes(data.status)) {
       throw new Error("OpenRouter returned an invalid video poll response.");
     }
@@ -141,7 +158,7 @@ export async function pollVideoJobStatus(
       status: data.status,
       generation_id: data.generation_id,
       usage: data.usage,
-      error: data.error,
+      error: normalizeVideoJobError(data.error),
     };
   } finally {
     request.finish();

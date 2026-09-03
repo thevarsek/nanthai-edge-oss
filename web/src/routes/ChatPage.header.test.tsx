@@ -145,7 +145,7 @@ describe("ChatHeader", () => {
         isPro={false}
         totalCost={0.0123}
         showAdvancedStats
-        breakdown={{ responses: 0.01, memory: 0.001, search: 0.001, advisors: 0.002, other: 0.0003 }}
+        breakdown={{ responses: 0.01, memory: 0.001, search: 0.001, advisors: 0.002, media: 0.004, other: 0.0003 }}
       />,
     );
 
@@ -155,6 +155,7 @@ describe("ChatHeader", () => {
     expect(screen.getByText("cost_breakdown_memory")).toBeInTheDocument();
     expect(screen.getByText("cost_breakdown_search")).toBeInTheDocument();
     expect(screen.getByText("cost_breakdown_advisors")).toBeInTheDocument();
+    expect(screen.getByText("cost_breakdown_media")).toBeInTheDocument();
     expect(screen.getByText("cost_breakdown_other")).toBeInTheDocument();
     fireEvent.click(document.querySelector(".fixed.inset-0.z-40")!);
     expect(screen.queryByText("cost_breakdown_responses")).not.toBeInTheDocument();

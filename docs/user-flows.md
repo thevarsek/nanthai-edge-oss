@@ -199,6 +199,26 @@ User previews a TTS voice sample from settings.
 | Android | `ChatDefaultsRoute`, `ConvexGateway` (previewVoice) |
 | Convex | `chat/actions:previewVoice`, `chat/audio_actions.ts` (previewVoiceHandler) |
 
+### 3.7 Skill-Driven Media Generation (M52)
+
+The user asks for an image, music, speech, or video in a normal conversation.
+The model loads the seeded media skill and calls the matching generation tool;
+the client does not enter a separate generation mode.
+
+```
+User request
+  → existing skill resolver and load_skill flow
+  → generate_image | generate_music | generate_speech | generate_video
+  → Convex applies the user's media default and supported parameters
+  → provider output is stored and projected onto the assistant message
+  → existing image/audio/video/file cards render reactively
+```
+
+Video is the only deferred path: the assistant turn pauses while its owned
+Workflow-backed job submits and polls, then resumes with the completed artifact
+or a truthful terminal error. Stored outputs can be passed to existing PPTX,
+email-draft, and Drive tools through the normal attachment/storage contract.
+
 ---
 
 ## 4. Multi-Participant
@@ -365,7 +385,10 @@ Select previously uploaded KB files to attach.
 ## 9. Settings
 
 ### 9.1 Model Selection
-Default model and per-chat override. Model catalog browsing, capability filtering, wizard.
+Default chat model and per-chat override, plus image, music, speech, and video
+defaults in their matching settings sections. All clients request generation
+models from the same Convex summary projection, keep a saved unavailable model
+visible, and disable unsupported/ZDR-incompatible choices and controls.
 
 | Platform | Key Files |
 |----------|-----------|
@@ -646,7 +669,7 @@ User sends prompt
     → ctx.storage.store(Blob) → audioStorageId
     → finalizeGeneration: patch message + insert generatedFiles
   → Client subscription fires with updated message
-  → isLyriaMusic check (audioStorageId + modelId) → show AudioPlayerView
+  → audioStorageId + audioMimeType/audioSource → show the shared audio player
   → getMessageAudioUrl query → signed storage URL → AVPlayer/MediaPlayer/Audio
 ```
 
@@ -654,10 +677,10 @@ User sends prompt
 
 | Platform | Detection | Player | Download |
 |----------|-----------|--------|----------|
-| iOS | `ConvexMessage.isLyriaMusic` | `AudioPlayerView.swift` (AVPlayer) | Share sheet via UIActivityViewController |
-| Android | `ChatMessage.isLyriaMusic` | `LyriaAudioPlayer.kt` (MediaPlayer) | Intent.ACTION_VIEW to /download endpoint |
-| Web | `isLyria` computed in AudioMessageBubble | `AudioMessageBubble.tsx` (HTML5 Audio) | Programmatic `<a>` download click |
+| iOS | `audioStorageId` + audio metadata | `AudioPlayerView.swift` (AVPlayer) | Share sheet via UIActivityViewController |
+| Android | `audioStorageId` + audio metadata | `LyriaAudioPlayer.kt` (MediaPlayer) | Intent.ACTION_VIEW to /download endpoint |
+| Web | `audioStorageId` + audio metadata | `AudioMessageBubble.tsx` (HTML5 Audio) | Programmatic `<a>` download click |
 
 ---
 
-*Last updated: 2026-04-07 — M26 Lyria music generation user/technical flow.*
+*Last updated: 2026-09-03 — M52 skill-driven multimedia generation, shared media defaults, and reusable artifact flow.*

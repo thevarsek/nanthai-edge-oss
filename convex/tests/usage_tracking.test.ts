@@ -40,6 +40,21 @@ function makeSchedulerCapture() {
   };
 }
 
+async function ownedUsageParent(id: string) {
+  if (id === "msg_1") return { _id: id, userId: "user_1", chatId: "chat_1" };
+  if (id === "chat_1") return { _id: id, userId: "user_1" };
+  return null;
+}
+
+function emptyDeletionTombstoneQuery() {
+  return {
+    withIndex: () => ({
+      first: async () => null,
+      unique: async () => null,
+    }),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // storeAncillaryCostHandler
 // ---------------------------------------------------------------------------
@@ -50,7 +65,9 @@ test("storeAncillaryCostHandler inserts a usageRecord with source and provided c
   const ctx = {
     db: {
       insert,
-      query: () => {
+      get: ownedUsageParent,
+      query: (table: string) => {
+        if (table === "accountDeletionTombstones") return emptyDeletionTombstoneQuery();
         throw new Error("should not query cachedModels when cost is provided");
       },
     },
@@ -88,7 +105,9 @@ test("storeAncillaryCostHandler computes cost from cachedModels when cost is not
   const ctx = {
     db: {
       insert,
+      get: ownedUsageParent,
       query: (table: string) => {
+        if (table === "accountDeletionTombstones") return emptyDeletionTombstoneQuery();
         assert.equal(table, "cachedModels");
         return {
           withIndex: () => ({
@@ -128,7 +147,10 @@ test("storeAncillaryCostHandler stores undefined cost when model not found and c
   const ctx = {
     db: {
       insert,
-      query: () => ({
+      get: ownedUsageParent,
+      query: (table: string) => table === "accountDeletionTombstones"
+        ? emptyDeletionTombstoneQuery()
+        : ({
         withIndex: () => ({
           first: async () => null,
         }),
@@ -152,13 +174,55 @@ test("storeAncillaryCostHandler stores undefined cost when model not found and c
   assert.equal(inserts[0].value.source, "memory_extraction");
 });
 
+test("storeAncillaryCostHandler does not recreate usage after message or chat deletion", async () => {
+  for (const deletedParent of ["message", "chat"] as const) {
+    let inserts = 0;
+    await storeAncillaryCostHandler({
+      db: {
+        get: async (id: string) => {
+          if (deletedParent === "message") return null;
+          if (id === "msg_deleted") {
+            return { _id: id, userId: "user_1", chatId: "chat_1" };
+          }
+          if (id === "chat_1") {
+            return { _id: id, userId: "user_1", isDeleting: true };
+          }
+          return null;
+        },
+        query: (table: string) => {
+          if (deletedParent === "message") {
+            throw new Error("a deleted message should short-circuit");
+          }
+          assert.equal(table, "accountDeletionTombstones");
+          return emptyDeletionTombstoneQuery();
+        },
+        insert: async () => { inserts += 1; },
+      },
+    } as any, {
+      messageId: "msg_deleted" as any,
+      chatId: "chat_1" as any,
+      userId: "user_1",
+      modelId: "openai/gpt-5",
+      promptTokens: 0,
+      completionTokens: 0,
+      totalTokens: 0,
+      cost: 0.01,
+      source: "media_tool_image",
+    });
+
+    assert.equal(inserts, 0);
+  }
+});
+
 test("storeAncillaryCostHandler deduplicates provider usage by generation and source", async () => {
   let inserts = 0;
   await storeAncillaryCostHandler({
     db: {
+      get: ownedUsageParent,
       query: (table: string) => ({
         withIndex: () => ({
           first: async () => table === "usageRecords" ? { _id: "usage_existing" } : null,
+          unique: async () => null,
         }),
       }),
       insert: async () => { inserts += 1; },
@@ -183,9 +247,11 @@ test("storeAncillaryCostHandler deduplicates usage without a provider generation
   let inserts = 0;
   await storeAncillaryCostHandler({
     db: {
+      get: ownedUsageParent,
       query: (table: string) => ({
         withIndex: () => ({
           first: async () => table === "usageRecords" ? { _id: "usage_existing" } : null,
+          unique: async () => null,
         }),
       }),
       insert: async () => { inserts += 1; },
@@ -590,8 +656,11 @@ test("storeAncillaryCostHandler prefers provided cost over model-computed cost",
   const ctx = {
     db: {
       insert,
+      get: ownedUsageParent,
       // Even though model is available, provided cost should take precedence
-      query: () => ({
+      query: (table: string) => table === "accountDeletionTombstones"
+        ? emptyDeletionTombstoneQuery()
+        : ({
         withIndex: () => ({
           first: async () => ({
             modelId: "openai/gpt-4.1-mini",
@@ -632,6 +701,9 @@ test("getChatCostSummaryHandler sums generation + ancillary costs for the same m
     { messageId: "msg_1", cost: 0.01,   source: "search_perplexity" },// search
     { messageId: "msg_1", cost: 0.003,  source: "search_architecture" },// search
     { messageId: "msg_1", cost: 0.004,  source: "tool_web_search" },  // search
+    { messageId: "msg_1", cost: 0.04,   source: "media_tool_image" }, // media
+    { messageId: "msg_1", cost: 0.005,  source: "media_message_speech" }, // media
+    { messageId: "msg_1", cost: 0.02,   source: "media_message_video" }, // direct media response
   ];
 
   const ctx = {
@@ -655,15 +727,16 @@ test("getChatCostSummaryHandler sums generation + ancillary costs for the same m
   assert.ok(result);
 
   // totalCost includes all records (generation + ancillary)
-  const expectedTotal = 0.05 + 0.001 + 0.002 + 0.0005 + 0.01 + 0.003 + 0.004;
+  const expectedTotal = 0.05 + 0.001 + 0.002 + 0.0005 + 0.01 + 0.003 + 0.004 + 0.04 + 0.005 + 0.02;
   assert.ok(Math.abs(result.totalCost - expectedTotal) < 1e-10);
 
-  // messageCosts only reflects primary generation (source === undefined)
-  assert.ok(Math.abs(result.messageCosts["msg_1"] - 0.05) < 1e-10);
+  // Dedicated image/video rows are the response itself; tool media and speech are ancillary.
+  assert.ok(Math.abs(result.messageCosts["msg_1"] - 0.07) < 1e-10);
 
   // breakdown buckets
   assert.ok(Math.abs(result.breakdown.responses - 0.05) < 1e-10);
   assert.ok(Math.abs(result.breakdown.memory - 0.0005) < 1e-10);
   assert.ok(Math.abs(result.breakdown.search - (0.01 + 0.003 + 0.004)) < 1e-10);
+  assert.ok(Math.abs(result.breakdown.media - 0.065) < 1e-10);
   assert.ok(Math.abs(result.breakdown.other - (0.001 + 0.002)) < 1e-10);
 });

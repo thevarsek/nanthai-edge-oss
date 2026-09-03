@@ -207,3 +207,27 @@ test("callOpenRouterImage rejects successful responses without image data", asyn
     globalThis.fetch = originalFetch;
   }
 });
+
+test("callOpenRouterImage honors an expired action deadline before dispatch", async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalled = false;
+  try {
+    globalThis.fetch = (async () => {
+      fetchCalled = true;
+      return new Response("{}", { status: 200 });
+    }) as typeof fetch;
+
+    await assert.rejects(
+      callOpenRouterImage(
+        "test-key",
+        { model: "openai/gpt-image-2", prompt: "test" },
+        { absoluteDeadlineAtMs: Date.now() - 1 },
+      ),
+      (error: unknown) =>
+        error instanceof ConvexError && error.data?.code === "TIMEOUT",
+    );
+    assert.equal(fetchCalled, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

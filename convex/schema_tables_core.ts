@@ -527,6 +527,11 @@ export const coreSchemaTables = {
         analyticsRunId: v.id("analyticsWorkflowRuns"),
       }),
       v.object({
+        kind: v.literal("video"),
+        videoJobId: v.id("videoJobs"),
+        toolCallId: v.string(),
+      }),
+      v.object({
         kind: v.literal("drive_picker"),
         batchId: v.id("drivePickerBatches"),
       }),
@@ -1074,8 +1079,14 @@ export const coreSchemaTables = {
     messageId: v.id("messages"),
     chatId: v.id("chats"),
     userId: v.string(),
-    openRouterJobId: v.string(),
+    openRouterJobId: v.optional(v.string()),
     outputUploadId: v.optional(v.id("videoOutputUploads")),
+    sourceUserMessageId: v.optional(v.id("messages")),
+    generationJobId: v.optional(v.id("generationJobs")),
+    toolCallId: v.optional(v.string()),
+    toolOperationKey: v.optional(v.string()),
+    parentResumeEventId: v.optional(v.string()),
+    workflowId: v.optional(v.string()),
     status: videoJobStatus,
     model: v.string(),
     prompt: v.string(),
@@ -1085,8 +1096,13 @@ export const coreSchemaTables = {
         aspectRatio: v.optional(v.string()),
         duration: v.optional(v.number()),
         generateAudio: v.optional(v.boolean()),
+        seed: v.optional(v.number()),
       }),
     ),
+    requireZdr: v.optional(v.boolean()),
+    storageId: v.optional(v.id("_storage")),
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
     error: v.optional(v.string()),
     lastPolledAt: v.optional(v.number()),
     pollCount: v.number(),
@@ -1099,9 +1115,14 @@ export const coreSchemaTables = {
       v.literal("completed"),
       v.literal("failed"),
     )),
+    providerGenerationId: v.optional(v.string()),
+    providerCost: v.optional(v.number()),
+    providerIsByok: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index("by_messageId", ["messageId"])
+    .index("by_execution_run", ["executionRunId"])
+    .index("by_parent_tool", ["generationJobId", "toolCallId"])
     .index("by_chat", ["chatId", "createdAt"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_status_createdAt", ["status", "createdAt"]),

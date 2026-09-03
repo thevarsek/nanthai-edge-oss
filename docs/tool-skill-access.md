@@ -96,6 +96,7 @@ Current backend behavior is intentionally forgiving:
 | Subagents | Pro + active model tool-capable + single-participant chat + subagents enabled |
 | Workspace/runtime tools | Pro + active model tool-capable (skill-activated via `code_workspace`) |
 | Analytics tools | Pro + active model tool-capable (skill-activated via analytics skills) |
+| Multimedia generation | Pro + active model tool-capable + matching media skill/profile + selected default model available under current ZDR policy |
 
 ### Executable tool families
 
@@ -105,6 +106,7 @@ Current backend behavior is intentionally forgiving:
 | Document generation/editing tools | `generate_docx`, `read_docx`, `edit_docx`, `generate_pptx`, `read_pptx`, `edit_pptx`, `generate_xlsx`, `read_xlsx`, `edit_xlsx` | Pro |
 | Text/file tools | `generate_text_file`, `read_text_file`, `generate_eml`, `read_eml` | Pro |
 | Utility | `fetch_image` | Pro + base registry |
+| Multimedia generation | `generate_image`, `generate_music`, `generate_speech`, `generate_video` | Pro + matching `imageGeneration`, `musicGeneration`, `speechGeneration`, or `videoGeneration` profile; selected model must be available for the current ZDR setting |
 | Chat search | `search_chats` | Pro + base registry |
 | Skill discovery | `load_skill`, `list_skills` | Pro + base registry |
 | Scheduled jobs | `create_scheduled_job`, `list_scheduled_jobs`, `update_scheduled_job`, `delete_scheduled_job` | Pro + `scheduledJobs` profile |
@@ -129,6 +131,7 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Family | Skills | Typical profile(s) | Gate |
 |---|---|---|---|
 | Runtime / analytics | `code-workspace`, `persistent-runtime`, `data-analyzer`, `dashboard-builder`, `data-validation`, `sql-data-query`, `statistical-analysis` | `workspace`, `persistentRuntime`, `analytics` | Pro (skill-activated) |
+| Multimedia generation | `image-generation`, `music-generation`, `speech-generation`, `video-generation` | `imageGeneration`, `musicGeneration`, `speechGeneration`, `videoGeneration` | Pro + selected media model available under current ZDR policy |
 | Documents | `documents`, `document-review`, `document-drafting`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
 | Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
@@ -157,7 +160,7 @@ M33 added a dedicated document workflow layer on top of the lower-level file too
 
 ### M36 catalog closeout
 
-The seeded system catalog is now 67 system skills: 56 visible active skills, 8 integration-managed active skills, 2 archived integration-managed compatibility skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
+The seeded system catalog is now 71 system skills: 60 visible active skills, 8 integration-managed active skills, 2 archived integration-managed compatibility skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
 
 ### Hidden built-in skills
 
@@ -184,6 +187,10 @@ These are the clearest examples of how skills and tools relate today.
 | `persistent-runtime` | `persistentRuntime` | `vm_exec`, `vm_list_files`, `vm_read_file`, `vm_write_file`, `vm_delete_file`, `vm_make_dirs`, `vm_import_file`, `vm_export_file`, `vm_reset` | none |
 | `pdf` | `persistentRuntime` | `read_pdf`, `generate_pdf`, `edit_pdf` | none |
 | `parallel-subagents` | `subagents` | `spawn_subagents` | none |
+| `image-generation` | `imageGeneration` | `generate_image` | selected image model available under current ZDR policy |
+| `music-generation` | `musicGeneration` | `generate_music` | selected music model available under current ZDR policy |
+| `speech-generation` | `speechGeneration` | `generate_speech` | selected speech model available under current ZDR policy |
+| `video-generation` | `videoGeneration` | `generate_video` | selected video model available under current ZDR policy |
 | `documents` | `docs`, `persistentRuntime` | profile-driven document/text/email/PDF tools, plus scoped document workspace tools | none |
 | `document-review` | `docs` | `list_documents`, `read_document`, `find_in_document` | none |
 | `document-drafting` | `docs` | `read_document`, `generate_docx` | none |
@@ -291,7 +298,7 @@ In practice there are now two runtime shapes:
 - [`client-convex-contract.md`](client-convex-contract.md) — shared client-facing Convex contract
 - [`tech-stack.md`](tech-stack.md) — OSS runtime and dependency overview
 
-*Last updated: 2026-06-14 — M43 tool proxy/action-boundary behavior documented, Gmail/Google Calendar/Slack tool IDs corrected, and restored runtime/doc authoring tool availability confirmed.*
+*Last updated: 2026-09-03 — M52 multimedia skills, profiles, ZDR availability, and 71-skill catalog documented.*
 
 ## Slack MCP Tools — Hosted MCP And Drift Detection
 

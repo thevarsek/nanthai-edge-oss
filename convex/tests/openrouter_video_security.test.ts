@@ -50,6 +50,26 @@ test("video submission discards provider-controlled polling URLs", async () => {
   }
 });
 
+test("video polling normalizes current string and legacy object errors", async () => {
+  const originalFetch = globalThis.fetch;
+  const payloads = [
+    { id: "job_1", status: "failed", error: "Provider rejected the prompt" },
+    { id: "job_1", status: "failed", error: { code: "policy", message: "Legacy failure" } },
+  ];
+  try {
+    globalThis.fetch = async () => new Response(JSON.stringify(payloads.shift()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    const current = await pollVideoJobStatus("secret-key", "job_1");
+    const legacy = await pollVideoJobStatus("secret-key", "job_1");
+    assert.deepEqual(current.error, { message: "Provider rejected the prompt" });
+    assert.deepEqual(legacy.error, { code: "policy", message: "Legacy failure" });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("video content rejects redirects and declared oversized responses", async () => {
   const originalFetch = globalThis.fetch;
   try {

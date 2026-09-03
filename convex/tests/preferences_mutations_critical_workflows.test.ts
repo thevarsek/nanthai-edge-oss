@@ -138,6 +138,7 @@ test("global skill and integration defaults insert, update, and remove sparse pr
   const ctx = {
     auth: auth(),
     db: {
+      get: async () => null,
       query: (table: string) => {
         if (table === "purchaseEntitlements") return queryChain({ first: { _id: "ent_1", status: "active" } });
         if (table === "userPreferences") return queryChain({ first: prefs });

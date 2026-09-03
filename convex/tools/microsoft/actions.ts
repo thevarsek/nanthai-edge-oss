@@ -7,6 +7,7 @@ import type { RegisteredTool, ToolExecutionContext, ToolResult } from "../regist
 
 const microsoftToolNames = new Set<string>([
   "outlook_send",
+  "outlook_create_draft",
   "outlook_read",
   "outlook_search",
   "outlook_delete",
@@ -22,13 +23,15 @@ const microsoftToolNames = new Set<string>([
 ]);
 
 async function microsoftTools(): Promise<Map<string, RegisteredTool>> {
-  const [outlook, onedrive, calendar] = await Promise.all([
+  const [outlook, outlookDraft, onedrive, calendar] = await Promise.all([
     import("./outlook"),
+    import("./outlook_draft"),
     import("./onedrive"),
     import("./calendar"),
   ]);
   return new Map<string, RegisteredTool>([
     outlook.outlookSend,
+    outlookDraft.outlookCreateDraft,
     outlook.outlookRead,
     outlook.outlookSearch,
     outlook.outlookDelete,

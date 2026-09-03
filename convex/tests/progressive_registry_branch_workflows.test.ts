@@ -205,6 +205,10 @@ test("registry params, profile availability, and merge helpers cover empty and g
     [
       "presentations",
       "docs",
+      "imageGeneration",
+      "musicGeneration",
+      "speechGeneration",
+      "videoGeneration",
       "analytics",
       "workspace",
       "persistentRuntime",

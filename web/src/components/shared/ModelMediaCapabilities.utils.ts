@@ -10,6 +10,9 @@ export interface ImageMediaCapabilities {
   qualities: string[];
   backgrounds: string[];
   outputFormats: string[];
+  supportsOutputCompression?: boolean;
+  outputCompressionMin?: number;
+  outputCompressionMax?: number;
   maxInputReferences?: number;
   supportsStreaming: boolean;
 }
@@ -23,9 +26,22 @@ export interface VideoMediaCapabilities {
   supportsSeed: boolean;
 }
 
+export interface SpeechMediaCapabilities {
+  voices: string[];
+  outputFormats: Array<"mp3" | "pcm">;
+  supportsSpeed: boolean;
+  speedMin?: number;
+  speedMax?: number;
+  supportsInstructions: boolean;
+  supportsStyle: boolean;
+  styleDegreeMin?: number;
+  styleDegreeMax?: number;
+}
+
 export interface ModelMediaCapabilities {
   image?: ImageMediaCapabilities;
   video?: VideoMediaCapabilities;
+  speech?: SpeechMediaCapabilities;
 }
 
 const RESOLUTION_SCORES: Record<string, number> = {

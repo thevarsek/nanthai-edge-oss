@@ -1,8 +1,9 @@
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
-import type { ToolDefinition } from "../lib/openrouter_types";
+import type { OpenRouterMessage, ToolDefinition } from "../lib/openrouter_types";
 import type { AuthorizationSource } from "../execution/validators";
 import type { ToolEffectPolicy } from "./effect_policy";
+import type { SkillToolProfileId } from "../skills/profile_ids";
 
 export interface ToolParameterSchema {
   type: "object";
@@ -24,6 +25,7 @@ export interface ToolDeferredPayload {
     | "spawn_subagents"
     | "drive_picker"
     | "presentation_workflow"
+    | "video_generation"
     | "analytics_workflow"
     | "remote_mcp";
   data: unknown;
@@ -58,8 +60,12 @@ export interface ToolExecutionContext {
   generationKey?: string;
   modelId?: string;
   requireZdr?: boolean;
+  /** Profiles that may be loaded for this turn after privacy/runtime filtering. */
+  availableSkillProfiles?: SkillToolProfileId[];
   /** Absolute provider cutoff inherited from the owning generation action. */
   providerDeadlineAtMs?: number;
+  /** Branch-scoped transcript used by media tools to resolve image references. */
+  imageContextMessages?: OpenRouterMessage[];
   sandboxSessionId?: string;
   workspaceSandbox?: unknown;
   workspaceSandboxCleanup?: () => Promise<void>;

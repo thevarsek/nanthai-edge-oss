@@ -209,7 +209,7 @@ test("an ambiguous video provider submit is journaled outcome-unknown and never 
   assert.equal(mutations.some((entry) => "openRouterJobId" in entry), false);
 });
 
-test("a provider job returned after fence loss is retained in the operation ledger", async () => {
+test("a provider job is adopted into its pre-created owner without a live fence", async () => {
   const originalFetch = globalThis.fetch;
   const mutations: Array<Record<string, unknown>> = [];
   globalThis.fetch = (async () => new Response(JSON.stringify({
@@ -228,11 +228,8 @@ test("a provider job returned after fence loss is retained in the operation ledg
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
       mutations.push(args);
       if ("inputHash" in args) return { decision: "execute" };
-      if (args.externalId === "or_video_stale" && "fence" in args) {
-        throw new Error("STALE_EXECUTION_ATTEMPT");
-      }
-      if (args.status === "failed" && args.executionAttemptId === "attempt_1") {
-        throw new Error("STALE_EXECUTION_ATTEMPT");
+      if (args.messageId === "msg_assistant" && args.model === "video/model") {
+        return "video_job_1";
       }
       return undefined;
     },
@@ -240,7 +237,7 @@ test("a provider job returned after fence loss is retained in the operation ledg
     storage: { getUrl: async () => null },
   } as any;
   try {
-    await assert.rejects(submitVideoGenerationHandler(ctx, {
+    await submitVideoGenerationHandler(ctx, {
       ...baseArgs(),
       execution: {
         runId: "execution_1",
@@ -248,14 +245,16 @@ test("a provider job returned after fence loss is retained in the operation ledg
         fence: 4,
         claimantId: "video-workflow:job_1",
       },
-    }), /STALE_EXECUTION_ATTEMPT/);
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
-  assert.ok(mutations.some((entry) =>
-    entry.externalId === "or_video_stale" && !("fence" in entry)
-  ));
-  assert.equal(mutations.some((entry) => "openRouterJobId" in entry), false);
+  const adoption = mutations.find((entry) => entry.openRouterJobId === "or_video_stale");
+  assert.equal(adoption?.videoJobId, "video_job_1");
+  assert.equal(adoption?.generationJobId, "job_1");
+  assert.equal(adoption?.executionAttemptId, "attempt_1");
+  assert.equal("executionFence" in (adoption ?? {}), false);
+  assert.equal(mutations.some((entry) => "externalId" in entry), false);
 });
 
 test("video polling completes, stores media, finalizes message, and marks related flows complete", async () => {
@@ -522,7 +521,9 @@ test("video polling handles cancelled, failed, timeout, and download-failure ter
   assert.ok(mutations.some((entry) => String(entry.error).includes("timed out")));
   assert.ok(mutations.some((entry) => entry.error === "Video download failed (HTTP 404)."));
   const providerTerminalMarks = mutations.filter((entry) =>
-    Object.keys(entry).sort().join(",") === "status,videoJobId"
+    entry.videoJobId === "video_job_1" &&
+    (entry.status === "failed" || entry.status === "completed") &&
+    "generationId" in entry
   );
   assert.deepEqual(providerTerminalMarks.map((entry) => entry.status), ["failed", "completed"]);
   assert.equal(scheduled.some((entry) => entry.delay > 0), false);

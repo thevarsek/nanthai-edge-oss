@@ -129,7 +129,12 @@ test("finalizeGenerationHandler schedules completion push, auto-audio, and usage
   assert.ok(state.patches.some((entry) => entry.id === "chat_1" && entry.patch.lastMessagePreview === "Done"));
   assert.ok(state.patches.some((entry) => entry.id === "user_msg_1" && entry.patch.chatCompletionNotifiedAt));
   assert.ok(state.scheduled.some((entry) => entry.delay === 2000 && entry.args.openrouterGenerationId === "gen_1"));
-  assert.ok(state.scheduled.some((entry) => entry.args.messageId === "message_1" && Object.keys(entry.args).length === 1));
+  assert.ok(state.scheduled.some((entry) =>
+    entry.args.messageId === "message_1"
+    && entry.args.chatId === "chat_1"
+    && entry.args.triggerUserMessageId === "user_msg_1"
+    && Object.keys(entry.args).length === 3
+  ));
   assert.ok(state.scheduled.some((entry) => entry.args.category === "CHAT_COMPLETION"));
   assert.equal(state.inserts.some((entry) => entry.table === "usageRecords"), false);
 });

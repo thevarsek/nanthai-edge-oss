@@ -16,9 +16,10 @@ interface MenuSelectProps {
   options: MenuSelectOption[];
   onChange: (v: string) => void;
   ariaLabel?: string;
+  disabled?: boolean;
 }
 
-export function MenuSelect({ value, options, onChange, ariaLabel }: MenuSelectProps) {
+export function MenuSelect({ value, options, onChange, ariaLabel, disabled = false }: MenuSelectProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -95,10 +96,11 @@ export function MenuSelect({ value, options, onChange, ariaLabel }: MenuSelectPr
         ref={triggerRef}
         type="button"
         aria-label={ariaLabel}
+        disabled={disabled}
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-3 text-sm border border-border/50 hover:border-border transition-colors"
+        className="flex min-w-0 max-w-full items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-3 text-sm border border-border/50 hover:border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
-        <span>{selected?.label ?? value}</span>
+        <span className="min-w-0 truncate">{selected?.label ?? value}</span>
         <ChevronDown
           size={12}
           className={`text-muted transition-transform ${open ? "rotate-180" : ""}`}

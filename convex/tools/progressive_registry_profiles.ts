@@ -40,6 +40,9 @@ import {
 } from "./document_workspace";
 import { generateEml } from "./generate_eml";
 import { readEml } from "./read_eml";
+import { generateImage } from "./generate_image";
+import { generateMusic, generateSpeech } from "./generate_audio";
+import { generateVideo } from "./generate_video";
 import {
   gmailSend,
   gmailCreateDraft,
@@ -58,6 +61,7 @@ import {
 } from "./google/index";
 import {
   outlookSend,
+  outlookCreateDraft,
   outlookRead,
   outlookSearch,
   outlookDelete,
@@ -166,6 +170,18 @@ export function registerProfileTools(
     case "docs":
       registerToolsIfMissing(registry, DOC_TOOLS);
       break;
+    case "imageGeneration":
+      registerToolsIfMissing(registry, [generateImage]);
+      break;
+    case "musicGeneration":
+      registerToolsIfMissing(registry, [generateMusic]);
+      break;
+    case "speechGeneration":
+      registerToolsIfMissing(registry, [generateSpeech]);
+      break;
+    case "videoGeneration":
+      registerToolsIfMissing(registry, [generateVideo]);
+      break;
     case "analytics":
       registerToolsIfMissing(registry, analyticsProfileTools);
       break;
@@ -196,7 +212,7 @@ export function registerProfileTools(
     case "microsoft":
       if ((options.enabledIntegrations ?? []).includes("outlook")) {
         registerToolsIfMissing(registry, [
-          outlookSend, outlookRead, outlookSearch, outlookDelete, outlookMove, outlookListFolders,
+          outlookSend, outlookCreateDraft, outlookRead, outlookSearch, outlookDelete, outlookMove, outlookListFolders,
         ]);
       }
       if ((options.enabledIntegrations ?? []).includes("onedrive")) {

@@ -6,10 +6,8 @@ import { internal } from "../_generated/api";
 import {
   extractMemoriesHandler,
 } from "../chat/actions_extract_memories_handler";
-import {
-  generateAudioForMessageHandler,
-  previewVoiceHandler,
-} from "../chat/audio_actions";
+import { previewVoiceHandler } from "../chat/audio_actions";
+import { generateAudioForMessageHandler } from "../chat/audio_message_action";
 import { MODEL_IDS } from "../lib/model_constants";
 
 const enqueueMemoryEmbeddingRef = getFunctionName(
@@ -18,6 +16,21 @@ const enqueueMemoryEmbeddingRef = getFunctionName(
 const isChatWritableRef = getFunctionName(
   internal.chat.post_process_guard.isChatWritable,
 );
+const isExecutionCancellationRequestedRef = getFunctionName(
+  internal.execution.queries.isCancellationRequested,
+);
+
+function messageAudioArgs(messageId: string) {
+  return {
+    messageId: messageId as any,
+    execution: {
+      runId: "run_audio_1" as any,
+      attemptId: "attempt_audio_1" as any,
+      fence: 1,
+      claimantId: "message-audio-test",
+    },
+  };
+}
 
 function makeSchedulerCapture(scheduled: Array<Record<string, unknown>>) {
   return {
@@ -86,6 +99,16 @@ function sseResponseWithAudio(
       "data: [DONE]",
       "",
     ].join("\n\n"),
+  );
+}
+
+function speechResponse(generationId = "speech_gen_1") {
+  return new Response(
+    new Uint8Array(Buffer.concat([Buffer.from("ID3", "ascii"), Buffer.alloc(480, 1)])),
+    {
+      status: 200,
+      headers: { "X-Generation-Id": generationId, "Content-Type": "audio/mpeg" },
+    },
   );
 }
 
@@ -376,6 +399,7 @@ test("generateAudioForMessageHandler reuses existing audio without regenerating"
   });
 
   const result = await generateAudioForMessageHandler({
+    runMutation: async () => true,
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === getFunctionName(internal.chat.queries.getMessageInternal)) {
@@ -392,9 +416,7 @@ test("generateAudioForMessageHandler reuses existing audio without regenerating"
       }
       throw new Error(`unexpected query ${name}`);
     },
-  } as any, {
-    messageId: "msg_audio_1" as any,
-  });
+  } as any, messageAudioArgs("msg_audio_1"));
 
   assert.equal(fetchMock.mock.callCount(), 0);
   assert.deepEqual(result, {
@@ -405,6 +427,22 @@ test("generateAudioForMessageHandler reuses existing audio without regenerating"
   });
 });
 
+test("pre-Workflow scheduled audio calls exit through compatibility cleanup", async () => {
+  const mutations: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const result = await generateAudioForMessageHandler({
+    runMutation: async (ref: unknown, args: Record<string, unknown>) => {
+      mutations.push({ name: getFunctionName(ref as any), args });
+      return null;
+    },
+  } as any, { messageId: "msg_legacy_audio" as any });
+
+  assert.equal(result, null);
+  assert.deepEqual(mutations, [{
+    name: "chat/audio_cleanup:clearLegacyAudioGeneration",
+    args: { messageId: "msg_legacy_audio" },
+  }]);
+});
+
 test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHandler uses the default voice", async (t) => {
   t.after(() => mock.restoreAll());
 
@@ -413,13 +451,14 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
   const previewScheduled: Array<Record<string, unknown>> = [];
   mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
     requestBodies.push(JSON.parse(String(init?.body)));
-    return sseResponseWithAudio(Buffer.alloc(480, 1).toString("base64"), "Narrate this.");
+    return speechResponse();
   });
 
   const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
   const chatRef = getFunctionName(internal.chat.queries.getChatInternal);
   const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
   const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
+  const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
   const patchAudioRef = getFunctionName(internal.chat.mutations.patchMessageAudio);
   const mutations: Array<{ ref: string; args: Record<string, unknown> }> = [];
 
@@ -437,6 +476,14 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
       if (name === chatRef) return { _id: "chat_1", userId: "user_1" };
       if (name === prefsRef) return { preferredVoice: "alloy" };
       if (name === keyRef) return "sk-test";
+      if (name === capsRef) {
+        return {
+          hasSpeechGeneration: true,
+          supportedVoices: ["alloy", "nova"],
+          hasZdrEndpoint: true,
+        };
+      }
+      if (name === isExecutionCancellationRequestedRef) return false;
       throw new Error(`unexpected query ${name}`);
     },
     runMutation: async (ref: unknown, args: Record<string, unknown>) => {
@@ -445,33 +492,46 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
     },
     storage: {
       store: async (blob: Blob) => {
-        assert.equal(blob.type, "audio/wav");
-        assert.equal((await blob.arrayBuffer()).byteLength > 44, true);
+        assert.equal(blob.type, "audio/mpeg");
+        assert.equal((await blob.arrayBuffer()).byteLength > 3, true);
         return "storage_new";
       },
     },
     scheduler: makeSchedulerCapture(audioScheduled),
-  } as any, {
-    messageId: "msg_audio_2" as any,
-  });
+  } as any, messageAudioArgs("msg_audio_2"));
 
   const previewResult = await previewVoiceHandler({
     auth: {
       getUserIdentity: async () => ({ subject: "user_1" }),
     },
-    runQuery: async () => "sk-test",
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as any);
+      if (name === "account/deletion_state:isAccountDeletionStarted") return false;
+      if (name === keyRef) return "sk-test";
+      if (name === prefsRef) return { preferredVoice: "nova" };
+      if (name === capsRef) {
+        return {
+          hasSpeechGeneration: true,
+          supportedVoices: ["alloy", "nova"],
+          hasZdrEndpoint: true,
+        };
+      }
+      throw new Error(`unexpected query ${name}`);
+    },
     scheduler: makeSchedulerCapture(previewScheduled),
   } as any, {
     voice: "   ",
   });
 
+  assert.ok(audioResult);
   assert.equal(audioResult.audioStorageId, "storage_new");
   assert.equal(audioResult.audioVoice, "alloy");
   assert.equal(audioResult.audioDurationMs > 0, true);
   assert.equal(mutations.some((call) => call.ref === patchAudioRef), true);
-  assert.equal(requestBodies[0].audio.voice, "alloy");
-  assert.equal(requestBodies[1].audio.voice, "nova");
-  assert.equal(previewResult.mimeType, "audio/wav");
+  assert.equal(requestBodies[0].voice, "alloy");
+  assert.equal(requestBodies[0].model, MODEL_IDS.speechGeneration);
+  assert.equal(requestBodies[1].voice, "nova");
+  assert.equal(previewResult.mimeType, "audio/mpeg");
   assert.equal(previewResult.audioBase64.length > 0, true);
   const audioAnalytics = analyticsForOperation(audioScheduled, "audio_generation");
   assert.deepEqual(
@@ -479,7 +539,7 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
     ["backend_ai_operation_started", "backend_ai_operation_completed"],
   );
   assert.equal((audioAnalytics[0]?.properties as Record<string, unknown>).source, "message_audio");
-  assert.equal((audioAnalytics[1]?.properties as Record<string, unknown>).audio_duration_ms, 10);
+  assert.equal((audioAnalytics[1]?.properties as Record<string, unknown>).audio_duration_ms as number > 0, true);
   assert.equal((audioAnalytics[1]?.properties as Record<string, unknown>).storage_persisted, true);
   const previewAnalytics = analyticsForOperation(previewScheduled, "audio_preview");
   assert.deepEqual(
@@ -489,14 +549,145 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
   assert.equal((previewAnalytics[0]?.properties as Record<string, unknown>).source, "settings_voice_preview");
 });
 
-test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZDR", async (t) => {
+test("generateAudioForMessageHandler safely cleans an unpublished blob and clears its fenced flag", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => speechResponse("speech_cleanup_1"));
+  const deleted: string[] = [];
+  const mutations: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const scheduled: Array<Record<string, unknown>> = [];
+  const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
+  const chatRef = getFunctionName(internal.chat.queries.getChatInternal);
+  const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
+  const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
+  const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
+  const patchRef = getFunctionName(internal.chat.mutations.patchMessageAudio);
+  const clearRef = getFunctionName(internal.chat.mutations.clearAudioGenerating);
+  const cleanupRef = getFunctionName(
+    internal.tools.media_generation_mutations.deleteUnreferencedMediaStorage,
+  );
+  let patchAttempts = 0;
+
+  await assert.rejects(() => generateAudioForMessageHandler({
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as any);
+      if (name === messageRef) {
+        return {
+          _id: "msg_audio_cleanup",
+          role: "assistant",
+          chatId: "chat_1",
+          content: "Narrate this.",
+        };
+      }
+      if (name === chatRef) return { _id: "chat_1", userId: "user_1" };
+      if (name === prefsRef) return { preferredVoice: "nova" };
+      if (name === keyRef) return "sk-test";
+      if (name === capsRef) {
+        return { hasSpeechGeneration: true, supportedVoices: ["nova"] };
+      }
+      if (name === isExecutionCancellationRequestedRef) return false;
+      throw new Error(`unexpected query ${name}`);
+    },
+    runMutation: async (ref: unknown, args: Record<string, unknown>) => {
+      const name = getFunctionName(ref as any);
+      mutations.push({ name, args });
+      if (name === patchRef) {
+        patchAttempts += 1;
+        throw new Error("publication failed");
+      }
+      return null;
+    },
+    storage: {
+      store: async () => "storage_unpublished",
+      delete: async (storageId: string) => {
+        deleted.push(storageId);
+      },
+    },
+    scheduler: makeSchedulerCapture(scheduled),
+  } as any, messageAudioArgs("msg_audio_cleanup")), /publication failed/);
+
+  assert.equal(patchAttempts, 2);
+  assert.deepEqual(deleted, []);
+  assert.deepEqual(
+    mutations.find((call) => call.name === cleanupRef)?.args.storageIds,
+    ["storage_unpublished"],
+  );
+  const clear = mutations.find((call) => call.name === clearRef);
+  assert.equal(clear?.args.executionRunId, "run_audio_1");
+  assert.equal(clear?.args.executionAttemptId, "attempt_audio_1");
+  assert.equal(
+    scheduled.some((entry) => entry.generationId === "speech_cleanup_1"),
+    true,
+  );
+});
+
+test("generateAudioForMessageHandler recovers when publication commits but its response is lost", async (t) => {
+  t.after(() => mock.restoreAll());
+  mock.method(globalThis, "fetch", async () => speechResponse());
+  const deleted: string[] = [];
+  const mutations: Array<{ name: string; args: Record<string, unknown> }> = [];
+  const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
+  const chatRef = getFunctionName(internal.chat.queries.getChatInternal);
+  const prefsRef = getFunctionName(internal.chat.queries.getUserPreferences);
+  const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
+  const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
+  const patchRef = getFunctionName(internal.chat.mutations.patchMessageAudio);
+  const cleanupRef = getFunctionName(
+    internal.tools.media_generation_mutations.deleteUnreferencedMediaStorage,
+  );
+  let patchAttempts = 0;
+
+  const result = await generateAudioForMessageHandler({
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as any);
+      if (name === messageRef) {
+        return {
+          _id: "msg_audio_committed",
+          role: "assistant",
+          chatId: "chat_1",
+          content: "Narrate this.",
+        };
+      }
+      if (name === chatRef) return { _id: "chat_1", userId: "user_1" };
+      if (name === prefsRef) return { preferredVoice: "nova" };
+      if (name === keyRef) return "sk-test";
+      if (name === capsRef) {
+        return { hasSpeechGeneration: true, supportedVoices: ["nova"] };
+      }
+      if (name === isExecutionCancellationRequestedRef) return false;
+      throw new Error(`unexpected query ${name}`);
+    },
+    runMutation: async (ref: unknown, args: Record<string, unknown>) => {
+      const name = getFunctionName(ref as any);
+      mutations.push({ name, args });
+      if (name === patchRef) {
+        patchAttempts += 1;
+        if (patchAttempts === 1) throw new Error("response lost after commit");
+      }
+      return null;
+    },
+    storage: {
+      store: async () => "storage_committed",
+      delete: async (storageId: string) => {
+        deleted.push(storageId);
+      },
+    },
+    scheduler: makeSchedulerCapture([]),
+  } as any, messageAudioArgs("msg_audio_committed"));
+
+  assert.equal(result?.audioStorageId, "storage_committed");
+  assert.equal(patchAttempts, 2);
+  assert.equal(mutations.some((call) => call.name === cleanupRef), false);
+  assert.deepEqual(deleted, []);
+});
+
+test("generateAudioForMessageHandler rejects ZDR before dedicated speech dispatch", async (t) => {
   t.after(() => mock.restoreAll());
 
   const requestBodies: any[] = [];
   const scheduled: Array<Record<string, unknown>> = [];
   mock.method(globalThis, "fetch", async (_url: RequestInfo | URL, init?: RequestInit) => {
     requestBodies.push(JSON.parse(String(init?.body)));
-    return sseResponseWithAudio(Buffer.alloc(480, 1).toString("base64"), "Narrate this.");
+    return speechResponse("speech_zdr_1");
   });
 
   const messageRef = getFunctionName(internal.chat.queries.getMessageInternal);
@@ -505,7 +696,7 @@ test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZD
   const keyRef = getFunctionName(internal.scheduledJobs.queries.getEncryptedUserApiKey);
   const capsRef = getFunctionName(internal.chat.queries.getModelCapabilities);
 
-  await generateAudioForMessageHandler({
+  await assert.rejects(() => generateAudioForMessageHandler({
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
       if (name === messageRef) {
@@ -519,7 +710,13 @@ test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZD
       if (name === chatRef) return { _id: "chat_1", userId: "user_1" };
       if (name === prefsRef) return { zdrEnabled: true, preferredVoice: "alloy" };
       if (name === keyRef) return "sk-test";
-      if (name === capsRef) return { hasZdrEndpoint: true };
+      if (name === capsRef) {
+        return {
+          hasSpeechGeneration: true,
+          supportedVoices: ["alloy"],
+          hasZdrEndpoint: true,
+        };
+      }
       throw new Error(`unexpected query ${name}`);
     },
     runMutation: async () => null,
@@ -527,21 +724,19 @@ test("generateAudioForMessageHandler requires a ZDR-capable audio model under ZD
       store: async () => "storage_zdr",
     },
     scheduler: makeSchedulerCapture(scheduled),
-  } as any, {
-    messageId: "msg_audio_zdr" as any,
-  });
+  } as any, messageAudioArgs("msg_audio_zdr")), /Speech generation is unavailable when Zero Data Retention/);
 
-  assert.deepEqual(requestBodies[0].provider, { sort: "latency", zdr: true });
-  const started = analyticsForOperation(scheduled, "audio_generation")
-    .find((entry) => entry.event === "backend_ai_operation_started");
-  assert.equal((started?.properties as Record<string, unknown> | undefined)?.zdr_required, true);
+  assert.deepEqual(requestBodies, []);
+  const failed = analyticsForOperation(scheduled, "audio_generation")
+    .find((entry) => entry.event === "backend_ai_operation_failed");
+  assert.ok(failed);
 });
 
 test("generateAudioForMessageHandler clears in-progress flags when synthesis fails", async (t) => {
   t.after(() => mock.restoreAll());
 
   mock.method(globalThis, "fetch", async () =>
-    sseResponseFromContent("No audio payload", { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 })) as any;
+    new Response(new Uint8Array(), { status: 200 })) as any;
 
   const clearRef = getFunctionName(internal.chat.mutations.clearAudioGenerating);
   const mutationCalls: Array<{ ref: string; args: Record<string, unknown> }> = [];
@@ -569,6 +764,10 @@ test("generateAudioForMessageHandler clears in-progress flags when synthesis fai
           ) {
             return name.endsWith("getEncryptedUserApiKey") ? "sk-test" : null;
           }
+          if (name === getFunctionName(internal.chat.queries.getModelCapabilities)) {
+            return { hasSpeechGeneration: true, supportedVoices: ["nova"] };
+          }
+          if (name === isExecutionCancellationRequestedRef) return false;
           throw new Error(`unexpected query ${name}`);
         },
         runMutation: async (ref: unknown, args: Record<string, unknown>) => {
@@ -581,9 +780,7 @@ test("generateAudioForMessageHandler clears in-progress flags when synthesis fai
           },
         },
         scheduler: makeSchedulerCapture(scheduled),
-      } as any, {
-        messageId: "msg_audio_3" as any,
-      }),
+      } as any, messageAudioArgs("msg_audio_3")),
     /no audio payload/i,
   );
 
@@ -597,21 +794,21 @@ test("generateAudioForMessageHandler rejects invalid messages and missing chats"
   await assert.rejects(
     () =>
       generateAudioForMessageHandler({
+        runMutation: async () => true,
         runQuery: async () => ({
           _id: "msg_user",
           role: "user",
           chatId: "chat_1",
           content: "hello",
         }),
-      } as any, {
-        messageId: "msg_user" as any,
-      }),
+      } as any, messageAudioArgs("msg_user")),
     /Only assistant messages/,
   );
 
   await assert.rejects(
     () =>
       generateAudioForMessageHandler({
+        runMutation: async () => true,
         runQuery: async (ref: unknown) => {
           const name = getFunctionName(ref as any);
           if (name === getFunctionName(internal.chat.queries.getMessageInternal)) {
@@ -627,24 +824,21 @@ test("generateAudioForMessageHandler rejects invalid messages and missing chats"
           }
           throw new Error(`unexpected query ${name}`);
         },
-      } as any, {
-        messageId: "msg_audio_4" as any,
-      }),
+      } as any, messageAudioArgs("msg_audio_4")),
     /Chat not found/,
   );
 
   await assert.rejects(
     () =>
       generateAudioForMessageHandler({
+        runMutation: async () => true,
         runQuery: async () => ({
           _id: "msg_audio_5",
           role: "assistant",
           chatId: "chat_1",
           content: "   ",
         }),
-      } as any, {
-        messageId: "msg_audio_5" as any,
-      }),
+      } as any, messageAudioArgs("msg_audio_5")),
     /no content to voice/i,
   );
 });

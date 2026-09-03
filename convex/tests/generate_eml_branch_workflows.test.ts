@@ -89,9 +89,9 @@ test("generateEml writes plain text email with safe headers and site download UR
     const contents = await stored[0]!.text();
     assert.match(contents, /From: "Nanth \\"Ops\\"" <bot@nanth.ai>/);
     assert.match(contents, /Subject:/);
-    assert.match(contents, /Content-Type: text\/plain; charset=UTF-8/);
+    assert.match(contents, /Content-Type: text\/plain; charset=utf-8/i);
     assert.doesNotMatch(contents, /multipart\/alternative/);
-    assert.match(contents, /\r\n\r\nPlain text body$/);
+    assert.match(contents, /\r\n\r\nPlain text body\r\n$/);
   } finally {
     if (originalSiteUrl === undefined) {
       delete process.env.CONVEX_SITE_URL;

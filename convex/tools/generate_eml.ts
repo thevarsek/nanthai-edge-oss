@@ -7,33 +7,15 @@
 // or imported into any email client.
 // =============================================================================
 
+"use node";
+
+import { randomUUID } from "node:crypto";
+import MailComposer from "nodemailer/lib/mail-composer";
 import { createTool } from "./registry";
-
-function escapeHeaderValue(value: string): string {
-  // Remove any newlines that could cause header injection
-  return value.replace(/[\r\n]+/g, " ").trim();
-}
-
-function formatEmailAddress(name: string | undefined, email: string): string {
-  if (name) {
-    // RFC 5322: "Display Name" <email@example.com>
-    const safeName = name.replace(/"/g, '\\"');
-    return `"${safeName}" <${email}>`;
-  }
-  return email;
-}
-
-function formatDate(dateStr?: string): string {
-  // RFC 5322 date format: Thu, 01 Jan 2026 12:00:00 +0000
-  const date = dateStr ? new Date(dateStr) : new Date();
-  return date.toUTCString();
-}
-
-function generateMessageId(): string {
-  const random = Math.random().toString(36).substring(2, 14);
-  const timestamp = Date.now().toString(36);
-  return `<${timestamp}.${random}@nanthai.app>`;
-}
+import {
+  resolveStorageAttachments,
+  STORAGE_ATTACHMENTS_PARAMETER,
+} from "./storage_attachments";
 
 export const generateEml = createTool({
   name: "generate_eml",
@@ -97,6 +79,7 @@ export const generateEml = createTool({
           "Email date in ISO 8601 format (optional, defaults to now). " +
           "Example: '2026-01-15T10:30:00Z'.",
       },
+      attachments: STORAGE_ATTACHMENTS_PARAMETER,
     },
     required: ["from_email", "to", "subject", "body_text"],
   },
@@ -124,48 +107,30 @@ export const generateEml = createTool({
       return { success: false, data: null, error: "Missing or invalid 'body_text'" };
     }
 
-    const lines: string[] = [];
-
-    // Headers
-    lines.push(`From: ${escapeHeaderValue(formatEmailAddress(fromName, fromEmail))}`);
-    lines.push(`To: ${to.map((r) => escapeHeaderValue(formatEmailAddress(r.name, r.email))).join(", ")}`);
-    if (cc && cc.length > 0) {
-      lines.push(`Cc: ${cc.map((r) => escapeHeaderValue(formatEmailAddress(r.name, r.email))).join(", ")}`);
+    const date = dateStr ? new Date(dateStr) : new Date();
+    if (Number.isNaN(date.getTime())) {
+      return { success: false, data: null, error: "'date' must be a valid ISO 8601 value." };
     }
-    lines.push(`Subject: ${escapeHeaderValue(subject)}`);
-    lines.push(`Date: ${formatDate(dateStr)}`);
-    lines.push(`Message-ID: ${generateMessageId()}`);
-    lines.push(`MIME-Version: 1.0`);
-    lines.push(`X-Mailer: NanthAI`);
-
-    if (bodyHtml) {
-      // Multipart/alternative: plain text + HTML
-      const boundary = `----=_NanthAI_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 10)}`;
-      lines.push(`Content-Type: multipart/alternative; boundary="${boundary}"`);
-      lines.push(""); // End of headers
-      lines.push(`--${boundary}`);
-      lines.push("Content-Type: text/plain; charset=UTF-8");
-      lines.push("Content-Transfer-Encoding: 8bit");
-      lines.push("");
-      lines.push(bodyText);
-      lines.push(`--${boundary}`);
-      lines.push("Content-Type: text/html; charset=UTF-8");
-      lines.push("Content-Transfer-Encoding: 8bit");
-      lines.push("");
-      lines.push(bodyHtml);
-      lines.push(`--${boundary}--`);
-    } else {
-      // Plain text only
-      lines.push("Content-Type: text/plain; charset=UTF-8");
-      lines.push("Content-Transfer-Encoding: 8bit");
-      lines.push(""); // End of headers
-      lines.push(bodyText);
-    }
-
-    const emlContent = lines.join("\r\n");
+    const attachments = await resolveStorageAttachments(toolCtx, args.attachments);
+    const emlContent = await new MailComposer({
+      from: { name: fromName ?? "", address: fromEmail },
+      to: to.map((recipient) => ({ name: recipient.name ?? "", address: recipient.email })),
+      cc: cc?.map((recipient) => ({ name: recipient.name ?? "", address: recipient.email })),
+      subject,
+      text: bodyText,
+      html: bodyHtml,
+      date,
+      messageId: `<${randomUUID()}@nanthai.app>`,
+      headers: { "X-Mailer": "NanthAI" },
+      attachments: attachments.map((attachment) => ({
+        filename: attachment.filename,
+        contentType: attachment.contentType,
+        content: attachment.content,
+      })),
+    }).compile().build();
 
     // Store in Convex file storage
-    const blob = new Blob([emlContent], { type: "message/rfc822" });
+    const blob = new Blob([new Uint8Array(emlContent)], { type: "message/rfc822" });
     const storageId = await toolCtx.ctx.storage.store(blob);
 
     const safeSubject =
@@ -183,6 +148,7 @@ export const generateEml = createTool({
         storageId,
         downloadUrl,
         filename,
+        attachmentCount: attachments.length,
         markdownLink: `[${filename}](${downloadUrl})`,
         message: `Email file generated. Present the download link to the user using markdown: [${filename}](${downloadUrl})`,
       },

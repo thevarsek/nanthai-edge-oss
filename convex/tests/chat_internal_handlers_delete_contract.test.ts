@@ -31,6 +31,8 @@ test("getModelCapabilitiesHandler derives modality flags from cached model rows"
   assert.deepEqual(result, {
     provider: "openrouter",
     supportedParameters: ["include_reasoning"],
+    supportedVoices: undefined,
+    outputModalities: ["text", "audio"],
     hasImageInput: false,
     hasFileInput: false,
     hasAudioInput: true,
@@ -38,11 +40,14 @@ test("getModelCapabilitiesHandler derives modality flags from cached model rows"
     hasVideoInput: true,
     hasImageGeneration: true,
     hasVideoGeneration: false,
+    hasMusicGeneration: false,
+    hasSpeechGeneration: false,
     hasReasoning: true,
     hasZdrEndpoint: false,
     contextLength: 128000,
     imageCapabilities: undefined,
     videoCapabilities: undefined,
+    speechCapabilities: undefined,
   });
 });
 

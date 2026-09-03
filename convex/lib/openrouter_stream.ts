@@ -28,6 +28,12 @@ import {
 import { DeepPartial, mergeTestDeps } from "./test_deps";
 import { assertChatCompletionsRequest } from "./openrouter_modality";
 import { shouldRetryAudioFormatWithMp3 } from "./openrouter_audio_format_retry";
+import {
+  cancellationWasRequested,
+  isOpenRouterTransportCancelledError,
+  OpenRouterTransportCancelledError,
+  watchForCancellation,
+} from "./openrouter_cancellation";
 
 const defaultOpenRouterStreamingDeps = {
   fetch: (...args: Parameters<typeof fetch>) => fetch(...args),
@@ -78,6 +84,8 @@ export async function callOpenRouterStreaming(
     retryOnUnsupportedParam = true,
     networkRetries = 1,
     networkRetryDelayMs = 2000,
+    isCancelled,
+    cancellationPollIntervalMs,
   } = retryConfig;
 
   const currentParams = { ...params };
@@ -93,6 +101,9 @@ export async function callOpenRouterStreaming(
   const msgCount = messages.length;
 
   while (attempt <= emptyStreamRetries) {
+    if (await cancellationWasRequested(isCancelled)) {
+      throw new OpenRouterTransportCancelledError();
+    }
     assertStreamingDeadline(deadlineAt, deps.now());
     try {
       const result = await streamOnce(
@@ -103,6 +114,8 @@ export async function callOpenRouterStreaming(
         callbacks,
         retryOnUnsupportedParam && attempt === 0,
         deadlineAt,
+        isCancelled,
+        cancellationPollIntervalMs,
         deps,
       );
 
@@ -127,6 +140,9 @@ export async function callOpenRouterStreaming(
           });
           assertStreamingDelayFits(deadlineAt, delay, deps.now());
           await deps.sleep(delay);
+          if (await cancellationWasRequested(isCancelled)) {
+            throw new OpenRouterTransportCancelledError();
+          }
           attempt++;
           continue;
         }
@@ -160,6 +176,7 @@ export async function callOpenRouterStreaming(
       });
       return result;
     } catch (error) {
+      if (isOpenRouterTransportCancelledError(error)) throw error;
       // Re-throw ConvexError as-is (don't wrap structured errors)
       if (error instanceof ConvexError) throw error;
       const durationMs = Date.now() - startTime;
@@ -195,6 +212,9 @@ export async function callOpenRouterStreaming(
         });
         assertStreamingDelayFits(deadlineAt, networkRetryDelayMs, deps.now());
         await deps.sleep(networkRetryDelayMs);
+        if (await cancellationWasRequested(isCancelled)) {
+          throw new OpenRouterTransportCancelledError();
+        }
         continue;
       }
 
@@ -247,6 +267,8 @@ async function streamOnce(
   },
   retryOnUnsupportedParam: boolean,
   deadlineAt: number,
+  isCancelled: (() => Promise<boolean>) | undefined,
+  cancellationPollIntervalMs: number | undefined,
   deps: OpenRouterStreamingDeps,
 ): Promise<StreamResult> {
   let currentParams = { ...params };
@@ -260,6 +282,9 @@ async function streamOnce(
   let retriedAudioFormatWithMp3 = false;
 
   while (true) {
+    if (await cancellationWasRequested(isCancelled)) {
+      throw new OpenRouterTransportCancelledError();
+    }
     assertStreamingDeadline(deadlineAt, deps.now());
     const body = deps.buildRequestBody(
       model,
@@ -271,21 +296,30 @@ async function streamOnce(
 
     const controller = new AbortController();
     let idleTimeout: ReturnType<typeof setTimeout> | undefined;
-    let hitAbsoluteDeadline = false;
+    let abortReason: "cancelled" | "deadline" | "idle_timeout" | undefined;
+    const abort = (reason: NonNullable<typeof abortReason>) => {
+      if (controller.signal.aborted) return;
+      abortReason = reason;
+      controller.abort();
+    };
     const resetTimeout = () => {
       if (idleTimeout) {
         clearTimeout(idleTimeout);
       }
       idleTimeout = setTimeout(
-        () => controller.abort(),
+        () => abort("idle_timeout"),
         STREAM_REQUEST_TIMEOUT_MS,
       );
     };
     resetTimeout();
     const deadlineTimeout = setTimeout(() => {
-      hitAbsoluteDeadline = true;
-      controller.abort();
+      abort("deadline");
     }, Math.max(1, deadlineAt - deps.now()));
+    const stopCancellationWatch = watchForCancellation({
+      isCancelled,
+      pollIntervalMs: cancellationPollIntervalMs,
+      onCancelled: () => abort("cancelled"),
+    });
 
     try {
       // Phase 1 instrumentation: OpenRouter TTFB sub-timings to split the
@@ -452,7 +486,7 @@ async function streamOnce(
             }
             : undefined,
         };
-        return await deps.processSSEBodyStream(
+        const result = await deps.processSSEBodyStream(
           response.body,
           refreshOnStreamActivity,
           () => {
@@ -460,12 +494,23 @@ async function streamOnce(
             resetTimeout();
           },
         );
+        if (await cancellationWasRequested(isCancelled)) {
+          throw new OpenRouterTransportCancelledError();
+        }
+        return result;
       }
 
       // Fallback for environments without a readable body stream.
       const text = await response.text();
-      return deps.processSSETextStream(text, callbacks);
+      const result = await deps.processSSETextStream(text, callbacks);
+      if (await cancellationWasRequested(isCancelled)) {
+        throw new OpenRouterTransportCancelledError();
+      }
+      return result;
     } catch (error) {
+      if (abortReason === "cancelled" || isOpenRouterTransportCancelledError(error)) {
+        throw new OpenRouterTransportCancelledError();
+      }
       // Re-throw ConvexError as-is (don't wrap structured errors)
       if (error instanceof ConvexError) throw error;
       // Structural checks instead of `instanceof Error`: on the Convex Node
@@ -483,12 +528,12 @@ async function streamOnce(
       const cause = errObj.cause != null ? String(errObj.cause) : undefined;
       if (errName === "AbortError") {
         console.error("[openrouter:stream:once] timeout", {
-          model, timeoutMs: hitAbsoluteDeadline
+          model, timeoutMs: abortReason === "deadline"
             ? Math.max(0, deadlineAt - deps.now())
             : STREAM_REQUEST_TIMEOUT_MS, rateLimitRetries,
         });
         // Re-throw as a regular Error so the caller's retry logic can inspect it
-        const abortMsg = hitAbsoluteDeadline
+        const abortMsg = abortReason === "deadline"
           ? `OpenRouter stream action deadline reached for model ${model}${cause ? `: ${cause}` : ""}`
           : `OpenRouter stream timeout after ${STREAM_REQUEST_TIMEOUT_MS}ms for model ${model}${cause ? `: ${cause}` : ""}`;
         throw new Error(abortMsg);
@@ -505,6 +550,7 @@ async function streamOnce(
       }
       throw error;
     } finally {
+      stopCancellationWatch();
       if (idleTimeout) clearTimeout(idleTimeout);
       if (deadlineTimeout) clearTimeout(deadlineTimeout);
     }

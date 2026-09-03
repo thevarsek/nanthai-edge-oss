@@ -19,10 +19,8 @@ import {
   pollVideoGenerationArgs,
   submitVideoGenerationArgs,
 } from "./actions_args";
-import {
-  generateAudioForMessageHandler,
-  previewVoiceHandler,
-} from "./audio_actions";
+import { previewVoiceHandler } from "./audio_actions";
+import { generateAudioForMessageHandler } from "./audio_message_action";
 import { extractMemoriesHandler } from "./actions_extract_memories_handler";
 import { generateTitleHandler } from "./actions_generate_title_handler";
 import { postProcessHandler } from "./actions_post_process_handler";

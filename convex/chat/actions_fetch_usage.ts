@@ -62,6 +62,11 @@ const defaultFetchGenerationDataDeps = {
 
 export type FetchGenerationDataDeps = typeof defaultFetchGenerationDataDeps;
 
+export interface FetchGenerationDataOptions {
+  /** Media generations can have an exact cost even when token counts are zero. */
+  acceptCostOnly?: boolean;
+}
+
 export function createFetchGenerationDataDepsForTest(
   overrides: DeepPartial<FetchGenerationDataDeps> = {},
 ): FetchGenerationDataDeps {
@@ -90,6 +95,7 @@ export async function fetchGenerationData(
   apiKey: string,
   generationId: string,
   deps: FetchGenerationDataDeps = defaultFetchGenerationDataDeps,
+  options: FetchGenerationDataOptions = {},
 ): Promise<GenerationData | null> {
   const url = `${OPENROUTER_GENERATIONS_URL}?id=${encodeURIComponent(generationId)}`;
 
@@ -134,10 +140,17 @@ export async function fetchGenerationData(
     const data = parsed.data ?? null;
     if (!data) return null;
 
-    // If tokens are still zero, the record may not be ready — retry
+    // Text generations need token counts. Media generations can legitimately
+    // report zero tokens while still exposing their authoritative cost.
     const prompt = data.tokens_prompt ?? 0;
     const completion = data.tokens_completion ?? 0;
-    if (prompt === 0 && completion === 0 && attempt < MAX_RETRIES) {
+    const hasExactCost = typeof data.total_cost === "number" &&
+      Number.isFinite(data.total_cost) && data.total_cost >= 0;
+    if (
+      prompt === 0 && completion === 0 &&
+      !(options.acceptCostOnly === true && hasExactCost) &&
+      attempt < MAX_RETRIES
+    ) {
       continue;
     }
 

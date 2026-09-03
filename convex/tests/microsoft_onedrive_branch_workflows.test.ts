@@ -10,31 +10,51 @@ function response(status: number, payload: unknown) {
     json: async () => payload,
     text: async () => typeof payload === "string" ? payload : JSON.stringify(payload),
     blob: async () => new Blob(["file-bytes"], { type: "text/plain" }),
+    arrayBuffer: async () => new TextEncoder().encode("file-bytes").buffer,
+    body: { cancel: async () => undefined },
   } as any;
 }
 
-function ctx(storageUrl = "https://cdn.example/file") {
+function ctx(
+  storageUrl = "https://cdn.example/file",
+  ownedStorage = true,
+) {
   return {
     userId: "user_1",
     ctx: {
-      runQuery: async () => ({
-        _id: "ms_1",
-        userId: "user_1",
-        provider: "microsoft",
-        accessToken: "ms_token",
-        refreshToken: "refresh",
-        expiresAt: Date.now() + 60 * 60_000,
-        scopes: ["Files.ReadWrite"],
-        status: "active",
-        connectedAt: 1,
-      }),
+      runQuery: async (_reference: unknown, args: Record<string, unknown>) => {
+        if (Array.isArray(args?.storageIds)) {
+          return ownedStorage
+            ? [{
+                storageId: "storage_1",
+                filename: "Report.txt",
+                mimeType: "text/plain",
+                sizeBytes: 10,
+              }]
+            : [];
+        }
+        return {
+          _id: "ms_1",
+          userId: "user_1",
+          provider: "microsoft",
+          accessToken: "ms_token",
+          refreshToken: "refresh",
+          expiresAt: Date.now() + 60 * 60_000,
+          scopes: ["Files.ReadWrite"],
+          status: "active",
+          connectedAt: 1,
+        };
+      },
       runMutation: async () => undefined,
-      storage: { getUrl: async () => storageUrl },
+      storage: {
+        getUrl: async () => storageUrl,
+        getMetadata: async () => ({ size: 10 }),
+      },
     },
   } as any;
 }
 
-test("onedriveUpload reports Graph upload failures and non-Error storage fetch failures", async () => {
+test("onedriveUpload reconciles Graph failures and reports storage fetch failures", async () => {
   const originalFetch = globalThis.fetch;
   let mode: "upload-error" | "throw-string" = "upload-error";
   globalThis.fetch = (async (url: string) => {
@@ -47,21 +67,30 @@ test("onedriveUpload reports Graph upload failures and non-Error storage fetch f
   }) as any;
 
   try {
-    const graphFailure = await onedriveUpload.execute(ctx(), {
-      storage_id: "storage_1",
-      filename: "Report.txt",
-      folder_path: "/",
-    });
+    await assert.rejects(
+      () => onedriveUpload.execute(ctx(), {
+        storage_id: "storage_1",
+        filename: "Report.txt",
+        folder_path: "/",
+      }),
+      /OneDrive upload failed \(HTTP 507\)/,
+    );
     mode = "throw-string";
     const thrown = await onedriveUpload.execute(ctx(), {
       storage_id: "storage_1",
       filename: "Report.txt",
     });
 
-    assert.equal(graphFailure.success, false);
-    assert.match(graphFailure.error ?? "", /OneDrive upload failed \(HTTP 507\)\./);
     assert.equal(thrown.success, false);
     assert.equal(thrown.error, "cdn exploded");
+
+    mode = "upload-error";
+    const unowned = await onedriveUpload.execute(ctx("https://cdn.example/file", false), {
+      storage_id: "storage_1",
+      filename: "Report.txt",
+    });
+    assert.equal(unowned.success, false);
+    assert.match(unowned.error ?? "", /does not belong/);
   } finally {
     globalThis.fetch = originalFetch;
   }

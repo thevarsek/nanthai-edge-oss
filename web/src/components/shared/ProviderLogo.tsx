@@ -63,6 +63,8 @@ const slugToAsset: Record<string, string> = {
   recraft: "provider_recraftai",
   "recraft-ai": "provider_recraftai",
   recraftai: "provider_recraftai",
+  reka: "provider_rekaai",
+  rekaai: "provider_rekaai",
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────

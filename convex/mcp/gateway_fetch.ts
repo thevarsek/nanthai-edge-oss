@@ -51,3 +51,22 @@ export function createDefaultMcpGatewayFetch(apiKeyHeaderName?: string): FetchLi
   if (!gatewayUrl || !sharedSecret) throw new Error("MCP outbound egress is not configured.");
   return createMcpGatewayFetch({ gatewayUrl, sharedSecret, apiKeyHeaderName });
 }
+
+export async function fetchPublicImageThroughGateway(targetUrl: string): Promise<Response> {
+  const gatewayUrl = process.env.MCP_EGRESS_URL?.trim();
+  const sharedSecret = process.env.MCP_EGRESS_SHARED_SECRET?.trim();
+  if (!gatewayUrl || !sharedSecret) throw new Error("Public image egress is not configured.");
+  return await fetch(gatewayUrl, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "content-type": "application/json",
+      "x-nanthai-egress-key": sharedSecret,
+    },
+    body: JSON.stringify({
+      url: targetUrl,
+      method: "GET",
+      purpose: "public_image",
+    }),
+  });
+}

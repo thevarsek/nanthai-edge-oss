@@ -154,6 +154,12 @@ export function ChatHeader({
                         <span className="text-[--nanth-foreground]">{formatCost(breakdown!.advisors)}</span>
                       </div>
                     )}
+                    {breakdown!.media > 0 && (
+                      <div className="flex justify-between text-[12px]">
+                        <span className="text-[--nanth-muted]">{t("cost_breakdown_media")}</span>
+                        <span className="text-[--nanth-foreground]">{formatCost(breakdown!.media)}</span>
+                      </div>
+                    )}
                     {breakdown!.other > 0 && (
                       <div className="flex justify-between text-[12px]">
                         <span className="text-[--nanth-muted]">{t("cost_breakdown_other")}</span>
@@ -286,7 +292,12 @@ export function ChatModalPanels(p: ChatModalPanelsProps) {
         <ChatIntegrationsPicker enabledIntegrations={p.enabledIntegrations} onToggle={p.toggleIntegration} onClose={p.closePanel} connectedProviders={p.connectedProviders} remoteConnections={p.remoteMcpConnections ?? []} googleIntegrationsBlocked={p.googleIntegrationsBlocked} />
       )}
       {p.activePanel === "skills" && (
-        <ChatSkillsPicker skillOverrides={p.skillOverrides} onCycleSkill={p.cycleSkill} onClose={p.closePanel} />
+        <ChatSkillsPicker
+          skillOverrides={p.skillOverrides}
+          onCycleSkill={p.cycleSkill}
+          onDisableSkill={p.toggleSkill}
+          onClose={p.closePanel}
+        />
       )}
       {p.activePanel === "knowledgeBase" && (
         <ChatKBPicker selectedFileIds={p.selectedKBFileIds} onToggle={p.toggleKBFile} onClose={p.closePanel} />

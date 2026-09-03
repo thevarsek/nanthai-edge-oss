@@ -9,6 +9,11 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { SkillOverrideState } from "@/hooks/useChatOverrides";
 import { useVisibleSkills } from "@/hooks/useSharedData";
 import { statusBadgeClass } from "@/lib/uiTokens";
+import {
+  isMediaSkillUnavailable,
+  mediaSkillUnavailableMessageKey,
+  type SkillWithMediaAvailability,
+} from "@/lib/mediaSkillAvailability";
 
 // ─── Skill state chip ───────────────────────────────────────────────────────
 
@@ -35,18 +40,20 @@ interface Props {
   skillOverrides: Map<string, SkillOverrideState>;
   /** Cycle a skill through states: always → available → never → inherit. */
   onCycleSkill: (skillId: Id<"skills">) => void;
+  /** Explicitly disable an unavailable skill without cycling through active states. */
+  onDisableSkill: (skillId: Id<"skills">) => void;
   onClose: () => void;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
-export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Props) {
+export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onDisableSkill, onClose }: Props) {
   const { t } = useTranslation();
   const skills = useVisibleSkills();
   const [search, setSearch] = useState("");
 
   const allSkills = useMemo(
-    () => (skills ?? []) as Array<{
+    () => (skills ?? []) as Array<SkillWithMediaAvailability & {
       _id: Id<"skills">;
       name: string;
       summary?: string;
@@ -71,9 +78,11 @@ export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Prop
   const overridden = filtered.filter((s) => skillOverrides.has(s._id));
   const inherited = filtered.filter((s) => !skillOverrides.has(s._id));
 
-  const activeCount = Array.from(skillOverrides.values()).filter(
-    (s) => s === "always" || s === "available",
-  ).length;
+  const activeCount = allSkills.filter((skill) => {
+    const state = skillOverrides.get(skill._id);
+    return !isMediaSkillUnavailable(skill) &&
+      (state === "always" || state === "available");
+  }).length;
 
   return (
     <div
@@ -136,6 +145,7 @@ export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Prop
                       skill={s}
                       state={skillOverrides.get(s._id)!}
                       onCycle={() => onCycleSkill(s._id)}
+                      onDisable={() => onDisableSkill(s._id)}
                     />
                   ))}
                 </Section>
@@ -147,6 +157,7 @@ export function ChatSkillsPicker({ skillOverrides, onCycleSkill, onClose }: Prop
                     skill={s}
                     state={undefined}
                     onCycle={() => onCycleSkill(s._id)}
+                    onDisable={() => onDisableSkill(s._id)}
                   />
                 ))}
               </Section>
@@ -176,25 +187,44 @@ function SkillOverrideRow({
   skill,
   state,
   onCycle,
+  onDisable,
 }: {
-  skill: { _id: Id<"skills">; name: string; summary?: string; runtimeMode?: string };
+  skill: SkillWithMediaAvailability & {
+    _id: Id<"skills">;
+    name: string;
+    summary?: string;
+    runtimeMode?: string;
+  };
   state: SkillOverrideState | undefined;
   onCycle: () => void;
+  onDisable: () => void;
 }) {
   const { t } = useTranslation();
+  const unavailable = isMediaSkillUnavailable(skill);
+  const canDisable = state === "always" || state === "available";
   return (
     <button
       type="button"
-      className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-colors"
-      onClick={onCycle}
+      disabled={unavailable && !canDisable}
+      className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-colors disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
+      onClick={unavailable ? onDisable : onCycle}
     >
       <div className="flex-1 min-w-0">
         <p className="text-sm">{skill.name}</p>
         {skill.summary && (
           <p className="text-xs text-muted truncate mt-0.5">{skill.summary}</p>
         )}
+        {unavailable && (
+          <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+            {t(mediaSkillUnavailableMessageKey(skill))}
+          </p>
+        )}
       </div>
-      {state ? (
+      {unavailable ? (
+        <span className={statusBadgeClass("rejected", "border-0")}>
+          {t("unavailable")}
+        </span>
+      ) : state ? (
         <SkillStateChip state={state} />
       ) : (
         <span className={statusBadgeClass("locked", "border-0")}>

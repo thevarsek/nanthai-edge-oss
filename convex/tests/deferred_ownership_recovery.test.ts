@@ -33,6 +33,7 @@ const unusedDeps = {
   enqueueSubagent: async () => "unused",
   startPresentation: async () => "unused",
   startAnalytics: async () => "unused",
+  startVideo: async () => "unused",
 };
 
 test("subagent recovery enqueues only missing children after a partial enqueue", async () => {
@@ -122,6 +123,43 @@ test("presentation recovery starts a missing owner once and only rebinds an exis
 
   assert.equal(starts, 1);
   assert.equal(state.docs.get("project_1")?.parentResumeEventId, "latest_event");
+});
+
+test("video recovery reuses its owned job and rebinds the replacement event", async () => {
+  const state = deferredCtx([{
+    _id: "video_1",
+    userId: "user_1",
+    generationJobId: "job_1",
+    toolCallId: "tool_1",
+  }]);
+  let starts = 0;
+  const deps = {
+    ...unusedDeps,
+    startVideo: async (_ctx: unknown, args: { workflowResumeEventId: string }) => {
+      starts += 1;
+      Object.assign(state.docs.get("video_1") ?? {}, {
+        workflowId: "video_workflow_1",
+        parentResumeEventId: args.workflowResumeEventId,
+      });
+      return "video_workflow_1";
+    },
+  };
+  const args = {
+    ownership: { kind: "video" as const, videoJobId: "video_1", toolCallId: "tool_1" },
+    eventId: "next_event",
+    jobId: "job_1",
+    userId: "user_1",
+  };
+
+  await reconcileGenerationDeferredOwnership(state.ctx as never, args as never, deps as never);
+  await reconcileGenerationDeferredOwnership(
+    state.ctx as never,
+    { ...args, eventId: "latest_event" } as never,
+    deps as never,
+  );
+
+  assert.equal(starts, 2);
+  assert.equal(state.docs.get("video_1")?.parentResumeEventId, "latest_event");
 });
 
 test("analytics recovery starts a prepared owner once and only rebinds an existing owner", async () => {

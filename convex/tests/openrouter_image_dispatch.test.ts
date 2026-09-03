@@ -191,6 +191,59 @@ test("dedicated image dispatch keeps successful images when one cannot be stored
   }
 });
 
+test("dedicated image publication survives a lost commit response", async () => {
+  const originalFetch = globalThis.fetch;
+  const cleanupRequests: string[][] = [];
+  const directDeletes: string[] = [];
+  let publicationAttempts = 0;
+  try {
+    globalThis.fetch = (async () => new Response(JSON.stringify({
+      data: [{ b64_json: "AAEC", media_type: "image/png" }],
+    }), { status: 200 })) as typeof fetch;
+    const ctx = {
+      storage: {
+        store: async () => "storage_committed_image",
+        getUrl: async () => "https://files.example/committed.png",
+        delete: async (storageId: string) => { directDeletes.push(storageId); },
+      },
+      runQuery: async () => false,
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        if (args.expectedCount !== undefined) return null;
+        if (Array.isArray(args.images)) {
+          publicationAttempts += 1;
+          if (publicationAttempts === 1) throw new Error("response lost after commit");
+          return { published: true, cancelled: false };
+        }
+        if (Array.isArray(args.storageIds)) {
+          cleanupRequests.push(args.storageIds as string[]);
+          return null;
+        }
+        throw new Error("Unexpected mutation");
+      },
+    };
+
+    const result = await dispatchDedicatedImageGeneration({
+      ctx: ctx as unknown as ActionCtx,
+      userId: "user_1",
+      chatId: "chat_1" as never,
+      messageId: "message_1" as never,
+      jobId: "job_1" as never,
+      modelId: "openai/gpt-image-2",
+      requestMessages: [{ role: "user", content: "A cat" }],
+      prompt: "A cat",
+      apiKey: "test-key",
+      requireZdr: false,
+    });
+
+    assert.equal(result.imageUrls.length, 1);
+    assert.equal(publicationAttempts, 2);
+    assert.deepEqual(cleanupRequests, []);
+    assert.deepEqual(directDeletes, []);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("image provider failures survive a durable cancellation query failure", async () => {
   const originalFetch = globalThis.fetch;
   try {

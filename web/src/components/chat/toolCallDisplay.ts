@@ -136,6 +136,24 @@ export function formatToolPayloadForDisplay(payload: string): string {
   return `${formatted.slice(0, MAX_DISPLAY_LENGTH)}\n… technical output truncated`;
 }
 
+function humanizeSkillName(value: string): string {
+  const readable = value.trim().replace(/[-_]+/g, " ").replace(/\s+/g, " ");
+  if (!readable) return "Skill";
+  return readable.replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function loadedSkillDisplayName(result?: ToolResult): string | null {
+  if (!result) return null;
+  try {
+    const payload = JSON.parse(result.result) as { data?: { name?: unknown } };
+    return typeof payload.data?.name === "string" && payload.data.name.trim()
+      ? payload.data.name.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 export function skillSummary(
   toolCall: ToolCall,
   result?: ToolResult,
@@ -144,13 +162,19 @@ export function skillSummary(
   let args: Record<string, unknown> = {};
   try { args = JSON.parse(toolCall.arguments) as Record<string, unknown>; } catch { /* invalid args */ }
 
-  const skillName = typeof args.skillName === "string"
-    ? args.skillName
-    : typeof args.name === "string"
-      ? args.name
-      : typeof args.skillId === "string"
-        ? args.skillId
-        : "Skill";
+  const explicitSkillName = typeof args.skillName === "string" && args.skillName.trim()
+    ? args.skillName.trim()
+    : toolCall.name !== "load_skill" && typeof args.name === "string" && args.name.trim()
+      ? args.name.trim()
+      : null;
+  const slugOrId = typeof args.name === "string"
+    ? args.name
+    : typeof args.skillId === "string"
+      ? args.skillId
+      : "Skill";
+  const skillName = loadedSkillDisplayName(result)
+    ?? explicitSkillName
+    ?? humanizeSkillName(slugOrId);
 
   switch (toolCall.name) {
     case "load_skill":

@@ -29,6 +29,29 @@ describe("ProviderLogo", () => {
 
     rerender(<ProviderLogo slug="kwaivgi" />);
     expect(screen.getByAltText("kwaivgi logo")).toHaveAttribute("src", "/providers/provider_kwaipilot.png");
+
+    rerender(<ProviderLogo slug="reka" />);
+    expect(screen.getByAltText("reka logo")).toHaveAttribute("src", "/providers/provider_rekaai.png");
+  });
+
+  it("resolves generation-provider assets from their canonical slugs", () => {
+    const { rerender } = render(<ProviderLogo modelId="fish-audio/s1" />);
+    expect(screen.getByAltText("fish-audio logo")).toHaveAttribute(
+      "src",
+      "/providers/provider_fish_audio.png",
+    );
+
+    rerender(<ProviderLogo modelId="dots-studio/image-model" />);
+    expect(screen.getByAltText("dots-studio logo")).toHaveAttribute(
+      "src",
+      "/providers/provider_dots_studio.png",
+    );
+
+    rerender(<ProviderLogo modelId="thinkingmachines/text-model" />);
+    expect(screen.getByAltText("thinkingmachines logo")).toHaveAttribute(
+      "src",
+      "/providers/provider_thinkingmachines.png",
+    );
   });
 
   it("extracts the provider when slug receives a full model id", () => {

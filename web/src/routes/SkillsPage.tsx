@@ -13,6 +13,10 @@ import { useVisibleSkills } from "@/hooks/useSharedData";
 import { useToast } from "@/components/shared/Toast.context";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import {
+  isMediaSkillUnavailable,
+  mediaSkillUnavailableMessageKey,
+} from "@/lib/mediaSkillAvailability";
+import {
   effectiveDefaultState,
   isSystemSkill,
   nextDefaultState,
@@ -70,7 +74,9 @@ function SkillsPageContent() {
   async function handleCycleDefault(skill: SkillDoc) {
     if (!preferencesLoaded) return;
     const current = skillDefaultMap.get(skill._id);
-    const next = nextDefaultState(skill, current);
+    const unavailable = isMediaSkillUnavailable(skill);
+    if (unavailable && current !== "always" && current !== "available") return;
+    const next = unavailable ? "never" : nextDefaultState(skill, current);
     try {
       if (next === undefined) {
         await removeSkillDefault({ skillId: skill._id });
@@ -126,20 +132,29 @@ function SkillsPageContent() {
                     {filteredSkills.map((skill) => {
                       const override = skillDefaultMap.get(skill._id);
                       const effective = effectiveDefaultState(skill, override);
+                      const unavailable = isMediaSkillUnavailable(skill);
                       return (
                         <button
                           key={`default-${skill._id}`}
                           onClick={() => void handleCycleDefault(skill)}
-                          disabled={!preferencesLoaded}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:cursor-wait disabled:opacity-60 disabled:hover:bg-transparent"
+                          disabled={!preferencesLoaded || (
+                            unavailable && override !== "always" && override !== "available"
+                          )}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:bg-transparent"
                         >
                           <div className="flex-1 min-w-0">
                             <p className="text-sm font-medium truncate">{skill.name}</p>
-                            <p className="text-xs text-foreground/50 mt-0.5">
-                              {t("settings_skill_defaults_help")}
+                            <p className={`text-xs mt-0.5 ${unavailable ? "text-amber-600 dark:text-amber-400" : "text-foreground/50"}`}>
+                              {unavailable
+                                ? t(mediaSkillUnavailableMessageKey(skill))
+                                : t("settings_skill_defaults_help")}
                             </p>
                           </div>
-                          <DefaultStateBadge state={effective} inherited={override === undefined} />
+                          <DefaultStateBadge
+                            state={effective}
+                            inherited={override === undefined}
+                            unavailable={unavailable}
+                          />
                         </button>
                       );
                     })}

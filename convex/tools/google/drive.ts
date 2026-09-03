@@ -10,9 +10,9 @@ import { createTool } from "../registry";
 import { getGoogleAccessToken, googleCapabilityToolError } from "./auth";
 import { internal } from "../../_generated/api";
 import type { Id } from "../../_generated/dataModel";
+import { uploadDriveFile } from "./drive_upload";
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
-const DRIVE_UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
 
 type ScopedDocumentCandidate = {
   driveFileId?: string;
@@ -31,22 +31,22 @@ export const driveUpload = createTool({
   name: "drive_upload",
   description:
     "Upload a file to the user's Google Drive. " +
-    "Use when the user asks to save a generated document to Drive, " +
+    "Use when the user asks to save a generated document or media asset to Drive, " +
     "upload a file they've created, or back up content to Google Drive. " +
     "Requires a Convex storage ID from a previously generated file " +
-    "(e.g. from generate_docx, generate_xlsx, generate_pptx, etc.).",
+    "or media result (e.g. DOCX, XLSX, PPTX, image, audio, or video).",
   parameters: {
     type: "object",
     properties: {
       storage_id: {
         type: "string",
         description:
-          "Convex storage ID of the file to upload (from a generate_* tool result).",
+          "Convex storage ID of the file or media asset to upload (from a prior tool result).",
       },
       filename: {
         type: "string",
         description:
-          "Filename for the file in Google Drive (e.g. 'Report.docx').",
+          "Filename for the file in Google Drive (e.g. 'Report.docx'). Use an extension matching the source content; this tool does not transcode files.",
       },
       folder_id: {
         type: "string",
@@ -77,12 +77,30 @@ export const driveUpload = createTool({
       };
     }
 
+    let accessToken: string;
+    let fileResponse: Response;
+    let fileSize: number;
     try {
-      const { accessToken } = await getGoogleAccessToken(
+      ({ accessToken } = await getGoogleAccessToken(
         toolCtx.ctx,
         toolCtx.userId,
         "drive",
+      ));
+
+      const owned = await toolCtx.ctx.runQuery(
+        internal.tools.storage_attachment_queries.resolveOwnedStorageAttachments,
+        {
+          userId: toolCtx.userId,
+          storageIds: [storageId as Id<"_storage">],
+        },
       );
+      if (owned.length !== 1 || String(owned[0].storageId) !== storageId) {
+        return {
+          success: false,
+          data: null,
+          error: "File is missing or does not belong to the current user.",
+        };
+      }
 
       // Fetch file content from Convex storage
       const fileUrl = await toolCtx.ctx.storage.getUrl(storageId);
@@ -94,7 +112,7 @@ export const driveUpload = createTool({
         };
       }
 
-      const fileResponse = await fetch(fileUrl);
+      fileResponse = await fetch(fileUrl);
       if (!fileResponse.ok) {
         return {
           success: false,
@@ -103,99 +121,18 @@ export const driveUpload = createTool({
         };
       }
 
-      const fileBlob = await fileResponse.blob();
-
-      // Build multipart upload request
-      // Using the simple upload API with metadata
-      const metadata: Record<string, unknown> = { name: filename };
-      if (folderId) {
-        metadata.parents = [folderId];
-      }
-
-      // Use multipart upload: metadata + file content in one request
-      const boundary = "nanthai_drive_upload_boundary";
-      const metadataJson = JSON.stringify(metadata);
-      const fileArrayBuffer = await fileBlob.arrayBuffer();
-      const fileBytes = new Uint8Array(fileArrayBuffer);
-
-      // Build multipart body manually
-      const encoder = new TextEncoder();
-      const parts: Uint8Array[] = [];
-
-      // Metadata part
-      const metadataPart = encoder.encode(
-        `--${boundary}\r\n` +
-          `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
-          `${metadataJson}\r\n`,
+      const fileMetadata = await toolCtx.ctx.storage.getMetadata(
+        storageId as Id<"_storage">,
       );
-      parts.push(metadataPart);
-
-      // File part
-      const filePart = encoder.encode(
-        `--${boundary}\r\nContent-Type: ${mimeType}\r\n\r\n`,
-      );
-      parts.push(filePart);
-      parts.push(fileBytes);
-      parts.push(encoder.encode(`\r\n--${boundary}--`));
-
-      // Concatenate all parts
-      const totalLength = parts.reduce((sum, p) => sum + p.length, 0);
-      const body = new Uint8Array(totalLength);
-      let offset = 0;
-      for (const part of parts) {
-        body.set(part, offset);
-        offset += part.length;
-      }
-
-      const uploadResponse = await fetch(
-        `${DRIVE_UPLOAD_API}/files?uploadType=multipart&fields=id,name,mimeType,webViewLink,size`,
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": `multipart/related; boundary=${boundary}`,
-          },
-          body: body,
-        },
-      );
-
-      if (!uploadResponse.ok) {
+      if (!fileMetadata) {
+        await fileResponse.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `Drive upload failed (HTTP ${uploadResponse.status}).`,
+          error: `File not found in storage (storageId: ${storageId}).`,
         };
       }
-
-      const result = (await uploadResponse.json()) as {
-        id: string;
-        name: string;
-        mimeType: string;
-        webViewLink?: string;
-        size?: string;
-      };
-
-      await toolCtx.ctx.runMutation(internal.oauth.google.recordDriveFileGrant, {
-        userId: toolCtx.userId,
-        fileId: result.id,
-        name: result.name,
-        mimeType: result.mimeType,
-        webViewLink: result.webViewLink,
-        size: result.size,
-      });
-
-      return {
-        success: true,
-        data: {
-          fileId: result.id,
-          name: result.name,
-          mimeType: result.mimeType,
-          webViewLink: result.webViewLink,
-          message: result.webViewLink
-            ? `File "${result.name}" uploaded to Google Drive. [Open in Drive](${result.webViewLink})`
-            : `File "${result.name}" uploaded to Google Drive (ID: ${result.id}).`,
-        },
-      };
+      fileSize = fileMetadata.size;
     } catch (e) {
       const capabilityError = googleCapabilityToolError(e);
       if (capabilityError) return capabilityError;
@@ -205,6 +142,49 @@ export const driveUpload = createTool({
         error: e instanceof Error ? e.message : String(e),
       };
     }
+
+    const metadata: Record<string, unknown> = { name: filename };
+    if (folderId) metadata.parents = [folderId];
+
+    // Provider dispatch begins here. Propagate failures so the operation
+    // journal can mark an ambiguous write instead of replaying an upload.
+    const result = await uploadDriveFile({
+      accessToken,
+      response: fileResponse,
+      sizeBytes: fileSize,
+      metadata,
+      mimeType,
+    });
+
+    try {
+      await toolCtx.ctx.runMutation(internal.oauth.google.recordDriveFileGrant, {
+        userId: toolCtx.userId,
+        fileId: result.id,
+        name: result.name,
+        mimeType: result.mimeType,
+        webViewLink: result.webViewLink,
+        size: result.size,
+      });
+    } catch (error) {
+      console.warn("[drive-upload] failed to record uploaded file grant", {
+        userId: toolCtx.userId,
+        fileId: result.id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+
+    return {
+      success: true,
+      data: {
+        fileId: result.id,
+        name: result.name,
+        mimeType: result.mimeType,
+        webViewLink: result.webViewLink,
+        message: result.webViewLink
+          ? `File "${result.name}" uploaded to Google Drive. [Open in Drive](${result.webViewLink})`
+          : `File "${result.name}" uploaded to Google Drive (ID: ${result.id}).`,
+      },
+    };
   },
 });
 
@@ -608,6 +588,17 @@ function guessMimeType(filename: string): string {
     jpeg: "image/jpeg",
     gif: "image/gif",
     svg: "image/svg+xml",
+    avif: "image/avif",
+    webp: "image/webp",
+    mp3: "audio/mpeg",
+    wav: "audio/wav",
+    flac: "audio/flac",
+    ogg: "audio/ogg",
+    m4a: "audio/mp4",
+    aac: "audio/aac",
+    mp4: "video/mp4",
+    mov: "video/quicktime",
+    webm: "video/webm",
     eml: "message/rfc822",
   };
   return mimeMap[ext || ""] || "application/octet-stream";

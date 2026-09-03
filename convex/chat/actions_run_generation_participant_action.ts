@@ -51,6 +51,7 @@ import {
 } from "../mcp/chat_registry";
 import { registerRemoteMcpTools } from "../mcp/tool_registry";
 import { scheduleDeferredRemoteMcp } from "../mcp/deferred_workflow_scheduler";
+import { scheduleDeferredVideoWorkflow } from "../tools/video_generation_start";
 
 function mapBatchTerminalStatus(
   messageStatus?: string,
@@ -507,17 +508,21 @@ export async function runGenerationParticipantHandler(
         personaSkillOverrides: effectiveArgs.personaSkillOverrides,
         skillDefaults: effectiveArgs.skillDefaults,
       },
-      onProfilesExpanded: async (toolCalls, results, activeProfiles, _currentRegistry, currentParams, _nextCaps) => {
+      onProfilesExpanded: async (
+        toolCalls,
+        results,
+        activeProfiles,
+        _currentRegistry,
+        currentParams,
+        _nextCaps,
+        toolCtx,
+      ) => {
         const registry = buildParticipantToolRegistry(activeProfiles, effectiveDirectToolNames);
         await retrySameRoundProgressiveToolCalls(
           toolCalls as ToolCall[],
           results,
           registry,
-          {
-            ctx,
-            userId: effectiveArgs.userId,
-            chatId: String(effectiveArgs.chatId),
-          },
+          toolCtx,
         );
         patchSameRoundProgressiveToolErrors(toolCalls, results, registry);
 
@@ -558,6 +563,9 @@ export async function runGenerationParticipantHandler(
                 checkpoint,
                 workflow,
               );
+            },
+            onDeferredVideo: async (checkpoint, video) => {
+              await scheduleDeferredVideoWorkflow(ctx, effectiveArgs, checkpoint, video);
             },
             onDeferredAnalytics: async (checkpoint, analyticsRunId) => {
               await scheduleDeferredAnalyticsWorkflow(

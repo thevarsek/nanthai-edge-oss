@@ -11,6 +11,7 @@ import {
   cancelActiveGenerationArgs,
   cancelGenerationArgs,
   claimGenerationContinuationArgs,
+  clearAudioGeneratingArgs,
   clearGenerationContinuationArgs,
   createChatArgs,
   createMemoryArgs,
@@ -41,6 +42,10 @@ import {
   chatUploadSessionArgs,
 } from "./mutations_args";
 import {
+  clearAudioGeneratingHandler,
+  patchMessageAudioHandler,
+} from "./audio_mutation_handlers";
+import {
   cancelGenerationContinuationHandler,
   claimGenerationContinuationHandler,
   clearGenerationContinuationHandler,
@@ -59,7 +64,6 @@ import {
   createMemoryHandler,
   finalizeGenerationHandler,
   markChatCompletionNotifiedHandler,
-  patchMessageAudioHandler,
   storeGenerationUsageHandler,
   storeAncillaryCostHandler,
   updateChatTitleHandler,
@@ -72,6 +76,7 @@ import {
   completeVideoOutputUploadHandler,
   createVideoJobHandler,
   createVideoOutputUploadSessionHandler,
+  discardVideoOutputUploadCandidateHandler,
   insertGeneratedMediaHandler,
   settleVideoGenerationHandler,
   markVideoProviderTerminalHandler,
@@ -205,10 +210,8 @@ export const patchMessageAudio = internalMutation({
 
 // Clears the audioGenerating flag if TTS generation fails, so the user can retry.
 export const clearAudioGenerating = internalMutation({
-  args: { messageId: v.id("messages") },
-  handler: async (ctx, args) => {
-    await ctx.db.patch(args.messageId, { audioGenerating: undefined });
-  },
+  args: clearAudioGeneratingArgs,
+  handler: clearAudioGeneratingHandler,
 });
 
 // M10 — Live tool-call streaming: progressively patch toolCalls during generation.
@@ -345,6 +348,18 @@ export const completeVideoOutputUpload = internalMutation({
   handler: completeVideoOutputUploadHandler,
 });
 
+export const discardVideoOutputUploadCandidate = internalMutation({
+  args: {
+    uploadId: v.id("videoOutputUploads"),
+    storageId: v.id("_storage"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await discardVideoOutputUploadCandidateHandler(ctx, args);
+    return null;
+  },
+});
+
 export const updateVideoJobStatus = internalMutation({
   args: updateVideoJobStatusArgs,
   handler: updateVideoJobStatusHandler,
@@ -359,6 +374,9 @@ export const markVideoProviderTerminal = internalMutation({
   args: {
     videoJobId: v.id("videoJobs"),
     status: v.union(v.literal("completed"), v.literal("failed")),
+    generationId: v.optional(v.string()),
+    cost: v.optional(v.number()),
+    isByok: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {

@@ -270,7 +270,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   suppressAdvisorPanel = false,
 }: AssistantMessageProps) {
   const { t } = useTranslation();
-  const modelSummaries = useModelSummaries();
+  const modelSummaries = useModelSummaries({ includeGenerationModels: true });
   const modelNameMap = useMemo(
     () => buildModelNameMap(modelSummaries as Parameters<typeof buildModelNameMap>[0]),
     [modelSummaries],
@@ -298,8 +298,15 @@ export const AssistantMessage = memo(function AssistantMessage({
     modelSummaries?.some((model) =>
       model.modelId === message.modelId && modelHasImageOutput(model)
     );
-  const isAwaitingVideo = !hasVideoUrls && (isPending || isStreaming) && message.modelId != null &&
-    modelSummaries?.some((model) => model.modelId === message.modelId && model.supportsVideo === true);
+  const isVideoGenerationModel = message.modelId != null && modelSummaries?.some(
+    (model) => model.modelId === message.modelId && model.supportsVideo === true,
+  ) === true;
+  const isAwaitingVideo = !hasVideoUrls && (isPending || isStreaming) && isVideoGenerationModel;
+  const hasVideoGenerationTool = (message.toolCalls ?? []).some(
+    (toolCall) => toolCall.name === "generate_video",
+  );
+  const shouldTrackVideoGeneration = message.status !== "completed" || hasVideoUrls ||
+    isVideoGenerationModel || hasVideoGenerationTool;
   const showWaitingPlaceholder = (isPending || isStreaming) && !displayed && !isImagePlaceholder &&
     !isAwaitingImage && !isAwaitingVideo;
   const [copied, setCopied] = useState(false);
@@ -534,8 +541,8 @@ export const AssistantMessage = memo(function AssistantMessage({
           />
         )}
 
-        {/* Video generation status/error (hide only once the video has arrived or the message fully completed) */}
-        {!hasVideoUrls && !isCompleted && (
+        {/* The latest job may be newer than an already-rendered video URL. */}
+        {shouldTrackVideoGeneration && (
           <VideoGenerationProgress messageId={message._id} />
         )}
 

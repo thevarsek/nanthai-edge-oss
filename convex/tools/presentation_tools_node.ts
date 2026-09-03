@@ -75,7 +75,7 @@ export const createPresentationNode = createTool({
       referenceNotes: { type: "string", description: "Insights already extracted from examples/references." },
       sourceContent: { type: "string", description: "Factual source to preserve only when it exists in an earlier turn and is absent from the triggering user message. Never duplicate the triggering message." },
       assetStorageIds: { type: "array", items: { type: "string" }, description: "Reusable user-owned asset IDs." },
-      sourceStorageId: { type: "string", description: "Optional attached source PPTX storage ID for a rebuild. Omit it entirely for a scratch presentation; never send an empty string." },
+      sourceStorageId: { type: "string", description: "Attached source PPTX storage ID for a rebuild. A value duplicated in assetStorageIds is treated as a reusable image instead." },
     },
     required: ["brief", "audience", "tone"],
   },
@@ -112,8 +112,11 @@ export const createPresentationNode = createTool({
       const imageMode = (["generated", "references", "mixed", "none"].includes(String(args.imageMode))
         ? args.imageMode
         : "none") as PresentationImageMode;
-      const sourceStorageId = optionalPresentationStorageId(args.sourceStorageId);
       const assetStorageIds = presentationAssetStorageIds(args.assetStorageIds);
+      const requestedSourceStorageId = optionalPresentationStorageId(args.sourceStorageId);
+      const sourceStorageId = requestedSourceStorageId && assetStorageIds?.includes(requestedSourceStorageId)
+        ? undefined
+        : requestedSourceStorageId;
       const prompt = await buildResolvedPresentationBrief(
         toolCtx,
         { ...args, assetStorageIds, slideCount, approvedOutline: resolvedOutline },

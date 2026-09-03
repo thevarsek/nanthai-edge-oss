@@ -66,6 +66,33 @@ test("create presentation defers expensive phases after creating the chat projec
   });
 });
 
+test("create presentation projects a duplicated source image onto reusable assets", async () => {
+  const mutationArgs: Array<Record<string, unknown>> = [];
+  const result = await createPresentationNode.execute({
+    ctx: {
+      runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
+        mutationArgs.push(args);
+        return "project_1";
+      },
+    } as never,
+    userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    jobId: "job_1",
+    modelId: "openai/gpt-5",
+  }, {
+    brief: "Use the supplied image as the hero visual",
+    audience: "Clients",
+    tone: "Polished",
+    assetStorageIds: ["generated_image_1"],
+    sourceStorageId: "generated_image_1",
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(mutationArgs[0]?.sourceStorageId, undefined);
+  assert.deepEqual(mutationArgs[0]?.assetStorageIds, ["generated_image_1"]);
+});
+
 test("create presentation exposes and enforces the 1-20 slide contract before mutation", async () => {
   const definition = createPresentationNode.definition;
   assert.ok("function" in definition);

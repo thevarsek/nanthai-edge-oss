@@ -12,7 +12,12 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { optionalAuth, requireAuth, requirePro } from "../lib/auth";
 import { validateImagePreferenceWrite } from "./image_defaults";
+import { validateSpeechPreferenceWrite } from "./speech_defaults";
 import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
+import {
+  availabilityForSkill,
+  resolveMediaSkillAvailability,
+} from "../skills/media_generation_availability";
 
 
 // Batch size for paginating chat subagent-override resets. Kept small enough
@@ -196,6 +201,11 @@ export const upsertPreferences = mutation({
     autoAudioResponse: v.optional(v.boolean()),
     preferredVoice: v.optional(v.union(v.string(), v.null())),
     defaultAudioSpeed: v.optional(v.union(v.number(), v.null())),
+    defaultSpeechSpeed: v.optional(v.union(v.number(), v.null())),
+    defaultSpeechOutputFormat: v.optional(v.union(v.string(), v.null())),
+    defaultSpeechInstructions: v.optional(v.union(v.string(), v.null())),
+    defaultSpeechStyle: v.optional(v.union(v.string(), v.null())),
+    defaultSpeechStyleDegree: v.optional(v.union(v.number(), v.null())),
     isMemoryEnabled: v.optional(v.boolean()),
     memoryGatingMode: v.optional(v.string()),
     memoryExtractionModelId: v.optional(v.union(v.string(), v.null())),
@@ -205,6 +215,10 @@ export const upsertPreferences = mutation({
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),
     showAdvancedStats: v.optional(v.boolean()),
+    defaultImageGenerationModelId: v.optional(v.union(v.string(), v.null())),
+    defaultMusicGenerationModelId: v.optional(v.union(v.string(), v.null())),
+    defaultSpeechGenerationModelId: v.optional(v.union(v.string(), v.null())),
+    defaultVideoGenerationModelId: v.optional(v.union(v.string(), v.null())),
     defaultImageCount: v.optional(v.union(v.number(), v.null())),
     defaultImageAspectRatio: v.optional(v.union(v.string(), v.null())),
     defaultImageResolution: v.optional(v.union(v.string(), v.null())),
@@ -224,6 +238,7 @@ export const upsertPreferences = mutation({
     const normalizedArgs = {
       ...args,
       ...validateImagePreferenceWrite(args),
+      ...validateSpeechPreferenceWrite(args),
     };
 
     if (normalizedArgs.subagentsEnabledByDefault === true) {
@@ -304,6 +319,14 @@ export const upsertPreferences = mutation({
       autoAudioResponse: normalizedArgs.autoAudioResponse ?? false,
       preferredVoice: normalizedArgs.preferredVoice ?? "nova",
       defaultAudioSpeed: normalizedArgs.defaultAudioSpeed ?? 1,
+      defaultSpeechSpeed: normalizedArgs.defaultSpeechSpeed ?? undefined,
+      defaultSpeechOutputFormat:
+        normalizedArgs.defaultSpeechOutputFormat ?? undefined,
+      defaultSpeechInstructions:
+        normalizedArgs.defaultSpeechInstructions ?? undefined,
+      defaultSpeechStyle: normalizedArgs.defaultSpeechStyle ?? undefined,
+      defaultSpeechStyleDegree:
+        normalizedArgs.defaultSpeechStyleDegree ?? undefined,
       isMemoryEnabled: normalizedArgs.isMemoryEnabled ?? true,
       memoryGatingMode: normalizedArgs.memoryGatingMode ?? "automatic",
       memoryExtractionModelId: normalizedArgs.zdrEnabled === true
@@ -317,6 +340,14 @@ export const upsertPreferences = mutation({
       hasSeenMainWalkthrough: normalizedArgs.hasSeenMainWalkthrough ?? undefined,
       showBalanceInChat: normalizedArgs.showBalanceInChat ?? undefined,
       showAdvancedStats: normalizedArgs.showAdvancedStats ?? undefined,
+      defaultImageGenerationModelId:
+        normalizedArgs.defaultImageGenerationModelId ?? undefined,
+      defaultMusicGenerationModelId:
+        normalizedArgs.defaultMusicGenerationModelId ?? undefined,
+      defaultSpeechGenerationModelId:
+        normalizedArgs.defaultSpeechGenerationModelId ?? undefined,
+      defaultVideoGenerationModelId:
+        normalizedArgs.defaultVideoGenerationModelId ?? undefined,
       defaultImageCount: normalizedArgs.defaultImageCount ?? undefined,
       defaultImageAspectRatio: normalizedArgs.defaultImageAspectRatio ?? undefined,
       defaultImageResolution: normalizedArgs.defaultImageResolution ?? undefined,
@@ -416,6 +447,32 @@ export const setSkillDefault = mutation({
       .query("userPreferences")
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .first();
+
+    if (args.state !== "never") {
+      const skill = await ctx.db.get(args.skillId);
+      if (skill) {
+        const mediaAvailability = await resolveMediaSkillAvailability(
+          ctx,
+          userId,
+          prefs,
+        );
+        const availability = availabilityForSkill(skill, mediaAvailability);
+        if (availability && !availability.isAvailable) {
+          if (availability.reasonCode === "zdr_incompatible_model") {
+            throw new ConvexError({
+              code: "ZDR_MODEL_UNAVAILABLE" as const,
+              message:
+                `Choose a ZDR-compatible ${availability.generationKind} model before enabling ${skill.name}.`,
+            });
+          }
+          throw new ConvexError({
+            code: "MODEL_UNAVAILABLE" as const,
+            message:
+              `Choose an available ${availability.generationKind} model before enabling ${skill.name}.`,
+          });
+        }
+      }
+    }
 
     if (!prefs) {
       return await ctx.db.insert("userPreferences", {

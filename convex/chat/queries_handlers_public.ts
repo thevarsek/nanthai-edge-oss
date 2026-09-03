@@ -699,13 +699,14 @@ export interface CostBreakdown {
   advisors: number;
   memory: number;
   search: number;
+  media: number;
   other: number;
 }
 
 export interface ChatCostSummary {
   chatId: Id<"chats">;
   totalCost: number;
-  /** Per-message costs: messageId → primary generation cost only (stable after first write). */
+  /** Per-message costs: messageId → direct response cost, including dedicated image/video. */
   messageCosts: Record<string, number>;
   /** Bucketed breakdown of totalCost by domain. */
   breakdown: CostBreakdown;
@@ -722,6 +723,10 @@ const SEARCH_SOURCES = new Set([
   "search_synthesis",
   "search_architecture",
   "tool_web_search",
+]);
+const DIRECT_MEDIA_RESPONSE_SOURCES = new Set([
+  "media_message_image",
+  "media_message_video",
 ]);
 
 export async function getChatCostSummaryHandler(
@@ -742,7 +747,7 @@ export async function getChatCostSummaryHandler(
 
   let totalCost = 0;
   const messageCosts: Record<string, number> = {};
-  const breakdown = { responses: 0, advisors: 0, memory: 0, search: 0, other: 0 };
+  const breakdown = { responses: 0, advisors: 0, memory: 0, search: 0, media: 0, other: 0 };
 
   for (const r of records) {
     // When the user brings their own API key (BYOK), OpenRouter's `cost`
@@ -756,12 +761,13 @@ export async function getChatCostSummaryHandler(
 
     const src = r.source as string | undefined;
 
-    // Per-message cost only reflects the primary generation (source is absent).
-    // Ancillary rows contribute to totalCost and breakdown but not messageCosts,
-    // so the per-message figure stays stable after the first write.
-    if (!src) {
+    // Dedicated image/video models are the response itself, while tool media
+    // and message speech remain ancillary to an existing response.
+    if (!src || DIRECT_MEDIA_RESPONSE_SOURCES.has(src)) {
       const mid = r.messageId as string;
       messageCosts[mid] = (messageCosts[mid] ?? 0) + cost;
+    }
+    if (!src) {
       breakdown.responses += cost;
     } else if (src === "advisor") {
       breakdown.advisors += cost;
@@ -769,6 +775,8 @@ export async function getChatCostSummaryHandler(
       breakdown.memory += cost;
     } else if (SEARCH_SOURCES.has(src)) {
       breakdown.search += cost;
+    } else if (src.startsWith("media_")) {
+      breakdown.media += cost;
     } else {
       // title, compaction, subagent, and any future sources
       breakdown.other += cost;
@@ -814,6 +822,7 @@ export async function getVideoJobStatusHandler(
   const videoJob = await ctx.db
     .query("videoJobs")
     .withIndex("by_messageId", (q) => q.eq("messageId", args.messageId))
+    .order("desc")
     .first();
 
   if (!videoJob) return null;

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { StreamResult, ToolCall } from "../lib/openrouter_types";
+import { extractGeneratedToolMedia } from "../chat/generated_media_tool_results";
 import { createToolCallLoopDepsForTest, runToolCallLoop } from "../tools/execute_loop";
 import { createTool, ToolRegistry } from "../tools/registry";
 
@@ -172,6 +173,141 @@ test("runToolCallLoop executes multi-round tool recursion and applies next-turn 
   ]);
 });
 
+test("runToolCallLoop preserves partial integration results in the model transcript", async () => {
+  const registry = new ToolRegistry();
+  registry.register(createTool({
+    name: "outlook_create_draft",
+    effectPolicy: { effect: "write", retry: "idempotency_key_required" },
+    description: "Create an Outlook draft",
+    parameters: { type: "object", properties: {} },
+    execute: async () => ({
+      success: false,
+      error: "Draft created, but one attachment could not be added.",
+      data: {
+        draftId: "draft_1",
+        attachedFileIds: ["file_1"],
+        failedFileIds: ["file_2"],
+      },
+    }),
+  }));
+  let modelMessages: Array<{ role: string; content?: unknown; tool_call_id?: string }> = [];
+  const deps = createToolCallLoopDepsForTest({
+    callOpenRouterStreaming: async (_key, _model, messages) => {
+      modelMessages = messages as typeof modelMessages;
+      return makeStreamResult({ content: "I created the draft and reported the attachment issue." });
+    },
+  });
+
+  const result = await runToolCallLoop(makeStreamResult({
+    finishReason: "tool_calls",
+    toolCalls: [makeToolCall("call_outlook", "outlook_create_draft", {})],
+  }), {
+    apiKey: "key",
+    model: "model",
+    messages: [{ role: "user", content: "Draft the email" }],
+    params: {},
+    callbacks: {},
+    registry,
+    toolCtx: {
+      ctx: {} as any,
+      userId: "user_1",
+    },
+  }, deps);
+
+  const toolMessage = modelMessages.find((message) => message.tool_call_id === "call_outlook");
+  const expectedPayload = {
+    error: "Draft created, but one attachment could not be added.",
+    draftId: "draft_1",
+    attachedFileIds: ["file_1"],
+    failedFileIds: ["file_2"],
+  };
+  assert.deepEqual(JSON.parse(String(toolMessage?.content)), expectedPayload);
+  assert.deepEqual(JSON.parse(result.allToolResults[0]?.result ?? "null"), expectedPayload);
+});
+
+test("runToolCallLoop checkpoints same-round progressive retries with the authoritative context", async () => {
+  const registry = new ToolRegistry();
+  registry.register(createTool({
+    name: "load_skill",
+    description: "load skill",
+    parameters: { type: "object", properties: {} },
+    execute: async () => ({ success: true, data: { skill: "image-generation" } }),
+  }));
+  const callbackOrder: string[] = [];
+  let artifactResult: unknown;
+  let checkpointResult: unknown;
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [
+        makeToolCall("load_1", "load_skill", { skill: "image-generation" }),
+        makeToolCall("image_1", "generate_image", { prompt: "a lake" }),
+      ],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "create an image" }],
+      params: {},
+      callbacks: {},
+      registry,
+      toolCtx: {
+        ctx: {} as never,
+        userId: "user_1",
+        providerDeadlineAtMs: 9_000,
+        operationScope: "job_1:segment:3",
+      },
+      maxRoundsPerInvocation: 1,
+      onPrepareNextTurn: async (
+        _round,
+        _calls,
+        results,
+        messages,
+        _currentRegistry,
+        _currentParams,
+        roundToolCtx,
+      ) => {
+        callbackOrder.push("retry");
+        assert.equal(roundToolCtx.providerDeadlineAtMs, 9_000);
+        assert.equal(roundToolCtx.operationScope, "job_1:segment:3:round:1");
+        const imageResult = results.find(({ toolCallId }) => toolCallId === "image_1");
+        assert.ok(imageResult);
+        imageResult.result = {
+          success: true,
+          data: { imageUrls: ["https://files.example/generated.png"] },
+        };
+        return {
+          messages: [...messages, { role: "system", content: "skill loaded" }],
+        };
+      },
+      onToolRoundComplete: async (_round, results) => {
+        callbackOrder.push("checkpoint");
+        checkpointResult = results.find(({ toolCallId }) => toolCallId === "image_1")?.result;
+      },
+      onToolArtifacts: async (_round, _calls, results) => {
+        callbackOrder.push("artifact");
+        artifactResult = results.find(({ toolCallId }) => toolCallId === "image_1")?.result;
+      },
+    },
+  );
+
+  assert.deepEqual(callbackOrder, ["retry", "checkpoint", "artifact"]);
+  assert.deepEqual(checkpointResult, artifactResult);
+  assert.deepEqual(checkpointResult, {
+    success: true,
+    data: { imageUrls: ["https://files.example/generated.png"] },
+  });
+  const imageMessage = result.conversationMessages.find(
+    (message) => message.role === "tool" && message.tool_call_id === "image_1",
+  );
+  assert.equal(
+    imageMessage?.content,
+    JSON.stringify({ imageUrls: ["https://files.example/generated.png"] }),
+  );
+  assert.equal(result.allToolResults.find(({ toolCallId }) => toolCallId === "image_1")?.isError, undefined);
+});
+
 test("runToolCallLoop captures deferred tool rounds without re-calling the model", async () => {
   const registry = new ToolRegistry();
   registry.register(
@@ -326,6 +462,84 @@ test("runToolCallLoop supports early exit and truncates stored tool metadata", a
   assert.equal(result.exitedEarly, true);
   assert.match(result.allToolCalls[0]?.arguments ?? "", /\[truncated\]$/);
   assert.match(result.allToolResults[0]?.result ?? "", /\[truncated\]$/);
+});
+
+test("runToolCallLoop keeps long-prompt media ownership results valid and attachable", async () => {
+  const registry = new ToolRegistry();
+  registry.register(
+    createTool({
+      name: "generate_image",
+      description: "image",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        success: true,
+        data: {
+          kind: "image",
+          prompt: "i".repeat(5_000),
+          requestedCount: 1,
+          generatedCount: 1,
+          images: [{
+            storageId: "image_storage_1",
+            url: "https://files.example/generated.png",
+            mimeType: "image/png",
+            sizeBytes: 42,
+          }],
+          imageUrls: ["https://files.example/generated.png"],
+          imageMimeTypes: ["image/png"],
+        },
+      }),
+    }),
+    createTool({
+      name: "generate_speech",
+      description: "speech",
+      parameters: { type: "object", properties: {} },
+      execute: async () => ({
+        success: true,
+        data: {
+          kind: "speech",
+          prompt: "s".repeat(5_000),
+          audioTranscript: "s".repeat(5_000),
+          storageId: "audio_storage_1",
+          generatedFileId: "generated_file_1",
+          audioStorageId: "audio_storage_1",
+          audioUrl: "https://files.example/generated.mp3",
+          audioMimeType: "audio/mpeg",
+          sizeBytes: 84,
+        },
+      }),
+    }),
+  );
+
+  const result = await runToolCallLoop(
+    makeStreamResult({
+      finishReason: "tool_calls",
+      toolCalls: [
+        makeToolCall("image_call", "generate_image", {}),
+        makeToolCall("speech_call", "generate_speech", {}),
+      ],
+    }),
+    {
+      apiKey: "key",
+      model: "model",
+      messages: [{ role: "user", content: "create media" }],
+      params: {},
+      callbacks: {},
+      registry,
+      toolCtx: { ctx: {} as any, userId: "user_1" },
+      maxRoundsPerInvocation: 1,
+    },
+  );
+
+  for (const toolResult of result.allToolResults) {
+    assert.doesNotThrow(() => JSON.parse(toolResult.result));
+    assert.ok(toolResult.result.length <= 4_000);
+  }
+  const media = extractGeneratedToolMedia(result.allToolResults);
+  assert.deepEqual(media.imageUrls, ["https://files.example/generated.png"]);
+  assert.equal(media.audio?.storageId, "audio_storage_1");
+  assert.ok(media.audio?.transcript?.startsWith("s".repeat(100)));
+  assert.ok((media.audio?.transcript?.length ?? 0) < 5_000);
+  assert.deepEqual(media.generatedFileIds, ["generated_file_1"]);
 });
 
 test("runToolCallLoop exits after the configured round budget before the next model call", async () => {

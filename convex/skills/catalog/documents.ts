@@ -44,6 +44,8 @@ Pick the tool that matches the file's actual format.
 - \`.txt\`, \`.md\`, \`.csv\` → use \`read_text_file\`
 - \`.eml\` → use \`read_eml\`
 
+When generating an \`.eml\` file, pass owned file or generated-media storage IDs in \`attachments\` when the user asks for attachments. The resulting EML remains a reviewable file and is not sent.
+
 If the user only wants to understand an attached file, read it first and answer directly.
 
 If the user wants a polished output file, read the source if needed, then generate a new file in the target format.

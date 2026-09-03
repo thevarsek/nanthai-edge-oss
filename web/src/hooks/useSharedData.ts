@@ -68,9 +68,12 @@ export function useSharedData(): SharedDataContextValue {
   return ctx;
 }
 
-export function useModelSummaries() {
+export function useModelSummaries(options: { includeGenerationModels?: boolean } = {}) {
   const skip = useSignedInSkip();
-  return useQuery(api.models.sync.listModelSummaries, skip);
+  return useQuery(
+    api.models.sync.listModelSummaries,
+    skip === "skip" ? "skip" : options,
+  );
 }
 
 export function useVisibleSkills() {

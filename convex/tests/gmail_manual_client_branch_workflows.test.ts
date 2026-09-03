@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 import nodemailer from "nodemailer";
 
 import {
@@ -69,6 +70,7 @@ test("manual Gmail credentials return active plaintext fallback and SMTP text mo
 
 test("manual Gmail draft falls back to default Drafts path and reports rejected appends", async () => {
   let appendCount = 0;
+  let firstDraftMessage: Buffer | undefined;
   const restore = patchImap({
     connect: async () => undefined,
     logout: async () => {
@@ -82,6 +84,7 @@ test("manual Gmail draft falls back to default Drafts path and reports rejected 
       assert.equal(mailbox, "[Gmail]/Drafts");
       assert.deepEqual(flags, ["\\Draft"]);
       if (appendCount === 1) {
+        firstDraftMessage = body;
         assert.match(body.toString("utf8"), /Subject: Draft Subject/);
       }
       return appendCount === 1 ? { uid: "not numeric", id: 123 } : false;
@@ -95,8 +98,19 @@ test("manual Gmail draft falls back to default Drafts path and reports rejected 
       bcc: "bcc@example.com\n",
       subject: "Draft\r\nSubject",
       body: "Line 1\nLine 2",
+      attachments: [{
+        filename: "generated-image.png",
+        contentType: "image/png",
+        content: Buffer.from("image-bytes"),
+      }],
     });
     assert.deepEqual(draft, { mailbox: "[Gmail]/Drafts", uid: undefined, messageId: undefined });
+    const parsed = await simpleParser(firstDraftMessage!);
+    assert.equal(parsed.attachments.length, 1);
+    assert.equal(parsed.attachments[0]?.filename, "generated-image.png");
+    assert.equal(parsed.attachments[0]?.contentType, "image/png");
+    assert.equal(parsed.attachments[0]?.content.toString(), "image-bytes");
+    assert.match(firstDraftMessage!.toString("utf8"), /^Bcc: bcc@example\.com\r?$/m);
 
     await assert.rejects(
       createGmailManualDraft(credentials, {

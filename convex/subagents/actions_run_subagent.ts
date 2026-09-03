@@ -636,7 +636,15 @@ export async function runSubagentRunHandler(
           results,
         });
       },
-      onPrepareNextTurn: async (_round, toolCalls, results, conversationMessages) => {
+      onPrepareNextTurn: async (
+        _round,
+        toolCalls,
+        results,
+        conversationMessages,
+        _currentRegistry,
+        _currentParams,
+        roundToolCtx,
+      ) => {
         await ensureFencedRunActive(
           ctx,
           run._id,
@@ -678,13 +686,7 @@ export async function runSubagentRunHandler(
           toolCalls,
           results,
           registry,
-          {
-            ctx,
-            userId: participantSnapshot.userId,
-            chatId: participantSnapshot.chatId ?? String(batch.chatId),
-            modelId,
-            requireZdr,
-          },
+          roundToolCtx,
         );
         patchSameRoundProgressiveToolErrors(toolCalls, results, registry);
 

@@ -15,6 +15,8 @@ function jsonResponse(status: number, payload: unknown, headers?: Record<string,
     json: async () => payload,
     text: async () => JSON.stringify(payload),
     blob: async () => new Blob(["file-bytes"], { type: "text/plain" }),
+    arrayBuffer: async () => new TextEncoder().encode("file-bytes").buffer,
+    body: { cancel: async () => undefined },
   } as any;
 }
 
@@ -22,7 +24,16 @@ function createGoogleToolCtx() {
   return {
     userId: "user_1",
     ctx: {
-      runQuery: async () => ({
+      runQuery: async (_reference?: unknown, args?: Record<string, unknown>) => {
+        if (Array.isArray(args?.storageIds)) {
+          const ownedIds = new Set(["storage_1", "missing_storage"]);
+          return args.storageIds
+            .filter((storageId): storageId is string =>
+              typeof storageId === "string" && ownedIds.has(storageId)
+            )
+            .map((storageId) => ({ storageId }));
+        }
+        return {
         _id: "google_1",
         userId: "user_1",
         provider: "google",
@@ -35,11 +46,14 @@ function createGoogleToolCtx() {
         email: "owner@example.com",
         status: "active",
         connectedAt: 1,
-      }),
+        };
+      },
       runMutation: async () => undefined,
       storage: {
         getUrl: async (storageId: string) =>
           storageId === "storage_1" ? "https://cdn.example/storage_1" : null,
+        getMetadata: async (storageId: string) =>
+          storageId === "storage_1" ? { size: 10 } : null,
       },
     },
   } as any;
@@ -71,7 +85,7 @@ test("google drive tools upload files and surface upstream failures", async () =
   try {
     const uploaded = await driveUpload.execute(createGoogleToolCtx(), {
       storage_id: "storage_1",
-      filename: "Report.txt",
+      filename: "generated-image.webp",
     });
     let listQueryCount = 0;
     const listed = await driveList.execute({
@@ -107,6 +121,10 @@ test("google drive tools upload files and surface upstream failures", async () =
     assert.equal(
       String((requests[1]!.init?.headers as Record<string, string>)["Content-Type"]).startsWith("multipart/related"),
       true,
+    );
+    assert.match(
+      new TextDecoder().decode(requests[1]!.init?.body as Uint8Array),
+      /Content-Type: image\/webp/,
     );
     assert.equal(listed.success, true);
     assert.equal((listed.data as any).files[0].id, "drive_1");
@@ -398,14 +416,15 @@ test("google drive tools cover upload API failure, move success, and read transf
   }) as any;
 
   try {
-    const uploadFailure = await driveUpload.execute(createGoogleToolCtx(), {
-      storage_id: "storage_1",
-      filename: "Report.pdf",
-      folder_id: "folder_1",
-      mime_type: "application/pdf",
-    });
-    assert.equal(uploadFailure.success, false);
-    assert.match(String(uploadFailure.error), /Drive upload failed/);
+    await assert.rejects(
+      driveUpload.execute(createGoogleToolCtx(), {
+        storage_id: "storage_1",
+        filename: "Report.pdf",
+        folder_id: "folder_1",
+        mime_type: "application/pdf",
+      }),
+      /Drive upload failed/,
+    );
 
     const buildReadCtx = (fileId: string, chatId?: string) => {
       let queryCount = 0;

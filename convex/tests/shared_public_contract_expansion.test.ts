@@ -154,7 +154,7 @@ test("syncFromOpenRouter refreshes ZDR flags when the content hash matches and Z
   try {
     const data = [{ id: "openai/gpt-5.2", name: "GPT 5.2", pricing: { prompt: "0.000001", completion: "0.000002" }, context_length: 200000, supported_parameters: [] }];
     const hashInput = data
-      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
+      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${m.architecture?.modality}|${(m.supported_parameters ?? []).join(",")}|${(m.supported_voices ?? []).join(",")}`)
       .sort()
       .join("\n");
     const hashBuffer = await globalThis.crypto.subtle.digest(
@@ -165,12 +165,16 @@ test("syncFromOpenRouter refreshes ZDR flags when the content hash matches and Z
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
 
-    globalThis.fetch = (async () => ({
-      ok: true,
-      json: async () => ({ data }),
-      status: 200,
-      statusText: "OK",
-    })) as any;
+    const fetchedUrls: string[] = [];
+    globalThis.fetch = (async (url: string | URL) => {
+      fetchedUrls.push(String(url));
+      return {
+        ok: true,
+        json: async () => ({ data }),
+        status: 200,
+        statusText: "OK",
+      };
+    }) as any;
 
     const mutations: Array<Record<string, unknown>> = [];
     await (syncFromOpenRouter as any)._handler({
@@ -181,6 +185,10 @@ test("syncFromOpenRouter refreshes ZDR flags when the content hash matches and Z
     }, {});
 
     assert.deepEqual(mutations, [{ zdrModelIds: [] }]);
+    assert.equal(
+      fetchedUrls[0],
+      "https://openrouter.ai/api/v1/models?output_modalities=text,speech",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -191,7 +199,7 @@ test("syncFromOpenRouter skips unchanged catalog writes when ZDR fetch fails", a
   try {
     const data = [{ id: "openai/gpt-5.2", name: "GPT 5.2", pricing: { prompt: "0.000001", completion: "0.000002" }, context_length: 200000, supported_parameters: [] }];
     const hashInput = data
-      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${(m.supported_parameters ?? []).join(",")}`)
+      .map((m: any) => `${m.id}|${m.name}|${m.pricing?.prompt}|${m.pricing?.completion}|${m.context_length}|${m.architecture?.modality}|${(m.supported_parameters ?? []).join(",")}|${(m.supported_voices ?? []).join(",")}`)
       .sort()
       .join("\n");
     const hashBuffer = await globalThis.crypto.subtle.digest(

@@ -235,6 +235,33 @@ describe("AssistantMessage", () => {
     expect(screen.getByText("Generating video...")).toBeInTheDocument();
   });
 
+  it("keeps video progress subscribed when an older video URL is already rendered", () => {
+    const { container } = renderAssistant({
+      content: "Here is the earlier video.",
+      status: "completed",
+      videoUrls: ["https://example.com/earlier-video.mp4"],
+      toolCalls: [{ id: "call_video", name: "generate_video", arguments: "{}" }],
+    });
+
+    expect(screen.getByTestId("video-progress")).toBeInTheDocument();
+    expect(container.querySelector("video")).toBeInTheDocument();
+  });
+
+  it.each(["pending", "failed"] as const)(
+    "keeps video progress subscribed for a %s historical generation after catalogue pruning",
+    (status) => {
+      mockModelSummaries = [];
+
+      renderAssistant({
+        content: status === "failed" ? "Video generation failed." : "",
+        status,
+        modelId: "retired-provider/video-model",
+      });
+
+      expect(screen.getByTestId("video-progress")).toBeInTheDocument();
+    },
+  );
+
   it("shows a square image placeholder instead of waiting dots for pending image generations", () => {
     mockModelSummaries = [{ modelId: "openai/gpt-image-2", supportsImages: true }];
 

@@ -7,7 +7,10 @@
 // =============================================================================
 
 import { createTool } from "../registry";
+import { internal } from "../../_generated/api";
 import { getMicrosoftAccessToken } from "./auth";
+import type { Id } from "../../_generated/dataModel";
+import { uploadOneDriveFile } from "./onedrive_upload";
 
 const GRAPH_API = "https://graph.microsoft.com/v1.0/me";
 
@@ -19,22 +22,22 @@ export const onedriveUpload = createTool({
   name: "onedrive_upload",
   description:
     "Upload a file to the user's OneDrive. " +
-    "Use when the user asks to save a generated document to OneDrive, " +
+    "Use when the user asks to save a generated document or media asset to OneDrive, " +
     "upload a file they've created, or back up content to Microsoft OneDrive. " +
     "Requires a Convex storage ID from a previously generated file " +
-    "(e.g. from generate_docx, generate_xlsx, generate_pptx, etc.).",
+    "or media result (e.g. DOCX, XLSX, PPTX, image, audio, or video).",
   parameters: {
     type: "object",
     properties: {
       storage_id: {
         type: "string",
         description:
-          "Convex storage ID of the file to upload (from a generate_* tool result).",
+          "Convex storage ID of the file or media asset to upload (from a prior tool result).",
       },
       filename: {
         type: "string",
         description:
-          "Filename for the file in OneDrive (e.g. 'Report.docx').",
+          "Filename for the file in OneDrive (e.g. 'Report.docx'). Use an extension matching the source content; this tool does not transcode files.",
       },
       folder_path: {
         type: "string",
@@ -59,11 +62,29 @@ export const onedriveUpload = createTool({
       };
     }
 
+    let accessToken: string;
+    let fileResponse: Response;
+    let fileSize: number;
     try {
-      const { accessToken } = await getMicrosoftAccessToken(
+      ({ accessToken } = await getMicrosoftAccessToken(
         toolCtx.ctx,
         toolCtx.userId,
+      ));
+
+      const owned = await toolCtx.ctx.runQuery(
+        internal.tools.storage_attachment_queries.resolveOwnedStorageAttachments,
+        {
+          userId: toolCtx.userId,
+          storageIds: [storageId as Id<"_storage">],
+        },
       );
+      if (owned.length !== 1 || String(owned[0].storageId) !== storageId) {
+        return {
+          success: false,
+          data: null,
+          error: "File is missing or does not belong to the current user.",
+        };
+      }
 
       // Fetch file content from Convex storage
       const fileUrl = await toolCtx.ctx.storage.getUrl(storageId);
@@ -75,7 +96,7 @@ export const onedriveUpload = createTool({
         };
       }
 
-      const fileResponse = await fetch(fileUrl);
+      fileResponse = await fetch(fileUrl);
       if (!fileResponse.ok) {
         await fileResponse.body?.cancel();
         return {
@@ -85,58 +106,18 @@ export const onedriveUpload = createTool({
         };
       }
 
-      const fileBlob = await fileResponse.blob();
-      const fileArrayBuffer = await fileBlob.arrayBuffer();
-
-      // Build the upload path
-      // PUT /me/drive/root:/path/filename:/content for simple upload (<4MB)
-      const encodedFilename = encodeURIComponent(filename);
-      let uploadPath: string;
-      if (folderPath && folderPath !== "/") {
-        const cleanFolder = folderPath.replace(/^\/|\/$/g, "");
-        uploadPath = `${GRAPH_API}/drive/root:/${cleanFolder}/${encodedFilename}:/content`;
-      } else {
-        uploadPath = `${GRAPH_API}/drive/root:/${encodedFilename}:/content`;
-      }
-
-      const uploadResponse = await fetch(uploadPath, {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/octet-stream",
-        },
-        body: fileArrayBuffer,
-      });
-
-      if (!uploadResponse.ok) {
-        await uploadResponse.body?.cancel();
+      const fileMetadata = await toolCtx.ctx.storage.getMetadata(
+        storageId as Id<"_storage">,
+      );
+      if (!fileMetadata) {
+        await fileResponse.body?.cancel();
         return {
           success: false,
           data: null,
-          error: `OneDrive upload failed (HTTP ${uploadResponse.status}).`,
+          error: `File not found in storage (storageId: ${storageId}).`,
         };
       }
-
-      const result = (await uploadResponse.json()) as {
-        id: string;
-        name: string;
-        size?: number;
-        webUrl?: string;
-        file?: { mimeType?: string };
-      };
-
-      return {
-        success: true,
-        data: {
-          fileId: result.id,
-          name: result.name,
-          size: result.size ? formatFileSize(result.size) : undefined,
-          webUrl: result.webUrl,
-          message: result.webUrl
-            ? `File "${result.name}" uploaded to OneDrive. [Open in OneDrive](${result.webUrl})`
-            : `File "${result.name}" uploaded to OneDrive (ID: ${result.id}).`,
-        },
-      };
+      fileSize = fileMetadata.size;
     } catch (e) {
       return {
         success: false,
@@ -144,6 +125,29 @@ export const onedriveUpload = createTool({
         error: e instanceof Error ? e.message : String(e),
       };
     }
+
+    // Provider dispatch begins here. Propagate failures so the operation
+    // journal preserves an ambiguous upload rather than replaying it.
+    const result = await uploadOneDriveFile({
+      accessToken,
+      response: fileResponse,
+      sizeBytes: fileSize,
+      folderPath,
+      filename,
+    });
+
+    return {
+      success: true,
+      data: {
+        fileId: result.id,
+        name: result.name,
+        size: result.size ? formatFileSize(result.size) : undefined,
+        webUrl: result.webUrl,
+        message: result.webUrl
+          ? `File "${result.name}" uploaded to OneDrive. [Open in OneDrive](${result.webUrl})`
+          : `File "${result.name}" uploaded to OneDrive (ID: ${result.id}).`,
+      },
+    };
   },
 });
 

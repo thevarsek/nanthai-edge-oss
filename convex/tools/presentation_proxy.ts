@@ -36,7 +36,7 @@ export const createPresentation = createActionProxyTool(
         imageMode: { type: "string", description: "generated, references, mixed, or none." },
         referenceNotes: { type: "string", description: "Guidance extracted from examples or references." },
         assetStorageIds: { type: "array", items: { type: "string" } },
-        sourceStorageId: { type: "string", description: "Optional attached source PPTX storage ID for an interpreted rebuild. Omit it entirely for a scratch presentation; never send an empty string." },
+        sourceStorageId: { type: "string", description: "Attached source PPTX storage ID for an interpreted rebuild. A value duplicated in assetStorageIds is treated as a reusable image instead." },
       },
       required: ["brief", "audience", "tone"],
     },

@@ -4,7 +4,6 @@ import test from "node:test";
 import { ConvexError } from "convex/values";
 import {
   isJobCancelledHandler,
-  patchMessageAudioHandler,
   storeAncillaryCostHandler,
   storeGenerationUsageHandler,
   updateJobStatusHandler,
@@ -12,6 +11,7 @@ import {
   updateMessageReasoningHandler,
   updateMessageToolCallsHandler,
 } from "../chat/mutations_internal_handlers";
+import { patchMessageAudioHandler } from "../chat/audio_mutation_handlers";
 
 function buildMutationCtx(options?: {
   records?: Record<string, Record<string, unknown>>;
@@ -36,6 +36,7 @@ function buildMutationCtx(options?: {
       filter: (_apply?: (q: any) => unknown) => chain,
       order: () => chain,
       first: async () => (tableRows.get(table) ?? [])[0] ?? null,
+      unique: async () => (tableRows.get(table) ?? [])[0] ?? null,
       collect: async () => tableRows.get(table) ?? [],
     };
     return chain;
@@ -123,8 +124,13 @@ test("streaming message mutation handlers patch direct rows, upsert fallbacks, a
 test("patchMessageAudio removes replaced blobs, tolerates storage races, and clears generation flags", async () => {
   const state = buildMutationCtx({
     records: {
-      message_1: { _id: "message_1", audioStorageId: "old_audio" },
-      message_2: { _id: "message_2", audioStorageId: "same_audio" },
+      chat_1: { _id: "chat_1", userId: "user_1" },
+      message_1: { _id: "message_1", chatId: "chat_1", audioStorageId: "old_audio" },
+      message_2: { _id: "message_2", chatId: "chat_1", audioStorageId: "same_audio" },
+      run_1: { _id: "run_1", userId: "user_1", chatId: "chat_1", activeAttemptId: "attempt_1", state: "running", domainType: "message_speech", sourceMessageId: "message_1" },
+      run_2: { _id: "run_2", userId: "user_1", chatId: "chat_1", activeAttemptId: "attempt_2", state: "running", domainType: "message_speech", sourceMessageId: "message_2" },
+      attempt_1: { _id: "attempt_1", runId: "run_1", fence: 1, status: "running" },
+      attempt_2: { _id: "attempt_2", runId: "run_2", fence: 1, status: "running" },
     },
     storageDeleteThrows: true,
   });
@@ -136,10 +142,16 @@ test("patchMessageAudio removes replaced blobs, tolerates storage races, and cle
     audioVoice: "alloy",
     audioTranscript: "hello",
     audioGeneratedAt: 42,
+    executionRunId: "run_1",
+    executionAttemptId: "attempt_1",
+    executionFence: 1,
   } as never);
   await patchMessageAudioHandler(state.ctx, {
     messageId: "message_2",
     audioStorageId: "same_audio",
+    executionRunId: "run_2",
+    executionAttemptId: "attempt_2",
+    executionFence: 1,
   } as never);
 
   assert.deepEqual(state.storageDeletes, ["old_audio"]);
@@ -269,7 +281,12 @@ test("usage storage computes model-priced cost and patches existing primary usag
 
 test("ancillary cost storage computes fallback model pricing without touching message usage", async () => {
   const state = buildMutationCtx({
+    records: {
+      message_1: { _id: "message_1", userId: "user_1", chatId: "chat_1" },
+      chat_1: { _id: "chat_1", userId: "user_1" },
+    },
     tableRows: {
+      accountDeletionTombstones: [],
       cachedModels: [{ _id: "model_1", modelId: "openai/gpt-test", inputPricePer1M: 1, outputPricePer1M: 3 }],
     },
   });

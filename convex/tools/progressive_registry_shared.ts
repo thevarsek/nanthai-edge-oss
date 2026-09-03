@@ -316,6 +316,10 @@ export function availableProgressiveProfiles(options: {
   const profiles = new Set<SkillToolProfileId>([
     "presentations",
     "docs",
+    "imageGeneration",
+    "musicGeneration",
+    "speechGeneration",
+    "videoGeneration",
     "analytics",
     "workspace",
     "persistentRuntime",
@@ -385,6 +389,10 @@ export function isSkillToolProfileId(value: string): value is SkillToolProfileId
   return [
     "presentations",
     "docs",
+    "imageGeneration",
+    "musicGeneration",
+    "speechGeneration",
+    "videoGeneration",
     "analytics",
     "workspace",
     "persistentRuntime",
@@ -397,5 +405,6 @@ export function isSkillToolProfileId(value: string): value is SkillToolProfileId
     "slack",
     "scheduledJobs",
     "skillsManagement",
+    "personas",
   ].includes(value);
 }

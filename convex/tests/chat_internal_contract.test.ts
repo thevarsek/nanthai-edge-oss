@@ -86,6 +86,16 @@ test("chat actions remain registered and previewVoice enforces auth", async () =
   );
 });
 
+test("message audio action retains optional execution compatibility for queued legacy calls", () => {
+  const registered = chatActions.generateAudioForMessage as unknown as {
+    exportArgs: () => string;
+  };
+  const args = JSON.parse(registered.exportArgs()) as {
+    value: { execution?: { optional?: boolean } };
+  };
+  assert.equal(args.value.execution?.optional, true);
+});
+
 test("cancelled assistant analytics action pairs queued cancellation with a start", async () => {
   const scheduled: Array<Record<string, unknown>> = [];
   await (chatActions.captureCancelledAssistantResponse as any)._handler(

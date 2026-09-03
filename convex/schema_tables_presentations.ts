@@ -25,6 +25,7 @@ export const presentationSchemaTables = {
   })
     .index("by_user", ["userId", "createdAt"])
     .index("by_project", ["projectId", "createdAt"])
+    .index("by_storage", ["storageId"])
     .index("by_user_storage", ["userId", "storageId"])
     .index("by_user_source", ["userId", "sourceStorageId"]),
 

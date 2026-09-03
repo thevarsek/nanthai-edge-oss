@@ -130,6 +130,11 @@ export const userSchemaTables = {
     autoAudioResponse: v.optional(v.boolean()),
     preferredVoice: v.optional(v.string()),
     defaultAudioSpeed: v.optional(v.number()), // 1 | 1.5 | 2
+    defaultSpeechSpeed: v.optional(v.number()),
+    defaultSpeechOutputFormat: v.optional(v.string()), // "mp3" | "pcm"
+    defaultSpeechInstructions: v.optional(v.string()),
+    defaultSpeechStyle: v.optional(v.string()),
+    defaultSpeechStyleDegree: v.optional(v.number()),
     isMemoryEnabled: v.boolean(),
     memoryGatingMode: v.string(),
     memoryExtractionModelId: v.optional(v.string()),
@@ -140,6 +145,10 @@ export const userSchemaTables = {
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),
     showAdvancedStats: v.optional(v.boolean()), // M23: per-message cost display
+    defaultImageGenerationModelId: v.optional(v.string()),
+    defaultMusicGenerationModelId: v.optional(v.string()),
+    defaultSpeechGenerationModelId: v.optional(v.string()),
+    defaultVideoGenerationModelId: v.optional(v.string()),
     defaultImageCount: v.optional(v.number()),
     defaultImageAspectRatio: v.optional(v.string()),
     defaultImageResolution: v.optional(v.string()),

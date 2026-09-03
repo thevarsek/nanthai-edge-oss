@@ -3,16 +3,29 @@ import { useTranslation } from "react-i18next";
 import { ChevronRight, Copy, SquarePen, Trash2, Sparkles } from "lucide-react";
 import type { Id } from "@convex/_generated/dataModel";
 import { statusBadgeClass } from "@/lib/uiTokens";
+import {
+  isMediaSkillUnavailable,
+  mediaSkillUnavailableMessageKey,
+} from "@/lib/mediaSkillAvailability";
 import { isSystemSkill, type SkillDefaultState, type SkillDoc } from "./SkillsPage.helpers";
 
 export function DefaultStateBadge({
   state,
   inherited,
+  unavailable = false,
 }: {
   state: Exclude<SkillDefaultState, undefined>;
   inherited: boolean;
+  unavailable?: boolean;
 }) {
   const { t } = useTranslation();
+  if (unavailable) {
+    return (
+      <span className={statusBadgeClass("rejected", "border-0")}>
+        {t("unavailable")}
+      </span>
+    );
+  }
   const status = state === "always" ? "accepted" : state === "available" ? "running" : "rejected";
   const label = state === "always"
     ? t("skill_state_always")
@@ -59,6 +72,11 @@ export function SkillCard({
           </div>
           {skill.summary && (
             <p className="text-xs text-foreground/50 mt-0.5 line-clamp-2">{skill.summary}</p>
+          )}
+          {isMediaSkillUnavailable(skill) && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 line-clamp-2">
+              {t(mediaSkillUnavailableMessageKey(skill))}
+            </p>
           )}
         </div>
         <ChevronRight size={12} className="text-foreground/30 flex-shrink-0" />

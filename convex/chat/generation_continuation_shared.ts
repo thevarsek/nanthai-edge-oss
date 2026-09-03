@@ -113,6 +113,11 @@ export type GenerationDeferredOwnership =
       analyticsRunId: Id<"analyticsWorkflowRuns">;
     }
   | {
+      kind: "video";
+      videoJobId: Id<"videoJobs">;
+      toolCallId: string;
+    }
+  | {
       kind: "drive_picker";
       batchId: Id<"drivePickerBatches">;
     }

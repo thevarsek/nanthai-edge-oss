@@ -77,6 +77,19 @@ export const loadSkill = createTool({
             skill.requiredIntegrationIds ?? [],
           );
 
+      if (
+        toolCtx.availableSkillProfiles &&
+        requiredToolProfiles.some((profile) =>
+          !(toolCtx.availableSkillProfiles as readonly string[]).includes(profile)
+        )
+      ) {
+        return {
+          success: false,
+          data: null,
+          error: `Skill "${skill.name}" is unavailable with the current privacy or runtime settings.`,
+        };
+      }
+
       return {
         success: true,
         data: {

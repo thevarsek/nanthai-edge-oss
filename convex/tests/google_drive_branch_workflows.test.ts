@@ -11,6 +11,8 @@ function jsonResponse(status: number, payload: unknown) {
     json: async () => payload,
     text: async () => JSON.stringify(payload),
     blob: async () => new Blob(["file-bytes"], { type: "text/plain" }),
+    arrayBuffer: async () => new TextEncoder().encode("file-bytes").buffer,
+    body: { cancel: async () => undefined },
   } as any;
 }
 
@@ -34,12 +36,24 @@ function toolCtx(options: {
   grant?: unknown;
   queryThrows?: unknown;
   storageUrl?: string | null;
+  ownedStorage?: boolean;
+  grantWriteThrows?: unknown;
 } = {}) {
   let queryCount = 0;
   return {
     userId: "user_1",
     ctx: {
-      runQuery: async () => {
+      runQuery: async (_reference: unknown, args: Record<string, unknown>) => {
+        if (Array.isArray(args?.storageIds)) {
+          return options.ownedStorage === false
+            ? []
+            : [{
+                storageId: "storage_1",
+                filename: "Archive.bin",
+                mimeType: "application/octet-stream",
+                sizeBytes: 10,
+              }];
+        }
         queryCount += 1;
         if (queryCount === 1) return googleConnection(options.scopes);
         if (options.queryThrows !== undefined) throw options.queryThrows;
@@ -47,9 +61,12 @@ function toolCtx(options: {
         if (options.grant !== undefined) return options.grant;
         return null;
       },
-      runMutation: async () => undefined,
+      runMutation: async () => {
+        if (options.grantWriteThrows !== undefined) throw options.grantWriteThrows;
+      },
       storage: {
         getUrl: async () => options.storageUrl ?? "https://cdn.example/file",
+        getMetadata: async () => ({ size: 10 }),
       },
     },
   } as any;
@@ -137,6 +154,42 @@ test("google drive upload handles non-linked successes and capability failures",
     assert.equal(denied.success, false);
     assert.equal((denied.data as any).requiresGoogleCapability, true);
     assert.equal((denied.data as any).integrationId, "drive");
+
+    const grantFailure = await driveUpload.execute(toolCtx({
+      grantWriteThrows: new Error("grant index offline"),
+    }), {
+      storage_id: "storage_1",
+      filename: "Archive.bin",
+    });
+    assert.equal(grantFailure.success, true);
+
+    const unowned = await driveUpload.execute(toolCtx({ ownedStorage: false }), {
+      storage_id: "storage_1",
+      filename: "Archive.bin",
+    });
+    assert.equal(unowned.success, false);
+    assert.match(String(unowned.error), /does not belong/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("google drive upload propagates provider failures for operation reconciliation", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    if (url === "https://cdn.example/file") return jsonResponse(200, {});
+    if (url.includes("/upload/drive/v3/files")) return jsonResponse(503, {});
+    throw new Error(`Unexpected fetch: ${url}`);
+  }) as any;
+
+  try {
+    await assert.rejects(
+      () => driveUpload.execute(toolCtx(), {
+        storage_id: "storage_1",
+        filename: "Archive.bin",
+      }),
+      /Drive upload failed \(HTTP 503\)/,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

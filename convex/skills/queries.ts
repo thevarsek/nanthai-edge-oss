@@ -8,6 +8,11 @@ import type { QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import { optionalAuth } from "../lib/auth";
 import { listActiveCapabilities, type CapabilityName } from "../capabilities/shared";
+import {
+  availabilityForSkill,
+  mediaProfileForSkill,
+  resolveMediaSkillAvailability,
+} from "./media_generation_availability";
 
 // ── Shared query logic ───────────────────────────────────────────────────
 
@@ -16,7 +21,11 @@ import { listActiveCapabilities, type CapabilityName } from "../capabilities/sha
  * Used by both listVisibleSkills and listDiscoverableSkills.
  */
 async function fetchVisibleSkills(ctx: QueryCtx, userId: string) {
-  const capabilitySet = new Set(await listActiveCapabilities(ctx, userId));
+  const [activeCapabilities, mediaAvailability] = await Promise.all([
+    listActiveCapabilities(ctx, userId),
+    resolveMediaSkillAvailability(ctx, userId),
+  ]);
+  const capabilitySet = new Set(activeCapabilities);
   const systemSkills = await ctx.db
     .query("skills")
     .withIndex("by_scope", (q) => q.eq("scope", "system").eq("status", "active"))
@@ -35,7 +44,10 @@ async function fetchVisibleSkills(ctx: QueryCtx, userId: string) {
 
   const visible = systemSkills.filter(isEligible);
   const eligibleUserSkills = userSkills.filter(isEligible);
-  return [...visible, ...eligibleUserSkills];
+  return [...visible, ...eligibleUserSkills].map((skill) => {
+    const availability = availabilityForSkill(skill, mediaAvailability);
+    return availability ? { ...skill, mediaAvailability: availability } : skill;
+  });
 }
 
 // ── Public queries (called from iOS client) ─────────────────────────────
@@ -67,13 +79,13 @@ export const getSkillDetail = query({
     const skill = await ctx.db.get(skillId);
     if (!skill) return null;
 
-    // System skills are readable by all authenticated users
-    if (skill.scope === "system") return skill;
+    const canRead = skill.scope === "system" || skill.ownerUserId === auth.userId;
+    if (!canRead) return null;
 
-    // User skills are only readable by their owner
-    if (skill.ownerUserId !== auth.userId) return null;
-
-    return skill;
+    if (!mediaProfileForSkill(skill)) return skill;
+    const mediaAvailability = await resolveMediaSkillAvailability(ctx, auth.userId);
+    const availability = availabilityForSkill(skill, mediaAvailability);
+    return availability ? { ...skill, mediaAvailability: availability } : skill;
   },
 });
 
@@ -117,6 +129,13 @@ export const listVisibleSkillsInternal = internalQuery({
       (s) => s.visibility === "visible" || s.visibility === "integration_managed",
     );
     return [...visible, ...userSkills];
+  },
+});
+
+export const getMediaSkillAvailabilityInternal = internalQuery({
+  args: { userId: v.string(), requireZdr: v.optional(v.boolean()) },
+  handler: async (ctx, { userId, requireZdr }) => {
+    return await resolveMediaSkillAvailability(ctx, userId, undefined, requireZdr);
   },
 });
 

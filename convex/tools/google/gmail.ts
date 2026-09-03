@@ -10,14 +10,14 @@
 
 import { createTool } from "../registry";
 import {
-  createGmailManualDraft,
   getGmailManualCredentials,
   listGmailManualLabels,
   listGmailManualMessages,
   modifyGmailManualLabels,
-  sendGmailManualMail,
   trashGmailManualMessages,
 } from "./gmail_manual_client";
+
+export { gmailCreateDraft, gmailSend } from "./gmail_mail";
 
 function gmailManualToolError(error: unknown) {
   return {
@@ -56,105 +56,6 @@ function summarizeBatch(
     error: succeeded === 0 ? `All ${failed.length} operation(s) failed.` : undefined,
   };
 }
-
-export const gmailSend = createTool({
-  name: "gmail_send",
-  description:
-    "Send an email via the user's manually connected Gmail account. " +
-    "Use when the user asks you to send an email, reply to someone, or draft and send a message. " +
-    "The email is sent immediately from the user's Gmail address. Supports plain text and HTML bodies.",
-  parameters: {
-    type: "object",
-    properties: {
-      to: { type: "string", description: "Recipient email address." },
-      subject: { type: "string", description: "Email subject line." },
-      body: { type: "string", description: "Email body content." },
-      is_html: { type: "boolean", description: "Whether the body is HTML." },
-      cc: { type: "string", description: "Optional CC recipients, comma-separated." },
-      bcc: { type: "string", description: "Optional BCC recipients, comma-separated." },
-    },
-    required: ["to", "subject", "body"],
-  },
-  execute: async (toolCtx, args) => {
-    const to = args.to as string;
-    const subject = args.subject as string;
-    const body = args.body as string;
-    if (!to || !subject || !body) {
-      return { success: false, data: null, error: "Missing 'to', 'subject', or 'body'." };
-    }
-
-    try {
-      const credentials = await getGmailManualCredentials(toolCtx.ctx, toolCtx.userId);
-      const result = await sendGmailManualMail(credentials, {
-        to,
-        subject,
-        body,
-        isHtml: (args.is_html as boolean) ?? false,
-        cc: args.cc as string | undefined,
-        bcc: args.bcc as string | undefined,
-      });
-      return {
-        success: true,
-        data: {
-          messageId: result.messageId,
-          threadId: null,
-          message: `Email sent successfully to ${to} with subject "${subject}".`,
-        },
-      };
-    } catch (error) {
-      return gmailManualToolError(error);
-    }
-  },
-});
-
-export const gmailCreateDraft = createTool({
-  name: "gmail_create_draft",
-  description:
-    "Create a draft email in the user's manually connected Gmail Drafts folder using IMAP append. " +
-    "Use when the user asks to draft an email without sending it. The draft is saved for the user to review in Gmail.",
-  parameters: {
-    type: "object",
-    properties: {
-      to: { type: "string", description: "Recipient email address." },
-      subject: { type: "string", description: "Email subject line." },
-      body: { type: "string", description: "Email body content." },
-      is_html: { type: "boolean", description: "Whether the body is HTML." },
-      cc: { type: "string", description: "Optional CC recipients, comma-separated." },
-      bcc: { type: "string", description: "Optional BCC recipients, comma-separated." },
-    },
-    required: ["to", "subject", "body"],
-  },
-  execute: async (toolCtx, args) => {
-    const to = args.to as string;
-    const subject = args.subject as string;
-    const body = args.body as string;
-    if (!to || !subject || !body) {
-      return { success: false, data: null, error: "Missing 'to', 'subject', or 'body'." };
-    }
-
-    try {
-      const credentials = await getGmailManualCredentials(toolCtx.ctx, toolCtx.userId);
-      const result = await createGmailManualDraft(credentials, {
-        to,
-        subject,
-        body,
-        isHtml: (args.is_html as boolean) ?? false,
-        cc: args.cc as string | undefined,
-        bcc: args.bcc as string | undefined,
-      });
-      return {
-        success: true,
-        data: {
-          draftId: result.uid ? String(result.uid) : null,
-          mailbox: result.mailbox,
-          message: `Draft saved in Gmail for ${to} with subject "${subject}".`,
-        },
-      };
-    } catch (error) {
-      return gmailManualToolError(error);
-    }
-  },
-});
 
 export const gmailRead = createTool({
   name: "gmail_read",

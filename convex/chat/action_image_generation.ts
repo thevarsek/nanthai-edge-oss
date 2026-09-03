@@ -23,6 +23,7 @@ import {
   cancellationWasRequested,
   isOpenRouterTransportCancelledError,
 } from "../lib/openrouter_cancellation";
+import { recordMediaGenerationUsage } from "../tools/media_generation_usage";
 
 export async function runDedicatedImageGeneration(args: {
   ctx: ActionCtx;
@@ -34,6 +35,7 @@ export async function runDedicatedImageGeneration(args: {
   maxInputReferences?: number;
   supportedParameters?: ImageSupportedParameters;
   requireZdr: boolean;
+  providerDeadlineAt?: number;
   onProviderDispatch?: () => Promise<void>;
 }): Promise<{
   usage: OpenRouterUsage | null;
@@ -55,6 +57,7 @@ export async function runDedicatedImageGeneration(args: {
     imageConfig: args.generation.imageConfig,
     supportedParameters: args.supportedParameters,
     requireZdr: args.requireZdr,
+    providerDeadlineAt: args.providerDeadlineAt,
     triggerUserMessageId: args.generation.userMessageId,
     onProviderDispatch: args.onProviderDispatch,
   });
@@ -80,6 +83,7 @@ export async function dispatchDedicatedImageGeneration(args: {
   imageConfig?: ImageGenerationConfig;
   supportedParameters?: ImageSupportedParameters;
   requireZdr: boolean;
+  providerDeadlineAt?: number;
   triggerUserMessageId?: Id<"messages">;
   onProviderDispatch?: () => Promise<void>;
 }): Promise<{
@@ -131,36 +135,48 @@ export async function dispatchDedicatedImageGeneration(args: {
   };
 
   try {
-    generated = await callOpenRouterImage(args.apiKey, request, {
-      onDispatch: args.onProviderDispatch,
-      isCancelled: async () => await args.ctx.runQuery(
-        internal.chat.queries.isJobCancelled,
-        { jobId: args.jobId },
-      ),
-      onMetadata: (metadata) => {
-        responseGenerationId = metadata.generationId ?? responseGenerationId;
-        responseUsage = metadata.usage ?? responseUsage;
-      },
-      onImage: async (payload) => {
-        observedImageCount += 1;
-        if (imageUrls.length >= maximumAcceptedCount) return;
-        const cancelled = await cancellationWasRequested(
-          async () => await args.ctx.runQuery(
-            internal.chat.queries.isJobCancelled,
-            { jobId: args.jobId },
-          ),
-        );
-        if (cancelled) throw new GenerationCancelledError();
+    try {
+      generated = await callOpenRouterImage(args.apiKey, request, {
+        absoluteDeadlineAtMs: args.providerDeadlineAt,
+        onDispatch: args.onProviderDispatch,
+        isCancelled: async () => await args.ctx.runQuery(
+          internal.chat.queries.isJobCancelled,
+          { jobId: args.jobId },
+        ),
+        onMetadata: (metadata) => {
+          responseGenerationId = metadata.generationId ?? responseGenerationId;
+          responseUsage = metadata.usage ?? responseUsage;
+        },
+        onImage: async (payload) => {
+          observedImageCount += 1;
+          if (imageUrls.length >= maximumAcceptedCount) return;
+          const cancelled = await cancellationWasRequested(
+            async () => await args.ctx.runQuery(
+              internal.chat.queries.isJobCancelled,
+              { jobId: args.jobId },
+            ),
+          );
+          if (cancelled) throw new GenerationCancelledError();
 
-        const persisted = await persistGeneratedImagePayload(args.ctx, {
-          base64: payload.base64,
-          mimeType: payload.mediaType,
-        });
-        if (!persisted) return;
-        imageUrls.push(persisted.url);
-        storedImages.push(persisted.stored);
-      },
-    });
+          const persisted = await persistGeneratedImagePayload(args.ctx, {
+            base64: payload.base64,
+            mimeType: payload.mediaType,
+          });
+          if (!persisted) return;
+          imageUrls.push(persisted.url);
+          storedImages.push(persisted.stored);
+        },
+      });
+    } finally {
+      await recordMediaGenerationUsage(args.ctx, {
+        messageId: args.messageId,
+        chatId: args.chatId,
+        userId: args.userId,
+        modelId: args.modelId,
+        source: "media_message_image",
+        idempotencyKey: `${String(args.jobId)}:image-usage`,
+      }, generated?.usage ?? responseUsage, generated?.generationId ?? responseGenerationId);
+    }
   } catch (error) {
     const cancelled = isOpenRouterTransportCancelledError(error) ||
       error instanceof GenerationCancelledError ||
@@ -197,34 +213,48 @@ export async function dispatchDedicatedImageGeneration(args: {
     1,
     Math.min(maximumAcceptedCount, generated?.imageCount ?? observedImageCount),
   );
+  const finalUsage = generated?.usage ?? responseUsage;
+  const finalGenerationId = generated?.generationId ?? responseGenerationId;
+  const publicationArgs = {
+    userId: args.userId,
+    chatId: args.chatId,
+    messageId: args.messageId,
+    jobId: args.jobId,
+    modelId: args.modelId,
+    prompt: request.prompt,
+    images: storedImages.map((image, index) => ({
+      ...image,
+      url: imageUrls[index] ?? "",
+    })),
+    requestedCount: realizedRequestedCount,
+    triggerUserMessageId: args.triggerUserMessageId,
+    openrouterGenerationId: finalGenerationId ?? undefined,
+  };
+  const cleanupUnreferencedImages = async (): Promise<void> => {
+    await args.ctx.runMutation(
+      internal.tools.media_generation_mutations.deleteUnreferencedMediaStorage,
+      { storageIds: storedImages.map((image) => image.storageId) },
+    ).catch(() => undefined);
+  };
   let publication: { published: boolean; cancelled: boolean };
   try {
     publication = await args.ctx.runMutation(
       internal.chat.image_generation_mutations.publishGeneratedImages,
-      {
-        userId: args.userId,
-        chatId: args.chatId,
-        messageId: args.messageId,
-        jobId: args.jobId,
-        modelId: args.modelId,
-        prompt: request.prompt,
-        images: storedImages.map((image, index) => ({
-          ...image,
-          url: imageUrls[index] ?? "",
-        })),
-        requestedCount: realizedRequestedCount,
-        usage: generated?.usage ?? responseUsage ?? undefined,
-        triggerUserMessageId: args.triggerUserMessageId,
-        openrouterGenerationId:
-          generated?.generationId ?? responseGenerationId ?? undefined,
-      },
+      publicationArgs,
     );
-  } catch (error) {
-    await deleteStoredImages();
-    throw error;
+  } catch {
+    try {
+      publication = await args.ctx.runMutation(
+        internal.chat.image_generation_mutations.publishGeneratedImages,
+        publicationArgs,
+      );
+    } catch (error) {
+      await cleanupUnreferencedImages();
+      throw error;
+    }
   }
   if (!publication.published) {
-    await deleteStoredImages();
+    await cleanupUnreferencedImages();
     if (publication.cancelled) throw new GenerationCancelledError();
     throw new ConvexError({
       code: "INTERNAL_ERROR" as const,
@@ -233,8 +263,8 @@ export async function dispatchDedicatedImageGeneration(args: {
   }
 
   return {
-    usage: generated?.usage ?? responseUsage,
-    generationId: generated?.generationId ?? responseGenerationId,
+    usage: finalUsage,
+    generationId: finalGenerationId,
     imageUrls,
     requestedCount: realizedRequestedCount,
   };

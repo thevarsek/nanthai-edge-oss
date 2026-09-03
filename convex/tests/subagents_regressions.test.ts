@@ -349,6 +349,9 @@ test("cancelActiveGenerationHandler preserves timedOut subagent runs", async () 
         if (table === "advisorBatches") {
           return { withIndex: () => ({ collect: async () => [] }) };
         }
+        if (table === "executionRuns") {
+          return { withIndex: () => ({ collect: async () => [] }) };
+        }
         throw new Error(`Unexpected table query: ${table}`);
       },
     },

@@ -9,10 +9,17 @@ See also [OpenRouter Images API](./openrouter-image-api.md) and [OpenRouter Advi
 | Method | URL | Purpose |
 |--------|-----|---------|
 | `GET` | `https://openrouter.ai/api/v1/models` | List available models |
+| `GET` | `https://openrouter.ai/api/v1/models?output_modalities=text,speech` | List dedicated speech models and voices |
 | `GET` | `https://openrouter.ai/api/v1/images/models` | List image-output models |
 | `GET` | `https://openrouter.ai/api/v1/images/models/{id}/endpoints` | Image capabilities and pricing |
 | `POST` | `https://openrouter.ai/api/v1/images` | Dedicated buffered image generation |
+| `POST` | `https://openrouter.ai/api/v1/audio/speech` | Dedicated text-to-speech generation |
+| `GET` | `https://openrouter.ai/api/v1/videos/models` | List asynchronous video models and capabilities |
+| `POST` | `https://openrouter.ai/api/v1/videos` | Submit asynchronous video generation |
+| `GET` | `https://openrouter.ai/api/v1/videos/{id}` | Poll asynchronous video generation status |
+| `GET` | `https://openrouter.ai/api/v1/videos/{id}/content?index=0` | Download completed video content |
 | `POST` | `https://openrouter.ai/api/v1/chat/completions` | Chat completions (streaming) |
+| `GET` | `https://openrouter.ai/api/v1/generation?id={id}` | Retrieve provider usage/cost when not returned inline |
 | `GET` | `https://openrouter.ai/api/v1/credits` | Check user credits/balance |
 | `POST` | `https://openrouter.ai/api/v1/auth/keys` | Convex-only exchange of a one-time OAuth code for an API key |
 | `GET` | `https://openrouter.ai/auth` | OAuth authorization page |
@@ -246,6 +253,38 @@ Content-Type: application/json
 
 ---
 
+## Skill-Driven Multimedia Generation (M52)
+
+NanthAI exposes four model-invoked tools through its existing progressive skill
+registry. Convex owns model/default resolution, capability projection,
+OpenRouter transport, storage, and tool-result projection; clients never call
+these endpoints directly.
+
+| Tool | Transport | Supported request surface |
+|------|-----------|---------------------------|
+| `generate_image` | `POST /api/v1/images` | prompt/input references, count, aspect ratio, resolution or size, quality, background, output format, compression |
+| `generate_music` | `POST /api/v1/chat/completions` | production prompt and selected Lyria model |
+| `generate_speech` | `POST /api/v1/audio/speech` | text, voice, speed, output format, instructions, style, style degree |
+| `generate_video` | `POST /api/v1/videos`, then status/content polling | prompt, aspect ratio, resolution, duration, generated audio, seed |
+
+`generationCapabilities`, `generationZdrCapabilities`, and `mediaCapabilities`
+are derived from synced OpenRouter catalogue data. Convex omits unsupported
+optional arguments before transport, so a model can provide a complete brief
+without guessing each provider's parameter subset.
+
+ZDR is transport-specific: the dedicated Images and Speech APIs currently do
+not expose an enforceable ZDR guarantee, and the asynchronous Video API is not
+ZDR eligible. Music uses the normal model endpoint signal. When ZDR makes a
+selected media model unavailable, the skill is unavailable and the selected
+model remains visible; NanthAI does not silently substitute another default.
+
+Where OpenRouter does not return cost inline, NanthAI can perform the existing
+one-shot `GET /api/v1/generation?id={id}` lookup. Media cost is then included in
+the chat cost summary's `breakdown.media`; this lookup is not a durable retrying
+workload.
+
+---
+
 ## Audio Model Responses (Lyria)
 
 Google Lyria music generation models (`google/lyria-3-clip-preview`, `google/lyria-3-pro-preview`) use the standard `chat/completions` endpoint with no special request parameters — standard `model` + `messages` payload. The response arrives as three distinct SSE phases:
@@ -302,4 +341,4 @@ NanthAI adds `cache_control` automatically for all `anthropic/` model requests i
 
 ---
 
-*Source: Extracted from `plan.md` §9 — OpenRouter API Reference. Last updated: 2026-04-07 — Lyria audio model SSE format, prompt caching.*
+*Source: Extracted from `plan.md` §9 and the active OpenRouter adapters. Last updated: 2026-09-03 — M52 image, music, speech, video, ZDR, and cost transports.*

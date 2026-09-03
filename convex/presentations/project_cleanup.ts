@@ -1,5 +1,6 @@
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { storageHasContentReferences } from "../knowledge_base/delete_helpers";
 
 /** Delete one presentation project and every private orchestration child row. */
 export async function deletePresentationProjectData(
@@ -48,7 +49,12 @@ export async function deletePresentationProjectData(
   }
 
   await Promise.all(slides.map((slide) => ctx.db.delete(slide._id)));
-  await Promise.all(assets.map((asset) => ctx.db.delete(asset._id)));
+  for (const asset of assets) {
+    await ctx.db.delete(asset._id);
+    if (!await storageHasContentReferences(ctx, asset.storageId)) {
+      await ctx.storage.delete(asset.storageId).catch(() => undefined);
+    }
+  }
   if (project.snapshotStorageId && generatedFiles.length === 0) {
     await ctx.storage.delete(project.snapshotStorageId).catch(() => undefined);
   }

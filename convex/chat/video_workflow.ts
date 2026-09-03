@@ -23,6 +23,8 @@ export const runVideoGenerationWorkflow = durableWorkflow
     returns: v.null(),
   })
   .handler(async (step, args): Promise<null> => {
+    let outcome: "completed" | "failed";
+    let workflowError: unknown;
     try {
       await step.runMutation(internal.execution.mutations.heartbeat, {
         attemptId: args.execution.attemptId,
@@ -48,48 +50,50 @@ export const runVideoGenerationWorkflow = durableWorkflow
       const videoJob = await step.runQuery(internal.chat.video_queries.getByMessage, {
         messageId: args.participant.messageId,
       });
-      if (!videoJob || videoJob.status === "completed" || videoJob.status === "failed") {
-        await terminalize(step, args.execution, videoJob?.status === "completed" ? "completed" : "failed");
-        return null;
-      }
+      if (!videoJob) throw new Error("VIDEO_JOB_NOT_FOUND_AFTER_SUBMISSION");
+      outcome = videoJob.status === "completed" ? "completed" : "failed";
 
-      for (let poll = 0; poll < MAX_POLL_COUNT; poll += 1) {
-        if (poll > 0) {
-          await step.sleep(poll < FAST_POLL_COUNT ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS);
+      if (videoJob.status !== "completed" && videoJob.status !== "failed") {
+        let settled = false;
+        for (let poll = 0; poll < MAX_POLL_COUNT; poll += 1) {
+          if (poll > 0) {
+            await step.sleep(poll < FAST_POLL_COUNT ? FAST_POLL_INTERVAL_MS : SLOW_POLL_INTERVAL_MS);
+          }
+          await step.runMutation(internal.execution.mutations.heartbeat, {
+            attemptId: args.execution.attemptId,
+            fence: args.execution.fence,
+            claimantId: args.execution.claimantId,
+            leaseMs: 20 * 60 * 1000,
+          });
+          await step.runAction(internal.chat.actions.pollVideoGeneration, {
+            videoJobId: videoJob._id,
+            chatId: args.chatId,
+            userMessageId: args.userMessageId,
+            assistantMessageIds: args.assistantMessageIds,
+            generationJobIds: args.generationJobIds,
+            messageId: args.participant.messageId,
+            jobId: args.participant.jobId,
+            userId: args.userId,
+            searchSessionId: args.searchSessionId,
+            drivePickerBatchId: args.drivePickerBatchId,
+            analytics: args.analytics,
+            analyticsSource: args.analyticsSource,
+            executionAttemptId: args.execution.attemptId,
+            executionFence: args.execution.fence,
+            executionClaimantId: args.execution.claimantId,
+          }, { retry: false });
+          const current = await step.runQuery(internal.chat.queries.getVideoJobInternal, {
+            videoJobId: videoJob._id,
+          });
+          if (!current) throw new Error("VIDEO_JOB_DISAPPEARED_DURING_POLL");
+          if (current.status === "completed" || current.status === "failed") {
+            outcome = current.status;
+            settled = true;
+            break;
+          }
         }
-        await step.runMutation(internal.execution.mutations.heartbeat, {
-          attemptId: args.execution.attemptId,
-          fence: args.execution.fence,
-          claimantId: args.execution.claimantId,
-          leaseMs: 20 * 60 * 1000,
-        });
-        await step.runAction(internal.chat.actions.pollVideoGeneration, {
-          videoJobId: videoJob._id,
-          chatId: args.chatId,
-          userMessageId: args.userMessageId,
-          assistantMessageIds: args.assistantMessageIds,
-          generationJobIds: args.generationJobIds,
-          messageId: args.participant.messageId,
-          jobId: args.participant.jobId,
-          userId: args.userId,
-          searchSessionId: args.searchSessionId,
-          drivePickerBatchId: args.drivePickerBatchId,
-          analytics: args.analytics,
-          analyticsSource: args.analyticsSource,
-          executionAttemptId: args.execution.attemptId,
-          executionFence: args.execution.fence,
-          executionClaimantId: args.execution.claimantId,
-        }, { retry: false });
-        const current = await step.runQuery(internal.chat.queries.getVideoJobInternal, {
-          videoJobId: videoJob._id,
-        });
-        if (!current || current.status === "completed" || current.status === "failed") {
-          await terminalize(step, args.execution, current?.status === "failed" ? "failed" : "completed");
-          return null;
-        }
+        if (!settled) throw new Error(`Video generation timed out after ${MAX_POLL_COUNT} polls.`);
       }
-      await terminalize(step, args.execution, "failed");
-      return null;
     } catch (error) {
       await step.runAction(internal.chat.actions.failVideoWorkflow, {
         chatId: args.chatId,
@@ -104,10 +108,14 @@ export const runVideoGenerationWorkflow = durableWorkflow
         analytics: args.analytics,
         analyticsSource: args.analyticsSource,
         error: error instanceof Error ? error.message : String(error),
-      }, { retry: false }).catch(() => undefined);
-      await terminalize(step, args.execution, "failed", error).catch(() => undefined);
-      throw error;
+      }, { retry: true });
+      outcome = "failed";
+      workflowError = error;
     }
+
+    await terminalize(step, args.execution, outcome, workflowError);
+    if (workflowError) throw workflowError;
+    return null;
   });
 
 async function terminalize(

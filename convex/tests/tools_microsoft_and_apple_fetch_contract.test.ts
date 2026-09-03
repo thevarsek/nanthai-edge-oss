@@ -28,32 +28,63 @@ function jsonResponse(status: number, payload: unknown) {
   } as any;
 }
 
-function createMicrosoftToolCtx() {
+function createMicrosoftToolCtx(ctxOverrides: Record<string, unknown> = {}) {
   return {
     userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
+    jobId: "job_1",
+    executionAttemptId: "attempt_1",
+    executionFence: 1,
+    toolCallId: "tool_call_1",
     ctx: {
-      runQuery: async () => ({
-        _id: "ms_1",
-        userId: "user_1",
-        provider: "microsoft",
-        accessToken: "ms_token",
-        refreshToken: "refresh_1",
-        expiresAt: Date.now() + 60 * 60 * 1000,
-        scopes: ["Calendars.ReadWrite", "Mail.ReadWrite", "Mail.Send", "Files.ReadWrite"],
-        status: "active",
-        connectedAt: 1,
-      }),
+      runQuery: async (_reference: unknown, args?: Record<string, unknown>) => {
+        if (Array.isArray(args?.storageIds)) {
+          const ownedIds = new Set(["image_1", "storage_1", "storage_bad"]);
+          return args.storageIds
+            .filter((storageId): storageId is string =>
+              typeof storageId === "string" && ownedIds.has(storageId)
+            )
+            .map((storageId) => ({ storageId }));
+        }
+        return {
+          _id: "ms_1",
+          userId: "user_1",
+          provider: "microsoft",
+          accessToken: "ms_token",
+          refreshToken: "refresh_1",
+          expiresAt: Date.now() + 60 * 60 * 1000,
+          scopes: ["Calendars.ReadWrite", "Mail.ReadWrite", "Mail.Send", "Files.ReadWrite"],
+          status: "active",
+          connectedAt: 1,
+        };
+      },
       runMutation: async () => undefined,
+      runAction: async (_reference: unknown, args: Record<string, unknown>) => ({
+        success: true,
+        data: {
+          imageStorageId: "image_new",
+          mimeType: "image/png",
+          source: "url",
+          originalUrl: args.url,
+        },
+      }),
       storage: {
         getUrl: async (storageId: string) => {
           if (storageId === "storage_1") return "https://cdn.example/storage_1";
           if (storageId === "storage_bad") return "https://cdn.example/storage_bad";
           return null;
         },
+        getMetadata: async (storageId: string) =>
+          storageId === "storage_1" || storageId === "storage_bad"
+            ? { size: 11 }
+            : null,
         get: async (storageId: string) =>
           storageId === "image_1" ? { size: 2048, type: "image/png" } : null,
         store: async () => "image_new",
+        delete: async () => undefined,
       },
+      ...ctxOverrides,
     },
   } as any;
 }
@@ -466,37 +497,20 @@ test("microsoft Outlook tools cover search, delete, move, folders, and failure b
   }
 });
 
-test("fetchImage validates existing storage ids and fetches URL images with inferred mime types", async () => {
+test("fetchImage validates existing storage ids and delegates public URL images", async () => {
   const missing = await fetchImage.execute(createMicrosoftToolCtx(), {});
   const stored = await fetchImage.execute(createMicrosoftToolCtx(), { storageId: "image_1" });
-
-  const originalFetch = globalThis.fetch;
-  globalThis.fetch = (async () => ({
-    ok: true,
-    status: 200,
-    statusText: "OK",
-    headers: {
-      get: (name: string) =>
-        name === "content-type" ? "application/octet-stream" : name === "content-length" ? "11" : null,
-    },
-    arrayBuffer: async () => new TextEncoder().encode("image-bytes").buffer,
-  })) as any;
-
-  try {
-    const fetched = await fetchImage.execute(createMicrosoftToolCtx(), {
-      url: "https://example.com/chart.png",
-    });
-    assert.equal(missing.success, false);
-    assert.equal(stored.success, true);
-    assert.equal((stored.data as any).imageStorageId, "image_1");
-    assert.equal(fetched.success, true);
-    assert.equal((fetched.data as any).mimeType, "image/png");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  const fetched = await fetchImage.execute(createMicrosoftToolCtx(), {
+    url: "https://example.com/chart.png",
+  });
+  assert.equal(missing.success, false);
+  assert.equal(stored.success, true);
+  assert.equal((stored.data as any).imageStorageId, "image_1");
+  assert.equal(fetched.success, true);
+  assert.equal((fetched.data as any).mimeType, "image/png");
 });
 
-test("fetchImage rejects invalid inputs and oversized or empty URL responses", async () => {
+test("fetchImage rejects invalid inputs and preserves delegated URL failures", async () => {
   const both = await fetchImage.execute(createMicrosoftToolCtx(), {
     url: "https://example.com/a.png",
     storageId: "image_1",
@@ -508,57 +522,32 @@ test("fetchImage rejects invalid inputs and oversized or empty URL responses", a
     storageId: "missing_image",
   });
 
-  const originalFetch = globalThis.fetch;
-  let callCount = 0;
-  globalThis.fetch = (async () => {
-    callCount += 1;
-    if (callCount === 1) {
-      return {
-        ok: false,
-        status: 404,
-        statusText: "Not Found",
-        headers: { get: () => null },
-      } as any;
-    }
-    if (callCount === 2) {
-      return {
-        ok: true,
-        status: 200,
-        statusText: "OK",
-        headers: {
-          get: (name: string) =>
-            name === "content-length" ? String(11 * 1024 * 1024) : null,
-        },
-        arrayBuffer: async () => new ArrayBuffer(0),
-      } as any;
-    }
-    return {
-      ok: true,
-      status: 200,
-      statusText: "OK",
-      headers: { get: () => null },
-      arrayBuffer: async () => new ArrayBuffer(0),
-    } as any;
-  }) as any;
+  const delegatedErrors = [
+    "Failed to fetch image: HTTP 404 Not Found",
+    "Failed to fetch image: Image too large: 11MB exceeds 10MB limit",
+    "Failed to fetch image: Image is empty (0 bytes)",
+  ];
+  const delegatedCtx = createMicrosoftToolCtx({
+    runAction: async () => ({
+      success: false,
+      data: null,
+      error: delegatedErrors.shift(),
+    }),
+  });
+  const notFound = await fetchImage.execute(delegatedCtx, {
+    url: "https://example.com/missing.png",
+  });
+  const oversized = await fetchImage.execute(delegatedCtx, {
+    url: "https://example.com/huge.png",
+  });
+  const empty = await fetchImage.execute(delegatedCtx, {
+    url: "https://example.com/empty.png",
+  });
 
-  try {
-    const notFound = await fetchImage.execute(createMicrosoftToolCtx(), {
-      url: "https://example.com/missing.png",
-    });
-    const oversized = await fetchImage.execute(createMicrosoftToolCtx(), {
-      url: "https://example.com/huge.png",
-    });
-    const empty = await fetchImage.execute(createMicrosoftToolCtx(), {
-      url: "https://example.com/empty.png",
-    });
-
-    assert.equal(both.success, false);
-    assert.equal(badUrl.success, false);
-    assert.equal(missingStorage.success, false);
-    assert.match(String(notFound.error), /HTTP 404/);
-    assert.match(String(oversized.error), /exceeds 10MB limit/);
-    assert.match(String(empty.error), /0 bytes/);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+  assert.equal(both.success, false);
+  assert.equal(badUrl.success, false);
+  assert.equal(missingStorage.success, false);
+  assert.match(String(notFound.error), /HTTP 404/);
+  assert.match(String(oversized.error), /exceeds 10MB limit/);
+  assert.match(String(empty.error), /0 bytes/);
 });

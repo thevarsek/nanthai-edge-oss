@@ -8,7 +8,7 @@
 - Web is the large-screen density reference for sidebar, sticky panel, and workspace-style layouts.
 - Android is the primary visual rebuild target and must retain the M34 performance gains.
 - M35 owner guardrail: use existing owners/helpers first, and extract only when the touched behavior needs a real ownership or test boundary.
-- Initial skill catalog inventory: 71 system skills, 60 visible, 10 integration-managed, 1 hidden. M36 consolidation removed 5 standalone seeded skills. The current seeded catalog contains 67 system skills: 56 visible active, 8 integration-managed active, 2 archived integration-managed compatibility entries, and 1 hidden runtime skill. Known catalog lint gaps at implementation start: Cloze validator allow-list drift, `data-analyzer` instruction length, and broad screenshot/browser validator matches.
+- Initial M36 skill catalog inventory: 71 system skills, 60 visible, 10 integration-managed, 1 hidden. M36 consolidation removed 5 standalone seeded skills. M52 later added four visible media skills, so the current seeded catalog contains 71 system skills: 60 visible active, 8 integration-managed active, 2 archived integration-managed compatibility entries, and 1 hidden runtime skill. Known catalog lint gaps at M36 implementation start were Cloze validator allow-list drift, `data-analyzer` instruction length, and broad screenshot/browser validator matches.
 
 ## Severity Labels
 

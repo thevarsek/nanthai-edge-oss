@@ -179,9 +179,10 @@ test("progressive registry helpers parse loaded skills and patch same-round tool
     allowSubagents: true,
     enabledIntegrations: ["gmail", "outlook", "notion", "apple_calendar", "cloze", "slack"],
   }).sort(), [
-    "analytics", "appleCalendar", "cloze", "docs", "google", "microsoft", "presentations",
-    "notion", "persistentRuntime", "scheduledJobs", "skillsManagement", "slack",
-    "subagents", "workspace",
+    "analytics", "appleCalendar", "cloze", "docs", "google", "imageGeneration",
+    "microsoft", "musicGeneration", "presentations", "notion", "persistentRuntime",
+    "scheduledJobs", "skillsManagement", "slack", "speechGeneration", "subagents",
+    "videoGeneration", "workspace",
   ].sort());
   assert.deepEqual(availableProgressiveProfiles({ isPro: false }), []);
 

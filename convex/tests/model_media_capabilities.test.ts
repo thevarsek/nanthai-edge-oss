@@ -62,6 +62,7 @@ test("media capability projection exposes image and video arrays consistently", 
         quality: { values: ["low", "high"] },
         background: { values: ["opaque", "transparent"] },
         output_format: { values: ["png", "webp"] },
+        output_compression: { type: "range", min: 0, max: 100 },
       },
       maxInputReferences: 16,
       supportsStreaming: true,
@@ -74,6 +75,9 @@ test("media capability projection exposes image and video arrays consistently", 
       generateAudio: true,
       seed: false,
     },
+    modelId: "microsoft/mai-voice-2",
+    supportedVoices: ["en-US-Harper:MAI-Voice-2"],
+    architecture: { modality: "text->speech" },
   });
 
   assert.deepEqual(mediaCapabilities.image, {
@@ -86,6 +90,9 @@ test("media capability projection exposes image and video arrays consistently", 
     qualities: ["low", "high"],
     backgrounds: ["opaque", "transparent"],
     outputFormats: ["png", "webp"],
+    supportsOutputCompression: true,
+    outputCompressionMin: 0,
+    outputCompressionMax: 100,
     maxInputReferences: 16,
     supportsStreaming: true,
   });
@@ -96,6 +103,17 @@ test("media capability projection exposes image and video arrays consistently", 
     frameImages: ["first_frame"],
     supportsAudio: true,
     supportsSeed: false,
+  });
+  assert.deepEqual(mediaCapabilities.speech, {
+    voices: ["en-US-Harper:MAI-Voice-2"],
+    outputFormats: ["mp3", "pcm"],
+    supportsSpeed: true,
+    speedMin: 0.5,
+    speedMax: 2,
+    supportsInstructions: false,
+    supportsStyle: true,
+    styleDegreeMin: 0.01,
+    styleDegreeMax: 2,
   });
 });
 
@@ -119,6 +137,9 @@ test("media capability projection preserves discrete image counts", () => {
     qualities: [],
     backgrounds: [],
     outputFormats: [],
+    supportsOutputCompression: false,
+    outputCompressionMin: undefined,
+    outputCompressionMax: undefined,
     maxInputReferences: undefined,
     supportsStreaming: false,
   });

@@ -82,8 +82,28 @@ export const publishGeneratedImages = internalMutation({
         status: "completed",
         triggerUserMessageId: args.triggerUserMessageId,
         openrouterGenerationId: args.openrouterGenerationId,
+        skipGenerationUsageFetch: true,
       });
       return { published: false, cancelled: true };
+    }
+    if (job.status === "completed") {
+      const publishedImages = await ctx.db
+        .query("generatedMedia")
+        .withIndex("by_messageId", (query) => query.eq("messageId", args.messageId))
+        .collect();
+      const expectedStorageIds = args.images
+        .map((image) => String(image.storageId))
+        .sort();
+      const actualStorageIds = publishedImages
+        .filter((image) =>
+          image.userId === args.userId && image.chatId === args.chatId && image.type === "image"
+        )
+        .map((image) => String(image.storageId))
+        .sort();
+      const matchesCommittedPublication =
+        actualStorageIds.length === expectedStorageIds.length &&
+        actualStorageIds.every((storageId, index) => storageId === expectedStorageIds[index]);
+      return { published: matchesCommittedPublication, cancelled: false };
     }
     if (job.status !== "queued" && job.status !== "streaming") {
       return { published: false, cancelled: false };
@@ -124,6 +144,7 @@ export const publishGeneratedImages = internalMutation({
       },
       triggerUserMessageId: args.triggerUserMessageId,
       openrouterGenerationId: args.openrouterGenerationId,
+      skipGenerationUsageFetch: true,
     });
     return { published: true, cancelled: false };
   },

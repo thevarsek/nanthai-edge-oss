@@ -1,24 +1,6 @@
 import type { ValidationFinding } from "./validators";
-
-const PROFILE_ORDER = [
-  "presentations",
-  "docs",
-  "analytics",
-  "workspace",
-  "persistentRuntime",
-  "subagents",
-  "google",
-  "microsoft",
-  "notion",
-  "appleCalendar",
-  "cloze",
-  "slack",
-  "scheduledJobs",
-  "skillsManagement",
-  "personas",
-] as const;
-
-export type SkillToolProfileId = typeof PROFILE_ORDER[number];
+import { PROFILE_ORDER, type SkillToolProfileId } from "./profile_ids";
+export type { SkillToolProfileId } from "./profile_ids";
 type SkillRuntimeMode = "textOnly" | "toolAugmented" | "sandboxAugmented";
 
 export interface SkillMetadataInput {
@@ -51,6 +33,13 @@ const DOC_TOOL_IDS = new Set([
 const PRESENTATION_TOOL_IDS = new Set([
   "create_presentation", "read_presentation", "edit_presentation", "read_pptx",
 ]);
+
+const MEDIA_PROFILE_BY_TOOL_ID: Record<string, SkillToolProfileId> = {
+  generate_image: "imageGeneration",
+  generate_music: "musicGeneration",
+  generate_speech: "speechGeneration",
+  generate_video: "videoGeneration",
+};
 
 const ANALYTICS_TOOL_IDS = new Set([
   "workspace_import_file",
@@ -136,6 +125,8 @@ export function inferProfilesFromToolIds(
   const profiles = new Set<SkillToolProfileId>();
 
   for (const toolId of requiredToolIds) {
+    const mediaProfile = MEDIA_PROFILE_BY_TOOL_ID[toolId];
+    if (mediaProfile) profiles.add(mediaProfile);
     if (PRESENTATION_TOOL_IDS.has(toolId)) profiles.add("presentations");
     if (DOC_TOOL_IDS.has(toolId)) profiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(toolId)) profiles.add("analytics");
@@ -170,6 +161,8 @@ export function normalizeSkillMetadata(
   const metadataWarnings: string[] = [];
 
   for (const toolId of requiredToolIds) {
+    const mediaProfile = MEDIA_PROFILE_BY_TOOL_ID[toolId];
+    if (mediaProfile) inferredProfiles.add(mediaProfile);
     if (PRESENTATION_TOOL_IDS.has(toolId)) inferredProfiles.add("presentations");
     if (DOC_TOOL_IDS.has(toolId)) inferredProfiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(toolId)) inferredProfiles.add("analytics");
@@ -187,6 +180,8 @@ export function normalizeSkillMetadata(
   }
 
   for (const token of extractExplicitMetadataTokens(input.instructionsRaw ?? "")) {
+    const mediaProfile = MEDIA_PROFILE_BY_TOOL_ID[token];
+    if (mediaProfile) inferredProfiles.add(mediaProfile);
     if (DOC_TOOL_IDS.has(token)) inferredProfiles.add("docs");
     if (ANALYTICS_TOOL_IDS.has(token)) inferredProfiles.add("analytics");
     if (WORKSPACE_TOOL_IDS.has(token)) inferredProfiles.add("workspace");

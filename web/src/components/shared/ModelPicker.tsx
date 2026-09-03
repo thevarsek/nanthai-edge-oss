@@ -3,229 +3,26 @@
 // info sheet, "Help me choose" wizard, provider logos, trend badges.
 // Max 300 lines — heavy UI in ModelPickerHelpers.tsx, shared logic in ModelPickerShared.ts.
 
-import { useState, useMemo, useCallback, useRef, useEffect, useLayoutEffect } from "react";
-import { createPortal } from "react-dom";
+import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
-  Search, X, Sparkles, Zap, DollarSign, Code2, Brain, Image as ImageIcon, Paintbrush,
-  Eye, Wrench, Gift, ArrowUpDown, Info, ChevronDown, Check,
-  Flame, TrendingUp, Maximize2, Video,
+  Search, X, Sparkles, Paintbrush, Eye, Wrench, Gift, Video,
 } from "lucide-react";
 import { useModelSummaries, useSharedData } from "@/hooks/useSharedData";
-import { ProviderLogo } from "./ProviderLogo";
 import { type ModelSummary, ModelInfoSheet, ModelWizard } from "./ModelPickerHelpers";
-import { guidanceLabelText, listRowPriceLabel } from "./ModelPickerHelpers.utils";
-import { compactMediaSummary } from "./ModelMediaCapabilities.utils";
+import { ModelPickerRow, ModelPickerSortMenu } from "./ModelPickerRows";
 import {
-  type SortKey, type CapFilter, SORT_KEYS, CAP_FILTERS,
-  sortMetric, filterAndSortModels, modelHasTextOnlyOutput, modelIsZdrEligible, toggleCapFilter,
+  type SortKey, type CapFilter, CAP_FILTERS,
+  filterAndSortModels, modelHasTextOnlyOutput, toggleCapFilter,
 } from "./ModelPickerShared";
 
 // ─── Icon maps (React elements can't live in .ts shared file) ────────────────
-
-const SORT_ICONS: Record<SortKey, React.ReactNode> = {
-  recommended: <Sparkles size={12} />, coding: <Code2 size={12} />,
-  research: <Brain size={12} />, fast: <Zap size={12} />,
-  value: <DollarSign size={12} />, image: <ImageIcon size={12} />,
-  price: <span className="text-[11px] font-bold leading-none">$$</span>,
-  context: <Maximize2 size={12} />, topThisWeek: <TrendingUp size={12} />,
-};
 
 const CAP_ICONS: Record<CapFilter, React.ReactNode> = {
   free: <Gift size={11} />, excludeFree: <Gift size={11} />,
   vision: <Eye size={11} />, imageGen: <Paintbrush size={11} />,
   videoGen: <Video size={11} />, tools: <Wrench size={11} />,
 };
-
-// ─── Trend badge ─────────────────────────────────────────────────────────────
-
-function TrendBadge({ model }: { model: ModelSummary }) {
-  const { t } = useTranslation();
-  const useCases = model.openRouterUseCases;
-  if (!useCases || useCases.length === 0) return null;
-  const bestRank = Math.min(...useCases.map((uc) => uc.returnedRank));
-  if (bestRank > 10) return null;
-  const isPopular = bestRank <= 3;
-  return (
-    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-medium ${isPopular ? "bg-warning/12 text-warning" : "bg-foreground/8 text-muted"}`}>
-      {isPopular ? <Flame size={8} /> : <TrendingUp size={8} />}
-      {isPopular ? t("popular") : t("trending")}
-    </span>
-  );
-}
-
-// ─── Guidance label tag ──────────────────────────────────────────────────────
-
-function GuidanceTag({ label }: { label: string }) {
-  const { t } = useTranslation();
-  return (
-    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full bg-primary/12 text-[9px] font-semibold text-primary">
-      {guidanceLabelText(t, label)}
-    </span>
-  );
-}
-
-// ─── Model row ───────────────────────────────────────────────────────────────
-
-function ModelRow({ model, selected, sortKey, onSelect, onInfo, zdrEnforced }: {
-  model: ModelSummary; selected: boolean; sortKey: SortKey;
-  onSelect: () => void; onInfo: () => void; zdrEnforced?: boolean;
-}) {
-  const { t } = useTranslation();
-  const isZdrDisabled = zdrEnforced === true && !modelIsZdrEligible(model);
-  const score = sortMetric(model, sortKey);
-  const isGuidance = !["price", "context", "topThisWeek"].includes(sortKey);
-  const primaryLabel = model.derivedGuidance?.primaryLabel;
-  const mediaSummary = compactMediaSummary(t, model.mediaCapabilities);
-  const accessibleLabel = mediaSummary.length > 0
-    ? `${model.name}. ${mediaSummary.join(", ")}`
-    : model.name;
-
-  // Always show a price label for non-free models so users see real cost at a
-  // glance, matching iOS ModelCompatibilitySummaryView and Android
-  // listRowPriceLabel. For image/video-gen we surface per-MP / per-sec / per-M
-  // tok instead of the text per-1M (which is $0 for those models).
-  const priceLabel = listRowPriceLabel(model);
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.target !== event.currentTarget) return;
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    onSelect();
-  };
-
-  return (
-    <div
-      role="button"
-      aria-label={accessibleLabel}
-      aria-disabled={isZdrDisabled}
-      tabIndex={isZdrDisabled ? undefined : 0}
-      className={`flex items-center gap-3 px-4 py-2.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-inset ${isZdrDisabled ? "opacity-45 cursor-not-allowed" : "hover:bg-surface-3 cursor-pointer"} ${selected ? "bg-primary/8" : ""}`}
-      onClick={isZdrDisabled ? undefined : onSelect}
-      onKeyDown={isZdrDisabled ? undefined : handleKeyDown}
-    >
-      <ProviderLogo modelId={model.modelId} size={32} />
-
-      <div className="flex-1 min-w-0">
-        <p className={`text-sm font-semibold truncate ${selected ? "text-primary" : "text-foreground"}`}>
-          {model.name}
-        </p>
-        <div className="flex items-center gap-1 text-[10px] text-muted mt-0.5 truncate">
-          <span className="capitalize">{model.provider ?? t("guidance_unknown")}</span>
-          {(model.supportsVideo
-            ? (model.supportedFrameImages?.length ?? 0) > 0
-            : (model.architecture?.modality?.split("->")[0] ?? "").includes("image")
-          ) && <Eye size={9} className="shrink-0" />}
-          {model.supportsImages && <Paintbrush size={9} className="shrink-0" />}
-          {model.supportsVideo && <Video size={9} className="shrink-0" />}
-          {model.supportsVideo && (model.supportedFrameImages?.length ?? 0) > 0 && (
-            <ImageIcon size={9} className="shrink-0" />
-          )}
-          {model.supportsTools && <Wrench size={9} className="shrink-0" />}
-          {(model.isFree ?? model.modelId.endsWith(":free")) && <Gift size={9} className="shrink-0" />}
-        </div>
-        <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-          {primaryLabel && <GuidanceTag label={primaryLabel} />}
-          <TrendBadge model={model} />
-        </div>
-        {mediaSummary.length > 0 && (
-          <p className="text-[10px] text-muted mt-0.5 truncate">
-            {mediaSummary.join(" • ")}
-          </p>
-        )}
-        {isZdrDisabled && <p className="text-[10px] text-muted mt-0.5">{t("zdr_model_not_supported")}</p>}
-      </div>
-
-      {/* Guidance-sort score badge (kept only for guidance sorts, alongside
-          the always-on price label below). */}
-      {score != null && isGuidance && score > 0 && (
-        <span className="text-[10px] text-muted font-mono tabular-nums shrink-0">{Math.round(score * 100)}</span>
-      )}
-      {/* Always-on price label — parity with iOS / Android list rows. */}
-      {priceLabel && (
-        <span className="text-[10px] text-muted font-mono shrink-0">{priceLabel}</span>
-      )}
-
-      <button type="button" onClick={(e) => { e.stopPropagation(); onInfo(); }} className="p-1 rounded-full hover:bg-surface-2 text-muted hover:text-foreground transition-colors shrink-0" title={t("guidance_model_info")}>
-        <Info size={14} />
-      </button>
-
-      {selected && <Check size={16} className="text-primary shrink-0" />}
-    </div>
-  );
-}
-
-// ─── Sort menu dropdown (portal to escape overflow) ──────────────────────────
-
-function SortMenu({ sortKey, onChange }: { sortKey: SortKey; onChange: (k: SortKey) => void }) {
-  const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const [pos, setPos] = useState({ top: 0, left: 0 });
-  const current = SORT_KEYS.find((s) => s.key === sortKey);
-
-  useLayoutEffect(() => {
-    if (!open || !triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    const viewportPadding = 8;
-    const menuHeight = Math.min(SORT_KEYS.length * 36 + 8, 280);
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const fitsBelow = spaceBelow >= menuHeight;
-    const unclampedTop = fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4;
-    const top = Math.max(
-      viewportPadding,
-      Math.min(unclampedTop, window.innerHeight - menuHeight - viewportPadding),
-    );
-    const menuWidth = Math.max(rect.width, 160);
-    const left = Math.max(
-      viewportPadding,
-      Math.min(rect.left, window.innerWidth - menuWidth - viewportPadding),
-    );
-    setPos({
-      top,
-      left,
-    });
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handleClick = (e: MouseEvent) => {
-      if (triggerRef.current?.contains(e.target as Node) || menuRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    const handleScroll = (e: Event) => {
-      // Don't close if scrolling inside the dropdown itself
-      if (menuRef.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("mousedown", handleClick);
-    window.addEventListener("scroll", handleScroll, true);
-    return () => { document.removeEventListener("mousedown", handleClick); window.removeEventListener("scroll", handleScroll, true); };
-  }, [open]);
-
-  return (
-    <>
-      <button type="button" ref={triggerRef} onClick={() => setOpen(!open)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-surface-2 text-xs font-medium text-foreground hover:bg-surface-3 transition-colors">
-        <ArrowUpDown size={11} />
-        {current ? t(current.labelKey) : t("sort_label")}
-        <ChevronDown size={10} className={`transition-transform ${open ? "rotate-180" : ""}`} />
-      </button>
-      {open && createPortal(
-        <div ref={menuRef} className="fixed z-[9999] bg-surface-1 border border-border/50 rounded-xl shadow-lg py-1 min-w-[180px] max-h-[min(280px,calc(100vh-2rem))] overflow-y-auto" style={{ top: pos.top, left: pos.left }}>
-          {SORT_KEYS.map((s) => (
-            <button key={s.key} type="button" onClick={() => { onChange(s.key); setOpen(false); }}
-              className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-surface-2 transition-colors ${sortKey === s.key ? "text-primary" : "text-foreground"}`}>
-              <span className="w-4">{SORT_ICONS[s.key]}</span>
-              <span className="flex-1 text-left">{t(s.labelKey)}</span>
-              {sortKey === s.key && <Check size={12} className="text-primary" />}
-            </button>
-          ))}
-        </div>,
-        document.body,
-      )}
-    </>
-  );
-}
 
 // ─── Public component ────────────────────────────────────────────────────────
 
@@ -235,6 +32,7 @@ interface Props {
   onClose: () => void;
   title?: string;
   textOutputOnly?: boolean;
+  generationKind?: keyof NonNullable<ModelSummary["generationCapabilities"]>;
 }
 
 export function ModelPicker({
@@ -243,9 +41,12 @@ export function ModelPicker({
   onClose,
   title,
   textOutputOnly = false,
+  generationKind,
 }: Props) {
   const { t } = useTranslation();
-  const modelSummaries = useModelSummaries();
+  const modelSummaries = useModelSummaries({
+    includeGenerationModels: generationKind !== undefined,
+  });
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
   const [activeFilters, setActiveFilters] = useState<Set<CapFilter>>(new Set());
@@ -259,10 +60,16 @@ export function ModelPicker({
     [modelSummaries],
   );
   const models = useMemo(
-    () => textOutputOnly ? allModels.filter(modelHasTextOnlyOutput) : allModels,
-    [allModels, textOutputOnly],
+    () => {
+      if (generationKind) {
+        return allModels.filter((model) => (
+          model.generationCapabilities?.[generationKind] === true
+        ));
+      }
+      return textOutputOnly ? allModels.filter(modelHasTextOnlyOutput) : allModels;
+    },
+    [allModels, generationKind, textOutputOnly],
   );
-
   const toggleFilter = useCallback((f: CapFilter) => {
     setActiveFilters((prev) => toggleCapFilter(prev, f));
   }, []);
@@ -285,7 +92,7 @@ export function ModelPicker({
   }, [models, filtered, selectedModelId]);
 
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex h-[80vh] max-h-[80vh] flex-col bg-background">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border/50">
         <h2 className="text-base font-semibold text-foreground">{title ?? t("choose_model")}</h2>
@@ -313,13 +120,15 @@ export function ModelPicker({
       <div className="px-4 pt-2 pb-5 overflow-x-auto overflow-y-hidden shrink-0 bg-background relative z-10">
         <div className="flex gap-1.5 min-w-max">
         {/* Help me choose */}
-        <button type="button" onClick={() => setShowWizard(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary/15 text-primary text-xs font-medium shrink-0 hover:bg-primary/25 transition-colors">
-          <Sparkles size={11} />
-          {t("help_me_choose")}
-        </button>
+        {generationKind === undefined && (
+          <button type="button" onClick={() => setShowWizard(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary/15 text-primary text-xs font-medium shrink-0 hover:bg-primary/25 transition-colors">
+            <Sparkles size={11} />
+            {t("help_me_choose")}
+          </button>
+        )}
 
         {/* Sort dropdown */}
-        <SortMenu sortKey={sortKey} onChange={setSortKey} />
+        <ModelPickerSortMenu sortKey={sortKey} onChange={setSortKey} />
 
         {/* Reset chip */}
         {activeFilters.size > 0 && (
@@ -347,11 +156,11 @@ export function ModelPicker({
       <div className="border-b border-border/50 shrink-0" />
 
       {/* Model list */}
-      <div className="flex-1 overflow-y-auto divide-y divide-border/30">
+      <div data-testid="model-picker-list" className="min-h-0 flex-1 overflow-y-auto overscroll-contain divide-y divide-border/30">
         {pinnedModel && (
           <>
             <div className="px-4 py-1.5 bg-surface-2/50 text-[10px] font-medium text-muted uppercase tracking-wide">{t("selected")}</div>
-            <ModelRow model={pinnedModel} selected sortKey={sortKey} onSelect={() => handleSelect(pinnedModel.modelId)} onInfo={() => setInfoModel(pinnedModel)} zdrEnforced={zdrEnforced} />
+            <ModelPickerRow model={pinnedModel} selected sortKey={sortKey} onSelect={() => handleSelect(pinnedModel.modelId)} onInfo={() => setInfoModel(pinnedModel)} zdrEnforced={zdrEnforced} generationKind={generationKind} />
             <div className="px-4 py-1.5 bg-surface-2/50 text-[10px] font-medium text-muted uppercase tracking-wide">{t("models")}</div>
           </>
         )}
@@ -364,8 +173,8 @@ export function ModelPicker({
           </div>
         ) : (
           filtered.map((model) => (
-            <ModelRow key={model.modelId} model={model} selected={model.modelId === selectedModelId}
-              sortKey={sortKey} onSelect={() => handleSelect(model.modelId)} onInfo={() => setInfoModel(model)} zdrEnforced={zdrEnforced} />
+            <ModelPickerRow key={model.modelId} model={model} selected={model.modelId === selectedModelId}
+              sortKey={sortKey} onSelect={() => handleSelect(model.modelId)} onInfo={() => setInfoModel(model)} zdrEnforced={zdrEnforced} generationKind={generationKind} />
           ))
         )}
       </div>
@@ -386,7 +195,7 @@ export function ModelPicker({
       )}
 
       {/* Wizard modal */}
-      {showWizard && (
+      {generationKind === undefined && showWizard && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setShowWizard(false)}>
           <div className="w-full max-w-md max-h-[85vh] rounded-2xl border border-border/50 shadow-xl overflow-hidden" onClick={(e) => e.stopPropagation()}>
             <ModelWizard models={models} onSelect={handleSelect} onClose={() => setShowWizard(false)} zdrEnforced={zdrEnforced} />

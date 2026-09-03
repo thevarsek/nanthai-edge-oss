@@ -141,11 +141,11 @@ All functions authenticate via Clerk JWT (`ctx.auth.getUserIdentity().subject`).
 | `chat/queries_generation_context` | getGenerationContext | Consolidated internal preflight query for message/chat/preferences/persona/connection state |
 | `chat/manage` | updateChat, switchBranchAtFork, deleteChat, bulkDeleteChats, forkChat, duplicateChat, reorderPinnedChats | Chat management — archive, canonical fork switching, duplicate, fork, pin/unpin, reorder pinned |
 | `chat/queries` | listChats, getMessages, getChat, getAttachmentUrl, listModelSummaries, listKnowledgeBaseFiles, isJobCancelled | Reactive data subscriptions + generation job cancellation polling (pure read, `internalQuery`) |
-| `chat/audio_actions` | generateAudioForMessage, previewVoice | TTS generation via `gpt-audio-mini`, PCM→WAV encoding, Convex storage (M20) |
-| `chat/audio_shared` | constants, pcmToWav, voice helpers, isLyriaModel, parseMp3DurationMs | Audio constants, encoder, 6-voice catalog (M20), Lyria model IDs + MP3 frame parser (M26) |
+| `chat/actions` + `chat/audio_*` | generateAudioForMessage, previewVoice | Default-model-aware OpenRouter Speech generation, format normalization, Convex storage (M20/M52) |
+| `chat/audio_shared` | audio normalization and duration helpers | Shared audio byte/format handling for recorded, model-authored, music, and speech output (M20/M26/M52) |
 | `chat/mutations_internal_handlers` | auto-audio scheduling after finalization | Resolves auto-audio preferences and schedules `generateAudioForMessage` when an assistant message completes without inline Lyria audio |
 | `chat/audio_public_handlers` | requestAudioGeneration, getMessageAudioUrl | Public mutation/query handlers for audio (M20) |
-| `tools/` | registry, registry types, execute_loop, progressive_registry, profile registries, action proxies | Tool infrastructure — small base registry plus progressively unlocked document, integration, subagent, and workspace/runtime tool families. M43 provider/document proxies keep analyzer-fragile implementations out of ordinary chat action initialization. |
+| `tools/` | registry, registry types, execute_loop, progressive_registry, profile registries, action proxies | Tool infrastructure — small base registry plus progressively unlocked document, multimedia, integration, subagent, and workspace/runtime tool families. M43 provider/document proxies keep analyzer-fragile implementations out of ordinary chat action initialization. |
 | `runtime/` | just-bash client, Pyodide/Vercel Sandbox analytics, chart helpers | Per-generation workspace, notebook-style Python analytics, artifact export (M19, rewritten M27). |
 | `capabilities/` | queries, mutations, shared helpers | Account capability model layered on top of purchase entitlements (M19). |
 | `skills/tool_profiles.ts` | skill profile normalization helpers | Derives `requiredToolProfiles`, runtime mode, and capability consistency for built-in and user-authored skills (post-M19). |
@@ -834,13 +834,13 @@ Sets audioGenerating: true on message
     ↓
 Schedules generateAudioForMessage internal action
     ↓
-Action: POST to OpenRouter with gpt-audio-mini model
+Action: resolve the selected/default speech model and POST to OpenRouter `/api/v1/audio/speech`
     ↓
-Receives PCM16 audio response
+Receives provider-encoded audio response
     ↓
-pcmToWav() encoder → WAV blob
+Preserve recognized encoded formats; wrap headerless PCM as WAV
     ↓
-ctx.storage.store(wavBlob) → storageId
+ctx.storage.store(audioBlob) → storageId
     ↓
 Patches message: audioStorageId, audioVoice, audioGeneratedAt, audioGenerating: false
 ```
@@ -854,7 +854,10 @@ Wired into `finalizeGenerationHandler` (the same hook used for push notification
 
 ### Voice Catalog
 
-6 voices from OpenAI's `gpt-audio-mini`: `alloy`, `echo`, `fable`, `nova`, `onyx`, `shimmer`. Stored as string constants in `chat/audio_shared.ts`.
+The synced model catalogue supplies `supportedVoices`. Settings display the
+selected speech model's advertised voices and allow a provider voice ID where
+the catalogue has no closed list. Speed, output format, instructions, style,
+and style degree use the same capability-aware preference contract.
 
 ### iOS Audio Stack
 
@@ -873,8 +876,8 @@ Wired into `finalizeGenerationHandler` (the same hook used for push notification
 
 ### Audio Message Schema Fields
 
-Messages: `audioStorageId`, `audioTranscript`, `audioDurationMs`, `audioVoice`, `audioGeneratedAt`, `audioLastPlayedAt`, `audioGenerating`.
-Preferences: `autoAudioResponse`, `preferredVoice`.
+Messages: `audioStorageId`, `audioMimeType`, `audioSource`, `audioTranscript`, `audioDurationMs`, `audioVoice`, `audioGeneratedAt`, `audioLastPlayedAt`, `audioGenerating`.
+Preferences: `autoAudioResponse`, `preferredVoice`, the speech control defaults, and `defaultSpeechGenerationModelId`.
 Chats: `autoAudioResponseOverride`.
 
 ---
@@ -951,7 +954,52 @@ All three platforms have inline audio player components for Lyria messages:
 | Android | `LyriaAudioPlayer.kt` | MediaPlayer, play/pause, tap/drag-to-seek, M:SS time, 6-speed, download via Intent.ACTION_VIEW |
 | Web | `AudioMessageBubble.tsx` (enhanced) | HTML5 Audio, existing waveform/progress/speed UI + download button + Lyria header |
 
-Detection: each platform checks `audioStorageId != nil/null` AND model ID matches a Lyria slug (`isLyriaMusic` extension property).
+Clients render stored audio whenever `audioStorageId` exists. `audioMimeType`
+and `audioSource` are authoritative; clients do not infer the media contract
+from a Lyria model slug.
+
+---
+
+## M52 Skill-Driven Multimedia Generation Architecture
+
+M52 extends the existing skill resolver and progressive tool registry rather
+than adding a second media orchestration layer:
+
+```
+User asks for media
+  → normal chat/persona/scheduled-task skill resolution
+  → load_skill exposes the matching media tool profile
+  → generate_image | generate_music | generate_speech | generate_video
+  → Convex resolves explicit model → user preference → MODEL_IDS default
+  → synced capability and endpoint-specific ZDR projection
+  → existing OpenRouter adapter and storage/artifact projection
+  → shared message subscription renders the result on web, iOS, and Android
+```
+
+The four transports are intentionally narrow: dedicated Images API, Lyria via
+chat completions, dedicated Speech API, and asynchronous Video API. Optional
+tool arguments form a useful superset; Convex removes values the selected model
+does not support before sending the request. Model IDs used as product defaults
+live only in `convex/lib/model_constants.ts`.
+
+Web and native settings consume the same `getPreferences` and
+`listModelSummaries({ includeGenerationModels: true })` payloads. Pickers use
+backend-authored `generationCapabilities`, `generationZdrCapabilities`, and
+`mediaCapabilities`; unsupported controls stay visible but disabled. A saved
+non-ZDR media selection stays visible when ZDR is enabled, while its skill is
+unavailable and excluded from the model's tool context. There is no hidden
+ZDR-specific fallback.
+
+Image and video output reuse `generatedMedia`; music and speech reuse message
+audio fields and `generatedFiles`. Existing storage-backed attachment handling
+therefore lets generated media flow into PPTX, Gmail drafts, Google Drive, and
+other capable tools. Provider usage is included in
+`getChatCostSummary.breakdown.media`.
+
+Video submission/polling remains an owned Convex Workflow-backed deferred tool.
+If OpenRouter credentials disappear before continuation, the job fails
+gracefully. Delayed provider-cost lookup remains the existing one-shot action,
+not a new durable retry workload.
 
 ---
 
@@ -1064,4 +1112,4 @@ Android routes the Drive-picker deeplink callback through an app-wide `DrivePick
 
 ---
 
-*Last updated: 2026-07-19 — M46/M47 planning and the removal of NanthAI's application-level send-message rate gate are reflected. Provider 429 recovery remains active.*
+*Last updated: 2026-09-03 — M52 skill-driven multimedia generation, shared model defaults, endpoint-specific ZDR availability, and cross-platform media contracts.*
