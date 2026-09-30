@@ -57,11 +57,6 @@ const imageDefaultWebKeys = [
   "image_defaults_adaptation_hint",
 ] as const;
 
-const imageDefaultAndroidKeys = [
-  ...imageDefaultWebKeys,
-  "image_defaults_compression_range",
-] as const;
-
 const imageAdaptationIOSKey = "If the selected model doesn't support a chosen image setting, NanthAI Edge uses a supported value or omits the setting when needed. Generating more images increases cost.";
 const videoAdaptationIOSKey = "If the selected model doesn't support the chosen duration or resolution, NanthAI Edge uses the closest lower supported option when possible.";
 
@@ -174,7 +169,9 @@ test("M33 Android localization keys exist in every shipped values directory", as
     const file = path.join(repoRoot, "android/app/src/main/res", dir, "strings.xml");
     const xml = await readFile(file, "utf8");
 
-    for (const key of localizedKeys) {
+    // Android uses folder dialog labels; the standalone folder label was unused.
+    const androidKeys = [...localizedKeys.filter((key) => key !== "folder"), "folder_name", "folders"];
+    for (const key of androidKeys) {
       assert.match(xml, new RegExp(`<string name="${key}">[^<]+</string>`), `${dir}/strings.xml missing ${key}`);
     }
   }
@@ -233,7 +230,7 @@ test("image-default web and Android keys exist in every shipped locale", async (
   for (const dir of androidValueDirs) {
     const file = path.join(repoRoot, "android/app/src/main/res", dir, "strings.xml");
     const xml = await readFile(file, "utf8");
-    for (const key of imageDefaultAndroidKeys) {
+    for (const key of imageDefaultWebKeys) {
       assert.match(
         xml,
         new RegExp(`<string name="${key}">[^<]+</string>`),
