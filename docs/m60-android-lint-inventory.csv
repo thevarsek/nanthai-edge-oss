@@ -1,0 +1,798 @@
+severity,rule,file,line,message
+Warning,DefaultLocale,android/app/src/main/java/com/nanthai/edge/data/AndroidCreditBalanceCheck.kt,56,"Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+Warning,DefaultLocale,android/app/src/main/java/com/nanthai/edge/data/AndroidNotificationRepository.kt,115,"Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+Warning,DefaultLocale,android/app/src/main/java/com/nanthai/edge/features/chat/ChatParametersDialog.kt,96,"Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+Warning,DefaultLocale,android/app/src/main/java/com/nanthai/edge/ui/shared/ModelSettingsEditorSection.kt,116,"Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+Warning,DefaultLocale,android/app/src/main/java/com/nanthai/edge/ui/shared/PersonaInfoSheet.kt,120,"Implicitly using the default locale is a common source of bugs: Use `String.format(Locale, ...)` instead"
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,365,Field requires API level 33 (current min is 28): `android.speech.RecognizerIntent#EXTRA_AUDIO_SOURCE`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,366,Field requires API level 33 (current min is 28): `android.speech.RecognizerIntent#EXTRA_AUDIO_SOURCE_CHANNEL_COUNT`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,367,Field requires API level 33 (current min is 28): `android.speech.RecognizerIntent#EXTRA_AUDIO_SOURCE_SAMPLING_RATE`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,368,Field requires API level 33 (current min is 28): `android.speech.RecognizerIntent#EXTRA_AUDIO_SOURCE_ENCODING`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,376,Field requires API level 33 (current min is 28): `android.speech.RecognizerIntent#EXTRA_AUDIO_SOURCE`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,376,Field requires API level 33 (current min is 28): `android.speech.RecognizerIntent#EXTRA_SEGMENTED_SESSION`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,501,Field requires API level 31 (current min is 28): `android.speech.SpeechRecognizer#ERROR_LANGUAGE_UNAVAILABLE`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/audio/AndroidSpeechTranscriber.kt,502,Field requires API level 31 (current min is 28): `android.speech.SpeechRecognizer#ERROR_LANGUAGE_NOT_SUPPORTED`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/ui/shared/HapticUtils.kt,31,Field requires API level 30 (current min is 28): `android.view.HapticFeedbackConstants#CONFIRM`
+Warning,InlinedApi,android/app/src/main/java/com/nanthai/edge/ui/shared/HapticUtils.kt,36,Field requires API level 30 (current min is 28): `android.view.HapticFeedbackConstants#REJECT`
+Warning,OldTargetApi,android/app/build.gradle.kts,67,Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the `android.os.Build.VERSION_CODES` javadoc for details.
+Warning,UnusedAttribute,android/app/src/main/AndroidManifest.xml,15,Attribute `enableOnBackInvokedCallback` is only used in API level 33 and higher (current min is 28)
+Warning,VectorRaster,android/app/src/main/res/drawable/integration_onedrive_vector.xml,3,Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more
+Warning,AndroidGradlePluginVersion,android/gradle/wrapper/gradle-wrapper.properties,3,A newer version of Gradle than 9.4.1 is available: 9.8.0
+Warning,GradleDependency,android/app/build.gradle.kts,62,A newer version of `compileSdk` than 36 is available: 37
+Warning,GradleDependency,android/app/build.gradle.kts,342,A newer version of androidx.core:core-ktx than 1.16.0 is available: 1.19.1
+Warning,GradleDependency,android/app/build.gradle.kts,343,A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.9.0 is available: 2.11.0
+Warning,GradleDependency,android/app/build.gradle.kts,344,A newer version of androidx.lifecycle:lifecycle-runtime-compose than 2.9.0 is available: 2.11.0
+Warning,GradleDependency,android/app/build.gradle.kts,345,A newer version of androidx.activity:activity-compose than 1.10.0 is available: 1.13.0
+Warning,GradleDependency,android/app/build.gradle.kts,346,A newer version of androidx.lifecycle:lifecycle-viewmodel-compose than 2.9.0 is available: 2.11.0
+Warning,GradleDependency,android/app/build.gradle.kts,347,A newer version of androidx.lifecycle:lifecycle-process than 2.9.0 is available: 2.11.0
+Warning,GradleDependency,android/app/build.gradle.kts,348,A newer version of androidx.navigation:navigation-compose than 2.9.0 is available: 2.10.2
+Warning,GradleDependency,android/app/build.gradle.kts,352,A newer version of com.google.android.material:material than 1.13.0 is available: 1.14.0
+Warning,GradleDependency,android/app/build.gradle.kts,372,A newer version of androidx.compose:compose-bom than 2025.06.00 is available: 2026.09.00
+Warning,GradleDependency,android/app/build.gradle.kts,390,A newer version of com.google.firebase:firebase-bom than 34.12.0 is available: 34.19.0
+Warning,GradleDependency,android/app/build.gradle.kts,397,A newer version of androidx.media3:media3-exoplayer than 1.7.1 is available: 1.11.1
+Warning,GradleDependency,android/app/build.gradle.kts,398,A newer version of androidx.media3:media3-ui than 1.7.1 is available: 1.11.1
+Warning,GradleDependency,android/app/build.gradle.kts,422,A newer version of androidx.compose:compose-bom than 2025.06.00 is available: 2026.09.00
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,349,A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.9.0 is available: 1.11.0
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,355,A newer version of com.clerk:clerk-android-api than 1.0.16 is available: 1.1.9
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,364,A newer version of com.clerk:clerk-convex-kotlin than 0.10.0 is available: 0.16.0
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,367,A newer version of com.posthog:posthog-android than 3.48.0 is available: 3.71.4
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,370,A newer version of org.jetbrains.kotlinx:kotlinx-serialization-json than 1.6.3 is available: 1.11.0
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,401,A newer version of dev.chrisbanes.haze:haze than 1.7.2 is available: 2.0.1
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,402,A newer version of dev.chrisbanes.haze:haze-materials than 1.7.2 is available: 1.7.3
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,409,A newer version of com.stoyanvuchev:squircle-shape than 5.2.0 is available: 5.4.0
+Warning,NewerVersionAvailable,android/app/build.gradle.kts,420,A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.9.0 is available: 1.11.0
+Warning,ConfigurationScreenWidthHeight,android/app/src/main/java/com/nanthai/edge/features/chat/IdeascapeAdvisorBatchSheet.kt,26,Using Configuration.screenHeightDp instead of LocalWindowInfo.current.containerSize
+Warning,ModifierFactoryExtensionFunction,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailComposerInputSupport.kt,42,Modifier factory functions should be extensions on Modifier
+Warning,ModifierFactoryExtensionFunction,android/app/src/main/java/com/nanthai/edge/features/chat/ChatGlassComponents.kt,25,Modifier factory functions should be extensions on Modifier
+Warning,ModifierFactoryExtensionFunction,android/app/src/main/java/com/nanthai/edge/features/chat/ChatRouteFilters.kt,496,Modifier factory functions should be extensions on Modifier
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailBottomOverlay.kt,92,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailComposerAttachments.kt,61,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailContentHost.kt,51,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailDialogs.kt,37,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailMessageComponents.kt,102,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailMessageComponents.kt,178,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailModeratorDirectiveCard.kt,40,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailReasoningComponents.kt,59,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailTimeline.kt,53,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatRouteEditRows.kt,99,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/chat/ChatSearchSessionComponents.kt,39,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/ui/shared/LoadingView.kt,43,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,168,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/features/auth/OpenRouterConnectionRoute.kt,78,Modifier parameter should be the first optional parameter
+Warning,ModifierParameter,android/app/src/main/java/com/nanthai/edge/ui/shared/SimpleMarkdownText.kt,623,Modifier parameter should be the first optional parameter
+Warning,PrivateResource,android/app/src/main/res/values-ja/strings.xml,705,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,PrivateResource,android/app/src/main/res/values-zh-rCN/strings.xml,705,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,PrivateResource,android/app/src/main/res/values-es/strings.xml,707,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,PrivateResource,android/app/src/main/res/values-fr/strings.xml,707,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,PrivateResource,android/app/src/main/res/values-it/strings.xml,707,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,PrivateResource,android/app/src/main/res/values-de/strings.xml,712,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,PrivateResource,android/app/src/main/res/values/strings.xml,865,"Overriding `@string/selected` which is marked as private in androidx.compose.ui:ui-android:1.10.0. If deliberate, use tools:override=""true"", otherwise pick a different name."
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""CyoYGapIGXMIGUMQswCQYDVQQGEwJVUzETMBEGA!"" instead of ""CyoYGapIGXMIGUMQswCQYDVQQGEwJVUzETMBEGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""DQEBBAUAMIGUMQswCQYDVQQGEwJVUzETMBEGA!"" instead of ""DQEBBAUAMIGUMQswCQYDVQQGEwJVUzETMBEGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""MAwGA!"" instead of ""MAwGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""NTZaMIGUMQswCQYDVQQGEwJVUzETMBEGA!"" instead of ""NTZaMIGUMQswCQYDVQQGEwJVUzETMBEGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""hZeTfHwqNvacKhp!"" instead of ""hZeTfHwqNvacKhp1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""mtKoOD!"" instead of ""mtKoOD1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""pYTEWMBQGA!"" instead of ""pYTEWMBQGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""pYTEWMBQGA!"" instead of ""pYTEWMBQGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""pYTEWMBQGA!"" instead of ""pYTEWMBQGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""wNfdIjIz!"" instead of ""wNfdIjIz1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,9,"Did you mean ""xT!"" instead of ""xT1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""GA!"" instead of ""GA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""MQswCQYDVQQGEwJVUzETMBEGA!"" instead of ""MQswCQYDVQQGEwJVUzETMBEGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""XFI!"" instead of ""XFI1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""gVmlldzEUMBIGA!"" instead of ""gVmlldzEUMBIGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""iZBqpknHf!"" instead of ""iZBqpknHf1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""idkyugwfYwXFU!"" instead of ""idkyugwfYwXFU1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""jMIhF!"" instead of ""jMIhF1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""jMIhF!"" instead of ""jMIhF1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""pYTEWMBQGA!"" instead of ""pYTEWMBQGA1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""sypEwPpt!"" instead of ""sypEwPpt1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""ybmlhMRYwFAYDVQQHEw!"" instead of ""ybmlhMRYwFAYDVQQHEw1""?"
+Warning,Typos,android/app/src/main/res/values/font_certs.xml,14,"Did you mean ""ybmlhMRYwFAYDVQQHEw!"" instead of ""ybmlhMRYwFAYDVQQHEw1""?"
+Warning,Typos,android/app/src/main/res/values-es/strings.xml,727,"Repeated word ""mes"" in message: possible typo"
+Warning,Typos,android/app/src/main/res/values-it/strings.xml,727,"Repeated word ""mese"" in message: possible typo"
+Warning,Typos,android/app/src/main/res/values/strings.xml,889,"Repeated word ""month"" in message: possible typo"
+Warning,Typos,android/app/src/main/res/values-es/strings.xml,1282,"""Vision"" is a common misspelling; did you mean ""Visión""?"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,17,"Formatting %d followed by words (""explicit""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,18,"Formatting %d followed by words (""explicit""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,19,"Formatting %d followed by words (""model""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,20,"Formatting %d followed by words (""providers""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,21,"Formatting %d followed by words (""responses""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,22,"Formatting %d followed by words (""runs""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,23,"Formatting %d followed by words (""selected""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,90,"Formatting %d followed by words (""file""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,91,"Formatting %d followed by words (""files""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,335,"Formatting %d followed by words (""participants""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,336,"Formatting %d followed by words (""total""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,358,"Formatting %d followed by words (""failures""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,363,"Formatting %d followed by words (""hours""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,364,"Formatting %d followed by words (""minute""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,365,"Formatting %d followed by words (""minute""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,366,"Formatting %d followed by words (""minutes""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,506,"Formatting %d followed by words (""minute""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,507,"Formatting %d followed by words (""minute""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,508,"Formatting %d followed by words (""minutes""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,612,"Formatting %d followed by words (""chats""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,991,"Formatting %d followed by words (""tool""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,992,"Formatting %d followed by words (""tools""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1303,"Formatting %d followed by words (""from""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1391,"Formatting %d followed by words (""images""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1416,"Formatting %d followed by words (""more""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1437,"Formatting %d followed by words (""slides""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1502,"Formatting %d followed by words (""allowed""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1575,"Formatting %d followed by words (""minutes""): This should probably be a plural rather than a string"
+Warning,PluralsCandidate,android/app/src/main/res/values/strings.xml,1577,"Formatting %d followed by words (""has""): This should probably be a plural rather than a string"
+Warning,ChromeOsAbiSupport,android/app/build.gradle.kts,110,Missing x86_64 ABI support for ChromeOS
+Warning,DataExtractionRules,android/app/src/main/AndroidManifest.xml,14,The attribute `android:allowBackup` is deprecated from Android 12 and higher and may be removed in future versions. Consider adding the attribute `android:dataExtractionRules` specifying an `@xml` resource which configures cloud backups and device transfers on Android 12 and higher.
+Warning,ObsoleteSdkInt,android/app/src/main/java/com/nanthai/edge/data/AndroidNotificationRepository.kt,202,Unnecessary; `SDK_INT` is never < 28
+Warning,ObsoleteSdkInt,android/app/src/main/res/mipmap-anydpi-v26,,This folder configuration (`v26`) is unnecessary; `minSdkVersion` is 28. Merge all the resources in this folder into `mipmap-anydpi`.
+Warning,ObsoleteSdkInt,android/app/src/main/res/values-night/themes.xml,7,Unnecessary; `SDK_INT` is always >= 23
+Warning,ObsoleteSdkInt,android/app/src/main/res/values/themes.xml,7,Unnecessary; `SDK_INT` is always >= 23
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailRouteState.kt,29,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailRouteState.kt,30,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailScrollEffects.kt,56,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/features/chat/ChatParametersDialog.kt,42,Prefer `mutableDoubleStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/MainActivity.kt,26,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/MainActivity.kt,38,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/MainActivity.kt,42,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/ui/shared/ModelSettingsEditorSection.kt,55,Prefer `mutableDoubleStateOf` instead of `mutableStateOf`
+Hint,AutoboxingStateCreation,android/app/src/main/java/com/nanthai/edge/features/auth/OpenRouterConnectionRoute.kt,88,Prefer `mutableIntStateOf` instead of `mutableStateOf`
+Warning,UnusedResources,android/app/src/main/res/xml/backup_rules.xml,2,The resource `R.xml.backup_rules` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/xml/data_extraction_rules.xml,2,The resource `R.xml.data_extraction_rules` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/drawable/integration_onedrive_vector.xml,2,The resource `R.drawable.integration_onedrive_vector` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,4,The resource `R.string.n_2f_1m` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,5,The resource `R.string.n_4f_1m` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,6,The resource `R.string.numk_ctx` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,7,The resource `R.string.n_1fm_ctx` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,8,The resource `R.string.arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,9,The resource `R.string.arg_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,12,The resource `R.string.arg_per_request` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,13,The resource `R.string.arg_responding` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,14,The resource `R.string.arg_pro_feature` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,16,The resource `R.string.num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,17,The resource `R.string.num_explicit_context_node_will_be_used_as_is` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,18,The resource `R.string.num_explicit_context_nodes_will_be_used_as_is` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,19,The resource `R.string.num_modelarg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,20,The resource `R.string.num_of_num_providers_enabled` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,21,The resource `R.string.num_responses` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,22,The resource `R.string.num_runs` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,23,The resource `R.string.num_selected_num_used_shared_ancestors_are_merged_to_avoid_d` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,24,The resource `R.string.num_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,25,The resource `R.string.num_complete` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,26,The resource `R.string.num_3` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,27,The resource `R.string.num_3_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,28,The resource `R.string.plusnum` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,29,The resource `R.string.n_1_sonar_query` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,30,The resource `R.string.n_1_web_search_via_openrouter_plugin_exa_native_providers_open` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,31,The resource `R.string.n_1_go_to_account_apple_com_and_sign_in` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,32,The resource `R.string.n_12h` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,33,The resource `R.string.n_15_sonar_deep_research_queries_breadth_5_depth_3` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,36,The resource `R.string.n_15m` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,37,The resource `R.string.n_1h` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,38,The resource `R.string.n_2_sonar_queries_breadth_2_depth_1` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,39,The resource `R.string.n_2_open_sign_in_and_security` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,40,The resource `R.string.n_2h` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,41,The resource `R.string.n_3_sonar_pro_queries` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,42,The resource `R.string.n_3_open_app_specific_passwords` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,43,The resource `R.string.n_30m` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,44,The resource `R.string.n_4_generate_a_new_password_for_nanthai` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,45,The resource `R.string.n_5_sonar_deep_research_queries` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,46,The resource `R.string.n_5_paste_that_generated_password_here` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,47,The resource `R.string.n_6_sonar_pro_queries_breadth_3_depth_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,48,The resource `R.string.n_6h` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,54,The resource `R.string.account_deletion_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,57,The resource `R.string.active_parameters` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,58,The resource `R.string.add_explicit_context` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,60,The resource `R.string.add_explicit_context_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,64,The resource `R.string.advanced_web_search_and_research_papers` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,69,The resource `R.string.all_memories_have_been_reviewed` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,70,The resource `R.string.allow_notifications` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,71,The resource `R.string.always_dark_icon` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,72,The resource `R.string.always_light_icon` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,73,The resource `R.string.app_icon` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,75,The resource `R.string.appearance` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,76,The resource `R.string.apple` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,79,The resource `R.string.apple_integration` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,80,The resource `R.string.apply_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,81,The resource `R.string.apply_branch` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,82,The resource `R.string.approve_all` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,83,The resource `R.string.are_you_sure_you_want_to_delete_arg_this_cannot_be_undone` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,84,The resource `R.string.asc` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,85,The resource `R.string.ascending` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,86,The resource `R.string.ask_first` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,89,The resource `R.string.assistant_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,92,The resource `R.string.attach_files` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,93,The resource `R.string.attach_kb_files` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,94,The resource `R.string.attach_file` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,95,The resource `R.string.attachment_context` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,96,The resource `R.string.audio_input` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,119,The resource `R.string.audio_only_one_file` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,132,The resource `R.string.audio_failed_to_update_defaults` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,137,The resource `R.string.authorization_code_was_missing_from_callback` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,139,The resource `R.string.automate_recurring_ai_tasks_daily_summaries_weekly_reports_a` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,140,The resource `R.string.automatic` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,144,The resource `R.string.autonomous_discussions` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,145,The resource `R.string.autonomous_mode` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,146,The resource `R.string.avatar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,149,The resource `R.string.badges` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,153,The resource `R.string.behavior` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,154,The resource `R.string.branch_num_of_num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,156,The resource `R.string.cadence` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,157,The resource `R.string.calendar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,163,The resource `R.string.change_avatar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,165,The resource `R.string.change_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,166,The resource `R.string.change_participant` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,172,The resource `R.string.chat_actions` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,176,The resource `R.string.favorites` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,178,The resource `R.string.failed_to_create_chat_from_favorite` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,189,The resource `R.string.choose_avatar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,191,The resource `R.string.choose_a_different_branch_to_apply` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,197,The resource `R.string.clear_all_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,198,The resource `R.string.clear_all_memories_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,199,The resource `R.string.clear_download` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,200,The resource `R.string.clear_filters` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,201,The resource `R.string.clear_search` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,202,The resource `R.string.clear_search_mode` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,203,The resource `R.string.clear_selection` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,206,The resource `R.string.combined_price` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,207,The resource `R.string.comma_separated_tags` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,208,The resource `R.string.completion` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,209,The resource `R.string.complexity` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,210,The resource `R.string.complexity_num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,211,The resource `R.string.complexity_3_search_does_not_support_attachments` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,216,The resource `R.string.connect_google_account` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,217,The resource `R.string.connect_microsoft_account` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,218,The resource `R.string.connect_notion_workspace` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,219,The resource `R.string.connect_openrouter` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,221,The resource `R.string.connect_your_apple_calendar_with_an_apple_id_and_app_specifi` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,222,The resource `R.string.connect_your_google_account_to_enable_gmail_drive_and_calend` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,223,The resource `R.string.connect_your_microsoft_account_to_enable_outlook_mail_onedri` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,224,The resource `R.string.connect_your_notion_workspace_to_enable_page_search_read_cre` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,228,The resource `R.string.connected_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,230,The resource `R.string.content` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,232,The resource `R.string.context_unknown` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,233,The resource `R.string.context_window` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,234,The resource `R.string.continue_with_a_supported_provider_to_finish_onboarding` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,236,The resource `R.string.copied` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,238,The resource `R.string.copy_filename` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,239,The resource `R.string.copy_image` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,240,The resource `R.string.copy_image_url` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,241,The resource `R.string.cost_estimate` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,242,The resource `R.string.could_not_create_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,243,The resource `R.string.could_not_create_the_openrouter_authorization_url` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,244,The resource `R.string.could_not_delete_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,245,The resource `R.string.could_not_delete_chats` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,246,The resource `R.string.could_not_duplicate_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,247,The resource `R.string.could_not_move_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,248,The resource `R.string.could_not_move_chats` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,249,The resource `R.string.could_not_refresh_your_session_token` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,250,The resource `R.string.could_not_rename_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,251,The resource `R.string.could_not_start_the_web_authentication_session` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,253,The resource `R.string.create_a_folder_for_organizing_chats` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,254,The resource `R.string.create_a_persona_to_give_your_ai_a_custom_identity_locked_mo` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,270,The resource `R.string.credit_balance_alerts` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,271,The resource `R.string.credits` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,273,The resource `R.string.cron_expression_e_g_0_8_1_5` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,274,The resource `R.string.cron_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,275,The resource `R.string.ctx` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,276,The resource `R.string.current_selection` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,278,The resource `R.string.custom_defaults_for_this_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,279,The resource `R.string.cycle_num_num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,282,The resource `R.string.day_num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,283,The resource `R.string.day_of_week` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,284,The resource `R.string.debug` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,286,The resource `R.string.default_order` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,287,The resource `R.string.default_parameters` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,289,The resource `R.string.default_tier` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,290,The resource `R.string.definition` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,295,The resource `R.string.delete_all` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,296,The resource `R.string.delete_file` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,298,The resource `R.string.delete_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,300,The resource `R.string.desc` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,301,The resource `R.string.descending` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,303,The resource `R.string.description_optional` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,305,The resource `R.string.details` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,308,The resource `R.string.disable_provider` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,310,The resource `R.string.disabled_providers_are_hidden_from_the_model_picker` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,311,The resource `R.string.discard` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,313,The resource `R.string.disconnect_apple_calendar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,314,The resource `R.string.disconnect_apple_calendar_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,315,The resource `R.string.disconnect_google` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,317,The resource `R.string.disconnect_microsoft` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,318,The resource `R.string.disconnect_microsoft_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,319,The resource `R.string.disconnect_notion` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,320,The resource `R.string.disconnect_notion_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,321,The resource `R.string.disconnect_openrouter` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,322,The resource `R.string.disconnect_openrouter_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,323,The resource `R.string.discussion_settings` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,324,The resource `R.string.discussion_ended_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,326,The resource `R.string.dismiss_queued_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,327,The resource `R.string.document_uploads_and_knowledge_base` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,328,The resource `R.string.dont_save_new` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,330,The resource `R.string.double_tap_to_view_upgrade_options` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,331,The resource `R.string.drag_cards_freely_connectors_stay_attached_to_the_live_posit` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,334,The resource `R.string.duplicate_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,335,The resource `R.string.each_cycle_num_participants_respond_once_num_total_turns` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,336,The resource `R.string.each_cycle_1_participant_responds_once_num_total_turns` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,339,The resource `R.string.edit_document` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,343,The resource `R.string.edit_spreadsheet` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,344,The resource `R.string.edit_queued_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,346,The resource `R.string.enable_apple_calendar_tools_for_this_persona_by_default_requ` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,347,The resource `R.string.enable_google_tools_for_this_persona_by_default_requires_a_c` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,348,The resource `R.string.enable_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,349,The resource `R.string.enable_microsoft_365_tools_for_this_persona_by_default_requi` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,350,The resource `R.string.enable_notion_tools_for_this_persona_by_default_requires_a_c` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,352,The resource `R.string.enable_the_tools_this_job_needs_to_access` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,353,The resource `R.string.enabled` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,354,The resource `R.string.enabled_providers` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,355,The resource `R.string.enter_a_new_folder_name` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,356,The resource `R.string.enter_a_new_title_for_this_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,358,The resource `R.string.error_num_failures` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,359,The resource `R.string.estimate_only_actual_cost_depends_on_response_length` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,360,The resource `R.string.estimated_cost` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,361,The resource `R.string.estimated_from_current_preset_defaults` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,362,The resource `R.string.every_arg_at_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,363,The resource `R.string.every_num_hours` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,364,The resource `R.string.every_num_minute` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,365,The resource `R.string.every_num_minutearg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,366,The resource `R.string.every_num_minutes` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,367,The resource `R.string.every_numh_numm` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,368,The resource `R.string.every_1_hour` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,369,The resource `R.string.every_day_at_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,373,The resource `R.string.extraction_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,375,The resource `R.string.failed_to_approve_all_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,376,The resource `R.string.failed_to_approve_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,377,The resource `R.string.failed_to_cancel_research_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,378,The resource `R.string.failed_to_clear_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,379,The resource `R.string.failed_to_delete_file_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,384,The resource `R.string.failed_to_delete_job` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,385,The resource `R.string.failed_to_delete_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,386,The resource `R.string.failed_to_disconnect_google_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,387,The resource `R.string.failed_to_disconnect_microsoft_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,388,The resource `R.string.failed_to_disconnect_notion_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,389,The resource `R.string.failed_to_duplicate_chat_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,390,The resource `R.string.failed_to_fork_chat_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,391,The resource `R.string.failed_to_pause_job` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,392,The resource `R.string.failed_to_regenerate_paper_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,393,The resource `R.string.failed_to_reject_all_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,394,The resource `R.string.failed_to_reject_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,395,The resource `R.string.failed_to_rename_chat_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,396,The resource `R.string.failed_to_resume_job` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,397,The resource `R.string.failed_to_trigger_job` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,398,The resource `R.string.failed_to_update_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,399,The resource `R.string.failed_to_update_pin_status` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,401,The resource `R.string.fetch_image` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,403,The resource `R.string.file_input` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,405,The resource `R.string.files_and_documents` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,407,The resource `R.string.files_the_ai_can_reference_when_running_this_job` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,410,The resource `R.string.fit_all` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,412,The resource `R.string.focus_first` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,417,The resource `R.string.fork_from_here` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,421,The resource `R.string.generate_document` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,422,The resource `R.string.generate_email` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,424,The resource `R.string.generate_spreadsheet` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,425,The resource `R.string.generate_text_file` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,435,The resource `R.string.get_notified_when_your_openrouter_balance_drops_below_1_00_0` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,436,The resource `R.string.give_your_persona_a_memorable_name_description_is_shown_in_t` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,437,The resource `R.string.go_beyond_chat_generate_documents_search_the_web_connect_goo` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,442,The resource `R.string.google_integrations` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,443,The resource `R.string.google_sign_in_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,445,The resource `R.string.google_microsoft_and_other_third_party_connections` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,446,The resource `R.string.soon` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,447,The resource `R.string.have_a_service_youd_like_nanthai_to_connect_with_let_us_know` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,448,The resource `R.string.hey_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,456,The resource `R.string.ideascape_pro` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,457,The resource `R.string.ideascape_help` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,459,The resource `R.string.identity` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,461,The resource `R.string.image_gen` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,497,The resource `R.string.image_defaults_compression_range` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,505,The resource `R.string.job_not_found` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,506,The resource `R.string.job_runs_every_num_minutearg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,507,The resource `R.string.job_runs_every_num_minute` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,508,The resource `R.string.job_runs_every_num_minutes` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,529,The resource `R.string.last_error` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,531,The resource `R.string.last_updated` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,532,The resource `R.string.last_used` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,533,The resource `R.string.legal` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,536,The resource `R.string.load_older_messages` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,537,The resource `R.string.loading_app` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,538,The resource `R.string.loading_chats` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,540,The resource `R.string.loading_jobs` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,541,The resource `R.string.loading_job` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,542,The resource `R.string.loading_knowledge_base` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,543,The resource `R.string.loading_models` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,544,The resource `R.string.loading_product` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,545,The resource `R.string.loading_providers` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,546,The resource `R.string.loading_settings` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,547,The resource `R.string.loading_sign_in_options` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,549,The resource `R.string.locked_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,556,The resource `R.string.manage_personas` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,558,The resource `R.string.manual_run_on_demand` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,559,The resource `R.string.matches_system_appearance` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,565,The resource `R.string.memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,566,The resource `R.string.memories_will_appear_here_as_you_chat_or_import_files` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,567,The resource `R.string.memories_will_appear_here_as_you_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,569,The resource `R.string.memory_import` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,570,The resource `R.string.memory_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,571,The resource `R.string.memory_settings` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,572,The resource `R.string.memory_content` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,594,The resource `R.string.message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,596,The resource `R.string.microsoft_integrations` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,597,The resource `R.string.microsoft_sign_in_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,599,The resource `R.string.mode` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,602,The resource `R.string.model_badges` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,603,The resource `R.string.model_info` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,612,The resource `R.string.move_num_chats_to_a_folder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,613,The resource `R.string.move_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,617,The resource `R.string.move_without_losing_structure` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,618,The resource `R.string.move_to_folder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,623,The resource `R.string.nedge` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,627,The resource `R.string.nanthai_edge_logo` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,629,The resource `R.string.nanthaiedge` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,631,The resource `R.string.new_folder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,635,The resource `R.string.new_chats_start_with_arg_active_globe_tap_toggles_this_defau` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,637,The resource `R.string.new_facts_are_queued_for_your_review_before_saving` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,638,The resource `R.string.new_facts_are_saved_automatically_after_each_conversation` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,642,The resource `R.string.next_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,645,The resource `R.string.no_free` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,646,The resource `R.string.no_google_account_is_connected` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,649,The resource `R.string.no_microsoft_account_is_connected` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,650,The resource `R.string.no_models` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,651,The resource `R.string.no_notion_workspace_is_connected` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,652,The resource `R.string.no_openrouter_models_are_available_right_now` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,653,The resource `R.string.no_pending_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,655,The resource `R.string.no_results` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,657,The resource `R.string.no_content_yet` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,658,The resource `R.string.no_files_available` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,659,The resource `R.string.no_files_yet` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,660,The resource `R.string.no_internet_search_the_ai_uses_only_its_training_data_and_at` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,662,The resource `R.string.no_memories_match_your_search` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,663,The resource `R.string.no_models_match_your_current_search_or_filters` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,664,The resource `R.string.no_models_or_personas_match_your_current_search_or_filters` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,665,The resource `R.string.no_models_or_personas_match_your_search` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,666,The resource `R.string.no_new_facts_will_be_extracted_existing_memories_are_still_u` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,670,The resource `R.string.not_connected_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,671,The resource `R.string.not_connected_to_server` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,678,The resource `R.string.notion_integration` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,679,The resource `R.string.notion_sign_in_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,680,The resource `R.string.oauth_callback_url_was_invalid` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,681,The resource `R.string.oauth_callback_was_not_received` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,682,The resource `R.string.oauth_state_verification_failed` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,683,The resource `R.string.oauth_state_was_missing_from_callback` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,684,The resource `R.string.ok` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,687,The resource `R.string.older` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,692,The resource `R.string.open_in_browser` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,693,The resource `R.string.openrouter` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,694,The resource `R.string.openrouter_did_not_return_a_valid_api_key` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,696,The resource `R.string.openrouter_key_exchange_failed_http_num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,697,The resource `R.string.openrouter_returned_an_invalid_response` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,699,The resource `R.string.openrouter_web_plugin_fast_inline_citations_0_02_request` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,702,The resource `R.string.outlook_mail` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,710,The resource `R.string.override_global_and_model_level_defaults_only_enabled_overri` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,712,The resource `R.string.pkce_verifier_was_unavailable_start_sign_in_again` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,716,The resource `R.string.parameters_come_from_the_active_persona_model_defaults_or_gl` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,725,The resource `R.string.pending_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,726,The resource `R.string.pending_review` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,727,The resource `R.string.per_model_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,731,The resource `R.string.persona` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,737,The resource `R.string.persona_specific` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,741,The resource `R.string.pin_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,744,The resource `R.string.price` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,745,The resource `R.string.price_n_a` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,746,The resource `R.string.pricing` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,750,The resource `R.string.primary_direction` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,751,The resource `R.string.privacy_policy` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,755,The resource `R.string.product_loaded` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,756,The resource `R.string.prompt` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,759,The resource `R.string.provider_integrations_google_microsoft_notion` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,761,The resource `R.string.purchase_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,762,The resource `R.string.purchase_was_cancelled` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,763,The resource `R.string.purchased` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,764,The resource `R.string.queue_follow_up` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,768,The resource `R.string.read_email` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,770,The resource `R.string.read_spreadsheet` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,771,The resource `R.string.read_text_file` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,774,The resource `R.string.reasoning_adds_thinking_output_from_supported_models` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,775,The resource `R.string.reasoning_settings_override_the_personas_defaults_for_this_s` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,776,The resource `R.string.reasoning_settings_override_the_personas_defaults_leave_reas` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,777,The resource `R.string.refresh_credits` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,779,The resource `R.string.regenerate_paper` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,780,The resource `R.string.reject_all` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,781,The resource `R.string.reload_products` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,782,The resource `R.string.remove_avatar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,784,The resource `R.string.remove_selected_step` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,785,The resource `R.string.remove_attachment` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,786,The resource `R.string.remove_explicit_context` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,790,The resource `R.string.rename_chat_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,791,The resource `R.string.rename_chat_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,793,The resource `R.string.replay_this_anytime_from_the_info_button` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,794,The resource `R.string.required_for_document_and_file_tools_like_docx_xlsx_pptx_tex` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,800,The resource `R.string.research_paper_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,801,The resource `R.string.research_paper_requires_a_single_participant` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,802,The resource `R.string.research_papers` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,804,The resource `R.string.reset_purchases` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,805,The resource `R.string.reset_sort` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,806,The resource `R.string.reset_zoom` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,807,The resource `R.string.restore_purchase` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,811,The resource `R.string.retry_num` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,812,The resource `R.string.retry_is_not_supported_for_in_progress_or_failed_research_pa` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,822,The resource `R.string.save_to_photos` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,823,The resource `R.string.saved_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,824,The resource `R.string.saving_mode` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,826,The resource `R.string.schedule_tasks_to_run_on_their_own_search_the_web_and_resear` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,829,The resource `R.string.scheduled_default` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,844,The resource `R.string.search_mode` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,845,The resource `R.string.search_modes` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,846,The resource `R.string.search_off` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,847,The resource `R.string.search_on` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,848,The resource `R.string.search_cost_only_your_selected_model_output_adds_extra_usage` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,850,The resource `R.string.search_files_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,851,The resource `R.string.search_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,852,The resource `R.string.search_memories_or_tags` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,853,The resource `R.string.search_models` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,854,The resource `R.string.search_models_and_personas` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,855,The resource `R.string.search_off_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,856,The resource `R.string.search_providers` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,857,The resource `R.string.search_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,858,The resource `R.string.secondary` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,859,The resource `R.string.secondary_direction` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,861,The resource `R.string.select_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,862,The resource `R.string.select_a_destination_folder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,863,The resource `R.string.select_at_least_one_node_in_ideascape_to_continue` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,867,The resource `R.string.selected_models_num_estimated_total_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,868,The resource `R.string.selected_participants_stay_visible_even_when_filters_hide_th` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,869,The resource `R.string.send_a_message_to_intervene` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,870,The resource `R.string.send_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,874,The resource `R.string.setup_steps` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,875,The resource `R.string.share` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,879,The resource `R.string.sign_out` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,880,The resource `R.string.sign_in_to_nanthai_edge` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,881,The resource `R.string.sign_in_failed` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,882,The resource `R.string.sign_in_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,883,The resource `R.string.sign_in_was_canceled` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,884,The resource `R.string.sign_out_failed_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,887,The resource `R.string.sort` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,888,The resource `R.string.source` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,891,The resource `R.string.statistics` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,894,The resource `R.string.step_count` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,900,The resource `R.string.storekit_state` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,901,The resource `R.string.storekit_testing_controls_reset_clears_all_transactions_and` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,907,The resource `R.string.switch_model` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,908,The resource `R.string.switch_to_chat` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,909,The resource `R.string.switch_to_ideascape` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,912,The resource `R.string.system_prompt_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,913,The resource `R.string.ttft` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,916,The resource `R.string.tap_a_card_to_move_the_active_branch_the_branch_highlight_he` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,917,The resource `R.string.tap_a_node_in_ideascape_to_continue` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,918,The resource `R.string.tap_a_node_to_focus_it_add_cards_with_plus_when_you_want_exp` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,919,The resource `R.string.tap_a_selected_participant_to_remove_it_quickly` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,924,The resource `R.string.terms_of_service` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,926,The resource `R.string.the_pro_upgrade_product_could_not_be_found` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,927,The resource `R.string.the_model_can_accept_image_input` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,928,The resource `R.string.the_model_can_generate_image_output` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,929,The resource `R.string.the_model_currently_has_no_prompt_or_completion_cost` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,930,The resource `R.string.the_moderator_guides_debate_direction_with_hidden_pre_turn_i` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,931,The resource `R.string.the_system_prompt_sent_with_every_message_supports_any_langu` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,933,The resource `R.string.these_defaults_apply_whenever_you_use_this_model_unless_a_ch` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,934,The resource `R.string.this_week` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,935,The resource `R.string.this_job_will_only_run_when_triggered_manually` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,938,The resource `R.string.this_model_is_always_used_when_chatting_with_this_persona_it` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,939,The resource `R.string.this_model_uses_your_global_defaults_from_settings` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,940,The resource `R.string.this_scheduled_job_may_have_been_deleted` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,941,The resource `R.string.this_will_permanently_delete_arg_and_all_its_run_history` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,942,The resource `R.string.this_will_permanently_delete_all_saved_memories_this_action` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,945,The resource `R.string.time` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,946,The resource `R.string.times_used` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,948,The resource `R.string.to_change_parameters_edit_the_persona_or_model_settings_from` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,949,The resource `R.string.today` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,950,The resource `R.string.tool_use` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,951,The resource `R.string.tools` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,964,The resource `R.string.transaction_verification_failed_please_try_again` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,965,The resource `R.string.two_factor_authentication_must_be_enabled_on_the_apple_accou` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,966,The resource `R.string.type_a_message_below_to_start_the_conversation` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,967,The resource `R.string.type_any_character` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,970,The resource `R.string.unlock_pro_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,974,The resource `R.string.unpin_memory` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,975,The resource `R.string.updates` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,977,The resource `R.string.upload_files_in_chat_or_ask_ai_to_generate_documents_first` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,978,The resource `R.string.upload_files_in_chat_or_ask_ai_to_generate_documents_theyll` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,981,The resource `R.string.uploading_and_extracting_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,983,The resource `R.string.use_emoji` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,984,The resource `R.string.use_a_smarter_model_for_stricter_long_term_memory_curation_o` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,985,The resource `R.string.use_the_run_now_button_to_trigger_this_job_on_demand` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,986,The resource `R.string.use_the_plus_button_on_cards_when_you_want_multiple_nodes_in` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,987,The resource `R.string.use_the_apple_account_that_owns_the_icloud_calendar_plus_an` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,988,The resource `R.string.use_the_globe_key_to_switch_to_emoji` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,989,The resource `R.string.use_the_globe_key_to_switch_to_emoji_or_memoji` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,990,The resource `R.string.used_arg_total_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,991,The resource `R.string.used_num_tool` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,992,The resource `R.string.used_num_tools` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,993,The resource `R.string.used_numx` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,996,The resource `R.string.user_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,997,The resource `R.string.uses_a_cheap_model_to_detect_agreement` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,998,The resource `R.string.using_the_focused_node_as_context_tap_plus_on_cards_to_add_e` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,999,The resource `R.string.video_input` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1024,The resource `R.string.view_all_memories` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1025,The resource `R.string.view_scheduled_job_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1026,The resource `R.string.vision` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1030,The resource `R.string.web_search_arg` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1032,The resource `R.string.what_these_mean` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1033,The resource `R.string.what_should_the_ai_do_each_time` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1035,The resource `R.string.when_enabled_nanthai_remembers_facts_about_you_across_conver` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1036,The resource `R.string.where_job_generated_chats_are_placed_reasoning_adds_thinking` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1040,The resource `R.string.yesterday` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1042,The resource `R.string.you_are_not_signed_in` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1044,The resource `R.string.your_api_key_will_be_removed_you_can_reconnect_at_any_time_w` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1045,The resource `R.string.your_google_tokens_will_be_revoked_gmail_drive_and_calendar` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1046,The resource `R.string.your_microsoft_tokens_will_be_removed_outlook_onedrive_and_c` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1047,The resource `R.string.your_notion_tokens_will_be_removed_notion_page_search_read_c` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1048,The resource `R.string.your_session_has_expired_please_sign_in_again` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1049,The resource `R.string.your_stored_app_specific_password_will_be_removed_apple_cale` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1054,The resource `R.string.preparing_attachment` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1056,The resource `R.string.e_g_4096` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1057,The resource `R.string.arg_per_request_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1058,The resource `R.string.arg_ctx` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1138,The resource `R.string.guidance_sort_by` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1168,The resource `R.string.skills_runtime_mode_label` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1175,The resource `R.string.metadata_preview` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1176,The resource `R.string.skill_metadata_backend_hint` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1177,The resource `R.string.profiles` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1178,The resource `R.string.skills_error_create` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1179,The resource `R.string.skills_error_update` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1180,The resource `R.string.skills_error_archive` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1181,The resource `R.string.skills_error_delete` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1182,The resource `R.string.skills_error_duplicate` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1185,The resource `R.string.skills_error_update_chat_skills` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1188,The resource `R.string.skills_required_tools` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1189,The resource `R.string.skills_required_integrations` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1192,The resource `R.string.skills_duplicate_success` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1193,The resource `R.string.switch_on` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1194,The resource `R.string.switch_off` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1214,The resource `R.string.show_balance_in_chat_description` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1244,The resource `R.string.cloze_description` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1245,The resource `R.string.connect_cloze` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1246,The resource `R.string.cloze_api_key_instructions` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1247,The resource `R.string.cloze_step_1` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1248,The resource `R.string.cloze_step_2` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1249,The resource `R.string.cloze_step_3` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1250,The resource `R.string.cloze_help_link` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1251,The resource `R.string.cloze_api_key_placeholder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1252,The resource `R.string.cloze_label_placeholder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1253,The resource `R.string.cloze_integration` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1254,The resource `R.string.cloze_integration_footer` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1257,The resource `R.string.slack_integration` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1258,The resource `R.string.slack_integration_footer` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1275,The resource `R.string.microsoft_365` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1295,The resource `R.string.choose_drive_file_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1296,The resource `R.string.google_drive_picker_unavailable` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1299,The resource `R.string.choose_file` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1300,The resource `R.string.drive_file_selected_continue_message` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1315,The resource `R.string.folder` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1333,The resource `R.string.insert` appears to be unused
+Warning,UnusedResources,android/app/src/main/res/values/strings.xml,1524,The resource `R.string.remote_mcp_resource_uri` appears to be unused
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingAnimations.kt,144,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,310,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,344,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,372,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,459,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,490,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens.kt,696,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens2.kt,126,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens2.kt,141,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens2.kt,182,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens2.kt,305,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens2.kt,440,State backed values should use the lambda overload of Modifier.offset
+Warning,UseOfNonLambdaOffsetOverload,android/app/src/main/java/com/nanthai/edge/features/auth/OnboardingCarouselScreens2.kt,472,State backed values should use the lambda overload of Modifier.offset
+Warning,TypographyDashes,android/app/src/main/res/values-es/strings.xml,188,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-fr/strings.xml,188,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-it/strings.xml,188,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-ja/strings.xml,188,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-zh-rCN/strings.xml,188,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-de/strings.xml,189,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values/strings.xml,273,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-ja/strings.xml,1459,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-zh-rCN/strings.xml,1459,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-ja/strings.xml,1460,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-zh-rCN/strings.xml,1460,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-de/strings.xml,1464,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-ja/strings.xml,1464,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-zh-rCN/strings.xml,1464,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-de/strings.xml,1465,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-de/strings.xml,1469,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-es/strings.xml,1469,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-fr/strings.xml,1469,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-it/strings.xml,1469,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-es/strings.xml,1470,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-fr/strings.xml,1470,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-it/strings.xml,1470,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-es/strings.xml,1474,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-fr/strings.xml,1474,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-it/strings.xml,1474,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-ja/strings.xml,1475,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-zh-rCN/strings.xml,1475,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-de/strings.xml,1480,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-es/strings.xml,1485,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-fr/strings.xml,1485,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values-it/strings.xml,1485,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values/strings.xml,1488,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values/strings.xml,1489,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values/strings.xml,1493,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyDashes,android/app/src/main/res/values/strings.xml,1504,"Replace ""-"" with an ""en dash"" character (–, &#8211;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,329,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,329,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,329,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,412,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,413,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,414,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,414,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,414,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,415,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,415,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,416,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,416,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,428,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,543,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,544,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,545,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,690,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,692,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,692,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,708,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,710,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,710,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-ja/strings.xml,740,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-es/strings.xml,742,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values-it/strings.xml,742,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,849,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,869,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,TypographyEllipsis,android/app/src/main/res/values/strings.xml,912,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+Warning,IconDuplicates,android/app/src/main/res/drawable-nodpi/provider_gryphe.png,,"The following unrelated icon files have identical contents: provider_anthracite_org.png, provider_gryphe.png"
+Warning,IconDuplicates,android/app/src/main/res/drawable-nodpi/provider_anthracite_org.png,,"The following unrelated icon files have identical contents: provider_anthracite_org.png, provider_gryphe.png"
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidCreditBalanceCheck.kt,23,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidCreditBalanceCheck.kt,29,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidCreditBalanceCheck.kt,46,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidCreditBalanceCheck.kt,50,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidKeystoreSecureStorage.kt,26,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidKeystoreSecureStorage.kt,41,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidKeystoreSecureStorage.kt,49,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidNotificationRepository.kt,87,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidNotificationRepository.kt,92,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidNotificationRepository.kt,97,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/AndroidNotificationRepository.kt,172,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/ui/theme/AppearanceController.kt,24,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/auth/AuthRoute.kt,290,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/auth/AuthRoute.kt,301,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailBottomOverlay.kt,225,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/ChatDetailRouteEffects.kt,41,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/ChatRenderTuning.kt,33,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/ui/theme/ColorThemeController.kt,31,Use the KTX extension function `SharedPreferences.edit` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/DocumentPdfPreviewArtifacts.kt,109,Use the KTX function `createBitmap` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/app/DrivePickerOnePick.kt,40,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/app/DrivePickerOnePick.kt,45,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/InlineVideoPlayer.kt,94,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/InlineVideoPlayer.kt,226,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,73,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,120,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,161,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,193,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,225,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,226,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,230,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,237,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/data/IntegrationAuthRepository.kt,244,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/auth/OpenRouterConnectionRoute.kt,305,Use the KTX extension function `String.toUri` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/chat/PreviewBitmapDecoder.kt,111,Use the KTX extension function `Bitmap.scale` instead?
+Warning,UseKtx,android/app/src/main/java/com/nanthai/edge/features/settings/ProfileImageDecoder.kt,63,Use the KTX extension function `Bitmap.scale` instead?

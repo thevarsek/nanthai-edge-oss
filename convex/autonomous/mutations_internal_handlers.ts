@@ -44,7 +44,7 @@ export async function updateParentMessageIdsHandler(
 
 export interface CompleteSessionArgs extends Record<string, unknown> {
   sessionId: Id<"autonomousSessions">;
-  status: "completed_consensus" | "completed_max_cycles" | "failed";
+  status: "completed_consensus" | "completed_stalled" | "completed_max_cycles" | "failed";
   stopReason?: string;
   error?: string;
   executionEpoch?: number;

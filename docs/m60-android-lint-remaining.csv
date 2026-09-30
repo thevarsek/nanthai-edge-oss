@@ -1,0 +1,36 @@
+rule,severity,file,line,message
+OldTargetApi,Warning,android/app/build.gradle.kts,67,Not targeting the latest versions of Android; compatibility modes apply. Consider testing and updating this version. Consult the `android.os.Build.VERSION_CODES` javadoc for details.
+AndroidGradlePluginVersion,Warning,android/gradle/wrapper/gradle-wrapper.properties,3,A newer version of Gradle than 9.4.1 is available: 9.8.0
+GradleDependency,Warning,android/app/build.gradle.kts,62,A newer version of `compileSdk` than 36 is available: 37
+GradleDependency,Warning,android/app/build.gradle.kts,342,A newer version of androidx.core:core-ktx than 1.16.0 is available: 1.19.1
+GradleDependency,Warning,android/app/build.gradle.kts,343,A newer version of androidx.lifecycle:lifecycle-runtime-ktx than 2.9.0 is available: 2.11.0
+GradleDependency,Warning,android/app/build.gradle.kts,344,A newer version of androidx.lifecycle:lifecycle-runtime-compose than 2.9.0 is available: 2.11.0
+GradleDependency,Warning,android/app/build.gradle.kts,345,A newer version of androidx.activity:activity-compose than 1.10.0 is available: 1.13.0
+GradleDependency,Warning,android/app/build.gradle.kts,346,A newer version of androidx.lifecycle:lifecycle-viewmodel-compose than 2.9.0 is available: 2.11.0
+GradleDependency,Warning,android/app/build.gradle.kts,347,A newer version of androidx.lifecycle:lifecycle-process than 2.9.0 is available: 2.11.0
+GradleDependency,Warning,android/app/build.gradle.kts,348,A newer version of androidx.navigation:navigation-compose than 2.9.0 is available: 2.10.2
+GradleDependency,Warning,android/app/build.gradle.kts,352,A newer version of com.google.android.material:material than 1.13.0 is available: 1.14.0
+GradleDependency,Warning,android/app/build.gradle.kts,372,A newer version of androidx.compose:compose-bom than 2025.06.00 is available: 2026.09.00
+GradleDependency,Warning,android/app/build.gradle.kts,390,A newer version of com.google.firebase:firebase-bom than 34.12.0 is available: 34.19.0
+GradleDependency,Warning,android/app/build.gradle.kts,397,A newer version of androidx.media3:media3-exoplayer than 1.7.1 is available: 1.11.1
+GradleDependency,Warning,android/app/build.gradle.kts,398,A newer version of androidx.media3:media3-ui than 1.7.1 is available: 1.11.1
+GradleDependency,Warning,android/app/build.gradle.kts,422,A newer version of androidx.compose:compose-bom than 2025.06.00 is available: 2026.09.00
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,349,A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-android than 1.9.0 is available: 1.11.0
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,355,A newer version of com.clerk:clerk-android-api than 1.0.16 is available: 1.1.9
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,364,A newer version of com.clerk:clerk-convex-kotlin than 0.10.0 is available: 0.16.0
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,367,A newer version of com.posthog:posthog-android than 3.48.0 is available: 3.71.4
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,370,A newer version of org.jetbrains.kotlinx:kotlinx-serialization-json than 1.6.3 is available: 1.11.0
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,401,A newer version of dev.chrisbanes.haze:haze than 1.7.2 is available: 2.0.1
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,402,A newer version of dev.chrisbanes.haze:haze-materials than 1.7.2 is available: 1.7.3
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,409,A newer version of com.stoyanvuchev:squircle-shape than 5.2.0 is available: 5.4.0
+NewerVersionAvailable,Warning,android/app/build.gradle.kts,420,A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.9.0 is available: 1.11.0
+ChromeOsAbiSupport,Warning,android/app/build.gradle.kts,110,Missing x86_64 ABI support for ChromeOS
+DataExtractionRules,Warning,android/app/src/main/AndroidManifest.xml,14,The attribute `android:allowBackup` is deprecated from Android 12 and higher and may be removed in future versions. Consider adding the attribute `android:dataExtractionRules` specifying an `@xml` resource which configures cloud backups and device transfers on Android 12 and higher.
+TypographyEllipsis,Warning,android/app/src/main/res/values-ja/strings.xml,109,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values-es/strings.xml,111,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values-it/strings.xml,111,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values/strings.xml,198,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values-ja/strings.xml,325,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values-es/strings.xml,329,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values-it/strings.xml,329,"Replace ""..."" with ellipsis character (…, &#8230;) ?"
+TypographyEllipsis,Warning,android/app/src/main/res/values/strings.xml,465,"Replace ""..."" with ellipsis character (…, &#8230;) ?"

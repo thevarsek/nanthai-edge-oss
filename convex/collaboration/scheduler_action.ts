@@ -24,6 +24,9 @@ import {
   COLLABORATION_SCHEDULER_VERSION,
 } from "./constants";
 import { collaborationSelection } from "./validators";
+import { tryJevDecision } from "../decisions/service";
+import { speakerDecisionRequest, projectSpeakerDecision } from "./scheduler_jev";
+import type { Id } from "../_generated/dataModel";
 
 export const decideSpeakers = internalAction({
   args: {
@@ -43,7 +46,7 @@ export const decideSpeakers = internalAction({
     const input = await ctx.runQuery(
       internal.collaboration.scheduler_context.getSchedulerContext,
       args,
-    ) as SchedulerPolicyInput & { userId: string } | null;
+    ) as (SchedulerPolicyInput & { userId: string; chatId: Id<"chats">; messageId: Id<"messages"> }) | null;
     if (!input) throw new Error("COLLABORATION_SCHEDULER_STALE_CONTEXT");
     const deterministic = deterministicSchedulerDecision(input);
     if (deterministic) {
@@ -59,6 +62,21 @@ export const decideSpeakers = internalAction({
       }),
     ]);
     const requireZdr = isZdrEnabled(preferences);
+    const jev = await tryJevDecision(ctx, {
+      ...speakerDecisionRequest(input), useCase: "speakers", apiKey,
+      userId: input.userId, chatId: input.chatId, messageId: input.messageId, requireZdr,
+    });
+    if (jev) {
+      try {
+        return {
+          ...projectSpeakerDecision(input, jev), schedulerVersion: "m60-jev-v1",
+          schedulerModelId: jev.modelId,
+          // Usage is already recorded at the Decisions boundary, not via Generations.
+        };
+      } catch {
+        console.warn("[m60:jev] invalid speaker projection; using existing scheduler");
+      }
+    }
     const modelId = selectAncillaryModelForZdr({
       requestedModel: COLLABORATION_SCHEDULER_MODEL,
       defaultModel: MODEL_IDS.appDefault,

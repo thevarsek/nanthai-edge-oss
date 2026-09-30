@@ -32,6 +32,8 @@ import {
   type MemoryExclusionRules,
 } from "./actions_extract_memories_utils";
 
+import { reconcileAdmittedMemory } from "../memory/decision_helpers";
+
 const MIN_IMPORTANCE_SCORE = 0.65;
 const MIN_CONFIDENCE_SCORE = 0.7;
 
@@ -169,6 +171,25 @@ export async function processExtractedMemoryCandidates(
     const expiresAt = policyExpiresAt == null
       ? modelExpiresAt
       : Math.min(modelExpiresAt ?? policyExpiresAt, policyExpiresAt);
+    const reconciled = await reconcileAdmittedMemory(ctx, {
+      userId: args.userId, content, category, memoryType, retrievalMode, importanceScore, confidenceScore,
+      reinforcementCount: 1, lastReinforcedAt: now, expiresAt, sourceMessageId: args.userMessageId,
+      sourceChatId: args.chatId, sourceType: "chat", tags: item.tags, isPending: args.isPending ?? false, createdAt: now,
+    }, args.userMessageContent, existingMemories);
+    if (reconciled !== undefined) {
+      if (!reconciled) counts.skippedCount += 1;
+      else if (reconciled.action === "reinforce") counts.reinforcedCount += 1;
+      else {
+        counts.createdCount += 1;
+        counts.embeddingScheduledCount += 1;
+        if (reconciled.action === "supersede") counts.supersededCount += 1;
+      }
+      if (reconciled) {
+        const current = await ctx.runQuery(internal.chat.queries.getUserMemories, { userId: args.userId });
+        existingMemories.splice(0, existingMemories.length, ...current);
+      }
+      continue;
+    }
     const duplicate = findDuplicateMemory(content, existingMemories) as {
       _id?: Id<"memories">;
     } | null;

@@ -22,6 +22,7 @@ import {
   shouldExcludeMemoryContent,
   type ExtractedMemory,
 } from "./actions_extract_memories_utils";
+import { reconcileExplicitForget } from "../memory/decision_forget";
 import { processExtractedMemoryCandidates } from "./actions_extract_memories_candidates";
 import { buildMemoryExtractionMessages } from "./actions_extract_memories_prompt";
 import {
@@ -64,9 +65,11 @@ export async function extractMemoriesHandler(
     }),
   ]);
 
+  if (await reconcileExplicitForget(ctx, args, existingMemories)) return;
+
   const existingContext =
     existingMemories.length > 0
-      ? "\n\nExisting memories (do NOT duplicate these):\n" +
+      ? "\n\nExisting memories for reference (extract current evidence even for equivalent facts; semantic reconciliation handles duplication):\n" +
         existingMemories
           .filter((memory: MemoryRecordLike) => isMemoryActive(memory))
           .slice(0, 60)

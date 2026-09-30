@@ -25,9 +25,20 @@ export async function deleteMemoryWithDerivedData(
   memoryId: Id<"memories">,
   knownUserId?: string,
 ): Promise<void> {
-  const memory = knownUserId ? null : await ctx.db.get(memoryId);
+  const memory = await ctx.db.get(memoryId);
   const userId = knownUserId ?? memory?.userId;
   if (!userId) return;
+  // Remove reciprocal history references without reactivating obsolete facts.
+  for (const [linkedId, field] of [
+    [memory?.supersedesMemoryId, "supersededByMemoryId"],
+    [memory?.supersededByMemoryId, "supersedesMemoryId"],
+  ] as const) {
+    if (!linkedId) continue;
+    const linked = await ctx.db.get(linkedId);
+    if (linked?.userId === userId && linked[field] === memoryId) {
+      await ctx.db.patch(linked._id, { [field]: undefined });
+    }
+  }
   await deleteMemoryRelationships(ctx, memoryId, userId);
   const embedding = await ctx.db
     .query("memoryEmbeddings")

@@ -2,6 +2,7 @@ import type { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { checkConsensusInternal } from "./actions_helpers";
 import type { Id } from "../_generated/dataModel";
+import { judgeDiscussion } from "./decision_helpers";
 
 export async function finishAutonomousCycleHandler(
   ctx: ActionCtx,
@@ -20,17 +21,20 @@ export async function finishAutonomousCycleHandler(
       return "terminal";
     }
     if (session.autoStopOnConsensus) {
-      const consensus = await checkConsensusInternal(
+      const judgment = await judgeDiscussion(ctx, {
+        chatId: session.chatId, userId: args.userId, parentMessageIds: session.parentMessageIds,
+      });
+      const consensus = judgment === null ? await checkConsensusInternal(
         ctx,
         session.chatId,
         session.turnOrder.length,
         args.userId,
-      );
-      if (consensus) {
+      ) : judgment === "consensus";
+      if (consensus || judgment === "stalled") {
         await ctx.runMutation(internal.autonomous.mutations.completeSession, {
           sessionId: args.sessionId,
-          status: "completed_consensus",
-          stopReason: "Consensus detected",
+          status: judgment === "stalled" ? "completed_stalled" : "completed_consensus",
+          stopReason: judgment === "stalled" ? "Discussion stalled without progress" : "Consensus detected",
           executionEpoch: args.executionEpoch,
         });
         return "terminal";

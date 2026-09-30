@@ -1337,9 +1337,10 @@ export async function storeAncillaryCostHandler(
     if (existing) return;
   }
 
-  // Compute cost from model pricing if not provided by the API.
+  // Decisions usage has separate pricing semantics; retain unknown cost as unknown.
+  // Chat-completion ancillary calls may still use cached chat-model pricing.
   let cost = args.cost;
-  if (cost == null) {
+  if (cost == null && !args.source.startsWith("jev_")) {
     const model = await ctx.db
       .query("cachedModels")
       .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))

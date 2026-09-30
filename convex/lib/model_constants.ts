@@ -6,6 +6,7 @@
 // =============================================================================
 
 export const MODEL_IDS = {
+  jevDecision: "typesafe/jev-1.13",
   appDefault: "openai/gpt-5.6-terra",
   advisorDispatcher: "openai/gpt-5.6-luna",
   titleGeneration: "openai/gpt-5.6-luna",

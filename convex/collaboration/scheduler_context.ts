@@ -59,6 +59,8 @@ export const getSchedulerContext = internalQuery({
         content: message.content.slice(0, 2_000),
       }));
     return {
+      chatId: exchange.chatId,
+      messageId: exchange.initiatingMessageId,
       userId: exchange.userId,
       wave: args.wave,
       frontierMessageIds: exchange.frontierMessageIds,

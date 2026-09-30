@@ -75,6 +75,16 @@ describe("useAutonomous", () => {
     mockState.intervene.mockReset().mockResolvedValue(null);
   });
 
+  it("projects a live-shaped stalled session and detaches when terminal", async () => {
+    mockState.activeSessions = [{ _id: "session_1", status: "running", createdAt: 1.0 }];
+    mockState.session = { _id: "session_1", status: "completed_stalled", currentCycle: 2.0, maxCycles: 5.0, turnOrder: ["writer", "critic"] };
+    const { result } = renderAutonomous();
+    await waitFor(() => expect(result.current.state).toEqual({ status: "ended", reason: "Discussion stalled without progress" }));
+    mockState.activeSessions = [];
+    act(() => result.current.dismissEnded());
+    expect(result.current.state.status).toBe("inactive");
+  });
+
   it("estimates turns and warning levels with moderator exclusion", () => {
     expect(estimateAutonomousCost(DEFAULT_AUTONOMOUS_SETTINGS, 2)).toEqual({ cost: 0.03, warning: "low" });
     expect(estimateAutonomousCost({ ...DEFAULT_AUTONOMOUS_SETTINGS, maxCycles: 30 }, 3).warning).toBe("medium");

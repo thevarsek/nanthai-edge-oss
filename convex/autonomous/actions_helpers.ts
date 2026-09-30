@@ -1,6 +1,8 @@
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
+import { recordAutonomousHelperUsage } from "./helper_usage";
+import { judgeModeratorIntervention } from "./decision_helpers";
 import { MODEL_IDS } from "../lib/model_constants";
 import { callOpenRouterNonStreaming, OpenRouterMessage } from "../lib/openrouter";
 import {
@@ -34,7 +36,7 @@ export interface ModeratorConfig {
   displayName: string;
 }
 
-type AutonomousHelperContext = Pick<ActionCtx, "runQuery">;
+type AutonomousHelperContext = Pick<ActionCtx, "runQuery"> & Partial<Pick<ActionCtx, "scheduler" | "runMutation">>;
 
 export function dedupeMessageIds(ids: Id<"messages">[]): Id<"messages">[] {
   const seen = new Set<Id<"messages">>();
@@ -128,12 +130,18 @@ export async function generateModeratorDirective(
     const contextSummary = buildRecentDiscussionSummary(recentMessages);
     if (!contextSummary.trim()) return undefined;
 
+    const intervention = await judgeModeratorIntervention(ctx, { chatId, userId }, {
+      moderator: { name: moderator.displayName, role: moderatorSystemPrompt },
+      nextParticipant: { name: nextParticipant.displayName, role: nextParticipant.systemPrompt },
+    });
+    if (intervention === "no_intervention") return undefined;
     const prompt = `You are moderating a group discussion. The next participant to respond is "${nextParticipant.displayName}".
 
 Recent discussion:
 ${contextSummary}
 
 Generate one user-visible coaching note for the next response.
+${intervention ?? ""}
 
 Requirements:
 - One sentence, under 35 words.
@@ -165,6 +173,7 @@ Requirements:
       { fallbackModel: MODEL_IDS.autonomousFallback },
     );
 
+    await recordAutonomousHelperUsage(ctx, { userId, chatId, modelId: primaryModelId, source: "autonomous_moderator" }, result);
     let directive = normalizeModeratorDirective(
       result.content,
       result.finishReason,
@@ -185,6 +194,7 @@ Requirements:
         requestParameters,
         { fallbackModel: undefined },
       );
+      await recordAutonomousHelperUsage(ctx, { userId, chatId, modelId: MODEL_IDS.autonomousFallback, source: "autonomous_moderator" }, result);
       directive = normalizeModeratorDirective(
         result.content,
         result.finishReason,
@@ -229,7 +239,7 @@ export async function checkConsensusInternal(
     const contextSummary = buildRecentDiscussionSummary(recentMessages);
     if (!contextSummary.trim()) return false;
 
-    const prompt = `Are these participants reaching consensus or repeating each other's points? Answer YES or NO with a one-sentence explanation.
+    const prompt = `Have the participants substantively agreed on the actual user question with an answered request and explicit matching, evidence-supported conclusions? Repetition, polite echoing, unresolved disagreement, missing decisive evidence, and an unacknowledged correction are NOT consensus. If the actual question or agreement is unclear, answer NO. Answer YES or NO with a one-sentence explanation.
 
 Recent discussion:
 ${contextSummary}`;
@@ -243,6 +253,7 @@ ${contextSummary}`;
       { fallbackModel: MODEL_IDS.autonomousFallback },
     );
 
+    await recordAutonomousHelperUsage(ctx, { userId, chatId, modelId: consensusModelId, source: "autonomous_consensus" }, result);
     const normalized = result.content.trim().toUpperCase();
     return normalized.startsWith("YES");
   } catch (error) {

@@ -329,6 +329,7 @@ test("deleteAllHandler schedules continuation when a full batch is processed", a
   await deleteAllHandler({
     auth: buildAuth(),
     db: {
+      get: async (id: string) => ({ _id: id, userId: "user_1" }),
       query: (table: string) => ({
         withIndex: () => ({
           collect: async () => [],
@@ -384,6 +385,7 @@ test("approveAllHandler and rejectAllHandler process one batch and self-schedule
   const rejectCount = await rejectAllHandler({
     auth: buildAuth(),
     db: {
+      get: async (id: string) => ({ _id: id, userId: "user_1" }),
       query: (table: string) => ({
         withIndex: () => ({
           collect: async () => [],

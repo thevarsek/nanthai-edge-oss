@@ -30,6 +30,7 @@ test("deleteAllContinuation deletes a full batch and schedules another pass", as
   await (deleteAllContinuation as any)._handler(
     {
       db: {
+        get: async (id: string) => ({ _id: id, userId: "user_1" }),
         query: (table: string) => ({
           withIndex: (_index: string, cb?: (query: any) => any) => {
             const state: { memoryId?: string } = {};
@@ -104,6 +105,7 @@ test("rejectAllContinuation removes pending memories and related embeddings", as
   await (rejectAllContinuation as any)._handler(
     {
       db: {
+        get: async (id: string) => ({ _id: id, userId: "user_1" }),
         query: (table: string) => ({
           withIndex: (_index: string, cb?: (query: any) => any) => {
             const state: { memoryId?: string } = {};

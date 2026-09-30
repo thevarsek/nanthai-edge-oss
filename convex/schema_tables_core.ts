@@ -171,6 +171,7 @@ export const coreSchemaTables = {
     .index("by_user", ["userId"]),
 
   messages: defineTable({
+    memoryDecisionCommits: v.optional(v.array(v.string())),
     chatId: v.id("chats"),
     userId: v.optional(v.string()), // Denormalized for search-index scoping (M13)
     role: messageRole,

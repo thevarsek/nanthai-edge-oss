@@ -53,6 +53,7 @@ export const completeSessionArgs = {
   sessionId: v.id("autonomousSessions"),
   status: v.union(
     v.literal("completed_consensus"),
+    v.literal("completed_stalled"),
     v.literal("completed_max_cycles"),
     v.literal("failed"),
   ),

@@ -4,6 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import { AutonomousToolbar } from "./AutonomousToolbar";
 
 describe("AutonomousToolbar", () => {
+  it("renders and dismisses the shared stalled terminal reason", () => {
+    const onDismiss = vi.fn();
+    render(<AutonomousToolbar state={{ status: "ended", reason: "Discussion stalled without progress" }} onPause={vi.fn()} onResume={vi.fn()} onStop={vi.fn()} onDismiss={onDismiss} />);
+    expect(screen.getByText("Discussion stalled without progress")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /dismiss/i }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+  });
+
   it("does not submit an enclosing form from toolbar actions", () => {
     const onPause = vi.fn();
     const onSubmit = vi.fn((event: FormEvent) => event.preventDefault());

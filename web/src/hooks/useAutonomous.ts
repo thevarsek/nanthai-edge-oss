@@ -6,6 +6,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant } from "@/hooks/useChat";
+import { projectAutonomousSession } from "@/lib/autonomousSessionProjection";
 import {
   buildParticipantIndexById,
   participantIndexForId,
@@ -139,58 +140,13 @@ export function useAutonomous({
   // ── Map session state to UI state ──────────────────────────────────────────
   useEffect(() => {
     if (!session) return;
-    const resolveParticipantName = (idx?: number): string => {
-      if (idx == null || idx < 0 || idx >= session.turnOrder.length) return "...";
-      const pid = session.turnOrder[idx];
-      const p = participants.find((pp, index) =>
-        participantKey(pp, index) === pid
-        || pp.modelId === pid
-        || pp.personaName === pid,
-      );
-      return p?.personaName ?? p?.modelId.split("/").pop() ?? `Participant ${idx + 1}`;
-    };
-
-    switch (session.status) {
-      case "running":
-        window.setTimeout(() => {
-          setState({
-            status: "active",
-            cycle: session.currentCycle,
-            maxCycles: session.maxCycles,
-            currentParticipant: resolveParticipantName(session.currentParticipantIndex),
-          });
-        }, 0);
-        break;
-      case "paused":
-        window.setTimeout(() => {
-          setState({ status: "paused", cycle: session.currentCycle, maxCycles: session.maxCycles });
-        }, 0);
-        break;
-      case "stopped": case "stopped_user_intervened":
-        window.setTimeout(() => {
-          setState({ status: "ended", reason: session.stopReason ?? "Stopped" });
-          setSessionId(null);
-        }, 0);
-        break;
-      case "completed_max_cycles":
-        window.setTimeout(() => {
-          setState({ status: "ended", reason: "Completed all cycles" });
-          setSessionId(null);
-        }, 0);
-        break;
-      case "completed_consensus":
-        window.setTimeout(() => {
-          setState({ status: "ended", reason: "Consensus reached" });
-          setSessionId(null);
-        }, 0);
-        break;
-      case "failed":
-        window.setTimeout(() => {
-          setState({ status: "ended", reason: session.error ?? session.stopReason ?? "Failed" });
-          setSessionId(null);
-        }, 0);
-        break;
-    }
+    const projection = projectAutonomousSession(session, participants);
+    if (!projection) return;
+    const timer = window.setTimeout(() => {
+      setState(projection);
+      if (projection.status === "ended") setSessionId(null);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [session, participants]);
 
   // ── Can configure? ─────────────────────────────────────────────────────────
