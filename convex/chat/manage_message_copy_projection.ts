@@ -14,6 +14,7 @@ export function buildCopiedMessageInsert(
   message: Doc<"messages">,
   chatId: Id<"chats">,
   parentMessageIds: Id<"messages">[],
+  participantIdMap?: ReadonlyMap<string, Id<"chatParticipants">>,
 ): CopiedMessageInsert {
   return {
     chatId,
@@ -24,7 +25,11 @@ export function buildCopiedMessageInsert(
     participantName: message.participantName,
     participantEmoji: message.participantEmoji,
     participantAvatarImageUrl: message.participantAvatarImageUrl,
-    autonomousParticipantId: message.autonomousParticipantId,
+    chatParticipantId: message.chatParticipantId && participantIdMap
+      ? participantIdMap.get(message.chatParticipantId) : undefined,
+    autonomousParticipantId: message.autonomousParticipantId
+      ? participantIdMap?.get(message.autonomousParticipantId) ?? message.autonomousParticipantId
+      : undefined,
     parentMessageIds,
     multiModelGroupId: message.multiModelGroupId,
     isMultiModelResponse: message.isMultiModelResponse,
@@ -44,7 +49,14 @@ export function buildCopiedMessageInsert(
     audioVoice: message.audioVoice,
     audioGeneratedAt: message.audioGeneratedAt,
     attachments: message.attachments,
-    retryContract: message.retryContract,
+    retryContract: message.retryContract && participantIdMap ? {
+      ...message.retryContract,
+      participants: message.retryContract.participants.map(participant => ({
+        ...participant,
+        participantKey: participant.participantKey
+          ? participantIdMap.get(participant.participantKey) : undefined,
+      })),
+    } : message.retryContract,
     terminalErrorCode: message.terminalErrorCode,
     createdAt: message.createdAt,
   };

@@ -1,5 +1,7 @@
+import { DEFAULT_PERSONA_SYSTEM_PROMPT } from "../../../convex/personas/default_prompt";
 import type { Id } from "@convex/_generated/dataModel";
 import type { SkillOverrideState } from "@/hooks/useChatOverrides";
+import type { PersonaRuntimeRoute } from "./PersonaRuntimeRoute";
 
 export type { SkillOverrideState };
 
@@ -33,13 +35,14 @@ export interface FormState {
   skillOverrides: Map<string, SkillOverrideState>;
   /** M30: integration overrides (inherit = not in map) */
   integrationOverrides: Map<string, boolean>;
+  runtimeRoute: PersonaRuntimeRoute | null;
 }
 
 export function defaultForm(): FormState {
   return {
     displayName: "",
     personaDescription: "",
-    systemPrompt: "",
+    systemPrompt: DEFAULT_PERSONA_SYSTEM_PROMPT,
     modelId: "",
     temperatureEnabled: false,
     temperature: "1.0",
@@ -56,6 +59,7 @@ export function defaultForm(): FormState {
     selectedSkillIds: new Set(),
     skillOverrides: new Map(),
     integrationOverrides: new Map(),
+    runtimeRoute: null,
   };
 }
 

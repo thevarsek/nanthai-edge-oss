@@ -1,3 +1,7 @@
+import { runLocalAutonomousTurn } from "./local_turn_execution";
+import { localAutonomousDecision } from "./local_decisions";
+import type { DiscussionOutcome } from "./decision_policy";
+import { DOMAIN_EXECUTION_LEASE_MS } from "../execution/domain_lifecycle";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { durableWorkflow } from "../execution/components";
@@ -34,8 +38,10 @@ export const runAutonomousSessionWorkflow = durableWorkflow
           attemptId: args.executionAttemptId,
           fence: args.executionFence,
           claimantId: session.executionClaimantId,
+          leaseMs: DOMAIN_EXECUTION_LEASE_MS,
         });
-        const outcome = await step.runAction(
+        const route = await step.runQuery(internal.autonomous.local_turns.route, { sessionId: args.sessionId, participantIndex });
+        const outcome = route === "local" ? await runLocalAutonomousTurn(step, { ...args, cycle, participantIndex }) : await step.runAction(
           internal.autonomous.actions.runAutonomousTurn,
           { ...args, cycle, participantIndex },
           // A turn crosses the provider boundary before its final message is
@@ -56,7 +62,12 @@ export const runAutonomousSessionWorkflow = durableWorkflow
         attemptId: args.executionAttemptId,
         fence: args.executionFence,
         claimantId: session.executionClaimantId,
+        leaseMs: DOMAIN_EXECUTION_LEASE_MS,
       });
+      const latestSession = await step.runQuery(internal.autonomous.queries.getSession, { sessionId: args.sessionId });
+      const cloud = latestSession?.executionRunId && await step.runQuery(internal.runtime_host.decision_helpers.hasCloudConnection, { runId: latestSession.executionRunId });
+      const localJudgment = !cloud && latestSession?.status === "running" && latestSession.autoStopOnConsensus
+        ? await localAutonomousDecision(step, { ...args, cycle }, latestSession, "discussion") : null;
       const cycleResult = await step.runAction(
         internal.autonomous.actions.finishAutonomousCycle,
         {
@@ -64,6 +75,7 @@ export const runAutonomousSessionWorkflow = durableWorkflow
           cycle,
           userId: args.userId,
           executionEpoch: args.executionEpoch,
+          ...(!cloud ? { localJudgment: (localJudgment ?? "continue") as DiscussionOutcome } : {}),
         },
         // Consensus detection is also a paid provider call. The next cycle is
         // only safe after this action returns unambiguously.

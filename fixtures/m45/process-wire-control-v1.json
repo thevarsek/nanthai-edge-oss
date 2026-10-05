@@ -1,0 +1,59 @@
+[
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-probe-1",
+    "sequence": 0,
+    "sentAt": 1786752000000,
+    "kind": "probe_request",
+    "payload": {}
+  },
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-cancel-1",
+    "sequence": 1,
+    "sentAt": 1786752000001,
+    "kind": "cancel_request",
+    "payload": {
+      "sessionId": "session-1",
+      "cancellationId": "cancel-run-local-1",
+      "reason": "User cancelled the turn"
+    }
+  },
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-permission-1",
+    "sequence": 2,
+    "sentAt": 1786752000002,
+    "kind": "permission_response_request",
+    "payload": {
+      "sessionId": "session-1",
+      "permissionRequestId": "permission-1",
+      "decision": "allow_once"
+    }
+  },
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-error-1",
+    "sequence": 3,
+    "sentAt": 1786752000003,
+    "kind": "protocol_error",
+    "payload": {
+      "requestMessageId": "wire-probe-1",
+      "code": "UNSUPPORTED_PROTOCOL",
+      "message": "Worker cannot accept the requested protocol version",
+      "recoverable": false
+    }
+  },
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-send-turn-1",
+    "sequence": 3,
+    "sentAt": 1786752000004,
+    "kind": "send_turn_request",
+    "payload": {
+      "sessionId": "session-1",
+      "commandId": "command-1",
+      "packetHash": "0628a7e5f278586e20e27149af2b22181bd5f0cfaa8d1b645c24007746d72329"
+    }
+  }
+]

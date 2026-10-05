@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { Id } from "../_generated/dataModel";
 import { projectCollaborationParticipant } from "../collaboration/dispatch_mutation";
+import { mapParticipantsForGeneration } from "../chat/mutation_send_helpers";
 
 const participantId = "participant_1" as Id<"chatParticipants">;
 
@@ -13,6 +14,7 @@ test("Collaboration preserves provider identity for a bare model", () => {
   });
 
   assert.equal(projected.modelId, "openai/gpt-5.4");
+  assert.equal(projected.participantKey, participantId);
   assert.equal(projected.personaId, undefined);
   assert.equal(projected.personaName, undefined);
   assert.equal(projected.personaEmoji, undefined);
@@ -37,4 +39,9 @@ test("Collaboration preserves the configured identity for a Persona", () => {
     projected.personaAvatarImageUrl,
     "https://example.com/architect.png",
   );
+  const [generation] = mapParticipantsForGeneration(
+    [projected], ["message_1" as Id<"messages">], ["job_1" as Id<"generationJobs">],
+  );
+  assert.equal(generation.chatParticipantId, participantId);
+  assert.equal(generation.personaId, personaId);
 });

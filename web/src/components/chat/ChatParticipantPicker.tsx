@@ -1,3 +1,5 @@
+import { useConnectionFilter } from "@/hooks/useConnectionFilter";
+import { ConnectionFilter, LocalPersonaRecovery } from "@/components/shared/ConnectionFilter";
 // components/chat/ChatParticipantPicker.tsx
 // Multi-select participant picker with full ModelPicker features: 9 sort modes,
 // 5 capability filters, "Help me choose" wizard, model info sheet, provider logos,
@@ -98,7 +100,8 @@ export function ChatParticipantPicker({
   onClose,
   enabledIntegrations,
 }: Props) {
-  const { personas, prefs } = useSharedData();
+  const { prefs } = useSharedData();
+  const { connectionFilter, setConnectionFilter, connectionPersonas: personas } = useConnectionFilter();
   const modelSummaries = useModelSummaries();
   const zdrEnforced = prefs?.zdrEnabled === true;
   const { t } = useTranslation();
@@ -165,8 +168,8 @@ export function ChatParticipantPicker({
 
   // ── Filtered & sorted models (reuses shared pipeline) ───────────────────
   const filteredModels = useMemo(
-    () => filterAndSortModels(models, search, sortKey, activeFilters),
-    [models, search, sortKey, activeFilters],
+    () => connectionFilter === "local" ? [] : filterAndSortModels(models, search, sortKey, activeFilters),
+    [models, search, sortKey, activeFilters, connectionFilter],
   );
 
   const modelModality = useCallback((modelId: string): OutputModalityCategory => {
@@ -363,7 +366,8 @@ export function ChatParticipantPicker({
           </div>
         </div>
 
-        {/* Controls bar */}
+        <ConnectionFilter value={connectionFilter} onChange={setConnectionFilter} />
+      {/* Controls bar */}
         <div className="px-4 pt-2 pb-5 overflow-x-auto overflow-y-hidden shrink-0 bg-surface-1 relative z-10">
           <div className="flex gap-1.5 min-w-max">
           <button type="button" onClick={() => setShowWizard(true)} className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-primary/15 text-primary text-xs font-medium shrink-0 hover:bg-primary/25 transition-colors">
@@ -398,7 +402,8 @@ export function ChatParticipantPicker({
             <SelectedSection participants={participants} onRemove={handleRemove} modelNameMap={modelNameMap} />
           )}
 
-          {/* Personas section */}
+          {connectionFilter === "local" && personas !== undefined && filteredPersonas.length === 0 && <LocalPersonaRecovery />}
+        {/* Personas section */}
           {filteredPersonas.length > 0 && (
             <div className="border-t border-border/30">
               <SectionHeader title={t("personas")} count={filteredPersonas.length} className="pt-2" />

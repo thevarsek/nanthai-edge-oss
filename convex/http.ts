@@ -4,6 +4,10 @@
 // Currently serves file downloads with proper Content-Disposition filenames.
 // =============================================================================
 
+import { usageHistoryHttp } from "./runtime_host/http_usage";
+import { importOfflineHttp } from "./runtime_host/http_offline_import";
+import { publishResultHttp } from "./runtime_host/http_results";
+import { registerExternalMcpHttp } from "./external_mcp/http";
 import { httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
@@ -15,8 +19,35 @@ import {
 } from "./chat/video_output_upload_policy";
 import { stripeWebhook } from "./stripe/webhook";
 import { triggerScheduledJob } from "./scheduledJobs/http";
+import {
+  claimPairingHttp,
+  claimShortPairingHttp,
+  disconnectPresenceHttp,
+  heartbeatPresenceHttp,
+} from "./runtime_host/http_pairing_presence";
+import {
+  claimCommandHttp,
+  completeCommandHttp,
+  fetchRuntimePacketHttp,
+  pollCommandsHttp,
+} from "./runtime_host/http_commands";
+import { fetchRuntimeAttachmentHttp } from "./runtime_host/http_attachments";
+import {
+  heartbeatAttemptHttp,
+  settleAttemptHttp,
+} from "./runtime_host/http_execution";
+import { publishRuntimeEventsHttp } from "./runtime_host/http_events";
+import {
+  completeModelDiscoveryHttp,
+  pollModelDiscoveryHttp,
+} from "./runtime_host/http_model_discovery";
 
 const http = httpRouter();
+registerExternalMcpHttp(http);
+http.route({ path: "/runtime-host/v1/usage/history", method: "POST", handler: httpAction(usageHistoryHttp) });
+http.route({ path: "/runtime-host/v1/pairing/claim-code", method: "POST", handler: httpAction(claimShortPairingHttp) });
+http.route({ path: "/runtime-host/results/import-offline", method: "POST", handler: httpAction(importOfflineHttp) });
+http.route({ path: "/runtime-host/results/publish", method: "POST", handler: httpAction(publishResultHttp) });
 
 export async function handleVideoOutputUpload(
   ctx: ActionCtx,
@@ -202,6 +233,84 @@ http.route({
   path: "/scheduled-jobs/trigger",
   method: "POST",
   handler: triggerScheduledJob,
+});
+
+http.route({
+  path: "/runtime-host/v1/pairing/claim",
+  method: "POST",
+  handler: httpAction(claimPairingHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/presence/heartbeat",
+  method: "POST",
+  handler: httpAction(heartbeatPresenceHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/presence/disconnect",
+  method: "POST",
+  handler: httpAction(disconnectPresenceHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/commands/poll",
+  method: "POST",
+  handler: httpAction(pollCommandsHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/commands/claim",
+  method: "POST",
+  handler: httpAction(claimCommandHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/commands/complete",
+  method: "POST",
+  handler: httpAction(completeCommandHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/model-discovery/poll",
+  method: "POST",
+  handler: httpAction(pollModelDiscoveryHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/model-discovery/complete",
+  method: "POST",
+  handler: httpAction(completeModelDiscoveryHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/events",
+  method: "POST",
+  handler: httpAction(publishRuntimeEventsHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/attempts/heartbeat",
+  method: "POST",
+  handler: httpAction(heartbeatAttemptHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/attempts/settle",
+  method: "POST",
+  handler: httpAction(settleAttemptHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/packets/fetch",
+  method: "GET",
+  handler: httpAction(fetchRuntimePacketHttp),
+});
+
+http.route({
+  path: "/runtime-host/v1/attachments/fetch",
+  method: "POST",
+  handler: httpAction(fetchRuntimeAttachmentHttp),
 });
 
 export default http;

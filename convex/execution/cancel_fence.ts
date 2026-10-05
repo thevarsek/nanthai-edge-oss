@@ -1,8 +1,10 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { closeRuntimeNativeAgentGroupForAttempt } from
+  "../runtime_host/native_agent_lifecycle";
 
 export async function closeRunWriterForCancellation(
-  ctx: Pick<MutationCtx, "db">,
+  ctx: MutationCtx,
   runId: Id<"executionRuns">,
   requestedBy: string,
   reason: string,
@@ -11,6 +13,15 @@ export async function closeRunWriterForCancellation(
   const run = await ctx.db.get(runId);
   if (!run) return null;
   if (["completed", "failed", "cancelled"].includes(run.state)) return run;
+  const attempt = run.activeAttemptId ? await ctx.db.get(run.activeAttemptId) : null;
+  if (attempt?.runId === run._id) {
+    await closeRuntimeNativeAgentGroupForAttempt(ctx, {
+      attemptId: attempt._id,
+      fence: attempt.fence,
+      outcome: "cancelled",
+      now,
+    });
+  }
   if (run.state === "cancelling") return run;
   const patch = {
     state: "cancelling" as const,

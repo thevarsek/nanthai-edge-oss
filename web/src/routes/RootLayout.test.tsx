@@ -3,6 +3,7 @@ import type React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { RootLayout } from "./RootLayout";
+vi.mock("@/components/shared/RuntimeProRecoveryNotice", () => ({ RuntimeProRecoveryNotice: () => null }));
 
 vi.mock("@/components/layout/Sidebar", () => ({
   Sidebar: () => <div>sidebar</div>,

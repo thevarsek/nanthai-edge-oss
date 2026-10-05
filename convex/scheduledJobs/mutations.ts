@@ -1,3 +1,4 @@
+import { runJobNowHandler } from "./run_now";
 // convex/scheduledJobs/mutations.ts
 // =============================================================================
 // Scheduled job CRUD + execution lifecycle mutations.
@@ -34,7 +35,6 @@ import {
 } from "./trigger_auth";
 import {
   apiOccurrenceId,
-  manualOccurrenceId,
   scheduledOccurrenceId,
 } from "./occurrence";
 import {
@@ -683,36 +683,7 @@ export const deleteJob = mutation({
 /** Run Now — trigger immediate execution of any job. */
 export const runJobNow = mutation({
   args: { jobId: v.id("scheduledJobs") },
-  handler: async (ctx, args) => {
-    const { userId } = await requireAuth(ctx);
-    await requirePro(ctx, userId);
-    const job = await ctx.db.get(args.jobId);
-    if (!job || job.userId !== userId) {
-      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Job not found or unauthorized" });
-    }
-    assertScheduledJobNotDeleting(job);
-
-    // Block paused manual jobs from running (for non-manual jobs, allow one-off)
-    // Actually per spec: "Paused manual jobs cannot be run via Run Now"
-    // But for non-manual paused jobs, allow one-off execution without un-pausing
-    if (job.status === "paused" && (job.recurrence as Recurrence).type === "manual") {
-      throw new ConvexError({ code: "VALIDATION" as const, message: "Cannot run a paused manual job — resume it first" });
-    }
-
-    // Fire immediately
-    const occurrenceId = manualOccurrenceId();
-    await ctx.scheduler.runAfter(
-      0,
-      internal.scheduledJobs.actions.executeScheduledJob,
-      {
-        jobId: args.jobId,
-        invocationSource: "manual",
-        occurrenceId,
-      },
-    );
-
-    return { triggered: true, message: "Job execution started" };
-  },
+  handler: runJobNowHandler,
 });
 
 /** Create a new API trigger token for a scheduled job. */
@@ -1328,7 +1299,7 @@ export const createAssistantAndJob = internalMutation({
     );
 
     if (!hasMatchingParticipant) {
-      await ctx.db.insert("chatParticipants", {
+      const participantInsert = {
         chatId: args.chatId,
         userId: args.userId,
         modelId: args.modelId,
@@ -1338,7 +1309,11 @@ export const createAssistantAndJob = internalMutation({
         personaAvatarImageUrl: args.personaAvatarImageUrl,
         sortOrder: existingParticipants.length,
         createdAt: now,
-      });
+      };
+      await ctx.db.insert(
+        "chatParticipants",
+        participantInsert,
+      );
     }
 
     return { assistantMsgId, genJobId };
@@ -1393,148 +1368,7 @@ export const beginExecution = internalMutation({
   },
 });
 
-export const createScheduledExecutionTurn = internalMutation({
-  args: {
-    jobId: v.id("scheduledJobs"),
-    chatId: v.id("chats"),
-    userId: v.string(),
-    executionId: v.string(),
-    stepIndex: v.number(),
-    stepTitle: v.string(),
-    content: v.string(),
-    modelId: v.string(),
-    systemPrompt: v.optional(v.string()),
-    temperature: v.optional(v.number()),
-    maxTokens: v.optional(v.number()),
-    personaId: v.optional(v.id("personas")),
-    personaName: v.optional(v.string()),
-    personaEmoji: v.optional(v.string()),
-    personaAvatarImageUrl: v.optional(v.string()),
-    enabledIntegrations: v.optional(v.array(v.string())),
-  },
-  returns: v.object({
-    userMessageId: v.id("messages"),
-    assistantMsgId: v.id("messages"),
-    genJobId: v.id("generationJobs"),
-    created: v.boolean(),
-  }),
-  handler: async (ctx, args) => {
-    const job = await ctx.db.get(args.jobId);
-    if (!job) {
-      throw new ConvexError({ code: "NOT_FOUND" as const, message: "Scheduled job not found" });
-    }
-    assertScheduledJobNotDeleting(job);
-    if (job.activeExecutionId !== args.executionId) {
-      throw new ConvexError({ code: "EXECUTION_STALE" as const, message: "Scheduled job execution no longer active" });
-    }
-    if (job.activeExecutionChatId !== args.chatId) {
-      throw new ConvexError({ code: "EXECUTION_MISMATCH" as const, message: "Scheduled job execution chat mismatch" });
-    }
-
-    const currentStepIndex = job.activeStepIndex ?? -1;
-    if (currentStepIndex >= args.stepIndex) {
-      if (
-        job.activeUserMessageId
-        && job.activeAssistantMessageId
-        && job.activeGenerationJobId
-      ) {
-        return {
-          userMessageId: job.activeUserMessageId,
-          assistantMsgId: job.activeAssistantMessageId,
-          genJobId: job.activeGenerationJobId,
-          created: false,
-        };
-      }
-      throw new ConvexError({ code: "DUPLICATE_STEP" as const, message: "Scheduled job step already created" });
-    }
-
-    if (currentStepIndex !== args.stepIndex - 1) {
-      throw new ConvexError({ code: "STEP_ORDER" as const, message: "Scheduled job step order mismatch" });
-    }
-
-    const now = Date.now();
-    const parentMessageIds = job.activeAssistantMessageId
-      ? [job.activeAssistantMessageId]
-      : [];
-    const userMessageId = await ctx.db.insert("messages", {
-      chatId: args.chatId,
-      userId: args.userId,
-      role: "user",
-      content: args.content,
-      parentMessageIds,
-      status: "completed",
-      source: "scheduled_step",
-      sourceJobId: args.jobId,
-      sourceStepIndex: args.stepIndex,
-      sourceStepTitle: args.stepTitle,
-      createdAt: now,
-    });
-
-    const assistantMsgId = await ctx.db.insert("messages", {
-      chatId: args.chatId,
-      userId: args.userId,
-      role: "assistant",
-      content: "",
-      modelId: args.modelId,
-      participantId: args.personaId ?? undefined,
-      participantName: args.personaName ?? undefined,
-      participantEmoji: args.personaEmoji ?? undefined,
-      participantAvatarImageUrl: args.personaAvatarImageUrl ?? undefined,
-      parentMessageIds: [userMessageId],
-      status: "pending",
-      enabledIntegrations: args.enabledIntegrations,
-      sourceJobId: args.jobId,
-      sourceStepIndex: args.stepIndex,
-      sourceStepTitle: args.stepTitle,
-      createdAt: now,
-    });
-
-    const genJobId = await ctx.db.insert("generationJobs", {
-      chatId: args.chatId,
-      messageId: assistantMsgId,
-      userId: args.userId,
-      modelId: args.modelId,
-      status: "queued",
-      sourceJobId: args.jobId,
-      sourceExecutionId: args.executionId,
-      sourceStepIndex: args.stepIndex,
-      sourceStepTitle: args.stepTitle,
-      createdAt: now,
-    });
-
-    const existingParticipants = await ctx.db
-      .query("chatParticipants")
-      .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
-      .collect();
-    const hasMatchingParticipant = existingParticipants.some((participant) =>
-      participant.modelId === args.modelId
-      && (participant.personaId ?? undefined) === (args.personaId ?? undefined),
-    );
-    if (!hasMatchingParticipant) {
-      await ctx.db.insert("chatParticipants", {
-        chatId: args.chatId,
-        userId: args.userId,
-        modelId: args.modelId,
-        personaId: args.personaId,
-        personaName: args.personaName,
-        personaEmoji: args.personaEmoji,
-        personaAvatarImageUrl: args.personaAvatarImageUrl,
-        sortOrder: existingParticipants.length,
-        createdAt: now,
-      });
-    }
-
-    await ctx.db.patch(args.jobId, {
-      activeStepIndex: args.stepIndex,
-      activeUserMessageId: userMessageId,
-      activeAssistantMessageId: assistantMsgId,
-      activeGenerationJobId: genJobId,
-      updatedAt: now,
-    });
-
-    return { userMessageId, assistantMsgId, genJobId, created: true };
-  },
-});
+export { createScheduledExecutionTurn } from "./execution_turn";
 
 /** Internal: create a search session for web/paper search from scheduled jobs. */
 export const createSearchSession = internalMutation({

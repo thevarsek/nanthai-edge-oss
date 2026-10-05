@@ -6,7 +6,10 @@ import type { AnalyticsClientMetadata } from "../analytics/client_metadata";
 import { cancelGenerationContinuationHandler } from "./mutations_generation_continuation_handlers";
 import { RetryContract } from "./retry_contract";
 import { TerminalErrorCode } from "./terminal_error";
-import { createGenerationExecution } from "../execution/control_plane";
+import {
+  createGenerationExecution,
+  resolveGenerationExecutionRoute,
+} from "../execution/control_plane";
 import { cancelExecutionForGenerationJob } from "../execution/cancellation";
 
 const MAX_TOTAL_ATTACHMENT_BYTES = 25 * 1024 * 1024;
@@ -28,7 +31,6 @@ export type NormalizedAttachment = {
   type: string;
   url: string;
   storageId?: Id<"_storage">;
-  uploadSessionId?: Id<"chatUploadSessions">;
   name?: string;
   mimeType?: string;
   sizeBytes?: number;
@@ -163,7 +165,6 @@ export async function normalizeMessageAttachments(
               ? attachment.name
               : "attachment",
           mimeType: storageMetadata?.contentType ?? attachment.mimeType,
-          uploadSessionId: attachment.uploadSessionId,
           sizeBytes,
           driveFileId: attachment.driveFileId,
           lastRefreshedAt: attachment.lastRefreshedAt,
@@ -297,20 +298,12 @@ export function normalizeParticipants(
   return participants.length > 0 ? participants : [{ modelId: defaultModelId }];
 }
 
-function withoutParticipantKey(
-  participant: SendParticipantConfig,
-): SendParticipantConfig {
-  const generationParticipant = { ...participant };
-  delete generationParticipant.participantKey;
-  return generationParticipant;
-}
-
 export function selectMentionedParticipants(
   participants: SendParticipantConfig[],
   mentionedParticipantKeys: string[] | undefined,
 ): SendParticipantConfig[] {
   if (!mentionedParticipantKeys || mentionedParticipantKeys.length === 0) {
-    return participants.map(withoutParticipantKey);
+    return participants;
   }
 
   const requestedKeys = new Set<string>();
@@ -349,8 +342,7 @@ export function selectMentionedParticipants(
   return participants
     .filter((participant) =>
       participant.participantKey !== undefined && requestedKeys.has(participant.participantKey),
-    )
-    .map(withoutParticipantKey);
+    );
 }
 
 export async function createAssistantMessagesAndJobs(
@@ -396,6 +388,8 @@ export async function createAssistantMessagesAndJobs(
   for (let index = 0; index < args.participants.length; index += 1) {
     const participant = args.participants[index];
     const collaboration = args.collaboration?.participants[index];
+    const chatParticipantId = collaboration?.chatParticipantId
+      ?? participant.participantKey as Id<"chatParticipants"> | undefined;
     const assistantMessageId = await ctx.db.insert("messages", {
       chatId: args.chatId,
       userId: args.userId,
@@ -406,7 +400,7 @@ export async function createAssistantMessagesAndJobs(
       participantName: participant.personaName ?? undefined,
       participantEmoji: participant.personaEmoji ?? undefined,
       participantAvatarImageUrl: participant.personaAvatarImageUrl ?? undefined,
-      chatParticipantId: collaboration?.chatParticipantId,
+      chatParticipantId,
       collaborationExchangeId: args.collaboration?.exchangeId,
       collaborationDecisionId: args.collaboration?.decisionId,
       collaborationWave: args.collaboration?.wave,
@@ -449,8 +443,15 @@ export async function createAssistantMessagesAndJobs(
       collaborationExchangeId: args.collaboration?.exchangeId,
       collaborationDecisionId: args.collaboration?.decisionId,
       collaborationWave: args.collaboration?.wave,
-      chatParticipantId: collaboration?.chatParticipantId,
+      chatParticipantId,
       createdAt: args.jobCreatedAt,
+    });
+    const route = await resolveGenerationExecutionRoute(ctx, {
+      userId: args.userId,
+      chatParticipantId,
+      personaId: participant.personaId ?? null,
+      now: args.jobCreatedAt,
+      allowOfflineWait: args.parentRunId === undefined,
     });
     await createGenerationExecution(ctx, {
       jobId,
@@ -458,6 +459,7 @@ export async function createAssistantMessagesAndJobs(
       chatId: args.chatId,
       sourceMessageId: assistantMessageId,
       modelId: participant.modelId,
+      route,
       parentRunId: args.parentRunId,
       now: args.jobCreatedAt,
     });
@@ -473,17 +475,21 @@ export function mapParticipantsForGeneration(
   generationJobIds: Id<"generationJobs">[],
   streamingMessageIds?: Id<"streamingMessages">[],
 ) {
-  return participants.map((participant, index) => ({
-    ...participant,
-    personaId: participant.personaId ?? undefined,
-    personaName: participant.personaName ?? undefined,
-    personaEmoji: participant.personaEmoji ?? undefined,
-    systemPrompt: participant.systemPrompt ?? undefined,
-    reasoningEffort: participant.reasoningEffort ?? undefined,
-    messageId: assistantMessageIds[index],
-    jobId: generationJobIds[index],
-    streamingMessageId: streamingMessageIds?.[index],
-  }));
+  return participants.map((participant, index) => {
+    const { participantKey, ...config } = participant;
+    return {
+      ...config,
+      chatParticipantId: participantKey as Id<"chatParticipants"> | undefined,
+      personaId: participant.personaId ?? undefined,
+      personaName: participant.personaName ?? undefined,
+      personaEmoji: participant.personaEmoji ?? undefined,
+      systemPrompt: participant.systemPrompt ?? undefined,
+      reasoningEffort: participant.reasoningEffort ?? undefined,
+      messageId: assistantMessageIds[index],
+      jobId: generationJobIds[index],
+      streamingMessageId: streamingMessageIds?.[index],
+    };
+  });
 }
 
 export async function cancelGenerationJobsForMessage(

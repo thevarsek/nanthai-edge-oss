@@ -5,10 +5,17 @@ import { UserMessage } from "./MessageBubble.UserMessage";
 import type { AudioPlaybackContextValue } from "./AudioPlaybackContext.hook";
 import type { Message } from "@/hooks/useChat";
 import type { Id } from "@convex/_generated/dataModel";
+import { MessageBubble } from "./MessageBubble";
+import type { GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 
 vi.mock("./MessageAttachments", () => ({
   MessageAttachments: () => <div data-testid="attachments" />,
 }));
+vi.mock("./GeneratedFilesCard", () => ({
+  GeneratedFilesCard: ({ messageId, onOpenFile }: { messageId: string; onOpenFile?: (request: GeneratedFileOpenRequest) => void }) =>
+    <button onClick={() => onOpenFile?.({ file: { _id: "report", filename: "qa.md", mimeType: "text/markdown" } })}>{messageId} report</button>,
+}));
+vi.mock("./MessageBubble.AssistantMessage", () => ({ AssistantMessage: () => null }));
 
 const playback: AudioPlaybackContextValue = {
   state: {
@@ -43,6 +50,16 @@ function renderUserMessage(message: Message = baseMessage) {
 }
 
 describe("UserMessage", () => {
+  it("opens a published user report through the normal chat callback with its attribution intact", () => {
+    const message = { ...baseMessage, content: "QA MCP client · qa.md", generatedFileIds: ["report"] } as Message;
+    const onOpen = vi.fn();
+    render(<AudioPlaybackContext.Provider value={playback}>
+      <MessageBubble message={message} isStreaming={false} participants={[]} onRetry={vi.fn()} onFork={vi.fn()} onOpenGeneratedFile={onOpen} />
+    </AudioPlaybackContext.Provider>);
+    fireEvent.click(screen.getByRole("button", { name: "msg_user_1 report" }));
+    expect(screen.getByTestId("user-message")).toHaveTextContent("QA MCP client · qa.md");
+    expect(onOpen).toHaveBeenCalledWith({ file: { _id: "report", filename: "qa.md", mimeType: "text/markdown" }, message });
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();

@@ -64,6 +64,14 @@ const RemoteMcpOAuthCallbackPage = lazy(() =>
     default: module.RemoteMcpOAuthCallbackPage,
   })),
 );
+const LocalRuntimePage = lazy(() =>
+  import("@/routes/LocalRuntimePage").then((module) => ({ default: module.LocalRuntimePage })),
+);
+const RuntimeConnectPage = lazy(() =>
+  import("@/routes/RuntimeConnectPage").then((module) => ({ default: module.RuntimeConnectPage })),
+);
+const McpAuthorizePage = lazy(() => import("@/routes/McpAuthorizePage").then(module => ({ default: module.McpAuthorizePage })));
+const McpConnectionsPage = lazy(() => import("@/routes/McpConnectionsPage").then(module => ({ default: module.McpConnectionsPage })));
 
 function suspended(element: ReactNode) {
   return <AppRouteBoundary>{element}</AppRouteBoundary>;
@@ -88,10 +96,14 @@ const appChildren: RouteObject[] = [
   { path: "settings/providers", element: suspended(<ProviderListPage />) },
   { path: "settings/favorites", element: suspended(<ManageFavoritesPage />) },
   { path: "settings/remote-mcp", element: suspended(<RemoteMcpPage />) },
+  { path: "settings/local-runtime", element: suspended(<LocalRuntimePage />) },
+  { path: "settings/mcp-connections", element: suspended(<McpConnectionsPage />) },
   { path: "*", element: <AppNotFound homeTarget="/app" /> },
 ];
 
 export const authenticatedRoutes: RouteObject[] = [
+  { path: "/mcp/authorize", element: <AuthGuard requireOnboarding={false}>{suspended(<McpAuthorizePage />)}</AuthGuard> },
+  { path: "/runtime/connect", element: <AuthGuard requireOnboarding={false}>{suspended(<RuntimeConnectPage />)}</AuthGuard> },
   {
     path: "/app",
     element: (

@@ -6,6 +6,9 @@ import { clearAudioGenerationForExecutionRun } from "../chat/audio_cleanup";
 import { cancelAdvisorForExecutionRun } from "../advisors/execution_lifecycle";
 import { terminalizeAttempt } from "./attempts";
 import { appendRunEventUnchecked } from "./events";
+import { closeRuntimePermissionsForRun } from "../runtime_host/permission_ingestion";
+import { hasStoppedAttemptOwner } from "../runtime_host/host_session_auth";
+import { deferActiveLocalTurnCancellation } from "../runtime_host/chat_cancellation";
 
 export interface OwnedComponent {
   componentRefId?: Id<"executionComponentRefs">;
@@ -85,6 +88,10 @@ export async function cancelRunState(
   reason: string,
   now: number,
 ): Promise<CancelRunStateResult> {
+  const permissionsClosed = await closeRuntimePermissionsForRun(ctx, run._id, reason, now);
+  if (await deferActiveLocalTurnCancellation(ctx, run, requestedBy, reason, now)) {
+    return { components: [], localDone: false };
+  }
   const [analyticsCleanupDone, advisorCleanupDone] = await Promise.all([
     cancelAndCleanupForExecutionRun(ctx, run._id),
     cancelAdvisorForExecutionRun(ctx, run._id),
@@ -193,7 +200,12 @@ export async function cancelRunState(
       .take(RUN_CLEANUP_BATCH_SIZE)),
   )).flat().slice(0, RUN_CLEANUP_BATCH_SIZE);
   const owned: OwnedComponent[] = [];
+  const runtimeStopped = activeAttempt ? await hasStoppedAttemptOwner(ctx, activeAttempt) : false;
   for (const component of components) {
+    if (component.adapterId === "local-runtime" && component.attemptId === activeAttempt?._id && runtimeStopped) {
+      await ctx.db.patch(component._id, { status: "cancelled", terminalAt: now, updatedAt: now });
+      continue;
+    }
     if (component.status === "active" || component.status === "cancel_requested") {
       if (component.status === "active") {
         await ctx.db.patch(component._id, { status: "cancel_requested", updatedAt: now });
@@ -209,6 +221,7 @@ export async function cancelRunState(
   }
   const localDone = bindings.length === 0
     && commands.length === 0
+    && permissionsClosed === 0
     && prepared.length === 0
     && dispatching.length === 0
     && domainCleanupDone;

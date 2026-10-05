@@ -68,8 +68,7 @@ export function HomeWorkflowProofSection() {
                 <div>
                 <span className="edge-label efg-35">{t("home_proof_label")}</span>
                   <h3 className="edge-display mt-3 text-[clamp(1.7rem,3vw,2.65rem)] efg-heading">
-                    {t("home_cap_heading_line1")}{" "}
-                    <span className="edge-accent">{t("home_cap_heading_line2")}</span>
+                    {t("home_proof_heading")}
                   </h3>
                 </div>
                 <span className="edge-proof-chip edge-proof-chip-warm rounded-full px-3 py-1 text-[0.72rem]">

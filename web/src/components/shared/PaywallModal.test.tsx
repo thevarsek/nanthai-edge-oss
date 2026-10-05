@@ -29,6 +29,16 @@ describe("PaywallModal", () => {
     });
   });
 
+  it("explains local runtime billing and passes the exact handoff context to existing checkout", async () => {
+    createCheckoutSession.mockRejectedValueOnce(new Error("Checkout unavailable"));
+    const checkoutContext = { kind: "runtime-connect" as const, state: "01234567-89ab-cdef", computer: "My Mac" };
+    render(<PaywallModal feature="Local Runtime" checkoutContext={checkoutContext} onClose={() => {}} />);
+    expect(screen.getByText("runtime_pro_purchase_help")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "get_nanthai_pro" }));
+    await waitFor(() => expect(createCheckoutSession).toHaveBeenCalledWith({ checkoutContext }));
+    await screen.findByRole("alert");
+  });
+
   it("locks background scrolling while mounted and restores the previous value", () => {
     document.body.style.overflow = "clip";
 

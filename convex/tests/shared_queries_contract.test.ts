@@ -25,6 +25,7 @@ test("persona queries are auth-aware and resolve avatar URLs", async () => {
       query: () => ({
         withIndex: () => ({
           collect: async () => personas,
+          unique: async () => null,
         }),
       }),
     },

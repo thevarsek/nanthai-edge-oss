@@ -235,6 +235,6 @@ test("assistant/job creation and scheduled execution turns dedupe participants a
     modelId: "model_a",
   });
   assert.equal(created.created, true);
-  assert.deepEqual(createTurn.inserts[0]?.value.parentMessageIds, ["previous_assistant"]);
+  assert.deepEqual(createTurn.inserts.find((row) => row.table === "messages" && row.value.role === "user")?.value.parentMessageIds, ["previous_assistant"]);
   assert.equal(createTurn.patches[0]?.value.activeStepIndex, 1);
 });

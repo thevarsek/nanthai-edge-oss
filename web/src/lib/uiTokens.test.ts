@@ -16,6 +16,7 @@ describe("ui semantic tokens", () => {
     expect(toneForStatus("completed")).toBe("success");
     expect(toneForStatus("failed")).toBe("danger");
     expect(toneForStatus("cancelled")).toBe("warning");
+    expect(toneForStatus("interrupted")).toBe("warning");
     expect(toneForStatus("pro")).toBe("locked");
   });
 

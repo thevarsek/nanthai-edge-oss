@@ -35,7 +35,7 @@ export const runScheduledExecutionWorkflow = durableWorkflow
     if (!initialized) return null;
     try {
       for (let stepIndex = 0; stepIndex < initialized.stepCount; stepIndex += 1) {
-        await step.runAction(
+        const dispatched = await step.runAction(
           internal.scheduledJobs.workflow_actions.dispatchScheduledStep,
           {
             jobId: args.jobId,
@@ -45,6 +45,7 @@ export const runScheduledExecutionWorkflow = durableWorkflow
           },
           { retry: true },
         );
+        if (dispatched === false) return null;
         const result = await step.awaitEvent({
           name: scheduledStepEventName(stepIndex),
           validator: stepResultValidator,

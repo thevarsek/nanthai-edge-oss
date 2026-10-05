@@ -1,8 +1,9 @@
+import { assertMemoryHelperExecution, type MemoryHelperExecution } from "../memory/helper_write_fence";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { isUserDataWritable } from "../lib/write_fence";
 
-export interface ReinforceMemoryArgs extends Record<string, unknown> {
+export interface ReinforceMemoryArgs extends Record<string, unknown>, MemoryHelperExecution {
   memoryId: Id<"memories">;
   reinforcedAt: number;
   candidateMemoryType?: "profile" | "responsePreference" | "workContext" | "transient";
@@ -23,6 +24,7 @@ export async function reinforceMemoryHandler(
     || !await isUserDataWritable(ctx, memory.userId, memory.sourceChatId)
   ) return;
 
+  await assertMemoryHelperExecution(ctx, args, memory.userId);
   const reinforcementCount = (memory.reinforcementCount ?? 1) + 1;
   const patch: Record<string, unknown> = {
     reinforcementCount,
@@ -72,7 +74,7 @@ export async function reinforceMemoryHandler(
   await ctx.db.patch(args.memoryId, patch);
 }
 
-export interface SupersedeMemoryArgs extends Record<string, unknown> {
+export interface SupersedeMemoryArgs extends Record<string, unknown>, MemoryHelperExecution {
   memoryId: Id<"memories">;
   supersededAt: number;
   supersededByMemoryId?: Id<"memories">;
@@ -85,6 +87,7 @@ export async function supersedeMemoryHandler(
   const memory = await ctx.db.get(args.memoryId);
   if (!memory || !await isUserDataWritable(ctx, memory.userId, memory.sourceChatId)) return;
 
+  await assertMemoryHelperExecution(ctx, args, memory.userId);
   await ctx.db.patch(args.memoryId, {
     isSuperseded: true,
     supersededByMemoryId: args.supersededByMemoryId,
@@ -94,7 +97,7 @@ export async function supersedeMemoryHandler(
   });
 }
 
-export interface TouchMemoriesArgs extends Record<string, unknown> {
+export interface TouchMemoriesArgs extends Record<string, unknown>, MemoryHelperExecution {
   memoryIds: Id<"memories">[];
   touchedAt: number;
 }

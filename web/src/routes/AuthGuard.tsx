@@ -18,7 +18,7 @@ interface AuthGuardProps {
  * - Unauthenticated users → /sign-in
  * - Clerk signed-in but Convex not yet authenticated → loading spinner
  * - Authenticated + no preferences row → creates one with defaults (shows spinner)
- * - Authenticated + onboarding incomplete → /onboarding (unless requireOnboarding=false)
+ * - Incomplete onboarding without explicit local setup → /onboarding
  * - Authenticated + onboarding complete → renders children
  */
 export function AuthGuard({ children, requireOnboarding = true }: AuthGuardProps) {
@@ -77,7 +77,9 @@ export function AuthGuard({ children, requireOnboarding = true }: AuthGuardProps
 
   // Not signed in → redirect to sign-in
   if (!isSignedIn) {
-    return <Navigate to="/sign-in" state={{ from: location }} replace />;
+    const target = ["/runtime/connect", "/mcp/authorize"].includes(location.pathname)
+      ? `/sign-in?redirect_url=${encodeURIComponent(location.pathname + location.search)}` : "/sign-in";
+    return <Navigate to={target} state={{ from: location }} replace />;
   }
 
   // Convex auth is still establishing (token being fetched/confirmed).
@@ -130,7 +132,7 @@ export function AuthGuard({ children, requireOnboarding = true }: AuthGuardProps
     );
   }
 
-  if (requireOnboarding && !prefs.onboardingCompleted) {
+  if (requireOnboarding && !prefs.onboardingCompleted && !prefs.runtimeOnboardingState) {
     return <Navigate to="/onboarding" replace />;
   }
 

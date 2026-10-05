@@ -10,7 +10,7 @@
 //
 // Centralising the insert + the Drive grant cache deletion keeps schema drift
 // from leaking across `convex/chat/`, `convex/drive_picker/`, and the new
-// `convex/knowledge_base/` modules. See `docs/client-convex-contract.md` —
+// `convex/knowledge_base/` modules. See `docs/architecture/client-convex-contract.md` —
 // shared business logic must live in Convex, not duplicated per call site.
 // =============================================================================
 

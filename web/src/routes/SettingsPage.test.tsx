@@ -49,6 +49,13 @@ vi.mock("@clerk/react", () => ({
 vi.mock("convex/react", () => ({
   useAction: () => vi.fn(async () => null),
   useMutation: () => upsertPreferences,
+  useQuery: () => ({ status: "online", deviceName: "QA Mac", pairedCount: 1, readyCount: 1 }),
+}));
+
+vi.mock("@/hooks/useSharedData", () => ({
+  useOpenRouterStatus: () => true,
+  useCreditBalance: () => ({ balance: 13.17, loading: false }),
+  formatUsd: (value: number) => `$${value.toFixed(2)}`,
 }));
 
 vi.mock("@/components/settings/AccountSection", () => ({
@@ -136,6 +143,8 @@ describe("SettingsPage", () => {
     expect(screen.getByText("integrations subpage")).toBeInTheDocument();
 
     fireEvent.click(screen.getAllByRole("button")[0]);
+    expect(screen.getByText("ai_connections")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /OpenRouter/ }));
     expect(screen.getByText("openrouter section")).toBeInTheDocument();
   });
 
@@ -148,6 +157,13 @@ describe("SettingsPage", () => {
     fireEvent.click(screen.getByText("replay_in_app_walkthrough"));
     expect(upsertPreferences).toHaveBeenCalledWith({ hasSeenMainWalkthrough: false });
     expect(navigate).toHaveBeenCalledWith("/app");
+  });
+
+  it("links to the product Local Runtime controller without a Pro gate", () => {
+    renderSettingsPage();
+
+    expect(screen.getByRole("link", { name: /local_runtime_title/ }))
+      .toHaveAttribute("href", "/app/settings/local-runtime");
   });
 
   it("renders profile details, deduplicates linked accounts, and surfaces photo errors", async () => {

@@ -1,9 +1,10 @@
 import { cn } from "@/lib/utils";
 import { EdgeSiteHeader } from "./EdgeSiteHeader";
 import { EdgeSiteFooter } from "./EdgeSiteFooter";
+import { PublicPageScroll } from "./PublicPageScroll";
 
 type EdgeSiteLayoutProps = {
-  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing";
+  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing" | "workflows";
   children: React.ReactNode;
   mainClassName?: string;
 };
@@ -15,6 +16,7 @@ export function EdgeSiteLayout({
 }: EdgeSiteLayoutProps) {
   return (
     <div className="edge-site-shell min-h-screen overflow-x-clip">
+      <PublicPageScroll />
       {/* Cinematic light cone — single dramatic top-center wash */}
       <div className="pointer-events-none fixed inset-0" aria-hidden="true">
         {/* Primary light cone — top center, large elliptical wash */}

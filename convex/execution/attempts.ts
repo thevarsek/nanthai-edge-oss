@@ -3,6 +3,8 @@ import type { MutationCtx } from "../_generated/server";
 import { appendRunEventUnchecked } from "./events";
 import type { ExecutionAttemptState, ExecutionRunState } from "./validators";
 import { TERMINAL_ATTEMPT_STATES, TERMINAL_RUN_STATES } from "./validators";
+import { closeRuntimeNativeAgentGroupForAttempt } from
+  "../runtime_host/native_agent_lifecycle";
 
 export const DEFAULT_EXECUTION_LEASE_MS = 12 * 60 * 1000;
 
@@ -44,9 +46,14 @@ async function supersedeAttempt(
     adapterVersion: previous.adapterVersion,
     provider: previous.provider,
     modelId: previous.modelId,
+    modelSelectionMode: previous.modelSelectionMode,
     runtimeLabel: previous.runtimeLabel,
     deviceId: previous.deviceId,
     workspaceId: previous.workspaceId,
+    chatParticipantId: previous.chatParticipantId,
+    participantRouteSnapshotId: previous.participantRouteSnapshotId,
+    chatRuntimeOverrideId: previous.chatRuntimeOverrideId,
+    routeSnapshotHash: previous.routeSnapshotHash,
     protocolVersion: previous.protocolVersion,
     orchestrationEngine: previous.orchestrationEngine,
     orchestrationVersion: previous.orchestrationVersion,
@@ -80,6 +87,12 @@ async function supersedeAttempt(
     supersededByAttemptId: attemptId,
     completedAt: now,
     updatedAt: now,
+  });
+  await closeRuntimeNativeAgentGroupForAttempt(ctx, {
+    attemptId: previous._id,
+    fence: previous.fence,
+    outcome: "interrupted",
+    now,
   });
   await ctx.db.patch(run._id, {
     activeAttemptId: attemptId,
@@ -220,6 +233,12 @@ export async function terminalizeAttempt(
     run.terminalOutcome
     && (run.state === "completed" || run.state === "failed" || run.state === "cancelled")
   ) {
+    await closeRuntimeNativeAgentGroupForAttempt(ctx, {
+      attemptId: attempt._id,
+      fence: attempt.fence,
+      outcome: run.terminalOutcome,
+      now: args.now ?? Date.now(),
+    });
     return { changed: false, outcome: run.terminalOutcome };
   }
   const current = await assertCurrentExecution(ctx, {
@@ -254,6 +273,12 @@ export async function terminalizeAttempt(
     fence: current.attempt.fence,
     type: args.outcome,
     summary: args.summary ?? args.outcome,
+    now,
+  });
+  await closeRuntimeNativeAgentGroupForAttempt(ctx, {
+    attemptId: current.attempt._id,
+    fence: current.attempt.fence,
+    outcome: args.outcome,
     now,
   });
   return { changed: true, outcome: args.outcome };

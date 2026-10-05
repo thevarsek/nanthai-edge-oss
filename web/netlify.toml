@@ -11,8 +11,18 @@
   # download a headless Chrome binary during the Netlify frontend build.
   PUPPETEER_SKIP_DOWNLOAD = "true"
 
-# Preserve the closest current destination for the only legacy content URL
-# still receiving Google impressions. Keep this before the catch-all host move.
+# Retain old review bookmarks while using customer-facing workflow URLs.
+[[redirects]]
+  from = "/research/results"
+  to = "/workflows"
+  status = 301
+
+[[redirects]]
+  from = "/research/methods"
+  to = "/local-runtime"
+  status = 301
+
+# Preserve the legacy content URL receiving Google impressions before the host move.
 [[redirects]]
   from = "https://chat.nanthai.tech/blog/ai-pdf-analysis-guide"
   to = "https://nanthai.tech/features/knowledge-base"

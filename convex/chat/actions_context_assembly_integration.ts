@@ -1,3 +1,5 @@
+import { contextEvidenceCandidates, type EvidenceCandidate } from "./source_evidence";
+import { rehydrateStoredArtifacts } from "./context_assembly_artifact_rehydration";
 import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
@@ -26,6 +28,7 @@ export interface GenerationContextAssemblyInput {
   jobId: Id<"generationJobs">;
   participantId: string;
   legacyMessages: OpenRouterMessage[];
+  sharedMemorySources?: EvidenceCandidate[];
   allMessages: ContextMessage[];
   providerContextWindowTokens?: number;
   mode?: "read_path" | "autonomous_discussion" | "collaborative_discussion" | "subagent_child" | "subagent_parent_resume";
@@ -45,33 +48,6 @@ function shouldRequestExactArtifactRehydration(
   const lastUser = [...messages].reverse().find((message) => message.role === "user");
   const content = typeof lastUser?.content === "string" ? lastUser.content.toLowerCase() : "";
   return /\b(exact|verbatim|previous csv|same csv|raw output|full result)\b/.test(content);
-}
-
-async function rehydrateStoredArtifacts(
-  ctx: ActionCtx,
-  artifacts: AssemblyArtifactCandidate[],
-  artifactIds: Set<string>,
-): Promise<{ artifacts: AssemblyArtifactCandidate[]; bytesRead: number; durationMs: number }> {
-  const startedAt = Date.now();
-  let bytesRead = 0;
-  const rehydrated = await Promise.all(artifacts.map(async (artifact) => {
-    if (!artifactIds.has(String(artifact._id))) return artifact;
-    const storageId = artifact.resultStorageId;
-    if (artifact.resultRaw || !storageId) return artifact;
-    const blob = await ctx.storage.get(storageId);
-    if (!blob) return artifact;
-    const resultRaw = await blob.text();
-    bytesRead += resultRaw.length;
-    return {
-      ...artifact,
-      resultRaw,
-    };
-  }));
-  return {
-    artifacts: rehydrated,
-    bytesRead,
-    durationMs: Date.now() - startedAt,
-  };
 }
 
 function normalizeAssemblyQueryResult<T>(
@@ -291,7 +267,14 @@ export async function prepareRequestContextForGeneration(
     decisionSummary: assembly.assemblyPlan.policyDecisions.join("; "),
   });
 
-  return prepareParticipantTurn(assembly, input.causality);
+  const prepared = prepareParticipantTurn(assembly, input.causality);
+  prepared.evidenceSources = contextEvidenceCandidates(
+    prepared.providerMessages,
+    toolMemories.map(memory => ({ _id: String(memory._id), summary: memory.summary })),
+    prepared.context.memoryIds.map(String),
+    input.sharedMemorySources,
+  );
+  return prepared;
 }
 
 export async function assembleRequestContextForGeneration(

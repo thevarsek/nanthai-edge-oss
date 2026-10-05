@@ -87,6 +87,8 @@ async function reconcileDomainAfterWorkflowFailure(
       });
     }
   } else if (run.domainType === "collaboration_exchange") {
+    const timedOut = summary.includes("COLLABORATION_BARRIER_TIMEOUT");
+    const failureMessage = timedOut ? "Collaboration timed out." : summary;
     const exchange = await ctx.db.get(
       run.domainId as Id<"collaborationExchanges">,
     );
@@ -101,8 +103,8 @@ async function reconcileDomainAfterWorkflowFailure(
         activeParticipantIds: [],
         terminalReason: cancelled
           ? "workflow_cancelled"
-          : "scheduler_or_control_plane_failure",
-        error: cancelled ? undefined : summary.slice(0, 2_000),
+          : timedOut ? "deadline_expired" : "scheduler_or_control_plane_failure",
+        error: cancelled ? undefined : failureMessage.slice(0, 2_000),
         completedAt: now,
         updatedAt: now,
       });
@@ -120,6 +122,25 @@ async function reconcileDomainAfterWorkflowFailure(
           run.userId,
           "Collaboration coordinator failed",
         );
+        const job = childRun.generationJobId
+          ? await ctx.db.get(childRun.generationJobId)
+          : null;
+        if (job && !["completed", "failed", "cancelled", "timedOut"].includes(job.status)) {
+          const message = await ctx.db.get(job.messageId);
+          if (message) {
+            await finalizeGenerationHandler(ctx, {
+              messageId: message._id,
+              jobId: job._id,
+              chatId: job.chatId,
+              userId: job.userId,
+              content: message.content,
+              status: "failed",
+              error: failureMessage,
+              terminalErrorCode: timedOut ? "stream_timeout" : undefined,
+              skipExecutionTerminalization: true,
+            });
+          }
+        }
         await ctx.scheduler.runAfter(
           0,
           internal.execution.teardown.cancelRunTree,

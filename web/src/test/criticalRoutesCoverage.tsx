@@ -118,6 +118,8 @@ vi.mock("convex/react", () => ({
       case "skillDetail":
         return args === "skip" ? undefined : mockState.queryData.skillDetail;
       case "persona":
+        if (name === "runtime_host/devices:listMyDevices") return [];
+        if (name === "runtime_host/route_queries:getPersonaRuntime") return null;
         return args === "skip" ? undefined : mockState.queryData.persona;
       default:
         return undefined;

@@ -8,6 +8,7 @@ import { useOpenRouterStatus, useSharedData } from "@/hooks/useSharedData";
 import { generatePKCE } from "@/lib/pkce";
 import { OpenRouter } from "@/lib/constants";
 import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
+import { useRuntimeProAction } from "@/hooks/useRuntimeProAction";
 
 // MARK: - Screen definitions
 
@@ -27,7 +28,8 @@ export function OnboardingPage() {
   const [searchParams] = useSearchParams();
   const hasApiKey = useOpenRouterStatus();
   const { prefs } = useSharedData();
-  const [current, setCurrent] = useState(0);
+  const connectionChoice = searchParams.get("mode") === "connections";
+  const [current, setCurrent] = useState(connectionChoice ? 5 : 0);
   const [finishing, setFinishing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const capturedOnboardingStartedRef = useRef(false);
@@ -46,6 +48,9 @@ export function OnboardingPage() {
     api.preferences.mutations.setOnboardingCompleted,
   );
 
+  const beginLocalSetup = useMutation(api.runtime_host.activation.begin);
+  const localPro = useRuntimeProAction({ kind: "onboarding" }, { resume: () => void handleFinish(true) });
+
   const screen = SCREENS[current];
   const isFirst = current === 0;
   const isLast = current === SCREENS.length - 1;
@@ -63,8 +68,8 @@ export function OnboardingPage() {
   const shouldCaptureOnboardingAnalytics = isReplayMode || prefs?.onboardingCompleted === false;
 
   useEffect(() => {
-    if (!isReplayMode && prefs?.onboardingCompleted) {
-      navigate("/openrouter-required", { replace: true });
+    if (!isReplayMode && !connectionChoice && (prefs?.onboardingCompleted || (prefs?.runtimeOnboardingState && localPro.isPro))) {
+      navigate(prefs.onboardingCompleted ? "/app/chat" : "/app/settings/local-runtime", { replace: true });
       return;
     }
     if (!shouldCaptureOnboardingAnalytics) return;
@@ -76,7 +81,7 @@ export function OnboardingPage() {
         replay_mode: isReplayMode,
       });
     }
-  }, [isReplayMode, navigate, prefs?.onboardingCompleted, shouldCaptureOnboardingAnalytics]);
+  }, [connectionChoice, isReplayMode, localPro.isPro, navigate, prefs?.onboardingCompleted, prefs?.runtimeOnboardingState, shouldCaptureOnboardingAnalytics]);
 
   useEffect(() => {
     if (!shouldCaptureOnboardingAnalytics) return;
@@ -108,12 +113,12 @@ export function OnboardingPage() {
       const { state, verifier, challenge } = await generatePKCE();
       sessionStorage.setItem("pkce_state", state);
       sessionStorage.setItem("pkce_verifier", verifier);
-      sessionStorage.setItem("openrouter_post_connect", isReplayMode ? "return" : "onboarding");
+      sessionStorage.setItem("openrouter_post_connect", isReplayMode || connectionChoice ? "return" : "onboarding");
       sessionStorage.setItem(
         "openrouter_post_connect_source",
-        isReplayMode ? "onboarding_replay" : "onboarding",
+        connectionChoice ? "settings" : isReplayMode ? "onboarding_replay" : "onboarding",
       );
-      if (isReplayMode) {
+      if (isReplayMode || connectionChoice) {
         sessionStorage.setItem("openrouter_post_connect_path", "/app/settings");
       } else {
         sessionStorage.removeItem("openrouter_post_connect_path");
@@ -140,8 +145,8 @@ export function OnboardingPage() {
     }
   }
 
-  async function handleFinish() {
-    if (!canFinish) {
+  async function handleFinish(localSetup = false) {
+    if (!canFinish && !localSetup) {
       setErrorMessage(t("continue_with_a_supported_provider_to_finish_onboarding"));
       return;
     }
@@ -149,12 +154,13 @@ export function OnboardingPage() {
     setFinishing(true);
     setErrorMessage(null);
     try {
-      await setOnboardingCompleted({});
-      captureAnalytics("onboarding_completed", {
+      if (localSetup) await beginLocalSetup({});
+      else await setOnboardingCompleted({});
+      if (!localSetup) captureAnalytics("onboarding_completed", {
         feature_area: "onboarding",
         replay_mode: isReplayMode,
       });
-      navigate(isReplayMode ? "/app/settings" : "/app/chat", { replace: true });
+      navigate(localSetup ? "/app/settings/local-runtime" : isReplayMode ? "/app/settings" : "/app/chat", { replace: true });
     } catch (err) {
       setErrorMessage(
         err instanceof Error && err.message.trim().length > 0
@@ -178,23 +184,30 @@ export function OnboardingPage() {
             {screen.subtitle}
           </p>
           <h1 className="text-3xl font-bold tracking-tight text-foreground mb-4 nanth-display">
-            {screen.title}
+            {isLast ? t("runtime_choose_connection") : screen.title}
           </h1>
           <p className="text-foreground/60 leading-relaxed text-base">
-            {screen.body}
+            {isLast ? t("runtime_choose_connection_help") : screen.body}
           </p>
 
           {/* Connect button on last screen */}
           {screen.action === "connect-openrouter" && (
-            <div className="mt-6 space-y-3">
+            <div className="mt-6 flex flex-col items-center gap-3">
               {showConnectPrompt ? (
                 <button
+                  aria-label={t("connect_openrouter")}
                   onClick={handleConnect}
-                  className="px-5 py-2.5 rounded-lg border border-primary/40 bg-primary/10 text-primary text-sm font-medium hover:bg-primary/18 transition-colors"
+                  className="w-full px-5 py-3 rounded-lg border border-primary/40 bg-primary/10 text-primary text-sm font-medium hover:bg-primary/18 transition-colors"
                 >
                   {t("connect_openrouter")}
+                  <span className="block mt-1 text-xs text-secondary">{t("runtime_openrouter_choice_help")}</span>
                 </button>
               ) : null}
+              <button type="button" aria-label={t("runtime_setup_from_onboarding")} onClick={() => localPro.run(() => void handleFinish(true))} disabled={finishing || localPro.loading || localPro.waiting}
+                className="w-full px-5 py-3 rounded-lg border border-primary/40 bg-primary/10 text-primary text-sm font-medium hover:bg-primary/18 transition-colors disabled:opacity-50">
+                {t("runtime_setup_from_onboarding")} · Pro
+                <span className="block mt-1 text-xs text-secondary">{t("runtime_mac_choice_help")} {t("runtime_pro_purchase_help")}</span>
+              </button>
               <p className="text-sm text-foreground/50">
                 {finalHint}
               </p>
@@ -231,7 +244,7 @@ export function OnboardingPage() {
           )}
           {isLast ? (
             <button
-              onClick={handleFinish}
+              onClick={() => void handleFinish()}
               disabled={finishing || isCheckingConnection || !canFinish}
               className="flex-1 py-2.5 rounded-lg bg-primary text-background text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-60 flex items-center justify-center gap-2"
             >
@@ -251,7 +264,9 @@ export function OnboardingPage() {
         {errorMessage && (
           <p className="mt-4 text-sm text-red-400 text-center">{errorMessage}</p>
         )}
+        {localPro.status}
       </div>
+      {localPro.paywall}
     </div>
   );
 }

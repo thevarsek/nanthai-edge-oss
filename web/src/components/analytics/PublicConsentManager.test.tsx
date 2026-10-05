@@ -27,7 +27,12 @@ describe("PublicConsentManager", () => {
     for (const mock of Object.values(consent)) mock.mockReset();
     analytics.applyAnalyticsConsent.mockReset();
     consentState.setAnalyticsConsent.mockReset();
-    consent.run.mockResolvedValue(undefined);
+    document.getElementById("cc-main")?.remove();
+    consent.run.mockImplementation(async () => {
+      const container = document.createElement("div");
+      container.id = "cc-main";
+      document.body.append(container);
+    });
     consent.validConsent.mockReturnValue(true);
   });
 
@@ -84,6 +89,31 @@ describe("PublicConsentManager", () => {
     render(<PublicConsentManager />);
 
     await waitFor(() => expect(consent.show).toHaveBeenCalledWith(true));
+  });
+
+  it("does not show or hide missing library UI after a bot-skipped initialization", async () => {
+    consent.run.mockResolvedValue(undefined);
+    consent.validConsent.mockReturnValue(false);
+    const view = render(<PublicConsentManager />);
+    await waitFor(() => expect(consent.run).toHaveBeenCalledTimes(1));
+    view.unmount();
+    expect(consent.show).not.toHaveBeenCalled();
+    expect(consent.hide).not.toHaveBeenCalled();
+    expect(consent.hidePreferences).not.toHaveBeenCalled();
+  });
+
+  it("does not reopen consent after leaving while initialization is pending", async () => {
+    let finish: () => void = () => {};
+    consent.run.mockImplementation(() => new Promise<void>(resolve => { finish = resolve; }));
+    consent.validConsent.mockReturnValue(false);
+    const view = render(<PublicConsentManager />);
+    view.unmount();
+    const container = document.createElement("div");
+    container.id = "cc-main";
+    document.body.append(container);
+    finish();
+    await Promise.resolve();
+    expect(consent.show).not.toHaveBeenCalled();
   });
 
   it("opens a preference request made before the lazy manager is ready", async () => {

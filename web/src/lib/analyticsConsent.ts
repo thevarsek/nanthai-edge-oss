@@ -74,6 +74,10 @@ export function isPublicConsentRoute(pathname: string): boolean {
     || pathname === "/terms"
     || pathname === "/support"
     || pathname === "/licensing"
+    || pathname === "/workflows"
+    || pathname === "/local-runtime"
+    || pathname === "/research/results"
+    || pathname === "/research/methods"
     || pathname === "/features"
     || pathname.startsWith("/features/");
 }

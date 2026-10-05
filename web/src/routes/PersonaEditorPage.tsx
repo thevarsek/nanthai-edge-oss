@@ -8,7 +8,7 @@ import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ModelPicker } from "@/components/shared/ModelPicker";
 import { Toggle } from "@/components/shared/Toggle";
 import { SettingsSection } from "@/components/settings/SettingsHelpers";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { connectProviderWithPopup } from "@/lib/providerOAuth";
 import { convexErrorMessage } from "@/lib/convexErrors";
@@ -29,6 +29,15 @@ import {
   type IntegrationKey,
   type SkillOverrideState,
 } from "./PersonaEditorForm";
+import {
+  PersonaExecutionSection,
+} from "./PersonaExecutionSection";
+import {
+  personaRuntimeRouteIsValid,
+  personaRuntimeRoutesEqual,
+  type PersonaRuntimeDevice,
+  type PersonaRuntimeRoute,
+} from "./PersonaRuntimeRoute";
 
 export function PersonaEditorPage() {
   const { t } = useTranslation();
@@ -43,6 +52,18 @@ export function PersonaEditorPage() {
     isNew ? "skip" : { personaId: personaId as Id<"personas"> },
   );
   const remoteMcpConnections = useQuery(api.mcp.queries.listActiveConnectionOptions, {});
+  const runtimeDevices = useQuery(
+    api.runtime_host.devices.listMyDevices,
+    {},
+  ) as PersonaRuntimeDevice[] | undefined;
+  const existingRuntime = useQuery(
+    api.runtime_host.route_queries.getPersonaRuntime,
+    isNew ? "skip" : { personaId: personaId as Id<"personas"> },
+  ) as (PersonaRuntimeRoute & {
+    bindingId: Id<"personaRuntimeBindings">;
+    deviceName: string;
+    isOnline: boolean;
+  }) | null | undefined;
 
   const createPersona = useMutation(api.personas.mutations.create);
   const updatePersona = useMutation(api.personas.mutations.update);
@@ -63,6 +84,7 @@ export function PersonaEditorPage() {
 
   // ── Tool-capability validation ─────────────────────────────────────────
   const toolCapabilityError = useMemo(() => {
+    if (form.runtimeRoute) return null;
     const hasToolFeatures = integrationSetToArray(form.enabledIntegrations).length > 0 || form.selectedSkillIds.size > 0;
     if (!hasToolFeatures) return null;
     if (!form.modelId.trim()) return t("persona_choose_tool_model");
@@ -71,7 +93,7 @@ export function PersonaEditorPage() {
     if (!summary) return t("persona_model_unverified_tools");
     if (!summary.supportsTools) return t("persona_model_no_tools");
     return null;
-  }, [form.enabledIntegrations, form.selectedSkillIds, form.modelId, modelSummaries, t]);
+  }, [form.runtimeRoute, form.enabledIntegrations, form.selectedSkillIds, form.modelId, modelSummaries, t]);
   const hasManualGmail = gmailManualConnection?.status === "active";
   const showGoogleIntegrationSection = Boolean(googleConnection) || hasManualGmail;
   const safeAvatarPreview = useMemo(() => safeAvatarImageUrl(avatarPreview), [avatarPreview]);
@@ -86,7 +108,7 @@ export function PersonaEditorPage() {
   // ── Load existing persona into form ────────────────────────────────────
   useEffect(() => {
     if (didLoad || isNew) return;
-    if (existingPersona === undefined) return;
+    if (existingPersona === undefined || existingRuntime === undefined) return;
     if (existingPersona === null) { navigate("/app/personas"); return; }
     const skillOverrides = new Map<string, SkillOverrideState>(
       ((existingPersona as { skillOverrides?: Array<{ skillId: Id<"skills">; state: SkillOverrideState }> }).skillOverrides
@@ -130,12 +152,19 @@ export function PersonaEditorPage() {
       selectedSkillIds,
       skillOverrides,
       integrationOverrides,
+      runtimeRoute: existingRuntime ? {
+        deviceId: existingRuntime.deviceId,
+        adapterId: existingRuntime.adapterId,
+        modelSelectionMode: existingRuntime.modelSelectionMode,
+        provider: existingRuntime.provider,
+        modelId: existingRuntime.modelId,
+      } : null,
     });
     revokeAvatarPreviewObjectUrl();
     if (existingPersona.avatarImageUrl) setAvatarPreview(existingPersona.avatarImageUrl);
     setAvatarImageRemoved(false);
     setDidLoad(true);
-  }, [existingPersona, didLoad, isNew, navigate, revokeAvatarPreviewObjectUrl]);
+  }, [existingPersona, existingRuntime, didLoad, isNew, navigate, revokeAvatarPreviewObjectUrl]);
 
   // ── Field helpers ──────────────────────────────────────────────────────
   const setField = useCallback(<K extends keyof FormState>(key: K, value: FormState[K]) => {
@@ -233,10 +262,14 @@ export function PersonaEditorPage() {
   // ── Save ───────────────────────────────────────────────────────────────
   const handleSave = useCallback(async () => {
     if (!form.displayName.trim()) { setError(t("persona_name_required")); return; }
-    if (!form.systemPrompt.trim()) { setError(t("persona_prompt_required")); return; }
-    if (!form.modelId.trim()) { setError(t("persona_model_required")); return; }
+    if (!form.systemPrompt.trim()) { setError(t("persona_definition_required")); return; }
+    if (!form.runtimeRoute && !form.modelId.trim()) { setError(t("persona_model_required")); return; }
     if (form.maxTokensEnabled && parsePersonaMaxTokens(form.maxTokens) == null) {
       setError(t("persona_max_tokens_invalid"));
+      return;
+    }
+    if (!personaRuntimeRouteIsValid(form.runtimeRoute)) {
+      setError(t("persona_runtime_requires_online"));
       return;
     }
     if (toolCapabilityError) { setError(toolCapabilityError); return; }
@@ -262,10 +295,19 @@ export function PersonaEditorPage() {
 
       let savedPersonaId: Id<"personas">;
       if (isNew) {
-        savedPersonaId = await createPersona(payload);
+        savedPersonaId = await createPersona({
+          ...payload,
+          ...(form.runtimeRoute ? { runtimeRoute: form.runtimeRoute } : {}),
+        });
       } else {
         savedPersonaId = personaId as Id<"personas">;
-        await updatePersona({ personaId: savedPersonaId, ...payload });
+        await updatePersona({
+          personaId: savedPersonaId,
+          ...payload,
+          ...(!personaRuntimeRoutesEqual(form.runtimeRoute, existingRuntime ?? null)
+            ? { runtimeRoute: form.runtimeRoute }
+            : {}),
+        });
       }
 
       navigate("/app/personas");
@@ -274,10 +316,10 @@ export function PersonaEditorPage() {
     } finally {
       setIsSaving(false);
     }
-  }, [form, avatarFile, avatarImageRemoved, isNew, personaId, createPersona, updatePersona, createUploadUrl, navigate, t, toolCapabilityError]);
+  }, [form, avatarFile, avatarImageRemoved, isNew, personaId, createPersona, updatePersona, createUploadUrl, navigate, t, toolCapabilityError, existingRuntime]);
 
   // ── Loading state ──────────────────────────────────────────────────────
-  if (!isNew && existingPersona === undefined) {
+  if (!isNew && (existingPersona === undefined || existingRuntime === undefined)) {
     return <div className="flex-1 flex items-center justify-center"><LoadingSpinner /></div>;
   }
 
@@ -450,30 +492,18 @@ export function PersonaEditorPage() {
           </div>
         </SettingsSection>
 
-        {/* 4. Locked Model */}
-        <SettingsSection
-          header={t("locked_model_section")}
-          footer={t("locked_model_footer")}
-        >
-          <button
-            onClick={() => setShowModelPicker(true)}
-            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left"
-          >
-            <div className="flex-1 min-w-0">
-              <p className="text-sm">{t("model_required_label")}</p>
-              <p className={`text-xs mt-0.5 truncate ${form.modelId ? "text-primary" : "text-muted"}`}>
-                {form.modelId ? form.modelId.split("/").pop() : t("select_a_model")}
-              </p>
-            </div>
-            <ChevronRight size={14} className="text-muted flex-shrink-0" />
-          </button>
-        </SettingsSection>
+        <PersonaExecutionSection
+          route={form.runtimeRoute}
+          devices={runtimeDevices}
+          modelId={form.modelId}
+          toolCapabilityError={toolCapabilityError}
+          onChange={(runtimeRoute) => {
+            setShowModelPicker(false);
+            setField("runtimeRoute", runtimeRoute);
+          }}
+          onChooseCloudModel={() => setShowModelPicker(true)}
+        />
 
-        {toolCapabilityError && (
-          <p className="text-xs text-red-400 px-4 -mt-2">{toolCapabilityError}</p>
-        )}
-
-        {/* 5. Parameter Overrides */}
         <SettingsSection
           header={t("param_overrides_section")}
           footer={t("param_overrides_footer")}
@@ -708,7 +738,7 @@ export function PersonaEditorPage() {
       </div>
 
       {/* Model picker modal */}
-      {showModelPicker && (
+      {showModelPicker && !form.runtimeRoute && (
         <div
           className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
           onClick={(e) => { if (e.target === e.currentTarget) setShowModelPicker(false); }}

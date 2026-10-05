@@ -11,6 +11,7 @@ export async function finishAutonomousCycleHandler(
     cycle: number;
     userId: string;
     executionEpoch?: number;
+    localJudgment?: "consensus" | "stalled" | "continue";
   },
 ): Promise<"continue" | "terminal"> {
     const session = await ctx.runQuery(internal.autonomous.queries.getSession, {
@@ -21,7 +22,7 @@ export async function finishAutonomousCycleHandler(
       return "terminal";
     }
     if (session.autoStopOnConsensus) {
-      const judgment = await judgeDiscussion(ctx, {
+      const judgment = args.localJudgment ?? await judgeDiscussion(ctx, {
         chatId: session.chatId, userId: args.userId, parentMessageIds: session.parentMessageIds,
       });
       const consensus = judgment === null ? await checkConsensusInternal(

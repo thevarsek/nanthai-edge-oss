@@ -259,6 +259,15 @@ beforeEach(() => {
 });
 
 describe("ChatDefaultsSection", () => {
+  it("displays the saved default Persona instead of the cloud model", () => {
+    state.prefs.defaultPersonaId = "persona_1";
+    renderSection();
+    expect(screen.queryByText("GPT 4.1")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Researcher"));
+    expect(screen.getByTestId("participant-picker")).toHaveTextContent("persona_1");
+    expect(state.updatePreferenceImmediate).not.toHaveBeenCalled();
+  });
+
   it("opens participant and title model pickers and writes immediate preference payloads", () => {
     renderSection();
 

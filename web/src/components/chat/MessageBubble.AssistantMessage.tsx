@@ -1,14 +1,16 @@
 // components/chat/MessageBubble.AssistantMessage.tsx
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
+import { SourceEvidencePills } from "./SourceEvidencePills";
 import { memo, useState, useCallback, useEffect, useMemo, useRef } from "react";
-import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video, CornerUpLeft } from "lucide-react";
+import { Copy, RefreshCw, GitFork, CheckCircle, Volume2, RefreshCcw, Download, ShieldCheck, ChevronDown, Quote, Loader, Video, CornerUpLeft, Cloud, Laptop } from "lucide-react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 import { ReasoningBlock } from "./ReasoningBlock";
 import { ToolCallAccordion } from "./ToolCallAccordion";
 import { SubagentBatchPanel } from "./SubagentBatchPanel";
+import { RuntimeNativeAgentPanel } from "./RuntimeNativeAgentPanel";
 import { AdvisorBatchPanel } from "./AdvisorBatchPanel";
 import { GeneratedFilesCard, type GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 import { GeneratedChartsCard } from "./GeneratedChartsCard";
@@ -42,6 +44,7 @@ import { displayMessageContent } from "@/lib/persistedGenerationError";
 import { modelHasImageOutput } from "@/components/shared/ModelPickerShared";
 import { replaceInternalPresentationDownloadLinks } from "./presentationDownloadLinks";
 import { AIContentReportButton } from "./AIContentReportButton";
+import type { ExecutionRoute } from "@/lib/executionRoute";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -61,6 +64,8 @@ function documentEditStatusLabel(status: string, t: TFunction): string {
 
 function stripStreamingCitationBlock(content: string): string {
   return content
+    .replace(/<SOURCE_CITATIONS>[\s\S]*?<\/SOURCE_CITATIONS>/g, "")
+    .replace(/<SOURCE_CITATIONS>[\s\S]*$/g, "")
     .replace(/<CITATIONS>\s*[\s\S]*?<\/CITATIONS>/g, "")
     .replace(/<CITATIONS>[\s\S]*$/g, "")
     .trimEnd();
@@ -260,6 +265,7 @@ export interface AssistantMessageProps {
   suppressAdvisorPanel?: boolean;
   onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
   onOpenDocumentEdit?: (annotation: DocumentEditAnnotation, message: Message) => void;
+  executionRoute?: ExecutionRoute;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -268,6 +274,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   message, isStreaming, participants, onRetry, onRetryWithDifferentModel, onFork,
   messageCost, showAdvancedStats, onOpenGeneratedFile, onOpenDocumentEdit,
   suppressAdvisorPanel = false,
+  executionRoute,
 }: AssistantMessageProps) {
   const { t } = useTranslation();
   const modelSummaries = useModelSummaries({ includeGenerationModels: true });
@@ -456,6 +463,19 @@ export const AssistantMessage = memo(function AssistantMessage({
           <p className="text-xs text-muted">
             {assistantIdentity.label}
           </p>
+          {executionRoute && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] font-medium text-muted"
+              title={executionRoute.runtimeLabel}
+            >
+              {executionRoute.placement === "local"
+                ? <Laptop size={9} aria-hidden="true" />
+                : <Cloud size={9} aria-hidden="true" />}
+              {executionRoute.placement === "local"
+                ? t("runtime_route_local")
+                : t("runtime_route_cloud")}
+            </span>
+          )}
           {message.collaborationWave !== undefined && (
             <span className="rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary">
               {t("collaboration_wave_badge", { wave: message.collaborationWave })}
@@ -500,6 +520,8 @@ export const AssistantMessage = memo(function AssistantMessage({
 
         {/* Subagent work */}
         {message.subagentBatchId && <SubagentBatchPanel messageId={message._id} batchId={message.subagentBatchId} />}
+
+        {message.runtimeNativeAgentGroupId && <RuntimeNativeAgentPanel messageId={message._id} />}
 
         {message.advisorBatchId && !suppressAdvisorPanel && (
           <AdvisorBatchPanel batchId={message.advisorBatchId} showAdvancedStats={showAdvancedStats} />
@@ -634,6 +656,7 @@ export const AssistantMessage = memo(function AssistantMessage({
           </div>
         )}
 
+        <SourceEvidencePills sourceCitations={message.sourceCitations} offlineResult={message.offlineResult} />
         {message.documentCitations && message.documentCitations.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-2">
             {message.documentCitations.map((citation) => (

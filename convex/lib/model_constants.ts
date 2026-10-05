@@ -7,17 +7,17 @@
 
 export const MODEL_IDS = {
   jevDecision: "typesafe/jev-1.13",
-  appDefault: "openai/gpt-5.6-terra",
-  advisorDispatcher: "openai/gpt-5.6-luna",
-  titleGeneration: "openai/gpt-5.6-luna",
-  memoryExtraction: "openai/gpt-5.6-luna",
+  appDefault: "openai/gpt-6.1-sol",
+  advisorDispatcher: "openai/gpt-6-luna",
+  titleGeneration: "openai/gpt-6-luna",
+  memoryExtraction: "openai/gpt-6-luna",
   memoryExtractionFallback: "openai/gpt-5-mini",
-  memoryImportExtraction: "openai/gpt-5.6-luna",
-  pdfOcrExtraction: "openai/gpt-5.6-luna",
-  searchQueryGeneration: "openai/gpt-5.6-luna",
-  searchResearchOrchestration: "openai/gpt-5.6-luna",
-  collaborationScheduler: "openai/gpt-5.6-luna",
-  compaction: "openai/gpt-5.6-luna",
+  memoryImportExtraction: "openai/gpt-6-luna",
+  pdfOcrExtraction: "openai/gpt-6-luna",
+  searchQueryGeneration: "openai/gpt-6-luna",
+  searchResearchOrchestration: "openai/gpt-6-luna",
+  collaborationScheduler: "openai/gpt-6-luna",
+  compaction: "openai/gpt-6-luna",
   imageGeneration: "bytedance-seed/seedream-4.5",
   musicGeneration: "google/lyria-3-clip-preview",
   speechGeneration: "deepgram/aura-2",
@@ -28,7 +28,7 @@ export const MODEL_IDS = {
     comprehensive: "perplexity/sonar-pro-search",
   },
   /** Cheap model for autonomous consensus detection (YES/NO). */
-  autonomousConsensus: "openai/gpt-5.6-luna",
+  autonomousConsensus: "openai/gpt-6-luna",
   /** Safety-net model when the primary model fails (rate-limit, outage). */
   autonomousFallback: "openai/gpt-5-nano",
   /** Embedding model for memory vector search. */

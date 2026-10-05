@@ -2,7 +2,7 @@
 
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
-import { v } from "convex/values";
+import { v, type Infer } from "convex/values";
 import { callOpenRouterNonStreaming } from "../lib/openrouter";
 import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
 import {
@@ -27,13 +27,9 @@ import { collaborationSelection } from "./validators";
 import { tryJevDecision } from "../decisions/service";
 import { speakerDecisionRequest, projectSpeakerDecision } from "./scheduler_jev";
 import type { Id } from "../_generated/dataModel";
+import { assertCollaborationDecisionDeadline } from "../runtime_host/decision_deadline";
 
-export const decideSpeakers = internalAction({
-  args: {
-    exchangeId: v.id("collaborationExchanges"),
-    wave: v.number(),
-  },
-  returns: v.object({
+const schedulerResult = v.object({
     selections: v.array(collaborationSelection),
     excludedParticipantIds: v.array(v.id("chatParticipants")),
     diagnosticCategory: v.string(),
@@ -41,12 +37,19 @@ export const decideSpeakers = internalAction({
     schedulerModelId: v.optional(v.string()),
     generationId: v.optional(v.string()),
     usage: v.optional(usageObject),
-  }),
-  handler: async (ctx, args) => {
+});
+
+export const decideSpeakers = internalAction({
+  args: {
+    exchangeId: v.id("collaborationExchanges"),
+    wave: v.number(),
+  },
+  returns: schedulerResult,
+  handler: async (ctx, args): Promise<Infer<typeof schedulerResult>> => {
     const input = await ctx.runQuery(
       internal.collaboration.scheduler_context.getSchedulerContext,
       args,
-    ) as (SchedulerPolicyInput & { userId: string; chatId: Id<"chats">; messageId: Id<"messages"> }) | null;
+    ) as (SchedulerPolicyInput & { userId: string; chatId: Id<"chats">; messageId: Id<"messages">; deadlineAt: number }) | null;
     if (!input) throw new Error("COLLABORATION_SCHEDULER_STALE_CONTEXT");
     const deterministic = deterministicSchedulerDecision(input);
     if (deterministic) {
@@ -61,11 +64,14 @@ export const decideSpeakers = internalAction({
         userId: input.userId,
       }),
     ]);
+    assertCollaborationDecisionDeadline(input.deadlineAt);
     const requireZdr = isZdrEnabled(preferences);
     const jev = await tryJevDecision(ctx, {
       ...speakerDecisionRequest(input), useCase: "speakers", apiKey,
       userId: input.userId, chatId: input.chatId, messageId: input.messageId, requireZdr,
+      absoluteDeadlineAtMs: input.deadlineAt,
     });
+    assertCollaborationDecisionDeadline(input.deadlineAt);
     if (jev) {
       try {
         return {
@@ -99,8 +105,12 @@ export const decideSpeakers = internalAction({
         reasoningEffort: "minimal",
         responseFormat: schedulerResponseFormat(input),
       }, requireZdr),
-      { fallbackModel: MODEL_IDS.autonomousFallback },
-    );
+      { fallbackModel: MODEL_IDS.autonomousFallback, absoluteDeadlineAtMs: input.deadlineAt },
+    ).catch((error: unknown) => {
+      assertCollaborationDecisionDeadline(input.deadlineAt);
+      throw error;
+    });
+    assertCollaborationDecisionDeadline(input.deadlineAt);
     const decision = parseSchedulerDecisionOrSilence(
       result.content,
       input,

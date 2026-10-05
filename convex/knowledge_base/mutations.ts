@@ -6,7 +6,7 @@
 // generated/upload/drive sources. Drive import is split into action+mutation
 // (see `actions.ts`) so the HTTP fetch lives in the action.
 //
-// Per `docs/client-convex-contract.md`, web/iOS/Android all call the same
+// Per `docs/architecture/client-convex-contract.md`, web/iOS/Android all call the same
 // mutations here for KB writes — no parallel client-specific paths.
 // =============================================================================
 

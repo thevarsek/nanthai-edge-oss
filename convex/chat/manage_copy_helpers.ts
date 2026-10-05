@@ -41,6 +41,7 @@ export async function copyMessagesWithIdMap(
   ctx: MutationCtx,
   messagesToCopy: Doc<"messages">[],
   newChatId: Id<"chats">,
+  participantIdMap?: ReadonlyMap<string, Id<"chatParticipants">>,
 ): Promise<CopiedChatGraph> {
   const idMap = new Map<string, string>();
   const copiedMessages: CopiedMessageSummary[] = [];
@@ -52,7 +53,7 @@ export async function copyMessagesWithIdMap(
 
     const newMsgId = await ctx.db.insert(
       "messages",
-      buildCopiedMessageInsert(msg, newChatId, newParentIds),
+      buildCopiedMessageInsert(msg, newChatId, newParentIds, participantIdMap),
     );
 
     const attachmentRefs = await ctx.db
@@ -89,14 +90,15 @@ export async function copyChatParticipants(
   ctx: MutationCtx,
   sourceChatId: Id<"chats">,
   newChatId: Id<"chats">,
-): Promise<void> {
+): Promise<Map<string, Id<"chatParticipants">>> {
   const participants = await ctx.db
     .query("chatParticipants")
     .withIndex("by_chat", (q) => q.eq("chatId", sourceChatId))
     .collect();
 
+  const idMap = new Map<string, Id<"chatParticipants">>();
   for (const participant of participants) {
-    await ctx.db.insert("chatParticipants", {
+    const copiedId = await ctx.db.insert("chatParticipants", {
       chatId: newChatId,
       userId: participant.userId,
       modelId: participant.modelId,
@@ -107,7 +109,9 @@ export async function copyChatParticipants(
       sortOrder: participant.sortOrder,
       createdAt: participant.createdAt,
     });
+    idMap.set(String(participant._id), copiedId);
   }
+  return idMap;
 }
 
 export async function copyNodePositions(

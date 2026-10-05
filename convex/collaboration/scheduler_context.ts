@@ -76,6 +76,7 @@ export const getSchedulerContext = internalQuery({
         exchange.bounds.maxParticipantMessages - exchange.publishedMessageCount,
       ),
       deadlineReached: Date.now() >= exchange.bounds.deadlineAt,
+      deadlineAt: exchange.bounds.deadlineAt,
       recentMessages,
     };
   },

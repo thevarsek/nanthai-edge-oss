@@ -50,6 +50,7 @@ function buildCtx() {
           userMessageId: "msg_user",
           assistantMsgId: "msg_assistant",
           genJobId: "job_generation",
+          chatParticipantId: "participant_1",
         };
       }
       if (refName === createSearchSessionRef) {
@@ -164,6 +165,7 @@ test("enqueueStep routes basic search through the durable generation Workflow", 
   assert.equal(mutationCalls[0]?.args.stepTitle, "Step 1");
   assert.equal(scheduledCalls.length, 1);
   assert.equal(scheduledCalls[0]?.args.webSearchEnabled, true);
+  assert.equal((scheduledCalls[0]?.args.participants as Array<{ chatParticipantId: string }>)[0]?.chatParticipantId, "participant_1");
   assert.deepEqual(scheduledCalls[0]?.args.turnSkillOverrides, [
     { skillId: "skill_1", state: "available" },
   ]);

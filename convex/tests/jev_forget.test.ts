@@ -22,8 +22,8 @@ test("forget requires an explicit command and exactly one unambiguous owned targ
 test("explicit forget uses existing relationship/embedding cleanup and revalidates edited evidence/target", async () => {
   const args = { userId: "user", chatId: "chat" as Id<"chats">, messageId: "message" as Id<"messages">,
     evidence: "Forget that I use Python.", memoryId: "memory" as Id<"memories">, content: "User uses Python", updatedAt: 1 };
-  for (const state of ["valid", "edited", "otherUser", "changedEvidence", "inferred"]) {
-    const memory = { _id: "memory", userId: state === "otherUser" ? "other" : "user", content: "User uses Python", updatedAt: state === "edited" ? 2 : 1, supersedesMemoryId: "predecessor" };
+  for (const state of ["valid", "edited", "otherUser", "changedEvidence", "inferred", "touched", "scopeChanged", "factChanged"]) {
+    const memory = { _id: "memory", userId: state === "otherUser" ? "other" : "user", content: state === "factChanged" ? "User uses Rust" : "User uses Python", updatedAt: ["edited", "touched", "scopeChanged", "factChanged"].includes(state) ? 2 : 1, scopeType: state === "scopeChanged" ? "selectedPersonas" : "allPersonas", personaIds: state === "scopeChanged" ? ["persona"] : [], supersedesMemoryId: "predecessor" };
     const message = { _id: "message", userId: "user", chatId: "chat", role: "user", content: state === "changedEvidence" ? "Changed" : args.evidence };
     const rows: Record<string, Record<string, unknown>> = { memory, message, chat: { userId: "user" }, predecessor: { _id: "predecessor", userId: "user", isSuperseded: true, supersededByMemoryId: "memory" } };
     const deleted: string[] = [];
@@ -37,9 +37,10 @@ test("explicit forget uses existing relationship/embedding cleanup and revalidat
           collect: async () => table === "memoryRelationships" ? [{ _id: "edge" }] : [] };
       } }),
     } } as unknown as MutationCtx;
-    const applied = await forgetCommitHandler(ctx, state === "inferred" ? { ...args, evidence: "I no longer use Python." } : args);
-    assert.equal(applied, state === "valid");
-    assert.deepEqual(deleted, state === "valid" ? ["edge", "embedding", "memory"] : []);
+    const applied = await forgetCommitHandler(ctx, state === "inferred" ? { ...args, evidence: "I no longer use Python." } : ["touched", "scopeChanged", "factChanged"].includes(state) ? { ...args, scopeSnapshot: { scopeType: "allPersonas", personaIds: [] } } : args);
+    const valid = state === "valid" || state === "touched";
+    assert.equal(applied, valid);
+    assert.deepEqual(deleted, valid ? ["edge", "embedding", "memory"] : []);
     if (applied) {
       assert.equal(rows.predecessor.supersededByMemoryId, undefined);
       assert.equal(rows.predecessor.isSuperseded, true);

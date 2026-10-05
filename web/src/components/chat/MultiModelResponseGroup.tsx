@@ -78,6 +78,7 @@ export const MultiModelResponseGroup = memo(function MultiModelResponseGroup({
               suppressAdvisorPanel={advisorBatchId !== undefined}
               onOpenGeneratedFile={onOpenGeneratedFile}
               onOpenDocumentEdit={onOpenDocumentEdit}
+              executionRoute={message.executionRoute}
             />
           </div>
         ))}

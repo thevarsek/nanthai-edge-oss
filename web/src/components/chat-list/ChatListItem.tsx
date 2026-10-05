@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Pin, Folder, Trash2, FolderInput, PencilLine, Copy, CheckSquare, Clock } from "lucide-react";
+import { Pin, Folder, Trash2, FolderInput, PencilLine, Copy, CheckSquare, Clock, Laptop, Layers } from "lucide-react";
 import { cn, formatTimestamp, truncate } from "@/lib/utils";
 import { ProviderLogo } from "@/components/shared/ProviderLogo";
 import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
@@ -12,6 +12,8 @@ import { PersonaAvatar } from "@/components/shared/PersonaAvatar";
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ChatParticipantSummary {
+  runtimePlacement?: "local" | "cloud";
+  runtimeAdapterId?: string;
   modelId: string;
   personaId?: string;
   personaName?: string;
@@ -20,6 +22,7 @@ export interface ChatParticipantSummary {
 }
 
 export interface ChatListItemData {
+  connectionKind?: "local" | "openrouter" | "mixed" | null;
   _id: string;
   title?: string;
   updatedAt?: number;
@@ -73,6 +76,7 @@ function ParticipantAvatars({ participants }: { participants: ChatParticipantSum
     if (p.personaId) {
       return (
         <PersonaAvatar
+          runtimeAdapterId={p.runtimeAdapterId}
           personaId={p.personaId}
           personaName={p.personaName}
           personaEmoji={p.personaEmoji}
@@ -132,6 +136,7 @@ function ParticipantAvatars({ participants }: { participants: ChatParticipantSum
           >
             {hasPersonaAvatar(p) ? (
               <PersonaAvatar
+                runtimeAdapterId={p.runtimeAdapterId}
                 personaId={p.personaId}
                 personaName={p.personaName}
                 personaEmoji={p.personaEmoji}
@@ -347,7 +352,10 @@ export function ChatListItem({
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-6 rounded-r bg-primary" />
         )}
 
-        <ParticipantAvatars participants={chat.participantSummary} />
+        <div className="relative shrink-0">
+          <ParticipantAvatars participants={chat.participantSummary} />
+          {(chat.connectionKind === "local" || chat.connectionKind === "mixed") && <span aria-label={t(chat.connectionKind === "mixed" ? "runtime_mixed" : "runtime_local")} title={t(chat.connectionKind === "mixed" ? "runtime_mixed" : "runtime_local")} className="absolute -bottom-1 -right-1 rounded-full bg-surface-1 p-0.5 text-primary border border-border">{chat.connectionKind === "mixed" ? <Layers size={12} /> : <Laptop size={12} />}</span>}
+        </div>
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2">

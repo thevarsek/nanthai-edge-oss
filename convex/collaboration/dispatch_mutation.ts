@@ -13,12 +13,14 @@ import {
   type CollaborationParticipantSnapshot,
 } from "./validators";
 import { assertExchangeExecution } from "./lifecycle_mutations";
+import { assertCollaborationDecisionDeadline } from "../runtime_host/decision_deadline";
 
 export function projectCollaborationParticipant(
   participant: CollaborationParticipantSnapshot,
 ): SendParticipantConfig {
   const isPersona = participant.personaId !== undefined;
   return {
+    participantKey: String(participant.participantId),
     modelId: participant.modelId,
     personaId: participant.personaId,
     personaName: isPersona ? participant.displayName : undefined,
@@ -61,6 +63,7 @@ export const dispatchDecision = internalMutation({
         generationJobIds: decision.generationJobIds ?? [],
       };
     }
+    assertCollaborationDecisionDeadline(exchange.bounds.deadlineAt);
     if (
       decision.status !== "selected" ||
       exchange.status !== "dispatching" ||

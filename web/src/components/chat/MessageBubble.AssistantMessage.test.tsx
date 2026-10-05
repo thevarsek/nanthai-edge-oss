@@ -26,6 +26,12 @@ vi.mock("./SubagentBatchPanel", () => ({
   SubagentBatchPanel: ({ batchId }: { batchId: string }) => <div data-testid="subagent-batch">{batchId}</div>,
 }));
 
+vi.mock("./RuntimeNativeAgentPanel", () => ({
+  RuntimeNativeAgentPanel: ({ messageId }: { messageId: string }) => (
+    <div data-testid="runtime-native-agent-panel">{messageId}</div>
+  ),
+}));
+
 vi.mock("./GeneratedFilesCard", () => ({
   GeneratedFilesCard: ({ messageId }: { messageId: string }) => <div data-testid="generated-files">{messageId}</div>,
 }));
@@ -110,6 +116,7 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
   messageCost?: number;
   showAdvancedStats?: boolean;
   onOpenDocumentEdit?: ComponentProps<typeof AssistantMessage>["onOpenDocumentEdit"];
+  executionRoute?: ComponentProps<typeof AssistantMessage>["executionRoute"];
 } = {}) {
   const audio: AudioPlaybackContextValue = {
     state: {
@@ -140,6 +147,7 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
         messageCost={options.messageCost}
         showAdvancedStats={options.showAdvancedStats}
         onOpenDocumentEdit={options.onOpenDocumentEdit}
+        executionRoute={options.executionRoute}
       />
     </AudioPlaybackContext.Provider>,
   );
@@ -167,6 +175,30 @@ describe("AssistantMessage", () => {
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("https://example.com/image.png");
     });
+  });
+
+  it("shows the canonical local execution route during a response", () => {
+    renderAssistant(
+      { modelId: "openai/gpt-5", status: "streaming" },
+      { executionRoute: { placement: "local", runtimeLabel: "Dino’s MacBook · codex" } },
+    );
+
+    expect(screen.getByText("Local")).toHaveAttribute("title", "Dino’s MacBook · codex");
+  });
+
+  it("shows cloud placement without inventing a local runtime label", () => {
+    renderAssistant(
+      { modelId: "openai/gpt-5" },
+      { executionRoute: { placement: "cloud" } },
+    );
+
+    expect(screen.getByText("Cloud")).not.toHaveAttribute("title");
+  });
+
+  it("omits an execution badge when historical provenance is absent", () => {
+    renderAssistant({ modelId: "openai/gpt-5", status: "completed" });
+    expect(screen.queryByText("Local")).not.toBeInTheDocument();
+    expect(screen.queryByText("Cloud")).not.toBeInTheDocument();
   });
 
   it("renders a multi-image gallery and copies every generated image URL", async () => {
@@ -373,6 +405,7 @@ describe("AssistantMessage", () => {
       loadedSkillIds: ["skill_1" as Id<"skills">],
       usedIntegrationIds: ["google"],
       subagentBatchId: "batch_1" as Id<"subagentBatches">,
+      runtimeNativeAgentGroupId: "native_group_1" as Id<"runtimeNativeAgentGroups">,
       generatedFileIds: ["file_1" as Id<"generatedFiles">],
       generatedChartIds: ["chart_1" as Id<"generatedCharts">],
       attachments: [{ storageId: "storage_1" as Id<"_storage">, name: "notes.pdf", type: "document" }],
@@ -381,6 +414,7 @@ describe("AssistantMessage", () => {
 
     expect(screen.getByTestId("tool-accordion")).toHaveTextContent("tools-1-skills-1-integrations-1");
     expect(screen.getByTestId("subagent-batch")).toHaveTextContent("batch_1");
+    expect(screen.getByTestId("runtime-native-agent-panel")).toHaveTextContent("message_1");
     expect(screen.getByTestId("generated-files")).toHaveTextContent("message_1");
     expect(screen.getByTestId("generated-charts")).toHaveTextContent("message_1");
     expect(screen.getByTestId("attachments")).toHaveTextContent("1");
@@ -389,6 +423,22 @@ describe("AssistantMessage", () => {
       onPlaybackStarted: expect.any(Function),
     }));
     await waitFor(() => expect(view.container).toHaveTextContent("$0.0123"));
+  });
+
+  it("attaches Codex native agent activity only to its linked parent message", () => {
+    const unlinked = renderAssistant({ content: "Ordinary response" });
+    expect(screen.queryByTestId("runtime-native-agent-panel")).not.toBeInTheDocument();
+    unlinked.unmount();
+
+    renderAssistant({
+      content: "Parent response",
+      runtimeNativeAgentGroupId: "native_group_1" as Id<"runtimeNativeAgentGroups">,
+    });
+
+    const nativePanel = screen.getByTestId("runtime-native-agent-panel");
+    expect(nativePanel).toHaveTextContent("message_1");
+    expect(nativePanel.closest('[data-testid="assistant-message"]'))
+      .toHaveAttribute("data-message-id", "message_1");
   });
 
   it("replaces stale direct presentation links with the generated-file card instruction", () => {

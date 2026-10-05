@@ -1,7 +1,12 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it } from "vitest";
-import { mockQueryEndpoint, mockState, skill } from "@/test/criticalRoutesCoverage";
+import {
+  mockMutationEndpoint,
+  mockQueryEndpoint,
+  mockState,
+  skill,
+} from "@/test/criticalRoutesCoverage";
 import { PersonaEditorPage } from "./PersonaEditorPage";
 
 function personaEditorRoute(path: string) {
@@ -34,6 +39,10 @@ describe("PersonaEditorPage shell behavior", () => {
 
   it("hydrates an existing persona, blocks unsupported tool models, and saves recovered update payloads", async () => {
     mockState.page = "persona";
+    mockQueryEndpoint("runtime_host/devices:listMyDevices", [{
+      deviceId: "device_mac", displayName: "Mac", isOnline: true,
+      adapters: [{ adapterId: "pi", authState: "ready", operations: { listModels: true } }],
+    }]);
     mockState.modelSummaries = [
       { modelId: "local/text-only", name: "Text Only", provider: "local", supportsTools: false },
       { modelId: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai", supportsTools: true },
@@ -70,6 +79,12 @@ describe("PersonaEditorPage shell behavior", () => {
 
     await waitFor(() => expect(screen.getByDisplayValue("Research Lead")).toBeInTheDocument());
     expect(screen.getByText("persona_model_no_tools")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "save" })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole("button", { name: "persona_runtime_local" }));
+    expect(screen.getByRole("button", { name: "save" })).toBeEnabled();
+    expect(screen.queryByText("persona_model_no_tools")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "persona_runtime_cloud" }));
     expect(screen.getByRole("button", { name: "save" })).toBeDisabled();
 
     fireEvent.click(screen.getByText("text-only"));
@@ -137,6 +152,85 @@ describe("PersonaEditorPage shell behavior", () => {
         ]),
       }));
     });
+  });
+
+  it("atomically saves an online Codex Runtime Host route with a new Persona", async () => {
+    mockState.page = "persona";
+    mockState.modelSummaries = [
+      { modelId: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai", supportsTools: true },
+    ];
+    mockQueryEndpoint("runtime_host/devices:listMyDevices", [{
+      deviceId: "device_mac",
+      displayName: "Dino’s MacBook",
+      isOnline: true,
+      adapters: [{
+        adapterId: "codex",
+        authState: "ready",
+        operations: { listModels: true },
+      }],
+    }]);
+    mockState.mutation.mockResolvedValueOnce("persona_1");
+
+    renderPersonaEditor("/app/personas/new");
+
+    fireEvent.change(screen.getByPlaceholderText("persona_name_placeholder"), { target: { value: "Local Reviewer" } });
+    fireEvent.change(screen.getByPlaceholderText("system_prompt_placeholder"), { target: { value: "Review the repository." } });
+    fireEvent.click(screen.getByText("select_a_model"));
+    fireEvent.click(screen.getByText("GPT 4.1"));
+    fireEvent.click(screen.getByRole("button", { name: "persona_runtime_local" }));
+    expect(screen.queryByText("locked_model_section")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "persona_runtime_cloud" }));
+    expect(screen.getByText("locked_model_section")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "persona_runtime_local" }));
+    fireEvent.click(screen.getByRole("switch", { name: "integration_gmail" }));
+    expect(screen.getByRole("button", { name: "save" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => expect(mockState.mutation).toHaveBeenCalledWith(expect.objectContaining({
+      displayName: "Local Reviewer",
+      runtimeRoute: {
+        deviceId: "device_mac",
+        adapterId: "codex",
+        modelSelectionMode: "adapter_default",
+      },
+    })));
+  });
+
+  it("preserves an unchanged explicit runtime route without revalidating an offline host", async () => {
+    const updatePersona = mockMutationEndpoint("personas/mutations:update");
+    mockState.page = "persona";
+    mockState.modelSummaries = [
+      { modelId: "openai/gpt-4.1", name: "GPT 4.1", provider: "openai", supportsTools: true },
+    ];
+    mockState.queryData.persona = {
+      _id: "persona_1",
+      displayName: "Runtime Reviewer",
+      systemPrompt: "Review code.",
+      modelId: "openai/gpt-4.1",
+    };
+    mockQueryEndpoint("runtime_host/route_queries:getPersonaRuntime", {
+      bindingId: "binding_1",
+      deviceId: "device_mac",
+      deviceName: "Dino’s MacBook",
+      adapterId: "codex",
+      modelSelectionMode: "explicit",
+      modelId: "gpt-5.6",
+      isOnline: false,
+    });
+    mockQueryEndpoint("runtime_host/devices:listMyDevices", [{
+      deviceId: "device_mac",
+      displayName: "Dino’s MacBook",
+      isOnline: false,
+      adapters: [],
+    }]);
+
+    renderPersonaEditor("/app/personas/persona_1");
+    await waitFor(() => expect(screen.getByText("persona_runtime_explicit_model")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "save" }));
+
+    await waitFor(() => expect(updatePersona).toHaveBeenCalled());
+    const updateArgs = updatePersona.mock.calls.at(-1)?.[0];
+    expect(updateArgs).not.toHaveProperty("runtimeRoute");
   });
 
   it("adds an active Remote MCP server as a Persona integration target", async () => {

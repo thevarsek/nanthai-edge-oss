@@ -37,8 +37,13 @@ export function useAttachments(
   const imageInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const attachmentsRef = useRef<AttachmentPreview[]>([]);
+  const cleanupUploadSessionRef = useRef(onCleanupUploadSession);
   const committedBytesRef = useRef(0);
   const inFlightBytesRef = useRef(0);
+
+  useEffect(() => {
+    cleanupUploadSessionRef.current = onCleanupUploadSession;
+  }, [onCleanupUploadSession]);
 
   useEffect(() => {
     attachmentsRef.current = attachments;
@@ -176,13 +181,14 @@ export function useAttachments(
   }, [onCleanupUploadSession]);
 
   useEffect(() => () => {
-    if (!onCleanupUploadSession) return;
+    const cleanupUploadSession = cleanupUploadSessionRef.current;
+    if (!cleanupUploadSession) return;
     for (const attachment of attachmentsRef.current) {
       if (attachment.uploadSessionId) {
-        void onCleanupUploadSession(attachment.uploadSessionId, attachment.storageId);
+        void cleanupUploadSession(attachment.uploadSessionId, attachment.storageId);
       }
     }
-  }, [onCleanupUploadSession]);
+  }, []);
 
   return {
     attachments,

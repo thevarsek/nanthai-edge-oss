@@ -41,6 +41,7 @@ import {
   selectMentionedParticipants,
   SendParticipantConfig,
 } from "./mutation_send_helpers";
+import { resolveChatParticipantConfigs } from "./participant_resolution";
 import { enqueueRunGeneration } from "./run_generation_queue";
 import {
   createCollaborationExchange,
@@ -91,7 +92,7 @@ export async function createChatHandler(
   if (participants.length > 0) {
     for (let index = 0; index < participants.length; index += 1) {
       const participant = participants[index];
-      await ctx.db.insert("chatParticipants", {
+      const participantInsert = {
         chatId,
         userId,
         modelId: participant.modelId,
@@ -105,7 +106,11 @@ export async function createChatHandler(
         reasoningEffort: participant.reasoningEffort ?? undefined,
         sortOrder: index,
         createdAt: now,
-      });
+      };
+      await ctx.db.insert(
+        "chatParticipants",
+        participantInsert,
+      );
     }
   }
 
@@ -266,12 +271,17 @@ export async function sendMessageHandler(
       message: "Advanced web research is not yet available in Collaboration.",
     });
   }
-  const participants = isCollaborationSend
+  const selectedParticipants = isCollaborationSend
     ? selectMentionedParticipants(requestedParticipants, undefined)
     : selectMentionedParticipants(
         requestedParticipants,
         args.mentionedParticipantKeys,
       );
+  const participants = await resolveChatParticipantConfigs(ctx, {
+    chatId: args.chatId,
+    userId,
+    participants: selectedParticipants,
+  });
 
   // M29: Enforce same-modality constraint when multiple participants are present.
   if (participants.length > 1) {

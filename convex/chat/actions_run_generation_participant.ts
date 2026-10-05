@@ -1,3 +1,4 @@
+import { makeFunctionReference } from "convex/server";
 import { ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
@@ -17,6 +18,7 @@ import {
   buildCurrentDatePrompt,
   buildRequestMessages,
 } from "./helpers";
+import { sourceEvidencePrompt, stripSourceEvidence, validateSourceEvidence, type EvidenceCandidate } from "./source_evidence";
 import { prepareRequestContextForGeneration } from "./actions_context_assembly_integration";
 import {
   appendCollaborationHandoff,
@@ -36,7 +38,7 @@ import {
   extractInlineImagePayloads,
   persistGeneratedImageUrlsWithTracking,
 } from "./action_image_helpers";
-import { resolveMemoryContextForGeneration } from "./action_memory_helpers";
+import { resolveGenerationMemoryContext } from "./action_memory_helpers";
 import type { MessageWithStoredAttachments } from "./action_image_helpers";
 import {
   ModelCapabilities,
@@ -400,7 +402,7 @@ async function resolveSystemPrompt(
   prefetchedPersona?: { systemPrompt?: string | null } | null,
 ): Promise<string | null | undefined> {
   let systemPrompt = participant.systemPrompt;
-  if (!systemPrompt && participant.personaId) {
+  if (systemPrompt === undefined && participant.personaId) {
     const persona = prefetchedPersona !== undefined
       ? prefetchedPersona
       : await ctx.runQuery(internal.chat.queries.getPersona, {
@@ -489,7 +491,7 @@ export async function generateForParticipant(
   const hasPreResolved = preResolvedOverrides?.resolved === true;
   const needsPersonaForSkills = !hasPreResolved && participant.personaId != null;
   const needsPersonaForSystemPrompt =
-    !participant.systemPrompt && participant.personaId != null;
+    participant.systemPrompt === undefined && participant.personaId != null;
   const shouldFetchPersona = needsPersonaForSkills || needsPersonaForSystemPrompt;
   const shouldBuildSkillCatalog =
     !requestMessagesOverride && toolRegistry && !toolRegistry.isEmpty;
@@ -840,11 +842,14 @@ export async function generateForParticipant(
     const memoryContextStartedAt = Date.now();
     const resolvedMemoryContext = requestMessagesOverride
       ? undefined
-      : await resolveMemoryContextForGeneration(ctx, {
+      : await resolveGenerationMemoryContext(ctx, {
         messages: allMessages.map((message) => ({
           _id: message._id as Id<"messages">,
           role: message.role,
           content: message.content,
+          parentMessageIds: Array.isArray(message.parentMessageIds)
+            ? message.parentMessageIds.filter((parent): parent is Id<"messages"> => typeof parent === "string")
+            : undefined,
         })),
         userMessageId: args.userMessageId,
         userId: args.userId,
@@ -904,12 +909,15 @@ export async function generateForParticipant(
           ? buildCurrentDateOnlyPrompt()
           : buildCurrentDatePrompt()
         : undefined,
-      memoryContext: resolvedMemoryContext || memoryContext,
+      memoryContext: resolvedMemoryContext?.memoryContext || memoryContext,
       expandMultiModelGroups: args.expandMultiModelGroups,
       maxContextTokens:
         modelCapabilities.get(participant.modelId)?.contextLength ?? 75_000,
     });
     let baseRequestMessages = legacyRequestMessages;
+    let supportingSources: EvidenceCandidate[] = requestMessagesOverride
+      ? (await ctx.runQuery(internal.chat.queries.getGenerationJobInternal, { jobId: participant.jobId }))?.runtimeEvidenceSources ?? []
+      : [];
     let collaborationCausality: PreparedTurnCausality | undefined;
     if (!requestMessagesOverride) {
       const collaborationMessage = allMessages.find(
@@ -937,6 +945,7 @@ export async function generateForParticipant(
         jobId: participant.jobId,
         participantId: participant.personaId ?? participant.modelId,
         legacyMessages: legacyRequestMessages,
+        sharedMemorySources: resolvedMemoryContext?.evidenceSources,
         allMessages: allMessages as unknown as ContextMessage[],
         providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,
         mode: collaborationMessage?.collaborationExchangeId
@@ -947,7 +956,17 @@ export async function generateForParticipant(
           : "chat_generation",
         causality: collaborationCausality,
       });
+      supportingSources = preparedTurn.evidenceSources ?? [];
+      if (supportingSources.length) {
+        try {
+          await ctx.runMutation(makeFunctionReference<"mutation">("chat/source_evidence_state:retain"), {
+            jobId: participant.jobId, userId: args.userId, candidates: supportingSources,
+          });
+        } catch (error) { console.warn("Supporting source snapshot was not retained", error); }
+      }
       baseRequestMessages = preparedTurn.providerMessages;
+      const evidencePrompt = sourceEvidencePrompt(supportingSources);
+      if (evidencePrompt) baseRequestMessages = [...baseRequestMessages, { role: "system", content: evidencePrompt }];
     }
     const advisorNotes = await ctx.runQuery(
       internal.advisors.queries.getAdvisorNotesForMessage,
@@ -2191,7 +2210,8 @@ export async function generateForParticipant(
         droppedCitationCount,
       });
     }
-    finalContent = stripCitationBlock(finalContent);
+    const sourceCitations = validateSourceEvidence(finalContent, supportingSources);
+    finalContent = stripSourceEvidence(stripCitationBlock(finalContent));
 
     // Resolve Perplexity citation annotations: replace [N] markers with
     // markdown links so the stored content is self-contained and readable.
@@ -2310,6 +2330,7 @@ export async function generateForParticipant(
       generatedCharts: generatedChartsMeta.length > 0 ? generatedChartsMeta : undefined,
       // Perplexity citations (structured array for rich UI rendering)
       citations: citationsForStorage,
+      sourceCitations: sourceCitations.length ? sourceCitations : undefined,
       documentCitations: documentCitations.length > 0 ? documentCitations : undefined,
       // Model-authored inline audio
       audioStorageId,

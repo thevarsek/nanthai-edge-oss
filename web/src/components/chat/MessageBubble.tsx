@@ -9,6 +9,7 @@ import { UserMessage } from "./MessageBubble.UserMessage";
 import { AssistantMessage } from "./MessageBubble.AssistantMessage";
 import type { Message, Participant } from "@/hooks/useChat";
 import type { GeneratedFileOpenRequest } from "./GeneratedFilesCard";
+import type { ExecutionRoute } from "@/lib/executionRoute";
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,7 @@ interface MessageBubbleProps {
   suppressAdvisorPanel?: boolean;
   onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
   onOpenDocumentEdit?: (annotation: DocumentEditAnnotation, message: Message) => void;
+  executionRoute?: ExecutionRoute;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -36,6 +38,7 @@ export const MessageBubble = memo(function MessageBubble({
   messageCost, showAdvancedStats,
   suppressAdvisorPanel,
   onOpenGeneratedFile, onOpenDocumentEdit,
+  executionRoute,
 }: MessageBubbleProps) {
   const handleRetry = useCallback(() => onRetry(message._id), [message._id, onRetry]);
   const handleFork = useCallback(() => onFork(message._id), [message._id, onFork]);
@@ -45,7 +48,7 @@ export const MessageBubble = memo(function MessageBubble({
   );
 
   if (message.role === "user") {
-    return <UserMessage message={message} />;
+    return <UserMessage message={message} onOpenGeneratedFile={onOpenGeneratedFile} />;
   }
 
   if (message.role === "assistant") {
@@ -58,6 +61,7 @@ export const MessageBubble = memo(function MessageBubble({
         suppressAdvisorPanel={suppressAdvisorPanel}
         onOpenGeneratedFile={onOpenGeneratedFile}
         onOpenDocumentEdit={onOpenDocumentEdit}
+        executionRoute={executionRoute}
       />
     );
   }

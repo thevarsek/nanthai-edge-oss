@@ -7,8 +7,11 @@ import {
   type ClaimedExecution,
 } from "./attempts";
 import { appendRunEventUnchecked } from "./events";
-import { createExecutionRun } from "./runs";
+import { createExecutionRun, type InitialAttemptSpec } from "./runs";
 import type { RunEventType } from "./validators";
+import { ConvexError } from "convex/values";
+import { resolveEffectiveParticipantRoute } from "../runtime_host/route_resolution";
+import { RUNTIME_PROTOCOL_VERSION } from "../runtime_host/protocol_common";
 
 export type { ClaimedExecution } from "./attempts";
 
@@ -20,10 +23,36 @@ export async function createGenerationExecution(
     chatId: Id<"chats">;
     sourceMessageId: Id<"messages">;
     modelId?: string;
+    route?: Awaited<ReturnType<typeof resolveEffectiveParticipantRoute>>;
     parentRunId?: Id<"executionRuns">;
     now: number;
   },
 ): Promise<ClaimedExecution> {
+  const localRoute = args.route?.placement === "local" ? args.route : null;
+  let localAttempt: InitialAttemptSpec | null = null;
+  if (localRoute) {
+    const { adapterId, deviceId } = localRoute;
+    if (!deviceId || !adapterId) throw new Error("LOCAL_RUNTIME_ROUTE_INCOMPLETE");
+    localAttempt = {
+      executorKind: "local_runtime",
+      placement: "local",
+      adapterId,
+      provider: localRoute.provider,
+      modelId: localRoute.modelId,
+      modelSelectionMode: localRoute.modelSelectionMode,
+      runtimeLabel: localRoute.deviceName,
+      deviceId,
+      chatParticipantId: localRoute.chatParticipantId,
+      participantRouteSnapshotId: localRoute.participantRouteSnapshotId,
+      chatRuntimeOverrideId: localRoute.chatRuntimeOverrideId,
+      routeSnapshotHash: localRoute.routeSnapshotHash,
+      protocolVersion: RUNTIME_PROTOCOL_VERSION,
+      orchestrationEngine: "runtime_adapter",
+      orchestrationVersion: "m45.v1",
+      rolloutCohort: "runtime-host-macos",
+    };
+  }
+  const modelId = args.route?.personaConfig?.modelId ?? args.modelId;
   const execution = await createExecutionRun(ctx, {
     userId: args.userId,
     runKey: `generation:${String(args.jobId)}`,
@@ -34,20 +63,30 @@ export async function createGenerationExecution(
     domainId: String(args.jobId),
     parentRunId: args.parentRunId,
     kind: "chat_generation",
-    requestedPlacement: "cloud",
-    initialAttempt: {
-      executorKind: "convex_workflow",
-      placement: "cloud",
-      adapterId: "convex-workflow",
-      provider: args.modelId?.split("/")[0],
-      modelId: args.modelId,
-      orchestrationEngine: "convex_workflow",
-      orchestrationVersion: "m47.v1",
-      rolloutCohort: "workflow-default",
-    },
+    requestedPlacement: localAttempt ? "local" : "cloud",
+    initialAttempt: localAttempt ?? {
+          executorKind: "convex_workflow",
+          placement: "cloud",
+          adapterId: "convex-workflow",
+          provider: modelId?.split("/")[0],
+          modelId,
+          orchestrationEngine: "convex_workflow",
+          orchestrationVersion: "m47.v1",
+          rolloutCohort: "workflow-default",
+        },
     now: args.now,
   });
+  if (modelId && args.route?.personaConfig) {
+    const job = await ctx.db.get(args.jobId);
+    if (job) {
+      await ctx.db.patch(job._id, { modelId });
+      await ctx.db.patch(job.messageId, {
+        modelId, participantName: args.route.personaConfig.displayName,
+      });
+    }
+  }
   await ctx.db.patch(args.jobId, {
+    effectivePersonaConfig: args.route?.personaConfig,
     executionRunId: execution.runId,
     executionAttemptId: execution.attemptId,
     executionFence: execution.fence,
@@ -90,15 +129,55 @@ export async function ensureGenerationExecution(
     const scheduledJob = await ctx.db.get(job.sourceJobId);
     parentRunId = scheduledJob?.executionRunId;
   }
+  const route = await resolveGenerationExecutionRoute(ctx, {
+    userId: job.userId,
+    chatParticipantId: job.chatParticipantId,
+    now,
+    allowOfflineWait: !job.sourceJobId,
+  });
   return await createGenerationExecution(ctx, {
     jobId,
     userId: job.userId,
     chatId: job.chatId,
     sourceMessageId: job.messageId,
     modelId: job.modelId,
+    route,
     parentRunId,
     now,
   });
+}
+
+export async function resolveGenerationExecutionRoute(
+  ctx: MutationCtx,
+  args: {
+    userId: string;
+    chatParticipantId?: Id<"chatParticipants">;
+    personaId?: Id<"personas"> | null;
+    now: number;
+    allowOfflineWait?: boolean;
+  },
+) {
+  const route = args.chatParticipantId
+    ? await resolveEffectiveParticipantRoute(ctx, {
+        userId: args.userId,
+        chatParticipantId: args.chatParticipantId,
+        personaId: args.personaId,
+        now: args.now,
+      })
+    : null;
+  if (route?.availability === "persona_unavailable") {
+    throw new ConvexError({ code: "PERSONA_UNAVAILABLE", message: "This Persona is no longer available. Choose an available Persona before starting another turn." });
+  }
+  if (route?.placement === "local" && route.availability !== "ready"
+    && !(args.allowOfflineWait && route.availability === "device_offline")) {
+    throw new ConvexError({
+      code: "RUNTIME_UNAVAILABLE",
+      message: route.deviceName
+        ? `${route.deviceName} cannot run this Persona right now (${route.availability})`
+        : `The selected Runtime Host cannot run this Persona right now (${route.availability})`,
+    });
+  }
+  return route;
 }
 
 export async function claimGenerationExecution(
@@ -140,7 +219,7 @@ export async function assertCurrentFence(
   ctx: MutationCtx,
   attemptId: Id<"executionAttempts">,
   fence: number,
-  options?: { allowCancelling?: boolean; allowDeletingOwner?: boolean },
+  options?: { allowCancelling?: boolean; allowDeletingOwner?: boolean; allowExpiredLease?: boolean },
 ): Promise<{ run: Doc<"executionRuns">; attempt: Doc<"executionAttempts"> }> {
   return await assertCurrentExecution(ctx, { attemptId, fence, ...options });
 }
@@ -151,6 +230,7 @@ export async function appendExecutionEvent(
     attemptId: Id<"executionAttempts">;
     fence: number;
     claimantId?: string;
+    allowExpiredLease?: boolean;
     type: RunEventType;
     summary: string;
     phase?: string;
@@ -178,6 +258,7 @@ export async function heartbeatExecution(
     claimantId?: string;
     leaseMs?: number;
     now?: number;
+    allowCancelling?: boolean;
   },
 ): Promise<number> {
   const now = args.now ?? Date.now();

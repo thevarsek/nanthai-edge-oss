@@ -4,6 +4,14 @@ import { SharedDataContext, type SharedDataContextValue } from "@/hooks/useShare
 import { PersonaAvatar } from "./PersonaAvatar";
 
 describe("PersonaAvatar", () => {
+  it("uses the OpenAI logo for Codex and preserves custom avatars", () => {
+    const { rerender } = render(<PersonaAvatar personaName="OpenAI Codex" runtimeAdapterId="codex" />);
+    expect(screen.getByRole("img", { name: "openai logo" })).toHaveAttribute("src", "/providers/provider_openai.png");
+    expect(screen.queryByText("O")).not.toBeInTheDocument();
+    rerender(<PersonaAvatar personaName="OpenAI Codex" runtimeAdapterId="codex" personaEmoji="🌿" />);
+    expect(screen.getByText("🌿")).toBeVisible();
+    expect(screen.queryByRole("img", { name: "openai logo" })).not.toBeInTheDocument();
+  });
   it("falls back through emoji, initial, and generic icon tiers", () => {
     const { rerender, container } = render(
       <PersonaAvatar personaName="Ada" personaEmoji="A" />,

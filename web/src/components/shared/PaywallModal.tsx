@@ -20,6 +20,7 @@ import {
   Zap,
 } from "lucide-react";
 import { lockBodyScroll, unlockBodyScroll } from "@/lib/bodyScrollLock";
+import type { FunctionArgs } from "convex/server";
 
 // ─── Pro feature list (same 8 features as iOS) ──────────────────────────────
 
@@ -30,12 +31,15 @@ const PRO_FEATURE_ICONS = [Sparkles, Brain, CalendarClock, Search, Wrench, Folde
 interface PaywallModalProps {
   /** Feature name that triggered the paywall — shown in the heading */
   feature?: string;
+  checkoutContext?: FunctionArgs<typeof api.stripe.actions.createCheckoutSession>["checkoutContext"];
+  onRestore?: () => void;
+  restoreHelp?: string;
   onClose: () => void;
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
 
-export function PaywallModal({ feature, onClose }: PaywallModalProps) {
+export function PaywallModal({ feature, checkoutContext, onRestore, restoreHelp, onClose }: PaywallModalProps) {
   const { t } = useTranslation();
   const createCheckoutSession = useAction(api.stripe.actions.createCheckoutSession);
   const [isLoading, setIsLoading] = useState(false);
@@ -80,7 +84,7 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const { url } = await createCheckoutSession({});
+      const { url } = await createCheckoutSession(checkoutContext ? { checkoutContext } : {});
       if (isClosedOrUnmounted.current) {
         isLaunchingCheckout.current = false;
         if (isMounted.current) {
@@ -167,6 +171,7 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
           <p className="mt-1 text-sm text-foreground/60">
             {t("one_time_purchase")}
           </p>
+          {checkoutContext && <p className="mt-3 text-sm text-foreground/70">{t("runtime_pro_purchase_help")}</p>}
         </div>
 
         {/* Feature grid */}
@@ -193,6 +198,7 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
 
         {/* CTA */}
         <div className="px-6 pt-4 pb-6 space-y-3">
+          {restoreHelp && <p role="status" className="text-sm text-foreground/70">{restoreHelp}</p>}
           {error && (
             <p className="text-xs text-destructive text-center" role="alert">
               {error}
@@ -210,7 +216,7 @@ export function PaywallModal({ feature, onClose }: PaywallModalProps) {
             {t("already_purchased")}{" "}
             <button
               type="button"
-              onClick={requestClose}
+              onClick={onRestore ?? requestClose}
               className="underline hover:text-foreground/70 transition-colors"
             >
               {t("restore_purchase")}

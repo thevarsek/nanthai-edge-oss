@@ -60,6 +60,10 @@ vi.mock("@/hooks/useSharedData", () => ({
   useSharedData: () => mockState.sharedData,
 }));
 
+vi.mock("convex/react", () => ({
+  useQuery: (_query: unknown, args: unknown) => args === "skip" ? undefined : mockState.sharedData.personas,
+}));
+
 vi.mock("@/components/shared/Toast.context", () => ({
   useToast: () => ({ toast: mockState.toast }),
 }));

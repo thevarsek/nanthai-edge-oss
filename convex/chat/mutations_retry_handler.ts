@@ -1,4 +1,5 @@
 import { internal } from "../_generated/api";
+import { resolveChatParticipantConfigs } from "./participant_resolution";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
@@ -134,6 +135,8 @@ function mergeRetryParticipantOverride(
 ): RetryParticipantSnapshot {
   return {
     modelId: overrideParticipant.modelId,
+    participantKey: overrideParticipant.participantKey
+      ?? baseParticipant.participantKey,
     personaId: "personaId" in overrideParticipant
       ? (overrideParticipant.personaId ?? null)
       : (baseParticipant.personaId ?? null),
@@ -388,7 +391,12 @@ export async function retryMessageHandler(
     });
   }
 
-  const participants = effectiveRetryContract.participants;
+  const participants = await resolveChatParticipantConfigs(ctx, { chatId: chat._id, userId, allowPersonaOverride: true, participants: effectiveRetryContract.participants.map(participant => ({
+    ...participant,
+    participantKey: participant.participantKey
+      ?? (effectiveRetryContract.participants.length === 1
+        ? originalMsg.chatParticipantId ? String(originalMsg.chatParticipantId) : undefined : undefined),
+  })) });
   if (participants.length > 1) {
     try {
       await validateSameModality(

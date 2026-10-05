@@ -470,7 +470,7 @@ function JobDetailPanel({
                         </span>
                       )}
                       <span className={`text-[11px] ${statusTextClass(run.status === "success" ? "success" : "failed")}`}>
-                        {run.status === "success" ? t("job_status_active") : t("job_run_failed_label")}
+                        {run.status === "success" ? t("job_run_success") : t("job_run_failed_label")}
                       </span>
                     </div>
                   </div>

@@ -10,6 +10,7 @@
 // 5. Truncate to token budget
 // =============================================================================
 
+import { recordMessageSource } from "./message_provenance";
 import { ContentPart, OpenRouterMessage } from "../lib/openrouter";
 import { BuildRequestMessagesArgs, ContextMessage } from "./helpers_types";
 import {
@@ -182,6 +183,7 @@ export function buildRequestMessages(
       orMsg.name = sanitizedName;
     }
 
+    recordMessageSource(orMsg, String(msg._id), msg.chatParticipantId ? String(msg.chatParticipantId) : null);
     result.push(orMsg);
   }
 
@@ -199,7 +201,7 @@ export function buildRequestMessages(
     });
   }
 
-  const consolidated = consolidateConsecutiveRoles(result);
+  const consolidated = args.preserveMessageBoundaries ? result : consolidateConsecutiveRoles(result);
   return truncateMessages(consolidated, maxContextTokens);
 }
 

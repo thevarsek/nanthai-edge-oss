@@ -83,6 +83,7 @@ export function toneForStatus(status: string | undefined | null): SemanticTone {
       return "danger";
     case "cancelled":
     case "canceled":
+    case "interrupted":
     case "paused":
     case "warning":
       return "warning";

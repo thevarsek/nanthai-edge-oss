@@ -5,6 +5,7 @@ import { assertCurrentFence } from "../execution/control_plane";
 import { terminalizeDomainExecution } from "../execution/domain_lifecycle";
 import { usageObject } from "../schema_validators";
 import { recordSchedulerUsage } from "./usage";
+import { assertCollaborationDecisionDeadline } from "../runtime_host/decision_deadline";
 import {
   collaborationExecutionRef,
   collaborationSelection,
@@ -146,6 +147,7 @@ export const persistDecision = internalMutation({
         silent: existing.status === "silent" || existing.status === "failed",
       };
     }
+    assertCollaborationDecisionDeadline(exchange.bounds.deadlineAt);
     if (
       exchange.status !== "scheduling" ||
       exchange.currentWave !== args.wave ||

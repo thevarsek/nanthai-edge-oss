@@ -32,6 +32,7 @@ export const analyticsSourceValidator = v.union(
 );
 
 export const participantConfigValidator = v.object({
+  chatParticipantId: v.optional(v.id("chatParticipants")),
   modelId: v.string(),
   personaId: v.optional(v.union(v.id("personas"), v.null())),
   personaName: v.optional(v.union(v.string(), v.null())),
@@ -134,6 +135,9 @@ export const postProcessArgs = {
 } satisfies PropertyValidators;
 
 export const generateTitleArgs = {
+  runtimeHelperContent: v.optional(v.string()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   chatId: v.id("chats"),
   sourceContent: v.string(),
   assistantContent: v.optional(v.string()),
@@ -165,6 +169,9 @@ export const previewVoiceArgs = {
 } satisfies PropertyValidators;
 
 export const extractMemoriesArgs = {
+  runtimeHelperContent: v.optional(v.string()),
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   chatId: v.id("chats"),
   userMessageContent: v.string(),
   userMessageId: v.id("messages"),

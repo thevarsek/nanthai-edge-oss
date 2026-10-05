@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "allowImportingTsExtensions": true
   },
-  "include": ["./**/*.ts"],
+  "include": ["./**/*.ts", "../shared/**/*.mts"],
   "exclude": ["./node_modules"]
 }

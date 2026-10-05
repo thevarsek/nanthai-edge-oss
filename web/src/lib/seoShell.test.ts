@@ -32,6 +32,10 @@ describe("build-time SEO shell cleanup", () => {
     expect(isPublicSeoPath("/privacy")).toBe(true);
     expect(isPublicSeoPath("/features")).toBe(true);
     expect(isPublicSeoPath("/features/byok")).toBe(true);
+    expect(isPublicSeoPath("/workflows")).toBe(true);
+    expect(isPublicSeoPath("/local-runtime")).toBe(true);
+    expect(isPublicSeoPath("/research/results")).toBe(true);
+    expect(isPublicSeoPath("/research/methods")).toBe(true);
     expect(isPublicSeoPath("/sign-in")).toBe(false);
   });
 });

@@ -4,6 +4,10 @@ const publicSeoPaths = new Set([
   "/terms",
   "/support",
   "/licensing",
+  "/workflows",
+  "/local-runtime",
+  "/research/results",
+  "/research/methods",
 ]);
 
 export function isPublicSeoPath(pathname: string) {

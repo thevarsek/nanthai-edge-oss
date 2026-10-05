@@ -5,11 +5,7 @@ import {
   MutationCtx,
   QueryCtx,
 } from "../_generated/server";
-import { ConvexError } from "convex/values";
-import { computeEmbedding, jaccardSimilarity } from "./embedding_helpers";
-import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
-import { MODEL_IDS } from "../lib/model_constants";
-import { isZdrEnabled } from "../lib/openrouter_zdr";
+import { jaccardSimilarity } from "./embedding_helpers";
 import { deleteMemoryWithDerivedData } from "./cleanup";
 import { isUserDataWritable } from "../lib/write_fence";
 
@@ -19,75 +15,7 @@ type MemoryDocResult = Partial<Doc<"memories">> & {
   userId?: string;
 };
 
-export interface ComputeAndStoreEmbeddingArgs extends Record<string, unknown> {
-  memoryId: Id<"memories">;
-  content: string;
-}
-
-export async function computeAndStoreEmbeddingHandler(
-  ctx: ActionCtx,
-  args: ComputeAndStoreEmbeddingArgs,
-): Promise<void> {
-  const memory = await ctx.runQuery(internal.memory.operations.getMemoryDoc, {
-    memoryId: args.memoryId,
-  });
-  if (!memory?.userId) return;
-  const writable = await ctx.runQuery(internal.lib.write_fence.isWritable, {
-    userId: memory.userId,
-    chatId: memory.sourceChatId,
-  });
-  if (!writable) return;
-
-  const [apiKey, preferences] = await Promise.all([
-    getRequiredUserOpenRouterApiKey(ctx, memory.userId),
-    ctx.runQuery(internal.chat.queries.getUserPreferences, {
-      userId: memory.userId,
-    }),
-  ]);
-  let embeddingResult: Awaited<ReturnType<typeof computeEmbedding>>;
-  try {
-    embeddingResult = await computeEmbedding(args.content, apiKey, {
-      requireZdr: isZdrEnabled(preferences),
-    });
-  } catch (error) {
-    if (
-      error instanceof ConvexError &&
-      error.data?.code === "ZDR_EMBEDDING_UNAVAILABLE"
-    ) {
-      console.warn("[memory] skipped embedding storage under ZDR", {
-        memoryId: args.memoryId,
-        userId: memory.userId,
-      });
-      return;
-    }
-    throw error;
-  }
-  if (!embeddingResult) return;
-
-  await ctx.runMutation(internal.memory.operations.storeEmbedding, {
-    memoryId: args.memoryId,
-    userId: memory.userId,
-    embedding: embeddingResult.embedding,
-  });
-  await ctx.scheduler.runAfter(0, internal.execution.workload_queues.enqueueMemoryRelationship, {
-    memoryId: args.memoryId,
-  });
-
-  // M23: Track embedding cost if the memory has chat attribution.
-  if (embeddingResult.usage && memory.sourceChatId && memory.sourceMessageId) {
-    await ctx.scheduler.runAfter(0, internal.chat.mutations.storeAncillaryCost, {
-      messageId: memory.sourceMessageId,
-      chatId: memory.sourceChatId,
-      userId: memory.userId,
-      modelId: MODEL_IDS.embedding,
-      promptTokens: embeddingResult.usage.promptTokens,
-      completionTokens: 0,
-      totalTokens: embeddingResult.usage.totalTokens,
-      source: "memory_embedding_store",
-      generationId: embeddingResult.generationId ?? undefined,
-    });
-  }
-}
+export { computeAndStoreEmbeddingHandler, type ComputeAndStoreEmbeddingArgs } from "./embedding_storage_handler";
 
 export interface GetMemoryDocArgs extends Record<string, unknown> {
   memoryId: Id<"memories">;

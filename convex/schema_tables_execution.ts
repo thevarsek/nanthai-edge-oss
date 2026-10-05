@@ -64,9 +64,17 @@ export const executionSchemaTables = {
     adapterVersion: v.optional(v.string()),
     provider: v.optional(v.string()),
     modelId: v.optional(v.string()),
+    modelSelectionMode: v.optional(v.union(
+      v.literal("adapter_default"),
+      v.literal("explicit"),
+    )),
     runtimeLabel: v.optional(v.string()),
     deviceId: v.optional(v.string()),
     workspaceId: v.optional(v.string()),
+    chatParticipantId: v.optional(v.id("chatParticipants")),
+    participantRouteSnapshotId: v.optional(v.id("chatParticipantRuntimeRoutes")),
+    chatRuntimeOverrideId: v.optional(v.id("chatRuntimeOverrides")),
+    routeSnapshotHash: v.optional(v.string()),
     protocolVersion: v.string(),
     orchestrationEngine: v.optional(v.union(
       v.literal("legacy_scheduler"),
@@ -82,6 +90,8 @@ export const executionSchemaTables = {
     leaseExpiresAt: v.optional(v.number()),
     heartbeatAt: v.optional(v.number()),
     checkpointRef: v.optional(v.string()),
+    runtimeLastWorkerSequence: v.optional(v.number()),
+    runtimeLastWorkerEventId: v.optional(v.string()),
     componentOperationId: v.optional(v.string()),
     supersededByAttemptId: v.optional(v.id("executionAttempts")),
     errorSummary: v.optional(v.string()),
@@ -94,6 +104,7 @@ export const executionSchemaTables = {
     .index("by_run_status", ["runId", "status", "updatedAt"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_user_status", ["userId", "status", "updatedAt"])
+    .index("by_device_status", ["deviceId", "status", "updatedAt"])
     .index("by_engine_status", ["orchestrationEngine", "status", "updatedAt"])
     .index("by_lease", ["status", "leaseExpiresAt"]),
 
@@ -115,12 +126,16 @@ export const executionSchemaTables = {
     claimedBy: v.optional(v.string()),
     completedAt: v.optional(v.number()),
     rejectionReason: v.optional(v.string()),
+    targetDeviceId: v.optional(v.string()),
+    turnPacketId: v.optional(v.id("runtimeTurnPackets")),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_run_command", ["runId", "commandId"])
     .index("by_run_status", ["runId", "status", "updatedAt"])
     .index("by_attempt_status", ["attemptId", "status", "createdAt"])
+    .index("by_device_status", ["targetDeviceId", "status", "createdAt"])
+    .index("by_turn_packet", ["turnPacketId"])
     .index("by_user", ["userId", "createdAt"]),
 
   runEvents: defineTable({

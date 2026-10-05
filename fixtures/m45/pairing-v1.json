@@ -1,0 +1,47 @@
+{
+  "initiation": {
+    "protocolVersion": "nanthai.runtime.pairing.v1",
+    "pairingId": "pairing-1",
+    "oneTimeCode": "ABC12345",
+    "expiresAt": 1786752060000
+  },
+  "claim": {
+    "protocolVersion": "nanthai.runtime.pairing.v1",
+    "pairingId": "pairing-1",
+    "oneTimeCode": "ABC12345",
+    "hostNonce": "host-nonce-1",
+    "hostPublicKey": "ed25519-public-key-material",
+    "device": {
+      "displayName": "Dino MacBook",
+      "platform": { "operatingSystem": "macos", "architecture": "arm64", "release": "15.6" },
+      "hostVersion": "1.0.0"
+    }
+  },
+  "grant": {
+    "protocolVersion": "nanthai.runtime.pairing.v1",
+    "pairingId": "pairing-1",
+    "deviceId": "device-macbook-1",
+    "credentialId": "credential-1",
+    "credential": "fixture-only-opaque-secret",
+    "issuedAt": 1786752000000
+  },
+  "presence": {
+    "protocolVersion": "nanthai.runtime.pairing.v1",
+    "deviceId": "device-macbook-1",
+    "credentialId": "credential-1",
+    "presenceSessionId": "presence-1",
+    "owner": "foreground_cli",
+    "connectedAt": 1786752000000,
+    "heartbeatAt": 1786752001000,
+    "hostVersion": "1.0.0",
+    "platform": { "operatingSystem": "macos", "architecture": "arm64", "release": "15.6" },
+    "adapters": []
+  },
+  "revocation": {
+    "protocolVersion": "nanthai.runtime.pairing.v1",
+    "deviceId": "device-macbook-1",
+    "credentialId": "credential-1",
+    "revokedAt": 1786753000000,
+    "reason": "User removed the paired machine"
+  }
+}

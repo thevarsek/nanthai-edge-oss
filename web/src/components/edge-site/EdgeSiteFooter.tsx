@@ -54,6 +54,7 @@ export function EdgeSiteFooter() {
               >
                 {t("edge_nav_features")}
               </Link>
+              <Link to="/workflows" className="text-[0.84rem] efg-40 transition-colors hover:efg-80">{t("edge_nav_research")}</Link>
               <a
                 href="https://nanthai.tech/app"
                 target="_blank"

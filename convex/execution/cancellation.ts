@@ -1,8 +1,12 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import {
+  enqueueActiveLocalTurnCancellation,
+  LOCAL_CANCEL_COMMAND_WINDOW_MS,
+} from "../runtime_host/chat_cancellation";
 import { appendExecutionEvent, ensureGenerationExecution } from "./control_plane";
-import { requestRunTreeTeardown } from "./teardown_graph";
+import { closeRunWriterForCancellation } from "./cancel_fence";
 
 export async function requestExecutionCancellation(
   ctx: MutationCtx,
@@ -37,20 +41,37 @@ export async function cancelExecutionForGenerationJob(
   if (!job?.executionRunId) return false;
   const run = await ctx.db.get(job.executionRunId);
   if (!run || ["completed", "failed", "cancelled"].includes(run.state)) return false;
-  await requestRunTreeTeardown(
+  const now = args.now ?? Date.now();
+  const reason = `Cancelled by ${args.requestedBy}`;
+  await closeRunWriterForCancellation(
     ctx,
     run._id,
     args.requestedBy,
-    `Cancelled by ${args.requestedBy}`,
+    reason,
+    now,
   );
-  // Component cancellation is intentionally completed by the common teardown
-  // action. Workflow/workpool cancel acknowledges intent, but in-flight action
-  // code may still be draining; its component ref remains cancel_requested
-  // until callback/quiescence reconciliation makes terminalization safe.
+  const localCancellation = await enqueueActiveLocalTurnCancellation(ctx, {
+    job,
+    run,
+    requestedBy: args.requestedBy,
+    reason,
+    now,
+  });
+  if (localCancellation) {
+    await ctx.scheduler.runAfter(
+      LOCAL_CANCEL_COMMAND_WINDOW_MS,
+      internal.execution.teardown.cancelRunTree,
+      { runId: run._id, requestedBy: args.requestedBy, reason },
+    );
+    return true;
+  }
+  // Advance paginated teardown only from its per-run action. Chat Stop can
+  // fence several participant runs in one mutation, while Convex permits only
+  // one paginated query per function invocation.
   await ctx.scheduler.runAfter(0, internal.execution.teardown.cancelRunTree, {
     runId: run._id,
     requestedBy: args.requestedBy,
-    reason: `Cancelled by ${args.requestedBy}`,
+    reason,
   });
   return true;
 }

@@ -967,6 +967,12 @@ test("generation cancellation leaves owned components cancel_requested until qui
     "user_1",
     "Cancelled by user_1",
   );
+  await requestRunTreeTeardown(
+    ctx,
+    created.runId,
+    "user_1",
+    "Cancelled by user_1",
+  );
 
   assert.equal(rows.executionRuns[0].state, "cancelling");
   assert.equal(rows.executionComponentRefs[0]?.status, "cancel_requested");

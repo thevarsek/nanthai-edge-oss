@@ -11,11 +11,13 @@ import { MessageAttachments } from "./MessageAttachments";
 import { IconButton } from "@/components/shared/IconButton";
 import { copyToClipboard } from "@/lib/clipboard";
 import { PresentationMessageTarget } from "./PresentationMessageTarget";
+import { GeneratedFilesCard, type GeneratedFileOpenRequest } from "./GeneratedFilesCard";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 interface UserMessageProps {
   message: Message;
+  onOpenGeneratedFile?: (request: GeneratedFileOpenRequest & { message: Message }) => void;
 }
 
 // ─── Timestamp helper ─────────────────────────────────────────────────────────
@@ -26,7 +28,7 @@ function formatTimestamp(ts: number): string {
 
 // ─── User message ─────────────────────────────────────────────────────────────
 
-export const UserMessage = memo(function UserMessage({ message }: UserMessageProps) {
+export const UserMessage = memo(function UserMessage({ message, onOpenGeneratedFile }: UserMessageProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const copyResetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -87,6 +89,13 @@ export const UserMessage = memo(function UserMessage({ message }: UserMessagePro
 
       {message.presentationContext && (
         <PresentationMessageTarget context={message.presentationContext} />
+      )}
+
+      {!!message.generatedFileIds?.length && (
+        <GeneratedFilesCard
+          messageId={message._id}
+          onOpenFile={onOpenGeneratedFile ? (request) => onOpenGeneratedFile({ ...request, message }) : undefined}
+        />
       )}
 
       {message.mcpContextCards && message.mcpContextCards.length > 0 && (

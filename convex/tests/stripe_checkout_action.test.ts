@@ -72,3 +72,40 @@ test("createCheckoutSession surfaces upstream Stripe failures", async () => {
     process.env = originalEnv;
   }
 });
+
+test("local runtime checkout returns to the requested setup with the Mac handoff preserved", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalEnv = { ...process.env };
+  try {
+    process.env.STRIPE_SECRET_KEY = "sk_test";
+    process.env.STRIPE_PRICE_ID = "price_123";
+    process.env.WEB_APP_URL = "https://app.example";
+    let body = new URLSearchParams();
+    globalThis.fetch = (async (_url: unknown, init?: RequestInit) => {
+      body = new URLSearchParams(String(init?.body));
+      return { ok: true, json: async () => ({ url: "https://checkout.stripe.com/session" }) } as Response;
+    }) as typeof fetch;
+    const handler = (createCheckoutSession as any)._handler;
+    const ctx = { auth: buildAuth("user_42") };
+    for (const kind of ["local-runtime", "onboarding"] as const) {
+      await handler(ctx, { checkoutContext: { kind } });
+      const success = new URL(body.get("success_url")!);
+      assert.equal(success.pathname, kind === "local-runtime" ? "/app/settings/local-runtime" : "/onboarding");
+      assert.equal(success.searchParams.get("pro"), "success");
+      if (kind === "onboarding") assert.equal(success.searchParams.get("mode"), "connections");
+    }
+    await handler(ctx, { checkoutContext: { kind: "runtime-connect", state: "01234567-89ab-cdef", computer: "Dino’s Mac & Co" } });
+    for (const [key, result] of [["success_url", "success"], ["cancel_url", "cancelled"]]) {
+      const url = new URL(body.get(key)!);
+      assert.equal(url.origin, "https://app.example");
+      assert.equal(url.pathname, "/runtime/connect");
+      assert.equal(url.searchParams.get("state"), "01234567-89ab-cdef");
+      assert.equal(url.searchParams.get("computer"), "Dino’s Mac & Co");
+      assert.equal(url.searchParams.get("pro"), result);
+    }
+    await assert.rejects(handler(ctx, { checkoutContext: { kind: "runtime-connect", state: "https://other.site", computer: "Mac" } }), /Restart the connection/);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env = originalEnv;
+  }
+});

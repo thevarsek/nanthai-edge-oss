@@ -1,8 +1,20 @@
-import { Code2, Puzzle } from "lucide-react";
+import { Code2, Laptop, Puzzle } from "lucide-react";
 
 import type { FeatureMeta } from "./featureData";
 
 export const advancedFeatures: FeatureMeta[] = [
+  {
+    slug: "local-runtime",
+    title: "Local runtime",
+    tagline: "Work with your Mac from your phone or browser.",
+    indexDescription: "Connect Codex or Pi on your Mac. Work with local files, follow the conversation from your phone and keep the results in NanthAI.",
+    tier: "pro",
+    icon: Laptop,
+    accentClass: "text-[var(--edge-cyan)]",
+    related: ["personas", "automated-tasks", "memories"],
+    i18nPrefix: "lr",
+    titleKey: "local_runtime_title",
+  },
   {
     slug: "skills-helpers",
     title: "AI Skills & focused helpers",

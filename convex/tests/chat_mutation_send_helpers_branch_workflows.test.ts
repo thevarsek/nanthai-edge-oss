@@ -163,7 +163,7 @@ test("normalizeMessageAttachments enforces storage ownership and consumes chat u
     storageId: "storage_new" as any,
     uploadSessionId: "upload_session" as any,
   }]);
-  assert.equal(normalized?.[0].uploadSessionId, "upload_session");
+  assert.equal("uploadSessionId" in (normalized?.[0] ?? {}), false);
   assert.equal(ownedSession.patches[0].id, "upload_session");
   assert.equal(ownedSession.patches[0].value.status, "consumed");
   assert.equal(typeof ownedSession.patches[0].value.consumedAt, "number");

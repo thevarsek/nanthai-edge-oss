@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+interface ImportMetaEnv {
+  readonly VITE_NANTHAI_RUNTIME_HOST_DOWNLOAD_URL?: string;
+}
+
 declare module "virtual:pwa-register" {
   export type RegisterSWOptions = {
     immediate?: boolean;

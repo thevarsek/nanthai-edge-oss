@@ -18,6 +18,7 @@ export type GenerationAnalyticsSource =
   | "video_generation";
 
 export interface ParticipantConfig {
+  chatParticipantId?: Id<"chatParticipants">;
   modelId: string;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;

@@ -1,3 +1,6 @@
+import { evidenceCandidateValidator, sourceCitationValidator } from "./chat/source_evidence";
+import { offlineResultValidator } from "./runtime_host/offline_import_contract";
+import { effectivePersonaConfigValidator } from "./runtime_host/effective_persona_config";
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
@@ -277,12 +280,15 @@ export const coreSchemaTables = {
     ),
     // M32 — Document Workspace citations. Separate from web-search URL citations.
     documentCitations: v.optional(v.array(documentCitation)),
+    sourceCitations: v.optional(v.array(sourceCitationValidator)),
+    offlineResult: v.optional(offlineResultValidator),
     // M33 — First-class generated/updated document cards.
     documentEvents: v.optional(v.array(documentEvent)),
     // M39 — Hydrated DOCX tracked-change proposal cards.
     documentEditAnnotations: v.optional(v.array(documentEditAnnotation)),
     subagentsEnabled: v.optional(v.boolean()),
     subagentBatchId: v.optional(v.id("subagentBatches")),
+    runtimeNativeAgentGroupId: v.optional(v.id("runtimeNativeAgentGroups")),
     advisorBatchId: v.optional(v.id("advisorBatches")),
     drivePickerBatchId: v.optional(v.id("drivePickerBatches")),
     // Autonomous moderator — directive injected before this turn
@@ -467,11 +473,40 @@ export const coreSchemaTables = {
     collaborationDecisionId: v.optional(v.id("collaborationDecisions")),
     collaborationWave: v.optional(v.number()),
     chatParticipantId: v.optional(v.id("chatParticipants")),
+    effectivePersonaConfig: v.optional(effectivePersonaConfigValidator),
+    runtimeCompletionEventId: v.optional(v.string()),
+    runtimeEvidenceSources: v.optional(v.array(evidenceCandidateValidator)),
+    runtimeWaitingDeviceId: v.optional(v.string()),
+    runtimeDeviceReadyEventId: v.optional(v.string()),
+    runtimeContextReceipt: v.optional(v.string()),
+    runtimeExpectedFrontierMessageId: v.optional(v.id("messages")),
+    runtimeTurnPacketId: v.optional(v.id("runtimeTurnPackets")),
+    runtimeCommandRecordId: v.optional(v.id("runtimeCommands")),
+    runtimeSourceMessageId: v.optional(v.id("messages")),
+    runtimeUsage: v.optional(v.object({
+      actualProvider: v.optional(v.string()),
+      actualModelId: v.optional(v.string()),
+      inputTokens: v.optional(v.number()),
+      outputTokens: v.optional(v.number()),
+      cachedInputTokens: v.optional(v.number()),
+      reasoningTokens: v.optional(v.number()),
+      totalTokens: v.optional(v.number()),
+      costSource: v.union(
+        v.literal("provider_reported"),
+        v.literal("api_equivalent_estimate"),
+        v.literal("unpriced"),
+      ),
+      costAmount: v.optional(v.number()),
+      costCurrency: v.optional(v.string()),
+      pricingVersion: v.optional(v.string()),
+      unpricedReason: v.optional(v.string()),
+    })),
     createdAt: v.number(),
   })
     .index("by_message", ["messageId"])
     .index("by_chat_status", ["chatId", "status"])
     .index("by_user_status", ["userId", "status"])
+    .index("by_runtime_waiting_device", ["runtimeWaitingDeviceId"])
     .index("by_status", ["status", "createdAt"]),
 
   generationContinuations: defineTable({

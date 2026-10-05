@@ -14,6 +14,7 @@ import {
   Music,
   Image,
   Film,
+  Laptop,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { getFeature } from "./featureData";
@@ -37,6 +38,7 @@ function getSteps(t: (k: string) => string): HowItWorksStep[] {
 
 function getCapabilities(t: (k: string) => string): Capability[] {
   return [
+    { icon: <Laptop size={18} />, title: `${t("pro_2")}: ${t("local_runtime_title")}`, description: t("lr_seo_desc") },
     { icon: <MessageSquare size={18} />, title: t("pf_cap_chat_title"), description: t("pf_cap_chat_desc") },
     { icon: <Search size={18} />, title: t("pf_cap_search_title"), description: t("pf_cap_search_desc") },
     { icon: <FolderOpen size={18} />, title: t("pf_cap_folders_title"), description: t("pf_cap_folders_desc") },

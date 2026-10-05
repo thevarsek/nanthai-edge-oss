@@ -157,6 +157,7 @@ test("research cancellation closes the writer before a normal handoff can comple
   ]);
   const db = {
     get: async (id: string) => rows.get(id) ?? null,
+    query: () => ({ withIndex: () => ({ unique: async () => null }) }),
     patch: async (id: string, patch: Record<string, unknown>) => {
       rows.set(id, { ...rows.get(id), ...patch });
     },

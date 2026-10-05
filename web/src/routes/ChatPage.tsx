@@ -96,6 +96,7 @@ import type { PlusMenuItem } from "@/components/chat/ChatPlusMenu";
 import type { PersonaItem } from "@/components/chat/ChatParticipantPicker.helpers";
 import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import { RemoteMcpPendingPanel } from "@/components/chat/RemoteMcpPendingPanel";
+import { RuntimePermissionCards } from "@/components/chat/RuntimePermissionCards";
 import {
   RemoteMcpContentPicker,
   type StagedRemoteMcpContext,
@@ -605,44 +606,52 @@ export function ChatPage() {
       const advisorBrief = advisorSnapshot === undefined
         ? advisors.advisorBrief
         : advisorSnapshot.advisorBrief;
-      const sent = await executeChatSend({
-        text,
-        state: {
-          chatId: chatId ?? undefined,
-          ...composerAttachmentState({ attachments, kbAttachmentsForDisplay }),
-          participants,
-          mentionedParticipantKeys: mentionedParticipantKeys(text, mentionSuggestions),
-          turnOverrideArgs,
-          enabledIntegrations: overrides.enabledIntegrations,
-          subagentsEnabled: effectiveSubagentsEnabled,
-          webSearchEnabled,
-          convexSearchMode,
-          convexComplexity,
-          isResearchPaper,
-          isVideoMode,
-          prefs: typedPrefs,
-          advisorSelections,
-          advisorBrief,
-          presentationContext,
-          mcpInvocationIds,
-        },
-        deps: {
-          validateAttachmentCount: validateSendState,
-          ensureChatId,
-          flushPendingState: overrides.flushPendingState,
-          sendMessage,
-          startResearchPaper,
-          clearKBFiles: overrides.clearKBFiles,
-          clearTurnOverrides: overrides.clearTurnOverrides,
-        },
-      });
-      if (sent && advisorSnapshot === undefined && (advisorSelections?.length || advisorBrief)) {
-        advisors.completeSuccessfulSend();
+      try {
+        const sent = await executeChatSend({
+          text,
+          state: {
+            chatId: chatId ?? undefined,
+            ...composerAttachmentState({ attachments, kbAttachmentsForDisplay }),
+            participants,
+            mentionedParticipantKeys: mentionedParticipantKeys(text, mentionSuggestions),
+            turnOverrideArgs,
+            enabledIntegrations: overrides.enabledIntegrations,
+            subagentsEnabled: effectiveSubagentsEnabled,
+            webSearchEnabled,
+            convexSearchMode,
+            convexComplexity,
+            isResearchPaper,
+            isVideoMode,
+            prefs: typedPrefs,
+            advisorSelections,
+            advisorBrief,
+            presentationContext,
+            mcpInvocationIds,
+          },
+          deps: {
+            validateAttachmentCount: validateSendState,
+            ensureChatId,
+            flushPendingState: overrides.flushPendingState,
+            sendMessage,
+            startResearchPaper,
+            clearKBFiles: overrides.clearKBFiles,
+            clearTurnOverrides: overrides.clearTurnOverrides,
+          },
+        });
+        if (sent && advisorSnapshot === undefined && (advisorSelections?.length || advisorBrief)) {
+          advisors.completeSuccessfulSend();
+        }
+        if (sent && presentationContext) {
+          setStagedPresentationTarget((current) => current?.context === presentationContext ? null : current);
+        }
+        return sent;
+      } catch (error) {
+        toast({
+          message: convexErrorMessage(error, t("something_went_wrong")),
+          variant: "error",
+        });
+        return false;
       }
-      if (sent && presentationContext) {
-        setStagedPresentationTarget((current) => current?.context === presentationContext ? null : current);
-      }
-      return sent;
     },
     [chatId, ensureChatId, kbAttachmentsForDisplay, sendMessage, startResearchPaper, participants, mentionSuggestions, turnOverrideArgs, effectiveSubagentsEnabled, webSearchEnabled, convexSearchMode, convexComplexity, isResearchPaper, isVideoMode, typedPrefs, overrides, validateSendState, advisors, t, toast],
   );
@@ -863,7 +872,7 @@ export function ChatPage() {
               group.type === "single" ? (
                 <div key={group.message._id} data-message-id={group.message._id}>
                   {branchNodes.has(group.message._id) && <BranchIndicator node={branchNodes.get(group.message._id)!} onNavigate={handleBranchNavigate} onJumpToNext={handleJumpToNext} />}
-                  <MessageBubble message={group.message} isStreaming={isGenerating && group.message.status === "streaming"} participants={participants} onRetry={handleRetry} onFork={handleFork} onRetryWithDifferentModel={handleRetryWithDifferentModel} messageCost={messageCosts[group.message._id]} showAdvancedStats={showAdvancedStats} onOpenGeneratedFile={handleOpenGeneratedFile} onOpenDocumentEdit={handleOpenDocumentEdit} />
+                  <MessageBubble message={group.message} isStreaming={isGenerating && group.message.status === "streaming"} participants={participants} onRetry={handleRetry} onFork={handleFork} onRetryWithDifferentModel={handleRetryWithDifferentModel} messageCost={messageCosts[group.message._id]} showAdvancedStats={showAdvancedStats} onOpenGeneratedFile={handleOpenGeneratedFile} onOpenDocumentEdit={handleOpenDocumentEdit} executionRoute={group.message.executionRoute} />
                 </div>
               ) : (
                 <div key={messageGroupKey(group)} data-message-id={group.messages[0]?._id}>
@@ -900,6 +909,9 @@ export function ChatPage() {
         collaboration={collaboration}
         autonomousActive={isAutonomousActive}
       />}
+      runtimePermissionControl={typedChatId ? (
+        <RuntimePermissionCards chatId={typedChatId} participants={participants} />
+      ) : null}
       balanceIndicator={typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}
       turnOverrideChips={<>
         <TurnOverrideChips

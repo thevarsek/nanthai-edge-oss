@@ -15,6 +15,7 @@ export interface DecisionCallArgs extends DecisionRequest {
   messageId?: Id<"messages">;
   requireZdr: boolean;
   recordCost?: boolean;
+  absoluteDeadlineAtMs?: number;
 }
 
 export async function tryJevDecision(ctx: DecisionContext, args: DecisionCallArgs): Promise<DecisionResult | null> {
@@ -24,7 +25,10 @@ export async function tryJevDecision(ctx: DecisionContext, args: DecisionCallArg
     properties: { policy_version: "m60-v1", zdr_required: args.requireZdr },
   };
   try {
-    const result = await callJevDecisions(args.apiKey, args, { requireZdr: args.requireZdr });
+    const timeoutMs = args.absoluteDeadlineAtMs === undefined
+      ? undefined : Math.min(20_000, args.absoluteDeadlineAtMs - Date.now());
+    if (timeoutMs !== undefined && timeoutMs <= 0) throw new DecisionError("timeout");
+    const result = await callJevDecisions(args.apiKey, args, { requireZdr: args.requireZdr, timeoutMs });
     if (ctx.scheduler) await captureBackendAIOperationCompleted({ scheduler: ctx.scheduler }, {
       ...telemetry, modelId: result.modelId, usage: result.usage, durationMs: result.durationMs,
       properties: { ...telemetry.properties, provider: result.provider ?? null, decision_request_id: result.requestId ?? null },

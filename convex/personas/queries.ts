@@ -6,12 +6,15 @@
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { personaRuntimeIdentity } from "../runtime_host/identity_projection";
+import { personaSystemPrompt } from "./default_prompt";
 import { optionalAuth } from "../lib/auth";
 
-async function withAvatarUrl<T extends { avatarImageStorageId?: Id<"_storage"> }>(
+async function withAvatarUrl<T extends { systemPrompt: string; avatarImageStorageId?: Id<"_storage"> }>(
   ctx: { storage: { getUrl: (storageId: Id<"_storage">) => Promise<string | null> } },
   persona: T,
 ): Promise<T & { avatarImageUrl?: string }> {
+  persona = { ...persona, systemPrompt: personaSystemPrompt(persona.systemPrompt) };
   if (!persona.avatarImageStorageId) {
     return { ...persona, avatarImageUrl: undefined };
   }
@@ -21,15 +24,16 @@ async function withAvatarUrl<T extends { avatarImageStorageId?: Id<"_storage"> }
 
 /** List all personas for the authenticated user. */
 export const list = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { runtimePlacement: v.optional(v.union(v.literal("local"), v.literal("cloud"))) },
+  handler: async (ctx, args) => {
     const auth = await optionalAuth(ctx);
     if (!auth) return [];
     const personas = await ctx.db
       .query("personas")
       .withIndex("by_user", (q) => q.eq("userId", auth.userId))
       .collect();
-    return await Promise.all(personas.map((persona) => withAvatarUrl(ctx, persona)));
+    const projected = await Promise.all(personas.map(async persona => ({ ...await withAvatarUrl(ctx, persona), ...await personaRuntimeIdentity(ctx, persona) })));
+    return args.runtimePlacement ? projected.filter(persona => persona.runtimePlacement === args.runtimePlacement) : projected;
   },
 });
 

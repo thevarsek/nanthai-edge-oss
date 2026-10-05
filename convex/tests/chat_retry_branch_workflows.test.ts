@@ -388,3 +388,9 @@ test("retryMessageHandler repairs malformed plain branches that share a paper pr
   assert.equal(session?.value.mode, "paper");
   assert.equal(session?.value.complexity, 3);
 });
+
+test("retry snapshots retain canonical participant identity for local route resolution", async () => {
+  const { buildRetryContract } = await import("../chat/retry_contract");
+  const contract = buildRetryContract({ participants: [{ modelId: "openai/gpt-6.1-sol", personaId: "persona_1" as Id<"personas">, participantKey: "participant_1" }], searchMode: "none" });
+  assert.equal(contract.participants[0].participantKey, "participant_1");
+});

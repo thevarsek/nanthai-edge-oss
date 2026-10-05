@@ -1,3 +1,4 @@
+import { questionTimeoutMinutes } from "../runtime_host/question_policy";
 // convex/preferences/mutations.ts
 // =============================================================================
 // User Preferences & Model Settings mutations.
@@ -196,6 +197,7 @@ export const upsertPreferences = mutation({
     webSearchEnabledByDefault: v.optional(v.boolean()),
     subagentsEnabledByDefault: v.optional(v.boolean()),
     chatCompletionNotificationsEnabled: v.optional(v.boolean()),
+    localQuestionTimeoutMinutes: v.optional(questionTimeoutMinutes),
     defaultSearchMode: v.optional(v.union(v.string(), v.null())),
     defaultSearchComplexity: v.optional(v.union(v.number(), v.null())),
     autoAudioResponse: v.optional(v.boolean()),
@@ -314,6 +316,7 @@ export const upsertPreferences = mutation({
       webSearchEnabledByDefault: normalizedArgs.webSearchEnabledByDefault ?? true,
       subagentsEnabledByDefault: normalizedArgs.subagentsEnabledByDefault ?? false,
       chatCompletionNotificationsEnabled: normalizedArgs.chatCompletionNotificationsEnabled ?? false,
+      localQuestionTimeoutMinutes: normalizedArgs.localQuestionTimeoutMinutes,
       defaultSearchMode: normalizedArgs.defaultSearchMode ?? undefined,
       defaultSearchComplexity: normalizedArgs.defaultSearchComplexity ?? undefined,
       autoAudioResponse: normalizedArgs.autoAudioResponse ?? false,

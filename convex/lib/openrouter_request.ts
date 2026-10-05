@@ -96,7 +96,7 @@ export function buildRequestBody(
   // on non-native-search models and under ZDR (where native search is
   // disqualified for every model). The plugin searches once up-front and
   // injects results into the prompt, so the model streams the response in
-  // one pass. See docs/ttft-web-search-finding.md.
+  // one pass. See docs/integrations/openrouter-search.md.
   //
   // `max_results: 5` matches OpenRouter's plugin default and the server-tool
   // default. A head-to-head at identical max_results=5 (see

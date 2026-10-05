@@ -41,7 +41,7 @@ function speaker(id: string, content: string, role: "user" | "assistant", expect
   return { id, useCase: "speakers", expected, request: speakerDecisionRequest(input), project: (result) => projectSpeakerDecision(input, result).selections.map((selection) => String(selection.participantId)).sort().join(",") || "quiet", baselineState: input };
 }
 
-// Synthetic labels approved by the user on 2026-09-30; see docs/m60-evaluation.md.
+// Synthetic labels approved by the user on 2026-09-30; see docs/development/helper-evaluation.md.
 export const evaluationCases: EvaluationCase[] = [
   discussion("d1", "Choose the simplest database for a local prototype.", ["Use SQLite: one local file, no service to operate.", "Agreed: SQLite meets the local prototype requirements and avoids server setup."], "consensus"),
   discussion("d2", "Choose A or B based on the measured failure rate.", ["I favor A but we have no failure-rate measurements.", "I favor B. We still lack the measurements.", "A is my preference.", "B is my preference."], "stalled"),

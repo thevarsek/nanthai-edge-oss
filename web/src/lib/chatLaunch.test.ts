@@ -10,6 +10,16 @@ import {
 const personaId = "persona_1" as Id<"personas">;
 
 describe("chatLaunch", () => {
+  it("keeps a default local Persona without a cloud model in the new-chat participant", () => {
+    const [participant] = buildDefaultParticipants({
+      prefs: { defaultModelId: "openai/gpt-5.6-terra", defaultPersonaId: personaId },
+      personas: [{ _id: personaId, displayName: "OpenAI Codex · My Mac" }],
+      fallbackModelId: "openai/gpt-5.6-terra",
+    });
+    expect(participant.personaId).toBe(personaId);
+    expect(participant.personaName).toBe("OpenAI Codex · My Mac");
+  });
+
   it("builds default participants from persona preferences without losing persona generation settings", () => {
     const participants = buildDefaultParticipants({
       prefs: { defaultModelId: "openai/gpt-5", defaultPersonaId: personaId },

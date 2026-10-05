@@ -50,6 +50,9 @@ vi.mock("./pages/HomePage", () => ({
   HomePage: () => <div>home-page</div>,
 }));
 
+vi.mock("./pages/workflows/WorkflowsPage", () => ({ WorkflowsPage: () => <div>workflows-page</div> }));
+vi.mock("./pages/workflows/LocalRuntimePage", () => ({ LocalRuntimePage: () => <div>public-local-runtime-page</div> }));
+
 vi.mock("./pages/TermsPage", () => ({
   TermsPage: () => <div>terms-page</div>,
 }));
@@ -240,6 +243,11 @@ vi.mock("./routes/OnboardingPage", () => ({
   OnboardingPage: () => <div>onboarding-page</div>,
 }));
 
+
+vi.mock("./routes/LocalRuntimePage", () => ({
+  LocalRuntimePage: () => <div>local-runtime-page</div>,
+}));
+
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
@@ -266,7 +274,7 @@ describe("App routes", () => {
     routeMocks.rootLayoutMounts = 0;
   });
 
-  it("routes representative public, protected, callback, and fallback paths", async () => {
+  it("routes representative public paths", async () => {
     const homeRoute = renderAt("/");
     expect(await screen.findByText("home-page")).toBeInTheDocument();
     homeRoute.unmount();
@@ -383,6 +391,9 @@ describe("App routes", () => {
     expect(await screen.findByText("feature-video-generation-page")).toBeInTheDocument();
     videoRoute.unmount();
 
+  }, 15000);
+
+  it("routes representative authenticated app paths", async () => {
     const appIndexRoute = renderAt("/app");
     expect(await screen.findByText("app-empty-state")).toBeInTheDocument();
     appIndexRoute.unmount();
@@ -390,6 +401,7 @@ describe("App routes", () => {
     const appChatIndexRoute = renderAt("/app/chat");
     expect(await screen.findByText("app-empty-state")).toBeInTheDocument();
     appChatIndexRoute.unmount();
+
 
     const chatRoute = renderAt("/app/chat/chats_1");
     expect(await screen.findByText("chat-page")).toBeInTheDocument();
@@ -414,6 +426,10 @@ describe("App routes", () => {
     const settingsRoute = renderAt("/app/settings");
     expect(await screen.findByText("settings-page")).toBeInTheDocument();
     settingsRoute.unmount();
+
+    const localRuntimeRoute = renderAt("/app/settings/local-runtime");
+    expect(await screen.findByText("local-runtime-page")).toBeInTheDocument();
+    localRuntimeRoute.unmount();
 
     const skillsRoute = renderAt("/app/settings/skills");
     expect(await screen.findByText("skills-page")).toBeInTheDocument();
@@ -451,6 +467,9 @@ describe("App routes", () => {
     expect(await screen.findByText("favorites-page")).toBeInTheDocument();
     favoritesRoute.unmount();
 
+  }, 15000);
+
+  it("routes onboarding, callbacks, and fallback paths", async () => {
     const onboardingRoute = renderAt("/onboarding");
     expect(await screen.findByText("onboarding-page")).toBeInTheDocument();
     expect(routeMocks.authGuardProps[routeMocks.authGuardProps.length - 1]).toEqual({
@@ -489,6 +508,16 @@ describe("App routes", () => {
     expect(screen.getByText("404")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go home" })).toHaveAttribute("href", "/");
   }, 15000);
+
+  it("opens workflow pages without the authenticated guard", async () => {
+    const count = routeMocks.authGuardProps.length;
+    const results = renderAt("/research/results");
+    expect(await screen.findByText("workflows-page")).toBeInTheDocument();
+    results.unmount();
+    renderAt("/research/methods");
+    expect(await screen.findByText("public-local-runtime-page")).toBeInTheDocument();
+    expect(routeMocks.authGuardProps.length).toBe(count);
+  });
 
   it("does not expose a standalone presentation route", async () => {
     renderAt("/app/presentations");

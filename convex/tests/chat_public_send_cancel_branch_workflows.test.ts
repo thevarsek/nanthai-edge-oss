@@ -198,6 +198,24 @@ test("sendMessageHandler creates jobs only for explicitly mentioned participants
     tableRows: {
       ...proTableRows(),
       messages: [],
+      chatParticipants: [
+        {
+          _id: "participant_1",
+          chatId: "chat_1",
+          userId: "user_1",
+          modelId: "model_tools",
+          personaName: "Planner",
+          sortOrder: 0,
+        },
+        {
+          _id: "participant_2",
+          chatId: "chat_1",
+          userId: "user_1",
+          modelId: "model_tools",
+          personaName: "Reviewer",
+          sortOrder: 1,
+        },
+      ],
     },
   });
 
@@ -218,7 +236,7 @@ test("sendMessageHandler creates jobs only for explicitly mentioned participants
   assert.deepEqual(assistantMessages.map((entry) => entry.value.participantName), ["Reviewer"]);
   const generationDispatch = scheduled.find((entry) => Array.isArray(entry.args.assistantMessageIds));
   assert.equal(generationDispatch?.args.participants.length, 1);
-  assert.equal(generationDispatch?.args.participants[0].participantKey, undefined);
+  assert.equal(generationDispatch?.args.participants[0].chatParticipantId, "participant_2");
 });
 
 test("Collaboration snapshots backstage Advisors instead of rejecting the send", async () => {
@@ -297,6 +315,24 @@ test("sendMessageHandler keeps chat-wide subagents on for every tool-capable par
     tableRows: {
       ...proTableRows(),
       messages: [],
+      chatParticipants: [
+        {
+          _id: "participant_1",
+          chatId: "chat_1",
+          userId: "user_1",
+          modelId: "model_tools",
+          personaName: "Architect",
+          sortOrder: 0,
+        },
+        {
+          _id: "participant_2",
+          chatId: "chat_1",
+          userId: "user_1",
+          modelId: "model_tools",
+          personaName: "Implementer",
+          sortOrder: 1,
+        },
+      ],
     },
   });
 
@@ -360,6 +396,59 @@ test("sendMessageHandler accepts uploaded audio as the only source without text 
   assert.equal(inserts.some((entry) => entry.table === "fileAttachments"), true);
   assert.equal(scheduled.some((entry) => "queryText" in entry.args), false);
   assert.ok(scheduled.some((entry) => Array.isArray(entry.args.assistantMessageIds)));
+});
+
+test("sendMessageHandler consumes upload authorization without persisting its session ID", async () => {
+  const { ctx, inserts, patches } = buildCtx({
+    records: {
+      chat_1: {
+        _id: "chat_1",
+        userId: "user_1",
+        title: "Existing",
+        messageCount: 1,
+      },
+      upload_session: {
+        _id: "upload_session",
+        userId: "user_1",
+        storageId: "storage_image",
+        status: "pending",
+      },
+    },
+    tableRows: {
+      usageRecords: [],
+      messages: [],
+      cachedModels: [],
+      userPreferences: [],
+      fileAttachments: [],
+    },
+    storageUrl: "https://files.example/image.png",
+  });
+
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1" as any,
+    text: "Review this image",
+    participants: [{ modelId: "model_text" }],
+    attachments: [{
+      type: "image",
+      storageId: "storage_image",
+      uploadSessionId: "upload_session",
+      name: "reference.png",
+      mimeType: "image/png",
+    }],
+  } as any);
+
+  const userMessage = inserts.find((entry) =>
+    entry.table === "messages" && entry.value.role === "user"
+  );
+  const storedAttachment = userMessage?.value.attachments[0];
+  assert.equal(storedAttachment.storageId, "storage_image");
+  assert.equal(storedAttachment.name, "reference.png");
+  assert.equal("uploadSessionId" in storedAttachment, false);
+  assert.ok(patches.some((entry) =>
+    entry.id === "upload_session" &&
+    entry.value.status === "consumed" &&
+    typeof entry.value.consumedAt === "number"
+  ));
 });
 
 test("cancelGenerationHandler cancels continuations, subagents, streaming records, and linked search", async () => {

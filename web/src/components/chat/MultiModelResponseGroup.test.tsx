@@ -5,8 +5,8 @@ import type { Message } from "@/hooks/useChat";
 import { MultiModelResponseGroup } from "./MultiModelResponseGroup";
 
 vi.mock("./MessageBubble", () => ({
-  MessageBubble: ({ message, isStreaming, suppressAdvisorPanel }: { message: Message; isStreaming: boolean; suppressAdvisorPanel?: boolean }) => (
-    <div data-testid={`message-${message._id}`} data-streaming={String(isStreaming)} data-advisor-suppressed={String(suppressAdvisorPanel)}>
+  MessageBubble: ({ message, isStreaming, suppressAdvisorPanel, executionRoute }: { message: Message; isStreaming: boolean; suppressAdvisorPanel?: boolean; executionRoute?: Message["executionRoute"] }) => (
+    <div data-testid={`message-${message._id}`} data-route={executionRoute?.placement ?? "unknown"} data-streaming={String(isStreaming)} data-advisor-suppressed={String(suppressAdvisorPanel)}>
       {message.content}
     </div>
   ),
@@ -50,6 +50,17 @@ describe("MultiModelResponseGroup", () => {
     expect(screen.getByTestId("message-messages_1")).toHaveAttribute("data-streaming", "true");
     expect(screen.getByTestId("message-messages_2")).toHaveAttribute("data-streaming", "false");
     expect(screen.getByText(/Total:/)).toHaveTextContent("$0.0300");
+  });
+
+  test("keeps mixed responses tied to their own recorded routes", () => {
+    render(<MultiModelResponseGroup groupId="mixed" messages={[
+      { ...message("local", "completed", "Local answer"), executionRoute: { placement: "local", runtimeLabel: "Mac · codex" } },
+      { ...message("cloud", "completed", "Cloud answer"), executionRoute: { placement: "cloud" } },
+      message("legacy", "completed", "Unknown route"),
+    ]} isStreaming={false} participants={[]} onRetry={vi.fn()} onFork={vi.fn()} />);
+    expect(screen.getByTestId("message-local")).toHaveAttribute("data-route", "local");
+    expect(screen.getByTestId("message-cloud")).toHaveAttribute("data-route", "cloud");
+    expect(screen.getByTestId("message-legacy")).toHaveAttribute("data-route", "unknown");
   });
 
   test("renders one shared Advisor panel for a multi-model response group", () => {

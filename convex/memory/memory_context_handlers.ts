@@ -15,6 +15,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import { ensureMessageQueryEmbeddingReady } from "./query_embedding_handlers";
+import type { EmbeddingUsage } from "./embedding_helpers";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
 import {
   hashMemoryCacheTextForPrivacyMode,
@@ -269,10 +270,7 @@ export interface CompleteMessageMemoryContextArgs extends Record<string, unknown
   status: "ready" | "failed";
   hydratedHits?: unknown[];
   memoryQueryText?: string;
-  usage?: {
-    promptTokens: number;
-    totalTokens: number;
-  };
+  usage?: EmbeddingUsage;
   generationId?: string;
   errorCode?: string;
   now: number;

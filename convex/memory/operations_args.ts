@@ -119,9 +119,11 @@ export const completeMessageQueryEmbeddingArgs = {
   textHash: v.string(),
   status: v.union(v.literal("ready"), v.literal("failed")),
   embedding: v.optional(v.array(v.float64())),
+  provider: v.optional(v.literal("openai")),
   usage: v.optional(v.object({
     promptTokens: v.number(),
     totalTokens: v.number(),
+    billingOwner: v.optional(v.literal("platform")),
   })),
   generationId: v.optional(v.string()),
   errorCode: v.optional(v.string()),
@@ -167,6 +169,7 @@ export const completeMessageMemoryContextArgs = {
   usage: v.optional(v.object({
     promptTokens: v.number(),
     totalTokens: v.number(),
+    billingOwner: v.optional(v.literal("platform")),
   })),
   generationId: v.optional(v.string()),
   errorCode: v.optional(v.string()),

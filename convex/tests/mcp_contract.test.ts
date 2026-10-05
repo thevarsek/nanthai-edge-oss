@@ -83,7 +83,7 @@ test("MCP prompt and resource context stays attributed and storage-backed", asyn
     read("../mcp/content_mapping.ts"),
     read("../mcp/message_context.ts"),
     read("../chat/actions_context_assembly_integration.ts"),
-    read("../chat/queries_handlers_public.ts"),
+    read("../chat/queries_message_handlers.ts"),
     read("../schema_tables_mcp.ts"),
   ]);
   assert.match(mapping, /ctx\.storage\.store/);

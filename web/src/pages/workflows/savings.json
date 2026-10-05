@@ -1,0 +1,8 @@
+{
+  "inputReductionPercent": 63.89841362483079,
+  "estimatedCostReductionPercent": 29.384929738794042,
+  "model": "gpt-6.1-sol",
+  "harness": "pi",
+  "reasoning": "low",
+  "evidenceCohort": "continuity-v5-20261004"
+}

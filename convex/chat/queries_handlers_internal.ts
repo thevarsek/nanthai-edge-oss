@@ -1,3 +1,4 @@
+import { personaSystemPrompt } from "../personas/default_prompt";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import {
@@ -214,6 +215,7 @@ export async function getPersonaHandler(
   }
 
   if (!persona) return null;
+  persona = { ...persona, systemPrompt: personaSystemPrompt(persona.systemPrompt) };
 
   // Resolve avatarImageStorageId → avatarImageUrl
   if (persona.avatarImageStorageId) {

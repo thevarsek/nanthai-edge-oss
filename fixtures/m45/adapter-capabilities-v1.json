@@ -1,0 +1,39 @@
+{
+  "protocolVersion": "nanthai.runtime.v1",
+  "adapterId": "contract-fixture-adapter",
+  "adapterVersion": "1.2.3",
+  "transport": "stdio_jsonrpc",
+  "inputModalities": ["text", "image", "audio", "video", "document", "file", "tool_evidence"],
+  "eventTypes": [
+    "session_started",
+    "text_delta",
+    "reasoning_delta",
+    "tool_started",
+    "tool_progress",
+    "tool_completed",
+    "command_output",
+    "evidence_observed",
+    "permission_requested",
+    "permission_resolved",
+    "input_requested",
+    "input_resolved",
+    "artifact_created",
+    "usage_reported",
+    "model_observed",
+    "heartbeat",
+    "terminal"
+  ],
+  "operations": {
+    "listModels": true,
+    "cancel": true,
+    "resume": true,
+    "permissionResponse": true,
+    "inputResponse": true
+  },
+  "adapterNative": {
+    "tools": true,
+    "plugins": true,
+    "mcpServers": true,
+    "skills": true
+  }
+}

@@ -1,3 +1,4 @@
+import { HomeWorkflowSection } from "./workflows/HomeWorkflowSection";
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 import {
@@ -89,6 +90,7 @@ export function HomePage() {
       <HomeWorkflowProofSection />
       <HomeCapabilitiesSection />
       <HomeIntegrationsSection />
+      <HomeWorkflowSection />
       <HomePricingSection />
       <HomeFinalCTA />
     </EdgeSiteLayout>

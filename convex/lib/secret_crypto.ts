@@ -17,6 +17,7 @@ export type SecretField =
   | "pkceVerifier";
 
 export type SecretContext =
+  | { namespace: "runtimeInput"; userId: string; attemptId: string; requestId: string; field: "credentialValue" }
   | {
     namespace: "oauthConnections";
     userId: string;
@@ -147,7 +148,10 @@ async function importKey(keyId: string): Promise<CryptoKey> {
 function associatedData(context: SecretContext): Uint8Array {
   if (!context.userId.trim()) throw credentialUnavailable();
   let parts: string[];
-  if (context.namespace === "oauthConnections") {
+  if (context.namespace === "runtimeInput") {
+    if (!context.attemptId.trim() || !context.requestId.trim()) throw credentialUnavailable();
+    parts = ["nanthai", context.namespace, context.userId, context.attemptId, context.requestId, context.field];
+  } else if (context.namespace === "oauthConnections") {
     if (!context.provider.trim()) throw credentialUnavailable();
     parts = ["nanthai", context.namespace, context.userId, context.provider, context.field];
   } else if (context.namespace === "userSecrets") {

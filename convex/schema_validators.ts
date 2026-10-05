@@ -530,6 +530,7 @@ export const integrationOverrideEntry = v.object({
 
 /** Retry contract participant snapshot persisted on assistant messages. */
 export const retryParticipantSnapshot = v.object({
+  participantKey: v.optional(v.string()),
   modelId: v.string(),
   personaId: v.optional(v.union(v.id("personas"), v.null())),
   personaName: v.optional(v.union(v.string(), v.null())),

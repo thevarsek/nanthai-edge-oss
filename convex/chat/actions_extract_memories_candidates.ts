@@ -1,3 +1,4 @@
+import type { MemoryHelperExecution } from "../memory/helper_write_fence";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
@@ -92,7 +93,7 @@ export async function processExtractedMemoryCandidates(
     userMessageId: Id<"messages">;
     userId: string;
     isPending?: boolean;
-  },
+  } & MemoryHelperExecution,
   extracted: ExtractedMemory[],
   existingMemories: MemoryRecordLike[],
   exclusionRules: MemoryExclusionRules,
@@ -105,6 +106,7 @@ export async function processExtractedMemoryCandidates(
     embeddingScheduledCount: 0,
   };
   const acceptedEvidence: EvidenceSpan[] = [];
+  const execution = args.executionAttemptId ? { executionAttemptId: args.executionAttemptId, executionFence: args.executionFence } : {};
 
   for (const item of extracted.slice(0, 4)) {
     const content = normalizeMemoryContent(item.content ?? "");
@@ -171,7 +173,7 @@ export async function processExtractedMemoryCandidates(
     const expiresAt = policyExpiresAt == null
       ? modelExpiresAt
       : Math.min(modelExpiresAt ?? policyExpiresAt, policyExpiresAt);
-    const reconciled = await reconcileAdmittedMemory(ctx, {
+    const reconciled = args.executionAttemptId ? undefined : await reconcileAdmittedMemory(ctx, {
       userId: args.userId, content, category, memoryType, retrievalMode, importanceScore, confidenceScore,
       reinforcementCount: 1, lastReinforcedAt: now, expiresAt, sourceMessageId: args.userMessageId,
       sourceChatId: args.chatId, sourceType: "chat", tags: item.tags, isPending: args.isPending ?? false, createdAt: now,
@@ -195,6 +197,7 @@ export async function processExtractedMemoryCandidates(
     } | null;
     if (duplicate?._id) {
       await ctx.runMutation(internal.chat.mutations.reinforceMemory, {
+        ...execution,
         memoryId: duplicate._id,
         reinforcedAt: now,
         candidateMemoryType: memoryType,
@@ -220,6 +223,7 @@ export async function processExtractedMemoryCandidates(
     );
     if (conflicting?._id) {
       await ctx.runMutation(internal.chat.mutations.supersedeMemory, {
+        ...execution,
         memoryId: conflicting._id as Id<"memories">,
         supersededAt: now,
       });
@@ -227,6 +231,7 @@ export async function processExtractedMemoryCandidates(
     }
 
     const memoryId = await ctx.runMutation(internal.chat.mutations.createMemory, {
+      ...execution,
       userId: args.userId,
       content,
       category,

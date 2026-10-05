@@ -10,6 +10,7 @@ import {
   Key,
   Layers,
   LayoutGrid,
+  Laptop,
   MessagesSquare,
   Mic,
   Music,
@@ -54,6 +55,14 @@ export function getHowItWorksSteps(t: (k: string) => string) {
 
 export function getCapabilityCards(t: (k: string) => string) {
   return [
+    {
+      icon: Laptop,
+      title: t("local_runtime_title"),
+      body: t("lr_seo_desc"),
+      detail: t("pro_2"),
+      href: "/features/local-runtime",
+      wide: true,
+    },
     {
       icon: MessagesSquare,
       title: t("home_cap_chat_title"),
@@ -210,6 +219,7 @@ export function getFreeFeatures(t: (k: string) => string) {
 
 export function getProFeatures(t: (k: string) => string) {
   return [
+    t("home_pro_local_runtime"),
     t("home_pro_1"),
     t("home_pro_2"),
     t("home_pro_3"),

@@ -1,3 +1,5 @@
+import { useConnectionFilter } from "@/hooks/useConnectionFilter";
+import { ConnectionFilter, LocalPersonaRecovery } from "@/components/shared/ConnectionFilter";
 import { useState, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -52,7 +54,8 @@ export function ParticipantPicker({
   googleIntegrationsActive,
 }: ParticipantPickerProps) {
   const { t } = useTranslation();
-  const { personas, prefs } = useSharedData();
+  const { prefs } = useSharedData();
+  const { connectionFilter, setConnectionFilter, connectionPersonas: personas } = useConnectionFilter();
   const modelSummaries = useModelSummaries();
   const modelsLoading = modelSummaries === undefined;
   const zdrEnforced = prefs?.zdrEnabled === true;
@@ -99,8 +102,8 @@ export function ParticipantPicker({
   }, [personas, query]);
 
   const filteredModels = useMemo(
-    () => filterAndSortModels(models, search, sortKey, activeFilters),
-    [models, search, sortKey, activeFilters],
+    () => connectionFilter === "local" ? [] : filterAndSortModels(models, search, sortKey, activeFilters),
+    [models, search, sortKey, activeFilters, connectionFilter],
   );
 
   const toggleFilter = useCallback((f: CapFilter) => {
@@ -161,6 +164,7 @@ export function ParticipantPicker({
         </div>
       </div>
 
+      <ConnectionFilter value={connectionFilter} onChange={setConnectionFilter} />
       {/* Controls bar */}
       <div className="px-4 pt-2 pb-5 overflow-x-auto overflow-y-hidden shrink-0 bg-surface-1 relative z-10">
         <div className="flex gap-1.5 min-w-max">
@@ -191,6 +195,7 @@ export function ParticipantPicker({
 
       {/* Scrollable content */}
       <div className="flex-1 overflow-y-auto min-h-0">
+        {connectionFilter === "local" && personas !== undefined && filteredPersonas.length === 0 && <LocalPersonaRecovery />}
         {/* Personas section */}
         {filteredPersonas.length > 0 && (
           <div>

@@ -19,7 +19,7 @@ export const getDecisionBarrier = internalQuery({
       ctx.db.get(args.decisionId),
     ]);
     if (!exchange || !decision || decision.exchangeId !== exchange._id) {
-      return { terminal: true, stale: true, jobs: [] };
+      return { terminal: true, stale: true, remainingMs: 0, jobs: [] };
     }
     const jobs = await Promise.all(
       (decision.generationJobIds ?? []).map((jobId) => ctx.db.get(jobId)),
@@ -29,6 +29,7 @@ export const getDecisionBarrier = internalQuery({
         jobs.length > 0 &&
         jobs.every((job) => job && TERMINAL_JOB_STATUSES.has(job.status)),
       stale: false,
+      remainingMs: Math.max(0, exchange.bounds.deadlineAt - Date.now()),
       jobs: jobs.map((job) => ({
         id: job?._id,
         status: job?.status ?? "missing",

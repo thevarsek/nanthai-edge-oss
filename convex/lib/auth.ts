@@ -14,7 +14,7 @@ const isAccountDeletionStartedRef = makeFunctionReference<"query">(
 // ---------------------------------------------------------------------------
 // Pro Entitlement Policy
 // ---------------------------------------------------------------------------
-// Source of truth: docs/monetization.md
+// Source of truth: docs/product/monetization.md
 //
 // Features that call `requirePro(ctx, userId)` on the backend:
 //

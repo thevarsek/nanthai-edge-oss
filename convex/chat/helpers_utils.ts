@@ -1,5 +1,6 @@
 import { ContentPart, OpenRouterMessage } from "../lib/openrouter";
 import { ContextMessage } from "./helpers_types";
+import { inheritMessageSources } from "./message_provenance";
 
 /**
  * Walk backward from a message through parentMessageIds to the root,
@@ -91,11 +92,13 @@ export function consolidateConsecutiveRoles(
     mergedParts.push(...nonTextParts);
 
     if (mergedParts.length > 0) {
-      consolidated.push({
+      const merged: OpenRouterMessage = {
         role: first.role,
         content: contentFromParts(mergedParts),
         name: first.name,
-      });
+      };
+      inheritMessageSources(merged, run);
+      consolidated.push(merged);
     }
 
     run = [];

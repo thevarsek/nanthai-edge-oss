@@ -17,6 +17,7 @@ import {
   cancelUserExecutionsHandler,
 } from "./teardown_delete_handlers";
 import { cancelScheduledJobAndDeleteHandler } from "./teardown_scheduled_job";
+import { hasStoppedAttemptOwner } from "../runtime_host/host_session_auth";
 
 const ownedComponent = v.object({
   componentRefId: v.optional(v.id("executionComponentRefs")),
@@ -166,7 +167,9 @@ export const reconcilePendingComponentCancellations = internalMutation({
         }
         if (cancelSafeAfter > now) continue;
       }
-      const cancelled = isAcknowledgedActionDrainSafe(ref, now)
+      const attempt = ref.adapterId === "local-runtime" && ref.attemptId ? await ctx.db.get(ref.attemptId) : null;
+      const stoppedOwner = attempt ? await hasStoppedAttemptOwner(ctx, attempt) : false;
+      const cancelled = stoppedOwner || isAcknowledgedActionDrainSafe(ref, now)
         ? true
         : await cancelComponent(ctx, ref.adapterId, ref.operationId);
       if (!isComponentCancellationConfirmed(cancelled, ref.cancelAcknowledgedAt)) {

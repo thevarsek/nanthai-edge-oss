@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { WorkflowCtx } from "@convex-dev/workflow";
+import { getFunctionName } from "convex/server";
 import { runGenerationParticipantWorkflowHandler } from "../chat/generation_workflow";
+
+const LOCAL_DISPATCH_CONTEXT_REF =
+  "runtime_host/chat_dispatch_queries:getLocalGenerationDispatchContext";
 
 test("Drive deferred ownership resumes with a fresh provider context", async () => {
   const actions: Array<Record<string, unknown>> = [];
@@ -17,7 +21,8 @@ test("Drive deferred ownership resumes with a fresh provider context", async () 
       actions.push(args);
       return null;
     },
-    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+    runQuery: async (ref: unknown, args: Record<string, unknown>) => {
+      if (getFunctionName(ref as never) === LOCAL_DISPATCH_CONTEXT_REF) return null;
       if ("modelId" in args) return null;
       jobReads += 1;
       if (jobReads === 1) return { _id: "job_1", status: "streaming" };

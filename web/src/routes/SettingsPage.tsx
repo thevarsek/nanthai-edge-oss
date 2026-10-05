@@ -7,6 +7,7 @@ import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 
 import { AccountSection } from "@/components/settings/AccountSection";
+import { AIConnectionsSection } from "@/components/settings/AIConnectionsSection";
 import { OpenRouterSection } from "@/components/settings/OpenRouterSection";
 import { IntegrationsSection, IntegrationsSubPage } from "@/components/settings/IntegrationsSection";
 import { ProvidersSection } from "@/components/settings/ProvidersSection";
@@ -20,7 +21,7 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
-type SubPage = "integrations" | "chat-defaults" | "user-profile";
+type SubPage = "integrations" | "chat-defaults" | "user-profile" | "openrouter";
 
 // ─── Main settings list ─────────────────────────────────────────────────────
 
@@ -45,9 +46,9 @@ function SettingsMain({ onNavigate }: { onNavigate: (page: SubPage) => void }) {
         <AccountSection onShowProfile={() => onNavigate("user-profile")} />
       </SettingsSection>
 
-      {/* OpenRouter — noPadding because OpenRouterSection has its own cards */}
-      <SettingsSection header={t("openrouter_section_header")} noPadding>
-        <OpenRouterSection />
+      <AIConnectionsSection onOpenRouter={() => onNavigate("openrouter")} />
+      <SettingsSection header={t("external_mcp_title")}>
+        <NavRow icon={<LinkIcon size={16} />} label={t("external_mcp_title")} href="/app/settings/mcp-connections" />
       </SettingsSection>
 
       {/* Integrations — noPadding because IntegrationsSection has its own card */}
@@ -172,6 +173,11 @@ function SubPageContent({ page, onBack }: { page: SubPage; onBack: () => void })
   const { t } = useTranslation();
 
   switch (page) {
+    case "openrouter":
+      return <div className="flex-1 flex flex-col h-full overflow-hidden">
+        <SubPageHeader title="OpenRouter" onBack={onBack} />
+        <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8"><div className="max-w-4xl mx-auto"><OpenRouterSection /></div></div>
+      </div>;
     case "chat-defaults":
       return (
         <div className="flex-1 flex flex-col h-full overflow-hidden">

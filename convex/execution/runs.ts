@@ -14,9 +14,14 @@ export interface InitialAttemptSpec {
   adapterVersion?: string;
   provider?: string;
   modelId?: string;
+  modelSelectionMode?: "adapter_default" | "explicit";
   runtimeLabel?: string;
   deviceId?: string;
   workspaceId?: string;
+  chatParticipantId?: Id<"chatParticipants">;
+  participantRouteSnapshotId?: Id<"chatParticipantRuntimeRoutes">;
+  chatRuntimeOverrideId?: Id<"chatRuntimeOverrides">;
+  routeSnapshotHash?: string;
   protocolVersion?: string;
   orchestrationEngine?: "legacy_scheduler" | "convex_workflow" | "convex_workpool" | "runtime_adapter";
   orchestrationVersion?: string;

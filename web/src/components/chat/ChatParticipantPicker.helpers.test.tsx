@@ -107,6 +107,14 @@ describe("ChatParticipantPicker helper rows", () => {
     expect(screen.getAllByText("GPT 5.2")).toHaveLength(2);
   });
 
+  it("marks local Personas by canonical placement even with a custom avatar", () => {
+    const props = { isSelected: false, disabled: false, onToggle: vi.fn(), onInfo: vi.fn(), modelNameMap };
+    const { rerender } = render(<PersonaRow {...props} persona={persona({ runtimePlacement: "local", avatarEmoji: "Q" })} />);
+    expect(screen.getByLabelText("runtime_local")).toBeInTheDocument();
+    rerender(<PersonaRow {...props} persona={persona({ runtimePlacement: "cloud", modelId: "openai/gpt-6.1-sol" })} />);
+    expect(screen.queryByLabelText("runtime_local")).not.toBeInTheDocument();
+  });
+
   it("keeps blocked persona rows inert while selected rows remain removable and info clicks stay scoped", () => {
     const onToggle = vi.fn();
     const onInfo = vi.fn();

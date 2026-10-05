@@ -63,6 +63,8 @@ export interface ContextMessage {
 }
 
 export interface BuildRequestMessagesArgs {
+  /** Native harnesses accept distinct same-role messages and need canonical identity. */
+  preserveMessageBoundaries?: boolean;
   /** All messages in the chat. */
   messages: ContextMessage[];
   /** The assistant message ID being generated (excluded from context). */

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { EventId } from "@convex-dev/workflow";
 import type { WorkflowCtx } from "@convex-dev/workflow";
+import { makeFunctionReference } from "convex/server";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import { durableWorkflow } from "../execution/components";
@@ -11,6 +12,10 @@ import {
   type GenerationResumeEventValue,
 } from "./workflow_events";
 import { nextGenerationEventOffset } from "./generation_event_offset";
+import {
+  runtimeCompletionEventValue,
+  type RuntimeCompletionEventValue,
+} from "../runtime_host/runtime_workflow_events";
 
 export { nextGenerationEventOffset } from "./generation_event_offset";
 
@@ -19,6 +24,16 @@ export { nextGenerationEventOffset } from "./generation_event_offset";
  * a linked successor Workflow; it is not a user, run, or tool-round limit.
  */
 export const GENERATION_WORKFLOW_ROUNDS_PER_CHUNK = 24;
+
+const localDispatchContextRef = makeFunctionReference<"query">(
+  "runtime_host/chat_dispatch_queries:getLocalGenerationDispatchContext",
+);
+const dispatchLocalGenerationRef = makeFunctionReference<"action">(
+  "runtime_host/chat_dispatch:dispatchLocalGeneration",
+);
+const finalizeLocalGenerationGroupRef = makeFunctionReference<"action">(
+  "runtime_host/chat_dispatch:finalizeLocalGenerationGroup",
+);
 
 const TERMINAL_GENERATION_STATUSES = new Set([
   "completed",
@@ -42,6 +57,48 @@ export async function runGenerationParticipantWorkflowHandler(
   let executionAttemptId = args.executionAttemptId;
   let executionFence = args.executionFence;
   let rebindDeferredFromEventId = durableChain?.rebindDeferredFromEventId;
+
+  const localDispatch = await step.runQuery(localDispatchContextRef, {
+    jobId: args.participant.jobId,
+  });
+  if (localDispatch?.placement === "local") {
+    const readyEventId = await step.runMutation(
+      internal.chat.workflow_events.createGenerationResume,
+      { workflowId: step.workflowId, name: `runtime-device:${String(args.participant.jobId)}` },
+    ) as EventId<string>;
+    const waiting = await step.runMutation(
+      makeFunctionReference<"mutation">("runtime_host/device_wait:waitForDevice"),
+      { jobId: args.participant.jobId, eventId: readyEventId },
+    );
+    if (waiting) await step.awaitEvent({ id: readyEventId, validator: v.null() });
+    const completionEventId = await step.runMutation(
+      internal.chat.workflow_events.createGenerationResume,
+      {
+        workflowId: step.workflowId,
+        name: `runtime:${String(args.participant.jobId)}`,
+      },
+    ) as EventId<string>;
+    const dispatched = await step.runAction(
+      dispatchLocalGenerationRef,
+      {
+        ...participantArgs,
+        executionAttemptId,
+        executionFence,
+        runtimeCompletionEventId: completionEventId,
+      },
+      { retry: false },
+    ) as "enqueued" | "terminal";
+    if (dispatched === "enqueued") {
+      await step.awaitEvent<RuntimeCompletionEventValue>({
+        id: completionEventId,
+        validator: runtimeCompletionEventValue,
+      });
+    }
+    await step.runAction(finalizeLocalGenerationGroupRef, participantArgs, {
+      retry: false,
+    });
+    return null;
+  }
 
   for (
     let invocation = 0;

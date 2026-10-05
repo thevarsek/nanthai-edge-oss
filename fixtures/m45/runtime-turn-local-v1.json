@@ -1,0 +1,140 @@
+{
+  "protocolVersion": "nanthai.runtime.v1",
+  "runId": "run-local-1",
+  "attemptId": "attempt-local-1",
+  "fence": 3,
+  "chatId": "chat-1",
+  "sourceMessageId": "message-user-1",
+  "participantId": "participant-persona-1",
+  "personaId": "persona-1",
+  "messages": [
+    {
+      "ordinal": 0,
+      "messageId": "message-assistant-1",
+      "role": "assistant",
+      "name": "Architect",
+      "participantId": "participant-persona-2",
+      "content": [
+        { "type": "text", "partId": "part-text-previous", "text": "I will compare every supplied input." }
+      ]
+    },
+    {
+      "ordinal": 1,
+      "messageId": "message-user-1",
+      "role": "user",
+      "name": "Dino",
+      "participantId": "participant-human-1",
+      "content": [
+        { "type": "text", "partId": "part-text", "text": "Review this multimodal evidence." },
+        {
+          "type": "image",
+          "partId": "part-image",
+          "name": "diagram.png",
+          "fetch": { "handle": "fetch-image", "expiresAt": 1893456000000, "byteLength": 12000, "maxChunkBytes": 1048576, "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+          "mimeType": "image/png",
+          "altText": "Architecture diagram"
+        },
+        {
+          "type": "audio",
+          "partId": "part-audio",
+          "name": "question.m4a",
+          "fetch": { "handle": "fetch-audio", "expiresAt": 1893456000000, "byteLength": 24000, "maxChunkBytes": 1048576, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+          "mimeType": "audio/mp4",
+          "transcript": "Please include the audio observation."
+        },
+        {
+          "type": "video",
+          "partId": "part-video",
+          "name": "walkthrough.mp4",
+          "fetch": { "handle": "fetch-video", "expiresAt": 1893456000000, "byteLength": 36000, "maxChunkBytes": 1048576, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+          "mimeType": "video/mp4",
+          "transcript": "The walkthrough demonstrates the current flow."
+        },
+        {
+          "type": "document",
+          "partId": "part-document",
+          "name": "blueprint.pdf",
+          "fetch": { "handle": "fetch-document", "expiresAt": 1893456000000, "byteLength": 48000, "maxChunkBytes": 1048576, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd" },
+          "mimeType": "application/pdf",
+          "extractedText": "Canonical blueprint extract."
+        },
+        {
+          "type": "file",
+          "partId": "part-file",
+          "name": "sample.ts",
+          "fetch": { "handle": "fetch-file", "expiresAt": 1893456000000, "byteLength": 8000, "maxChunkBytes": 1048576, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee" },
+          "mimeType": "text/plain"
+        },
+        {
+          "type": "tool_evidence",
+          "partId": "part-tool-evidence",
+          "name": "test-report.json",
+          "fetch": { "handle": "fetch-tool-evidence", "expiresAt": 1893456000000, "byteLength": 6000, "maxChunkBytes": 1048576, "sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff" },
+          "mimeType": "application/json",
+          "toolName": "run_tests",
+          "summary": "Focused contract tests passed."
+        }
+      ]
+    }
+  ],
+  "instructions": {
+    "system": [
+      { "instructionId": "instruction-system-1", "name": "NanthAI system", "text": "Preserve evidence and report uncertainty.", "sourceHash": "1111111111111111111111111111111111111111111111111111111111111111" }
+    ],
+    "persona": [
+      { "instructionId": "instruction-persona-1", "name": "Developer persona", "text": "Act as a careful runtime developer.", "sourceHash": "2222222222222222222222222222222222222222222222222222222222222222" }
+    ]
+  },
+  "context": {
+    "assemblerVersion": "runtime-context-v2",
+    "canonicalHeadMessageId": "message-user-1",
+    "references": [
+      { "id": "memory-1", "kind": "memory", "version": "memory-v1" },
+      { "id": "artifact-1", "kind": "artifact", "version": null }
+    ],
+    "omissions": [],
+    "omittedPartCount": 0
+  },
+  "capabilities": {
+    "nanthaiTools": [
+      { "id": "tool-search-history", "name": "search_chat_history", "version": "v1", "effect": "read", "inputSchemaHash": "3333333333333333333333333333333333333333333333333333333333333333" }
+    ],
+    "skills": [
+      { "id": "skill-runtime", "name": "runtime-development", "version": "v1" }
+    ],
+    "integrations": [
+      { "id": "integration-github", "name": "GitHub", "version": null }
+    ],
+    "adapterNativePolicy": "preserve"
+  },
+  "placement": {
+    "protocolVersion": "nanthai.runtime.v1",
+    "runId": "run-local-1",
+    "attemptId": "attempt-local-1",
+    "fence": 3,
+    "adapter": { "adapterId": "contract-fixture-adapter", "adapterVersion": "1.2.3" },
+    "selectedModel": { "mode": "explicit", "provider": "openai", "modelId": "gpt-5.6-codex" },
+    "placement": "local",
+    "executorKind": "local_runtime",
+    "orchestrationEngine": "runtime_adapter",
+    "device": { "deviceId": "device-macbook-1", "displayName": "Dino MacBook" },
+    "workingDirectory": { "mode": "discover_at_session_start" }
+  },
+  "causality": {
+    "replyToMessageIds": ["message-assistant-1"],
+    "visibleThroughMessageId": "message-user-1",
+    "liveDiscussion": {
+      "discussionId": "discussion-1",
+      "waveId": "wave-2",
+      "waveNumber": 2,
+      "sameWaveParticipantIds": ["participant-persona-1", "participant-persona-3"]
+    }
+  },
+  "command": {
+    "commandId": "command-1",
+    "idempotencyKey": "run-local-1:attempt-local-1:turn-1",
+    "commandInputHash": "44aa44aa",
+    "packetHash": "0628a7e5f278586e20e27149af2b22181bd5f0cfaa8d1b645c24007746d72329",
+    "cancellationId": "cancel-run-local-1"
+  }
+}

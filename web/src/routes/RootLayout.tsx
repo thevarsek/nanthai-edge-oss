@@ -8,6 +8,7 @@ import { MainWalkthrough } from "@/components/shared/MainWalkthrough";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { PanelLeftOpen } from "lucide-react";
+import { RuntimeProRecoveryNotice } from "@/components/shared/RuntimeProRecoveryNotice";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 const SIDEBAR_MIN = 220;
@@ -225,6 +226,7 @@ export function RootLayout() {
 
       {/* Right pane — chat view or empty state */}
       <main className="flex-1 overflow-hidden min-w-0 flex flex-col" id="main-content">
+        <RuntimeProRecoveryNotice />
         <ErrorBoundary key={location.key} level="route">
           <Outlet />
         </ErrorBoundary>

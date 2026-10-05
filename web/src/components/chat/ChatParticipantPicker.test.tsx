@@ -117,3 +117,5 @@ function fullTextParticipants() {
     sortOrder: index,
   } as never));
 }
+
+vi.mock("convex/react", () => ({ useQuery: () => undefined }));

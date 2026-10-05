@@ -1,11 +1,15 @@
 /* eslint-disable react-refresh/only-export-components -- route table, not a refresh boundary */
 import { lazy, type ReactNode } from "react";
-import type { RouteObject } from "react-router-dom";
+import { Navigate, type RouteObject } from "react-router-dom";
 import { OpenRouterCallbackPage } from "@/pages/OpenRouterCallbackPage";
 import { MobileDrivePickerPage } from "@/routes/MobileDrivePickerPage";
 import { ProviderOAuthCallbackPage } from "@/routes/ProviderOAuthCallbackPage";
 import { SignInPage } from "@/routes/SignInPage";
 import { AppRouteBoundary } from "./AppRouteBoundary";
+
+const WorkflowsPage = lazy(() => import("@/pages/workflows/WorkflowsPage").then(module => ({ default: module.WorkflowsPage })));
+const PublicLocalRuntimePage = lazy(() => import("@/pages/workflows/LocalRuntimePage").then(module => ({ default: module.LocalRuntimePage })));
+const LocalRuntimeFeaturePage = lazy(() => import("@/pages/features/LocalRuntimeFeaturePage").then(module => ({ default: module.LocalRuntimeFeaturePage })));
 
 const HomePage = lazy(() =>
   import("@/pages/HomePage").then((module) => ({ default: module.HomePage })),
@@ -143,12 +147,17 @@ function suspended(element: ReactNode) {
 }
 
 export const publicRoutes: RouteObject[] = [
+  { path: "/workflows", element: suspended(<WorkflowsPage />) },
+  { path: "/research/results", element: <Navigate to="/workflows" replace /> },
+  { path: "/local-runtime", element: suspended(<PublicLocalRuntimePage />) },
+  { path: "/research/methods", element: <Navigate to="/local-runtime" replace /> },
   { path: "/", element: suspended(<HomePage />) },
   { path: "/privacy", element: suspended(<PrivacyPage />) },
   { path: "/terms", element: suspended(<TermsPage />) },
   { path: "/support", element: suspended(<SupportPage />) },
   { path: "/licensing", element: suspended(<LicensingPage />) },
   { path: "/features", element: suspended(<FeaturesIndexPage />) },
+  { path: "/features/local-runtime", element: suspended(<LocalRuntimeFeaturePage />) },
   { path: "/features/multi-model-chat", element: suspended(<MultiModelChatPage />) },
   { path: "/features/search", element: suspended(<SearchPage />) },
   { path: "/features/documents", element: suspended(<DocumentWorkflowsPage />) },

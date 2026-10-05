@@ -5,6 +5,7 @@ export type RetrySearchMode = "none" | "normal" | "web" | "paper";
 
 export interface RetryParticipantSnapshot {
   modelId: string;
+  participantKey?: string;
   personaId?: Id<"personas"> | null;
   personaName?: string | null;
   personaEmoji?: string | null;
@@ -46,6 +47,7 @@ function cloneParticipant(
 ): RetryParticipantSnapshot {
   return {
     modelId: participant.modelId,
+    ...(participant.participantKey ? { participantKey: participant.participantKey } : {}),
     personaId: participant.personaId ?? null,
     personaName: participant.personaName ?? null,
     personaEmoji: participant.personaEmoji ?? null,

@@ -9,6 +9,18 @@ export async function deleteAccountStorageBatch(
   userId: string,
   batchSize: number,
 ): Promise<number | undefined> {
+  if (tableName === "runtimeTurnPackets") {
+    const rows = await ctx.db
+      .query("runtimeTurnPackets")
+      .withIndex("by_user", (query) => query.eq("userId", userId))
+      .take(batchSize);
+    for (const row of rows) {
+      await ctx.storage.delete(row.storageId).catch(() => undefined);
+      await ctx.db.delete(row._id);
+    }
+    return rows.length;
+  }
+
   if (tableName === "documentVersions") {
     const rows = await ctx.db
       .query("documentVersions")

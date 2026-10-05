@@ -158,7 +158,11 @@ function syncConsent() {
 
 export default function PublicConsentManager() {
   useEffect(() => {
+    let active = true;
+    // hideFromBots can finish run() without creating the library UI.
+    const hasConsentUi = () => document.getElementById("cc-main") !== null;
     const showPreferences = () => {
+      if (!active || !hasConsentUi()) return;
       consumeConsentPreferencesRequest();
       CookieConsent.showPreferences();
     };
@@ -201,6 +205,7 @@ export default function PublicConsentManager() {
       onConsent: syncConsent,
       onChange: syncConsent,
     }).then(() => {
+      if (!active || !hasConsentUi()) return;
       // The library initializes once per document. Re-show a pending choice when
       // a visitor returns to the public site after navigating through the app.
       if (consumeConsentPreferencesRequest()) {
@@ -211,9 +216,12 @@ export default function PublicConsentManager() {
     });
 
     return () => {
+      active = false;
       window.removeEventListener(SHOW_CONSENT_PREFERENCES_EVENT, showPreferences);
-      CookieConsent.hide();
-      CookieConsent.hidePreferences();
+      if (hasConsentUi()) {
+        CookieConsent.hide();
+        CookieConsent.hidePreferences();
+      }
     };
   }, []);
 

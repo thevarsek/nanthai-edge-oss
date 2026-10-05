@@ -78,38 +78,38 @@ function FeatureCard({ feature, index }: { feature: FeatureMeta; index: number }
 const heroFeatureSlugs = ["multi-model-chat", "search", "documents"];
 
 const heroFeatureTitleOverrides: Record<string, string> = {
-  search: "Search & research",
+  search: "home_cap_search_title",
 };
 
 const featureGroups = [
   {
-    title: "Chat foundation",
-    description: "The primitives for choosing models, branching work, and keeping conversations organised.",
+    title: "fi_group1_title",
+    description: "fi_group1_body",
     slugs: ["participant-options", "branching", "chat-defaults", "folders", "themes"],
   },
   {
-    title: "Generated media",
-    description: "Audio, image, and video creation without leaving the same workspace.",
+    title: "fi_group2_title",
+    description: "fi_group2_body",
     slugs: ["audio-generation", "image-generation", "video-generation"],
   },
   {
-    title: "Knowledge and context",
-    description: "Persistent memory, reference material, and spatial thinking tools for longer-running work.",
+    title: "fi_group3_title",
+    description: "fi_group3_body",
     slugs: ["personas", "memories", "knowledge-base", "ideascapes"],
   },
   {
-    title: "Specialist work",
-    description: "Reusable expertise, focused delegation, and sandboxed analysis for more demanding tasks.",
-    slugs: ["skills-helpers", "analysis-code"],
+    title: "fi_group4_title",
+    description: "fi_group4_body",
+    slugs: ["local-runtime", "skills-helpers", "analysis-code"],
   },
   {
-    title: "Automation and connected work",
-    description: "Scheduled jobs and connected services for work that should continue outside one chat.",
+    title: "fi_group5_title",
+    description: "fi_group5_body",
     slugs: ["automated-tasks", "integrations", "remote-mcp"],
   },
   {
-    title: "Cost control",
-    description: "Clear pricing and plan boundaries for choosing how Edge should spend.",
+    title: "fi_group6_title",
+    description: "fi_group6_body",
     slugs: ["byok", "price-transparency", "pro-vs-free"],
   },
 ];
@@ -117,7 +117,7 @@ const featureGroups = [
 function FeatureHeroCard({ feature, index }: { feature: FeatureMeta; index: number }) {
   const { t } = useTranslation();
   const Icon = feature.icon;
-  const title = heroFeatureTitleOverrides[feature.slug] ?? feature.title;
+  const title = heroFeatureTitleOverrides[feature.slug] ? t(heroFeatureTitleOverrides[feature.slug]) : feature.title;
 
   return (
     <AnimateOnScroll delay={index * 0.06}>
@@ -190,7 +190,7 @@ export function FeaturesIndexPage() {
   return (
     <EdgeSiteLayout activePage="features">
       <Seo
-        title="Features — NanthAI Edge"
+        title={`${t("fi_hero_title")} — NanthAI Edge`}
         description={t("fi_seo_desc")}
         url="https://nanthai.tech/features"
         canonical="https://nanthai.tech/features"
@@ -229,8 +229,8 @@ export function FeaturesIndexPage() {
             {groupedFeatures.map((group, i) => (
               <FeatureGroupSection
                 key={group.title}
-                title={group.title}
-                description={group.description}
+                title={t(group.title)}
+                description={t(group.description)}
                 features={group.features}
                 offset={i * 4}
               />

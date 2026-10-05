@@ -14,6 +14,7 @@ import {
   integrationOverrideEntry,
   favoriteParticipant,
 } from "./schema_validators";
+import { questionTimeoutMinutes } from "./runtime_host/question_policy";
 import { groupBehavior } from "./collaboration/validators";
 
 export const userSchemaTables = {
@@ -125,6 +126,7 @@ export const userSchemaTables = {
     webSearchEnabledByDefault: v.boolean(),
     subagentsEnabledByDefault: v.optional(v.boolean()),
     chatCompletionNotificationsEnabled: v.optional(v.boolean()),
+    localQuestionTimeoutMinutes: v.optional(questionTimeoutMinutes),
     defaultSearchMode: v.optional(v.string()), // "basic" | "web" | "paper"
     defaultSearchComplexity: v.optional(v.number()), // 1 | 2 | 3
     autoAudioResponse: v.optional(v.boolean()),
@@ -141,6 +143,8 @@ export const userSchemaTables = {
     titleModelId: v.optional(v.string()),
     disabledProviders: v.optional(v.array(v.string())),
     onboardingCompleted: v.optional(v.boolean()),
+    runtimeOnboardingState: v.optional(v.union(v.literal("setup"), v.literal("ready"))),
+    runtimeOnboardingDefaultAssigned: v.optional(v.boolean()),
     hasSeenIdeascapeHelp: v.optional(v.boolean()),
     hasSeenMainWalkthrough: v.optional(v.boolean()),
     showBalanceInChat: v.optional(v.boolean()),

@@ -18,6 +18,12 @@ vi.mock("./SubagentBatchPanel", () => ({
   SubagentBatchPanel: ({ batchId }: { batchId: string }) => <div data-testid="subagent-batch">{batchId}</div>,
 }));
 
+vi.mock("./RuntimeNativeAgentPanel", () => ({
+  RuntimeNativeAgentPanel: ({ messageId }: { messageId: string }) => (
+    <div data-testid="runtime-native-agent-panel">{messageId}</div>
+  ),
+}));
+
 vi.mock("./GeneratedFilesCard", () => ({
   GeneratedFilesCard: ({ messageId }: { messageId: string }) => <div data-testid="generated-files">{messageId}</div>,
 }));

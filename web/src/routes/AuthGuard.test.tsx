@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { AuthGuard } from "./AuthGuard";
 
 const { authState, convexAuthState, sharedState, ensurePrefs } = vi.hoisted(() => ({
@@ -14,7 +14,7 @@ const { authState, convexAuthState, sharedState, ensurePrefs } = vi.hoisted(() =
     isAuthenticated: true,
   },
   sharedState: {
-    prefs: { onboardingCompleted: true } as null | undefined | { onboardingCompleted: boolean },
+    prefs: { onboardingCompleted: true } as null | undefined | { onboardingCompleted: boolean; runtimeOnboardingState?: "setup" | "ready" },
     proStatus: { isPro: false } as undefined | { isPro: boolean },
   },
   ensurePrefs: vi.fn(async () => null),
@@ -67,6 +67,17 @@ describe("AuthGuard", () => {
     vi.clearAllMocks();
   });
 
+  it("preserves the tray connection state through browser sign-in", () => {
+    authState.isSignedIn = false;
+    function Destination() { return <div>{useLocation().search}</div>; }
+    const destination = "/runtime/connect?state=01234567-89ab-cdef&computer=QA%20Mac";
+    render(<MemoryRouter initialEntries={[destination]}><Routes>
+      <Route path="/runtime/connect" element={<AuthGuard requireOnboarding={false}><div>connection</div></AuthGuard>} />
+      <Route path="/sign-in" element={<Destination />} />
+    </Routes></MemoryRouter>);
+    expect(screen.getByText(`?redirect_url=${encodeURIComponent(destination)}`)).toBeInTheDocument();
+  });
+
   it("redirects signed-out users to sign in before rendering protected app content", () => {
     authState.isSignedIn = false;
 
@@ -102,6 +113,12 @@ describe("AuthGuard", () => {
 
     renderGuard(<div>onboarding shell</div>, false);
     expect(screen.getByText("onboarding shell")).toBeInTheDocument();
+  });
+
+  it("resumes explicit local setup before activation is complete", () => {
+    sharedState.prefs = { onboardingCompleted: false, runtimeOnboardingState: "setup" };
+    renderGuard();
+    expect(screen.getByText("protected app")).toBeInTheDocument();
   });
 
   it("waits for pro status before rendering the protected app", () => {

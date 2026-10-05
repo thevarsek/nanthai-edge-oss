@@ -6,12 +6,14 @@
 // 4. Generic icon → muted theater masks equivalent
 
 import { useContext, useState } from "react";
+import { ProviderLogo } from "./ProviderLogo";
 import { User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SharedDataContext } from "@/hooks/useSharedData";
 import { safeAvatarImageUrl } from "@/lib/avatarUrl";
 
 interface PersonaAvatarProps {
+  runtimeAdapterId?: string;
   personaId?: string;
   personaName?: string;
   personaEmoji?: string;
@@ -27,6 +29,7 @@ interface PersonaAvatarProps {
 }
 
 export function PersonaAvatar({
+  runtimeAdapterId,
   personaId,
   personaName,
   personaEmoji,
@@ -66,6 +69,10 @@ export function PersonaAvatar({
         <span className={emojiClass}>{resolvedEmoji}</span>
       </div>
     );
+  }
+
+  if ((resolvedPersona?.runtimeAdapterId ?? runtimeAdapterId) === "codex") {
+    return <div className={cn("rounded-full bg-surface-2 flex items-center justify-center flex-shrink-0", className)}><ProviderLogo modelId="openai/gpt-6.1-sol" size={iconSize * 1.5} /></div>;
   }
 
   // Tier 3: First letter of persona name

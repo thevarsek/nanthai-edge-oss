@@ -298,7 +298,7 @@ test("buildRequestBody preserves provider.zdr when provider routing is skipped",
 // The server tool adds an extra model round-trip (model emits tool call → OR
 // executes search → results returned → model responds). The plugin searches
 // up-front and injects results into the prompt, streaming the response in
-// one pass. See docs/ttft-web-search-finding.md.
+// one pass. See docs/integrations/openrouter-search.md.
 //
 // OpenRouter has marked the plugin API as deprecated but it remains fully
 // supported. When they sunset it we reintroduce the server-tool form (see git

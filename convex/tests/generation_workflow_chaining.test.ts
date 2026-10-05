@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { WorkflowCtx } from "@convex-dev/workflow";
+import { getFunctionName } from "convex/server";
 import type { MutationCtx } from "../_generated/server";
 import {
   GENERATION_WORKFLOW_ROUNDS_PER_CHUNK,
@@ -14,6 +15,13 @@ import {
   type GenerationParticipantWorkflowArgs,
 } from "../chat/workflow_events";
 import { generationSuccessorRole } from "../chat/workflow_successor";
+
+const LOCAL_DISPATCH_CONTEXT_REF =
+  "runtime_host/chat_dispatch_queries:getLocalGenerationDispatchContext";
+
+function isLocalDispatchContextRef(ref: unknown): boolean {
+  return getFunctionName(ref as never) === LOCAL_DISPATCH_CONTEXT_REF;
+}
 
 function workflowArgs(
   durableChain?: GenerationParticipantWorkflowArgs["durableChain"],
@@ -75,7 +83,8 @@ test("generation Workflow chains without imposing a tool-round terminal limit", 
       actions.push(args);
       return null;
     },
-    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+    runQuery: async (ref: unknown, args: Record<string, unknown>) => {
+      if (isLocalDispatchContextRef(ref)) return null;
       if ("modelId" in args) return null;
       queryCallCount += 1;
       const round = Math.ceil(queryCallCount / 2);
@@ -128,7 +137,8 @@ test("generation Workflow creates its event before an immediate deferred complet
       order.push("action-signaled");
       return null;
     },
-    runQuery: async () => {
+    runQuery: async (ref: unknown) => {
+      if (isLocalDispatchContextRef(ref)) return null;
       jobReads += 1;
       if (jobReads === 1) return { _id: "job_1", status: "streaming" };
       if (jobReads === 2) return { _id: "continuation_1", deferredResumeEventId: "event_1" };
@@ -155,7 +165,8 @@ test("generation Workflow never waits on an event without a durable owner", asyn
     runMutation: async (_ref: unknown, args: Record<string, unknown>) =>
       "roundKey" in args ? "ready" : "event_1",
     runAction: async () => null,
-    runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
+    runQuery: async (ref: unknown, args: Record<string, unknown>) => {
+      if (isLocalDispatchContextRef(ref)) return null;
       if ("modelId" in args) return { hasVideoGeneration: false };
       queryCalls += 1;
       return queryCalls === 1

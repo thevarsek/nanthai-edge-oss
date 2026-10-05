@@ -1,0 +1,28 @@
+[
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-sdk-session-result",
+    "sequence": 0,
+    "sentAt": 1786752000000,
+    "kind": "session_result",
+    "payload": {
+      "requestMessageId": "wire-sdk-start",
+      "sessionId": "session-sdk-1",
+      "nativeSessionId": null,
+      "resumed": false
+    }
+  },
+  {
+    "wireVersion": "nanthai.runtime.process.v1",
+    "messageId": "wire-app-server-session-result",
+    "sequence": 0,
+    "sentAt": 1786752000000,
+    "kind": "session_result",
+    "payload": {
+      "requestMessageId": "wire-app-server-start",
+      "sessionId": "session-app-server-1",
+      "nativeSessionId": "codex-thread-1",
+      "resumed": false
+    }
+  }
+]

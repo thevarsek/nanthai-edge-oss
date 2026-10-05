@@ -3,7 +3,6 @@ import { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { ConvexError } from "convex/values";
 import { mapFinalMessageStatusToJobStatus } from "./lifecycle_helpers";
-import { normalizeMemoryRecord } from "../memory/shared";
 import { classifyTerminalErrorCode, TerminalErrorCode } from "./terminal_error";
 import {
   extensionForAudioMimeType,
@@ -24,7 +23,7 @@ import {
 import { assertCurrentFence, terminalizeExecution } from "../execution/control_plane";
 import { assertCurrentExecution } from "../execution/attempts";
 import { notifyScheduledStepTerminal } from "../scheduledJobs/workflow_signals";
-import { assertUserDataWritable, isUserDataWritable } from "../lib/write_fence";
+import { isUserDataWritable } from "../lib/write_fence";
 import {
   extractGeneratedToolMedia,
   mergeRecoveredToolResults,
@@ -45,9 +44,10 @@ export interface UpdateMessageContentArgs extends Record<string, unknown> {
 export async function updateMessageContentHandler(
   ctx: MutationCtx,
   args: UpdateMessageContentArgs,
+  options?: { allowExpiredLease?: boolean },
 ): Promise<void> {
   if (args.executionAttemptId !== undefined && args.executionFence !== undefined) {
-    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence, options);
   }
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
@@ -83,9 +83,10 @@ export interface UpdateMessageReasoningArgs extends Record<string, unknown> {
 export async function updateMessageReasoningHandler(
   ctx: MutationCtx,
   args: UpdateMessageReasoningArgs,
+  options?: { allowExpiredLease?: boolean },
 ): Promise<void> {
   if (args.executionAttemptId !== undefined && args.executionFence !== undefined) {
-    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence);
+    await assertCurrentFence(ctx, args.executionAttemptId, args.executionFence, options);
   }
   const existing = await ctx.db.get(args.messageId);
   if (!existing) return;
@@ -151,6 +152,13 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
     cacheDiscount?: number;
     webSearchRequests?: number;
   };
+  usageModelId?: string;
+  usageProvider?: string;
+  usageSource?: string;
+  usageCostAttribution?: "provider_reported" | "api_equivalent_estimate" | "unpriced";
+  usageRuntimeDeviceId?: string;
+  usageRuntimeAdapterId?: string;
+  preventUsageCostEstimate?: boolean;
   reasoning?: string;
   imageUrls?: string[];
   imageMimeTypes?: string[];
@@ -208,6 +216,7 @@ export interface FinalizeGenerationArgs extends Record<string, unknown> {
   /** Perplexity citation annotations (structured for rich UI rendering). */
   citations?: Array<{ url: string; title: string }>;
   /** M32 document citation annotations (quote-backed, version-aware). */
+  sourceCitations?: import("./source_evidence").SourceCitation[];
   documentCitations?: Array<{
     ref: number;
     documentId: Id<"documents">;
@@ -516,6 +525,7 @@ export async function finalizeGenerationHandler(
   if (finalToolCalls) msgPatch.toolCalls = finalToolCalls;
   if (finalToolResults) msgPatch.toolResults = finalToolResults;
   if (args.citations && args.citations.length > 0) msgPatch.citations = args.citations;
+  if (args.sourceCitations?.length) msgPatch.sourceCitations = args.sourceCitations;
   if (args.documentCitations && args.documentCitations.length > 0) {
     msgPatch.documentCitations = args.documentCitations;
   }
@@ -715,7 +725,8 @@ export async function finalizeGenerationHandler(
     );
   }
 
-  if (!args.usage || finalStatus !== "completed") {
+  // Runtime observations remain real consumption when a user stops or a turn fails.
+  if (!args.usage || (finalStatus !== "completed" && args.usageSource !== "runtime_generation")) {
     // Even without SSE-based usage, schedule a Generations API fetch if we
     // have a generation ID — it is the authoritative source for token counts.
     if (
@@ -746,7 +757,7 @@ export async function finalizeGenerationHandler(
   }
 
   let cost = args.usage.cost;
-  if (cost == null && msg.modelId) {
+  if (cost == null && msg.modelId && args.preventUsageCostEstimate !== true) {
     const model = await ctx.db
       .query("cachedModels")
       .withIndex("by_modelId", (q) => q.eq("modelId", msg.modelId!))
@@ -790,11 +801,16 @@ export async function finalizeGenerationHandler(
     userId: args.userId,
     chatId: args.chatId,
     messageId: args.messageId,
-    modelId: msg.modelId ?? "unknown",
+    modelId: args.usageModelId ?? msg.modelId ?? "unknown",
     promptTokens: args.usage.promptTokens,
     completionTokens: args.usage.completionTokens,
     totalTokens: args.usage.totalTokens,
     cost,
+    costAttribution: args.usageCostAttribution,
+    provider: args.usageProvider,
+    runtimeDeviceId: args.usageRuntimeDeviceId,
+    runtimeAdapterId: args.usageRuntimeAdapterId,
+    source: args.usageSource,
     ...detailFields,
     createdAt: now,
   });
@@ -980,93 +996,7 @@ export async function isJobCancelledHandler(
   return !job || job.status === "cancelled";
 }
 
-export interface UpdateChatTitleArgs extends Record<string, unknown> {
-  chatId: Id<"chats">;
-  title: string;
-}
-
-export async function updateChatTitleHandler(
-  ctx: MutationCtx,
-  args: UpdateChatTitleArgs,
-): Promise<void> {
-  const chat = await ctx.db.get(args.chatId);
-  if (!chat) return;
-  await assertUserDataWritable(ctx, chat.userId, chat._id);
-  // Intentionally skip updatedAt — title generation is a background refinement
-  // and should not re-sort the chat list or trigger an extra listChats cascade.
-  // sendMessage already bumped updatedAt when the chat was created/sent.
-  await ctx.db.patch(args.chatId, {
-    title: args.title,
-  });
-}
-
-export interface CreateMemoryArgs extends Record<string, unknown> {
-  userId: string;
-  content: string;
-  category?: string;
-  memoryType?: "profile" | "responsePreference" | "workContext" | "transient";
-  importanceScore?: number;
-  confidenceScore?: number;
-  reinforcementCount?: number;
-  lastReinforcedAt?: number;
-  expiresAt?: number;
-  supersedesMemoryId?: Id<"memories">;
-  sourceMessageId?: Id<"messages">;
-  sourceChatId?: Id<"chats">;
-  retrievalMode?: string;
-  scopeType?: string;
-  personaIds?: string[];
-  sourceType?: string;
-  sourceFileName?: string;
-  tags?: string[];
-  isPending?: boolean;
-  createdAt: number;
-}
-
-export async function createMemoryHandler(
-  ctx: MutationCtx,
-  args: CreateMemoryArgs,
-): Promise<Id<"memories">> {
-  await assertUserDataWritable(ctx, args.userId, args.sourceChatId);
-  const normalized = normalizeMemoryRecord({
-    content: args.content,
-    category: args.category,
-    memoryType: args.memoryType,
-    retrievalMode: args.retrievalMode,
-    scopeType: args.scopeType,
-    personaIds: args.personaIds,
-    sourceType: args.sourceType,
-    sourceFileName: args.sourceFileName,
-    tags: args.tags,
-    importanceScore: args.importanceScore,
-  });
-  return await ctx.db.insert("memories", {
-    userId: args.userId,
-    content: args.content,
-    category: normalized.category,
-    sourceMessageId: args.sourceMessageId,
-    sourceChatId: args.sourceChatId,
-    isPinned: false,
-    isPending: args.isPending ?? false,
-    accessCount: 0,
-    memoryType: args.memoryType ?? "workContext",
-    retrievalMode: normalized.retrievalMode,
-    scopeType: normalized.scopeType,
-    personaIds: normalized.personaIds,
-    sourceType: normalized.sourceType,
-    sourceFileName: normalized.sourceFileName,
-    tags: normalized.tags,
-    importanceScore: args.importanceScore ?? 0.6,
-    confidenceScore: args.confidenceScore ?? 0.6,
-    reinforcementCount: args.reinforcementCount ?? 1,
-    lastReinforcedAt: args.lastReinforcedAt ?? args.createdAt,
-    expiresAt: args.expiresAt,
-    isSuperseded: false,
-    supersedesMemoryId: args.supersedesMemoryId,
-    createdAt: args.createdAt,
-    updatedAt: args.createdAt,
-  });
-}
+export { createMemoryHandler, updateChatTitleHandler, type CreateMemoryArgs, type UpdateChatTitleArgs } from "./mutations_memory_creation_handlers";
 
 // ---------------------------------------------------------------------------
 // storeGenerationUsage — called by the fetchAndStoreGenerationUsage action

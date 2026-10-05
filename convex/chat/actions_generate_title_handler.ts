@@ -1,3 +1,4 @@
+import { enqueueLocalHelperAfterMissingKey } from "../runtime_host/helper_enqueue";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -38,6 +39,9 @@ export function createGenerateTitleHandlerDepsForTest(
 }
 
 export interface GenerateTitleArgs extends Record<string, unknown> {
+  runtimeHelperContent?: string;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   chatId: Id<"chats">;
   sourceContent: string;
   assistantContent?: string;
@@ -155,8 +159,17 @@ export async function generateTitleHandler(
         zdr_required: requireZdr,
       },
     });
-    const apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const result = await deps.callOpenRouterNonStreaming(
+    let apiKey = "";
+    if (args.runtimeHelperContent === undefined) {
+      try { apiKey = await deps.getRequiredUserOpenRouterApiKey(ctx, args.userId); }
+      catch (error) {
+        if (await enqueueLocalHelperAfterMissingKey(ctx, error, args, args.messageId, "title", messages)) return;
+        throw error;
+      }
+    }
+    const result = args.runtimeHelperContent !== undefined
+      ? { content: args.runtimeHelperContent, usage: null, generationId: null }
+      : await deps.callOpenRouterNonStreaming(
       apiKey,
       model,
       messages,
@@ -237,6 +250,7 @@ export async function generateTitleHandler(
     await ctx.runMutation(internal.chat.mutations.updateChatTitle, {
       chatId: args.chatId,
       title,
+      ...(args.executionAttemptId ? { executionAttemptId: args.executionAttemptId, executionFence: args.executionFence } : {}),
     });
     await captureBackendAIOperationCompleted(ctx, {
       userId: args.userId,

@@ -1,3 +1,4 @@
+import { sourceCitationValidator } from "./source_evidence";
 import { v, type PropertyValidators } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import {
@@ -53,8 +54,8 @@ export const recordedAudioValidator = v.object({
 });
 
 export const participantValidator = v.object({
-  // Turn-scoped client key used only to route explicit @mentions. It is
-  // stripped before generation state is persisted or dispatched.
+  // Stable chat-participant identity used for @mention selection, routing,
+  // and participant-scoped execution provenance.
   participantKey: v.optional(v.string()),
   modelId: v.string(),
   personaId: v.optional(v.union(v.id("personas"), v.null())),
@@ -196,6 +197,17 @@ export const finalizeGenerationArgs = {
       webSearchRequests: v.optional(v.number()),
     }),
   ),
+  usageModelId: v.optional(v.string()),
+  usageProvider: v.optional(v.string()),
+  usageSource: v.optional(v.string()),
+  usageCostAttribution: v.optional(v.union(
+    v.literal("provider_reported"),
+    v.literal("api_equivalent_estimate"),
+    v.literal("unpriced"),
+  )),
+  usageRuntimeDeviceId: v.optional(v.string()),
+  usageRuntimeAdapterId: v.optional(v.string()),
+  preventUsageCostEstimate: v.optional(v.boolean()),
   reasoning: v.optional(v.string()),
   imageUrls: v.optional(v.array(v.string())),
   imageMimeTypes: v.optional(v.array(v.string())),
@@ -253,6 +265,7 @@ export const finalizeGenerationArgs = {
     title: v.string(),
   }))),
   documentCitations: v.optional(v.array(documentCitation)),
+  sourceCitations: v.optional(v.array(sourceCitationValidator)),
   documentEvents: v.optional(v.array(documentEvent)),
   // Model-authored inline audio attached during generation
   audioStorageId: v.optional(v.id("_storage")),
@@ -451,11 +464,15 @@ export const isJobCancelledArgs = {
 } satisfies PropertyValidators;
 
 export const updateChatTitleArgs = {
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   chatId: v.id("chats"),
   title: v.string(),
 } satisfies PropertyValidators;
 
 export const createMemoryArgs = {
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   userId: v.string(),
   content: v.string(),
   category: v.optional(memoryCategory),
@@ -486,6 +503,8 @@ export const createMemoryArgs = {
 } satisfies PropertyValidators;
 
 export const reinforceMemoryArgs = {
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   memoryId: v.id("memories"),
   reinforcedAt: v.number(),
   candidateMemoryType: v.optional(
@@ -503,6 +522,8 @@ export const reinforceMemoryArgs = {
 } satisfies PropertyValidators;
 
 export const supersedeMemoryArgs = {
+  executionAttemptId: v.optional(v.id("executionAttempts")),
+  executionFence: v.optional(v.number()),
   memoryId: v.id("memories"),
   supersededAt: v.number(),
   supersededByMemoryId: v.optional(v.id("memories")),

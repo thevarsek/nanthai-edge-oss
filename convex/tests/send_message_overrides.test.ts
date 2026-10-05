@@ -162,6 +162,7 @@ function buildMockCtx(overrides: {
         if (table === "advisorBatches") {
           return { withIndex: () => ({ first: async () => null }) };
         }
+        if (table === "chatParticipants") { return { withIndex: () => ({ collect: async () => [] }) }; }
         if (table === "chatAdvisors") {
           return { withIndex: () => ({ collect: async () => [] }) };
         }

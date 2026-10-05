@@ -281,7 +281,7 @@ test("getPreferences projects the app default without persisting a user choice",
     },
   }, {});
 
-  assert.equal(result.defaultModelId, "openai/gpt-5.6-terra");
+  assert.equal(result.defaultModelId, "openai/gpt-6.1-sol");
   assert.equal("defaultModelId" in preferences, false);
 });
 

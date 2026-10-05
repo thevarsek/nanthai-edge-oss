@@ -100,6 +100,7 @@ export const commitScheduledExecutionFailure = internalMutation({
     jobId: v.id("scheduledJobs"),
     executionId: v.string(),
     error: v.string(),
+    runtimeUnavailable: v.optional(v.boolean()),
   },
   returns: v.boolean(),
   handler: async (ctx, args): Promise<boolean> => {
@@ -112,8 +113,8 @@ export const commitScheduledExecutionFailure = internalMutation({
       await terminalizeDomainExecution(ctx, execution, "failed", args.error);
     }
     const startedAt = job.activeExecutionStartedAt ?? now;
-    const consecutiveFailures = (job.consecutiveFailures ?? 0) + 1;
-    const autoPause = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+    const consecutiveFailures = (job.consecutiveFailures ?? 0) + (args.runtimeUnavailable ? 0 : 1);
+    const autoPause = !args.runtimeUnavailable && consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
     await ctx.db.insert("jobRuns", {
       jobId: args.jobId,
       userId: job.userId,

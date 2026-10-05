@@ -1,0 +1,66 @@
+{
+  "protocolVersion": "nanthai.runtime.v1",
+  "runId": "run-cloud-1",
+  "attemptId": "attempt-cloud-1",
+  "fence": 7,
+  "chatId": "chat-1",
+  "sourceMessageId": "message-cloud-user-1",
+  "participantId": "bare-model:openai/gpt-5.6",
+  "personaId": null,
+  "messages": [
+    {
+      "ordinal": 0,
+      "messageId": "message-cloud-user-1",
+      "role": "user",
+      "name": "Dino",
+      "participantId": "participant-human-1",
+      "content": [
+        { "type": "text", "partId": "part-cloud-text", "text": "Answer from the same frozen packet contract." }
+      ]
+    }
+  ],
+  "instructions": {
+    "system": [
+      { "instructionId": "instruction-cloud-system", "name": "NanthAI system", "text": "Use the canonical conversation frontier.", "sourceHash": "5555555555555555555555555555555555555555555555555555555555555555" }
+    ],
+    "persona": []
+  },
+  "context": {
+    "assemblerVersion": "runtime-context-v2",
+    "canonicalHeadMessageId": "message-cloud-user-1",
+    "references": [],
+    "omissions": [],
+    "omittedPartCount": 0
+  },
+  "capabilities": {
+    "nanthaiTools": [],
+    "skills": [],
+    "integrations": [],
+    "adapterNativePolicy": "preserve"
+  },
+  "placement": {
+    "protocolVersion": "nanthai.runtime.v1",
+    "runId": "run-cloud-1",
+    "attemptId": "attempt-cloud-1",
+    "fence": 7,
+    "adapter": { "adapterId": "convex-workflow", "adapterVersion": "m47-v1" },
+    "selectedModel": { "mode": "explicit", "provider": "openrouter", "modelId": "openai/gpt-5.6" },
+    "placement": "cloud",
+    "executorKind": "convex_workflow",
+    "orchestrationEngine": "convex_workflow",
+    "device": null,
+    "workingDirectory": { "mode": "not_applicable" }
+  },
+  "causality": {
+    "replyToMessageIds": [],
+    "visibleThroughMessageId": "message-cloud-user-1",
+    "liveDiscussion": null
+  },
+  "command": {
+    "commandId": "command-cloud-1",
+    "idempotencyKey": "run-cloud-1:attempt-cloud-1:turn-1",
+    "commandInputHash": "66bb66bb",
+    "packetHash": "3b9dc74757bc14e784ae2d82bcbdfb005ffd9b7d64cc500653c1f72e8c5bb55e",
+    "cancellationId": "cancel-run-cloud-1"
+  }
+}

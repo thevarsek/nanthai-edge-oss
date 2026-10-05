@@ -6,7 +6,7 @@
 
 ## What Is This?
 
-NanthAI Edge is a production-grade AI chat/workspace app you can study, run, and adapt. The OSS repository contains the **web client** and **Convex backend**. Native mobile apps live in the private/commercial sibling repo, while this checkout focuses on the self-hostable browser experience and shared product API.
+NanthAI Edge is a production-grade AI chat/workspace app you can study, run, and adapt. The source-available repository contains the **web client**, **Convex backend**, **TypeScript Runtime Host/CLI** and **native Mac GUI source**. Native iOS and Android apps live in the private/commercial sibling repo. Signing credentials and generated installers/builds are excluded from source sync; the published Mac installer is downloaded from the public website.
 
 Every user brings their own OpenRouter account through OAuth PKCE. There is no shared server-side OpenRouter key and no hidden inference bill for the host.
 

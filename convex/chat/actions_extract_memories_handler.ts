@@ -1,3 +1,4 @@
+import { enqueueLocalHelperAfterMissingKey } from "../runtime_host/helper_enqueue";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
@@ -37,6 +38,9 @@ const DEFAULT_MEMORY_MODEL = MODEL_IDS.memoryExtraction;
 const MEMORY_FALLBACK_MODEL = MODEL_IDS.memoryExtractionFallback;
 
 export interface ExtractMemoriesArgs extends Record<string, unknown> {
+  runtimeHelperContent?: string;
+  executionAttemptId?: Id<"executionAttempts">;
+  executionFence?: number;
   chatId: Id<"chats">;
   userMessageContent: string;
   userMessageId: Id<"messages">;
@@ -65,7 +69,7 @@ export async function extractMemoriesHandler(
     }),
   ]);
 
-  if (await reconcileExplicitForget(ctx, args, existingMemories)) return;
+  if (args.runtimeHelperContent === undefined && await reconcileExplicitForget(ctx, args, existingMemories)) return;
 
   const existingContext =
     existingMemories.length > 0
@@ -118,8 +122,17 @@ export async function extractMemoriesHandler(
         zdr_required: requireZdr,
       },
     });
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const result = await callOpenRouterStreaming(
+    let apiKey = "";
+    if (args.runtimeHelperContent === undefined) {
+      try { apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId); }
+      catch (error) {
+        if (await enqueueLocalHelperAfterMissingKey(ctx, error, args, args.assistantMessageId, "memory", messages)) return;
+        throw error;
+      }
+    }
+    const result = args.runtimeHelperContent !== undefined
+      ? { content: args.runtimeHelperContent, usage: null, generationId: null }
+      : await callOpenRouterStreaming(
       apiKey,
       memoryModel,
       messages,

@@ -7,10 +7,11 @@ import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 
 type EdgeSiteHeaderProps = {
-  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing";
+  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing" | "workflows";
 };
 
 const navItems = [
+  { href: "/workflows", labelKey: "edge_nav_research", page: "workflows" as const },
   { href: "/features", labelKey: "edge_nav_features", page: "features" as const },
   { href: "/privacy", labelKey: "edge_nav_privacy", page: "privacy" as const },
   { href: "/terms", labelKey: "edge_nav_terms", page: "terms" as const },
@@ -55,7 +56,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
         </Link>
 
         {/* Desktop nav — minimal underline style */}
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 xl:flex">
           {navItems.map((item) => (
             <Link
               key={item.href}
@@ -72,7 +73,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
         </nav>
 
         {/* Desktop actions */}
-        <div className="hidden items-center gap-2 md:flex">
+        <div className="hidden items-center gap-2 xl:flex">
           <LanguageSwitcher variant="header" />
           {appHref ? (
             <Link
@@ -93,7 +94,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
         {/* Mobile hamburger */}
         <button
           type="button"
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg eborder-06 border efg-60 transition-colors hover:efg-heading md:hidden"
+          className="inline-flex h-9 w-9 items-center justify-center rounded-lg eborder-06 border efg-60 transition-colors hover:efg-heading xl:hidden"
           onClick={() => setIsMenuOpen((v) => !v)}
           aria-label={t("edge_toggle_navigation")}
         >
@@ -103,7 +104,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="eborder-04 border-t backdrop-blur-2xl md:hidden" style={{ background: `color-mix(in srgb, var(--edge-bg) 95%, transparent)` }}>
+        <div className="eborder-04 border-t backdrop-blur-2xl xl:hidden" style={{ background: `color-mix(in srgb, var(--edge-bg) 95%, transparent)` }}>
           <nav className="container edge-sans flex flex-col gap-1 py-4">
             {navItems.map((item) => (
               <Link

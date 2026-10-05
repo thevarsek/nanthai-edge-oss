@@ -18,7 +18,13 @@
     "ios:lint": "scripts/run-swiftlint.sh",
     "convex:typecheck": "tsc --noEmit --project convex/tsconfig.json",
     "deploy": "convex deploy",
-    "deploy:prod": "convex deploy --yes --typecheck disable"
+    "deploy:prod": "convex deploy --yes --typecheck disable",
+    "eval:context:check": "NANTHAI_EVAL_RUN_DIR=/tmp/no-inference tsx evals/runtime-context/check.mts && NANTHAI_EVAL_RUN_DIR=/tmp/no-inference tsx evals/runtime-context/tools_check_v2.mts",
+    "eval:context:lint": "eslint --config evals/runtime-context/eslint.v2.config.mjs evals/runtime-context --ext .mts",
+    "eval:context:typecheck": "tsc --noEmit --project evals/runtime-context/tsconfig.v2.json",
+    "eval:context:register": "tsx evals/runtime-context/register.mts",
+    "eval:context:run": "tsx evals/runtime-context/run_v2.mts",
+    "eval:context:report": "python3 evals/runtime-context/summarize.py"
   },
   "dependencies": {
     "@convex-dev/workflow": "^0.4.4",

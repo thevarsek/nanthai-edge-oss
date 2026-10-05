@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ConvexError } from "convex/values";
 import type { Id } from "@convex/_generated/dataModel";
 import { clearChatDraft } from "@/stores/chatDraftStore";
 import { ChatPage } from "./ChatPage";
@@ -20,6 +21,7 @@ const {
   getDrivePickerAccessToken,
   navigate,
   removeParticipant,
+  respondPermission,
   retryMessage,
   routeState,
   sendMessage,
@@ -43,6 +45,11 @@ const {
   getDrivePickerAccessToken: vi.fn(async () => ({ accessToken: "token" })),
   navigate: vi.fn(),
   removeParticipant: vi.fn(),
+  respondPermission: vi.fn(async () => ({
+    requestId: "permission_1",
+    status: "responding",
+    commandRecordId: "command_1",
+  })),
   retryMessage: vi.fn(async () => ({ assistantMessageIds: [] })),
   routeState: {
     chatId: "chat_1" as string | undefined,
@@ -55,6 +62,14 @@ const {
   updateChat: vi.fn(async () => null),
   testState: {
     isLoading: false,
+    isGenerating: false,
+    pendingPermissions: [] as Array<Record<string, unknown>>,
+    runtimeRoutes: [] as Array<{
+      chatParticipantId: string;
+      placement: "cloud" | "local";
+      deviceName?: string;
+      adapterId?: string;
+    }>,
     kbFiles: [] as Array<{
       storageId: string;
       filename: string;
@@ -77,6 +92,8 @@ const {
       status: "completed";
       createdAt: number;
       searchSessionId?: Id<"searchSessions">;
+      chatParticipantId?: Id<"chatParticipants">;
+      executionRoute?: { placement: "cloud" | "local"; runtimeLabel?: string };
     }>,
     branchNodes: new Map<Id<"messages">, { messageId: Id<"messages"> }>(),
     sessionMap: new Map<string, {
@@ -149,6 +166,13 @@ vi.mock("@convex/_generated/api", () => ({
         startResearchPaper: "startResearchPaper",
       },
     },
+    runtime_host: {
+      permissions: {
+        listMyPending: "listMyPendingRuntimePermissions",
+        respond: "respondToRuntimePermission",
+      },
+      route_queries: { getChatRuntimeRouting: "getChatRuntimeRouting" },
+    },
   },
 }));
 
@@ -163,6 +187,7 @@ vi.mock("convex/react", () => ({
     if (key === "createUploadUrl") return createUploadUrl;
     if (key === "forkChat") return forkChat;
     if (key === "switchBranchAtFork") return switchBranchAtFork;
+    if (key === "respondToRuntimePermission") return respondPermission;
     if (key === "cancelResearchPaper") return cancelSession;
     if (key === "startResearchPaper") return startResearchPaper;
     return vi.fn(async () => null);
@@ -173,6 +198,8 @@ vi.mock("convex/react", () => ({
       return { behavior: "parallel", exchange: null };
     }
     if (key === "listPendingMcpForChat") return [];
+    if (key === "listMyPendingRuntimePermissions") return testState.pendingPermissions;
+    if (key === "getChatRuntimeRouting") return testState.runtimeRoutes;
     return undefined;
   },
 }));
@@ -198,7 +225,7 @@ vi.mock("@/hooks/useChat", () => ({
     },
     messages: testState.messages,
     isLoading: testState.isLoading,
-    isGenerating: false,
+    isGenerating: testState.isGenerating,
     sendMessage,
     cancelGeneration,
     retryMessage,
@@ -358,8 +385,9 @@ vi.mock("@/components/chat/MessageBubble", async () => {
     "@/components/chat/SearchSessionContext",
   );
   return {
-    MessageBubble: ({ message, onOpenGeneratedFile }: {
+    MessageBubble: ({ message, onOpenGeneratedFile, executionRoute }: {
       message: { _id: string; searchSessionId?: string; content?: string };
+      executionRoute?: { placement: "cloud" | "local"; runtimeLabel?: string };
       onOpenGeneratedFile?: (request: {
         file: {
           _id: string;
@@ -372,6 +400,9 @@ vi.mock("@/components/chat/MessageBubble", async () => {
       }) => void;
     }) => {
       const { onCancel } = useSearchSessionContext();
+      if (message.content === "runtime route") {
+        return <div data-testid="runtime-route">{executionRoute?.placement}:{executionRoute?.runtimeLabel}</div>;
+      }
       if (message.content === "deck") {
         return (
           <button type="button" onClick={() => onOpenGeneratedFile?.({
@@ -438,6 +469,9 @@ describe("ChatPage composed send behavior", () => {
     Element.prototype.scrollIntoView = vi.fn();
     routeState.chatId = "chat_1";
     testState.isLoading = false;
+    testState.isGenerating = false;
+    testState.pendingPermissions = [];
+    testState.runtimeRoutes = [];
     testState.kbFiles = [];
     testState.overrides.enabledIntegrations = new Set();
     testState.overrides.selectedKBFileIds = new Set();
@@ -450,6 +484,11 @@ describe("ChatPage composed send behavior", () => {
     testState.setOptimisticLeafId.mockReset();
     sendMessage.mockResolvedValue({ userMessageId: "msg_user", assistantMessageIds: ["msg_assistant"] });
     switchBranchAtFork.mockResolvedValue("msg_leaf");
+    respondPermission.mockResolvedValue({
+      requestId: "permission_1",
+      status: "responding",
+      commandRecordId: "command_1",
+    });
   });
 
   afterEach(() => {
@@ -467,6 +506,56 @@ describe("ChatPage composed send behavior", () => {
     view.rerender(<ChatPage />);
 
     expect(screen.getByText("empty-chat-state")).toBeInTheDocument();
+  });
+
+  it("shows a local Runtime permission card while retaining the canonical composer Stop", async () => {
+    testState.isGenerating = true;
+    testState.messages = [{
+      _id: "message_1" as Id<"messages">,
+      chatId: "chat_1" as Id<"chats">,
+      role: "assistant",
+      content: "",
+      status: "completed",
+      createdAt: 1,
+      chatParticipantId: "participant_1" as Id<"chatParticipants">,
+    }];
+    testState.pendingPermissions = [{
+      requestId: "permission_1",
+      chatId: "chat_1",
+      messageId: "message_1",
+      generationJobId: "job_1",
+      runId: "run_1",
+      attemptId: "attempt_1",
+      chatParticipantId: "participant_1",
+      permissionRequestId: "native_permission_1",
+      permissionKind: "command_execution",
+      prompt: "Run the repository tests?",
+      choices: ["allow_once", "deny", "cancel"],
+      status: "pending",
+      createdAt: 1,
+      canRespond: true,
+    }];
+
+    render(<ChatPage />);
+
+    expect(screen.getByText("Run the repository tests?")).toBeVisible();
+    expect(screen.getByTitle("stop_generation")).toBeVisible();
+    expect(screen.getByRole("button", { name: "runtime_permission_cancel_request" }))
+      .toBeVisible();
+    const permissionControl = screen.getByLabelText("runtime_permission_requests");
+    expect(permissionControl).toHaveAttribute("data-ph-block");
+    expect(permissionControl).toHaveAttribute("data-ph-mask");
+    expect(permissionControl.parentElement?.closest("[data-ph-block][data-ph-mask]"))
+      .toBeNull();
+    expect(
+      permissionControl.compareDocumentPosition(screen.getByRole("textbox"))
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    await userEvent.click(screen.getByRole("button", { name: "runtime_permission_deny" }));
+    await waitFor(() => expect(respondPermission).toHaveBeenCalledWith({
+      requestId: "permission_1",
+      decision: "deny",
+    }));
   });
 
   it("sends selected Drive context, clears one-turn state, and does not leak it into the next send", async () => {
@@ -526,9 +615,12 @@ describe("ChatPage composed send behavior", () => {
     expect(secondArgs?.turnIntegrationOverrides).toBeUndefined();
   });
 
-  it("keeps composer state and selected context when send rejects", async () => {
+  it("shows a meaningful send error while preserving the draft and selected context", async () => {
     const user = userEvent.setup();
-    sendMessage.mockRejectedValueOnce(new Error("send failed"));
+    sendMessage.mockRejectedValueOnce(new ConvexError({
+      code: "RUNTIME_UNAVAILABLE",
+      message: "The selected machine is offline. Reconnect it and try again.",
+    }));
     testState.kbFiles = [{
       storageId: "storage_drive",
       filename: "Drive notes.pdf",
@@ -544,6 +636,10 @@ describe("ChatPage composed send behavior", () => {
     await user.click(screen.getByTitle("Send (Enter)"));
 
     await waitFor(() => expect(sendMessage).toHaveBeenCalledTimes(1));
+    expect(toast).toHaveBeenCalledWith({
+      message: "The selected machine is offline. Reconnect it and try again.",
+      variant: "error",
+    });
     expect(screen.getByRole("textbox")).toHaveValue("retry this");
     expect(screen.getByText("Drive notes.pdf")).toBeInTheDocument();
     expect(clearKBFiles).not.toHaveBeenCalled();
@@ -580,6 +676,28 @@ describe("ChatPage composed send behavior", () => {
       },
     })));
     expect(screen.queryByTestId("presentation-context-chip")).not.toBeInTheDocument();
+  });
+
+  it("keeps a recorded local response local when the participant now routes to cloud", () => {
+    testState.runtimeRoutes = [{
+      chatParticipantId: "participant_local",
+      placement: "cloud",
+    }];
+    testState.messages = [{
+      _id: "msg_local" as Id<"messages">,
+      chatId: "chat_1" as Id<"chats">,
+      chatParticipantId: "participant_local" as Id<"chatParticipants">,
+      role: "assistant",
+      content: "runtime route",
+      executionRoute: { placement: "local", runtimeLabel: "Dino’s MacBook · codex" },
+      status: "completed",
+      createdAt: 1,
+    }];
+
+    render(<ChatPage />);
+
+    expect(screen.getByTestId("runtime-route"))
+      .toHaveTextContent("local:Dino’s MacBook · codex");
   });
 
   it("ignores stale branch switch completions that resolve out of order", async () => {

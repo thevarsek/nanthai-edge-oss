@@ -11,7 +11,7 @@
 // `refreshDriveStorageIfStale` is the lazy-refresh chokepoint called from
 // `convex/scheduledJobs/queries.ts:getKBFileContents` — every read of a
 // Drive-sourced KB file checks Drive's `modifiedTime` and re-ingests if
-// stale. Per `docs/client-convex-contract.md` the refresh logic lives in
+// stale. Per `docs/architecture/client-convex-contract.md` the refresh logic lives in
 // Convex (not duplicated in tools or per-client code).
 // =============================================================================
 

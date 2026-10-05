@@ -99,8 +99,14 @@ export const initializeScheduledExecution = internalAction({
       occurrenceId: args.occurrenceId,
       invocationSource,
     });
-    const apiKey = await getOptionalUserOpenRouterApiKey(ctx, job.userId);
-    if (!apiKey) {
+    const requiresOpenRouter = await ctx.runQuery(
+      internal.scheduledJobs.execution_routing.requiresOpenRouter,
+      { jobId: args.jobId },
+    );
+    const apiKey = requiresOpenRouter
+      ? await getOptionalUserOpenRouterApiKey(ctx, job.userId)
+      : null;
+    if (requiresOpenRouter && !apiKey) {
       await ctx.runMutation(
         internal.scheduledJobs.execution_terminal_commit
           .commitScheduledExecutionFailure,
@@ -134,15 +140,15 @@ export const dispatchScheduledStep = internalAction({
     chatId: v.id("chats"),
     stepIndex: v.number(),
   },
-  returns: v.null(),
-  handler: async (ctx, args) => {
-    const job = await ctx.runQuery(
+  returns: v.boolean(),
+  handler: async (ctx, args): Promise<boolean> => {
+    const job: Doc<"scheduledJobs"> | null = await ctx.runQuery(
       internal.scheduledJobs.queries.getJobInternal,
       {
         jobId: args.jobId,
       },
     );
-    if (!job || job.activeExecutionId !== args.executionId) return null;
+    if (!job || job.activeExecutionId !== args.executionId) return false;
     await ctx.runMutation(
       internal.scheduledJobs.execution_lifecycle.heartbeatScheduledExecution,
       { jobId: args.jobId, executionId: args.executionId },
@@ -156,7 +162,7 @@ export const dispatchScheduledStep = internalAction({
           messageId: job.activeAssistantMessageId,
         })
       : null;
-    await enqueueStep(ctx, {
+    return await enqueueStep(ctx, {
       jobId: args.jobId,
       chatId: args.chatId,
       userId: job.userId,
@@ -168,7 +174,6 @@ export const dispatchScheduledStep = internalAction({
         | Record<string, string>
         | undefined,
     });
-    return null;
   },
 });
 

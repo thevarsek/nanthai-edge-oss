@@ -181,3 +181,5 @@ describe("ParticipantPicker", () => {
     expect(screen.queryByText(/no models match/i)).not.toBeInTheDocument();
   });
 });
+
+vi.mock("convex/react", () => ({ useQuery: () => undefined }));

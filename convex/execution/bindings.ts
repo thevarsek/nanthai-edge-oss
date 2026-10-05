@@ -16,6 +16,7 @@ export async function bindRuntimeSession(
     deviceId?: string;
     workspaceId?: string;
     now?: number;
+    allowExpiredLease?: boolean;
   },
 ): Promise<Id<"runtimeSessionBindings">> {
   const { run, attempt } = await assertCurrentExecution(ctx, args);
@@ -59,6 +60,7 @@ export async function releaseRuntimeSession(
     status?: "released" | "revoked";
     reason?: string;
     now?: number;
+    allowExpiredLease?: boolean;
   },
 ): Promise<"active" | "released" | "revoked"> {
   const binding = await ctx.db.get(args.bindingId);
@@ -66,7 +68,7 @@ export async function releaseRuntimeSession(
     throw new Error("RUNTIME_BINDING_NOT_FOUND");
   }
   if (binding.status !== "active") return binding.status;
-  await assertCurrentExecution(ctx, args);
+  await assertCurrentExecution(ctx, { ...args, allowCancelling: true });
   const status = args.status ?? "released";
   await ctx.db.patch(binding._id, {
     status,

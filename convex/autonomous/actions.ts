@@ -30,6 +30,7 @@ export const finishAutonomousCycle = internalAction({
     cycle: v.number(),
     userId: v.string(),
     executionEpoch: v.optional(v.number()),
+    localJudgment: v.optional(v.union(v.literal("consensus"), v.literal("stalled"), v.literal("continue"))),
   },
   returns: v.union(v.literal("continue"), v.literal("terminal")),
   handler: finishAutonomousCycleHandler,

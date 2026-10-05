@@ -13,7 +13,17 @@ import { Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { skillOverrideEntry, integrationOverrideEntry } from "../schema_validators";
 import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
+import { personaSystemPrompt } from "./default_prompt";
 import { assertUniquePersonaDisplayName } from "./name_uniqueness";
+import {
+  deletePersonaAvatarUnlessHistoricallyReferenced,
+  removePersonaAdvisorAssignments,
+} from "./mutation_cleanup";
+import {
+  clearPersonaRuntimeBindingHandler,
+  runtimeRouteArgs,
+  setPersonaRuntimeBindingHandler,
+} from "../runtime_host/persona_routes";
 
 async function assertOwnedRemoteMcpTargets(
   ctx: MutationCtx,
@@ -54,6 +64,7 @@ export const create = mutation({
     enabledIntegrations: v.optional(v.array(v.string())),
     skillOverrides: v.optional(v.array(skillOverrideEntry)),
     integrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+    runtimeRoute: v.optional(v.object(runtimeRouteArgs)),
   },
   returns: v.id("personas"),
   handler: async (ctx, args) => {
@@ -76,11 +87,11 @@ export const create = mutation({
       }
     }
 
-    return await ctx.db.insert("personas", {
+    const personaId = await ctx.db.insert("personas", {
       userId,
       displayName: args.displayName,
       personaDescription: args.personaDescription ?? undefined,
-      systemPrompt: args.systemPrompt,
+      systemPrompt: personaSystemPrompt(args.systemPrompt),
       modelId: args.modelId,
       temperature: args.temperature ?? undefined,
       maxTokens: args.maxTokens ?? undefined,
@@ -96,6 +107,15 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
+    if (args.runtimeRoute) {
+      await setPersonaRuntimeBindingHandler(ctx, {
+        userId,
+        personaId,
+        ...args.runtimeRoute,
+        now,
+      });
+    }
+    return personaId;
   },
 });
 
@@ -121,6 +141,7 @@ export const update = mutation({
     enabledIntegrations: v.optional(v.array(v.string())),
     skillOverrides: v.optional(v.array(skillOverrideEntry)),
     integrationOverrides: v.optional(v.array(integrationOverrideEntry)),
+    runtimeRoute: v.optional(v.union(v.object(runtimeRouteArgs), v.null())),
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
@@ -159,6 +180,7 @@ export const update = mutation({
       includeReasoning,
       reasoningEffort,
       avatarEmoji,
+      runtimeRoute,
       ...updates
     } = args;
     const previousAvatarStorageId = persona.avatarImageStorageId as Id<"_storage"> | undefined;
@@ -167,6 +189,7 @@ export const update = mutation({
 
     await ctx.db.patch(personaId, {
       ...updates,
+      systemPrompt: personaSystemPrompt(args.systemPrompt ?? persona.systemPrompt),
       ...(personaDescription !== undefined ? { personaDescription: personaDescription ?? undefined } : {}),
       ...(temperature !== undefined ? { temperature: temperature ?? undefined } : {}),
       ...(maxTokens !== undefined ? { maxTokens: maxTokens ?? undefined } : {}),
@@ -176,6 +199,17 @@ export const update = mutation({
       avatarImageStorageId: nextAvatarStorageId,
       updatedAt: now,
     });
+
+    if (runtimeRoute === null) {
+      await clearPersonaRuntimeBindingHandler(ctx, { userId, personaId, now });
+    } else if (runtimeRoute !== undefined) {
+      await setPersonaRuntimeBindingHandler(ctx, {
+        userId,
+        personaId,
+        ...runtimeRoute,
+        now,
+      });
+    }
 
     if (previousAvatarStorageId && previousAvatarStorageId !== nextAvatarStorageId) {
       await deletePersonaAvatarUnlessHistoricallyReferenced(ctx, {
@@ -228,7 +262,7 @@ export const createPersonaInternal = internalMutation({
       userId: args.userId,
       displayName: args.displayName,
       personaDescription: args.personaDescription,
-      systemPrompt: args.systemPrompt,
+      systemPrompt: personaSystemPrompt(args.systemPrompt),
       modelId: args.modelId,
       temperature: args.temperature,
       maxTokens: args.maxTokens,
@@ -258,33 +292,3 @@ export const removePersonaInternal = internalMutation({
     await ctx.db.delete(args.personaId);
   },
 });
-
-async function removePersonaAdvisorAssignments(
-  ctx: MutationCtx,
-  personaId: Id<"personas">,
-  userId: string,
-): Promise<void> {
-  const assignments = await ctx.db
-    .query("chatAdvisors")
-    .withIndex("by_persona", (query) => query.eq("personaId", personaId))
-    .collect();
-  for (const assignment of assignments) {
-    if (assignment.userId === userId) await ctx.db.delete(assignment._id);
-  }
-}
-
-async function deletePersonaAvatarUnlessHistoricallyReferenced(
-  ctx: MutationCtx,
-  persona: { _id: Id<"personas">; avatarImageStorageId?: Id<"_storage"> },
-): Promise<void> {
-  if (!persona.avatarImageStorageId) return;
-  const historicalRun = await ctx.db
-    .query("advisorRuns")
-    .withIndex("by_persona_avatar_storage", (query) =>
-      query
-        .eq("personaId", persona._id)
-        .eq("personaAvatarStorageId", persona.avatarImageStorageId)
-    )
-    .first();
-  if (!historicalRun) await ctx.storage.delete(persona.avatarImageStorageId);
-}

@@ -2,8 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { OnboardingPage } from "./OnboardingPage";
-
-const { analyticsMocks, generatePKCE, navigate, setOnboardingCompleted, sharedState } = vi.hoisted(() => ({
+const { analyticsMocks, generatePKCE, navigate, setOnboardingCompleted, beginLocalSetup, sharedState } = vi.hoisted(() => ({
   analyticsMocks: {
     analyticsErrorLabel: vi.fn((error: unknown) => error instanceof Error ? error.name.toLowerCase() : "unknown_error"),
     captureAnalytics: vi.fn(),
@@ -15,14 +14,14 @@ const { analyticsMocks, generatePKCE, navigate, setOnboardingCompleted, sharedSt
   })),
   navigate: vi.fn(),
   setOnboardingCompleted: vi.fn(async () => null),
+  beginLocalSetup: vi.fn(async () => null),
   sharedState: {
+    proStatus: { isPro: true },
     hasApiKey: false as boolean | undefined,
-    prefs: { onboardingCompleted: false } as undefined | { onboardingCompleted?: boolean },
+    prefs: { onboardingCompleted: false } as undefined | { onboardingCompleted?: boolean; runtimeOnboardingState?: "setup" | "ready" },
   },
 }));
-
 const originalLocation = window.location;
-
 vi.mock("react-router-dom", async (importOriginal) => {
   const actual = await importOriginal<typeof import("react-router-dom")>();
   return {
@@ -30,19 +29,19 @@ vi.mock("react-router-dom", async (importOriginal) => {
     useNavigate: () => navigate,
   };
 });
-
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({ t: (key: string) => key }),
 }));
-
+vi.mock("@convex/_generated/api", () => ({ api: { preferences: { mutations: { setOnboardingCompleted: "complete" } }, runtime_host: { activation: { begin: "begin" } } } }));
 vi.mock("convex/react", () => ({
-  useMutation: () => setOnboardingCompleted,
+  useMutation: (reference: string) => reference === "begin" ? beginLocalSetup : setOnboardingCompleted,
 }));
-
 vi.mock("@/hooks/useSharedData", () => ({
   useOpenRouterStatus: () => sharedState.hasApiKey,
-  useSharedData: () => ({ prefs: sharedState.prefs }),
+  useSharedData: () => ({ prefs: sharedState.prefs, proStatus: sharedState.proStatus }),
 }));
+
+vi.mock("@/components/shared/PaywallModal", () => ({ PaywallModal: ({ onClose }: { onClose: () => void }) => <div role="dialog"><button onClick={onClose}>Close paywall</button></div> }));
 
 vi.mock("@/lib/analytics", () => analyticsMocks);
 
@@ -69,6 +68,7 @@ function jumpToLastScreen() {
 describe("OnboardingPage", () => {
   beforeEach(() => {
     sharedState.hasApiKey = false;
+    sharedState.proStatus = { isPro: true };
     sharedState.prefs = { onboardingCompleted: false };
     generatePKCE.mockResolvedValue({
       state: "state_1",
@@ -76,6 +76,7 @@ describe("OnboardingPage", () => {
       challenge: "challenge_1",
     });
     setOnboardingCompleted.mockResolvedValue(null);
+    beginLocalSetup.mockResolvedValue(null);
   });
 
   afterEach(() => {
@@ -92,7 +93,7 @@ describe("OnboardingPage", () => {
 
     const firstRun = renderOnboarding();
     await waitFor(() => {
-      expect(navigate).toHaveBeenCalledWith("/openrouter-required", { replace: true });
+      expect(navigate).toHaveBeenCalledWith("/app/chat", { replace: true });
     });
     expect(analyticsMocks.captureAnalytics).not.toHaveBeenCalledWith(
       "onboarding_started",
@@ -105,7 +106,21 @@ describe("OnboardingPage", () => {
     firstRun.unmount();
     navigate.mockClear();
 
+    sharedState.prefs = { onboardingCompleted: false, runtimeOnboardingState: "setup" };
+    const resumed = renderOnboarding();
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/app/settings/local-runtime", { replace: true }));
+    resumed.unmount();
+    navigate.mockClear();
     renderOnboarding("/onboarding?mode=replay");
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("keeps connection choice available during saved local setup without restarting the carousel", () => {
+    sharedState.prefs = { onboardingCompleted: false, runtimeOnboardingState: "setup" };
+    renderOnboarding("/onboarding?mode=connections");
+    expect(screen.getByRole("heading", { name: "runtime_choose_connection" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "connect_openrouter" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "runtime_setup_from_onboarding" })).toBeEnabled();
     expect(navigate).not.toHaveBeenCalled();
   });
 
@@ -140,12 +155,58 @@ describe("OnboardingPage", () => {
     });
   });
 
-  it("requires a connected OpenRouter key before first-run completion", () => {
+  it("keeps cloud completion gated while offering explicit local setup", () => {
     renderOnboarding();
     jumpToLastScreen();
 
     expect(screen.getByRole("button", { name: "finish" })).toBeDisabled();
     expect(screen.getByText("continue_with_a_supported_provider_to_finish_onboarding")).toBeInTheDocument();
+  });
+
+  it("enters local setup without an OpenRouter key and surfaces save failures", async () => {
+    renderOnboarding();
+    jumpToLastScreen();
+    beginLocalSetup.mockRejectedValueOnce(new Error("Save unavailable"));
+    fireEvent.click(screen.getByRole("button", { name: "runtime_setup_from_onboarding" }));
+    expect(await screen.findByText("Save unavailable")).toBeInTheDocument();
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "runtime_setup_from_onboarding" }));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/app/settings/local-runtime", { replace: true }));
+    expect(setOnboardingCompleted).not.toHaveBeenCalled();
+  });
+
+  it("offers the paywall before saving free local setup and keeps OpenRouter available after cancellation", () => {
+    sharedState.proStatus = { isPro: false };
+    renderOnboarding("/onboarding?mode=connections");
+    fireEvent.click(screen.getByRole("button", { name: "runtime_setup_from_onboarding" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(beginLocalSetup).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Close paywall" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "connect_openrouter" })).toBeEnabled();
+    expect(beginLocalSetup).not.toHaveBeenCalled();
+  });
+
+  it("waits for the Convex entitlement after checkout then resumes local setup once", async () => {
+    sharedState.proStatus = { isPro: false };
+    const view = renderOnboarding("/onboarding?mode=connections&pro=success");
+    expect(screen.getByRole("status")).toHaveTextContent("runtime_pro_confirming");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(beginLocalSetup).not.toHaveBeenCalled();
+    sharedState.proStatus = { isPro: true };
+    view.rerender(<MemoryRouter initialEntries={["/onboarding?mode=connections&pro=success"]}><OnboardingPage /></MemoryRouter>);
+    await waitFor(() => expect(beginLocalSetup).toHaveBeenCalledTimes(1));
+    expect(navigate).toHaveBeenCalledWith("/app/settings/local-runtime", { replace: true });
+  });
+
+  it("keeps old free local-intent users on the connection choice instead of completing onboarding", () => {
+    sharedState.proStatus = { isPro: false };
+    sharedState.prefs = { onboardingCompleted: false, runtimeOnboardingState: "setup" };
+    renderOnboarding("/onboarding?mode=connections");
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "runtime_setup_from_onboarding" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(beginLocalSetup).not.toHaveBeenCalled();
   });
 
   it("marks onboarding complete and enters chat when OpenRouter is connected", async () => {

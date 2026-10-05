@@ -6,32 +6,32 @@
 
 | Goal | Read |
 |------|------|
-| Run the app locally | [`../README.md`](../README.md) |
-| Understand the repo layout | [`project-structure.md`](project-structure.md) |
-| Change backend behavior safely | [`client-convex-contract.md`](client-convex-contract.md), [`data-model.md`](data-model.md), [`testing-strategy.md`](testing-strategy.md) |
-| Add tools, skills, or integrations | [`architecture.md`](architecture.md), [`service-layer.md`](service-layer.md), [`tool-skill-access.md`](tool-skill-access.md) |
-| Understand chat UX and product concepts | [`design-philosophy.md`](design-philosophy.md), [`user-flows.md`](user-flows.md), [`ideascapes.md`](ideascapes.md) |
-| Debug model/search behavior | [`openrouter-api.md`](openrouter-api.md), [`ttft-web-search-finding.md`](ttft-web-search-finding.md) |
+| Run the app locally | [Readme](../README.md) |
+| Understand the repo layout | [Project structure](development/project-structure.md) |
+| Change backend behavior safely | [Client convex contract](architecture/client-convex-contract.md), [Data model](architecture/data-model.md), [Testing strategy](development/testing-strategy.md) |
+| Add tools, skills, or integrations | [Architecture](architecture/architecture.md), [Service layer](clients/service-layer.md), [Tool skill access](product/tool-skill-access.md) |
+| Understand chat UX and product concepts | [Design philosophy](product/design-philosophy.md), [User flows](product/user-flows.md), [Ideascapes](product/ideascapes.md) |
+| Debug model/search behavior | [Openrouter api](integrations/openrouter-api.md), [Openrouter search](integrations/openrouter-search.md) |
 
 ## Documents
 
 | Document | Description |
 |----------|-------------|
-| [`architecture.md`](architecture.md) | Backend-first product architecture, Convex data flow, streaming, tools, integrations, runtime, and feature contracts |
-| [`client-convex-contract.md`](client-convex-contract.md) | Shared Convex API principles for thin clients, ownership, payload compatibility, and error contracts |
-| [`data-model.md`](data-model.md) | Convex schema tables, indexes, identity scoping, generated artifacts, runtime state, memory, and retry contracts |
-| [`design-philosophy.md`](design-philosophy.md) | Product vision, conversation UX principles, ideascapes, personas, memory, and non-goals |
-| [`google-reduced-scopes-launch.md`](google-reduced-scopes-launch.md) | Google integration launch scope, OAuth constraints, Picker/Drive behavior, and verification notes |
-| [`ideascapes.md`](ideascapes.md) | Branching architecture, spatial canvas model, node positioning, branch resolution, and rendering contract |
-| [`openrouter-api.md`](openrouter-api.md) | OpenRouter OAuth PKCE, model/catalog endpoints, chat completion shape, streaming format, and headers |
-| [`project-structure.md`](project-structure.md) | OSS repository layout for `convex/`, `web/`, docs, configuration, and generated files |
-| [`service-layer.md`](service-layer.md) | Service boundaries between web UI, Convex functions, tools, integrations, generated artifacts, and errors |
-| [`subagents.md`](subagents.md) | Delegated child-run architecture, parent continuation, lifecycle, persistence, and UI status model |
-| [`tech-stack.md`](tech-stack.md) | Versions and dependency policy for the OSS web client, Convex backend, tools, and integrations |
-| [`testing-strategy.md`](testing-strategy.md) | OSS test pyramid, commands, and coverage ownership for Convex and web surfaces |
-| [`tool-skill-access.md`](tool-skill-access.md) | Product-facing access matrix for tools, skills, connected apps, runtime capability, and commercial gates |
-| [`ttft-web-search-finding.md`](ttft-web-search-finding.md) | Web-search first-token latency investigation and OpenRouter server-tool routing notes |
-| [`user-flows.md`](user-flows.md) | Product workflows for onboarding, chat, tools, personas, memory, integrations, jobs, documents, and errors |
+| [Architecture](architecture/architecture.md) | Backend-first product architecture, Convex data flow, streaming, tools, integrations, runtime, and feature contracts |
+| [Client convex contract](architecture/client-convex-contract.md) | Shared Convex API principles for thin clients, ownership, payload compatibility, and error contracts |
+| [Data model](architecture/data-model.md) | Convex schema tables, indexes, identity scoping, generated artifacts, runtime state, memory, and retry contracts |
+| [Design philosophy](product/design-philosophy.md) | Product vision, conversation UX principles, ideascapes, personas, memory, and non-goals |
+| [Google reduced scopes launch](integrations/google-reduced-scopes-launch.md) | Google integration launch scope, OAuth constraints, Picker/Drive behavior, and verification notes |
+| [Ideascapes](product/ideascapes.md) | Branching architecture, spatial canvas model, node positioning, branch resolution, and rendering contract |
+| [Openrouter api](integrations/openrouter-api.md) | OpenRouter OAuth PKCE, model/catalog endpoints, chat completion shape, streaming format, and headers |
+| [Project structure](development/project-structure.md) | OSS repository layout for `convex/`, `web/`, docs, configuration, and generated files |
+| [Service layer](clients/service-layer.md) | Service boundaries between web UI, Convex functions, tools, integrations, generated artifacts, and errors |
+| [Subagents](architecture/subagents.md) | Delegated child-run architecture, parent continuation, lifecycle, persistence, and UI status model |
+| [Tech stack](development/tech-stack.md) | Versions and dependency policy for the OSS web client, Convex backend, tools, and integrations |
+| [Testing strategy](development/testing-strategy.md) | OSS test pyramid, commands, and coverage ownership for Convex and web surfaces |
+| [Tool skill access](product/tool-skill-access.md) | Product-facing access matrix for tools, skills, connected apps, runtime capability, and commercial gates |
+| [Openrouter search](integrations/openrouter-search.md) | Web-search first-token latency investigation and OpenRouter server-tool routing notes |
+| [User flows](product/user-flows.md) | Product workflows for onboarding, chat, tools, personas, memory, integrations, jobs, documents, and errors |
 
 ## OSS Notes
 

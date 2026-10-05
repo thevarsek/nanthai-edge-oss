@@ -1,3 +1,4 @@
+import { bindWorkflowPersonaConfig } from "./workflow_persona_config";
 import { vEventId, vResultValidator, type EventId, type WorkflowId } from "@convex-dev/workflow";
 import { v } from "convex/values";
 import { makeFunctionReference } from "convex/server";
@@ -69,7 +70,7 @@ export const startGenerationWorkflow = internalMutation({
     if (existing) return existing.operationId;
     const startAsync = generationParticipantWorkflowStartsAsync();
     const workflowArgs: GenerationParticipantWorkflowArgs = {
-      ...args,
+      ...await bindWorkflowPersonaConfig(ctx, args, job),
       workflowStartAsync: startAsync,
       journalProtocolVersion: 1,
     };

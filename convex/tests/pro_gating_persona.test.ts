@@ -37,6 +37,9 @@ function buildCtx(isPro: boolean) {
               activeBranchLeafId: "msg_assistant_1",
             };
           }
+          if (id === "persona_abc") return {
+            _id: "persona_abc", userId: "user_1", displayName: "Test Persona", systemPrompt: "Help",
+          };
           // For retry: the original assistant message
           if (id === "msg_assistant_1") {
             return {

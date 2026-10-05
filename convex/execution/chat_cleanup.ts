@@ -1,11 +1,21 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { deleteRuntimeNativeAgentsForChatBatch } from
+  "../runtime_host/native_agent_cleanup";
 
 export async function deleteChatExecutionBatch(
   ctx: MutationCtx,
   chatId: Id<"chats">,
   limit: number,
 ): Promise<boolean> {
+  const nativeAgentsRemain = await deleteRuntimeNativeAgentsForChatBatch(
+    ctx,
+    chatId,
+    limit,
+  );
+  const offlineImports = await ctx.db.query("runtimeOfflineImports")
+    .withIndex("by_chat", q => q.eq("chatId", chatId)).take(limit);
+  for (const receipt of offlineImports) await ctx.db.delete(receipt._id);
   const teardownTasks = await ctx.db
     .query("executionTeardownTasks")
     .withIndex("by_chat", (q) => q.eq("chatId", chatId))
@@ -15,10 +25,14 @@ export async function deleteChatExecutionBatch(
     .query("executionRuns")
     .withIndex("by_chat", (q) => q.eq("chatId", chatId))
     .take(limit);
-  let hasMore = runs.length === limit || teardownTasks.length === limit;
+  let hasMore = offlineImports.length === limit || nativeAgentsRemain
+    || runs.length === limit
+    || teardownTasks.length === limit;
   for (const run of runs) {
-    const [commands, events, operations, attempts, components] = await Promise.all([
+    const [commands, helpers, permissions, events, operations, attempts, components] = await Promise.all([
       ctx.db.query("runtimeCommands").withIndex("by_run_command", (q) => q.eq("runId", run._id)).take(limit),
+      ctx.db.query("runtimeHelperTasks").withIndex("by_run", (q) => q.eq("runId", run._id)).take(limit),
+      ctx.db.query("runtimePermissionRequests").withIndex("by_run", (q) => q.eq("runId", run._id)).take(limit),
       ctx.db.query("runEvents").withIndex("by_run_sequence", (q) => q.eq("runId", run._id)).take(limit),
       ctx.db.query("executionOperations").withIndex("by_run_operation", (q) => q.eq("runId", run._id)).take(limit),
       ctx.db.query("executionAttempts").withIndex("by_run", (q) => q.eq("runId", run._id)).take(limit),
@@ -30,10 +44,10 @@ export async function deleteChatExecutionBatch(
         .withIndex("by_attempt", (q) => q.eq("attemptId", attempt._id))
         .take(limit),
     ))).flat();
-    for (const row of [...commands, ...events, ...operations, ...bindings, ...components]) {
+    for (const row of [...commands, ...helpers, ...permissions, ...events, ...operations, ...bindings, ...components]) {
       await ctx.db.delete(row._id);
     }
-    const childrenRemain = [commands, events, operations, bindings, components]
+    const childrenRemain = [commands, helpers, permissions, events, operations, bindings, components]
       .some((rows) => rows.length === limit);
     if (childrenRemain) {
       hasMore = true;

@@ -2,9 +2,8 @@ import { internal } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx, QueryCtx } from "../_generated/server";
 import { MODEL_IDS } from "../lib/model_constants";
-import { getRequiredUserOpenRouterApiKey } from "../lib/user_secrets";
-import { ConvexError } from "convex/values";
-import { computeEmbedding } from "./embedding_helpers";
+import type { EmbeddingUsage } from "./embedding_helpers";
+import { computePrimaryEmbeddingForMessage } from "./query_embedding_compute";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
 import {
   hashMemoryCacheTextForPrivacyMode,
@@ -15,17 +14,6 @@ const PRIMARY_PROVIDER = "openrouter" as const;
 const POLL_INTERVAL_MS = 100;
 const ENSURE_READY_TIMEOUT_MS = 20_000;
 const LEASE_DURATION_MS = 15_000;
-
-function getStableEmbeddingErrorCode(error: unknown): string {
-  if (
-    error instanceof ConvexError
-    && typeof error.data?.code === "string"
-    && error.data.code.trim().length > 0
-  ) {
-    return error.data.code.trim().toLowerCase();
-  }
-  return "primary_embedding_exception";
-}
 
 async function getQueryText(
   ctx: Pick<ActionCtx, "runQuery">,
@@ -39,55 +27,6 @@ async function getQueryText(
     messageId,
   });
   return typeof message?.content === "string" ? message.content.trim() : "";
-}
-
-async function computePrimaryEmbeddingForMessage(
-  ctx: Pick<ActionCtx, "runMutation" | "runQuery" | "scheduler">,
-  args: {
-    messageId: Id<"messages">;
-    userId: string;
-    chatId?: Id<"chats">;
-    queryText: string;
-    requireZdr: boolean;
-  },
-): Promise<void> {
-  const now = Date.now();
-  const textHash = hashMemoryCacheTextForPrivacyMode(args.queryText, args.requireZdr);
-  if (args.queryText.length === 0) {
-    await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
-      messageId: args.messageId,
-      textHash,
-      status: "failed",
-      errorCode: "empty_query",
-      now,
-    });
-    return;
-  }
-
-  try {
-    const apiKey = await getRequiredUserOpenRouterApiKey(ctx, args.userId);
-    const embeddingResult = await computeEmbedding(args.queryText, apiKey, {
-      requireZdr: args.requireZdr,
-    });
-    await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
-      messageId: args.messageId,
-      textHash,
-      status: embeddingResult ? "ready" : "failed",
-      embedding: embeddingResult?.embedding,
-      usage: embeddingResult?.usage,
-      generationId: embeddingResult?.generationId,
-      errorCode: embeddingResult ? undefined : "primary_embedding_failed",
-      now: Date.now(),
-    });
-  } catch (error) {
-    await ctx.runMutation(internal.memory.operations.completeMessageQueryEmbedding, {
-      messageId: args.messageId,
-      textHash,
-      status: "failed",
-      errorCode: getStableEmbeddingErrorCode(error),
-      now: Date.now(),
-    });
-  }
 }
 
 export interface GetMessageQueryEmbeddingArgs extends Record<string, unknown> {
@@ -179,10 +118,8 @@ export interface CompleteMessageQueryEmbeddingArgs extends Record<string, unknow
   textHash: string;
   status: "ready" | "failed";
   embedding?: number[];
-  usage?: {
-    promptTokens: number;
-    totalTokens: number;
-  };
+  usage?: EmbeddingUsage;
+  provider?: "openai";
   generationId?: string;
   errorCode?: string;
   now: number;
@@ -202,6 +139,7 @@ export async function completeMessageQueryEmbeddingHandler(
 
   await ctx.db.patch(existing._id, {
     status: args.status,
+    provider: args.provider ?? PRIMARY_PROVIDER,
     embedding: args.status === "ready" ? args.embedding : undefined,
     usage: args.status === "ready" ? args.usage : undefined,
     generationId: args.status === "ready" ? args.generationId : undefined,

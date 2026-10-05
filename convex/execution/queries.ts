@@ -178,7 +178,10 @@ export const getRunDetailInternal = internalQuery({
 export const listMyRunProjections = query({
   args: { chatId: v.id("chats"), limit: v.optional(v.number()) },
   returns: v.array(executionProjection),
-  handler: async (ctx, args) => {
+  handler: listMyRunProjectionsHandler,
+});
+
+export async function listMyRunProjectionsHandler(ctx: QueryCtx, args: { chatId: Id<"chats">; limit?: number }) {
     const { userId } = await requireAuth(ctx);
     const limit = Math.max(1, Math.min(100, Math.floor(args.limit ?? 50)));
     const chat = await ctx.db.get(args.chatId);
@@ -218,5 +221,4 @@ export const listMyRunProjections = query({
       ]);
       return projectExecution(run, attempt, events[0] ?? null);
     }));
-  },
-});
+}

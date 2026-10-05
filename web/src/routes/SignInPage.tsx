@@ -2,6 +2,8 @@ import { SignIn } from "@clerk/react";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { captureAnalytics } from "@/lib/analytics";
+import { useLocation } from "react-router-dom";
+import { runtimeSignInRedirect } from "@/lib/runtimePairingLink";
 
 /**
  * Sign-in page using Clerk's hosted UI.
@@ -9,6 +11,7 @@ import { captureAnalytics } from "@/lib/analytics";
  */
 export function SignInPage() {
   const { t } = useTranslation();
+  const location = useLocation();
   useEffect(() => {
     captureAnalytics("sign_in_started", {
       feature_area: "auth",
@@ -37,6 +40,7 @@ export function SignInPage() {
       <SignIn
         routing="path"
         path="/sign-in"
+        forceRedirectUrl={runtimeSignInRedirect(location.search)}
         appearance={{
           variables: {
             colorPrimary: "hsl(215, 100%, 70%)",

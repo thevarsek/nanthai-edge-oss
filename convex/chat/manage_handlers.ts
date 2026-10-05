@@ -525,14 +525,15 @@ export async function forkChatHandler(
   });
 
   const forkMessages = await loadMessagesForFork(ctx, args.chatId, args.atMessageId);
+  const participantIdMap = await copyChatParticipants(ctx, args.chatId, newChatId);
   const { idMap, copiedMessages } = await copyMessagesWithIdMap(
     ctx,
     forkMessages,
     newChatId,
+    participantIdMap,
   );
   await copyGeneratedMediaForMessages(ctx, args.chatId, newChatId, idMap);
 
-  await copyChatParticipants(ctx, args.chatId, newChatId);
   await copyNodePositions(ctx, args.chatId, newChatId, userId, idMap);
   await copyAdvisorData(ctx, {
     sourceChatId: args.chatId,
@@ -595,14 +596,15 @@ export async function duplicateChatHandler(
   });
 
   const messages = await loadAllChatMessages(ctx, args.chatId);
+  const participantIdMap = await copyChatParticipants(ctx, args.chatId, newChatId);
   const { idMap, copiedMessages } = await copyMessagesWithIdMap(
     ctx,
     messages,
     newChatId,
+    participantIdMap,
   );
   await copyGeneratedMediaForMessages(ctx, args.chatId, newChatId, idMap);
 
-  await copyChatParticipants(ctx, args.chatId, newChatId);
   await copyNodePositions(ctx, args.chatId, newChatId, userId, idMap);
   await copyAdvisorData(ctx, {
     sourceChatId: args.chatId,

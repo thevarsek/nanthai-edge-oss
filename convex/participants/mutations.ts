@@ -2,6 +2,9 @@ import { v, ConvexError } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
+import {
+  clearParticipantRuntimeSnapshotHandler,
+} from "../runtime_host/chat_routes";
 
 // =============================================================================
 // Chat Participant Mutations
@@ -72,7 +75,7 @@ export const addParticipant = mutation({
         ? Math.max(...existing.map((p) => p.sortOrder)) + 1
         : 0);
 
-    const id = await ctx.db.insert("chatParticipants", {
+    const participantInsert = {
       chatId: args.chatId,
       userId,
       modelId: args.modelId,
@@ -86,7 +89,8 @@ export const addParticipant = mutation({
       reasoningEffort: args.reasoningEffort ?? undefined,
       sortOrder,
       createdAt: Date.now(),
-    });
+    };
+    const id = await ctx.db.insert("chatParticipants", participantInsert);
 
     await touchChat(ctx, chat._id);
 
@@ -118,6 +122,9 @@ export const removeParticipant = mutation({
       throw new ConvexError({ code: "VALIDATION" as const, message: "Cannot remove the last participant" });
     }
 
+    if (participant.personaId) {
+      await clearParticipantRuntimeSnapshotHandler(ctx, args.participantId);
+    }
     await ctx.db.delete(args.participantId);
 
     // Re-normalize sort orders
@@ -172,6 +179,10 @@ export const updateParticipant = mutation({
     if (args.reasoningEffort !== undefined) patch.reasoningEffort = args.reasoningEffort ?? undefined;
 
     if (Object.keys(patch).length > 0) {
+      const routeIdentityChanged = args.personaId !== undefined || args.modelId !== undefined;
+      if (routeIdentityChanged && participant.personaId) {
+        await clearParticipantRuntimeSnapshotHandler(ctx, args.participantId);
+      }
       await ctx.db.patch(args.participantId, patch);
       const chat = await ctx.db.get(participant.chatId);
       if (chat) {
@@ -221,13 +232,16 @@ export const setParticipants = mutation({
       .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
       .collect();
     for (const p of existing) {
+      if (p.personaId) {
+        await clearParticipantRuntimeSnapshotHandler(ctx, p._id);
+      }
       await ctx.db.delete(p._id);
     }
 
     // Insert new
     for (let i = 0; i < args.participants.length; i++) {
       const p = args.participants[i];
-      await ctx.db.insert("chatParticipants", {
+      const participantInsert = {
         chatId: args.chatId,
         userId,
         modelId: p.modelId,
@@ -241,7 +255,11 @@ export const setParticipants = mutation({
         reasoningEffort: p.reasoningEffort ?? undefined,
         sortOrder: i,
         createdAt: Date.now(),
-      });
+      };
+      await ctx.db.insert(
+        "chatParticipants",
+        participantInsert,
+      );
     }
 
     await touchChat(ctx, chat._id);

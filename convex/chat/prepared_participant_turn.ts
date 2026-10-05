@@ -11,6 +11,9 @@ export interface PreparedTurnCausality {
 }
 
 export interface PreparedParticipantTurn {
+  evidenceSources?: import("./source_evidence").EvidenceCandidate[];
+  runtimeBranchMessageIds?: string[];
+  runtimeSourceMessages?: import("./helpers_types").ContextMessage[];
   providerMessages: OpenRouterMessage[];
   context: {
     assemblerVersion: string;

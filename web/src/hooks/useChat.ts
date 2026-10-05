@@ -141,6 +141,8 @@ export interface Message {
   multiModelGroupId?: string;
   isMultiModelResponse?: boolean;
   subagentBatchId?: Id<"subagentBatches">;
+  runtimeNativeAgentGroupId?: Id<"runtimeNativeAgentGroups">;
+  executionRoute?: { placement: "cloud" | "local"; runtimeLabel?: string };
   advisorBatchId?: Id<"advisorBatches">;
   drivePickerBatchId?: Id<"drivePickerBatches">;
   moderatorDirective?: string;
@@ -180,6 +182,8 @@ export interface Message {
   audioDurationMs?: number;
   audioGenerating?: boolean;
   citations?: Array<{ url: string; title: string }>;
+  sourceCitations?: Array<{ sourceId: string; kind: string; label: string; quote: string; claim?: string }>;
+  offlineResult?: { localResultId: string; originRunId: string; disposition: "synced" | "review" };
   documentCitations?: Array<{
     ref: number;
     documentId?: Id<"documents">;

@@ -1,0 +1,100 @@
+[
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-session", "sequence": 0, "occurredAt": 1786752000000,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "session_started", "nativeSessionId": "codex-thread-1", "resumed": false,
+    "workingDirectory": "/fixture/worktree", "repository": { "root": "/fixture/worktree", "revision": "abc123" }
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-text", "sequence": 1, "occurredAt": 1786752000001,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "text_delta", "messageId": "message-output-1", "delta": "Reviewing the evidence."
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-reasoning", "sequence": 2, "occurredAt": 1786752000002,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "reasoning_delta", "delta": "Checking contract invariants."
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-tool-start", "sequence": 3, "occurredAt": 1786752000003,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "tool_started", "toolCallId": "tool-call-1", "toolName": "run_tests", "summary": "Running focused tests"
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-tool-progress", "sequence": 4, "occurredAt": 1786752000004,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "tool_progress", "toolCallId": "tool-call-1", "summary": "Half complete", "progress": 0.5
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-command", "sequence": 5, "occurredAt": 1786752000005,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "command_output", "toolCallId": "tool-call-1", "stream": "stdout", "chunk": "12 tests passed", "isFinalChunk": true
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-evidence", "sequence": 6, "occurredAt": 1786752000006,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "evidence_observed", "evidenceKind": "test", "summary": "Focused contract tests passed",
+    "localPath": "/fixture/worktree/test-results.json", "artifactIds": ["artifact-test-1"]
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-permission", "sequence": 7, "occurredAt": 1786752000007,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "permission_requested", "permissionRequestId": "permission-1", "toolCallId": "tool-call-2", "nativeAgentThreadId": null,
+    "permissionKind": "write_file", "prompt": "Allow Codex to update the selected file?",
+    "choices": ["allow_once", "deny"], "expiresAt": 1786752060000
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-permission-resolved", "sequence": 8, "occurredAt": 1786752000008,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "permission_resolved", "permissionRequestId": "permission-1", "decision": "allow_once"
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-tool-complete", "sequence": 9, "occurredAt": 1786752000009,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "tool_completed", "toolCallId": "tool-call-1", "toolName": "run_tests", "outcome": "completed",
+    "summary": "Focused tests passed", "artifactIds": ["artifact-test-1"]
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-artifact", "sequence": 10, "occurredAt": 1786752000010,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "artifact_created", "artifactId": "artifact-test-1", "artifactKind": "test_report", "name": "test-results.json",
+    "mimeType": "application/json", "byteLength": 1024, "sha256": "7777777777777777777777777777777777777777777777777777777777777777"
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-model", "sequence": 11, "occurredAt": 1786752000011,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "model_observed", "actualModel": { "provider": "openai", "modelId": "gpt-5.6-codex", "reportedByAdapter": true }, "reason": "initial"
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-usage", "sequence": 12, "occurredAt": 1786752000012,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "usage_reported", "actualModel": null,
+    "tokens": { "input": 1200, "output": 300, "cachedInput": 400, "reasoning": null, "total": 1500 },
+    "cost": { "source": "unpriced", "reason": "Adapter reported tokens without actual model identity" }
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-heartbeat", "sequence": 13, "occurredAt": 1786752000013,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1", "type": "heartbeat"
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-input-request", "sequence": 14, "occurredAt": 1786752000014,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "input_requested", "inputRequestId": "input-1", "nativeAgentThreadId": null, "source": "mcp_elicitation",
+    "prompt": "Choose a deployment region and optionally add a note.",
+    "requestSchema": {
+      "region": { "type": "string", "enum": ["eu-west", "us-east"] },
+      "note": { "type": "string" }
+    },
+    "sensitiveFieldPaths": ["note"]
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-input-resolved", "sequence": 15, "occurredAt": 1786752000015,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "input_resolved", "inputRequestId": "input-1", "outcome": "submitted"
+  },
+  {
+    "protocolVersion": "nanthai.runtime.v1", "eventId": "event-terminal", "sequence": 16, "occurredAt": 1786752000016,
+    "runId": "run-local-1", "attemptId": "attempt-local-1", "fence": 3, "sessionId": "session-1",
+    "type": "terminal", "outcome": "completed", "summary": "Runtime turn completed", "errorCode": null, "checkpointRef": "checkpoint-1"
+  }
+]

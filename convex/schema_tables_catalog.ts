@@ -130,7 +130,7 @@ export const catalogSchemaTables = {
     messageId: v.id("messages"),
     userId: v.string(),
     chatId: v.optional(v.id("chats")),
-    provider: v.union(v.literal("openrouter")),
+    provider: v.union(v.literal("openrouter"), v.literal("openai")),
     modelId: v.string(),
     status: v.union(v.literal("pending"), v.literal("ready"), v.literal("failed")),
     embedding: v.optional(v.array(v.float64())),
@@ -138,6 +138,7 @@ export const catalogSchemaTables = {
     usage: v.optional(v.object({
       promptTokens: v.number(),
       totalTokens: v.number(),
+      billingOwner: v.optional(v.literal("platform")),
     })),
     generationId: v.optional(v.string()),
     errorCode: v.optional(v.string()),
@@ -180,6 +181,7 @@ export const catalogSchemaTables = {
     usage: v.optional(v.object({
       promptTokens: v.number(),
       totalTokens: v.number(),
+      billingOwner: v.optional(v.literal("platform")),
     })),
     generationId: v.optional(v.string()),
     errorCode: v.optional(v.string()),
@@ -205,6 +207,14 @@ export const catalogSchemaTables = {
     completionTokens: v.number(),
     totalTokens: v.number(),
     cost: v.optional(v.number()),
+    costAttribution: v.optional(v.union(
+      v.literal("provider_reported"),
+      v.literal("api_equivalent_estimate"),
+      v.literal("unpriced"),
+    )),
+    provider: v.optional(v.string()),
+    runtimeDeviceId: v.optional(v.string()),
+    runtimeAdapterId: v.optional(v.string()),
     isByok: v.optional(v.boolean()),
     cachedTokens: v.optional(v.number()),
     cacheWriteTokens: v.optional(v.number()),
@@ -230,6 +240,7 @@ export const catalogSchemaTables = {
   })
     .index("by_user", ["userId", "createdAt"])
     .index("by_user_model", ["userId", "modelId"])
+    .index("by_user_runtime_device", ["userId", "runtimeDeviceId", "createdAt"])
     .index("by_chat", ["chatId"])
     .index("by_message", ["messageId"])
     .index("by_generation_source", ["generationId", "source"])

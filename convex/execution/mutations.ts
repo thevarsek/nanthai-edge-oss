@@ -47,6 +47,10 @@ export const createRun = internalMutation({
       adapterVersion: v.optional(v.string()),
       provider: v.optional(v.string()),
       modelId: v.optional(v.string()),
+      modelSelectionMode: v.optional(v.union(
+        v.literal("adapter_default"),
+        v.literal("explicit"),
+      )),
       runtimeLabel: v.optional(v.string()),
       deviceId: v.optional(v.string()),
       workspaceId: v.optional(v.string()),
@@ -80,6 +84,10 @@ export const createAttempt = internalMutation({
       adapterVersion: v.optional(v.string()),
       provider: v.optional(v.string()),
       modelId: v.optional(v.string()),
+      modelSelectionMode: v.optional(v.union(
+        v.literal("adapter_default"),
+        v.literal("explicit"),
+      )),
       runtimeLabel: v.optional(v.string()),
       deviceId: v.optional(v.string()),
       workspaceId: v.optional(v.string()),

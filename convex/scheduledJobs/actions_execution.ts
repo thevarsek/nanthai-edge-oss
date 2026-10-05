@@ -11,6 +11,7 @@ import {
   type ScheduledJobStepConfig,
 } from "./shared";
 import { ResolvedParticipant } from "./actions_types";
+import { resolveParticipant } from "./execution_routing";
 
 export async function enqueueStep(
   ctx: ActionCtx,
@@ -24,7 +25,7 @@ export async function enqueueStep(
     previousAssistantContent?: string;
     templateVariables?: Record<string, string>;
   },
-): Promise<void> {
+): Promise<boolean> {
   const resolvedStep: ScheduledJobStepConfig = {
     ...args.step,
     prompt: applyTemplateVariables(args.step.prompt, args.templateVariables),
@@ -63,8 +64,20 @@ export async function enqueueStep(
       personaEmoji: participant.personaEmoji,
       personaAvatarImageUrl: participant.personaAvatarImageUrl,
       enabledIntegrations: resolvedStep.enabledIntegrations,
+      useParticipantRoute: ["none", "basic"].includes(resolveScheduledJobSearchMode(resolvedStep)),
     },
   );
+
+  if (turn.runtimeUnavailable !== undefined) {
+    await ctx.runMutation(
+      internal.scheduledJobs.execution_terminal_commit.commitScheduledExecutionFailure,
+      {
+        jobId: args.jobId, executionId: args.executionId,
+        error: turn.runtimeUnavailable, runtimeUnavailable: turn.offline,
+      },
+    );
+    return false;
+  }
 
   await routeScheduledStep(ctx, {
     scheduledJobId: args.jobId,
@@ -74,11 +87,13 @@ export async function enqueueStep(
     userMessageId: turn.userMessageId,
     assistantMessageId: turn.assistantMsgId,
     genJobId: turn.genJobId,
+    chatParticipantId: turn.chatParticipantId,
     stepIndex: args.stepIndex,
     participant,
     prompt: promptWithKB,
     step: resolvedStep,
   });
+  return true;
 }
 
 async function routeScheduledStep(
@@ -91,6 +106,7 @@ async function routeScheduledStep(
     userMessageId: Id<"messages">;
     assistantMessageId: Id<"messages">;
     genJobId: Id<"generationJobs">;
+    chatParticipantId?: Id<"chatParticipants">;
     stepIndex: number;
     participant: ResolvedParticipant;
     prompt: string;
@@ -110,6 +126,7 @@ async function routeScheduledStep(
         participants: [
           {
             modelId: args.participant.modelId,
+            chatParticipantId: args.chatParticipantId,
             messageId: args.assistantMessageId,
             jobId: args.genJobId,
             systemPrompt: args.participant.systemPrompt ?? null,
@@ -215,52 +232,6 @@ async function routeScheduledStep(
       subagentsEnabled: undefined,
       analyticsSource: "scheduled_job",
   });
-}
-
-async function resolveParticipant(
-  ctx: ActionCtx,
-  job: {
-    modelId: string;
-    personaId?: Id<"personas">;
-    userId: string;
-    includeReasoning?: boolean;
-    reasoningEffort?: string;
-  },
-): Promise<ResolvedParticipant> {
-  if (!job.personaId) {
-    return {
-      modelId: job.modelId,
-      includeReasoning: job.includeReasoning ?? undefined,
-      reasoningEffort: job.reasoningEffort ?? undefined,
-    };
-  }
-
-  const persona = await ctx.runQuery(internal.chat.queries.getPersona, {
-    personaId: job.personaId,
-    userId: job.userId,
-  });
-  if (!persona) {
-    return {
-      modelId: job.modelId,
-      includeReasoning: job.includeReasoning ?? undefined,
-      reasoningEffort: job.reasoningEffort ?? undefined,
-    };
-  }
-
-  return {
-    modelId: persona.modelId ?? job.modelId,
-    systemPrompt: persona.systemPrompt ?? undefined,
-    temperature: persona.temperature ?? undefined,
-    maxTokens: persona.maxTokens ?? undefined,
-    personaId: job.personaId,
-    personaName: persona.displayName ?? undefined,
-    personaEmoji: persona.avatarEmoji ?? undefined,
-    personaAvatarImageUrl: persona.avatarImageUrl ?? undefined,
-    includeReasoning:
-      job.includeReasoning ?? persona.includeReasoning ?? undefined,
-    reasoningEffort:
-      job.reasoningEffort ?? persona.reasoningEffort ?? undefined,
-  };
 }
 
 async function buildPromptWithKnowledgeBase(

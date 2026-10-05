@@ -8,7 +8,7 @@
 //   - fileAttachments (uploads + Drive imports)
 //
 // Drive vs upload is derived from `fileAttachments.driveFileId` presence; we
-// never write `source` to disk. See `docs/client-convex-contract.md` — all
+// never write `source` to disk. See `docs/architecture/client-convex-contract.md` — all
 // clients render KB from this single response shape.
 // =============================================================================
 
