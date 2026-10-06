@@ -48,8 +48,14 @@ export function meetsMaxPrice(
 
 // -- Composite eligibility check ----------------------------------------------
 
+/** Batch-only routes require asynchronous submission, not interactive chat. */
+export function supportsInteractiveRequests(model: { modelId?: string }): boolean {
+  return !model.modelId?.endsWith(":batch");
+}
+
 /** Returns true if a model passes all eligibility filters. */
 export function isEligibleModel(model: {
+  modelId?: string;
   provider?: string | null;
   contextLength?: number;
   outputPricePer1M?: number;
@@ -58,6 +64,8 @@ export function isEligibleModel(model: {
   imageCapabilities?: { isAvailable?: boolean };
   architecture?: { modality?: string } | undefined;
 }): boolean {
+  if (!supportsInteractiveRequests(model)) return false;
+
   // Provider exclusion is handled separately (filterExcludedOpenRouterProviders)
   // because it operates on the array level. This function covers the remaining
   // per-model predicates.

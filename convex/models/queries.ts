@@ -12,6 +12,7 @@ import {
   filterExcludedOpenRouterProviders,
   isExcludedOpenRouterProvider,
   isEligibleModel,
+  supportsInteractiveRequests,
 } from "./model_filters";
 import { projectModelMediaContract } from "./media_capabilities";
 import {
@@ -73,7 +74,7 @@ export const listModelSummaries = query({
 
     return filterExcludedOpenRouterProviders(raw)
       .map(projectModelMediaContract)
-      .filter((model) => (
+      .filter((model) => supportsInteractiveRequests(model) && (
         isEligibleModel(model) || (
           args.includeGenerationModels === true
           && Object.values(projectGenerationCapabilities(model)).some(Boolean)
