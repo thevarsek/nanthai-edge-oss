@@ -28,7 +28,9 @@ The workspace and list share presentation state and filter actions.
 Native toolbar placement and overflow remain system-managed.
 
 Other iPhones and iPads retain the existing composer and list controls. New SDK
-symbols are guarded at compilation and runtime; Xcode 26.6 remains supported.
+symbols are guarded by the SwiftUI module version at compilation and by iOS
+availability at runtime. Xcode 26.6 and 27 use the existing controls; the iOS 27.1
+SDK enables vertical-toolbar adaptation. Swift 6.4 alone does not identify that SDK.
 Simulator checks cover navigation, width changes and voice controls; hardware Duo
 reachability still requires validation on the device.
 
