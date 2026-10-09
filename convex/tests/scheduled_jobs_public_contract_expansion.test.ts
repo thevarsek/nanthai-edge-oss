@@ -4,7 +4,7 @@ import test from "node:test";
 process.env.CONVEX_SECRET_ENCRYPTION_KEY ??= "test-scheduled-encryption-key";
 
 import { ConvexError } from "convex/values";
-import { decryptSecret, userApiKeySecretContext } from "../lib/secret_crypto";
+import { decryptSecret, encryptSecret, userApiKeySecretContext } from "../lib/secret_crypto";
 import {
   createJobTriggerToken,
   createJob,
@@ -642,6 +642,7 @@ test("triggerJobViaApi omits blank idempotency keys from stored audit rows", asy
 
 test("fetchOpenRouterCredits returns remaining balance and maps upstream failures", async () => {
   const originalFetch = globalThis.fetch;
+  const connection = { _id: "connection", updatedAt: 1, apiKey: await encryptSecret("sk-key", userApiKeySecretContext("user_1")) };
   try {
     globalThis.fetch = (async () => ({
       ok: true,
@@ -650,7 +651,8 @@ test("fetchOpenRouterCredits returns remaining balance and maps upstream failure
 
     const success = await (fetchOpenRouterCredits as any)._handler({
       auth: buildAuth(),
-      runQuery: async () => "sk-key",
+      runQuery: async () => connection,
+      runMutation: async () => true,
     }, {});
 
     assert.deepEqual(success, { balance: 12.25 });
@@ -662,10 +664,11 @@ test("fetchOpenRouterCredits returns remaining balance and maps upstream failure
 
     const overspent = await (fetchOpenRouterCredits as any)._handler({
       auth: buildAuth(),
-      runQuery: async () => "sk-key",
+      runQuery: async () => connection,
+      runMutation: async () => true,
     }, {});
 
-    assert.deepEqual(overspent, { balance: 0 });
+    assert.deepEqual(overspent, { balance: -3 });
 
     globalThis.fetch = (async () => ({
       ok: true,
@@ -674,10 +677,11 @@ test("fetchOpenRouterCredits returns remaining balance and maps upstream failure
 
     const negativeRemaining = await (fetchOpenRouterCredits as any)._handler({
       auth: buildAuth(),
-      runQuery: async () => "sk-key",
+      runQuery: async () => connection,
+      runMutation: async () => true,
     }, {});
 
-    assert.deepEqual(negativeRemaining, { balance: 0 });
+    assert.deepEqual(negativeRemaining, { balance: -2 });
 
     globalThis.fetch = (async () => ({
       ok: false,
@@ -687,7 +691,8 @@ test("fetchOpenRouterCredits returns remaining balance and maps upstream failure
     await assert.rejects(
       (fetchOpenRouterCredits as any)._handler({
         auth: buildAuth(),
-        runQuery: async () => "sk-key",
+        runQuery: async () => connection,
+      runMutation: async () => true,
       }, {}),
       (error: unknown) => {
         assert.ok(error instanceof ConvexError);

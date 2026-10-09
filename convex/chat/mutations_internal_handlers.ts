@@ -1,3 +1,5 @@
+import { publishChannelMessage } from "../channels/publication";
+import { wakeChannelTurns } from "../channels/turn_queue";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx, QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
@@ -23,6 +25,7 @@ import {
 import { assertCurrentFence, terminalizeExecution } from "../execution/control_plane";
 import { assertCurrentExecution } from "../execution/attempts";
 import { notifyScheduledStepTerminal } from "../scheduledJobs/workflow_signals";
+import { publishCollaborationJobTerminal } from "../collaboration/work_publication";
 import { isUserDataWritable } from "../lib/write_fence";
 import {
   extractGeneratedToolMedia,
@@ -633,6 +636,11 @@ export async function finalizeGenerationHandler(
     terminalErrorCode,
     completedAt: now,
   });
+  await publishChannelMessage(ctx, args.messageId);
+  if (generationJob?.collaborationExchangeId) {
+    await publishCollaborationJobTerminal(ctx, { ...generationJob,
+      status: mapFinalMessageStatusToJobStatus(finalStatus), error: args.error });
+  }
   if (
     !args.skipExecutionTerminalization
     && executionAttemptId
@@ -972,6 +980,10 @@ export async function updateJobStatusHandler(
     patch.completedAt = Date.now();
   }
   await ctx.db.patch(args.jobId, patch);
+  if (existing && patch.completedAt) await wakeChannelTurns(ctx, existing.chatId);
+  if (existing?.collaborationExchangeId && patch.completedAt) {
+    await publishCollaborationJobTerminal(ctx, { ...existing, status: args.status, error: args.error });
+  }
   if (args.messageId && (args.openrouterGenerationId || args.terminalErrorCode)) {
     const messagePatch: Record<string, unknown> = {};
     if (args.openrouterGenerationId) {

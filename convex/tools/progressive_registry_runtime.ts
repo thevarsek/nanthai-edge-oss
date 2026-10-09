@@ -5,6 +5,7 @@ import { listSkills } from "./skill_management";
 import { spawnSubagents } from "./spawn_subagents";
 import { webSearch } from "./web_search";
 import { ToolRegistry } from "./registry";
+import { updateCollaborationWork } from "./collaboration_work";
 
 export interface RuntimeBaseToolRegistryOptions {
   isPro: boolean;
@@ -18,6 +19,7 @@ const RUNTIME_BASE_TOOLS = [
   searchChats,
   loadSkill,
   listSkills,
+  updateCollaborationWork,
 ];
 
 export function buildRuntimeBaseToolRegistry(

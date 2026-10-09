@@ -1,10 +1,15 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createInstance } from "i18next";
+import { I18nextProvider } from "react-i18next";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import { MessageInput, type AttachmentPreview } from "./MessageInput";
 import type { PresentationContext } from "@/hooks/useChat";
 import { clearChatDraft, getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
+import italian from "@/i18n/locales/it.json";
+
+vi.mock("@/hooks/useSharedData", () => ({useModelSummaries: () => []}));
 
 const generatedDocument: AttachmentPreview = {
   storageId: "storage_1" as Id<"_storage">,
@@ -452,4 +457,64 @@ describe("MessageInput", () => {
       body: image,
     });
   });
+  it("sends only the current chat's consented voice request through the composed input", async () => {
+    const voiceCloning = { modelId: "fish-audio/s2.1-pro", permissionConfirmed: true,
+      references: [{ storageId: "owned_voice" as Id<"_storage"> }] };
+    setChatDraft("chat_1", { text: "Read this", voiceCloning, attachments: [{
+      storageId: "owned_voice" as Id<"_storage">, type: "audio", name: "my voice.wav", mimeType: "audio/wav",
+    }] });
+    const onSend = vi.fn().mockResolvedValue(true);
+    const { rerender } = renderMessageInput({ onSend });
+    rerender(<MessageInput chatId={"chat_extra" as Id<"chats">} participants={[]} isGenerating={false}
+      onSend={onSend} onCancel={vi.fn()} onCreateUploadUrl={vi.fn()} />);
+    await userEvent.type(screen.getByRole("textbox"), "Ordinary turn");
+    await userEvent.click(screen.getByTitle("Send (Enter)"));
+    expect(onSend).toHaveBeenLastCalledWith({ text: "Ordinary turn", attachments: [] });
+    rerender(<MessageInput chatId={"chat_1" as Id<"chats">} participants={[]} isGenerating={false}
+      onSend={onSend} onCancel={vi.fn()} onCreateUploadUrl={vi.fn()} />);
+    await userEvent.click(screen.getByTitle("Send (Enter)"));
+    await waitFor(() => expect(onSend).toHaveBeenLastCalledWith({ text: "Read this", voiceCloning,
+      attachments: [expect.objectContaining({ storageId: "owned_voice" })] }));
+    expect(getChatDraft("chat_1").voiceCloning).toBeUndefined();
+  });
+
+  it("localizes incomplete voice-reference guidance while retaining the draft", async () => {
+    const locale = createInstance();
+    await locale.init({ lng: "it", resources: { it: { translation: italian } } });
+    const voiceCloning = { modelId: "fish-audio/s2.1-pro", permissionConfirmed: false, references: [] };
+    setChatDraft("chat_1", { text: "Leggi questo", voiceCloning, attachments: [] });
+    const onSend = vi.fn();
+    render(<I18nextProvider i18n={locale}><MessageInput chatId={"chat_1" as Id<"chats">}
+      participants={[]} isGenerating={false} onSend={onSend} onCancel={vi.fn()} onCreateUploadUrl={vi.fn()} />
+    </I18nextProvider>);
+    await userEvent.click(screen.getByRole("textbox"));
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByText(italian.vc_incomplete)).toBeInTheDocument();
+    expect(onSend).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toHaveValue("Leggi questo");
+    expect(getChatDraft("chat_1").voiceCloning).toEqual(voiceCloning);
+  });
+
+  it("opens voice setup from the plus menu and keeps configured requests in a compact summary", async () => {
+    const voiceCloning = { modelId: "fish-audio/s2.1-pro", permissionConfirmed: true,
+      references: [{ storageId: "owned_voice" as Id<"_storage"> }] };
+    setChatDraft("chat_1", { text: "Read this", voiceCloning, attachments: [{
+      storageId: "owned_voice" as Id<"_storage">, type: "audio", name: "my voice.wav", mimeType: "audio/wav",
+    }] });
+    const onSend = vi.fn().mockResolvedValue(true);
+    renderMessageInput({ onSend });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clone a voice (1)" })).toBeInTheDocument();
+    await userEvent.click(screen.getByTitle("More options"));
+    await userEvent.click(screen.getByRole("button", { name: "Clone a voice" }));
+    expect(screen.getByRole("dialog", { name: "Clone a voice" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(getChatDraft("chat_1").voiceCloning).toEqual(voiceCloning);
+    await userEvent.click(screen.getByTitle("Send (Enter)"));
+    await waitFor(() => expect(onSend).toHaveBeenCalledWith({ text: "Read this", voiceCloning,
+      attachments: [expect.objectContaining({ storageId: "owned_voice" })] }));
+    expect(screen.queryByRole("button", { name: "Clone a voice (1)" })).not.toBeInTheDocument();
+  });
+
 });

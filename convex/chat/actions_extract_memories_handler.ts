@@ -94,12 +94,12 @@ export async function extractMemoriesHandler(
     requireZdr = isZdrEnabled(prefs);
     const selectedMemoryModel = selectAncillaryModelForZdr({
       requestedModel: args.extractionModel,
-      defaultModel: DEFAULT_MEMORY_MODEL,
+      defaultModel: prefs?.fundingDefaultModelId ?? DEFAULT_MEMORY_MODEL,
       requireZdr,
     });
     memoryModel = await resolveTextAncillaryModel({
       selectedModel: selectedMemoryModel,
-      defaultModel: DEFAULT_MEMORY_MODEL,
+      defaultModel: prefs?.fundingDefaultModelId ?? DEFAULT_MEMORY_MODEL,
       feature: "Memory extraction",
       getCapabilities: (modelId) => ctx.runQuery(
         internal.chat.queries.getModelCapabilities,
@@ -138,7 +138,7 @@ export async function extractMemoriesHandler(
       messages,
       withZdrProvider({ temperature: 0, maxTokens: 500 }, requireZdr),
       {},
-      { fallbackModel: MEMORY_FALLBACK_MODEL },
+      { fallbackModel: prefs?.fundingDefaultModelId ?? MEMORY_FALLBACK_MODEL },
     );
     operationUsage = result.usage;
     operationGenerationId = result.generationId;

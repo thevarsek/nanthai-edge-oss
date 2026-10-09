@@ -1,3 +1,4 @@
+import { enqueueBoundConversation } from "../channels/turn_queue";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -45,6 +46,8 @@ export async function enqueueRunGeneration(
   ctx: ActionCtx | MutationCtx,
   args: RunGenerationArgs,
 ): Promise<string> {
+  const queued = "db" in ctx ? await enqueueBoundConversation(ctx, args) : null;
+  if (queued) return queued;
   const scheduledId = await scheduleRunGenerationAction(ctx, args);
   await ctx.scheduler.runAfter(
     DISPATCH_WATCHDOG_INITIAL_MS,

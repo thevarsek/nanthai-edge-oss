@@ -3,6 +3,7 @@ import { offlineResultValidator } from "./runtime_host/offline_import_contract";
 import { effectivePersonaConfigValidator } from "./runtime_host/effective_persona_config";
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
+import { voiceCloningRequestValidator } from "./chat/voice_cloning_contract";
 import {
   autonomousStatus,
   chatMode,
@@ -85,6 +86,8 @@ export const coreSchemaTables = {
   chats: defineTable({
     userId: v.string(),
     title: v.optional(v.string()),
+    conversationSourceRevision: v.optional(v.number()),
+    channelConversation: v.optional(v.boolean()),
     mode: chatMode,
     groupBehavior: v.optional(groupBehavior),
     folderId: v.optional(v.string()),
@@ -122,6 +125,7 @@ export const coreSchemaTables = {
     updatedAt: v.number(),
   })
     .index("by_user", ["userId", "updatedAt"])
+    .index("by_user_created", ["userId", "createdAt"])
     .index("by_user_folder", ["userId", "folderId", "updatedAt"])
     .index("by_user_pinned", ["userId", "isPinned", "pinnedAt"])
     .index("by_user_source", ["userId", "source", "updatedAt"])
@@ -176,6 +180,7 @@ export const coreSchemaTables = {
   messages: defineTable({
     memoryDecisionCommits: v.optional(v.array(v.string())),
     chatId: v.id("chats"),
+    conversationSummaryId: v.optional(v.id("conversationSummaries")),
     userId: v.optional(v.string()), // Denormalized for search-index scoping (M13)
     role: messageRole,
     content: v.string(),
@@ -190,6 +195,9 @@ export const coreSchemaTables = {
     collaborationDecisionId: v.optional(v.id("collaborationDecisions")),
     collaborationWave: v.optional(v.number()),
     collaborationReplyToIds: v.optional(v.array(v.id("messages"))),
+    collaborationGoalAction: v.optional(v.literal("start_or_resume")),
+    collaborationWorkContext: v.optional(v.string()),
+    collaborationReadOnlyReview: v.optional(v.boolean()),
     parentMessageIds: v.array(v.id("messages")),
     multiModelGroupId: v.optional(v.string()),
     isMultiModelResponse: v.optional(v.boolean()),
@@ -209,6 +217,7 @@ export const coreSchemaTables = {
     // M29 — Video generation: parallel to imageUrls
     videoUrls: v.optional(v.array(v.string())),
     audioStorageId: v.optional(v.id("_storage")),
+    voiceCloning: v.optional(voiceCloningRequestValidator),
     audioMimeType: v.optional(v.string()),
     audioSource: v.optional(v.union(
       v.literal("recording"),
@@ -220,6 +229,8 @@ export const coreSchemaTables = {
     audioVoice: v.optional(v.string()),
     audioGeneratedAt: v.optional(v.number()),
     audioGenerating: v.optional(v.boolean()),
+    audioReplyNotice: v.optional(v.string()),
+    inputProcessingNotice: v.optional(v.string()),
     audioLastPlayedAt: v.optional(v.number()),
     attachments: v.optional(
       v.array(
@@ -449,6 +460,10 @@ export const coreSchemaTables = {
 
   generationJobs: defineTable({
     chatId: v.id("chats"),
+    conversationSummaryId: v.optional(v.id("conversationSummaries")),
+    conversationContextPrepared: v.optional(v.boolean()),
+  conversationContextPreparing: v.optional(v.boolean()),
+    conversationContextExpand: v.optional(v.boolean()),
     messageId: v.id("messages"),
     streamingMessageId: v.optional(v.id("streamingMessages")),
     userId: v.string(),

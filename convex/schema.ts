@@ -1,3 +1,5 @@
+import { channelSchemaTables } from "./schema_tables_channels";
+import { conversationContextSchemaTables } from "./schema_tables_conversation_context";
 import { runtimeOfflineSchemaTables } from "./schema_tables_runtime_offline";
 import { defineSchema } from "convex/server";
 import { advisorSchemaTables } from "./schema_tables_advisors";
@@ -12,6 +14,7 @@ import { analyticsSchemaTables } from "./schema_tables_analytics";
 import { reportSchemaTables } from "./schema_tables_reports";
 import { mcpSchemaTables } from "./schema_tables_mcp";
 import { collaborationSchemaTables } from "./schema_tables_collaboration";
+import { collaborationWorkSchemaTables } from "./schema_tables_collaboration_work";
 import { runtimeHostSchemaTables } from "./schema_tables_runtime_host";
 import { runtimeRoutingSchemaTables } from "./schema_tables_runtime_routing";
 import { runtimePermissionSchemaTables } from "./schema_tables_runtime_permissions";
@@ -26,6 +29,8 @@ import { externalMcpSchemaTables } from "./schema_tables_external_mcp";
 // =============================================================================
 
 export default defineSchema({
+  ...channelSchemaTables,
+  ...conversationContextSchemaTables,
   ...advisorSchemaTables,
   ...analyticsSchemaTables,
   ...coreSchemaTables,
@@ -36,6 +41,7 @@ export default defineSchema({
   ...reportSchemaTables,
   ...catalogSchemaTables,
   ...collaborationSchemaTables,
+  ...collaborationWorkSchemaTables,
   ...userSchemaTables,
   ...runtimeSchemaTables,
   ...runtimeHostSchemaTables,

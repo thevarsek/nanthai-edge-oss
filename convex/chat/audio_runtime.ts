@@ -22,6 +22,7 @@ export function isAudioAttachment(
   attachment: { type?: string; mimeType?: string } | null | undefined,
 ): boolean {
   if (!attachment) return false;
+  if (attachment.type === "voice_reference") return false;
   return attachment.type === "audio" || attachment.mimeType?.startsWith("audio/") === true;
 }
 

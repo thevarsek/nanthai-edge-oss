@@ -1,12 +1,12 @@
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
-import type { MutationCtx } from "../_generated/server";
+import type { MutationCtx, QueryCtx } from "../_generated/server";
 import type { SendParticipantConfig } from "../chat/mutation_send_helpers";
+import { activateWorkScope } from "./work_scope";
+import { ordinaryTeamSettings } from "./work_validators";
+import { wakeCollaboration } from "./wake_events";
 import {
   ACTIVE_COLLABORATION_STATUSES,
-  COLLABORATION_MAX_DURATION_MS,
-  COLLABORATION_MAX_PARTICIPANT_MESSAGES,
-  COLLABORATION_MAX_WAVES,
   COLLABORATION_POLICY_VERSION,
   COLLABORATION_SCHEDULER_VERSION,
 } from "./constants";
@@ -23,7 +23,7 @@ function displayName(participant: Doc<"chatParticipants">): string {
 }
 
 export async function findActiveCollaborationExchange(
-  ctx: MutationCtx,
+  ctx: Pick<QueryCtx, "db">,
   chatId: Id<"chats">,
 ): Promise<Doc<"collaborationExchanges"> | null> {
   const recent = await ctx.db
@@ -115,6 +115,7 @@ export async function createCollaborationExchange(
     mentionedParticipantKeys?: string[];
     generationSnapshot: CollaborationGenerationSnapshot;
     now: number;
+    workIds?: Id<"collaborationWork">[];
   },
 ): Promise<Id<"collaborationExchanges">> {
   const snapshot = await resolveParticipantSnapshot(
@@ -133,6 +134,12 @@ export async function createCollaborationExchange(
     snapshot,
     args.mentionedParticipantKeys,
   );
+  const [settingsRow, work] = await Promise.all([
+    ctx.db.query("collaborationSettings").withIndex("by_chat", (q) => q.eq("chatId", args.chatId)).unique(),
+    ctx.db.query("collaborationWork").withIndex("by_chat", (q) => q.eq("chatId", args.chatId)).collect(),
+  ]);
+  const settings = settingsRow?.settings ?? ordinaryTeamSettings;
+  const workIds = await activateWorkScope(ctx, work, args.workIds ?? work.filter(row => row.deferred === undefined && row.status !== "done" && row.status !== "cancelled").map(row => row._id));
   return await ctx.db.insert("collaborationExchanges", {
     userId: args.userId,
     chatId: args.chatId,
@@ -144,6 +151,9 @@ export async function createCollaborationExchange(
     policyVersion: COLLABORATION_POLICY_VERSION,
     schedulerVersion: COLLABORATION_SCHEDULER_VERSION,
     status: "queued",
+    workEnabled: workIds.length > 0,
+    workIds,
+    consensusAutoStop: settings.consensusAutoStop,
     currentWave: 0,
     publishedMessageCount: 0,
     frontierMessageIds: [args.initiatingMessageId],
@@ -151,9 +161,9 @@ export async function createCollaborationExchange(
     activeParticipantIds: [],
     failedParticipantIds: [],
     bounds: {
-      maxWaves: COLLABORATION_MAX_WAVES,
-      maxParticipantMessages: COLLABORATION_MAX_PARTICIPANT_MESSAGES,
-      deadlineAt: args.now + COLLABORATION_MAX_DURATION_MS,
+      maxWaves: settings.maxWaves,
+      maxParticipantMessages: settings.maxPublicReplies,
+      deadlineAt: args.now + settings.durationMinutes * 60_000,
     },
     createdAt: args.now,
     updatedAt: args.now,
@@ -182,4 +192,5 @@ export async function joinActiveCollaborationExchange(
     updatedAt: now,
   });
   await ctx.db.patch(messageId, { collaborationExchangeId: exchange._id });
+  await wakeCollaboration(ctx, exchange._id);
 }

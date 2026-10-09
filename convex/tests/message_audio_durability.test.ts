@@ -26,6 +26,7 @@ test("message audio starts one owned Workflow after setting the visible flag", a
   const workflowArgs: Array<Record<string, unknown>> = [];
   const ctx = {
     db: {
+      query: () => ({withIndex: () => ({unique: async () => ({apiKey: "encrypted-test-key"})})}),
       get: async (id: string) => id === message._id ? message : id === chat._id ? chat : null,
       patch: async (id: string, value: Record<string, unknown>) => {
         events.push(`patch:${id}`);

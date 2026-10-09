@@ -53,6 +53,7 @@ function getSteps(t: (k: string) => string): HowItWorksStep[] {
 
 function getCapabilities(t: (k: string) => string): Capability[] {
   return [
+    { icon: <Mic size={18} />, title: t("ag_cap_voice_title"), description: t("ag_cap_voice_desc") },
     {
       icon: <Music size={18} />,
       title: t("ag_cap_models_title"),

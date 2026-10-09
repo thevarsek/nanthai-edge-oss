@@ -9,7 +9,7 @@ test("prepareGenerationContext hydrates image URLs without reading stored docume
   const ctx = {
     runQuery: async (_ref: unknown, args: Record<string, unknown>) => {
       if ("chatId" in args) {
-        return [
+        return {page: [
           {
             _id: "msg_1",
             role: "user",
@@ -19,7 +19,7 @@ test("prepareGenerationContext hydrates image URLs without reading stored docume
               { type: "document", storageId: "doc_1", mimeType: "application/pdf" },
             ],
           },
-        ];
+        ], isDone: true, continueCursor: ""};
       }
       capabilityQueries.push(String(args.modelId));
       return { hasReasoning: true };

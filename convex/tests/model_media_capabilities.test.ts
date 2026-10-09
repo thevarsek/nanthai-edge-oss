@@ -105,6 +105,8 @@ test("media capability projection exposes image and video arrays consistently", 
     supportsSeed: false,
   });
   assert.deepEqual(mediaCapabilities.speech, {
+    supportsVoiceCloning: false, maxAudioReferences: 0, maxZdrAudioReferences: 0,
+    maxReferenceBytes: 15 * 1024 * 1024, maxTranscriptCharacters: 10_000,
     voices: ["en-US-Harper:MAI-Voice-2"],
     outputFormats: ["mp3", "pcm"],
     supportsSpeed: true,
@@ -151,7 +153,7 @@ test("explicit image unavailability overrides raw hybrid metadata everywhere", a
   assert.equal(projected.architecture?.modality, "text+image->text");
   assert.equal(projected.mediaCapabilities.image, undefined);
 
-  const ctx = { db: { query: () => queryFor(unavailableHybrid) } };
+  const ctx = { auth: { getUserIdentity: async () => null }, db: { query: () => queryFor(unavailableHybrid) } };
   const listed = await (listModels as unknown as TestFunction)._handler(ctx, {}) as Array<{
     supportsImages?: boolean;
     mediaCapabilities: { image?: unknown };

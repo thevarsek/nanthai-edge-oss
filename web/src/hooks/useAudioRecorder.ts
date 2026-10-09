@@ -24,6 +24,7 @@ export interface RecordingResult {
 export interface AudioRecorderState {
   isRecording: boolean;
   isPreparing: boolean;
+  hasRecording: boolean;
   elapsedMs: number;
   /** 0–1 normalized waveform levels (16 bars, updated ~8 fps). */
   levels: number[];
@@ -33,7 +34,7 @@ export interface AudioRecorderState {
 }
 
 export interface AudioRecorderActions {
-  start: () => Promise<void>;
+  start: (options?: { transcribe?: boolean }) => Promise<void>;
   stop: () => Promise<RecordingResult | null>;
   cancel: () => void;
 }
@@ -58,8 +59,10 @@ function pickMimeType(): string {
 
 /** Creates a SpeechRecognition instance if available. */
 function createRecognition(): SpeechRecognitionCompat | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const W = window as any;
+  const W = window as Window & {
+    SpeechRecognition?: new () => SpeechRecognitionCompat;
+    webkitSpeechRecognition?: new () => SpeechRecognitionCompat;
+  };
   const SR = W.SpeechRecognition ?? W.webkitSpeechRecognition;
   if (!SR) return null;
   const r: SpeechRecognitionCompat = new SR();
@@ -72,6 +75,7 @@ function createRecognition(): SpeechRecognitionCompat | null {
 export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   const [isRecording, setIsRecording] = useState(false);
   const [isPreparing, setIsPreparing] = useState(false);
+  const [hasRecording, setHasRecording] = useState(false);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [levels, setLevels] = useState<number[]>(() => Array(LEVEL_BARS).fill(0));
   const [interimTranscript, setInterimTranscript] = useState("");
@@ -96,6 +100,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   const startAttemptRef = useRef(0);
   // Resolve the stop() promise when mediaRecorder fires onstop.
   const stopResolveRef = useRef<((r: RecordingResult | null) => void) | null>(null);
+  const completedRecordingRef = useRef<RecordingResult | null>(null);
 
   const cleanup = useCallback(() => {
     startAttemptRef.current += 1;
@@ -116,6 +121,8 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
     analyserRef.current = null;
     mediaRecorderRef.current = null;
     chunksRef.current = [];
+    completedRecordingRef.current = null;
+    setHasRecording(false);
     finalTranscriptRef.current = "";
     fullTranscriptRef.current = "";
     setIsRecording(false);
@@ -126,13 +133,13 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   }, []);
 
   // Cleanup on unmount
-  useEffect(() => () => {
-    mountedRef.current = false;
-    cleanup();
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; cleanup(); };
   }, [cleanup]);
 
-  const start = useCallback(async () => {
-    if (startingRef.current || mediaRecorderRef.current || streamRef.current) return;
+  const start = useCallback(async (options?: { transcribe?: boolean }) => {
+    if (startingRef.current || mediaRecorderRef.current || streamRef.current || completedRecordingRef.current) return;
     startingRef.current = true;
     const startAttempt = startAttemptRef.current + 1;
     startAttemptRef.current = startAttempt;
@@ -155,6 +162,9 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       source.connect(analyser);
       analyserRef.current = analyser;
 
+      if (ctx.state === "suspended") await ctx.resume();
+      if (!mountedRef.current || startAttemptRef.current !== startAttempt) return;
+
       // MediaRecorder
       const mime = pickMimeType();
       mimeTypeRef.current = mime;
@@ -163,10 +173,12 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       chunksRef.current = [];
 
       recorder.ondataavailable = (e) => {
+        if (!mountedRef.current || startAttemptRef.current !== startAttempt) return;
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
 
       recorder.onstop = () => {
+        if (!mountedRef.current || startAttemptRef.current !== startAttempt) return;
         const blob = new Blob(chunksRef.current, {
           type: mimeTypeRef.current || "audio/webm",
         });
@@ -180,15 +192,20 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
           durationMs,
           transcript,
         };
-        if (stopResolveRef.current) {
-          stopResolveRef.current(result);
-          stopResolveRef.current = null;
-        }
+        const resolve = stopResolveRef.current;
+        stopResolveRef.current = null;
         cleanup();
+        if (resolve) resolve(result);
+        else {
+          completedRecordingRef.current = result;
+          setHasRecording(true);
+          setElapsedMs(durationMs);
+          setInterimTranscript(transcript);
+        }
       };
 
       // Speech recognition (best-effort)
-      const recognition = createRecognition();
+      const recognition = options?.transcribe === false ? null : createRecognition();
       if (recognition) {
         recognitionRef.current = recognition;
         recognition.onresult = (ev) => {
@@ -248,6 +265,12 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
 
   const stop = useCallback((): Promise<RecordingResult | null> => {
     return new Promise((resolve) => {
+      if (completedRecordingRef.current) {
+        const result = completedRecordingRef.current;
+        cleanup();
+        resolve(result);
+        return;
+      }
       if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") {
         resolve(null);
         return;
@@ -255,7 +278,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
       stopResolveRef.current = resolve;
       mediaRecorderRef.current.stop();
     });
-  }, []);
+  }, [cleanup]);
 
   const cancel = useCallback(() => {
     if (mediaRecorderRef.current?.state === "recording") {
@@ -267,7 +290,7 @@ export function useAudioRecorder(): [AudioRecorderState, AudioRecorderActions] {
   }, [cleanup]);
 
   const state: AudioRecorderState = {
-    isRecording, isPreparing, elapsedMs, levels, interimTranscript, error,
+    isRecording, isPreparing, hasRecording, elapsedMs, levels, interimTranscript, error,
   };
   const actions: AudioRecorderActions = { start, stop, cancel };
   return [state, actions];

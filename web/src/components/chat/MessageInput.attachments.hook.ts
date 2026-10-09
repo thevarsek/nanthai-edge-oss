@@ -29,6 +29,7 @@ export function useAttachments(
   supportsAudioInput = false,
   onBindUploadSession?: (uploadSessionId: string, storageId: string) => Promise<void>,
   onCleanupUploadSession?: (uploadSessionId: string, storageId?: string) => Promise<void>,
+  supportsVoiceReferences = false,
 ) {
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
   const [uploadCount, setUploadCount] = useState(0);
@@ -67,7 +68,7 @@ export function useAttachments(
         const isImage = mimeType.startsWith("image/");
         const isAudio = mimeType.startsWith("audio/");
         const isAllowed = isImage ? supportsVision : isAudio
-          ? supportsFileInput || supportsAudioInput
+          ? supportsFileInput || supportsAudioInput || supportsVoiceReferences
           : supportsFileInput;
         if (
           !isAllowed ||
@@ -135,7 +136,7 @@ export function useAttachments(
     } finally {
       setUploadCount((count) => Math.max(0, count - 1));
     }
-  }, [onCreateUploadUrl, onBindUploadSession, onCleanupUploadSession, isVideoMode, supportsAudioInput, supportsFileInput, supportsFrameImages, supportsVision]);
+  }, [onCreateUploadUrl, onBindUploadSession, onCleanupUploadSession, isVideoMode, supportsAudioInput, supportsFileInput, supportsFrameImages, supportsVision, supportsVoiceReferences]);
 
   const handleFileSelect = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {

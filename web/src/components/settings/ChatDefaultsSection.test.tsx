@@ -259,6 +259,13 @@ beforeEach(() => {
 });
 
 describe("ChatDefaultsSection", () => {
+  it("renders the saved model supplied with a ZDR preference update", () => {
+    const view = renderSection();
+    state.prefs = {...state.prefs, zdrEnabled: true, defaultModelId: "apodex/apodex-1.1-mini:free"};
+    view.rerender(<MemoryRouter><ChatDefaultsSection/></MemoryRouter>);
+    expect(settingSwitch("zdr_toggle_label")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getAllByText(/apodex-1.1-mini:free/).length).toBeGreaterThan(0);
+  });
   it("displays the saved default Persona instead of the cloud model", () => {
     state.prefs.defaultPersonaId = "persona_1";
     renderSection();

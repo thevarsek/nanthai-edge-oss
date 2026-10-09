@@ -30,7 +30,7 @@ test("ZDR generation enables only dedicated endpoint types with documented ZDR r
     modelId: "deepgram/aura-2",
     architecture: { modality: "text->speech" },
     hasZdrEndpoint: true,
-  }), { image: false, music: false, speech: false, video: false });
+  }), { image: false, music: false, speech: true, video: false });
   assert.deepEqual(projectGenerationZdrCapabilities({
     modelId: "future/video",
     supportsVideo: true,

@@ -3,6 +3,8 @@ import { OpenRouterMessage } from "../lib/openrouter";
 
 /** Minimal message shape needed for context building. */
 export interface ContextMessage {
+  conversationSummaryId?: Id<"conversationSummaries">;
+  userId?: string;
   _id: Id<"messages">;
   chatId: Id<"chats">;
   role: "user" | "assistant" | "system";
@@ -15,6 +17,8 @@ export interface ContextMessage {
   collaborationExchangeId?: Id<"collaborationExchanges">;
   collaborationDecisionId?: Id<"collaborationDecisions">;
   collaborationWave?: number;
+  collaborationGoalAction?: "start_or_resume";
+  collaborationReadOnlyReview?: boolean;
   collaborationReplyToIds?: Id<"messages">[];
   parentMessageIds: Id<"messages">[];
   status: string;

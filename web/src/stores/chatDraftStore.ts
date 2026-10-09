@@ -12,7 +12,10 @@
 
 import type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 
+import type { VoiceCloningRequest } from "@/types/voiceCloning";
+
 export interface ChatDraft {
+  voiceCloning?: VoiceCloningRequest;
   text: string;
   attachments: AttachmentPreview[];
 }
@@ -20,7 +23,7 @@ export interface ChatDraft {
 const drafts = new Map<string, ChatDraft>();
 
 function isEmpty(draft: ChatDraft): boolean {
-  return draft.text.length === 0 && draft.attachments.length === 0;
+  return draft.text.length === 0 && draft.attachments.length === 0 && !draft.voiceCloning;
 }
 
 export function getChatDraft(chatId: string): ChatDraft {
@@ -43,6 +46,7 @@ export function clearChatDraft(chatId: string): void {
 function cloneDraft(draft: ChatDraft): ChatDraft {
   return {
     text: draft.text,
+    voiceCloning: draft.voiceCloning ? { ...draft.voiceCloning, references: draft.voiceCloning.references.map((reference) => ({ ...reference })) } : undefined,
     attachments: draft.attachments.map((attachment) => ({ ...attachment })),
   };
 }

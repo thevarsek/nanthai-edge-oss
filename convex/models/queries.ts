@@ -6,6 +6,8 @@
 // so client-facing function strings in AppConstants remain unchanged.
 // =============================================================================
 
+import { modelFundingContext } from "../openrouter/funding_queries";
+import { isFreeOpenRouterModel, projectModelFunding } from "../openrouter/funding_policy";
 import { v } from "convex/values";
 import { internalQuery, query } from "../_generated/server";
 import {
@@ -39,9 +41,11 @@ export const listModels = query({
           .withIndex("by_provider", (q) => q.eq("provider", args.provider!))
           .collect()
       : await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP);
+    const funding = await modelFundingContext(ctx, args.provider ? await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP) : raw);
     return filterExcludedOpenRouterProviders(raw)
       .map(projectModelMediaContract)
-      .filter(isEligibleModel);
+      .filter(isEligibleModel)
+      .map(model => ({ ...model, isFreeRoute: isFreeOpenRouterModel(model.modelId), pickerFilterFree: funding.pickerFilterFree, pickerFilterExcludeFree: funding.pickerFilterExcludeFree, fundingGuidance: projectModelFunding(model, funding.state, funding.freeModelId, funding.requireZdr) }));
   },
 });
 
@@ -54,7 +58,7 @@ export const getModel = query({
       .withIndex("by_modelId", (q) => q.eq("modelId", args.modelId))
       .first();
     if (isExcludedOpenRouterProvider(model?.provider)) return null;
-    return model ? projectModelMediaContract(model) : null;
+    return model ? { ...projectModelMediaContract(model), isFreeRoute: isFreeOpenRouterModel(model.modelId) } : null;
   },
 });
 
@@ -63,6 +67,7 @@ export const listModelSummaries = query({
   args: {
     provider: v.optional(v.string()),
     includeGenerationModels: v.optional(v.boolean()),
+    voiceCloning: v.optional(v.object({ requireZdr: v.boolean() })),
   },
   handler: async (ctx, args) => {
     const raw = args.provider
@@ -72,6 +77,7 @@ export const listModelSummaries = query({
           .collect()
       : await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP);
 
+    const funding = await modelFundingContext(ctx, args.provider ? await ctx.db.query("cachedModels").take(MODEL_CATALOG_SAFETY_CAP) : raw);
     return filterExcludedOpenRouterProviders(raw)
       .map(projectModelMediaContract)
       .filter((model) => supportsInteractiveRequests(model) && (
@@ -80,6 +86,9 @@ export const listModelSummaries = query({
           && Object.values(projectGenerationCapabilities(model)).some(Boolean)
         )
       ))
+      .filter((model) => !args.voiceCloning || (args.voiceCloning.requireZdr
+        ? (model.mediaCapabilities.speech?.maxZdrAudioReferences ?? 0)
+        : (model.mediaCapabilities.speech?.maxAudioReferences ?? 0)) > 0)
       .map((m) => ({
         _id: m._id,
         modelId: m.modelId,
@@ -94,10 +103,9 @@ export const listModelSummaries = query({
         hasReasoning: (m.supportedParameters ?? []).includes("reasoning"),
         inputPricePer1M: m.inputPricePer1M,
         outputPricePer1M: m.outputPricePer1M,
-        // A model is free only if its modelId uses the `:free` route suffix.
-        // Zero pricing alone is NOT a reliable signal — some models (e.g.
-        // audio/image generators) report $0 token prices but charge per request.
-        isFree: m.modelId.endsWith(":free"),
+        isFree: isFreeOpenRouterModel(m.modelId),
+        pickerFilterFree: funding.pickerFilterFree, pickerFilterExcludeFree: funding.pickerFilterExcludeFree,
+        fundingGuidance: projectModelFunding(m, funding.state, funding.freeModelId, funding.requireZdr),
         // Capability derivation data — allows clients to compute
         // hasVision, hasFileInput, hasAudioInput, etc. without a
         // full listModels subscription.

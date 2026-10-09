@@ -437,7 +437,7 @@ async function streamOnce(
           continue;
         }
 
-        throw new ConvexError(openRouterErrorDetails(response.status, errorMessage));
+        throw new ConvexError(openRouterErrorDetails(response.status, errorMessage, errorText));
       }
 
       // Process SSE stream and stop as soon as [DONE] arrives instead of

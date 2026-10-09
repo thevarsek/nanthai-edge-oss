@@ -15,6 +15,6 @@ export async function recordDecisionHelperUsage(
     modelId: observed.modelId ?? attempt.modelId ?? "runtime/unknown",
     provider: observed.provider, ...observed.usage,
     costAttribution: observed.costAttribution, runtimeDeviceId: attempt.deviceId,
-    runtimeAdapterId: attempt.adapterId, source: "runtime_decision", idempotencyKey, createdAt: Date.now(),
+    runtimeAdapterId: attempt.adapterId, source: task.purpose === "compaction" ? "conversation_compaction" : "runtime_decision", idempotencyKey, createdAt: Date.now(),
   });
 }

@@ -212,6 +212,11 @@ Examples:
 
 ## OpenRouter Image and Advisor Contract
 
+- Interactive model lists exclude OpenRouter `:batch` routes centrally in
+  Convex, including lists that opt into generation models. Batch routes require
+  asynchronous batch submission and cannot use the current chat transport.
+  Individual model lookup and internal sync retain those records for history;
+  saved selections are never silently replaced with another model.
 - Convex owns dedicated image discovery (`/images/models` plus endpoint details),
   generation (`/images`), storage, stale-row pruning, and error normalization.
   Clients consume `listModelSummaries` and shared message/media payloads only.
@@ -279,6 +284,58 @@ Examples:
   retries never send a client-composed `imageConfig`.
 
 ## What Belongs In Clients
+
+### Failed assistant recovery
+
+Both `listMessages` and `getMessage` project optional `generationRecovery` from failed assistant errors, including recognized historical serialized errors. `reason` distinguishes insufficient credits, key limits, request affordability and invalid connections; actions include `openrouter_credits`, `openrouter_keys`, `change_model`, and `reconnect_openrouter`. Clients render only known actions and accept absent/null fields and future action strings. They do not independently classify provider error text.
+
+OpenRouter funding is projected by Convex from a connection-scoped snapshot of the
+account balance and key allowance. The existing `fetchOpenRouterCredits` action
+refreshes both; failed reads remain unknown, negative balances remain negative,
+and older responses cannot overwrite a replacement connection or newer snapshot.
+Clients refresh after connecting, returning to the foreground and terminal chat
+generations. This is guidance, not a send gate or a new usage quota.
+
+`getPreferences` resolves unset text defaults to `MODEL_IDS.freeDefault` for a
+confirmed unfunded account, or `MODEL_IDS.freeZdrDefault` when ZDR is enabled and
+that route has a compatible endpoint. Current defaults are `openrouter/free` and
+`apodex/apodex-1.1-mini:free`. Free eligibility includes the router's special ID;
+zero token pricing alone never implies free media generation. Alternative free
+text routes must pass catalogue/provider eligibility and the actual ZDR flag.
+Enabling ZDR atomically persists a compatible conversation default: incompatible free
+models (and incompatible paid models on confirmed unfunded accounts) use the free ZDR
+default; other incompatible paid models use the ZDR-capable app default. Already
+compatible defaults stay selected. Disabling ZDR does not undo that saved selection.
+Existing participants and drafts are preserved. Automatic title
+and memory defaults use the same funding context; explicitly chosen ancillary
+models retain their existing precedence. Paid media/tool defaults are unchanged.
+When an unfunded account is automatically assigned a free conversation default,
+internet search starts off too. A manual free-model choice does not disable search.
+Explicit search overrides remain available; `webSearchDefaultUserSet` records a
+saved user choice so balance refreshes cannot turn it back off.
+
+The free picker filter starts enabled for confirmed unfunded accounts and remains
+removable. An explicit filter choice is persisted through `upsertPreferences`;
+`pickerFilterFreeUserSet` prevents a later balance refresh from reinstating it.
+Existing model queries add `fundingGuidance` with a closed code and action list.
+All clients display the first affected cloud participant, ignore local-runtime
+personas, and open existing selection flows without silently replacing participants.
+ZDR-incompatible selections receive privacy-specific guidance without a credits
+prompt, regardless of funding state. Negative balances point to credits; key limits
+point to key settings. When no free
+ZDR text route exists, credits and privacy settings are offered. ZDR is never
+automatically disabled, and OpenRouter account-wide privacy restrictions still apply.
+The privacy recovery action opens the existing Conversation settings on iOS,
+Android, and web, where default models and ZDR remain together. Returning to chat
+preserves the current conversation and draft.
+
+HTTP 402 billing metadata separates account credit failures, key limits, request
+budgets and temporary in-flight reservations. Analytics uses distinct categories;
+temporary reservations do not incorrectly prompt a credit purchase. This change
+does not alter retry policy, runtime placement, or execution fencing.
+
+
+Credits open OpenRouter's credits page; changing model reuses the existing retry picker. All three clients open a focused PKCE connection screen from the current chat; native screens close on success and web returns to the original chat route after OAuth. Authentication recovery does not delete the existing connection before the replacement succeeds. Provider request errors and rate limits do not offer reconnection. Retry scheduling, cancellation fencing, execution placement, and Runtime Host protocols are unchanged.
 
 ### Historical message execution route
 
@@ -486,3 +543,59 @@ URL as `VITE_NANTHAI_RUNTIME_HOST_DOWNLOAD_URL` at build time so its download
 button can be published before the application backend rollout. This is static
 release metadata, not a separate entitlement or runtime-availability rule.
 Downloading needs no account; pairing and local Persona use still require Pro.
+
+## Conversation capability projections
+
+Telegram setup uses the same `channels/linking` and recovery functions on all clients,
+with native forms on iOS/Android. Status supplies connection state, current participant
+names/conversation, and retained input conversation titles/filenames. Nullable/future
+fields are tolerated. Starter Persona arguments apply only to new chats; existing chats
+use their canonical roster and mode.
+The connection button acknowledges the displayed future-reply notice. Each client sends
+`deliverFutureReplies: true` when that action is pressed; dropdown selection alone does
+not call the mutation. There is no separate consent state or checkbox in the client forms.
+
+Shared message `audioReplyNotice` and `inputProcessingNotice` fields carry non-blocking
+provider/preparation state. Missing OpenRouter is resolved before speech dispatch, with
+committed local text preserved. Telegram speech reuses the existing audio preference,
+chat override, model, voice and format; clients do not invent a second default resolver.
+
+Work controls belong to Conversation mode, voice cloning to the explicit composer +
+workflow. Evidence retains exact source revisions; a revision that is the message's
+internal ID is not repeated as a consumer label. Causal ancestor/descendant continuations
+are excluded from alternate-branch presentation on all clients.
+
+### Request-specific voice and conversation pickers
+
+Cloning pickers use the existing `models/queries:listModelSummaries` (also re-exported
+through `models/sync`) with `includeGenerationModels: true` and
+`voiceCloning: { requireZdr }`. Convex applies endpoint cloning eligibility; the
+ordinary speech-generation catalogue keeps its existing models. Clients search
+and render the resulting names without re-deriving endpoint policy.
+
+Telegram chat pickers use `chat/queries:listChats` with `order: "created"`, 21 rows
+per fetch (20 visible plus a next-page indicator), `searchQuery` and optional
+`beforeChatId`. Convex owns creation order, timestamp ties, owned cursor validation
+and search-index access. Existing sidebar callers retain pin/update ordering.
+
+An omitted or empty optional `generate_speech.reference_storage_ids` uses the
+request's explicitly selected, consented recordings in their original order.
+Nonempty substitutions remain invalid. The selected cloning model takes precedence
+over ordinary speech defaults; clients never supply internal IDs through prose.
+
+### Collaboration goals
+
+All clients retain `collaboration/work_context:getBoard`, existing work mutations and
+`collaboration/work_control:continueWork`. The board derives `canResume` from unfinished
+work and active exchange state; clients do not invent separate readiness rules.
+`createWork({ start: true })` saves and starts that goal atomically. Explicit `start:
+false` parks it, while omitted flags retain older-client behavior. Optional `workId` on
+`continueWork` selects one goal and its required inputs; omission resumes the unfinished
+set. Exchanges capture `workIds`, so parked/unrelated goals do not commandeer ordinary
+chat or another goal’s run. `displayStatus` projects saved/paused state for every client. Acceptance criteria preserve free text as one array entry; existing arrays
+remain readable. Empty assignment means the coordinator chooses an owner at dispatch.
+
+`collaboration/queries:getChatState` adds optional `waitingReason`, including `runtime`
+and `goals`. Native decoders preserve nullable/future fields and Convex float counts.
+Every client shows the same wait, active speakers, results and canonical Stop behavior.
+Clarity changes do not alter the existing editable execution bounds or permissions.

@@ -1,3 +1,4 @@
+import { generationRecovery, type GenerationRecovery } from "./generation_recovery";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
@@ -55,6 +56,7 @@ function withPublicModeratorDirective<T extends {
 type PublicMessage = Omit<Doc<"messages">, "searchContext" | "mcpInvocationIds"> & {
   executionRoute?: Pick<ExecutionProjection, "placement" | "runtimeLabel">;
   mcpContextCards?: McpContextCard[];
+  generationRecovery?: GenerationRecovery;
 };
 
 export async function messageExecutionRoute(
@@ -158,7 +160,7 @@ export async function listMessagesHandler(
         : publicMessage;
       const refreshed = await withRefreshedAttachmentUrls(ctx, withAvatar);
       const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
-      return { ...withoutPrivateMessageFields(hydrated), mcpContextCards: contextCards, executionRoute: await messageExecutionRoute(ctx, message) };
+      return { ...withoutPrivateMessageFields(hydrated), generationRecovery: generationRecovery(message), mcpContextCards: contextCards, executionRoute: await messageExecutionRoute(ctx, message) };
     }),
   );
 }
@@ -182,6 +184,6 @@ export async function getMessageHandler(
     withPublicParticipantIdentity(withPublicModeratorDirective(message)),
   );
   const hydrated = await hydrateDocumentEditAnnotations(ctx, refreshed);
-  return { ...withoutPrivateMessageFields(hydrated), mcpContextCards: contextCards, executionRoute: await messageExecutionRoute(ctx, message) };
+  return { ...withoutPrivateMessageFields(hydrated), generationRecovery: generationRecovery(message), mcpContextCards: contextCards, executionRoute: await messageExecutionRoute(ctx, message) };
 }
 

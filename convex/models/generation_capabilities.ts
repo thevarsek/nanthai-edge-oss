@@ -61,9 +61,7 @@ export function projectGenerationZdrCapabilities(
     // The dedicated Images API does not expose an enforceable ZDR contract.
     image: false,
     music: capabilities.music && hasZdrEndpoint,
-    // The dedicated Speech API accepts provider options, but does not expose
-    // the chat-completions `provider.zdr` routing guarantee.
-    speech: false,
+    speech: capabilities.speech && hasZdrEndpoint,
     // OpenRouter's asynchronous video API is explicitly not ZDR eligible.
     video: false,
   };

@@ -958,3 +958,8 @@ code, pre, .nanth-mono {
 
 /* ── KaTeX math ─────────────────────────────────────────────────── */
 .katex-display { overflow-x: auto; overflow-y: hidden; padding: 0.5em 0; }
+
+/* Reveal measured comparison bars without changing their reported values. */
+.edge-bar-grow { transform-origin: left; animation: edge-bar-grow 700ms cubic-bezier(.2,.7,.3,1) both; }
+@keyframes edge-bar-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { .edge-bar-grow { animation: none; } }

@@ -274,7 +274,9 @@ test("getPreferences projects the app default without persisting a user choice",
     auth: buildAuth(),
     db: {
       query: () => ({
+        take: async () => [],
         withIndex: () => ({
+          unique: async () => null,
           first: async () => preferences,
         }),
       }),
@@ -290,7 +292,9 @@ test("getPreferences preserves an explicit user default model", async () => {
     auth: buildAuth(),
     db: {
       query: () => ({
+        take: async () => [],
         withIndex: () => ({
+          unique: async () => null,
           first: async () => ({
             _id: "prefs_1",
             userId: "user_1",

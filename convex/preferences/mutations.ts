@@ -14,6 +14,7 @@ import type { Doc } from "../_generated/dataModel";
 import { optionalAuth, requireAuth, requirePro } from "../lib/auth";
 import { validateImagePreferenceWrite } from "./image_defaults";
 import { validateSpeechPreferenceWrite } from "./speech_defaults";
+import { defaultModelWhenEnablingZdr } from "./zdr_default";
 import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
 import {
   availabilityForSkill,
@@ -266,6 +267,7 @@ export const upsertPreferences = mutation({
     // For optional schema fields, `null` from the client means "clear field".
     // Convex optional fields are cleared by patching with `undefined`.
     const patch: Record<string, unknown> = { updatedAt: now };
+    if (normalizedArgs.webSearchEnabledByDefault !== undefined) patch.webSearchDefaultUserSet = true;
     for (const [key, value] of Object.entries(normalizedArgs)) {
       if (key === "clearDefaultPersona") continue;
       if (key === "expectedPreferenceWriteEpoch") continue;
@@ -273,12 +275,28 @@ export const upsertPreferences = mutation({
       patch[key] = value === null ? undefined : value;
     }
     // Explicit clear flag avoids relying on client-side null transport details.
+    if (normalizedArgs.pickerFilterFree !== undefined || normalizedArgs.pickerFilterExcludeFree !== undefined) {
+      patch.pickerFilterFreeUserSet = true;
+    }
     if (normalizedArgs.clearDefaultPersona === true) {
       patch.defaultPersonaId = undefined;
     }
     if (normalizedArgs.zdrEnabled === true) {
       patch.titleModelId = undefined;
       patch.memoryExtractionModelId = undefined;
+      if (existing?.zdrEnabled !== true) {
+        const compatibleDefault = await defaultModelWhenEnablingZdr(ctx, userId, {
+          defaultModelId: normalizedArgs.defaultModelId ?? existing?.defaultModelId,
+          disabledProviders: normalizedArgs.disabledProviders === undefined
+            ? existing?.disabledProviders : normalizedArgs.disabledProviders,
+        });
+        if (compatibleDefault) {
+          patch.defaultModelId = compatibleDefault.defaultModelId;
+          if (compatibleDefault.disableSearch && normalizedArgs.webSearchEnabledByDefault === undefined) {
+            patch.webSearchEnabledByDefault = false;
+          }
+        }
+      }
     }
 
     if (existing) {
@@ -289,7 +307,7 @@ export const upsertPreferences = mutation({
     // Create with defaults
     return await ctx.db.insert("userPreferences", {
       ...buildDefaultUserPreferencesInsert(userId, now),
-      defaultModelId: normalizedArgs.defaultModelId,
+      defaultModelId: patch.defaultModelId as string | undefined,
       defaultPersonaId:
         normalizedArgs.clearDefaultPersona === true
           ? undefined
@@ -304,6 +322,7 @@ export const upsertPreferences = mutation({
       includeReasoning: normalizedArgs.includeReasoning ?? undefined,
       reasoningEffort: normalizedArgs.reasoningEffort ?? undefined,
       pickerFilterFree: normalizedArgs.pickerFilterFree ?? false,
+      pickerFilterFreeUserSet: normalizedArgs.pickerFilterFree !== undefined || normalizedArgs.pickerFilterExcludeFree !== undefined,
       pickerFilterExcludeFree: normalizedArgs.pickerFilterExcludeFree ?? false,
       pickerFilterVision: normalizedArgs.pickerFilterVision ?? false,
       pickerFilterImageGen: normalizedArgs.pickerFilterImageGen ?? false,
@@ -313,7 +332,8 @@ export const upsertPreferences = mutation({
       pickerSortPrimaryDirection: normalizedArgs.pickerSortPrimaryDirection ?? undefined,
       pickerSortSecondaryKey: normalizedArgs.pickerSortSecondaryKey ?? undefined,
       pickerSortSecondaryDirection: normalizedArgs.pickerSortSecondaryDirection ?? undefined,
-      webSearchEnabledByDefault: normalizedArgs.webSearchEnabledByDefault ?? true,
+      webSearchEnabledByDefault: (patch.webSearchEnabledByDefault as boolean | undefined) ?? true,
+      webSearchDefaultUserSet: normalizedArgs.webSearchEnabledByDefault !== undefined,
       subagentsEnabledByDefault: normalizedArgs.subagentsEnabledByDefault ?? false,
       chatCompletionNotificationsEnabled: normalizedArgs.chatCompletionNotificationsEnabled ?? false,
       localQuestionTimeoutMinutes: normalizedArgs.localQuestionTimeoutMinutes,

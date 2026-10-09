@@ -1,3 +1,4 @@
+import type { VoiceCloningRequest } from "@/types/voiceCloning";
 // hooks/useChat.ts
 // Subscribes to all data needed to render a single chat.
 // Mirrors iOS ChatViewModel's 8 concurrent subscriptions.
@@ -181,6 +182,8 @@ export interface Message {
   audioTranscript?: string;
   audioDurationMs?: number;
   audioGenerating?: boolean;
+  audioReplyNotice?: string | null;
+  inputProcessingNotice?: string | null;
   citations?: Array<{ url: string; title: string }>;
   sourceCitations?: Array<{ sourceId: string; kind: string; label: string; quote: string; claim?: string }>;
   offlineResult?: { localResultId: string; originRunId: string; disposition: "synced" | "review" };
@@ -235,6 +238,7 @@ export interface Message {
   subagentsEnabled?: boolean;
   retryContract?: RetryContract;
   openrouterGenerationId?: string;
+  generationRecovery?: { reason?: string | null; actions?: string[] | null } | null;
   terminalErrorCode?: "stream_timeout" | "provider_error" | "cancelled_by_retry" | "cancelled_by_user" | "unknown_error";
   createdAt: number;
 }
@@ -329,6 +333,7 @@ export interface ExecutionProjection {
 }
 
 export interface SendMessageArgs extends Record<string, unknown> {
+  voiceCloning?: VoiceCloningRequest;
   chatId: Id<"chats">;
   text: string;
   participants: Participant[];

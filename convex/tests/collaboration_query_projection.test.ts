@@ -60,6 +60,7 @@ test("collaboration state projects only rendered activity without reading decisi
     pendingInputCount: 1,
     terminalReason: undefined,
     error: undefined,
+    waitingReason: undefined,
     completedAt: undefined,
   });
   assert.equal("waves" in result, false);

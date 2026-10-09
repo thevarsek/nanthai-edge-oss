@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
 import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
@@ -136,7 +137,7 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
   };
 
   const view = render(
-    <AudioPlaybackContext.Provider value={audio}>
+    <MemoryRouter><AudioPlaybackContext.Provider value={audio}>
       <AssistantMessage
         message={message(messageOverride)}
         isStreaming={false}
@@ -149,7 +150,7 @@ function renderAssistant(messageOverride: Partial<Message>, options: {
         onOpenDocumentEdit={options.onOpenDocumentEdit}
         executionRoute={options.executionRoute}
       />
-    </AudioPlaybackContext.Provider>,
+    </AudioPlaybackContext.Provider></MemoryRouter>,
   );
   return { ...view, audio };
 }
@@ -528,4 +529,13 @@ describe("AssistantMessage", () => {
     expect(screen.queryByRole("button", { name: "Reject" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
   });
+});
+
+
+it("composes backend recovery into a failed message and reuses its model picker callback", () => {
+  const onRetryWithDifferentModel = vi.fn();
+  renderAssistant({ status: "failed", generationRecovery: { actions: ["openrouter_credits", "change_model"] } }, { onRetryWithDifferentModel });
+  expect(screen.getByRole("link", { name: "OpenRouter credits" })).toHaveAttribute("href", "https://openrouter.ai/settings/credits");
+  fireEvent.click(screen.getByRole("button", { name: "Try another model" }));
+  expect(onRetryWithDifferentModel).toHaveBeenCalledOnce();
 });

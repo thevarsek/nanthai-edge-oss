@@ -109,6 +109,11 @@ export class ToolRegistry {
       };
     }
 
+    if (toolCtx.readOnlyReview && tool.effectPolicy.effect !== "read" && tool.name !== "update_collaboration_work") {
+      return { toolCallId: toolCall.id, result: { success: false, data: null,
+        error: "This work uses read-only review. Publish findings through update_collaboration_work; resource writes are unavailable in this review turn." } };
+    }
+
     const artifactWriteBlock = artifactWriteBlockMessage(tool.name, toolCtx);
     if (artifactWriteBlock) {
       return {

@@ -41,6 +41,35 @@ selected speech model's advertised voices and allow a provider voice ID where
 the catalogue has no closed list. Speed, output format, instructions, style,
 and style degree use the same capability-aware preference contract.
 
+### Request-specific voice references
+
+The chat composer on iOS, Android and web can select a speech model, attach or
+record reference clips, optionally add transcripts, and confirm permission once
+for that request. `sendMessage.voiceCloning` stores the selected model and owned
+storage IDs on the user message. No reusable cloned voice or preference is saved.
+Changing the model, recordings or transcripts clears the draft's confirmation.
+
+Speech endpoint metadata is synced by `models/speech_sync` every four hours.
+The shared projection reports zero, one or three references and the compatible
+ZDR count. Unsupported speech models remain visible. The provider limits each
+clip to 15 MiB and each optional transcript to 10,000 characters; the existing
+combined attachment budget also applies.
+
+Reference attachments use `voice_reference`. Ordinary chat hydration does not
+inline their bytes or URLs, and they do not trigger transcription or automatic
+spoken replies. `generate_speech` resolves references only from the current
+owned request, pins its selected model, checks current ownership and capability,
+and sends URL/audio parts followed immediately by their optional transcripts.
+It omits the ordinary provider voice. Seed multi-reference prompts identify
+all selected clips as `@Audio1`, `@Audio2`, `@Audio3` in selection order.
+
+Speech requests with active ZDR send `provider.zdr: true`; reference eligibility
+requires an endpoint supporting both cloning and ZDR. OpenRouter performs the
+capability routing. NanthAI does not promise provider pinning on the Speech API.
+Cancellation, operation-journal publication, generated-audio storage and usage
+accounting reuse the ordinary speech path. Deleting a reference produces a
+visible error rather than silently generating with another voice.
+
 ### iOS Audio Stack
 
 - **Recording**: `AVAudioRecorder` with linear PCM format

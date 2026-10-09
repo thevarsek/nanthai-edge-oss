@@ -1,3 +1,6 @@
+import { capturedConversationSummary } from "./conversation_context_loading";
+import { messageSource } from "./message_provenance";
+import { consolidateConsecutiveRoles } from "./helpers_utils";
 import { contextEvidenceCandidates, type EvidenceCandidate } from "./source_evidence";
 import { rehydrateStoredArtifacts } from "./context_assembly_artifact_rehydration";
 import { internal } from "../_generated/api";
@@ -28,6 +31,8 @@ export interface GenerationContextAssemblyInput {
   jobId: Id<"generationJobs">;
   participantId: string;
   legacyMessages: OpenRouterMessage[];
+  preserveMessageBoundaries?: boolean;
+  conversationExpandGroups?: boolean;
   sharedMemorySources?: EvidenceCandidate[];
   allMessages: ContextMessage[];
   providerContextWindowTokens?: number;
@@ -77,6 +82,13 @@ function buildExtraExclusionCounts(
 export async function prepareRequestContextForGeneration(
   input: GenerationContextAssemblyInput,
 ): Promise<PreparedParticipantTurn> {
+  const summary = await capturedConversationSummary(input.ctx, input.assistantMessageId, input.allMessages, input.conversationExpandGroups !== false);
+  const covered = new Set(summary?.coveredIds.map(String) ?? []);
+  const tail = input.legacyMessages.filter(message => !covered.has(messageSource(message)?.messageId ?? ""));
+  const summaryMessage: OpenRouterMessage[] = summary ? [{ role: "assistant",
+    content: `[Committed conversation summary ${String(summary._id)}; coverage ${String(summary.coverageEndId)}; source ${summary.sourceDigest}]\n${summary.text}\n[Summary is compressed evidence; canonical sources retain exact content.]` }] : [];
+  input = { ...input, legacyMessages: [...tail.filter(m => m.role === "system"), ...summaryMessage, ...tail.filter(m => m.role !== "system")] };
+  if (!input.preserveMessageBoundaries) input.legacyMessages = consolidateConsecutiveRoles(input.legacyMessages);
   const messagesById = new Map(input.allMessages.map((message) => [String(message._id), message]));
   const reachableMessageIds = Array.from(
     branchPathIds(String(input.assistantMessageId), messagesById),
@@ -268,6 +280,13 @@ export async function prepareRequestContextForGeneration(
   });
 
   const prepared = prepareParticipantTurn(assembly, input.causality);
+  if (summary) prepared.context.policyVersion += `:summary:${String(summary._id)}:${summary.sourceDigest}`;
+  if (input.causality) {
+    const workContext = await input.ctx.runQuery(internal.collaboration.work_context.getTurnWorkContext, {
+      userId: input.userId, messageId: input.assistantMessageId,
+    });
+    if (workContext) prepared.providerMessages.push({ role: "user", content: `[Assigned Collaboration work]\n${workContext}` });
+  }
   prepared.evidenceSources = contextEvidenceCandidates(
     prepared.providerMessages,
     toolMemories.map(memory => ({ _id: String(memory._id), summary: memory.summary })),

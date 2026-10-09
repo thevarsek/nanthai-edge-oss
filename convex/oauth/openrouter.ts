@@ -147,6 +147,7 @@ export const upsertEncryptedApiKey = internalMutation({
       .unique();
     const values = {
       apiKey: args.encryptedApiKey,
+      openRouterAccount: undefined,
       secretEnvelopeVersion: metadata.envelopeVersion,
       secretKeyId: metadata.keyId,
       secretMigratedAt: now,

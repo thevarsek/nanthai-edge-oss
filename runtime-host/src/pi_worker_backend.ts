@@ -16,6 +16,7 @@ import type { InputResponse, WorkerBackend } from "./worker_backend.ts";
 
 export const PI_PART_CAPABILITIES = { transport: "pi_rpc", inputModalities: ["text", "local_image", "document"] as const };
 export const PI_CAPABILITIES = AdapterCapabilitiesSchema.parse({
+  nanthaiCollaborationWork: true,
   protocolVersion: "nanthai.runtime.v1", adapterId: "pi", adapterVersion: "1.0.0", transport: "stdio_jsonl",
   inputModalities: ["text", "image", "document", "file", "tool_evidence"],
   eventTypes: ["session_started", "text_delta", "reasoning_delta", "tool_started", "tool_progress", "tool_completed",

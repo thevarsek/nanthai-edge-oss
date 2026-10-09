@@ -148,15 +148,17 @@ function FeatureGroupSection({
   description,
   features: groupFeatures,
   offset,
+  reverse = false,
 }: {
   title: string;
   description: string;
   features: FeatureMeta[];
   offset: number;
+  reverse?: boolean;
 }) {
   return (
-    <section className="grid gap-6 border-t border-[rgba(var(--edge-fg),0.06)] pt-8 lg:grid-cols-[0.75fr_1.45fr]">
-      <div>
+    <section className={`grid gap-6 border-t border-[rgba(var(--edge-fg),0.06)] pt-8 ${reverse ? "lg:grid-cols-[1.45fr_0.75fr]" : "lg:grid-cols-[0.75fr_1.45fr]"}`}>
+      <div className={reverse ? "lg:col-start-2 lg:row-start-1" : undefined}>
         <h2 className="edge-display text-[clamp(1.35rem,2vw,1.75rem)] efg-heading">
           {title}
         </h2>
@@ -164,7 +166,7 @@ function FeatureGroupSection({
           {description}
         </p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className={`grid gap-4 sm:grid-cols-2 ${reverse ? "lg:col-start-1 lg:row-start-1" : ""}`}>
         {groupFeatures.map((feature, i) => (
           <FeatureCard key={feature.slug} feature={feature} index={offset + i} />
         ))}
@@ -233,6 +235,7 @@ export function FeaturesIndexPage() {
                 description={t(group.description)}
                 features={group.features}
                 offset={i * 4}
+                reverse={i % 2 === 1}
               />
             ))}
           </div>

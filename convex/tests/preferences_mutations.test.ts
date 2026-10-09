@@ -4,7 +4,7 @@ import test from "node:test";
 import { upsertPreferences } from "../preferences/mutations";
 import { ConvexError } from "convex/values";
 
-function createCtx(existing: Record<string, unknown> | null) {
+function createCtx(existing: Record<string, unknown> | null, models = [{ modelId: "apodex/apodex-1.1-mini:free", hasZdrEndpoint: true, contextLength: 262144, architecture: { modality: "text->text" } }]) {
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   return {
@@ -16,10 +16,12 @@ function createCtx(existing: Record<string, unknown> | null) {
       },
       db: {
         query: () => ({
+          take: async () => models,
           withIndex: (_name: string, build: (q: { eq: () => unknown }) => unknown) => {
             build({ eq: () => null });
             return {
               first: async () => existing,
+              unique: async () => null,
             };
           },
         }),
@@ -118,4 +120,21 @@ test("upsertPreferences rejects impossible image defaults", async () => {
     );
     assert.equal(state.patches.length, 0);
   }
+});
+
+
+test("enabling ZDR persists a compatible default atomically and preserves compatible choices", async () => {
+  const state = createCtx({ _id: "prefs_1", defaultModelId: "openrouter/free", zdrEnabled: false });
+  await (upsertPreferences as unknown as { _handler: (ctx: unknown, args: unknown) => Promise<unknown> })._handler(state.ctx, { zdrEnabled: true });
+  assert.equal(state.patches[0]?.patch.defaultModelId, "apodex/apodex-1.1-mini:free");
+  assert.equal(state.patches[0]?.patch.zdrEnabled, true);
+  const compatible = createCtx({ _id: "prefs_1", defaultModelId: "apodex/apodex-1.1-mini:free" });
+  await (upsertPreferences as unknown as { _handler: (ctx: unknown, args: unknown) => Promise<unknown> })._handler(compatible.ctx, { zdrEnabled: true });
+  assert.equal("defaultModelId" in compatible.patches[0].patch, false);
+  const unavailable = createCtx({ _id: "prefs_1", defaultModelId: "openrouter/free" }, []);
+  await (upsertPreferences as unknown as { _handler: (ctx: unknown, args: unknown) => Promise<unknown> })._handler(unavailable.ctx, { zdrEnabled: true });
+  assert.equal("defaultModelId" in unavailable.patches[0].patch, false);
+  const disabled = createCtx({ _id: "prefs_1", defaultModelId: "apodex/apodex-1.1-mini:free", zdrEnabled: true });
+  await (upsertPreferences as unknown as { _handler: (ctx: unknown, args: unknown) => Promise<unknown> })._handler(disabled.ctx, { zdrEnabled: false });
+  assert.equal("defaultModelId" in disabled.patches[0].patch, false);
 });

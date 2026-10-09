@@ -1,3 +1,4 @@
+import { transferWorkAttempt } from "../collaboration/work_attempt_ownership";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { DEFAULT_EXECUTION_LEASE_MS, type ClaimedExecution } from "./attempts";
@@ -81,6 +82,7 @@ export async function createExecutionAttempt(
     state: args.claimantId ? "running" : "queued",
     updatedAt: now,
   });
+  if (previous) await transferWorkAttempt(ctx, run, previous, { attemptId, fence }, now);
   await appendRunEventUnchecked(ctx, run, {
     attemptId,
     fence,

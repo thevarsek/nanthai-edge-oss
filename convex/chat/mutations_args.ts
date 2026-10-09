@@ -23,6 +23,7 @@ import {
   videoConfigValidator,
 } from "./actions_args";
 import { presentationContextValidator } from "../presentations/validators";
+import { voiceCloningRequestValidator } from "./voice_cloning_contract";
 
 export const attachmentValidator = v.object({
   type: v.string(),
@@ -86,6 +87,7 @@ export const chatUploadSessionArgs = {
 export const sendMessageArgs = {
   chatId: v.id("chats"),
   text: v.string(),
+  voiceCloning: v.optional(voiceCloningRequestValidator),
   recordedAudio: v.optional(recordedAudioValidator),
   attachments: v.optional(v.array(attachmentValidator)),
   presentationContext: v.optional(presentationContextValidator),

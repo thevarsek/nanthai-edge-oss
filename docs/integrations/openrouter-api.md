@@ -264,7 +264,7 @@ these endpoints directly.
 |------|-----------|---------------------------|
 | `generate_image` | `POST /api/v1/images` | prompt/input references, count, aspect ratio, resolution or size, quality, background, output format, compression |
 | `generate_music` | `POST /api/v1/chat/completions` | production prompt and selected Lyria model |
-| `generate_speech` | `POST /api/v1/audio/speech` | text, voice, speed, output format, instructions, style, style degree |
+| `generate_speech` | `POST /api/v1/audio/speech` | text, voice or owned request references, speed, output format, instructions, style, style degree |
 | `generate_video` | `POST /api/v1/videos`, then status/content polling | prompt, aspect ratio, resolution, duration, generated audio, seed |
 
 `generationCapabilities`, `generationZdrCapabilities`, and `mediaCapabilities`
@@ -272,9 +272,11 @@ are derived from synced OpenRouter catalogue data. Convex omits unsupported
 optional arguments before transport, so a model can provide a complete brief
 without guessing each provider's parameter subset.
 
-ZDR is transport-specific: the dedicated Images and Speech APIs currently do
-not expose an enforceable ZDR guarantee, and the asynchronous Video API is not
-ZDR eligible. Music uses the normal model endpoint signal. When ZDR makes a
+ZDR is transport-specific: the dedicated Images API currently does not expose
+an enforceable ZDR guarantee, and the asynchronous Video API is not ZDR eligible.
+Music and Speech use the model endpoint signal; Speech sends `provider.zdr: true`.
+Cloning additionally intersects endpoint ZDR with `supports_voice_cloning` and
+`supports_multiple_audio_references`. When ZDR makes a
 selected media model unavailable, the skill is unavailable and the selected
 model remains visible; NanthAI does not silently substitute another default.
 
@@ -341,4 +343,4 @@ NanthAI adds `cache_control` automatically for all `anthropic/` model requests i
 
 ---
 
-*Source: Extracted from `plan.md` §9 and the active OpenRouter adapters. Last updated: 2026-09-03 — M52 image, music, speech, video, ZDR, and cost transports.*
+*Source: Extracted from `plan.md` §9 and the active OpenRouter adapters. Last updated: 2026-10-05 — request-specific speech references and endpoint ZDR routing.*

@@ -682,3 +682,80 @@ User sends prompt
 | Web | `audioStorageId` + audio metadata | `AudioMessageBubble.tsx` (HTML5 Audio) | Programmatic `<a>` download click |
 
 ---
+
+### Clone a voice for one request
+
+Open the composer + menu and choose Clone a voice to open its setup sheet. Search the compatible speech-model
+picker; Convex includes only models with cloning endpoints for the current data policy.
+Select a compatible speech model, attach or record references (finish a reference
+with Use recording), optionally supply transcripts, and confirm permission for that
+request. Close the sheet with Done and send the speech request normally, then
+play/download the result. Closing preserves the draft; the compact composer action
+reopens it. A successful send clears cloning state. Reference limits and ZDR support come from the
+shared capability projection; OpenRouter is required for this operation.
+
+### Continue in Telegram
+
+Open Settings → AI connections → Telegram, create the one-time bot link, start the bot
+and confirm the displayed account while signed in. Choose an owned conversation or
+create a new one with normal defaults. Read the future-reply notice, then press Connect
+this conversation or Create and connect; no separate checkbox is required. Selecting
+an option alone does not change the connected chat. Existing
+chats retain all AIs and their mode; names appear on Telegram replies only for multi-AI
+chats. Photos/files use the existing attachment path. Voice needs the user's OpenRouter
+key and compatible data-policy route; spoken replies follow NanthAI audio preferences.
+See [Telegram conversations](../integrations/telegram-persona-conversations.md) for the
+current provider/browser qualification limits and explicit recovery.
+
+### Choosing a conversation mode
+
+Web, iOS and Android keep the three mode choices visible in one picker. Selecting a
+choice previews its description and controls; browsing or closing does not change the
+active conversation mode or start a run. **Use this mode** applies Parallel comparison
+or Collaboration and returns to the chat. Autonomous Discussion shows its existing
+settings below the choices and starts only through **Start discussion**. Settings and
+goals survive switching between previews. An active Autonomous Discussion retains its
+existing stop-before-mode-change rule; users can still inspect the other choices.
+
+- **Parallel comparison:** compare independent answers to the same question.
+- **Collaboration:** have AIs build on one another’s work, with optional goals and assignments.
+- **Autonomous Discussion:** discuss a topic over multiple rounds until the configured stopping rules apply.
+
+Existing entitlement, participant, topic and execution checks remain unchanged. Native
+controls use their platform affordances while following the same selection/start flow.
+
+### Goals in Collaboration
+
+Choose Collaboration in Conversation mode, apply it with Use this mode, and chat normally. The coordinator selects
+useful speakers and returns the floor when no substantive contribution remains. Goals
+are optional: Add goal opens an objective and optional free-text success criteria.
+Save and start returns to the chat and starts that goal plus its required inputs.
+Save for later parks the goal; ordinary chat and another goal’s start do not activate it. Assignment defaults to Let the team decide. Optional reviewers, dependencies
+and the existing cloud-only read-only review policy stay under assignment details.
+
+The coordinator selects an available owner for an unassigned ready goal. Explicit
+owners and reviewers retain deterministic dispatch. Participants use only committed
+inputs; independent work can advance without dropping required slower work. Published
+results attach automatically. A goal without reviewers completes at its committed,
+current-requirement result; a goal with reviewers waits for every selected reviewer
+to accept the same current requirements and evidence.
+Requirement changes retain stale results for explicit revalidation.
+
+Resume remaining goals starts the unfinished set explicitly. A parked/paused goal can
+also be started individually from its action menu. Retry restarts that goal in one action.
+Resume is offered only for an inactive conversation with runnable unfinished goals. Completed/cancelled goals cannot create a continuation. Start/resume records
+identify the actual objectives as system events, never invented user requests.
+Goal rows expose results and status; contextual actions retain edit/reassignment, retry
+and cancellation. Users open published replies with View result and can explicitly
+accept or request rework using the existing human review controls. There is no manual
+result attachment or message-ID entry. Detailed revisions remain expandable.
+
+Advanced contains the existing editable time, round, reply and consensus limits.
+Defaults remain fifteen minutes, five rounds, eight AI replies, and consensus stop off.
+Save limits confirms the settings for future runs; waiting time counts toward duration.
+
+Without OpenRouter, the existing connected Codex/Pi runtime supplies the neutral
+coordination helper. The same validated goal selection, publication and stopping rules
+apply. Offline runtime waits preserve goals/results, show Waiting for your Mac, and wake
+the owned Workflow on reconnect within the existing duration. No silent cloud switch or
+mandatory OpenRouter connection is introduced. See [local collaboration](../runtime/collaboration.md).

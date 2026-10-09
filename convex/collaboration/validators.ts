@@ -68,6 +68,7 @@ export const collaborationSelection = v.object({
   participantId: v.id("chatParticipants"),
   replyToMessageIds: v.array(v.id("messages")),
   reasonCode: v.string(),
+  workId: v.optional(v.id("collaborationWork")),
 });
 
 export const collaborationBounds = v.object({

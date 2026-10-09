@@ -1,3 +1,5 @@
+import { fundingAwareSearchDefault } from "../openrouter/funding_policy";
+import { readFundingContext } from "../openrouter/funding_queries";
 import { personaSystemPrompt } from "../personas/default_prompt";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
@@ -32,7 +34,7 @@ export async function listAllMessagesHandler(
     .query("messages")
     .withIndex("by_chat", (q) => q.eq("chatId", args.chatId))
     .order("asc")
-    .take(5000);
+    .collect();
 }
 
 export interface GetUserMemoriesArgs extends Record<string, unknown> {
@@ -113,6 +115,11 @@ export async function getModelCapabilitiesHandler(
         seed: boolean;
       };
       speechCapabilities?: {
+        supportsVoiceCloning: boolean;
+        maxAudioReferences: number;
+        maxZdrAudioReferences: number;
+        maxReferenceBytes: number;
+        maxTranscriptCharacters: number;
         voices: string[];
         outputFormats: Array<"mp3" | "pcm">;
         supportsSpeed: boolean;
@@ -277,11 +284,14 @@ export interface GetUserPreferencesArgs extends Record<string, unknown> {
 export async function getUserPreferencesHandler(
   ctx: QueryCtx,
   args: GetUserPreferencesArgs,
-): Promise<Doc<"userPreferences"> | null> {
-  return await ctx.db
+): Promise<(Doc<"userPreferences"> & { fundingDefaultModelId?: string }) | null> {
+  const prefs = await ctx.db
     .query("userPreferences")
     .withIndex("by_user", (q) => q.eq("userId", args.userId))
     .first();
+  if (!prefs) return null;
+  const funding = await readFundingContext(ctx, args.userId, await ctx.db.query("cachedModels").take(2000), prefs);
+  return { ...prefs, webSearchEnabledByDefault: fundingAwareSearchDefault(prefs, funding.state, funding.freeModelId), fundingDefaultModelId: funding.state !== "unknown" && funding.state !== "funded" ? funding.freeModelId : undefined };
 }
 
 // ── Chat search (for search_chats AI tool) ─────────────────────────────

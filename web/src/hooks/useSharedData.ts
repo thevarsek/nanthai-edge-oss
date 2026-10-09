@@ -68,7 +68,7 @@ export function useSharedData(): SharedDataContextValue {
   return ctx;
 }
 
-export function useModelSummaries(options: { includeGenerationModels?: boolean } = {}) {
+export function useModelSummaries(options: { includeGenerationModels?: boolean; voiceCloning?: { requireZdr: boolean } } = {}) {
   const skip = useSignedInSkip();
   return useQuery(
     api.models.sync.listModelSummaries,
@@ -172,5 +172,10 @@ export function useCreditBalance() {
     }
   }, [hasApiKey, fetchCreditsAction]);
 
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === "visible") void refresh(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [refresh]);
   return { balance, loading, refresh };
 }

@@ -17,7 +17,8 @@ test("Drive deferred ownership resumes with a fresh provider context", async () 
       if ("roundKey" in args) return "ready";
       return `event_${String(args.name)}`;
     },
-    runAction: async (_ref: unknown, args: Record<string, unknown>) => {
+    runAction: async (ref: unknown, args: Record<string, unknown>) => {
+      if (getFunctionName(ref as never) === "chat/conversation_context_actions:plan") return null;
       actions.push(args);
       return null;
     },

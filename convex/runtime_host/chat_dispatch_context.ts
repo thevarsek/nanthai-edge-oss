@@ -70,6 +70,8 @@ export async function prepareLocalParticipantTurn(
     jobId: args.participant.jobId,
     participantId: String(args.participant.chatParticipantId),
     legacyMessages,
+    preserveMessageBoundaries: true,
+    conversationExpandGroups: args.expandMultiModelGroups,
     sharedMemorySources: memory.evidenceSources,
     allMessages,
     providerContextWindowTokens:
@@ -86,6 +88,11 @@ export async function prepareLocalParticipantTurn(
     injectAdvisorNotes(prepared.providerMessages, advisorNotes),
     causality,
   );
+  for (const message of providerMessages) {
+    if (typeof message.content === "string" && message.content.startsWith("[Assigned Collaboration work]")) {
+      message.content = message.content.replaceAll("update_collaboration_work", "nanthai_update_collaboration_work");
+    }
+  }
   prepared = { ...prepared, providerMessages,
     runtimeBranchMessageIds: [...branchPathIds(String(args.participant.messageId), new Map(allMessages.map((message) => [String(message._id), message])))],
     runtimeSourceMessages: allMessages,

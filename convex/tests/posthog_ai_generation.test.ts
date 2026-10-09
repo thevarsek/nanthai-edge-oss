@@ -75,6 +75,7 @@ test("captureBackendAnalytics mirrors assistant completions as sanitized ai gene
     platform: "convex",
     app_surface: "backend",
     surface: "backend",
+    deployment_environment: "unknown",
     "$ai_trace_id": "chat_1",
     "$ai_session_id": "chat_1",
     "$ai_span_id": "gen_1",

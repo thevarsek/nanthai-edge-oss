@@ -1,3 +1,4 @@
+import { imageFailureAnalytics } from "../lib/openrouter_image_diagnostics";
 import { ConvexError } from "convex/values";
 import {
   scheduleBackendAnalytics,
@@ -138,6 +139,7 @@ export function assistantResponseFailureDetails(
       failure_category: openRouterFailureCategory(result.error),
       error_type: result.error instanceof ConvexError ? "convex" : "generation_failed",
       error_label: errorLabel(result.error),
+      ...imageFailureAnalytics(result.error),
     };
   }
 

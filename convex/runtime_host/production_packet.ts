@@ -96,7 +96,8 @@ export async function buildProductionRuntimePacket(
     },
     capabilities: {
       ...(input.webSearchEnabled ? { webSearch: "live" as const } : {}),
-      nanthaiTools: await Promise.all(BRIDGE_TOOLS.map(async (tool) => ({
+      nanthaiTools: await Promise.all(BRIDGE_TOOLS.filter(tool => tool.name !== "nanthai_update_collaboration_work"
+        || input.preparedTurn.providerMessages.some(message => typeof message.content === "string" && message.content.startsWith("[Assigned Collaboration work]"))).map(async (tool) => ({
         id: tool.name, name: tool.name, version: "1", effect: tool.name === "nanthai_read_context" ? "read" : "write",
         inputSchemaHash: await contextDigest(tool.inputSchema),
       }))),

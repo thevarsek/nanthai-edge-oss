@@ -3,6 +3,7 @@ export type { ListMessagesArgs, GetMessageArgs } from "./queries_message_handler
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { chatParticipantIdentity, connectionKind, type RuntimeIdentity } from "../runtime_host/identity_projection";
+import { listCreatedChats } from "./queries_created_chats";
 import { optionalAuth } from "../lib/auth";
 import {
   getAuthorizedChat,
@@ -10,6 +11,8 @@ import {
 } from "./query_helpers";
 
 export interface ListChatsArgs extends Record<string, unknown> {
+  order?: "created";
+  beforeChatId?: Id<"chats">;
   folderId?: string;
   limit?: number;
   searchQuery?: string;
@@ -174,7 +177,9 @@ export async function listChatsHandler(
   }
 
   let chats: Doc<"chats">[];
-  if (args.folderId && searchQuery) {
+  if (args.order === "created") {
+    chats = await listCreatedChats(ctx, auth.userId, args, limit);
+  } else if (args.folderId && searchQuery) {
     chats = await searchChatsByText(ctx, auth.userId, searchQuery, args.folderId, args.source, limit, folderNamesById);
   } else if (searchQuery) {
     chats = await searchChatsByText(ctx, auth.userId, searchQuery, undefined, args.source, limit, folderNamesById);

@@ -16,7 +16,7 @@ import type {
 } from "../../convex/runtime_host/protocol_v1.ts";
 
 const protocol = cjsCompatible(protocolImport);
-export const { BRIDGE_TOOLS, BridgeRequestSchema, PublishResultSchema } = cjsCompatible(bridgeImport);
+export const { BRIDGE_TOOLS, BridgeRequestSchema, PublishResultSchema, WorkResultSchema } = cjsCompatible(bridgeImport);
 
 export const {
   AdapterCapabilitiesSchema,

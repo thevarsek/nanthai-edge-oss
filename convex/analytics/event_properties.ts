@@ -6,6 +6,9 @@ type AnalyticsProperties = Record<string, AnalyticsValue>;
 export type OpenRouterFailureCategory =
   | "missing_api_key"
   | "invalid_api_key"
+  | "spending_reserved"
+  | "key_limit"
+  | "request_too_expensive"
   | "insufficient_credits"
   | "model_unavailable"
   | "rate_limited"
@@ -79,6 +82,9 @@ export function openRouterFailureCategory(error: unknown): OpenRouterFailureCate
   ) {
     return "invalid_api_key";
   }
+  if (combined.includes("openrouter_spending_reserved")) return "spending_reserved";
+  if (combined.includes("openrouter_key_limit")) return "key_limit";
+  if (combined.includes("openrouter_request_too_expensive")) return "request_too_expensive";
   if (
     combined.includes("insufficient_credits") ||
     combined.includes("insufficient credits") ||

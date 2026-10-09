@@ -51,3 +51,16 @@ belongs in the book. Do not append chronological development journals to READMEs
 
 The root [approval and evidence rules](../../AGENTS.md) continue to apply. Editing
 documentation is not authority to change the product behavior it describes.
+
+## Feature delivery evidence
+
+Shared app changes include web, iOS and Android, including menu placement, localization,
+empty/loading/error states and provider dependencies. Verify the rendered controls on
+each platform as well as the shared API. Use current consumer terminology and existing
+navigation/settings patterns; do not ship raw translation keys or development labels.
+
+Keep screenshot galleries and illustrated user workflows as chat delivery artifacts
+outside the repository. Label fixture-backed native renders separately from authenticated
+end-to-end evidence. Update the documentation book with current behavior and limitations,
+not screenshots or a chronological test journal. Leave ordinary user connections in a
+usable state, with QA conversations clearly separate from normal account history.

@@ -19,7 +19,7 @@ export function schedulerResponseFormat(input: SchedulerPolicyInput) {
         properties: {
           selections: {
             type: "array",
-            minItems: humanOpenedFloor(input) ? 1 : 0,
+            minItems: humanOpenedFloor(input) || input.work?.some(row => row.participantIds.length) ? 1 : 0,
             maxItems: input.remainingMessageBudget,
             items: {
               type: "object",
@@ -36,8 +36,9 @@ export function schedulerResponseFormat(input: SchedulerPolicyInput) {
                   },
                 },
                 reasonCode: { type: "string" },
+                ...(input.work?.length ? { workId: { anyOf: [{ type: "string", enum: input.work.map(row => String(row.id)) }, { type: "null" }] } } : {}),
               },
-              required: ["participantId", "replyToMessageIds", "reasonCode"],
+              required: ["participantId", "replyToMessageIds", "reasonCode", ...(input.work?.length ? ["workId"] : [])],
               additionalProperties: false,
             },
           },

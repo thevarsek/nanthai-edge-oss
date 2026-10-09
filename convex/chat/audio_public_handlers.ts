@@ -38,6 +38,7 @@ export async function requestAudioGenerationHandler(
     chatId: message.chatId,
     userId,
   });
+  if (!started.started && started.reason === "openrouter_required") throw new ConvexError({code: "MISSING_API_KEY", message: "Connect OpenRouter in Settings to generate spoken replies. Your local runtime can still reply with text."});
   return started.started
     ? { scheduled: true }
     : { scheduled: true, alreadyExists: true };

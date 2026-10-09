@@ -7,8 +7,13 @@ export const PublishResultSchema = z.strictObject({
 });
 export const BridgeRequestSchema = z.strictObject({
   callId: z.string().min(1).max(256),
-  tool: z.enum(["nanthai_read_context", "nanthai_publish_result"]),
+  tool: z.enum(["nanthai_read_context", "nanthai_publish_result", "nanthai_update_collaboration_work"]),
   arguments: z.unknown(),
+});
+export const WorkResultSchema = z.strictObject({
+  workId: z.string(), action: z.enum(["publish", "block", "accept", "rework"]),
+  description: z.string(), sourceRevision: z.string(),
+  requirementRevision: z.number().int().positive(), evidenceRevision: z.number().int().nonnegative(),
 });
 export const BRIDGE_TOOLS = [
   {
@@ -26,5 +31,14 @@ export const BRIDGE_TOOLS = [
         content: { type: "string", maxLength: 128_000 },
       }, required: ["filename", "mimeType", "content"], additionalProperties: false,
     },
+  },
+  {
+    name: "nanthai_update_collaboration_work",
+    description: "Publish assigned Collaboration work, report a blocker, or review exact evidence. Use the work ID and requirement/evidence revisions in the committed work context. This grants no external permission. Publication commits when this reply finishes.",
+    inputSchema: { type: "object", properties: {
+      workId: { type: "string" }, action: { type: "string", enum: ["publish", "block", "accept", "rework"] },
+      description: { type: "string" }, sourceRevision: { type: "string" },
+      requirementRevision: { type: "number" }, evidenceRevision: { type: "number" },
+    }, required: ["workId", "action", "description", "sourceRevision", "requirementRevision", "evidenceRevision"], additionalProperties: false },
   },
 ];

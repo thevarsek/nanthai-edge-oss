@@ -18,7 +18,7 @@ import {
 } from "./audio_shared";
 
 export type MessageAudioWorkflowStartResult =
-  | { started: false }
+  | { started: false; reason?: "openrouter_required" }
   | { started: true; workflowId: string };
 
 const ownedWorkflowCompletionRef = makeFunctionReference<"mutation">(
@@ -97,6 +97,11 @@ export async function startMessageAudioWorkflow(
     || message.audioGenerating
   ) return { started: false };
 
+  const secret = await ctx.db.query("userSecrets").withIndex("by_user", q => q.eq("userId", args.userId)).unique();
+  if (!secret?.apiKey?.trim()) {
+    await ctx.db.patch(message._id, {audioGenerating: undefined, audioReplyNotice: "openrouter_required"});
+    return {started: false, reason: "openrouter_required"};
+  }
   const now = Date.now();
   const preferences = args.modelId
     ? null
@@ -109,7 +114,7 @@ export async function startMessageAudioWorkflow(
     ?? MODEL_IDS.speechGeneration;
   const runKey = `message-speech:${String(args.messageId)}:${now}`;
   const claimantId = `message-speech-workflow:${runKey}`;
-  await ctx.db.patch(message._id, { audioGenerating: true });
+  await ctx.db.patch(message._id, { audioGenerating: true, audioReplyNotice: undefined });
   const execution = await deps.createExecution(ctx, {
     userId: args.userId,
     runKey,

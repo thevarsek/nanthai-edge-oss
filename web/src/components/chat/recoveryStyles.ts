@@ -1,0 +1,3 @@
+/** Match the chat's subtle action controls and existing settings dialogs. */
+export const recoveryActionClass = "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium text-foreground transition-colors hover:bg-foreground/[0.08] active:bg-foreground/[0.12] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+export const recoveryDialogClass = "m-auto w-[calc(100%_-_2rem)] max-w-sm rounded-xl border border-border/20 bg-surface-1 p-6 text-foreground backdrop:bg-black/60";

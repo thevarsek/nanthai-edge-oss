@@ -127,8 +127,8 @@ export const expire = internalMutation({
     });
     await ctx.db.patch(taskId, { status: "failed", completedAt: Date.now() });
     const run = task.purpose === "decision" ? await ctx.db.get(task.runId) : null;
-    if (task.completionEventId && run?.parentRunId
-      && await getCollaborationDecisionDeadline(ctx, await ctx.db.get(run.parentRunId)) !== undefined) {
+    if (task.completionEventId && (task.purpose === "compaction" || (run?.parentRunId
+      && await getCollaborationDecisionDeadline(ctx, await ctx.db.get(run.parentRunId)) !== undefined))) {
       await signalRuntimeCompletionHandler(ctx, {
         eventId: task.completionEventId,
         value: { status: "failed", commandId: `helper-${String(task._id)}-${task.fence}` },

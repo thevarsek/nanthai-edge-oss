@@ -1,8 +1,6 @@
-import { v, ConvexError } from "convex/values";
+import { v } from "convex/values";
 import { action, internalAction } from "../_generated/server";
-import { requireAuth } from "../lib/auth";
-import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
-import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
+import { fetchAccountCredits } from "../openrouter/account";
 import {
   continueScheduledJobExecutionHandler,
   executeScheduledJobHandler,
@@ -46,36 +44,5 @@ export const failScheduledJobExecution = internalAction({
  */
 export const fetchOpenRouterCredits = action({
   args: {},
-  handler: async (ctx): Promise<{ balance: number }> => {
-    const { userId } = await requireAuth(ctx);
-
-    const apiKey = await getOptionalUserOpenRouterApiKey(ctx, userId);
-    if (!apiKey) {
-      throw new ConvexError({ code: "NOT_FOUND", message: "No OpenRouter API key found. Please connect OpenRouter first." });
-    }
-
-    const resp = await fetch("https://openrouter.ai/api/v1/credits", {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": HTTP_REFERER,
-        "X-Title": X_TITLE,
-      },
-    });
-    if (!resp.ok) {
-      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `OpenRouter credits API returned ${resp.status}` });
-    }
-    const data = (await resp.json()) as {
-      data?: {
-        total_credits?: number;
-        total_usage?: number;
-        remaining_credits?: number;
-        remaining?: number;
-      };
-    };
-    const totalCredits = data.data?.total_credits ?? 0;
-    const totalUsage = data.data?.total_usage ?? 0;
-    const remainingCredits = data.data?.remaining_credits ?? data.data?.remaining;
-    const balance = remainingCredits ?? totalCredits - totalUsage;
-    return { balance: Math.max(0, balance) };
-  },
+  handler: fetchAccountCredits,
 });

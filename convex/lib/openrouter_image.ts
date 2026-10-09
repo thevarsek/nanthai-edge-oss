@@ -1,3 +1,4 @@
+import { imageFailureDiagnostics } from "./openrouter_image_diagnostics";
 import { ConvexError } from "convex/values";
 import {
   HTTP_REFERER,
@@ -157,7 +158,9 @@ export async function callOpenRouterImage(
           continue;
         }
         const message = extractErrorMessage(payload);
-        throw new ConvexError(openRouterErrorDetails(response.status, message));
+        const diagnostics = imageFailureDiagnostics(response.status, payload, request);
+        console.warn("[openrouter_image] request failed", diagnostics);
+        throw new ConvexError({ ...openRouterErrorDetails(response.status, message, payload), diagnostics });
       }
 
       const generationId = response.headers?.get("x-generation-id") ?? null;
@@ -175,9 +178,12 @@ export async function callOpenRouterImage(
       options.onMetadata?.({ generationId, usage });
 
       if (parsed.error) {
+        const diagnostics = imageFailureDiagnostics(response.status, { error: parsed.error }, request);
+        console.warn("[openrouter_image] generation failed", diagnostics);
         throw new ConvexError({
           code: "INTERNAL_ERROR" as const,
-          message: "OpenRouter image generation failed. Please try again.",
+          message: "OpenRouter image generation failed. Please try again or choose another model.",
+          diagnostics,
         });
       }
 

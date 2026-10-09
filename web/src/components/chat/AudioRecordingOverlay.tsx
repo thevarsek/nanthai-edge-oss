@@ -5,6 +5,8 @@ import { Mic, X, Send } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
 interface Props {
+  isReference?: boolean;
+  isStopped?: boolean;
   elapsedMs: number;
   levels: number[];
   interimTranscript: string;
@@ -19,7 +21,7 @@ function formatTime(ms: number): string {
   return `${min}:${sec.toString().padStart(2, "0")}`;
 }
 
-export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, onStop, onCancel }: Props) {
+export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, onStop, onCancel, isReference, isStopped }: Props) {
   const { t } = useTranslation();
   return (
     <div className="border-t border-border/30 bg-background px-4 py-3">
@@ -44,7 +46,7 @@ export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, on
 
         {/* Waveform + timer */}
         <div className="flex-1 flex items-center gap-2 min-w-0">
-          <Mic size={16} className="text-red-400 shrink-0 animate-pulse" />
+          <Mic size={16} className={`text-red-400 shrink-0 ${isStopped ? "" : "animate-pulse"}`} />
 
           {/* Waveform bars */}
           <div className="flex items-center gap-[2px] h-8 flex-1 min-w-0">
@@ -71,8 +73,8 @@ export function AudioRecordingOverlay({ elapsedMs, levels, interimTranscript, on
           type="button"
           onClick={onStop}
           className="p-2.5 rounded-xl bg-primary text-white hover:opacity-90 transition-opacity shrink-0"
-          title={t("audio_stop_recording")}
-          aria-label={t("audio_stop_recording")}
+          title={t(isReference ? "vc_use_recording" : "audio_stop_recording")}
+          aria-label={t(isReference ? "vc_use_recording" : "audio_stop_recording")}
         >
           <Send size={18} />
         </button>

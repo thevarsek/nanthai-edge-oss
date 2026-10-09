@@ -30,7 +30,12 @@ export const collaborationSchemaTables = {
     bounds: collaborationBounds,
     terminalReason: v.optional(v.string()),
     error: v.optional(v.string()),
+    waitingReason: v.optional(v.string()),
     workflowId: v.optional(v.string()),
+    wakeEventId: v.optional(v.string()),
+    workEnabled: v.optional(v.boolean()),
+    workIds: v.optional(v.array(v.id("collaborationWork"))),
+    consensusAutoStop: v.optional(v.boolean()),
     executionRunId: v.optional(v.id("executionRuns")),
     executionAttemptId: v.optional(v.id("executionAttempts")),
     executionFence: v.optional(v.number()),
@@ -42,6 +47,7 @@ export const collaborationSchemaTables = {
   })
     .index("by_chat", ["chatId", "createdAt"])
     .index("by_chat_status", ["chatId", "status", "updatedAt"])
+    .index("by_user_wait", ["userId", "status", "waitingReason"])
     .index("by_user", ["userId", "updatedAt"])
     .index("by_initiating_message", ["initiatingMessageId"])
     .index("by_execution_run", ["executionRunId"]),
@@ -61,6 +67,7 @@ export const collaborationSchemaTables = {
     diagnosticCategory: v.string(),
     assistantMessageIds: v.optional(v.array(v.id("messages"))),
     generationJobIds: v.optional(v.array(v.id("generationJobs"))),
+    accountedJobIds: v.optional(v.array(v.id("generationJobs"))),
     successfulMessageIds: v.optional(v.array(v.id("messages"))),
     failedParticipantIds: v.optional(v.array(v.id("chatParticipants"))),
     usageRecordId: v.optional(v.id("usageRecords")),

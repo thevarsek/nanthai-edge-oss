@@ -29,12 +29,14 @@ interface Props {
   hasMessages: boolean;
   onStart: () => void;
   onClose: () => void;
+  embedded?: boolean;
+  disabled?: boolean;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────────
 
 export function AutonomousSettingsDrawer({
-  settings, onChange, participants, hasMessages, onStart, onClose,
+  settings, onChange, participants, hasMessages, onStart, onClose, embedded = false, disabled = false,
 }: Props) {
   const { t } = useTranslation();
 
@@ -64,7 +66,7 @@ export function AutonomousSettingsDrawer({
 
   const totalTurns = settings.maxCycles * turnTakerCount;
 
-  const canStart = turnTakerCount >= 2 && hasMessages;
+  const canStart = turnTakerCount >= 2 && hasMessages && !disabled;
 
   const handleStart = useCallback(() => {
     if (!canStart) return;
@@ -72,32 +74,7 @@ export function AutonomousSettingsDrawer({
     onClose();
   }, [canStart, onStart, onClose]);
 
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div
-        className="w-full max-w-lg bg-surface-1 rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col"
-        style={{ maxHeight: "85vh" }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 shrink-0">
-          <div className="flex items-center gap-2">
-            <Zap size={18} className="text-primary" />
-            <h2 className="text-base font-semibold">{t("autonomous_mode")}</h2>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label={t("close")}
-            className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground transition-colors"
-          >
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
+  const controls = <>        <div className="px-5 py-4 space-y-5 overflow-y-auto flex-1">
           {/* ── Discussion Settings ─────────────────────────── */}
           <SettingsSection title={t("discussion_settings")} footer={turnsFooter(t, turnTakerCount, totalTurns)}>
             <SliderRow
@@ -148,7 +125,18 @@ export function AutonomousSettingsDrawer({
               {t("send_first_message_topic")}
             </p>
           )}
+        </div></>;
+  if (embedded) return <section aria-label={t("discussion_settings")}>{controls}</section>;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="w-full max-w-lg bg-surface-1 rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col max-h-[85dvh]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border/50 shrink-0">
+          <div className="flex items-center gap-2"><Zap size={18} className="text-primary" /><h2 className="text-base font-semibold">{t("autonomous_mode")}</h2></div>
+          <button type="button" onClick={onClose} aria-label={t("close")} className="p-1.5 rounded-lg hover:bg-surface-3 text-muted hover:text-foreground"><X size={18} /></button>
         </div>
+        {controls}
       </div>
     </div>
   );

@@ -103,12 +103,13 @@ export const prepareWave = internalMutation({
       : exchange.pendingMentionedParticipantIds;
     await ctx.db.patch(exchange._id, {
       status: "scheduling",
+      waitingReason: undefined,
       currentWave: nextWave,
       frontierMessageIds,
       pendingHumanMessageIds: [],
       mentionedParticipantIds,
       pendingMentionedParticipantIds: [],
-      activeParticipantIds: [],
+      activeParticipantIds: exchange.workEnabled ? exchange.activeParticipantIds : [],
       updatedAt: now,
     });
     return {
@@ -213,6 +214,11 @@ export const persistDecision = internalMutation({
       );
       return { decisionId, silent: true };
     }
+    if (silent && (exchange.workEnabled || args.diagnosticCategory === "local_runtime_unavailable")) {
+      await ctx.db.patch(decisionId, { status: "settled" });
+      await ctx.db.patch(exchange._id, { status: "waiting", waitingReason: args.diagnosticCategory === "local_runtime_unavailable" ? "runtime" : "goals", updatedAt: now });
+      return { decisionId, silent: false, waiting: true };
+    }
     if (silent) {
       const limitReached = args.diagnosticCategory === "bound_reached";
       await ctx.db.patch(exchange._id, {
@@ -233,7 +239,8 @@ export const persistDecision = internalMutation({
     } else {
       await ctx.db.patch(exchange._id, {
         status: "dispatching",
-        activeParticipantIds: args.selections.map((selection) => selection.participantId),
+        activeParticipantIds: [...new Set([...exchange.activeParticipantIds,
+          ...args.selections.map((selection) => selection.participantId)])],
         updatedAt: now,
       });
     }

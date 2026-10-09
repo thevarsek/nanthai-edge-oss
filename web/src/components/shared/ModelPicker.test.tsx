@@ -284,3 +284,5 @@ describe("ModelPicker", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
+
+vi.mock("@/hooks/usePreferenceBuffer", () => ({ usePreferenceBuffer: () => ({ updatePreferenceImmediate: vi.fn() }) }));

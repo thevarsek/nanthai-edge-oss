@@ -39,6 +39,7 @@ export const workpoolWatchdogTargetValidator = v.union(
   }),
   v.object({
     kind: v.literal("background_work"),
+    deliveryId: v.optional(v.id("channelDeliveries")),
     operationId: v.string(),
     runId: v.id("executionRuns"),
   }),

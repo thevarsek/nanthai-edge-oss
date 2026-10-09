@@ -3,7 +3,7 @@
 // mic.circle.fill record, circular plus button, 14px border radius.
 
 import { useState, useRef, useCallback, useEffect, type KeyboardEvent, type ClipboardEvent } from "react";
-import { ArrowUp, Square, Plus, Mic, Video, Server } from "lucide-react";
+import { ArrowUp, Square, Plus, Mic, Video, Server, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Id } from "@convex/_generated/dataModel";
 import type { Participant, PresentationContext } from "@/hooks/useChat";
@@ -25,6 +25,10 @@ import { getChatDraft, setChatDraft } from "@/stores/chatDraftStore";
 import { PresentationContextChip } from "@/components/chat/PresentationContextChip";
 import type { StagedRemoteMcpContext } from "@/components/chat/RemoteMcpContentPicker";
 
+import { useVoiceCloningDraft } from "./VoiceCloningDraft.hook";
+import { VoiceCloningComposer } from "./VoiceCloningComposer";
+import type { VoiceCloningRequest } from "@/types/voiceCloning";
+
 export type { AttachmentPreview } from "@/components/chat/MessageInput.attachments.types";
 
 interface Props {
@@ -32,8 +36,10 @@ interface Props {
   participants: Participant[];
   isGenerating: boolean;
   isCollaborationActive?: boolean;
+  requireZdr?: boolean;
   onSend: (args: {
     text: string;
+    voiceCloning?: VoiceCloningRequest;
     attachments?: AttachmentPreview[];
     advisorSnapshot?: QueuedAdvisorSnapshot;
     presentationContext?: PresentationContext;
@@ -94,7 +100,7 @@ interface Props {
 
 export function MessageInput({
   chatId,
-  isGenerating, isCollaborationActive = false,
+  isGenerating, isCollaborationActive = false, requireZdr = false,
   onSend, onCancel, onCreateUploadUrl, onPlusMenuSelect,
   disabled = false, plusMenuBadges = {}, isPro = false,
   hasConnectedIntegrations = false, participantCount = 1,
@@ -122,9 +128,13 @@ export function MessageInput({
   const isConversationActive = isGenerating || isCollaborationActive;
   const [text, setText] = useState(() => getChatDraft(chatId).text);
   const [showPlusMenu, setShowPlusMenu] = useState(false);
+  const [voicePanelChatId, setVoicePanelChatId] = useState<string | null>(null);
   const [clipboardHasImage, setClipboardHasImage] = useState(false);
   const [dropTargeted, setDropTargeted] = useState(false);
   const [dismissedSuggestionStorageIds, setDismissedSuggestionStorageIds] = useState<Set<string>>(() => new Set());
+  const voiceDraft = useVoiceCloningDraft(chatId);
+  const { value: voiceCloning, setValue: setVoiceCloning } = voiceDraft;
+  const referenceInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const skipNextDraftPersistRef = useRef(false);
   const { t } = useTranslation();
@@ -141,6 +151,7 @@ export function MessageInput({
     supportsAudioInput,
     onBindUploadSession,
     onCleanupUploadSession,
+    voiceCloning !== undefined,
   );
 
   // Hydrate composer from the per-chat draft store when chatId changes.
@@ -167,8 +178,8 @@ export function MessageInput({
       skipNextDraftPersistRef.current = false;
       return;
     }
-    setChatDraft(chatId, { text, attachments });
-  }, [chatId, text, attachments]);
+    setChatDraft(chatId, { text, attachments, voiceCloning });
+  }, [chatId, text, attachments, voiceCloning]);
 
   // Auto-assign default video roles when entering video mode with existing image attachments
   useEffect(() => {
@@ -180,8 +191,11 @@ export function MessageInput({
 
   const handleRecordStop = useCallback(async () => {
     const result = await recorder.stop();
-    if (result && onSendRecording) onSendRecording(result);
-  }, [recorder, onSendRecording]);
+    const reference = voiceDraft.consumeRecording(result);
+    if (reference) {
+      await handleFiles([reference]);
+    } else if (result && onSendRecording) onSendRecording(result);
+  }, [recorder, onSendRecording, handleFiles, voiceDraft]);
 
   const resizeTextarea = useCallback(() => {
     const el = textareaRef.current;
@@ -209,6 +223,11 @@ export function MessageInput({
     );
     if (!trimmed && outgoingAttachments.length === 0 && remoteMcpContexts.length === 0) return;
     if (disabled || isConversationActive || isUploading) return;
+    if (voiceCloning && (!voiceCloning.permissionConfirmed || voiceCloning.references.length === 0
+      || voiceCloning.references.some((reference) => !outgoingAttachments.some((attachment) => attachment.storageId === reference.storageId)))) {
+      setUploadError(t("vc_incomplete"));
+      return;
+    }
     if (totalAttachmentBytes > MAX_TOTAL_ATTACHMENT_BYTES) {
       setUploadError("Attachments are too large. The maximum total size is 25 MB.");
       return;
@@ -221,6 +240,7 @@ export function MessageInput({
       try {
         result = await onSend({
           text: trimmed,
+          ...(voiceCloning ? { voiceCloning } : {}),
           attachments: outgoingAttachments,
           ...(presentationTarget ? { presentationContext: presentationTarget.context } : {}),
           ...(remoteMcpContexts.length > 0
@@ -233,11 +253,13 @@ export function MessageInput({
       if (result === false) return;
     }
     setText("");
+    setVoiceCloning(undefined);
+    setVoicePanelChatId(null);
     clearAttachments();
     onClearRemoteMcpContexts?.();
     mention.dismiss();
     if (textareaRef.current) textareaRef.current.style.height = "auto";
-  }, [text, attachments, extraAttachments, remoteMcpContexts, disabled, isConversationActive, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount, setUploadError]);
+  }, [text, voiceCloning, attachments, extraAttachments, remoteMcpContexts, disabled, isConversationActive, isUploading, onSend, isAutonomousActive, onIntervene, clearAttachments, onClearRemoteMcpContexts, mention, presentationTarget, participantCount, setUploadError, setVoiceCloning, t]);
 
   const {
     queuedFollowUps,
@@ -278,7 +300,7 @@ export function MessageInput({
       });
     },
     canCaptureQueuedAdvisorSnapshot,
-    hasEphemeralContext: Boolean(presentationTarget || remoteMcpContexts.length > 0),
+    hasEphemeralContext: Boolean(voiceCloning || presentationTarget || remoteMcpContexts.length > 0),
     captureQueuedAdvisorSnapshot,
     restoreQueuedAdvisorSnapshot,
   });
@@ -341,6 +363,7 @@ export function MessageInput({
 
   const handlePlusMenuSelect = useCallback(
     (item: PlusMenuItem) => {
+      if (item === "voiceReferences") { setVoicePanelChatId(chatId); return; }
       if (item === "file") fileInputRef.current?.click();
       else if (item === "image") imageInputRef.current?.click();
       else if (item === "camera") cameraInputRef.current?.click();
@@ -363,7 +386,7 @@ export function MessageInput({
       }
       else onPlusMenuSelect?.(item);
     },
-    [onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef, handlePasteFiles],
+    [chatId, onPlusMenuSelect, fileInputRef, imageInputRef, cameraInputRef, handlePasteFiles],
   );
 
   const artifactWriteBlocked = Boolean(presentationTarget && participantCount > 1);
@@ -386,12 +409,14 @@ export function MessageInput({
     !dismissedSuggestionStorageIds.has(suggestionStorageId);
 
   // ── Recording mode — replaces normal input ──────────────────────────────────
-  if (recorderState.isRecording || recorderState.isPreparing) {
+  if (recorderState.isRecording || recorderState.isPreparing || recorderState.hasRecording) {
     return (
       <AudioRecordingOverlay
+        isReference={voiceDraft.isRecordingReference}
+        isStopped={recorderState.hasRecording}
         elapsedMs={recorderState.elapsedMs} levels={recorderState.levels}
         interimTranscript={recorderState.interimTranscript}
-        onStop={handleRecordStop} onCancel={recorder.cancel}
+        onStop={handleRecordStop} onCancel={() => { voiceDraft.cancelReferenceRecording(); recorder.cancel(); }}
       />
     );
   }
@@ -489,7 +514,23 @@ export function MessageInput({
         </div>
       )}
 
-      <AttachmentPreviews attachments={attachments} onRemove={removeAttachment} isVideoMode={isVideoMode && supportsFrameImages} onChangeRole={changeAttachmentRole} />
+      {!isVideoMode && !isAutonomousActive && voicePanelChatId === chatId && <VoiceCloningComposer
+        key={chatId} attachments={attachments} value={voiceCloning} onChange={value => { setVoiceCloning(value); if (!value) setVoicePanelChatId(null); }} onClose={() => setVoicePanelChatId(null)}
+        requireZdr={requireZdr} disabled={disabled || isConversationActive || isUploading}
+        onChoose={() => referenceInputRef.current?.click()}
+        onRecord={() => { voiceDraft.beginReferenceRecording(); void recorder.start({ transcribe: false }); }}
+      />}
+      {voiceCloning && <div className="mb-2 flex items-center gap-2 text-sm">
+        <button type="button" disabled={disabled || isConversationActive || isUploading} onClick={() => setVoicePanelChatId(chatId)} className="rounded-lg bg-surface-2 px-3 py-2 hover:bg-surface-3">{t("vc_title")} ({voiceCloning.references.length})</button>
+        <button type="button" disabled={disabled || isConversationActive || isUploading} aria-label={t("vc_remove")} onClick={() => { setVoiceCloning(undefined); setVoicePanelChatId(null); }} className="rounded-lg p-2 text-muted hover:bg-surface-3"><X size={14} /></button>
+      </div>}
+      <AttachmentPreviews attachments={attachments} onRemove={(index) => {
+        const removed = attachments[index]?.storageId;
+        if (voiceCloning && voiceCloning.references.some((reference) => reference.storageId === removed)) {
+          setVoiceCloning({ ...voiceCloning, permissionConfirmed: false, references: voiceCloning.references.filter((reference) => reference.storageId !== removed) });
+        }
+        removeAttachment(index);
+      }} isVideoMode={isVideoMode && supportsFrameImages} onChangeRole={changeAttachmentRole} />
       {extraAttachments.length > 0 && (
         <AttachmentPreviews
           attachments={extraAttachments}
@@ -545,6 +586,8 @@ export function MessageInput({
         </div>
 
           <HiddenFileInputs fileInputRef={fileInputRef} imageInputRef={imageInputRef} cameraInputRef={cameraInputRef} onSelect={handleFileSelect} />
+      <input ref={referenceInputRef} type="file" multiple accept="audio/*" className="hidden"
+        onChange={(event) => { void handleFiles(Array.from(event.currentTarget.files ?? [])); event.currentTarget.value = ""; }} />
 
         {/* Text input — iOS: cornerRadius 14, glass effect */}
         <div className="flex-1 relative self-end">
@@ -585,7 +628,7 @@ export function MessageInput({
             <ArrowUp size={19} strokeWidth={2.6} />
           </button>
         ) : canRecord ? (
-          <button type="button" onClick={() => void recorder.start()} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title={t("record_voice")}>
+          <button type="button" onClick={() => { voiceDraft.cancelReferenceRecording(); void recorder.start(); }} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-primary transition-colors hover:bg-primary/10" title={t("record_voice")}>
             <Mic size={17} />
           </button>
         ) : (

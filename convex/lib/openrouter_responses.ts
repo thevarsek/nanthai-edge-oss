@@ -107,7 +107,7 @@ export async function callOpenRouterAdvisorResponses(
     resetIdle();
     if (!response.ok) {
       const raw = await response.text();
-      throw new ConvexError(openRouterErrorDetails(response.status, extractErrorMessage(raw)));
+      throw new ConvexError(openRouterErrorDetails(response.status, extractErrorMessage(raw), raw));
     }
 
     const streamState = response.body

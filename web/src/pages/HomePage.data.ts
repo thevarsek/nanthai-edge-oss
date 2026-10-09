@@ -55,6 +55,8 @@ export function getHowItWorksSteps(t: (k: string) => string) {
 
 export function getCapabilityCards(t: (k: string) => string) {
   return [
+    {icon: Drama, title: t("pe_cap_work_title"), body: t("pe_cap_work_desc"), detail: t("pro_2"), href: "/features/personas", fullWidth: true},
+    {icon: MessagesSquare, title: t("pe_cap_telegram_title"), body: t("pe_cap_telegram_desc"), detail: t("pro_2"), href: "/features/personas"},
     {
       icon: Laptop,
       title: t("local_runtime_title"),
@@ -156,6 +158,7 @@ export function getCapabilityCards(t: (k: string) => string) {
       body: t("home_cap_audio_body"),
       detail: t("free"),
     },
+    {icon: Mic, title: t("ag_cap_voice_title"), body: t("ag_cap_voice_desc"), detail: t("free"), href: "/features/audio-generation"},
     {
       icon: Layers,
       title: t("home_cap_ideascapes_title"),

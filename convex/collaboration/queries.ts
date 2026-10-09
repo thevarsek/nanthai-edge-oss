@@ -21,6 +21,7 @@ const collaborationChatState = v.union(
         pendingInputCount: v.number(),
         terminalReason: v.optional(v.string()),
         error: v.optional(v.string()),
+        waitingReason: v.optional(v.string()),
         completedAt: v.optional(v.number()),
       }),
     ),
@@ -63,6 +64,7 @@ export const getChatState = query({
             pendingInputCount: exchange.pendingHumanMessageIds.length,
             terminalReason: exchange.terminalReason,
             error: exchange.error,
+            waitingReason: exchange.waitingReason,
             completedAt: exchange.completedAt,
           }
         : null,

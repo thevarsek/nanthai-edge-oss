@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { createPortal } from "react-dom";
+import { useTranslation } from "react-i18next";
 import { ChevronDown, Check } from "lucide-react";
 
 export interface MenuSelectOption {
@@ -12,6 +13,10 @@ export interface MenuSelectOption {
 }
 
 interface MenuSelectProps {
+  searchable?: boolean;
+  searchValue?: string;
+  onSearch?: (value: string) => void;
+  onLoadMore?: () => void;
   value: string;
   options: MenuSelectOption[];
   onChange: (v: string) => void;
@@ -19,8 +24,13 @@ interface MenuSelectProps {
   disabled?: boolean;
 }
 
-export function MenuSelect({ value, options, onChange, ariaLabel, disabled = false }: MenuSelectProps) {
+export function MenuSelect({ value, options, onChange, ariaLabel, disabled = false, searchable = false, searchValue, onSearch, onLoadMore }: MenuSelectProps) {
+  const { t } = useTranslation();
+  const [localSearch, setLocalSearch] = useState("");
+  const search = searchValue ?? localSearch;
+  const visibleOptions = onSearch ? options : options.filter(option => !search || option.label.toLowerCase().includes(search.toLowerCase()));
   const [open, setOpen] = useState(false);
+  const [portalTarget, setPortalTarget] = useState<Element>(() => document.body);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ top: 0, left: 0 });
@@ -33,7 +43,7 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
     if (!open || !triggerRef.current) return;
     const rect = triggerRef.current.getBoundingClientRect();
     const viewportPadding = 8;
-    const menuHeight = Math.min(options.length * 36 + 8, 280);
+    const menuHeight = Math.min(options.length * 36 + (searchable ? 56 : 8), 280);
     const spaceBelow = window.innerHeight - rect.bottom - 8;
     const fitsBelow = spaceBelow >= menuHeight;
     const unclampedTop = fitsBelow ? rect.bottom + 4 : rect.top - menuHeight - 4;
@@ -42,7 +52,7 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
       Math.min(unclampedTop, window.innerHeight - menuHeight - viewportPadding),
     );
     const nextMenuWidth = Math.min(
-      Math.max(rect.width, 160),
+      Math.max(rect.width, searchable ? 340 : 160),
       window.innerWidth - viewportPadding * 2,
     );
     const left = Math.max(
@@ -54,7 +64,7 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
       top,
       left,
     });
-  }, [open, options.length, layoutVersion]);
+  }, [open, options.length, layoutVersion, searchable]);
 
   // Close on outside click or scroll
   useEffect(() => {
@@ -97,7 +107,8 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
         type="button"
         aria-label={ariaLabel}
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        onClick={event => { setPortalTarget(event.currentTarget.closest('[aria-modal="true"]') ?? document.body); setLocalSearch(""); setOpen(!open); }}
         className="flex min-w-0 max-w-full items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-3 text-sm border border-border/50 hover:border-border transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
       >
         <span className="min-w-0 truncate">{selected?.label ?? value}</span>
@@ -110,10 +121,12 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
         createPortal(
           <div
             ref={menuRef}
+            data-menu-select-popup
             className="fixed z-[9999] min-w-[10rem] max-h-[min(280px,calc(100vh-2rem))] overflow-y-auto py-1 rounded-xl bg-surface-1 border border-border/50 shadow-lg"
             style={{ top: pos.top, left: pos.left, width: menuWidth }}
           >
-            {options.map((opt) => (
+            {searchable && <div className="sticky top-0 bg-surface-1 px-3 pb-2"><input autoFocus aria-label={t("search")} placeholder={t("search")} className="w-full rounded-lg bg-surface-2 px-3 py-2 text-sm" value={search} onChange={event => onSearch ? onSearch(event.target.value) : setLocalSearch(event.target.value)} /></div>}
+            {visibleOptions.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
@@ -121,6 +134,7 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
                   if (!opt.disabled) {
                     onChange(opt.value);
                     setOpen(false);
+                    triggerRef.current?.focus();
                   }
                 }}
                 disabled={opt.disabled}
@@ -134,14 +148,15 @@ export function MenuSelect({ value, options, onChange, ariaLabel, disabled = fal
                   .filter(Boolean)
                   .join(" ")}
               >
-                <span className="min-w-0 truncate">{opt.label}</span>
+                <span className={searchable ? "min-w-0 whitespace-normal break-words" : "min-w-0 truncate"}>{opt.label}</span>
                 {opt.value === value && (
                   <Check size={14} className="text-primary flex-shrink-0" />
                 )}
               </button>
             ))}
+            {onLoadMore && <button type="button" className="w-full px-3 py-2 text-primary text-sm" onClick={onLoadMore}>{t("load_more")}</button>}
           </div>,
-          document.body,
+          portalTarget,
         )}
     </>
   );

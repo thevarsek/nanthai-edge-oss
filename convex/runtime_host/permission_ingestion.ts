@@ -1,3 +1,4 @@
+import { notifyChannelInput } from "../channels/publication";
 import { notifyRuntimeRequest } from "./request_notifications";
 import { ConvexError } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -78,6 +79,7 @@ export async function recordRuntimePermissionRequested(
   }
   if (expiresAt !== null) await scheduleRuntimePermissionExpiry(ctx, requestId, expiresAt);
   await notifyRuntimeRequest(ctx, context.run.userId, context.job.chatId);
+  await notifyChannelInput(ctx, context.job.chatId, String(requestId));
   return requestId;
 }
 

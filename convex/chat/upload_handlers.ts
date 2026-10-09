@@ -14,6 +14,10 @@ export async function createChatUploadUrlHandler(
   ctx: MutationCtx,
 ): Promise<ChatUploadSessionResult> {
   const { userId } = await requireAuth(ctx);
+  return await createChatUploadUrlForActor(ctx, userId);
+}
+
+export async function createChatUploadUrlForActor(ctx: MutationCtx, userId: string): Promise<ChatUploadSessionResult> {
   const uploadUrl = await ctx.storage.generateUploadUrl();
   const uploadSessionId = await ctx.db.insert("chatUploadSessions", {
     userId,
@@ -28,6 +32,10 @@ export async function bindChatUploadSessionHandler(
   args: { uploadSessionId: Id<"chatUploadSessions">; storageId: Id<"_storage"> },
 ): Promise<null> {
   const { userId } = await requireAuth(ctx);
+  return await bindChatUploadSessionForActor(ctx, args, userId);
+}
+
+export async function bindChatUploadSessionForActor(ctx: MutationCtx, args: {uploadSessionId: Id<"chatUploadSessions">; storageId: Id<"_storage">}, userId: string): Promise<null> {
   const session = await ctx.db.get(args.uploadSessionId);
   if (!session || session.userId !== userId || session.status !== "pending") {
     throw new ConvexError({

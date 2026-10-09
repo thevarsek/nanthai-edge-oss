@@ -1,9 +1,12 @@
+import { TeamWorkBoard } from "./TeamWorkBoard";
+import type { Id } from "@convex/_generated/dataModel";
 import { useState, type ReactNode } from "react";
-import { Bot, Circle, CircleCheck, MessagesSquare, Users, X, Zap } from "lucide-react";
+import { Circle, CircleCheck, MessagesSquare, Users, X, Zap } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { GroupBehavior } from "@/hooks/useCollaboration";
 
 interface ConversationModeDrawerProps {
+  chatId?: Id<"chats">;
   behavior: GroupBehavior;
   autonomousActive: boolean;
   hasMessages: boolean;
@@ -11,11 +14,12 @@ interface ConversationModeDrawerProps {
   isUpdating: boolean;
   error: string | null;
   onSelectBehavior: (behavior: GroupBehavior) => Promise<boolean>;
-  onConfigureAutonomous: () => void;
+  autonomousControls: ReactNode;
   onClose: () => void;
 }
 
 export function ConversationModeDrawer({
+  chatId,
   behavior,
   autonomousActive,
   hasMessages,
@@ -23,32 +27,29 @@ export function ConversationModeDrawer({
   isUpdating,
   error,
   onSelectBehavior,
-  onConfigureAutonomous,
+  autonomousControls,
   onClose,
 }: ConversationModeDrawerProps) {
   const { t } = useTranslation();
   const [saving, setSaving] = useState<GroupBehavior | null>(null);
-  const behaviorLocked = autonomousActive || isUpdating || saving !== null;
+  const [selection, setSelection] = useState<GroupBehavior | "autonomous">(autonomousActive ? "autonomous" : behavior);
+  const behaviorLocked = isUpdating || saving !== null;
 
   const selectBehavior = async (next: GroupBehavior) => {
-    if (behaviorLocked) return;
+    if (behaviorLocked || autonomousActive) return;
     setSaving(next);
     const changed = await onSelectBehavior(next);
     setSaving(null);
     if (changed) onClose();
   };
 
-  const openAutonomous = () => {
-    if (!isPro || !hasMessages || behaviorLocked) return;
-    onConfigureAutonomous();
-  };
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center"
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <div className="w-full max-w-lg overflow-hidden rounded-t-2xl bg-surface-1 sm:rounded-2xl">
+      <div className="w-full max-w-3xl max-h-[90dvh] overflow-y-auto rounded-t-2xl bg-surface-1 sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-border/50 px-5 py-4">
           <div className="flex items-center gap-2">
             <MessagesSquare size={18} className="text-primary" />
@@ -64,45 +65,44 @@ export function ConversationModeDrawer({
           </button>
         </div>
 
-        <div className="space-y-1 px-5 py-4" role="radiogroup" aria-label={t("conversation_mode")}>
+        <div className="grid gap-2 px-5 py-4 sm:grid-cols-3" role="radiogroup" aria-label={t("conversation_mode")}>
           <BehaviorRow
             icon={<Users size={19} />}
             title={t("parallel_label")}
             description={t("parallel_description")}
-            selected={!autonomousActive && behavior === "parallel"}
+            selected={selection === "parallel"}
             disabled={behaviorLocked}
-            onClick={() => void selectBehavior("parallel")}
+            onClick={() => setSelection("parallel")}
           />
           <BehaviorRow
             icon={<MessagesSquare size={19} />}
             title={t("collaboration_label")}
             description={t("collaboration_description")}
-            selected={!autonomousActive && behavior === "collaboration"}
+            selected={selection === "collaboration"}
             disabled={behaviorLocked}
-            onClick={() => void selectBehavior("collaboration")}
+            onClick={() => setSelection("collaboration")}
           />
           <BehaviorRow
             icon={<Zap size={19} />}
             title={t("autonomous_discussion")}
             description={t("autonomous_mode_description")}
-            selected={autonomousActive}
-            disabled={!isPro || !hasMessages || behaviorLocked}
-            onClick={openAutonomous}
+            selected={selection === "autonomous"}
+            disabled={behaviorLocked}
+            onClick={() => setSelection("autonomous")}
             suffix={!isPro ? "PRO" : undefined}
           />
 
-          {!hasMessages && (
-            <p className="px-3 pt-2 text-xs text-muted">{t("send_first_message_topic")}</p>
-          )}
           {autonomousActive && (
-            <p className="px-3 pt-2 text-xs text-muted">{t("conversation_mode_locked_autonomous")}</p>
+            <p className="sm:col-span-3 px-3 pt-2 text-xs text-muted">{t("conversation_mode_locked_autonomous")}</p>
           )}
-          {error && <p className="px-3 pt-2 text-xs text-destructive" role="alert">{error}</p>}
-          <p className="flex items-start gap-2 px-3 pt-3 text-xs text-muted">
-            <Bot size={14} className="mt-0.5 shrink-0" />
-            {t("conversation_mode_subagents_separate")}
-          </p>
+          {error && <p className="sm:col-span-3 px-3 pt-2 text-xs text-destructive" role="alert">{error}</p>}
         </div>
+        {selection === "collaboration" && chatId && <div className="px-5 py-4"><TeamWorkBoard chatId={chatId} embedded onStarted={onClose} /></div>}
+        {selection === "autonomous" && isPro && !autonomousActive && autonomousControls}
+        {selection === "autonomous" && !hasMessages && !isPro && <p className="px-5 pb-3 text-xs text-muted">{t("send_first_message_topic")}</p>}
+        {selection !== "autonomous" && <div className="border-t border-border/50 px-5 py-4">
+          <button type="button" disabled={behaviorLocked || autonomousActive} onClick={() => void selectBehavior(selection)} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-white disabled:opacity-40">{t("use_conversation_mode")}</button>
+        </div>}
       </div>
     </div>
   );

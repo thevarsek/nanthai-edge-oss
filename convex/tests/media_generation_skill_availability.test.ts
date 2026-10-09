@@ -123,7 +123,7 @@ test("media skill availability preserves selections and gates only incompatible 
   })), [
     { profile: "imageGeneration", modelId: "image/zdr", isAvailable: false, reasonCode: "zdr_incompatible_model" },
     { profile: "musicGeneration", modelId: "google/lyria-non-zdr", isAvailable: false, reasonCode: "zdr_incompatible_model" },
-    { profile: "speechGeneration", modelId: "speech/zdr", isAvailable: false, reasonCode: "zdr_incompatible_model" },
+    { profile: "speechGeneration", modelId: "speech/zdr", isAvailable: true, reasonCode: undefined },
     { profile: "videoGeneration", modelId: "video/even-with-zdr-endpoint", isAvailable: false, reasonCode: "zdr_incompatible_model" },
   ]);
 

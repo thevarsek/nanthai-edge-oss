@@ -79,7 +79,8 @@ test("generation Workflow chains without imposing a tool-round terminal limit", 
       eventNames.push(String(args.name));
       return `event_${String(args.name)}`;
     },
-    runAction: async (_ref: unknown, args: Record<string, unknown>) => {
+    runAction: async (ref: unknown, args: Record<string, unknown>) => {
+      if (getFunctionName(ref as never) === "chat/conversation_context_actions:plan") return null;
       actions.push(args);
       return null;
     },
@@ -133,7 +134,8 @@ test("generation Workflow creates its event before an immediate deferred complet
       order.push("event-created");
       return "event_1";
     },
-    runAction: async () => {
+    runAction: async (ref: unknown) => {
+      if (getFunctionName(ref as never) === "chat/conversation_context_actions:plan") return null;
       order.push("action-signaled");
       return null;
     },

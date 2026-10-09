@@ -17,6 +17,15 @@ const participants = [
 ];
 
 describe("AutonomousSettingsDrawer", () => {
+  it("embeds the same controls without a second modal and starts only on request", () => {
+    const onStart = vi.fn(); const onClose = vi.fn();
+    render(<AutonomousSettingsDrawer embedded settings={settings} participants={participants as never}
+      hasMessages onChange={vi.fn()} onStart={onStart} onClose={onClose} />);
+    expect(screen.queryByRole("button", { name: "Close" })).not.toBeInTheDocument();
+    expect(onStart).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /start discussion/i }));
+    expect(onStart).toHaveBeenCalledOnce(); expect(onClose).toHaveBeenCalledOnce();
+  });
   it("requires an existing message before starting", () => {
     render(
       <AutonomousSettingsDrawer

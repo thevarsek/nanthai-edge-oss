@@ -103,7 +103,7 @@ const rows = [
 ];
 
 test("model queries filter eligibility and hydrate summary-only capability fields", async () => {
-  const ctx = { db: { query: () => queryFor(rows) } } as any;
+  const ctx = { auth: { getUserIdentity: async () => null }, db: { query: () => queryFor(rows) } } as any;
 
   const all = await (listModels as any)._handler(ctx, {});
   const google = await (listModels as any)._handler(ctx, { provider: "google" });
@@ -125,7 +125,7 @@ test("model queries filter eligibility and hydrate summary-only capability field
 });
 
 test("getModel and internal sync list preserve raw rows", async () => {
-  const ctx = { db: { query: () => queryFor(rows) } } as any;
+  const ctx = { auth: { getUserIdentity: async () => null }, db: { query: () => queryFor(rows) } } as any;
 
   const found = await (getModel as any)._handler(ctx, { modelId: "tiny/model" });
   const missing = await (getModel as any)._handler(ctx, { modelId: "missing/model" });

@@ -29,6 +29,7 @@ export interface CollaborationChatState {
     pendingInputCount: number;
     terminalReason?: string;
     error?: string;
+    waitingReason?: string;
     completedAt?: number;
   } | null;
 }

@@ -50,3 +50,16 @@ test("latest retry uses its recorded attempt and never an unrelated attempt", as
   rows.executionAttempts[1].userId = "other_user";
   assert.equal(await messageExecutionRoute(ctx, message), undefined);
 });
+
+
+test("both public message queries project the same recovery without mutating stored content", async () => {
+  const { ctx, message } = fixture();
+  message.status = "failed";
+  message.content = 'Error: {"code":"INSUFFICIENT_CREDITS","message":"Your OpenRouter balance is too low for this model."}';
+  const original = message.content;
+  const single = await getMessageHandler(ctx, { messageId: message._id });
+  const page = await listMessagesHandler(ctx, { chatId: message.chatId });
+  assert.deepEqual(single?.generationRecovery?.actions, ["openrouter_credits", "change_model"]);
+  assert.deepEqual(page[0].generationRecovery, single?.generationRecovery);
+  assert.equal(message.content, original);
+});

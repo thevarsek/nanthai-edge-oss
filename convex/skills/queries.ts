@@ -1,3 +1,4 @@
+import { getVoiceCloningSource } from "../chat/voice_cloning_source";
 // convex/skills/queries.ts
 // =============================================================================
 // Read-only queries for the skills system.
@@ -133,9 +134,10 @@ export const listVisibleSkillsInternal = internalQuery({
 });
 
 export const getMediaSkillAvailabilityInternal = internalQuery({
-  args: { userId: v.string(), requireZdr: v.optional(v.boolean()) },
-  handler: async (ctx, { userId, requireZdr }) => {
-    return await resolveMediaSkillAvailability(ctx, userId, undefined, requireZdr);
+  args: { userId: v.string(), requireZdr: v.optional(v.boolean()), messageId: v.optional(v.id("messages")) },
+  handler: async (ctx, { userId, requireZdr, messageId }) => {
+    const source = messageId ? await getVoiceCloningSource(ctx, messageId, userId) : null;
+    return await resolveMediaSkillAvailability(ctx, userId, undefined, requireZdr, source?.voiceCloning?.modelId);
   },
 });
 

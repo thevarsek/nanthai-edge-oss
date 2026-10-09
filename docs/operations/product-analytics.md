@@ -83,7 +83,16 @@ Backend analytics require Convex environment variables:
 - Scope: `chat_id`, `message_id`, `job_id`, `model_id`.
 - Client metadata: same client fields and app/build aliases as completion events.
 - Failure taxonomy: `failure_category` with one of `missing_api_key`, `invalid_api_key`, `insufficient_credits`, `model_unavailable`, `rate_limited`, `context_length_exceeded`, `timeout`, `cancelled`, `provider_error`, or `unknown_error`. Cancelled failures also include `cancellation_category`: `cancelled_by_user`, `cancelled_by_retry`, `cancelled_before_start`, `workflow_cancelled`, `provider_cancelled`, or `unknown_cancelled`.
-- Debug context: coarse `error_type` and `error_label` only. Raw provider/user-facing error text is intentionally not sent to analytics.
+- Debug context: coarse `error_type` and `error_label`. Dedicated image failures also include `provider_http_status`, a recognized `provider_error_code` (otherwise `unclassified`), and a recognized `provider_error_parameter` when supplied. Raw provider/user-facing error text is intentionally not sent to analytics.
+- Convex image transport logs retain the same sanitized diagnostic fields plus recognized image request configuration values and reference counts. Prompts, reference URLs, credentials, and raw provider bodies are omitted; unrecognized configuration strings become `unrecognized`.
+
+### Production reliability chart
+
+Backend capture reads the Convex environment variable `ANALYTICS_DEPLOYMENT_ENVIRONMENT`: set it to `production` on the production deployment and `development` on development deployments. Missing or unrecognized values produce `unknown`. Configure each deployment with `npx convex env set ANALYTICS_DEPLOYMENT_ENVIRONMENT development` (or `production --prod` for production). Caller properties cannot override it. The field is included on ordinary backend events and their `$ai_generation` mirrors.
+
+The saved [AI success rate by day — production](https://eu.posthog.com/project/198777/insights/dlux8Kip) insight counts terminal response events over the last 30 days in UTC. It shows completed, failed, cancelled, the non-cancelled denominator, and `completed / (completed + failed)`. Cancellation events are excluded from the success denominator, and cancellation-only days have a null success rate. Retries and multiple model responses remain separate events rather than distinct user requests.
+
+For historical events without deployment metadata, the chart uses the production chat ID prefix `jh7`, validated against production Convex during the usage investigation. This is a deployment-specific historical fallback, not a portable Convex ID rule. Explicit development/unknown environments never enter through the fallback. A deployment replacement requires updating the mapping and reviewing the historical filter.
 
 ## PostHog AI Observability
 

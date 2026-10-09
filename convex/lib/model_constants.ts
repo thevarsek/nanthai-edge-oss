@@ -5,8 +5,12 @@
 // Clients consume defaults resolved by Convex and must not duplicate these IDs.
 // =============================================================================
 
+export const OPENROUTER_FREE_ROUTER_ID = "openrouter/free";
+
 export const MODEL_IDS = {
   jevDecision: "typesafe/jev-1.13",
+  freeDefault: OPENROUTER_FREE_ROUTER_ID,
+  freeZdrDefault: "apodex/apodex-1.1-mini:free",
   appDefault: "openai/gpt-6.1-sol",
   advisorDispatcher: "openai/gpt-6-luna",
   titleGeneration: "openai/gpt-6-luna",

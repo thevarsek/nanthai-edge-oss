@@ -1,3 +1,4 @@
+import { useModelPickerFilters } from "@/hooks/useModelPickerFilters";
 import { useConnectionFilter } from "@/hooks/useConnectionFilter";
 import { ConnectionFilter, LocalPersonaRecovery } from "@/components/shared/ConnectionFilter";
 // components/chat/ChatParticipantPicker.tsx
@@ -101,13 +102,13 @@ export function ChatParticipantPicker({
   enabledIntegrations,
 }: Props) {
   const { prefs } = useSharedData();
+  const [activeFilters, setActiveFilters] = useModelPickerFilters(prefs);
   const { connectionFilter, setConnectionFilter, connectionPersonas: personas } = useConnectionFilter();
   const modelSummaries = useModelSummaries();
   const zdrEnforced = prefs?.zdrEnabled === true;
   const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
-  const [activeFilters, setActiveFilters] = useState<Set<CapFilter>>(new Set());
   const [infoModel, setInfoModel] = useState<ModelSummary | null>(null);
   const [infoPersona, setInfoPersona] = useState<PersonaItem | null>(null);
   const [showWizard, setShowWizard] = useState(false);
@@ -192,7 +193,7 @@ export function ChatParticipantPicker({
   // ── Toggle handlers ─────────────────────────────────────────────────────
   const toggleFilter = useCallback((f: CapFilter) => {
     setActiveFilters((prev) => toggleCapFilter(prev, f));
-  }, []);
+  }, [setActiveFilters]);
 
   const handleTogglePersona = useCallback(
     (p: PersonaItem) => {

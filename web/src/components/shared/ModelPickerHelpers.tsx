@@ -46,6 +46,8 @@ export interface ModelSummary {
   outputPricePer1M?: number;
   /** Server-provided: true when modelId ends with `:free`. */
   isFree?: boolean;
+  fundingGuidance?: import("@/lib/modelFunding").FundingGuidance | null;
+  pickerFilterFree?: boolean;
   /** Whether this model has a Zero Data Retention endpoint. */
   hasZdrEndpoint?: boolean;
   architecture?: { modality?: string };

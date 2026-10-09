@@ -1,3 +1,4 @@
+import { getFunctionName } from "convex/server";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -38,7 +39,8 @@ test("generate_speech records provider usage before local artifact persistence f
       toolCallId: "tool_call_1",
       operationIdempotencyKey: "job_1:generate_speech:operation_1",
       ctx: {
-        runQuery: async () => {
+        runQuery: async (reference: Parameters<typeof getFunctionName>[0]) => {
+          if (getFunctionName(reference) === "chat/voice_cloning:getTurnReferences") return null;
           queryCount += 1;
           if (queryCount === 1) {
             return {
@@ -127,7 +129,8 @@ test("generate_speech recovers when publication commits but its response is lost
       toolCallId: "tool_call_1",
       operationIdempotencyKey: "job_1:generate_speech:operation_1",
       ctx: {
-        runQuery: async () => {
+        runQuery: async (reference: Parameters<typeof getFunctionName>[0]) => {
+          if (getFunctionName(reference) === "chat/voice_cloning:getTurnReferences") return null;
           queryCount += 1;
           if (queryCount === 1) {
             return {
@@ -210,7 +213,8 @@ test("generate_speech does not reuse a default model voice for an explicit model
       toolCallId: "tool_call_1",
       operationIdempotencyKey: "job_1:generate_speech:operation_1",
       ctx: {
-        runQuery: async () => {
+        runQuery: async (reference: Parameters<typeof getFunctionName>[0]) => {
+          if (getFunctionName(reference) === "chat/voice_cloning:getTurnReferences") return null;
           queryCount += 1;
           if (queryCount === 1) {
             return {

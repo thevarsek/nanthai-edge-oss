@@ -19,10 +19,15 @@ const OPENROUTER_SPEECH_API_URL =
 export interface OpenRouterSpeechRequest {
   model: string;
   input: string;
-  voice: string;
+  voice?: string;
+  inputReferences?: Array<
+    { type: "input_audio"; input_audio: { url: string } }
+    | { type: "text"; text: string }
+  >;
   responseFormat: "mp3" | "pcm";
   speed?: number;
   provider?: {
+    zdr?: boolean;
     options?: {
       openai?: { instructions: string };
       azure?: { style: string; styledegree?: number };
@@ -69,12 +74,12 @@ export type SpeechOptionsResolution =
     }
   | { value?: never; error: string };
 
-export function assertOpenRouterSpeechPrivacy(requireZdr: boolean): void {
-  if (!requireZdr) return;
+export function assertOpenRouterSpeechPrivacy(requireZdr: boolean, hasZdrEndpoint = false): void {
+  if (!requireZdr || hasZdrEndpoint) return;
   throw new ConvexError({
     code: "SPEECH_GENERATION_ZDR_UNAVAILABLE" as const,
     message:
-      "Speech generation is unavailable when Zero Data Retention or protected Google routing is required. Choose a text model or turn off the protected mode.",
+      "The selected speech model has no Zero Data Retention endpoint for this request.",
   });
 }
 
@@ -207,7 +212,6 @@ export async function callOpenRouterSpeech(
     onGenerationId?: (generationId: string) => void;
   } = {},
 ): Promise<OpenRouterSpeechResult> {
-  assertOpenRouterSpeechPrivacy(options.requireZdr === true);
   if (await cancellationWasRequested(options.isCancelled)) {
     throw new OpenRouterTransportCancelledError();
   }
@@ -249,17 +253,21 @@ export async function callOpenRouterSpeech(
       body: JSON.stringify({
         model: request.model,
         input: request.input,
-        voice: request.voice,
+        ...(request.voice ? { voice: request.voice } : {}),
+        ...(request.inputReferences ? { input_references: request.inputReferences } : {}),
         response_format: request.responseFormat,
         ...(request.speed !== undefined ? { speed: request.speed } : {}),
-        ...(request.provider ? { provider: request.provider } : {}),
+        ...(request.provider || options.requireZdr ? { provider: {
+          ...request.provider,
+          ...(options.requireZdr ? { zdr: true } : {}),
+        } } : {}),
       }),
       signal: controller.signal,
     });
     if (!response.ok) {
       const body = await response.text();
       throw new ConvexError(
-        openRouterErrorDetails(response.status, extractErrorMessage(body)),
+        openRouterErrorDetails(response.status, extractErrorMessage(body), body),
       );
     }
     const generationId = response.headers.get("x-generation-id");

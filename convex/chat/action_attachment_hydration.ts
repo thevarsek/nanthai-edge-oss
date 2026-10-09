@@ -69,6 +69,7 @@ export async function hydrateAttachmentsForRequest(
       attachment: StoredAttachment,
     ): Promise<StoredAttachment> => {
       if (!attachment.storageId) return attachment;
+      if (attachment.type === "voice_reference") return attachment;
 
       if (attachment.type === "image") {
         const imageUrl = await ctx.storage.getUrl(attachment.storageId);

@@ -285,3 +285,20 @@ test("scheduler requests a strict schema bound to eligible participants and fron
   };
   assert.equal(laterSchema.properties.selections.minItems, 0);
 });
+
+test("cloud and local scheduler contracts bind an unassigned goal to one eligible speaker", () => {
+  const goal = "goal" as Id<"collaborationWork">;
+  const value = input({ recentMessages: [], work: [{ id: goal, objective: "Prepare launch plan", criteria: ["Include costs\nExplain risks"], status: "open", participantIds: [participantId("architect")] }] });
+  assert.ok(buildSchedulerPrompt(value).includes("Prepare launch plan"));
+  assert.ok(schedulerResponseFormat(value).json_schema.schema.properties.selections.items.required.includes("workId"));
+  const selection = { participantId: "architect", replyToMessageIds: value.frontierMessageIds, reasonCode: "owned_handoff", workId: goal };
+  assert.equal(parseSchedulerDecision(JSON.stringify({ selections: [selection] }), value).selections[0].workId, goal);
+  assert.throws(() => parseSchedulerDecision(JSON.stringify({ selections: [{ ...selection, participantId: "ui" }] }), value), /INVALID_GOAL/);
+  assert.throws(() => parseSchedulerDecision(JSON.stringify({ selections: [] }), value), /READY_GOAL/);
+});
+
+test("a human message already answered on a committed work frontier does not require repeated replies", () => {
+  const value = input();
+  value.recentMessages.push({ id: messageId("reply"), role: "assistant", speaker: "Architect", content: "Answered", replyToMessageIds: value.frontierMessageIds });
+  assert.equal(humanOpenedFloor(value), false);
+});

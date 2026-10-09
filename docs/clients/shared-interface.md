@@ -5,6 +5,33 @@ backend state and vocabulary. iOS informs compact mobile presentation; web infor
 large-screen density. Android retains its native Compose ownership and performance
 behavior. Visual consistency does not justify a new product restriction.
 
+## iOS adaptive navigation and controls
+
+Compact windows use a native navigation stack with the selected chat as its path.
+Back and edge-swipe clear that selection; expanded windows use a list/detail split
+view. The workspace retains the active chat model across width changes so draft,
+attachment and optional voice-reference state survive folding. Leaving the chat
+releases that active session. Android and web retain their existing navigation;
+this adaptation changes no shared Convex behavior.
+
+With the iOS 27.1 SDK, the system's vertical-toolbar environment moves the composer
+context menu into the native side rail in both compact and expanded layouts.
+On Duo's expanded layout, the sidebar toggle and New Chat stay visible, while
+Settings, Search and Filter share an overflow menu in the leading workspace
+toolbar, separate from web search and Ideascape. The
+sidebar toggle keeps its position when the list is hidden. Settings uses the
+existing full workspace screen, with Done returning to the preserved conversation.
+The collapsed chat list keeps New Chat and Settings visible and puts search/filter
+in its native bottom toolbar. Search expands into a focused, opaque-backed field
+with a matching close control.
+The workspace and list share presentation state and filter actions.
+Native toolbar placement and overflow remain system-managed.
+
+Other iPhones and iPads retain the existing composer and list controls. New SDK
+symbols are guarded at compilation and runtime; Xcode 26.6 remains supported.
+Simulator checks cover navigation, width changes and voice controls; hardware Duo
+reachability still requires validation on the device.
+
 ## Canonical Colors
 
 | Token | Hex | Notes |
@@ -85,3 +112,55 @@ Use focused projection/owner tests for shared state and matching platform smoke
 coverage for changed controls. Generated artifacts, sources and pending/error states
 must preserve the same meaning across clients. Temporary visual captures belong
 outside repository documentation. See [testing](../development/testing-strategy.md).
+
+## Conversation capabilities and provider dependencies
+
+Connected AI clients has its own Settings section immediately after AI connections
+on web, iOS and Android. Its navigation row uses a link icon and opens the existing
+client connection management page, using the platform’s standard settings header,
+back navigation, grouped client capabilities and revoke action. All three show the same setup instructions, selectable deployment-specific MCP URL, access policy and empty-state message; setup remains available when clients are connected.
+
+Telegram is an AI connections row that opens a dedicated setup/connection screen on web,
+iOS and Android. All clients use `channels/linking:status`, `begin`, `confirm`,
+`selectConversation`, `disconnect` and the same recovery mutations. The shared status
+includes connection state, current conversation and participant names. Existing chats
+retain their roster; a starter Persona is optional for new chats.
+The picker is an unsaved draft. Connect this conversation and Create and connect are
+distinct actions; the connection action acknowledges the adjacent future-reply notice,
+without a mandatory checkbox on any client.
+
+Request-specific voice cloning is an explicit action in the composer + menu, labelled
+“Clone a voice” in the user's language. The model, recording/file selection, transcript
+and request consent controls live in the existing modal sheet/drawer pattern. Closing
+the sheet preserves the draft and leaves only a compact reopen action in the composer;
+ordinary chat has no persistent setup form. Recording controls stay inside the setup
+flow, including Use recording and cancellation.
+
+All three clients use the same field order: model, reference recordings and their
+optional transcripts, then request permission. Import and recording are separate
+action rows; selected recordings and permission use checkmark/checkbox selection
+controls rather than persistent-setting switches. Transcripts retain a visible label
+after entry. Native sheet chrome and control appearance remain platform-specific.
+Visual comparisons use matching model, attachment, selection, transcript and permission
+states, with the keyboard dismissed.
+
+Collaboration work and execution limits belong in Conversation mode alongside the mode
+choice. They do not occupy the chat transcript/footer. Work remains optional and accepts
+general objectives, ownership, reviewers and dependencies. Writer/reviewer examples do
+not define the only workflow. Causal continuations with redundant ancestor parents are
+not alternate branches; actual sibling alternatives retain branch navigation.
+Android's mode sheet retains its current partial or expanded height when the mode
+selection changes. The user can drag to expand it; its content scrolls beneath the
+fixed title. The selected mode uses native radio semantics, and Goals and limits opens
+through a settings row. Parallel and Collaboration previews still require Use this mode
+to apply them; Autonomous Discussion retains its separate start action.
+
+Optional `audioReplyNotice` and `inputProcessingNotice` fields convey shared provider or
+preparation state without replacing committed content. Clients localize known notice
+codes and tolerate nullable/future fields. Automatic audio follows the same app/chat
+settings through Telegram and NanthAI; missing OpenRouter does not invalidate a local
+text reply.
+
+iOS configures its media audio category at launch so inline audio/video, voice previews
+and response speech remain audible in Silent Mode. Launch does not activate the audio
+session; activation remains with playback. Recording retains its input-capable session.

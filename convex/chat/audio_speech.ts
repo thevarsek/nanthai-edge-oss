@@ -98,7 +98,7 @@ export async function resolveSpeechConfiguration(
     });
   }
   const requireZdr = isZdrEnabled(preferences);
-  assertOpenRouterSpeechPrivacy(requireZdr);
+  assertOpenRouterSpeechPrivacy(requireZdr, capabilities.hasZdrEndpoint === true);
   const voiceResolution = resolveSpeechVoice({
     requestedVoice,
     preferredVoice: preferences?.preferredVoice,

@@ -421,6 +421,8 @@ export async function deleteMessageHandler(
     throw new ConvexError({ code: "UNAUTHORIZED" as const, message: "Unauthorized" });
   }
 
+  await ctx.db.patch(chat._id, { conversationSourceRevision: (chat.conversationSourceRevision ?? 0) + 1 });
+
   // Clean up audio storage blob — guarded to avoid destroying a blob still
   // referenced by a copied/forked chat.
   if (message.audioStorageId) {

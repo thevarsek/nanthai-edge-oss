@@ -1,3 +1,4 @@
+import { notifyChannelInput } from "../channels/publication";
 import { automaticQuestionContent, resolveQuestionTimeout } from "./question_policy";
 import { continueQuestionRef } from "./question_automation";
 import { notifyRuntimeRequest } from "./request_notifications";
@@ -43,6 +44,7 @@ export async function recordRuntimeInputEvent(ctx: MutationCtx, context: Runtime
     await ctx.db.patch(context.run._id, { state: "waiting_for_input", updatedAt: now });
     if (automaticResponseAt !== undefined) await ctx.scheduler.runAt(automaticResponseAt, continueQuestionRef, { requestId, expectedResponseAt: automaticResponseAt });
     await notifyRuntimeRequest(ctx, context.run.userId, context.job.chatId);
+    await notifyChannelInput(ctx, context.job.chatId, String(requestId));
     return;
   }
   const request = requests.find(request => request.inputSchema && ["pending", "responding"].includes(request.status));

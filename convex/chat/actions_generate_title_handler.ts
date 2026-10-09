@@ -130,12 +130,12 @@ export async function generateTitleHandler(
   const requireZdr = isZdrEnabled(prefs);
   const selectedModel = selectAncillaryModelForZdr({
     requestedModel: args.titleModel,
-    defaultModel: DEFAULT_TITLE_MODEL,
+    defaultModel: prefs?.fundingDefaultModelId ?? DEFAULT_TITLE_MODEL,
     requireZdr,
   });
   const model = await resolveTextAncillaryModel({
     selectedModel,
-    defaultModel: DEFAULT_TITLE_MODEL,
+    defaultModel: prefs?.fundingDefaultModelId ?? DEFAULT_TITLE_MODEL,
     feature: "Title generation",
     getCapabilities: (modelId) => ctx.runQuery(
       internal.chat.queries.getModelCapabilities,
@@ -174,7 +174,7 @@ export async function generateTitleHandler(
       model,
       messages,
       withZdrProvider({ temperature: 0.1, maxTokens: 24 }, requireZdr),
-      { fallbackModel: DEFAULT_TITLE_MODEL },
+      { fallbackModel: prefs?.fundingDefaultModelId ?? DEFAULT_TITLE_MODEL },
     );
 
     // M23: Track title generation cost.

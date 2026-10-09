@@ -60,7 +60,7 @@ export const consume = internalAction({
     if (!context) throw new Error("LOCAL_HELPER_UNAVAILABLE");
     const { task, attempt } = context;
     const execution = { runtimeHelperContent: task.content, executionAttemptId: attempt._id, executionFence: attempt.fence };
-    if (task.purpose === "decision") return null;
+    if (task.purpose === "decision" || task.purpose === "compaction") return null;
     if (task.purpose === "forget") {
       await consumeLocalForget(ctx, task.input, task.content, { executionAttemptId: attempt._id, executionFence: attempt.fence });
     } else if (task.purpose === "memory") {

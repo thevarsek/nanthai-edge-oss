@@ -1,3 +1,4 @@
+import { GenerationRecoveryActions } from "./GenerationRecoveryActions";
 // components/chat/MessageBubble.AssistantMessage.tsx
 // Assistant message bubble — matches iOS MessageActionBar.swift actions.
 
@@ -434,7 +435,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   );
 
   return (
-    <div className="flex gap-3 group" data-testid="assistant-message" data-message-id={message._id}>
+    <div className="flex gap-3 group" data-testid="assistant-message" data-message-id={message._id} id={`message-${message._id}`}>
       {/* Avatar — iOS: 28x28 */}
       <div className="shrink-0 mt-1">
         {assistantIdentity.hasPersonaDisplay ? (
@@ -700,6 +701,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         {message.status === "failed" && (
           <div className="mt-2">
             <p className="text-destructive text-xs italic mb-1.5">{t("generation_failed")}</p>
+            <GenerationRecoveryActions recovery={message.generationRecovery} onChangeModel={onRetryWithDifferentModel} />
             <div className="flex items-center gap-0.5">
               <IconButton label="Retry" variant="ghost" size="xs" onClick={onRetry}>
                 <RefreshCw size={13} />

@@ -95,16 +95,17 @@ test("syncBenchmarks fetches AA snapshots and applies prepared benchmark patches
 
   process.env.ARTIFICIAL_ANALYSIS_API_KEY = "aa_key";
   globalThis.fetch = (async (url: string) => {
-    if (url.includes("/llms/models")) {
+    if (url.includes("/language/models/free")) {
       return {
         ok: true,
-        json: async () => [{
+        json: async () => ({ pagination: { page: 1, page_size: 200, total_pages: 1, has_more: false }, data: [{
           id: "aa_llm_1",
           slug: "gpt-4.1-mini",
           name: "GPT-4.1 Mini",
-          model_creator: { slug: "openai", name: "OpenAI" },
+          model_creator: { id: "openai-id", name: "OpenAI" },
+          pricing: {}, performance: {},
           evaluations: { artificial_analysis_intelligence_index: 58 },
-        }],
+        }] }),
       } as Response;
     }
     return {

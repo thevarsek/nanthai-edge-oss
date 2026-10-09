@@ -181,6 +181,17 @@ export async function reconcileGenerationWorkflowCompletionHandler(
   if (!job.executionRunId || !job.executionAttemptId || job.executionFence === undefined) {
     return null;
   }
+  // Cross-turn preparation has its own effect journal. A failed/unknown
+  // summariser must expose explicit recovery, not loop pre-provider retries.
+  if (job.conversationContextPreparing && !job.conversationContextPrepared) {
+    const attempt = await ctx.db.get(job.executionAttemptId);
+    if (attempt && !["completed", "failed", "cancelled", "superseded"].includes(attempt.status)) {
+      await deps.interruptAttempt(ctx, {attemptId: attempt._id, fence: attempt.fence, outcome: "failed",
+        summary: "Conversation context preparation interrupted", allowExpiredLease: true, allowWaiting: true});
+    }
+    await deps.failGeneration(ctx, args, "Conversation context preparation failed. The previous summary and raw history are retained. Retry this turn in NanthAI.");
+    return null;
+  }
   const [continuation, latestRound] = await Promise.all([
     ctx.db
       .query("generationContinuations")

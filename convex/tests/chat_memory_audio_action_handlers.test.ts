@@ -714,7 +714,7 @@ test("generateAudioForMessageHandler rejects ZDR before dedicated speech dispatc
         return {
           hasSpeechGeneration: true,
           supportedVoices: ["alloy"],
-          hasZdrEndpoint: true,
+          hasZdrEndpoint: false,
         };
       }
       throw new Error(`unexpected query ${name}`);
@@ -724,7 +724,7 @@ test("generateAudioForMessageHandler rejects ZDR before dedicated speech dispatc
       store: async () => "storage_zdr",
     },
     scheduler: makeSchedulerCapture(scheduled),
-  } as any, messageAudioArgs("msg_audio_zdr")), /Speech generation is unavailable when Zero Data Retention/);
+  } as any, messageAudioArgs("msg_audio_zdr")), /no Zero Data Retention endpoint/);
 
   assert.deepEqual(requestBodies, []);
   const failed = analyticsForOperation(scheduled, "audio_generation")

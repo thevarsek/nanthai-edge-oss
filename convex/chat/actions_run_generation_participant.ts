@@ -133,6 +133,7 @@ import { captureAssistantResponseFirstPatch } from "./generation_analytics";
 const PARALLEL_SUBAGENTS_SKILL_SLUG = "parallel-subagents";
 
 type GenerationMessage = {
+  collaborationReadOnlyReview?: boolean;
   _id: string;
   role: string;
   content: string;
@@ -611,6 +612,7 @@ export async function generateForParticipant(
     userId: args.userId,
     chatId: String(args.chatId),
     messageId: String(participant.messageId),
+    readOnlyReview: allMessages.find(message => message._id === participant.messageId)?.collaborationReadOnlyReview === true,
     userMessageId: String(args.userMessageId),
     presentationContext: presentationContextForToolExecution(
       allMessages,
@@ -649,7 +651,7 @@ export async function generateForParticipant(
   if (availableSkillProfiles) {
     const mediaAvailability = await ctx.runQuery(
       internal.skills.queries.getMediaSkillAvailabilityInternal,
-      { userId: args.userId, requireZdr },
+      { userId: args.userId, requireZdr, messageId: participant.messageId },
     );
     const unavailableProfiles = new Set<string>(Array.isArray(mediaAvailability)
       ? mediaAvailability
@@ -945,6 +947,7 @@ export async function generateForParticipant(
         jobId: participant.jobId,
         participantId: participant.personaId ?? participant.modelId,
         legacyMessages: legacyRequestMessages,
+        conversationExpandGroups: args.expandMultiModelGroups,
         sharedMemorySources: resolvedMemoryContext?.evidenceSources,
         allMessages: allMessages as unknown as ContextMessage[],
         providerContextWindowTokens: modelCapabilities.get(participant.modelId)?.contextLength,

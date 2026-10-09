@@ -39,6 +39,7 @@ export const AdapterCapabilitiesSchema = z.strictObject({
     permissionResponse: z.boolean(),
     inputResponse: z.boolean(),
   }),
+  nanthaiCollaborationWork: z.boolean().optional(),
   nanthaiSourceCitations: z.boolean().optional(),
   adapterNative: z.strictObject({
     tools: z.boolean(),

@@ -61,7 +61,7 @@ export async function ingestHelperEvent(
   if (adapterEvent?.type === "permission_resolved") await recordRuntimePermissionResolved(ctx, context, adapterEvent);
   if (adapterEvent?.type === "usage_reported" && run.state !== "cancelling") {
     await ctx.db.patch(task._id, { runtimeUsage: aggregateRuntimeUsage(task.runtimeUsage, adapterEvent) });
-    if (task.purpose === "decision") await recordDecisionHelperUsage(ctx, { ...task, runtimeUsage: aggregateRuntimeUsage(undefined, adapterEvent) }, attempt, adapterEvent.eventId);
+    if (task.purpose === "decision" || task.purpose === "compaction") await recordDecisionHelperUsage(ctx, { ...task, runtimeUsage: aggregateRuntimeUsage(undefined, adapterEvent) }, attempt, adapterEvent.eventId);
   }
   if (adapterEvent?.type === "text_delta" && run.state !== "cancelling") {
     await ctx.db.patch(task._id, { content: task.content + adapterEvent.delta });

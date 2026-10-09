@@ -22,7 +22,7 @@ const rows = [
 ];
 
 function context() {
-  return { db: { query: () => ({
+  return { auth: { getUserIdentity: async () => null }, db: { query: () => ({
     take: async () => rows,
     collect: async () => rows,
     withIndex: (_index: string, apply: (q: { eq: (field: string, value: string) => void }) => void) => {

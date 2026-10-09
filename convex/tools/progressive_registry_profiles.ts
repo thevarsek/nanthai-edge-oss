@@ -3,6 +3,7 @@
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import { ToolRegistry, type RegisteredTool } from "./registry";
 import { fetchImage } from "./fetch_image";
+import { updateCollaborationWork } from "./collaboration_work";
 import { searchChats } from "./search_chats";
 import { webSearch } from "./web_search";
 import { createScheduledJob, listScheduledJobs, deleteScheduledJob } from "./scheduled_jobs";
@@ -140,7 +141,7 @@ const DIRECT_TOOL_REGISTRY = new Map<string, RegisteredTool>(
   DOC_TOOLS.map((tool) => [tool.name, tool]),
 );
 
-const BASE_TOOLS: RegisteredTool[] = [fetchImage, searchChats, loadSkill, listSkills];
+const BASE_TOOLS: RegisteredTool[] = [fetchImage, searchChats, loadSkill, listSkills, updateCollaborationWork];
 
 export function registerBaseTools(
   registry: ToolRegistry,

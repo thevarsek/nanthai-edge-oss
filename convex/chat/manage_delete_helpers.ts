@@ -1,3 +1,4 @@
+import { deleteChannelConversationBatch } from "../channels/cleanup";
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
@@ -6,6 +7,7 @@ import {
   storageHasOtherFileAttachmentReferences,
 } from "../lib/file_attachments";
 import { deleteChatAdvisorDataBatch } from "./manage_advisor_delete_helpers";
+import { deleteWorkForChatBatch } from "../collaboration/work_cleanup";
 import { deleteChatPresentationDataBatch } from
   "./manage_delete_presentation_helpers";
 import { deleteGeneratedMediaForChatBatch } from "./manage_generated_media_helpers";
@@ -63,9 +65,10 @@ export async function deleteChatGraph(
   // Batched deletion: process up to DELETE_BATCH_SIZE rows per table.
   // If any table had remaining rows, schedule a continuation mutation
   // to keep draining until the chat graph is fully removed.
-  let hasMore = false;
+  let hasMore = await deleteChannelConversationBatch(ctx, chatId, DELETE_BATCH_SIZE);
 
-  hasMore = await deleteChatAdvisorDataBatch(ctx, chatId, DELETE_BATCH_SIZE);
+  hasMore = await deleteChatAdvisorDataBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;
+  hasMore = await deleteWorkForChatBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;
   hasMore = await deleteChatPresentationDataBatch(ctx, chatId) || hasMore;
   hasMore = await deleteChatExecutionBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;
   hasMore = await deleteChatMcpInvocationsBatch(ctx, chatId, DELETE_BATCH_SIZE) || hasMore;

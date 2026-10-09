@@ -1,4 +1,6 @@
 export const PURGE_TABLES = [
+  "channelLinkGrants", "channelIdentities", "channelBindings", "channelInbox", "channelDeliveries", "channelTurns",
+  "conversationSummaries", "conversationSummarySources", "conversationCompactions", "conversationCompactionChunks",
   "externalMcpReceipts",
   "externalMcpAuthorizations",
   "externalMcpGrants",
@@ -54,6 +56,8 @@ export const PURGE_TABLES = [
   "generationRoundJournal",
   "collaborationDecisions",
   "collaborationExchanges",
+  "collaborationWork", "collaborationRequirements", "collaborationReviews",
+  "collaborationSettings", "collaborationWorkOperations",
   "drivePickerBatches",
   "messageQueryEmbeddings",
   "messageMemoryContexts",

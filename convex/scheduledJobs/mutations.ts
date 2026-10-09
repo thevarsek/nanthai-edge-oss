@@ -835,6 +835,7 @@ export const upsertApiKey = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         apiKey: encryptedApiKey,
+        openRouterAccount: undefined,
         secretEnvelopeVersion: metadata.envelopeVersion,
         secretKeyId: metadata.keyId,
         secretMigratedAt: now,
@@ -844,6 +845,7 @@ export const upsertApiKey = mutation({
       await ctx.db.insert("userSecrets", {
         userId,
         apiKey: encryptedApiKey,
+        openRouterAccount: undefined,
         secretEnvelopeVersion: metadata.envelopeVersion,
         secretKeyId: metadata.keyId,
         secretMigratedAt: now,

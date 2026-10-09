@@ -75,6 +75,7 @@ export async function resolveMediaSkillAvailability(
   userId: string,
   existingPreferences?: Preferences,
   requireZdrOverride?: boolean,
+  selectedSpeechModelId?: string,
 ): Promise<MediaSkillAvailability[]> {
   const preferences = existingPreferences === undefined
     ? await ctx.db
@@ -88,7 +89,8 @@ export async function resolveMediaSkillAvailability(
     return {
       profile,
       config,
-      modelId: preferences?.[config.preferenceKey] ?? config.defaultModelId,
+      modelId: (profile === "speechGeneration" ? selectedSpeechModelId : undefined)
+        ?? preferences?.[config.preferenceKey] ?? config.defaultModelId,
     };
   });
 

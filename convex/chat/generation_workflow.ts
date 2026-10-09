@@ -58,6 +58,25 @@ export async function runGenerationParticipantWorkflowHandler(
   let executionFence = args.executionFence;
   let rebindDeferredFromEventId = durableChain?.rebindDeferredFromEventId;
 
+  const compactionId = await step.runAction(internal.chat.conversation_context_actions.plan, {
+    jobId: args.participant.jobId, expand: args.expandMultiModelGroups !== false,
+  }, { retry: false });
+  if (compactionId) {
+    for (let chunk = 0; chunk < GENERATION_WORKFLOW_ROUNDS_PER_CHUNK; chunk++) {
+      const result = await step.runAction(internal.chat.conversation_context_actions.compactChunk, {operationId: compactionId}, {retry: false});
+      if (result === true) break;
+      if (typeof result === "object") await step.runWorkflow(internal.chat.conversation_context_native.run, result);
+      if (chunk === GENERATION_WORKFLOW_ROUNDS_PER_CHUNK - 1) {
+        await step.runMutation(internal.chat.workflow_events.startGenerationSuccessor, {
+          ...participantArgs, journalProtocolVersion: args.journalProtocolVersion,
+          executionAttemptId, executionFence, predecessorWorkflowId: String(step.workflowId),
+          durableChain: {nextEventOffset, resumeExpected, ...(drivePickerBatchId ? {drivePickerBatchId} : {})},
+        });
+        return null;
+      }
+    }
+  }
+
   const localDispatch = await step.runQuery(localDispatchContextRef, {
     jobId: args.participant.jobId,
   });

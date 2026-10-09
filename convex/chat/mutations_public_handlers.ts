@@ -1,3 +1,5 @@
+import { wakeChannelTurns } from "../channels/turn_queue";
+import { cancelPreparingTelegramInputs } from "../channels/telegram/media_cancellation";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { MutationCtx } from "../_generated/server";
@@ -26,6 +28,8 @@ import { cancelExecutionForGenerationJob } from "../execution/cancellation";
 import { requestAudioGenerationHandler as requestAudioGenerationImpl } from "./audio_public_handlers";
 import { cancelActiveMessageAudioForChat } from "./audio_cancel";
 import { isAudioAttachment } from "./audio_shared";
+import { validateVoiceCloningAdmission } from "./voice_cloning";
+import type { VoiceCloningRequest } from "./voice_cloning_contract";
 import { shouldRequireZdrForMemoryPrewarm } from "./memory_prewarm_zdr";
 import { patchStreamingMessageStatus } from "./streaming_state";
 import { buildSeedTitle, isPlaceholderTitle } from "./title_helpers";
@@ -63,6 +67,15 @@ export async function createChatHandler(
   args: CreateChatArgs,
 ): Promise<Id<"chats">> {
   const { userId } = await requireAuth(ctx);
+  return await createChatForActor(ctx, args, userId);
+}
+
+export async function createChatForActor(
+  ctx: MutationCtx,
+  args: CreateChatArgs,
+  userId: string,
+): Promise<Id<"chats">> {
+
   const now = Date.now();
   const participants = args.participants != null
     ? normalizeParticipants(args.participants, DEFAULT_CHAT_MODEL).slice(0, 3)
@@ -135,6 +148,7 @@ export interface SendMessageAttachment {
 export interface SendMessageArgs extends Record<string, unknown> {
   chatId: Id<"chats">;
   text: string;
+  voiceCloning?: VoiceCloningRequest;
   recordedAudio?: {
     storageId: Id<"_storage">;
     transcript: string;
@@ -186,6 +200,16 @@ export async function sendMessageHandler(
   args: SendMessageArgs,
 ): Promise<SendMessageResult> {
   const { userId } = await requireAuth(ctx);
+  return await sendMessageForActor(ctx, args, userId);
+}
+
+export async function sendMessageForActor(
+  ctx: MutationCtx,
+  args: SendMessageArgs,
+  userId: string,
+  internalInput?: { preacceptedMessageId: Id<"messages"> },
+): Promise<SendMessageResult> {
+
   const requestedComplexity = Math.max(1, Math.min(3, Math.round(args.complexity ?? 1)));
   if (args.searchMode === "web" && requestedComplexity === 3 && (args.attachments?.length ?? 0) > 0) {
     throw new ConvexError({
@@ -346,9 +370,12 @@ export async function sendMessageHandler(
     imageConfig: imageConfigFromPreferences(userPreferences),
   });
 
-  const audioAttachmentCount = normalizedAttachments?.filter((attachment) =>
-    isAudioAttachment(attachment),
-  ).length ?? 0;
+  if (args.voiceCloning && !(await ctx.db.query("userSecrets").withIndex("by_user", q => q.eq("userId", userId)).unique())?.apiKey?.trim()) throw new ConvexError({code: "MISSING_API_KEY", message: "Connect OpenRouter in Settings to clone a voice. Your local runtime can still reply with text."});
+  await validateVoiceCloningAdmission(ctx, args.voiceCloning, userPreferences?.zdrEnabled === true, normalizedAttachments ?? []);
+  const referenceIds = new Set(args.voiceCloning?.references.map((reference) => reference.storageId));
+  const messageAttachments = normalizedAttachments?.map((attachment) => attachment.storageId && referenceIds.has(attachment.storageId)
+    ? { ...attachment, type: "voice_reference" } : attachment);
+  const audioAttachmentCount = messageAttachments?.filter(isAudioAttachment).length ?? 0;
   if (args.recordedAudio && audioAttachmentCount > 0) {
     throw new ConvexError({ code: "VALIDATION" as const, message: "Choose one audio source before sending." });
   }
@@ -356,23 +383,33 @@ export async function sendMessageHandler(
     args.recordedAudio?.transcript?.trim() ||
     (audioAttachmentCount > 0 ? trimmedText : undefined);
 
-  const userMessageId = await ctx.db.insert("messages", {
+  const preaccepted = internalInput ? await ctx.db.get(internalInput.preacceptedMessageId) : null;
+  if (internalInput && (!preaccepted || preaccepted.userId !== userId || preaccepted.chatId !== args.chatId || preaccepted.role !== "user" || preaccepted.status !== "pending")) throw new ConvexError({code: "VALIDATION", message: "The retained input is no longer pending."});
+  // Media reserved its position before preparation. Keep a newer follow-up
+  // selected when admitting that earlier input into ordinary or team chat.
+  const preservedBranchLeafId = preaccepted && chat.activeBranchLeafId !== preaccepted._id
+    ? chat.activeBranchLeafId : undefined;
+  const messageFields = {
     chatId: args.chatId,
     userId,
-    role: "user",
+    role: "user" as const,
     content: trimmedText,
-    parentMessageIds,
-    status: "completed",
+    parentMessageIds: preaccepted?.parentMessageIds ?? parentMessageIds,
+    status: "completed" as const,
     audioStorageId: args.recordedAudio?.storageId,
     audioMimeType: args.recordedAudio?.mimeType,
-    audioSource: args.recordedAudio ? "recording" : undefined,
+    audioSource: args.recordedAudio ? "recording" as const : undefined,
     audioTranscript,
     audioDurationMs: args.recordedAudio?.durationMs,
-    attachments: normalizedAttachments,
+    attachments: messageAttachments,
+    voiceCloning: args.voiceCloning,
     presentationContext: args.presentationContext,
     mcpInvocationIds: mcpInvocationIds.length > 0 ? mcpInvocationIds : undefined,
-    createdAt: now,
-  });
+    createdAt: preaccepted?.createdAt ?? now,
+    inputProcessingNotice: undefined,
+  };
+  const userMessageId = preaccepted?._id ?? await ctx.db.insert("messages", messageFields);
+  if (preaccepted) await ctx.db.patch(userMessageId, messageFields);
   await linkMessageMcpInvocations(ctx, mcpInvocationIds, userMessageId, args.chatId);
 
   if (trimmedText.length > 0) {
@@ -487,7 +524,7 @@ export async function sendMessageHandler(
       updatedAt: now,
       lastMessageDate: now,
       messageCount: (chat.messageCount ?? 0) + 1,
-      activeBranchLeafId: userMessageId,
+      activeBranchLeafId: preservedBranchLeafId ?? userMessageId,
       activeBranchLeafFocusOrder: undefined,
       ...(seededTitle ? { title: seededTitle } : {}),
     });
@@ -512,7 +549,7 @@ export async function sendMessageHandler(
       userId,
       participants,
       parentMessageIds: [userMessageId],
-      assistantCreatedAt: now + 1,
+      assistantCreatedAt: preaccepted?.createdAt ?? now + 1,
       jobCreatedAt: now,
       enabledIntegrations: effectiveIntegrations,
       subagentsEnabled: effectiveSubagents,
@@ -546,7 +583,7 @@ export async function sendMessageHandler(
     // it moments later with the AI response, causing OCC contention on the chats
     // document. The seed title + messageCount updates are sufficient.
     messageCount: (chat.messageCount ?? 0) + 1 + assistantMessageIds.length,
-    activeBranchLeafId: assistantMessageIds[0],
+    activeBranchLeafId: preservedBranchLeafId ?? assistantMessageIds[0],
     activeBranchLeafFocusOrder: undefined,
   };
   if (seededTitle) {
@@ -807,6 +844,15 @@ export async function cancelActiveGenerationHandler(
   args: CancelActiveGenerationArgs,
 ): Promise<{ cancelledCount: number }> {
   const { userId } = await requireAuth(ctx);
+  return await cancelActiveGenerationForActor(ctx, args, userId);
+}
+
+export async function cancelActiveGenerationForActor(
+  ctx: MutationCtx,
+  args: CancelActiveGenerationArgs,
+  userId: string,
+): Promise<{ cancelledCount: number }> {
+
 
   const chat = await ctx.db.get(args.chatId);
   if (!chat || chat.userId !== userId) {
@@ -966,6 +1012,9 @@ export async function cancelActiveGenerationHandler(
     userId,
   });
 
+  cancelledCount += await cancelPreparingTelegramInputs(ctx, { chatId: args.chatId, userId });
+
+  await wakeChannelTurns(ctx, args.chatId);
   return { cancelledCount };
 }
 

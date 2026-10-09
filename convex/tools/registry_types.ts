@@ -48,6 +48,7 @@ export interface ToolExecutionContext {
   presentationContext?: PresentationToolContext;
   turnParticipantCount?: number;
   isIdeascapeTurn?: boolean;
+  readOnlyReview?: boolean;
   jobId?: string;
   executionAttemptId?: Id<"executionAttempts">;
   executionFence?: number;

@@ -117,6 +117,20 @@ describe("OpenRouterConnectPage", () => {
     expect(navigate).toHaveBeenCalledWith("/app/chat", { replace: true });
   });
 
+  it("returns chat recovery to the original conversation after exchanging the key", async () => {
+    vi.useFakeTimers();
+    sessionStorage.setItem("pkce_state", "state_1");
+    sessionStorage.setItem("pkce_verifier", "verifier_1");
+    sessionStorage.setItem("openrouter_post_connect", "return");
+    sessionStorage.setItem("openrouter_post_connect_path", "/app/chat/fixture-chat");
+    sessionStorage.setItem("openrouter_post_connect_source", "chat_recovery");
+    renderConnectPage();
+    await flushCallbackWork();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    expect(navigate).toHaveBeenCalledWith("/app/chat/fixture-chat", { replace: true });
+    expect(setOnboardingCompleted).not.toHaveBeenCalled();
+  });
+
   it("uses only safe app return paths after reconnecting from the required-key gate", async () => {
     vi.useFakeTimers();
     sessionStorage.setItem("pkce_state", "state_1");

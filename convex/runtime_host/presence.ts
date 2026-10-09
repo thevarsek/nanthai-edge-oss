@@ -1,3 +1,4 @@
+import { wakeLocalCollaboration } from "../collaboration/runtime_wake";
 import { acknowledgeStoppedRuntimeHost } from "./host_stop_receipt";
 import { v } from "convex/values";
 import type { MutationCtx } from "../_generated/server";
@@ -41,6 +42,7 @@ const adapterCapabilities = v.object({
     inputResponse: v.boolean(),
   }),
   nanthaiSourceCitations: v.optional(v.boolean()),
+  nanthaiCollaborationWork: v.optional(v.boolean()),
   adapterNative: v.object({
     tools: v.boolean(),
     plugins: v.boolean(),
@@ -102,6 +104,7 @@ export async function heartbeatPresenceHandler(
           inputResponse: boolean;
         };
         nanthaiSourceCitations?: boolean;
+        nanthaiCollaborationWork?: boolean;
         adapterNative: {
           tools: boolean;
           plugins: boolean;
@@ -207,6 +210,7 @@ export async function heartbeatPresenceHandler(
   if (parsed.data.adapters.some((adapter) => ["codex", "pi"].includes(adapter.adapterId) && adapter.authState === "ready")) {
     await provisionStarterPersona(ctx, device, now);
     await wakeRuntimeDeviceWaits(ctx, device, parsed.data.adapters, now);
+    await wakeLocalCollaboration(ctx, device.userId, device.deviceId);
   }
   return { presenceId: String(presenceId), serverTime: now, expiresAt };
 }

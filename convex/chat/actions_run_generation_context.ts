@@ -1,3 +1,4 @@
+import { loadConversationMessages } from "./conversation_context_loading";
 import { ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { hydrateAttachmentsForRequest, type MessageWithStoredAttachments } from "./action_image_helpers";
@@ -14,9 +15,7 @@ export async function prepareGenerationContext(
   args: RunGenerationArgs,
   preloadedCapabilities?: Map<string, ModelCapabilities>,
 ): Promise<GenerationContext> {
-  const rawMessages = await ctx.runQuery(internal.chat.queries.listAllMessages, {
-    chatId: args.chatId,
-  });
+  const rawMessages = await loadConversationMessages(ctx, args.chatId, args.userId);
   const allMessages = await hydrateAttachmentsForRequest(ctx, rawMessages, {
     inlineStoredNonImageAttachments: false,
   });

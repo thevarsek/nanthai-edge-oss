@@ -9,11 +9,14 @@ export interface SchedulerMessage {
   role: "user" | "assistant" | "system";
   participantId?: Id<"chatParticipants">;
   speaker: string;
+  replyToMessageIds?: Id<"messages">[];
   content: string;
 }
 
 export interface SchedulerPolicyInput {
+  work?: Array<{ id: Id<"collaborationWork">; objective: string; criteria: string[]; status: string; blocker?: string; participantIds: Id<"chatParticipants">[] }>;
   wave: number;
+  consensusAutoStop?: boolean;
   frontierMessageIds: Id<"messages">[];
   participants: Array<CollaborationParticipantSnapshot & { roleSummary?: string }>;
   mentionedParticipantIds: Id<"chatParticipants">[];
@@ -38,6 +41,7 @@ export function humanOpenedFloor(input: SchedulerPolicyInput): boolean {
   const frontier = new Set(input.frontierMessageIds.map(String));
   return input.recentMessages.some((message) =>
     message.role === "user" && frontier.has(String(message.id))
+      && !input.recentMessages.some(reply => reply.role === "assistant" && reply.replyToMessageIds?.includes(message.id))
   );
 }
 
@@ -94,6 +98,7 @@ interface RawSchedulerSelection {
   participantId?: unknown;
   replyToMessageIds?: unknown;
   reasonCode?: unknown;
+  workId?: unknown;
 }
 
 function parseJsonObject(content: string): Record<string, unknown> {
@@ -163,13 +168,18 @@ export function parseSchedulerDecision(
       replyTargets.every((message) =>
         String(message.participantId ?? "") === participantKey
       );
-    if (onlyRepliesToOwnPreviousMessages) {
+    const work = typeof raw.workId === "string" ? input.work?.find(row => String(row.id) === raw.workId) : undefined;
+    if (raw.workId && (!work || !work.participantIds.includes(participantId))) {
+      throw new Error("COLLABORATION_SCHEDULER_INVALID_GOAL");
+    }
+    if (onlyRepliesToOwnPreviousMessages && !work) {
       suppressedSelfContinuation = true;
       continue;
     }
     seen.add(participantKey);
     selections.push({
       participantId,
+      ...(work ? { workId: work.id } : {}),
       replyToMessageIds: effectiveReplyToMessageIds,
       reasonCode: typeof raw.reasonCode === "string"
         ? raw.reasonCode.slice(0, 80)
@@ -178,6 +188,9 @@ export function parseSchedulerDecision(
   }
   if (selections.length > input.remainingMessageBudget) {
     throw new Error("COLLABORATION_SCHEDULER_MESSAGE_BOUND_EXCEEDED");
+  }
+  if (!humanOpenedFloor(input) && input.work?.some(row => row.participantIds.length > 0) && !selections.some(row => row.workId)) {
+    throw new Error("COLLABORATION_SCHEDULER_READY_GOAL_UNASSIGNED");
   }
   if (selections.length === 0 && humanOpenedFloor(input)) {
     throw new Error("COLLABORATION_SCHEDULER_HUMAN_FLOOR_UNANSWERED");
@@ -241,6 +254,8 @@ export function buildSchedulerPrompt(input: SchedulerPolicyInput): string {
   }));
   return `You are NanthAI's quiet-by-default floor scheduler. Choose only public chat participants who have a substantive reason to speak next.
 
+${input.consensusAutoStop ? "Consensus auto-stop is enabled: after the human has been answered, return zero selections when the committed discussion has reached agreement on its objective; use diagnosticCategory consensus. This does not accept work records or waive required evidence." : "Consensus auto-stop is disabled. Agreement alone neither accepts work nor forces completion; select only materially useful contributions."}
+
 Silence is the normal successful result after the human has received an adequate answer. Before selecting anyone, compare the proposed contribution with every committed message. More reassurance, examples, advice, caveats, elaboration, rephrasing, or a second independent answer to the same human request are not materially new. A different model or provider is not a distinct role. Participants with no assigned roleSummary are generalists; never invent a specialty for them.
 
 After wave 1, select a participant only to correct a concrete consequential error, answer an explicit request or handoff, perform the next owned task, or review materially changed work that needs its assigned role. The reasonCode must name that unresolved gap or handoff. If you cannot identify one, return no selections. Never select a previous-wave speaker merely to reply to that participant's own frontier message. A previous-wave speaker stays quiet unless directly addressed by the human, handed new work by another participant, or reacting to materially changed output.
@@ -251,6 +266,10 @@ ${requiresReply
 
 Examples: after one participant has already answered a casual wellbeing message with basic self-care and urgent warning signs, stop; do not summon others for relaxation tips, more warning signs, or reassurance. For a feature task, Architect and UI may advise, Implementer may act on their committed plans, and a reviewer re-enters only for a concrete issue in changed work.
 
+Available goals (choose workId when taking responsibility; respect participantIds; a goal is substantive new work):
+${JSON.stringify(input.work ?? [])}
+Do not abandon unfinished goals because other participants are slow. Other participants may contribute to a human question without taking a goal (workId null). Select the best available participant for each unassigned goal, not every participant.
+
 Participants:
 ${JSON.stringify(participants)}
 
@@ -258,7 +277,7 @@ Committed discussion (the entries marked onFrontier are the exact causal frontie
 ${JSON.stringify(messages)}
 
 Return JSON only:
-{"selections":[{"participantId":"exact id","replyToMessageIds":["frontier message id"],"reasonCode":"short stable code"}],"diagnosticCategory":"short category"}
+{"selections":[{"participantId":"exact id","replyToMessageIds":["frontier message id"],"reasonCode":"short stable code"${input.work?.length ? ",\"workId\":\"available goal id or null\"" : ""}}],"diagnosticCategory":"short category"}
 
 ${requiresReply ? "You must return at least one selection." : "You may return an empty selections array."} Select at most ${input.remainingMessageBudget} participant(s). Every reply target must be one of: ${input.frontierMessageIds.map(String).join(", ")}.`;
 }

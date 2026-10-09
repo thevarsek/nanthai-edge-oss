@@ -3,6 +3,17 @@ import { describe, expect, it, vi } from "vitest";
 import { MenuSelect } from "./MenuSelect";
 
 describe("MenuSelect", () => {
+  it("keeps model options inside their modal and restores focus after selection", async () => {
+    render(<div role="dialog" aria-modal="true"><MenuSelect ariaLabel="Speech model" searchable value="low"
+      options={[{ value: "low", label: "Low" }, { value: "high", label: "High" }]} onChange={vi.fn()} /></div>);
+    const trigger = screen.getByRole("button", { name: "Speech model" });
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("button", { name: "High" });
+    expect(screen.getByRole("dialog")).toContainElement(option);
+    fireEvent.click(option);
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("textbox", { name: "Search" })).not.toBeInTheDocument();
+  });
   it("closes the portal menu on Escape and returns focus to the trigger", async () => {
     render(
       <MenuSelect

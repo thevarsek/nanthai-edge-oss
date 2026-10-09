@@ -14,6 +14,7 @@ import {
   SlidersHorizontal,
   Sparkles,
   Users,
+  AudioLines,
 } from "lucide-react";
 
 export type PlusMenuItem =
@@ -22,6 +23,7 @@ export type PlusMenuItem =
   | "integrations"
   | "skills"
   | "knowledgeBase"
+  | "voiceReferences"
   | "file"
   | "image"
   | "camera"
@@ -150,6 +152,7 @@ export function ChatPlusMenu({
   ];
 
   const capabilityItems: MenuItemDef[] = [
+    { id: "voiceReferences", label: t("vc_title"), icon: <AudioLines size={16} /> },
     {
       id: "parameters",
       label: badges.parameters ? t("chat_parameters_on") : t("chat_parameters"),

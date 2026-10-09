@@ -261,3 +261,19 @@ test("shared assembly keeps identical human and peer text tied to distinct canon
   value.preparedTurn.providerMessages.pop();
   await assert.rejects(buildProductionRuntimePacket(value), /omitted the requested source/);
 });
+
+test("a goal-start control event retains its canonical source in a local request without becoming system policy", async () => {
+  const value = input();
+  const source = { _id: value.sourceMessageId as never, chatId: "chat-1" as never,
+    role: "system" as const, collaborationGoalAction: "start_or_resume" as const,
+    content: "Goals started or resumed: Prepare a book-club checklist.", parentMessageIds: [], status: "completed", createdAt: 1 };
+  value.preparedTurn.providerMessages = buildRequestMessages({ messages: [source,
+    { _id: "reply" as never, chatId: "chat-1" as never, role: "assistant", content: "", parentMessageIds: [source._id], status: "pending", createdAt: 2 }],
+    excludeMessageId: "reply" as never, systemPrompt: value.personaPrompt ?? "", memoryContext: "", preserveMessageBoundaries: true });
+  const packet = await buildProductionRuntimePacket(value);
+  assert.equal(source.role, "system");
+  const delivered = packet.messages.find(message => message.messageId === value.sourceMessageId);
+  assert.equal(delivered?.role, "user");
+  assert.ok(delivered?.content.some(part => part.type === "text" && part.text.includes("book-club checklist")));
+  assert.ok(!packet.instructions.system.some(instruction => instruction.text.includes("book-club checklist")));
+});

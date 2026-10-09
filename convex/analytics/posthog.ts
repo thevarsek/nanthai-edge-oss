@@ -1,3 +1,4 @@
+import { deploymentAnalyticsProperties } from "./deployment_environment";
 import type { BackendAnalyticsEvent } from "./backend_event_names";
 import { deriveAnalyticsIdForClerkUserId } from "./analytics_id";
 
@@ -42,6 +43,7 @@ export async function captureBackendAnalytics(
       app_surface: "backend",
       surface: "backend",
       ...sanitizedProperties,
+      ...deploymentAnalyticsProperties(),
     });
 
     const aiGenerationProperties = aiGenerationEventProperties(event, sanitizedProperties);
@@ -51,6 +53,7 @@ export async function captureBackendAnalytics(
         app_surface: "backend",
         surface: "backend",
         ...aiGenerationProperties,
+        ...deploymentAnalyticsProperties(),
       });
     }
   } catch (error) {
@@ -169,6 +172,9 @@ function aiGenerationEventProperties(
       properties,
       "image_config_output_compression",
     ),
+    provider_http_status: numberProperty(properties, "provider_http_status"),
+    provider_error_code: stringProperty(properties, "provider_error_code"),
+    provider_error_parameter: stringProperty(properties, "provider_error_parameter"),
     failure_category: stringProperty(properties, "failure_category"),
     client_platform: stringProperty(properties, "client_platform"),
     client_surface: stringProperty(properties, "client_surface"),

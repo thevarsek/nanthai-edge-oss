@@ -1,3 +1,4 @@
+import { MessageMediaNotice } from "./MessageMediaNotice";
 // components/chat/MessageBubble.tsx
 // Public wrapper that delegates to role-specific components.
 // UserMessage: MessageBubble.UserMessage.tsx
@@ -48,12 +49,12 @@ export const MessageBubble = memo(function MessageBubble({
   );
 
   if (message.role === "user") {
-    return <UserMessage message={message} onOpenGeneratedFile={onOpenGeneratedFile} />;
+    return <><UserMessage message={message} onOpenGeneratedFile={onOpenGeneratedFile} /><MessageMediaNotice notice={message.inputProcessingNotice ?? message.audioReplyNotice} /></>;
   }
 
   if (message.role === "assistant") {
     return (
-      <AssistantMessage
+      <><AssistantMessage
         message={message} isStreaming={isStreaming} participants={participants}
         onRetry={handleRetry} onFork={handleFork}
         onRetryWithDifferentModel={onRetryWithDifferentModel ? handleRetryDifferent : undefined}
@@ -62,7 +63,7 @@ export const MessageBubble = memo(function MessageBubble({
         onOpenGeneratedFile={onOpenGeneratedFile}
         onOpenDocumentEdit={onOpenDocumentEdit}
         executionRoute={executionRoute}
-      />
+      /><MessageMediaNotice notice={message.inputProcessingNotice ?? message.audioReplyNotice} /></>
     );
   }
 

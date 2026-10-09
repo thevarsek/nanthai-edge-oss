@@ -28,6 +28,7 @@ const runtimeAdapterCapabilities = v.object({
     permissionResponse: v.boolean(),
     inputResponse: v.boolean(),
   }),
+  nanthaiCollaborationWork: v.optional(v.boolean()),
   nanthaiSourceCitations: v.optional(v.boolean()),
   adapterNative: v.object({
     tools: v.boolean(),
@@ -52,7 +53,7 @@ const runtimePresenceAdapter = v.object({
 export const runtimeHostSchemaTables = {
   runtimeHelperTasks: defineTable({
     userId: v.string(), chatId: v.id("chats"), sourceMessageId: v.id("messages"), sourceJobId: v.optional(v.id("generationJobs")), personaId: v.optional(v.id("personas")), requestKey: v.optional(v.string()),
-    purpose: v.union(v.literal("memory"), v.literal("title"), v.literal("forget"), v.literal("decision")), input: v.string(),
+    purpose: v.union(v.literal("memory"), v.literal("title"), v.literal("forget"), v.literal("decision"), v.literal("compaction")), input: v.string(),
     messages: v.array(v.object({ role: v.string(), content: v.string() })), content: v.string(),
     status: v.union(v.literal("waiting"), v.literal("ready"), v.literal("failed"), v.literal("completed"), v.literal("cancelled")),
     runId: v.optional(v.id("executionRuns")), attemptId: v.optional(v.id("executionAttempts")), fence: v.optional(v.number()),

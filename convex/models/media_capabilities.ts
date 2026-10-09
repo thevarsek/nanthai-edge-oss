@@ -1,3 +1,5 @@
+import { projectVoiceCloningCapabilities, type SpeechEndpointCapabilities } from "./speech_capabilities";
+
 export interface ModelMediaCapabilities {
   image?: {
     counts: number[];
@@ -24,6 +26,11 @@ export interface ModelMediaCapabilities {
     supportsSeed: boolean;
   };
   speech?: {
+    supportsVoiceCloning: boolean;
+    maxAudioReferences: number;
+    maxZdrAudioReferences: number;
+    maxReferenceBytes: number;
+    maxTranscriptCharacters: number;
     voices: string[];
     outputFormats: Array<"mp3" | "pcm">;
     supportsSpeed: boolean;
@@ -47,6 +54,7 @@ export interface MediaCapabilitySource {
   modelId?: string;
   supportsImages?: boolean;
   supportedVoices?: string[];
+  speechCapabilities?: SpeechEndpointCapabilities;
   architecture?: {
     tokenizer?: string;
     instructType?: string;
@@ -85,6 +93,7 @@ function projectSpeechCapabilities(
   const supportsSpeed = isOpenAIGptTts || isMicrosoftMaiVoice;
 
   return {
+    ...projectVoiceCloningCapabilities(model.speechCapabilities),
     voices: uniqueStrings(model.supportedVoices),
     outputFormats: ["mp3", "pcm"],
     supportsSpeed,

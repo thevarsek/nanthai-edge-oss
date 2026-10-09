@@ -11,7 +11,7 @@ test("ambiguous provider actions fail closed instead of replaying", () => {
 
 test("provider-backed Workflow steps use the fail-closed policy", () => {
   const sources = [
-    readFileSync("convex/autonomous/session_workflow.ts", "utf8"),
+    readFileSync("convex/collaboration/discussion_workflow.ts", "utf8"),
     readFileSync("convex/chat/audio_workflow.ts", "utf8"),
     readFileSync("convex/presentations/presentation_workflow.ts", "utf8"),
     readFileSync("convex/search/research_workflow.ts", "utf8"),

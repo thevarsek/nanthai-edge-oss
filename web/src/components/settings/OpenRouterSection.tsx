@@ -4,9 +4,8 @@ import { useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { CheckCircle2, XCircle, Link2, MinusCircle, RefreshCw, ExternalLink } from "lucide-react";
 import { useOpenRouterStatus, useCreditBalance, useSharedData, formatUsd, balanceTierOf } from "@/hooks/useSharedData";
-import { OpenRouter } from "@/lib/constants";
-import { generatePKCE } from "@/lib/pkce";
-import { analyticsErrorLabel, captureAnalytics } from "@/lib/analytics";
+import { useOpenRouterConnect } from "@/hooks/useOpenRouterConnect";
+import { captureAnalytics } from "@/lib/analytics";
 import { useOptimisticOpenRouterPreference } from "./useOptimisticOpenRouterPreference";
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -36,7 +35,7 @@ export function OpenRouterSection() {
   const showBalanceInChat = typedPrefs?.showBalanceInChat === true; // defaults false
   const showAdvancedStats = typedPrefs?.showAdvancedStats === true; // defaults false
 
-  const [isConnecting, setIsConnecting] = useState(false);
+  const { isConnecting, errorMessage: connectionError, connect: handleConnect } = useOpenRouterConnect();
   const [showDisconnectConfirm, setShowDisconnectConfirm] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -58,43 +57,6 @@ export function OpenRouterSection() {
     setErrorMessage,
     fallbackErrorMessage,
   );
-
-  const handleConnect = useCallback(async () => {
-    setIsConnecting(true);
-    setErrorMessage(null);
-    captureAnalytics("openrouter_connect_started", {
-      feature_area: "settings",
-      source: "settings",
-    });
-    try {
-      const { state, verifier, challenge } = await generatePKCE();
-      sessionStorage.setItem("pkce_state", state);
-      sessionStorage.setItem("pkce_verifier", verifier);
-      sessionStorage.setItem("openrouter_post_connect", "settings");
-      sessionStorage.setItem("openrouter_post_connect_path", "/app/settings");
-      sessionStorage.setItem("openrouter_post_connect_source", "settings");
-      const params = new URLSearchParams({
-        callback_url: OpenRouter.callbackUrl,
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-        state,
-      });
-      window.location.href = `${OpenRouter.oauthUrl}?${params.toString()}`;
-    } catch (error) {
-      captureAnalytics("openrouter_connect_failed", {
-        feature_area: "settings",
-        source: "settings",
-        failure_stage: "start",
-        error_label: analyticsErrorLabel(error),
-      });
-      setErrorMessage(
-        error instanceof Error && error.message.trim().length > 0
-          ? error.message
-          : t("something_went_wrong"),
-      );
-      setIsConnecting(false);
-    }
-  }, [t]);
 
   const handleDisconnect = useCallback(async () => {
     setErrorMessage(null);
@@ -222,7 +184,7 @@ export function OpenRouterSection() {
           /* Connect */
           <button
             type="button"
-            onClick={handleConnect}
+            onClick={() => { setErrorMessage(null); void handleConnect(); }}
             disabled={isConnecting || isLoading}
             className="w-full flex items-center gap-3 px-4 py-3 hover:bg-surface-3 transition-colors text-left disabled:opacity-50"
           >
@@ -234,8 +196,8 @@ export function OpenRouterSection() {
         )}
       </div>
 
-      {errorMessage && (
-        <p className="text-sm text-red-400 px-1">{errorMessage}</p>
+      {(connectionError || errorMessage) && (
+        <p className="text-sm text-red-400 px-1">{connectionError || errorMessage}</p>
       )}
 
       {/* Disconnect confirm modal */}

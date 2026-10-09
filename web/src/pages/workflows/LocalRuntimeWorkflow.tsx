@@ -3,6 +3,7 @@ import {
   SlidersHorizontal, CalendarClock, type LucideIcon,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { AnimateOnScroll } from "@/pages/features/illustrations/IllustrationPrimitives";
 import { RuntimeDownloadLink } from "@/components/shared/RuntimeDownloadLink";
 
 const connections: Array<{ key: string; label: string; icon: LucideIcon }> = [
@@ -36,22 +37,22 @@ export function LocalRuntimeWorkflow() {
       </h2>
       <div className="mt-8 grid gap-8 md:grid-cols-3">
         {connections.map(({ key, label, icon: Icon }) => (
-          <section key={key} className="border-t eborder-12 pt-5">
+          <AnimateOnScroll key={key} className="border-t eborder-12 pt-5">
             <Icon size={28} className="edge-accent" aria-hidden="true" />
             <h3 className="edge-display mt-5 text-2xl efg-heading">{label}</h3>
             <p className="mt-4 leading-relaxed efg-60">{t(`local_work_${key}`)}</p>
-          </section>
+          </AnimateOnScroll>
         ))}
       </div>
       <div className="mt-12 grid gap-8 md:grid-cols-3">
         {capabilities.map(({ key, icon: Icon }) => (
-          <section key={key} className="border-t eborder-12 pt-5">
+          <AnimateOnScroll key={key} className="border-t eborder-12 pt-5">
             <Icon size={24} className="edge-accent" aria-hidden="true" />
             <h3 className="edge-display mt-5 text-2xl efg-heading">
               {t(`local_work_${key}_title`)}
             </h3>
             <p className="mt-4 leading-relaxed efg-60">{t(`local_work_${key}`)}</p>
-          </section>
+          </AnimateOnScroll>
         ))}
       </div>
       <section id="mac-setup" className="scroll-mt-24 mt-12 border-t eborder-12 pt-8">
@@ -60,13 +61,13 @@ export function LocalRuntimeWorkflow() {
         </h2>
         <ol className="mt-8 grid gap-8 md:grid-cols-3">
           {setupSteps.map(({ key, icon: Icon }) => (
-            <li key={key}>
+            <li key={key}><AnimateOnScroll>
               <Icon size={28} className="edge-accent" aria-hidden="true" />
               <h3 className="edge-display mt-5 text-2xl efg-heading">
                 {t(`local_work_${key}_title`)}
               </h3>
               <p className="mt-3 leading-relaxed efg-70">{t(`local_work_${key}`)}</p>
-            </li>
+            </AnimateOnScroll></li>
           ))}
         </ol>
         <RuntimeDownloadLink

@@ -58,7 +58,7 @@ export function CollaborationControl({
 
   const activeNames = exchange.activeSpeakers.map((speaker) => speaker.displayName);
   const statusKey = exchangeStatusKey(exchange.status, exchange.terminalReason);
-  const statusText = activeNames.length > 0
+  const statusText = exchange.waitingReason === "runtime" ? t("collaboration_wait_runtime") : exchange.waitingReason === "goals" ? t("collaboration_wait_goals") : activeNames.length > 0
     ? t("collaboration_speakers_active", { names: activeNames.join(", ") })
     : statusKey
       ? t(statusKey)

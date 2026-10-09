@@ -1,4 +1,5 @@
-import { v } from "convex/values";
+import type { BenchmarkSyncArgs } from "./artificial_analysis_contract";
+export type { BenchmarkSyncArgs } from "./artificial_analysis_contract";
 import {
   matchModel,
   buildAaIndex,
@@ -23,62 +24,6 @@ import {
 } from "./guidance_scoring_labels";
 import { deepEqual } from "./sync_diff";
 import { isEligibleModel } from "./model_filters";
-
-export const benchmarkSyncArgs = {
-  llmModels: v.array(
-    v.object({
-      externalId: v.string(),
-      slug: v.string(),
-      aaName: v.optional(v.string()),
-      creatorSlug: v.optional(v.string()),
-      creatorName: v.optional(v.string()),
-      intelligenceIndex: v.optional(v.number()),
-      codingIndex: v.optional(v.number()),
-      mathIndex: v.optional(v.number()),
-      agenticIndex: v.optional(v.number()),
-      speedTokensPerSecond: v.optional(v.number()),
-      timeToFirstTokenSeconds: v.optional(v.number()),
-      aaInputPricePer1M: v.optional(v.number()),
-      aaOutputPricePer1M: v.optional(v.number()),
-      aaBlendedPricePer1M: v.optional(v.number()),
-    }),
-  ),
-  imageModels: v.array(
-    v.object({
-      externalId: v.string(),
-      slug: v.string(),
-      elo: v.optional(v.number()),
-      rank: v.optional(v.number()),
-      releaseDate: v.optional(v.string()),
-    }),
-  ),
-};
-
-export type BenchmarkSyncArgs = {
-  llmModels: Array<{
-    externalId: string;
-    slug: string;
-    aaName?: string;
-    creatorSlug?: string;
-    creatorName?: string;
-    intelligenceIndex?: number;
-    codingIndex?: number;
-    mathIndex?: number;
-    agenticIndex?: number;
-    speedTokensPerSecond?: number;
-    timeToFirstTokenSeconds?: number;
-    aaInputPricePer1M?: number;
-    aaOutputPricePer1M?: number;
-    aaBlendedPricePer1M?: number;
-  }>;
-  imageModels: Array<{
-    externalId: string;
-    slug: string;
-    elo?: number;
-    rank?: number;
-    releaseDate?: string;
-  }>;
-};
 
 export type BenchmarkPatch = {
   docId: string;
@@ -138,6 +83,10 @@ export function prepareBenchmarkUpdates(
     const match = matchModel(orInput, aaLlmEntries, aaImageEntries, aaLlmIndex);
     const llmData = match?.aaLlmSlug ? llmBySlug.get(match.aaLlmSlug) : undefined;
     const imageData = match?.aaImageSlug ? imageBySlug.get(match.aaImageSlug) : undefined;
+    // A failed category must not replace its snapshot, including manual matches.
+    if (args.unavailableCategories?.some((category) => category === "language"
+      ? Boolean(model.benchmarkLlm || match?.aaLlmSlug)
+      : Boolean(model.benchmarkMedia || match?.aaImageSlug))) continue;
     const orPrice =
       model.inputPricePer1M !== undefined && model.outputPricePer1M !== undefined
         ? model.inputPricePer1M + model.outputPricePer1M
@@ -184,7 +133,7 @@ export function prepareBenchmarkUpdates(
   type ScoredResult = MatchResult & { scores: DerivedScores };
   const scoredResults: ScoredResult[] = [];
   for (const r of matchResults) {
-    if (!r.match) continue;
+    if (!r.match || (!r.llmData && !r.imageData)) continue;
     const llmInput: BenchmarkInputLlm | undefined = r.llmData
       ? {
           intelligenceIndex: r.llmData.intelligenceIndex,

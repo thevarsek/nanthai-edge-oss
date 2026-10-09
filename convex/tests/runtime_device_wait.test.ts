@@ -76,6 +76,7 @@ test("composed local Workflow awaits ready before dispatching its one native tur
     awaitEvent: async ({ id }: { id: string }) => { order.push(id.startsWith("runtime-device:") ? "ready" : "terminal"); },
     runAction: async (ref: unknown) => {
       const name = getFunctionName(ref as never);
+      if (name === "chat/conversation_context_actions:plan") return null;
       if (name.endsWith(":dispatchLocalGeneration")) { order.push("dispatch"); return "enqueued"; }
       order.push("finalize"); return null;
     },

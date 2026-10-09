@@ -20,10 +20,8 @@ import {
 import { selectedParentImageContext } from "./helpers_image_projection";
 import {
   branchPathIds,
-  consolidateConsecutiveRoles,
   contentFromParts,
   sanitizeOpenRouterMessageName,
-  truncateMessages,
 } from "./helpers_utils";
 
 export function buildCurrentDatePrompt(now: Date = new Date()): string {
@@ -62,7 +60,6 @@ export function buildRequestMessages(
     memoryContext,
     dateContext,
     expandMultiModelGroups = true,
-    maxContextTokens = 75_000,
   } = args;
 
   const messagesById = new Map(messages.map((msg) => [msg._id, msg]));
@@ -125,7 +122,7 @@ export function buildRequestMessages(
   }
 
   for (const msg of branchMessages) {
-    if (msg.role === "system") continue;
+    if (msg.role === "system" && msg.collaborationGoalAction !== "start_or_resume") continue;
     if (msg.status === "failed" || msg.status === "cancelled") continue;
 
     const content = msg.content.trim();
@@ -174,7 +171,9 @@ export function buildRequestMessages(
     if (parts.length === 0) continue;
 
     const orMsg: OpenRouterMessage = {
-      role: msg.role,
+      // A user-operated goal action remains a system event in the transcript,
+      // but its objective is request content rather than provider system policy.
+      role: msg.role === "system" && msg.collaborationGoalAction === "start_or_resume" ? "user" : msg.role,
       content: contentFromParts(parts),
     };
 
@@ -201,8 +200,8 @@ export function buildRequestMessages(
     });
   }
 
-  const consolidated = args.preserveMessageBoundaries ? result : consolidateConsecutiveRoles(result);
-  return truncateMessages(consolidated, maxContextTokens);
+  // Shared preparation applies committed summary coverage before role consolidation.
+  return result;
 }
 
 function hiddenPresentationContext(

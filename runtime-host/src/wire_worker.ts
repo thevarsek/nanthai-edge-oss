@@ -45,6 +45,7 @@ export class WireWorker implements AsyncIterable<WorkerToHostMessage> {
     this.process.child.stdout.setEncoding("utf8");
     this.process.child.stdout.on("data", (chunk: string) => this.receive(chunk));
     this.process.child.stderr.resume();
+    this.process.child.stdin.on("error", (error: Error) => this.fail(error));
     this.drainedExit = this.process.exit.then(
       async (exit) => {
         await this.handleExit(exit);

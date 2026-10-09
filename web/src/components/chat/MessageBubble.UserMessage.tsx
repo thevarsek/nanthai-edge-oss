@@ -57,7 +57,7 @@ export const UserMessage = memo(function UserMessage({ message, onOpenGeneratedF
   }, []);
 
   return (
-    <div className="flex flex-col items-end gap-1" data-testid="user-message" data-message-id={message._id}>
+    <div className="flex flex-col items-end gap-1" data-testid="user-message" data-message-id={message._id} id={`message-${message._id}`}>
       {/* Bubble — iOS: RoundedRectangle(cornerRadius: 12), horizontal(14), vertical(10) */}
       {(hasCopyableContent || hasAudio) && (
         <div className="max-w-[75%] rounded-xl bg-primary px-3.5 py-2.5">

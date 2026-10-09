@@ -1,3 +1,4 @@
+import { settleTelegramDelivery } from "../channels/delivery_callbacks";
 import type { WorkId } from "@convex-dev/workpool";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
@@ -127,6 +128,10 @@ async function defaultIsSettled(
       : run?.state === "completed" ? "completed" : "failed");
     return settled;
   }
+  if (target.kind === "background_work" && target.deliveryId) {
+    const item = await ctx.db.get(target.deliveryId);
+    if (item?.runId === target.runId && ["scheduled", "sending"].includes(item.status)) return false;
+  }
   const component = await ctx.db.query("executionComponentRefs")
     .withIndex("by_operation", (q) => q
       .eq("adapterId", "background-workpool")
@@ -225,6 +230,10 @@ async function defaultReconcile(
     }
     await settleComponent(ctx, target, cancelled ? "cancelled" : "failed");
   } else {
+    if (target.deliveryId) {
+      await settleTelegramDelivery(ctx, target.deliveryId, target.runId, target.operationId, "failed");
+      return;
+    }
     // Background actions publish their own product mutations. Their callback
     // only owns component bookkeeping, so a missing result is safely settled.
     await settleComponent(ctx, target, "completed");

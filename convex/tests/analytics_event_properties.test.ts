@@ -422,6 +422,7 @@ test("captureBackendAnalytics posts to the public PostHog ingestion endpoint", a
     platform: "convex",
     app_surface: "backend",
     surface: "backend",
+    deployment_environment: "unknown",
     chat_id: "chat_1",
   });
   const serializedPayload = JSON.stringify(payload);

@@ -1,3 +1,4 @@
+import { telegramWebhook } from "./channels/telegram/http";
 // convex/http.ts
 // =============================================================================
 // HTTP router for public endpoints that live outside the Convex function API.
@@ -7,6 +8,7 @@
 import { usageHistoryHttp } from "./runtime_host/http_usage";
 import { importOfflineHttp } from "./runtime_host/http_offline_import";
 import { publishResultHttp } from "./runtime_host/http_results";
+import { publishWorkHttp } from "./runtime_host/http_work";
 import { registerExternalMcpHttp } from "./external_mcp/http";
 import { httpRouter } from "convex/server";
 import { httpAction, type ActionCtx } from "./_generated/server";
@@ -43,11 +45,14 @@ import {
 } from "./runtime_host/http_model_discovery";
 
 const http = httpRouter();
+http.route({ path: "/channels/telegram/webhook", method: "POST", handler: httpAction(telegramWebhook) });
+
 registerExternalMcpHttp(http);
 http.route({ path: "/runtime-host/v1/usage/history", method: "POST", handler: httpAction(usageHistoryHttp) });
 http.route({ path: "/runtime-host/v1/pairing/claim-code", method: "POST", handler: httpAction(claimShortPairingHttp) });
 http.route({ path: "/runtime-host/results/import-offline", method: "POST", handler: httpAction(importOfflineHttp) });
 http.route({ path: "/runtime-host/results/publish", method: "POST", handler: httpAction(publishResultHttp) });
+http.route({ path: "/runtime-host/work/publish", method: "POST", handler: httpAction(publishWorkHttp) });
 
 export async function handleVideoOutputUpload(
   ctx: ActionCtx,

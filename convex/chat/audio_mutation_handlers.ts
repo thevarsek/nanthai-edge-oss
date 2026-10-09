@@ -1,3 +1,4 @@
+import { publishChannelAudio } from "../channels/audio_publication";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { assertCurrentExecution } from "../execution/attempts";
@@ -50,7 +51,9 @@ export async function patchMessageAudioHandler(
     audioTranscript: args.audioTranscript,
     audioGeneratedAt: args.audioGeneratedAt,
     audioGenerating: undefined,
+    audioReplyNotice: undefined,
   });
+  await publishChannelAudio(ctx,args.messageId);
 }
 
 export async function clearAudioGeneratingHandler(

@@ -76,3 +76,12 @@ describe("useBranching", () => {
     ]);
   });
 });
+
+test("sequential writer/reviewer continuation with shared request parents is not an alternate branch", () => {
+  const messages = [message("request", {role:"user",createdAt:1,parentMessageIds:[]}),
+    message("writer", {createdAt:2,parentMessageIds:["request" as Id<"messages">]}),
+    message("reviewer", {createdAt:3,parentMessageIds:["request" as Id<"messages">,"writer" as Id<"messages">]})];
+  const {result} = renderHook(() => useBranching(messages, {activeLeafId:"reviewer" as Id<"messages">}));
+  expect(result.current.branchNodes.size).toBe(0);
+  expect(result.current.activePath).toEqual(["request","writer","reviewer"]);
+});

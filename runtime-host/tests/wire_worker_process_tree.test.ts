@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
+import { OwnedProcess } from "../src/process_tree.ts";
 import { WireWorker, WorkerProcessError } from "../src/wire_worker.ts";
 
 const fixture = fileURLToPath(
@@ -96,3 +97,19 @@ function forceKillGroup(processGroupId: number): void {
     if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error;
   }
 }
+
+test("a worker pipe error fails the owned channel without crashing the host", async (context) => {
+  const spawn = OwnedProcess.spawn;
+  let failPipe: (() => void) | undefined;
+  context.mock.method(OwnedProcess, "spawn", (spec: Parameters<typeof spawn>[0]) => {
+    const process = spawn(spec);
+    failPipe = () => process.child.stdin.emit("error", new Error("write EPIPE"));
+    return process;
+  });
+  const worker = WireWorker.spawn({ command: process.execPath,
+    args: [fileURLToPath(new URL("./fixtures/fake_idle_worker.mjs", import.meta.url))] });
+  assert.ok(failPipe);
+  failPipe();
+  await assert.rejects(worker[Symbol.asyncIterator]().next(), /EPIPE/);
+  await worker.exit;
+});

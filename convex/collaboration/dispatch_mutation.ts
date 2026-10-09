@@ -14,6 +14,10 @@ import {
 } from "./validators";
 import { assertExchangeExecution } from "./lifecycle_mutations";
 import { assertCollaborationDecisionDeadline } from "../runtime_host/decision_deadline";
+import { resolveChatParticipantConfigs } from "../chat/participant_resolution";
+import { eligibleWork, freezeWorkContext } from "./work_context";
+import { selectedWork } from "./work_selection";
+import { claimWorkForJob } from "./work_claims";
 
 export function projectCollaborationParticipant(
   participant: CollaborationParticipantSnapshot,
@@ -71,14 +75,34 @@ export const dispatchDecision = internalMutation({
     ) {
       throw new Error("COLLABORATION_STALE_DISPATCH");
     }
+    const currentWork = exchange.workEnabled ? await eligibleWork(ctx, exchange.chatId, exchange.workIds) : null;
+    const selectedGoals = new Set<string>();
+    const selections = decision.selections.filter(selection => {
+      if (!currentWork) return true;
+      const work = selectedWork(currentWork.candidates, selection);
+      if (!selection.workId && !["owned_work", "review_work"].includes(selection.reasonCode)) return true;
+      if (!work || selectedGoals.has(String(work._id))) return false;
+      selectedGoals.add(String(work._id)); return true;
+    });
+    if (selections.length !== decision.selections.length) {
+      await ctx.db.patch(decision._id, { selections, updatedAt: Date.now() });
+    }
+    if (selections.length === 0 && exchange.workEnabled) {
+      await ctx.db.patch(decision._id, { status: "settled", generationJobIds: [], assistantMessageIds: [], settledAt: Date.now() });
+      await ctx.db.patch(exchange._id, { status: "queued", updatedAt: Date.now() });
+      return { assistantMessageIds: [], generationJobIds: [] };
+    }
     const snapshotById = new Map(exchange.participantSnapshot.map((participant) => [
       String(participant.participantId),
       participant,
     ]));
-    const participants: SendParticipantConfig[] = decision.selections.map((selection) => {
+    const requestedParticipants: SendParticipantConfig[] = selections.map((selection) => {
       const participant = snapshotById.get(String(selection.participantId));
       if (!participant) throw new Error("COLLABORATION_PARTICIPANT_NOT_FOUND");
       return projectCollaborationParticipant(participant);
+    });
+    const participants = await resolveChatParticipantConfigs(ctx, {
+      userId: exchange.userId, chatId: exchange.chatId, participants: requestedParticipants,
     });
     const frontierMessages = (await Promise.all(
       decision.frontierMessageIds.map((messageId) => ctx.db.get(messageId)),
@@ -109,12 +133,26 @@ export const dispatchDecision = internalMutation({
         exchangeId: exchange._id,
         decisionId: decision._id,
         wave: decision.wave,
-        participants: decision.selections.map((selection) => ({
+        participants: selections.map((selection) => ({
           chatParticipantId: selection.participantId,
           replyToMessageIds: selection.replyToMessageIds,
         })),
       },
     });
+    if (exchange.workEnabled) {
+      const { candidates } = await eligibleWork(ctx, exchange.chatId, exchange.workIds);
+      for (let index = 0; index < selections.length; index += 1) {
+        const selection = selections[index];
+        const work = selectedWork(candidates, selection);
+        if (!work) continue; // Ordinary discussion remains available alongside goals.
+        const job = await ctx.db.get(setup.generationJobIds[index]);
+        if (!job) throw new Error("COLLABORATION_WORK_JOB_MISSING");
+        const context = await freezeWorkContext(ctx, work, work.status === "review" ? "reviewer" : "owner");
+        await claimWorkForJob(ctx, work, job, exchange.bounds.deadlineAt);
+        await ctx.db.patch(setup.assistantMessageIds[index], { collaborationWorkContext: context,
+          collaborationReadOnlyReview: work.status === "review" && work.readOnlyReview === true });
+      }
+    }
     const generationArgs = {
       chatId: exchange.chatId,
       userMessageId,

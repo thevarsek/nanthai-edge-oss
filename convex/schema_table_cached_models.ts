@@ -1,5 +1,6 @@
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
+import { speechEndpointCapabilitiesValidator } from "./models/speech_capabilities";
 
 export const cachedModelsTable = defineTable({
   modelId: v.string(),
@@ -14,6 +15,7 @@ export const cachedModelsTable = defineTable({
   supportsTools: v.optional(v.boolean()),
   supportedParameters: v.optional(v.array(v.string())),
   supportedVoices: v.optional(v.array(v.string())),
+  speechCapabilities: v.optional(speechEndpointCapabilitiesValidator),
   architecture: v.optional(v.object({
     tokenizer: v.optional(v.string()),
     instructType: v.optional(v.string()),

@@ -78,28 +78,23 @@ test("speech transport exposes the generation ID before a post-response cancella
   }
 });
 
-test("speech transport rejects protected routing before provider dispatch", async () => {
+test("speech transport applies ZDR routing to references without sending a voice ID", async () => {
   const originalFetch = globalThis.fetch;
-  let fetchCalled = false;
+  let capturedBody: Record<string, unknown> | undefined;
   try {
-    globalThis.fetch = (async () => {
-      fetchCalled = true;
+    globalThis.fetch = (async (_url, init) => {
+      capturedBody = JSON.parse(String(init?.body));
       return new Response(new Uint8Array([1]), { status: 200 });
     }) as typeof fetch;
-
-    await assert.rejects(
-      () => callOpenRouterSpeech("test-key", {
-        model: "deepgram/aura-2",
-        input: "Hello",
-        voice: "aura-2-thalia-en",
-        responseFormat: "mp3",
-      }, { requireZdr: true }),
-      /Speech generation is unavailable when Zero Data Retention/,
-    );
-    assert.equal(fetchCalled, false);
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+    await callOpenRouterSpeech("test-key", {
+      model: "fish-audio/s2.1-pro", input: "Hello", responseFormat: "mp3",
+      inputReferences: [{ type: "input_audio", input_audio: { url: "https://owned.example/reference.wav" } },
+        { type: "text", text: "A reference transcript" }],
+    }, { requireZdr: true });
+    assert.deepEqual(capturedBody?.provider, { zdr: true });
+    assert.equal(capturedBody?.voice, undefined);
+    assert.equal((capturedBody?.input_references as unknown[]).length, 2);
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("speech transport always sends the required provider voice ID", async () => {

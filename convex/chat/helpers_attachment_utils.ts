@@ -159,6 +159,9 @@ function attachmentToParts(
   attachment: ContextAttachment,
 ): ContentPart[] {
   const rawUrl = attachment.url?.trim();
+  if (attachment.type === "voice_reference") {
+    return [{ type: "text", text: `[Request-specific voice reference: ${attachment.name ?? "recording"}; storage ID: ${attachment.storageId ?? "unavailable"}. Selection and permission apply only to the originating request. On that turn, generate_speech resolves the selected model and recordings automatically: omit reference_storage_ids and voice; never substitute a filename for a storage ID. Historical references require a new selection and permission in NanthAI. Do not treat this as conversational audio.]` }];
+  }
 
   if (attachment.type === "image") {
     const parts: ContentPart[] = [];

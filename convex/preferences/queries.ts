@@ -6,6 +6,8 @@
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
+import { readFundingContext } from "../openrouter/funding_queries";
+import { fundingAwareSearchDefault } from "../openrouter/funding_policy";
 import { MODEL_IDS } from "../lib/model_constants";
 import { isUserPro } from "./entitlements";
 import { speechConfigFromPreferences } from "./speech_defaults";
@@ -26,9 +28,17 @@ export const getPreferences = query({
       .first();
     if (!preferences) return null;
 
+    const models = await ctx.db.query("cachedModels").take(2000);
+    const funding = await readFundingContext(ctx, identity.userId, models, preferences);
+    const preferFree = funding.state !== "unknown" && funding.state !== "funded";
     return {
       ...preferences,
-      defaultModelId: preferences.defaultModelId ?? MODEL_IDS.appDefault,
+      webSearchEnabledByDefault: fundingAwareSearchDefault(preferences, funding.state, funding.freeModelId),
+      freeModelId: funding.freeModelId ?? null,
+      openRouterFundingState: funding.state,
+      pickerFilterFree: !preferences.pickerFilterFreeUserSet && !preferences.pickerFilterExcludeFree && preferFree
+        ? true : preferences.pickerFilterFree,
+      defaultModelId: preferences.defaultModelId ?? (preferFree ? funding.freeModelId ?? MODEL_IDS.appDefault : MODEL_IDS.appDefault),
       defaultImageGenerationModelId:
         preferences.defaultImageGenerationModelId ?? MODEL_IDS.imageGeneration,
       defaultMusicGenerationModelId:

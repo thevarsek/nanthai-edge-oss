@@ -24,6 +24,7 @@ import { BalanceIndicator } from "@/components/chat/BalanceIndicator";
 import type { RecordingResult } from "@/hooks/useAudioRecorder";
 import { AutonomousToolbar } from "@/components/chat/AutonomousToolbar";
 import { CollaborationControl } from "@/components/chat/CollaborationControl";
+import { AutonomousSettingsDrawer } from "@/components/chat/AutonomousSettingsDrawer";
 import { ConversationModeDrawer } from "@/components/chat/ConversationModeDrawer";
 import { SearchSessionContext } from "@/components/chat/SearchSessionContext";
 import { AudioPlaybackProvider } from "@/components/chat/AudioPlaybackContext";
@@ -106,6 +107,9 @@ import {
   filterRemoteMcpContentForEnabledConnections,
   stagedRemoteMcpContextsForChat,
 } from "@/lib/remoteMcp";
+
+import { FundingNotice } from "@/components/chat/FundingNotice";
+import { selectedFundingGuidance } from "@/lib/modelFunding";
 
 export function ChatPage() {
   const { chatId } = useParams<{ chatId: string }>();
@@ -587,12 +591,13 @@ export function ChatPage() {
   }, [convexComplexity, isResearchPaper, participants.length, toast]);
 
   const handleSend = useCallback(
-    async ({ text, attachments, advisorSnapshot, presentationContext, mcpInvocationIds }: {
+    async ({ text, attachments, advisorSnapshot, presentationContext, mcpInvocationIds, voiceCloning }: {
       text: string;
       attachments?: ChatAttachment[];
       advisorSnapshot?: QueuedAdvisorSnapshot;
       presentationContext?: PresentationContext;
       mcpInvocationIds?: string[];
+      voiceCloning?: import("@/types/voiceCloning").VoiceCloningRequest;
     }) => {
       if (isResearchPaper && (mcpInvocationIds?.length ?? 0) > 0) {
         toast({ message: t("remote_mcp_context_normal_chat_only"), variant: "error" });
@@ -627,6 +632,7 @@ export function ChatPage() {
             advisorBrief,
             presentationContext,
             mcpInvocationIds,
+            voiceCloning,
           },
           deps: {
             validateAttachmentCount: validateSendState,
@@ -881,7 +887,7 @@ export function ChatPage() {
                 </div>
               ),
             )}
-            {showPendingResponsePlaceholder && visibleMessages.length > 0 && (
+            {showPendingResponsePlaceholder && collaboration.behavior !== "collaboration" && visibleMessages.length > 0 && (
               <PendingResponseGroup
                 participants={participants}
                 imageGenerationModelIds={imageGenerationModelIds}
@@ -905,14 +911,14 @@ export function ChatPage() {
         <DocumentPreviewPanel selection={liveDocumentPreview} onClose={() => setDocumentPreview(null)} />
       ) : null}
       autonomousToolbar={<AutonomousToolbar state={autonomous.state} onPause={autonomous.pause} onResume={autonomous.resume} onStop={autonomous.stop} onDismiss={autonomous.dismissEnded} />}
-      collaborationControl={<CollaborationControl
+      collaborationControl={<><CollaborationControl
         collaboration={collaboration}
         autonomousActive={isAutonomousActive}
-      />}
+      /></>}
       runtimePermissionControl={typedChatId ? (
         <RuntimePermissionCards chatId={typedChatId} participants={participants} />
       ) : null}
-      balanceIndicator={typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}
+      balanceIndicator={<><FundingNotice guidance={selectedFundingGuidance(participants, modelSummaries, personas)} onChooseModel={() => overrides.setActivePanel("participants")} />{typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}</>}
       turnOverrideChips={<>
         <TurnOverrideChips
           turnSkillOverrides={overrides.turnSkillOverrides}
@@ -936,6 +942,7 @@ export function ChatPage() {
       composer={<MessageInput
         chatId={typedChatId ?? ("" as Id<"chats">)} participants={participants} isGenerating={isGenerating}
         isCollaborationActive={collaboration.isActive}
+        requireZdr={prefs?.zdrEnabled === true}
         onSend={handleSend} onCancel={handleComposerCancel}
         onCreateUploadUrl={() => createChatUploadUrl({})}
         onBindUploadSession={async (uploadSessionId, storageId) => { await bindChatUploadSession({ uploadSessionId: uploadSessionId as Id<"chatUploadSessions">, storageId: storageId as Id<"_storage"> }); }}
@@ -976,6 +983,7 @@ export function ChatPage() {
       modalPanels={<>
         {overrides.activePanel === "conversationMode" && (
           <ConversationModeDrawer
+            chatId={typedChatId}
             behavior={collaboration.behavior}
             autonomousActive={isAutonomousActive}
             hasMessages={hasMessages}
@@ -983,7 +991,7 @@ export function ChatPage() {
             isUpdating={collaboration.isUpdating}
             error={collaboration.error}
             onSelectBehavior={collaboration.setBehavior}
-            onConfigureAutonomous={() => overrides.setActivePanel("autonomous")}
+            autonomousControls={<AutonomousSettingsDrawer embedded settings={autonomous.settings} onChange={autonomous.setSettings} participants={participants} hasMessages={hasMessages} onStart={() => void autonomous.start()} onClose={overrides.closePanel} disabled={isAutonomousActive} />}
             onClose={overrides.closePanel}
           />
         )}

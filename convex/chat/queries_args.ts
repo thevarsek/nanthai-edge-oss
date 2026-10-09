@@ -2,6 +2,8 @@ import { v, type PropertyValidators } from "convex/values";
 import { chatSource } from "../schema_validators";
 
 export const listChatsArgs = {
+  order: v.optional(v.literal("created")),
+  beforeChatId: v.optional(v.id("chats")),
   folderId: v.optional(v.string()),
   limit: v.optional(v.number()),
   searchQuery: v.optional(v.string()),

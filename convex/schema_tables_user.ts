@@ -1,3 +1,4 @@
+import { accountSnapshotValidator } from "./openrouter/funding_policy";
 import { defineTable } from "convex/server";
 import { v } from "convex/values";
 import {
@@ -88,6 +89,7 @@ export const userSchemaTables = {
     includeReasoning: v.optional(v.boolean()),
     reasoningEffort: v.optional(v.string()),
     pickerFilterFree: v.boolean(),
+    pickerFilterFreeUserSet: v.optional(v.boolean()),
     pickerFilterExcludeFree: v.optional(v.boolean()),
     pickerFilterVision: v.boolean(),
     pickerFilterImageGen: v.boolean(),
@@ -124,6 +126,7 @@ export const userSchemaTables = {
       v.union(v.literal("asc"), v.literal("desc")),
     ),
     webSearchEnabledByDefault: v.boolean(),
+    webSearchDefaultUserSet: v.optional(v.boolean()),
     subagentsEnabledByDefault: v.optional(v.boolean()),
     chatCompletionNotificationsEnabled: v.optional(v.boolean()),
     localQuestionTimeoutMinutes: v.optional(questionTimeoutMinutes),
@@ -403,6 +406,7 @@ export const userSchemaTables = {
   userSecrets: defineTable({
     userId: v.string(),
     apiKey: v.string(),
+    openRouterAccount: v.optional(accountSnapshotValidator),
     secretEnvelopeVersion: v.optional(v.literal(2)),
     secretKeyId: v.optional(v.string()),
     secretMigratedAt: v.optional(v.number()),

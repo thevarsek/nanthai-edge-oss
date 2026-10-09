@@ -11,6 +11,7 @@ export function canonicalCodexCapabilities(
 ): AdapterCapabilities {
   const inputModalities = canonicalInputModalities(capability.inputModalities);
   return AdapterCapabilitiesSchema.parse({
+    nanthaiCollaborationWork: true,
     protocolVersion: "nanthai.runtime.v1",
     adapterId: "codex",
     adapterVersion: CODEX_CLI_PACKAGE_VERSION,

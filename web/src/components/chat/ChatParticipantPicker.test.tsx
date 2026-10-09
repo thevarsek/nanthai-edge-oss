@@ -119,3 +119,5 @@ function fullTextParticipants() {
 }
 
 vi.mock("convex/react", () => ({ useQuery: () => undefined }));
+
+vi.mock("@/hooks/usePreferenceBuffer", () => ({ usePreferenceBuffer: () => ({ updatePreferenceImmediate: vi.fn() }) }));

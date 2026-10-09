@@ -97,9 +97,9 @@ const coreFeatures: FeatureMeta[] = [
   {
     slug: "personas",
     title: "Personas",
-    tagline: "Create once. Chat, advise privately, automate, and compare.",
+    tagline: "Create once. Chat, collaborate, automate, and continue in Telegram.",
     indexDescription:
-      "Create a Persona once, then use it as a chat participant, a private Advisor, a scheduled-task specialist, or part of a multi-model discussion.",
+      "Create a Persona once for chat, private advice, scheduled work and Collaboration with objectives and evidence. A configured Telegram bot continues the same private conversation.",
     tier: "pro",
     icon: UserCircle,
     accentClass: "text-[var(--edge-coral)]",
@@ -233,7 +233,7 @@ const coreFeatures: FeatureMeta[] = [
     title: "Audio Generation",
     tagline: "Generate music and audio clips from text prompts — inline in any chat.",
     indexDescription:
-      "Select a music model like Google Lyria, type a prompt, and get an MP3 back. Play, seek, adjust speed, and download — all without leaving the conversation.",
+      "Generate music or speech in a chat. Compatible speech models can use permitted voice references for one request. Play, seek, adjust speed and download the result.",
     tier: "free",
     icon: Music,
     accentClass: "text-[var(--edge-cyan)]",

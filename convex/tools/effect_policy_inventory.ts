@@ -14,6 +14,7 @@ const DESTRUCTIVE: ToolEffectPolicy = { effect: "destructive", retry: "never" };
  * provider write from silently inheriting a name-based retry policy.
  */
 export const TOOL_EFFECT_POLICIES: Readonly<Record<string, ToolEffectPolicy>> = {
+  update_collaboration_work: { effect: "write", retry: "safe" },
   apple_calendar_create: WRITE,
   apple_calendar_delete: DESTRUCTIVE,
   apple_calendar_list: READ,

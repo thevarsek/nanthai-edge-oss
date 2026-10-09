@@ -171,7 +171,7 @@ export async function callOpenRouterNonStreaming(
           model: currentModel, status: response.status, durationMs: deps.now() - startTime,
           msgCount,
         });
-        throw new ConvexError(openRouterErrorDetails(response.status, errorMessage));
+        throw new ConvexError(openRouterErrorDetails(response.status, errorMessage, responseText));
       }
 
       // Parse response
@@ -223,7 +223,7 @@ export async function callOpenRouterNonStreaming(
         console.error("[openrouter:nonstream] 200-wrapped error", {
           model: currentModel, durationMs: deps.now() - startTime, msgCount,
         });
-        throw new ConvexError(openRouterErrorDetails(200, errorMessage));
+        throw new ConvexError(openRouterErrorDetails(200, errorMessage, parsed));
       }
 
       const extracted = deps.extractContentFromNonStreamingPayload(parsed);

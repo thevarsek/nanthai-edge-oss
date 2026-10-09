@@ -58,6 +58,7 @@ export interface ChatSendOrchestrationState {
   advisorBrief?: string;
   presentationContext?: PresentationContext;
   mcpInvocationIds?: string[];
+  voiceCloning?: SendMessageArgs["voiceCloning"];
 }
 
 export interface ChatSendOrchestrationDeps {
@@ -175,10 +176,12 @@ export function buildSendMessageArgs(args: {
   advisorBrief?: string;
   presentationContext?: PresentationContext;
   mcpInvocationIds?: string[];
+  voiceCloning?: SendMessageArgs["voiceCloning"];
 }): SendMessageArgs {
   return {
     chatId: args.chatId,
     text: args.text,
+    ...(args.voiceCloning ? { voiceCloning: args.voiceCloning } : {}),
     participants: args.participants,
     ...(args.mentionedParticipantKeys?.length
       ? { mentionedParticipantKeys: args.mentionedParticipantKeys }
@@ -585,6 +588,7 @@ export async function executeChatSend(
       advisorBrief: state.advisorBrief,
       presentationContext: state.presentationContext,
       mcpInvocationIds: state.mcpInvocationIds,
+      voiceCloning: state.voiceCloning,
     }));
   }
 

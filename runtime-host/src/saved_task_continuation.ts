@@ -71,6 +71,9 @@ export async function continueSavedTask(
         if (request.tool === "nanthai_read_context") {
           return JSON.stringify({ ...packet.context, messageIds: packet.messages.map(message => message.messageId), savedSnapshot: true });
         }
+        if (request.tool === "nanthai_update_collaboration_work") {
+          throw new Error("Reconnect to NanthAI before committing shared work state. This saved task is an offline snapshot.");
+        }
         const file = PublishResultSchema.parse(request.arguments);
         const existing = result.files.find(item => item.callId === request.callId);
         if (existing && JSON.stringify({ ...existing, callId: undefined }) !== JSON.stringify(file)) throw new Error("Local publication identity changed");

@@ -122,6 +122,12 @@ crons.interval(
 );
 
 // M29: Sync video model capabilities from OpenRouter every 4 hours.
+crons.interval(
+  "syncSpeechCapabilities",
+  { hours: 4 },
+  internal.models.speech_sync.syncSpeechCapabilities,
+);
+
 // Mirrors the refreshModelCatalog pattern (hash-based skip in video_sync.ts
 // keeps most invocations mutation-free).
 crons.interval(

@@ -1,3 +1,4 @@
+import { useModelPickerFilters } from "@/hooks/useModelPickerFilters";
 // components/shared/ModelPicker.tsx
 // Full model catalog picker with search, 9 sort modes, capability filters,
 // info sheet, "Help me choose" wizard, provider logos, trend badges.
@@ -49,10 +50,10 @@ export function ModelPicker({
   });
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("recommended");
-  const [activeFilters, setActiveFilters] = useState<Set<CapFilter>>(new Set());
   const [infoModel, setInfoModel] = useState<ModelSummary | null>(null);
   const [showWizard, setShowWizard] = useState(false);
   const { prefs } = useSharedData();
+  const [activeFilters, setActiveFilters] = useModelPickerFilters(prefs);
   const zdrEnforced = prefs?.zdrEnabled === true;
 
   const allModels = useMemo(
@@ -72,7 +73,7 @@ export function ModelPicker({
   );
   const toggleFilter = useCallback((f: CapFilter) => {
     setActiveFilters((prev) => toggleCapFilter(prev, f));
-  }, []);
+  }, [setActiveFilters]);
 
   const filtered = useMemo(
     () => filterAndSortModels(models, search, sortKey, activeFilters),

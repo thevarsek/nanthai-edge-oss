@@ -1,3 +1,4 @@
+import { openRouterBillingError } from "./openrouter_billing_error";
 export function extractErrorMessage(data: unknown): string {
   if (typeof data === "string") {
     try {
@@ -56,7 +57,12 @@ export function extractErrorMessage(data: unknown): string {
 export function openRouterErrorDetails(
   status: number,
   message: string,
-): { code: "INSUFFICIENT_CREDITS" | "INTERNAL_ERROR"; message: string } {
+  payload?: unknown,
+): { code: string; message: string } {
+  if (status === 402 || status === 200) {
+    const billing = openRouterBillingError(payload);
+    if (billing) return billing;
+  }
   const normalized = message.toLowerCase();
   if (
     status === 402 ||
@@ -71,8 +77,14 @@ export function openRouterErrorDetails(
     };
   }
 
-  return {
-    code: "INTERNAL_ERROR",
-    message: `OpenRouter request failed (HTTP ${status}). Please try again or reconnect OpenRouter in Settings.`,
-  };
+  if (status === 401) {
+    return { code: "INVALID_API_KEY", message: "OpenRouter could not authenticate your connection (HTTP 401). Reconnect OpenRouter to continue." };
+  }
+  const guidance = status === 429
+    ? "OpenRouter or the model provider has reached a request limit. Wait for the limit to reset, then try again."
+    : status === 400 || status === 422
+      ? "The provider could not accept this request. Check the request settings or try another model."
+      : "Please try again or choose another model.";
+  return { code: "INTERNAL_ERROR", message: `OpenRouter request failed (HTTP ${status}). ${guidance}` };
+
 }

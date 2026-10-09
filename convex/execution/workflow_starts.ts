@@ -56,7 +56,7 @@ export const startAutonomous = internalMutation({
     if (attempt?.componentOperationId) return attempt.componentOperationId;
     const workflowId = await durableWorkflow.start(
       ctx,
-      internal.autonomous.session_workflow.runAutonomousSessionWorkflow,
+      internal.collaboration.discussion_workflow.runDiscussionWorkflow,
       {
         ...args,
         executionAttemptId: execution.attemptId,

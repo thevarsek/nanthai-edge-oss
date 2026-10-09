@@ -95,7 +95,7 @@ export function HomeCapabilitiesSection() {
             return (
               <div
                 key={index}
-                className={`edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8 ${"wide" in item && item.wide ? "md:col-span-2 xl:col-span-2" : ""} ${"rightAnchored" in item && item.rightAnchored ? "xl:col-start-3" : ""}`}
+                className={`edge-card edge-card-lift edge-hover-glow group rounded-2xl p-7 md:p-8 ${"fullWidth" in item && item.fullWidth ? "md:col-span-2 xl:col-span-4" : ""} ${"wide" in item && item.wide ? "md:col-span-2 xl:col-span-2" : ""} ${"rightAnchored" in item && item.rightAnchored ? "xl:col-start-3" : ""}`}
               >
                 <div className="flex items-start justify-between">
                   <div className="flex h-10 w-10 items-center justify-center rounded-xl eborder-05 border ebg-glass-02">

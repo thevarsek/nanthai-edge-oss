@@ -46,7 +46,7 @@ async function fixture(t: test.TestContext, elapsedMs: number) {
     collaborationExchanges: [{
       _id: args.exchangeId, chatId: "chat", userId: "user", initiatingMessageId: "human",
       currentWave: 2, frontierMessageIds: ["human"], publishedMessageCount: 1,
-      bounds: { deadlineAt, maxParticipantMessages: 8 }, failedParticipantIds: [],
+      bounds: { deadlineAt, maxParticipantMessages: 8 }, failedParticipantIds: [], activeParticipantIds: [],
       mentionedParticipantIds: [],
       participantSnapshot: [{ participantId: "participant", displayName: "Peer", modelId: "openai/gpt-6-luna" }],
     }],

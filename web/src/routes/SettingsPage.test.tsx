@@ -95,15 +95,21 @@ vi.mock("@/hooks/useProGate", () => ({
   ProGateWrapper: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
 
-function renderSettingsPage() {
+function renderSettingsPage(path = "/app/settings") {
   return render(
-    <MemoryRouter initialEntries={["/app/settings"]}>
+    <MemoryRouter initialEntries={[path]}>
       <SettingsPage />
     </MemoryRouter>,
   );
 }
 
 describe("SettingsPage", () => {
+  it("opens the existing conversation settings from recovery and can return to settings", () => {
+    renderSettingsPage("/app/settings#chat-defaults");
+    expect(screen.getByText("chat defaults subpage")).toBeVisible();
+    fireEvent.click(screen.getAllByRole("button")[0]);
+    expect(screen.getByText("ai_connections")).toBeVisible();
+  });
   afterEach(() => {
     vi.clearAllMocks();
     userState.setProfileImage.mockResolvedValue(null);

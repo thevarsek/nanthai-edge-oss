@@ -5,6 +5,18 @@ import type { FormEvent } from "react";
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 describe("MarkdownRenderer", () => {
+  test("renders highlighted source and copies its plain executable text", () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const source = 'export const normalizeTags = (tags: readonly string[]) => [...new Set(tags)];';
+    const { container } = render(<MarkdownRenderer content={'```typescript\n' + source + '\n```'} />);
+    expect(container.querySelector("pre code")?.textContent?.trim()).toBe(source);
+    expect(container.querySelector("pre code .hljs-keyword")).not.toBeNull();
+    expect(container.textContent).not.toContain("[object Object]");
+    fireEvent.click(screen.getByRole("button", { name: "Copy code" }));
+    expect(writeText).toHaveBeenCalledWith(source);
+  });
+
   test("renders GFM task lists as checkboxes", () => {
     render(<MarkdownRenderer content={"- [x] Done\n- [ ] Todo"} />);
 

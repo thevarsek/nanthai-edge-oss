@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { BridgeRequestSchema, PublishResultSchema } from "./protocol.ts";
+import { BridgeRequestSchema, PublishResultSchema, WorkResultSchema } from "./protocol.ts";
 import type { DeviceCredential } from "./control_plane.ts";
 import type { LocalRuntimeTurnPacket } from "./protocol.ts";
 import { HttpJsonClient } from "./http_json_client.ts";
@@ -14,6 +14,16 @@ export function resultBridge(credential: DeviceCredential, presenceSessionId: st
     if (request.tool === "nanthai_read_context") {
       z.strictObject({}).parse(request.arguments);
       return JSON.stringify({ ...packet.context, messageIds: packet.messages.map((message) => message.messageId) });
+    }
+    if (request.tool === "nanthai_update_collaboration_work") {
+      const result = await client.post("/runtime-host/work/publish", {
+        ...WorkResultSchema.parse(request.arguments), attemptId: packet.attemptId,
+        fence: packet.fence, callId: request.callId,
+      }, z.object({ committed: z.boolean() }), {
+        Authorization: `Bearer ${credential.credential}`, "X-NanthAI-Device-ID": credential.deviceId,
+        "X-NanthAI-Credential-ID": credential.credentialId, "X-NanthAI-Presence-Session-ID": presenceSessionId,
+      }, signal);
+      return JSON.stringify(result);
     }
     const file = PublishResultSchema.parse(request.arguments);
     const result = await client.post("/runtime-host/results/publish", {

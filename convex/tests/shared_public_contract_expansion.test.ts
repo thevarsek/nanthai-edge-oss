@@ -64,6 +64,7 @@ test("model queries filter excluded providers and summarize free models", async 
   ];
 
   const list = await (listModelSummaries as any)._handler({
+    auth: { getUserIdentity: async () => null },
     db: {
       query: () => ({
         take: async () => models,

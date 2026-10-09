@@ -48,12 +48,12 @@ test("cloud multi-model follow-up validates each contributing assistant source s
   ]) + "</SOURCE_CITATIONS>", sources), []);
 });
 
-test("cloud source candidates exclude consolidated history omitted by the actual request budget", async () => {
+test("raw context retains source evidence before shared durable compaction", async () => {
   const prepared = await prepare(10);
   const sources = prepared.evidenceSources ?? [];
-  assert.equal(prepared.providerMessages.some(message => message.role === "assistant"), false);
-  assert.equal(sources.some(source => source.id.startsWith("message:answer")), false);
+  assert.equal(prepared.providerMessages.some(message => message.role === "assistant"), true);
+  assert.equal(sources.some(source => source.id.startsWith("message:answer")), true);
   assert.deepEqual(validateSourceEvidence('Dimensions. <SOURCE_CITATIONS>' + JSON.stringify([
     { sourceId: "message:answer-1", quote: "1536 dimensions" },
-  ]) + "</SOURCE_CITATIONS>", sources), []);
+  ]) + "</SOURCE_CITATIONS>", sources).map(source => source.sourceId), ["message:answer-1"]);
 });

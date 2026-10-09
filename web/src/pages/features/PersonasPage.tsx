@@ -31,6 +31,8 @@ function getSteps(t: (k: string) => string): HowItWorksStep[] {
 
 function getCapabilities(t: (k: string) => string): Capability[] {
   return [
+    { icon: <Users size={18} />, title: t("pe_cap_work_title"), description: t("pe_cap_work_desc") },
+    { icon: <MessageSquare size={18} />, title: t("pe_cap_telegram_title"), description: t("pe_cap_telegram_desc") },
     { icon: <Palette size={18} />, title: t("pe_cap_avatar_title"), description: t("pe_cap_avatar_desc") },
     { icon: <MessageSquare size={18} />, title: t("pe_cap_prompt_title"), description: t("pe_cap_prompt_desc") },
     { icon: <SlidersHorizontal size={18} />, title: t("pe_cap_model_title"), description: t("pe_cap_model_desc") },

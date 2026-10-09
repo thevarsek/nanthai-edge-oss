@@ -1,7 +1,7 @@
 import type { WorkflowCtx } from "@convex-dev/workflow";
 import type { Id } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
-import { runLocalDecisionHelper } from "../runtime_host/decision_workflow";
+import { runLocalDecisionOutcome } from "../runtime_host/decision_workflow";
 import { buildSchedulerPrompt, deterministicSchedulerDecision, parseSchedulerDecisionOrSilence } from "./scheduler_policy";
 import { schedulerResponseFormat } from "./scheduler_response_format";
 import type { SchedulerPolicyInput } from "./scheduler_policy";
@@ -16,7 +16,7 @@ export async function decideLocalSpeakers(step: WorkflowCtx, args: {
   if (!input) throw new Error("COLLABORATION_SCHEDULER_STALE_CONTEXT");
   const deterministic = deterministicSchedulerDecision(input);
   if (deterministic) return { ...deterministic, schedulerVersion: "m53-local-v1" };
-  const content = await runLocalDecisionHelper(step, {
+  const result = await runLocalDecisionOutcome(step, {
     parentAttemptId: args.attemptId, parentFence: args.fence,
     chatId: input.chatId, sourceMessageId: input.messageId, requestKey: `speakers:${String(args.exchangeId)}:${args.wave}`,
     participantIds: input.participants.map(participant => participant.participantId),
@@ -25,5 +25,7 @@ export async function decideLocalSpeakers(step: WorkflowCtx, args: {
       { role: "user", content: buildSchedulerPrompt(input) },
     ],
   });
-  return { ...parseSchedulerDecisionOrSilence(content ?? "", input, null), schedulerVersion: "m53-local-v1" };
+  if (result.kind === "unavailable") return { selections: [], excludedParticipantIds: [], diagnosticCategory: "local_runtime_unavailable", schedulerVersion: "m53-local-v1" };
+  if (result.kind === "failed") return { selections: [], excludedParticipantIds: [], diagnosticCategory: "scheduler_invalid_response", schedulerVersion: "m53-local-v1" };
+  return { ...parseSchedulerDecisionOrSilence(result.content, input, null), schedulerVersion: "m53-local-v1" };
 }

@@ -1,3 +1,4 @@
+import { transferWorkAttempt } from "../collaboration/work_attempt_ownership";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { appendRunEventUnchecked } from "./events";
@@ -101,6 +102,7 @@ async function supersedeAttempt(
     state: "running",
     updatedAt: now,
   });
+  await transferWorkAttempt(ctx, run, previous, { attemptId, fence }, now);
   await appendRunEventUnchecked(ctx, run, {
     attemptId,
     fence,

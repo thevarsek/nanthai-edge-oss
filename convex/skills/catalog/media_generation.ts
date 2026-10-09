@@ -102,6 +102,8 @@ ${CREATIVE_DIRECTION}
 
 ## Prepare the request
 
+- For request-specific voice references selected and confirmed in NanthAI, omit \`reference_storage_ids\` and \`voice\`: the backend resolves the exact owned recordings and selected model. A filename is not a storage ID. Do not ask the human for internal IDs. Consent from another request is not permission for this one.
+- For Seed multi-reference synthesis, include every selected \`@Audio1\`/\`@Audio2\`/\`@Audio3\` marker in the spoken script as the provider requires.
 - Put only the words that should be spoken in \`text\`, preserving requested wording, language, names, numbers, and pronunciation cues.
 - Put delivery direction in \`instructions\`: voice character, audience, emotion, pace, emphasis, pauses, and pronunciation guidance.
 - Use \`voice\`, \`speed\`, \`style\`, \`style_degree\`, and \`output_format\` when the user or persona supplies them. The backend projects the request onto controls supported by the selected model.
@@ -111,7 +113,8 @@ Example: \`text: "Welcome to NanthAI. Your workspace is ready."; instructions: "
 ## Generate and deliver
 
 - Call generate_speech with the exact text and the useful delivery controls.
-- Chat Defaults supplies the speech model, preferred voice, and baseline controls. Set model_id or voice only when the user explicitly overrides them.
+- When this request has selected voice references, that selection supplies the cloning model and recordings. Omit model_id, reference_storage_ids (including an empty array), and voice; call generate_speech with text and supported delivery controls. Do not ask for IDs or use recordings from previous turns.
+- Without selected references, Chat Defaults supplies the speech model, preferred voice, and baseline controls. Set model_id or voice only when the user explicitly overrides them.
 - Do not rewrite, summarize, translate, or add an introduction to text the user asked to be spoken verbatim.
 - Make one generation call unless the user explicitly asks for separate voices or takes.
 - The tool result is the attachment; do not print its internal storage or temporary download URL.
