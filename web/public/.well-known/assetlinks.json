@@ -1,0 +1,15 @@
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.nanthai.edge",
+      "sha256_cert_fingerprints": [
+        "B0:6D:E4:15:61:24:3D:76:63:A3:3E:29:32:99:00:E5:7D:6C:1D:73:87:77:45:CA:1C:1A:6E:73:BC:33:E0:65"
+      ]
+    }
+  }
+]
