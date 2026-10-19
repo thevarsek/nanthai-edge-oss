@@ -3,7 +3,7 @@
 The Mac menu-bar app and `nanthai` CLI run Codex/Pi Personas for NanthAI web, iOS and
 Android. Convex owns connected conversations, execution, permissions, artifacts
 and usage. The host owns native process supervision, transport recovery and local
-saved tasks. Package version: 0.4.0; accepted development scope is integrated for
+saved tasks. Package version: 0.4.1; accepted development scope is integrated for
 review, with public release tracked in the [milestone index](../milestones/README.md).
 
 ## Package layout

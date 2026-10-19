@@ -31,6 +31,19 @@ Codex uses its local stdio App Server; Pi uses RPC. A supervisor owns an isolate
 worker/process tree for each active attempt. Provider credentials stay in the
 native provider's supported storage; pairing does not copy them into Convex.
 
+An idle host does not poll for work. After its presence heartbeat it asks
+`/runtime-host/v1/realtime` for the deployment URL and subscribes over the Convex
+WebSocket to `runtime_host/host_watch:pendingWork`. That query authenticates the
+device credential and online presence like the HTTP routes, and returns only
+pending command and model-discovery record IDs. When a list changes, the host
+runs one HTTP poll and claim for that kind. Payloads, claims, fencing and
+completion stay on the HTTP routes. Work that stays pending after a claim attempt
+is retried with backoff up to 30 seconds. If the realtime endpoint is missing, the
+URL is not HTTPS (except local development), or the subscription is disconnected
+or failing, the host falls back to one-second polling until push is live again.
+An idle host's remaining traffic is the 15-second presence heartbeat and one
+re-run of the watch query per heartbeat.
+
 `PreparedParticipantTurn` is the semantic preparation result. Local dispatch
 serializes it through the strict runtime packet with run/attempt/fence identity,
 stable participant IDs, ordered typed content, instructions, source references,

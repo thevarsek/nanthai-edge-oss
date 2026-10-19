@@ -3,6 +3,7 @@ import type {
   RuntimeModelDiscoveryRequest,
 } from "./control_plane.ts";
 import { HttpJsonClient } from "./http_json_client.ts";
+import type { PollWaiter } from "./pending_work_watch.ts";
 import {
   CompleteResponseSchema,
   ModelDiscoveryCompletionSchema,
@@ -13,10 +14,10 @@ export async function* pollModelDiscovery(
   client: HttpJsonClient,
   headers: Readonly<Record<string, string>>,
   signal: AbortSignal,
-  pollIntervalMs: number,
-  delay: (milliseconds: number, signal: AbortSignal) => Promise<void>,
+  waiter: PollWaiter,
 ): AsyncIterable<RuntimeModelDiscoveryRequest> {
   while (!signal.aborted) {
+    const ticket = waiter.begin();
     try {
       const response = await client.post(
         "/runtime-host/v1/model-discovery/poll",
@@ -29,7 +30,7 @@ export async function* pollModelDiscovery(
         if (signal.aborted) return;
         yield request;
       }
-      await delay(pollIntervalMs, signal);
+      await waiter.wait(ticket, signal);
     } catch (error) {
       if (signal.aborted) return;
       throw error;

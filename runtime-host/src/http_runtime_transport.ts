@@ -14,6 +14,11 @@ import type {
   RuntimeModelDiscoveryCompletion,
   RuntimeModelDiscoveryRequest,
 } from "./control_plane.ts";
+import {
+  openPendingWorkWatch,
+  type CreatePendingWorkSource,
+} from "./convex_pending_work_source.ts";
+import { fetchClaimedPayload } from "./http_command_payload.ts";
 import { completeModelDiscovery, pollModelDiscovery } from "./http_model_discovery.ts";
 import { runtimeArchitecture, runtimeOperatingSystem } from "./host_platform.ts";
 import {
@@ -30,10 +35,13 @@ import {
   PollResponseSchema,
   PresenceResponseSchema,
   RawRuntimeEventSchema,
-  decodeRuntimePacket,
-  type ClaimedCommandPayload,
   type RemoteCommand,
 } from "./http_runtime_contract.ts";
+import {
+  fixedIntervalWaiter,
+  type PendingWorkWatch,
+  type PollWaiter,
+} from "./pending_work_watch.ts";
 
 export type HttpRuntimeTransportOptions = {
   fetch?: FetchImplementation;
@@ -42,6 +50,8 @@ export type HttpRuntimeTransportOptions = {
   operatingSystemRelease?: () => string;
   createPresenceSessionId?: () => string;
   delay?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  /** Push wake-ups over the Convex WebSocket; omitted means timed polling only. */
+  pendingWorkSource?: CreatePendingWorkSource;
 };
 
 export class HttpRuntimeControlPlane implements ControlPlaneTransport {
@@ -74,7 +84,11 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
     release: string;
   };
   private readonly delay: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  private readonly pendingWorkSource: CreatePendingWorkSource | undefined;
   private closeTask: Promise<void> | null = null;
+  private watch: PendingWorkWatch | null = null;
+  private commandWaiter: PollWaiter;
+  private discoveryWaiter: PollWaiter;
 
   constructor(
     private readonly credential: DeviceCredential,
@@ -89,6 +103,9 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
     this.presenceSessionId = (options.createPresenceSessionId ?? randomUUID)();
     this.connectedAt = this.now();
     this.delay = options.delay ?? abortableDelay;
+    this.pendingWorkSource = options.pendingWorkSource;
+    this.commandWaiter = fixedIntervalWaiter(this.pollIntervalMs, this.delay);
+    this.discoveryWaiter = this.commandWaiter;
     this.platform = {
       operatingSystem: runtimeOperatingSystem(registration.platform),
       architecture: runtimeArchitecture(registration.architecture),
@@ -98,10 +115,23 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
 
   async initialize(): Promise<void> {
     await this.postPresence();
+    const createSource = this.pendingWorkSource;
+    if (createSource === undefined) return;
+    this.watch = await openPendingWorkWatch(this.client, this.credential.controlPlaneUrl, {
+      deviceId: this.credential.deviceId,
+      credentialId: this.credential.credentialId,
+      credential: this.credential.credential,
+      presenceSessionId: this.presenceSessionId,
+    }, createSource, this.abort.signal);
+    if (this.watch === null) return;
+    const fallback = fixedIntervalWaiter(this.pollIntervalMs, this.delay);
+    this.commandWaiter = this.watch.waiter("commands", fallback, this.pollIntervalMs);
+    this.discoveryWaiter = this.watch.waiter("modelDiscovery", fallback, this.pollIntervalMs);
   }
 
   async *commands(): AsyncIterable<RuntimeCommand> {
     while (!this.receiving.signal.aborted) {
+      const ticket = this.commandWaiter.begin();
       try {
         const response = await this.client.post(
           "/runtime-host/v1/commands/poll",
@@ -122,7 +152,7 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
           if (!claim.claimed) continue;
           yield await this.claimedCommand(command);
         }
-        await this.delay(this.pollIntervalMs, this.receiving.signal);
+        await this.commandWaiter.wait(ticket, this.receiving.signal);
       } catch (error) {
         if (this.receiving.signal.aborted) return;
         throw error;
@@ -145,7 +175,7 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
 
   modelDiscoveryRequests(): AsyncIterable<RuntimeModelDiscoveryRequest> {
     return pollModelDiscovery(
-      this.client, this.authHeaders(), this.receiving.signal, this.pollIntervalMs, this.delay,
+      this.client, this.authHeaders(), this.receiving.signal, this.discoveryWaiter,
     );
   }
 
@@ -207,7 +237,10 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
     return this.closeTask;
   }
 
-  stopReceiving(): void { this.receiving.abort(); }
+  stopReceiving(): void {
+    this.receiving.abort();
+    void this.watch?.close();
+  }
 
   private async disconnect(executionStopped = false): Promise<void> {
     this.stopReceiving();
@@ -240,7 +273,9 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
   }
 
   private async claimedCommand(command: RemoteCommand): Promise<RuntimeCommand> {
-    const payload = await this.claimedPayload(command);
+    const payload = await fetchClaimedPayload(
+      this.client, command, this.authHeaders(), this.abort.signal,
+    );
     return {
       commandRecordId: command.commandRecordId,
       commandId: command.commandId,
@@ -253,33 +288,6 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
     };
   }
 
-  private async claimedPayload(command: RemoteCommand): Promise<ClaimedCommandPayload> {
-    const base = {
-      type: command.type,
-      authorizationSource: command.authorizationSource,
-      inputHash: command.inputHash,
-      rawPayload: command.payload ?? null,
-      turnPacketId: command.turnPacketId ?? null,
-    };
-    if (command.turnPacketId === undefined) {
-      return { ...base, packet: null, packetSha256: null, packetError: null };
-    }
-    try {
-      const response = await this.client.getBytes(
-        `/runtime-host/v1/packets/fetch?packetId=${encodeURIComponent(command.turnPacketId)}`,
-        this.authHeaders(),
-        this.abort.signal,
-      );
-      const hash = response.headers.get("X-NanthAI-Packet-SHA256")
-        ?? response.headers.get("ETag");
-      if (hash === null) throw new Error("Runtime packet response omitted its SHA-256");
-      const packet = decodeRuntimePacket(response.bytes, hash);
-      return { ...base, packet, packetSha256: packet.command.packetHash, packetError: null };
-    } catch (error) {
-      return { ...base, packet: null, packetSha256: null, packetError: publicError(error) };
-    }
-  }
-
   private authHeaders(): Readonly<Record<string, string>> {
     return {
       Authorization: `Bearer ${this.credential.credential}`,
@@ -288,8 +296,4 @@ class HttpRuntimeConnection implements ControlPlaneConnection {
       "X-NanthAI-Presence-Session-ID": this.presenceSessionId,
     };
   }
-}
-
-function publicError(error: unknown): string {
-  return error instanceof Error ? error.message : "Runtime packet could not be fetched";
 }

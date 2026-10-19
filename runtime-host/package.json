@@ -1,6 +1,6 @@
 {
   "name": "@nanthai/runtime-host",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "bin": {
@@ -18,6 +18,7 @@
     "build:package": "node scripts/build-package.mjs"
   },
   "dependencies": {
+    "convex": "1.46.0",
     "zod": "4.3.6"
   },
   "devDependencies": {

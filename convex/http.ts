@@ -32,6 +32,7 @@ import {
   completeCommandHttp,
   fetchRuntimePacketHttp,
   pollCommandsHttp,
+  realtimeEndpointHttp,
 } from "./runtime_host/http_commands";
 import { fetchRuntimeAttachmentHttp } from "./runtime_host/http_attachments";
 import {
@@ -257,6 +258,8 @@ http.route({
   method: "POST",
   handler: httpAction(disconnectPresenceHttp),
 });
+
+http.route({ path: "/runtime-host/v1/realtime", method: "POST", handler: httpAction(realtimeEndpointHttp) });
 
 http.route({
   path: "/runtime-host/v1/commands/poll",

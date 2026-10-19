@@ -62,6 +62,18 @@ const completeBodySchema = z.object({
   rejectionReason: z.string().min(1).max(2_000).optional(),
 });
 
+// Tells a Runtime Host where to open its pending-work subscription. Not secret:
+// it is the same deployment URL every web client already uses.
+export async function realtimeEndpointHttp(): Promise<Response> {
+  const realtimeUrl = process.env.CONVEX_CLOUD_URL;
+  if (!realtimeUrl) {
+    return jsonResponse({
+      error: { code: "NOT_FOUND", message: "Realtime endpoint is unavailable" },
+    }, 404);
+  }
+  return jsonResponse({ realtimeUrl });
+}
+
 export async function pollCommandsHttp(
   ctx: ActionCtx,
   request: Request,

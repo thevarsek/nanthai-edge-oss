@@ -18,6 +18,7 @@ import type {
 } from "./control_plane.ts";
 import { HostStatusStore } from "./host_status_store.ts";
 import { HttpPairingClient } from "./http_pairing_client.ts";
+import { createConvexPendingWorkSource } from "./convex_pending_work_source.ts";
 import { HttpRuntimeControlPlane } from "./http_runtime_transport.ts";
 import { HttpRuntimePartFetcher } from "./runtime_part_fetcher.ts";
 import { MacOSKeychainCredentialStore } from "./macos_keychain_store.ts";
@@ -31,7 +32,7 @@ import { syncSavedResults } from "./saved_task_sync.ts";
 import { SavedTaskStore, type SavedTask } from "./saved_task_store.ts";
 import { UsageHistory } from "./usage_history.ts";
 
-const HOST_VERSION = "0.4.0";
+const HOST_VERSION = "0.4.1";
 
 export function defaultCliDependencies(shutdownSignal?: AbortSignal) {
   if (process.platform !== "darwin") {
@@ -108,7 +109,10 @@ export class ProductionRuntimeHostFactory implements RuntimeHostFactory {
         };
         const host = new ForegroundRuntimeHost(
           credential,
-          new HttpRuntimeControlPlane({ createPresenceSessionId: () => presenceSessionId }),
+          new HttpRuntimeControlPlane({
+            createPresenceSessionId: () => presenceSessionId,
+            pendingWorkSource: createConvexPendingWorkSource,
+          }),
           new FileOutboundSpool(paths.eventSpool),
           new HostStatusStore(paths.hostStatus),
           checkpointExecutor(new RuntimeWorkerExecutor({
