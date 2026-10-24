@@ -1,5 +1,6 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import en from "@/i18n/locales/en.json";
 import { LanguageSwitcher } from "./LanguageSwitcher";
 
 const languageMock = vi.hoisted(() => {
@@ -17,6 +18,7 @@ const languageMock = vi.hoisted(() => {
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
     i18n: languageMock.i18n,
+    t: (key: string, values?: { language: string }) => (en[key as keyof typeof en] ?? key).replace("{{language}}", values?.language ?? ""),
   }),
 }));
 
@@ -24,7 +26,14 @@ describe("LanguageSwitcher", () => {
   beforeEach(() => {
     languageMock.i18n.language = "en";
     languageMock.i18n.resolvedLanguage = "en";
-    languageMock.changeLanguage.mockClear();
+    languageMock.changeLanguage.mockReset().mockResolvedValue(undefined);
+  });
+
+  it("notifies its route owner after the selected language is ready", async () => {
+    const onLanguageChange = vi.fn();
+    render(<LanguageSwitcher onLanguageChange={onLanguageChange} />);
+    fireEvent.click(screen.getByRole("button", { name: "Italiano" }));
+    await waitFor(() => expect(onLanguageChange).toHaveBeenCalledWith("it"));
   });
 
   it("marks the current app language and changes language from the app row", () => {

@@ -7,20 +7,21 @@ interface LanguageSwitcherProps {
   /** "app" renders a list-row style matching AppearanceSection;
    *  "header" renders a compact dropdown for site headers */
   variant?: "app" | "header";
+  onLanguageChange?: (language: SupportedLanguageCode) => void;
 }
 
-export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
-  const { i18n } = useTranslation();
+export function LanguageSwitcher({ variant = "app", onLanguageChange }: LanguageSwitcherProps) {
+  const { t, i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   const currentCode = (i18n.resolvedLanguage ?? i18n.language ?? "en") as SupportedLanguageCode;
   const currentLang = SUPPORTED_LANGUAGES.find((l) => l.code === currentCode);
-  const currentLanguageLabel = currentLang?.label ?? currentCode;
+  const currentLanguageLabel = currentLang?.nativeLabel ?? currentCode;
 
   const handleSelect = (code: SupportedLanguageCode) => {
-    void i18n.changeLanguage(code);
+    void i18n.changeLanguage(code).then(() => onLanguageChange?.(code));
     setOpen(false);
     if (variant === "header") {
       triggerRef.current?.focus();
@@ -82,7 +83,7 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-label={`Change language, current language: ${currentLanguageLabel}`}
+        aria-label={t("content_change_language", { language: currentLanguageLabel })}
         aria-haspopup="menu"
         aria-expanded={open}
         className="group/btn inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-[0.8rem] efg-40 transition-colors hover:efg-80"
@@ -94,7 +95,7 @@ export function LanguageSwitcher({ variant = "app" }: LanguageSwitcherProps) {
       {open && (
         <div
           role="menu"
-          aria-label="Select language"
+          aria-label={t("content_select_language")}
           className="absolute right-0 top-full mt-1 z-50 min-w-[10rem] rounded-xl border eborder-06 ebg-glass-02 backdrop-blur-xl shadow-lg py-1 overflow-hidden"
           style={{ background: `color-mix(in srgb, var(--edge-bg) 92%, transparent)` }}
         >

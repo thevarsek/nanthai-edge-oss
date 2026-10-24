@@ -23,7 +23,8 @@ vi.mock("react-i18next", () => ({
     i18n: {
       language: "en",
       resolvedLanguage: "en",
-      changeLanguage: vi.fn(),
+      changeLanguage: vi.fn().mockResolvedValue(undefined),
+      getFixedT: () => (key: string) => key,
     },
   }),
 }));
@@ -77,6 +78,7 @@ describe("public site smoke coverage", () => {
     ).toBe(true);
     expect(screen.getByText("home_cap_voice_title")).toBeInTheDocument();
     expect(screen.getByText("home_byok_title")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "content_read_research" })).toHaveAttribute("href", "/research");
     expect(screen.getByRole("link", { name: /edge_footer_web_app/i })).toHaveAttribute(
       "href",
       "https://nanthai.tech/app",

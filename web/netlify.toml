@@ -113,6 +113,129 @@
   to = "/research/:slug.html"
   status = 200
 
+# Localised content is emitted as directory indexes (including trailing slashes).
+# Existing static files shadow these rewrites. An untranslated article falls back
+# to the SPA, whose content loader selects the English source.
+[[redirects]]
+  from = "/es/guides"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/es/guides/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/es/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/es/research/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/fr/guides"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/fr/guides/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/fr/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/fr/research/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/de/guides"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/de/guides/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/de/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/de/research/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/it/guides"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/it/guides/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/it/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/it/research/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ja/guides"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ja/guides/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ja/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/ja/research/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/zh/guides"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/zh/guides/*"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/zh/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/zh/research/*"
+  to = "/index.html"
+  status = 200
+
 # ── SPA fallback — serve index.html for private app routes ──
 # OpenRouter returns directly to this route, including in fresh/private
 # browsing sessions where no service worker can provide the SPA fallback.

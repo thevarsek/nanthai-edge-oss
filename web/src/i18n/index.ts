@@ -4,6 +4,7 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
 import en from "./locales/en.json";
+import { parseContentPath } from "@/lib/contentLocale";
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English" },
@@ -54,6 +55,8 @@ export function syncDocumentLanguage(language: string | undefined) {
     ? baseLanguage
     : "en";
   document.documentElement.lang = supportedLanguage;
+  const skipLink = document.getElementById("skip-to-content");
+  if (skipLink) skipLink.textContent = i18n.t("content_skip", { lng: supportedLanguage });
 }
 
 export const initialization = i18n
@@ -61,6 +64,7 @@ export const initialization = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
+    lng: typeof window === "undefined" ? undefined : parseContentPath(window.location.pathname)?.language,
     resources: {
       en: { translation: en },
     },

@@ -30,4 +30,16 @@ describe("syncDocumentLanguage", () => {
     expect(document.documentElement.lang).toBe("it");
     await i18n.changeLanguage("en");
   });
+
+  it("localizes the static skip link when the UI language changes", async () => {
+    await initialization;
+    const link = document.createElement("a");
+    link.id = "skip-to-content";
+    document.body.append(link);
+    await i18n.changeLanguage("it");
+    expect(link).toHaveTextContent("Vai al contenuto principale");
+    await i18n.changeLanguage("en");
+    expect(link).toHaveTextContent("Skip to main content");
+    link.remove();
+  });
 });

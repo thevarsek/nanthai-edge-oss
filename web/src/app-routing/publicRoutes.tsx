@@ -1,4 +1,5 @@
 /* eslint-disable react-refresh/only-export-components -- route table, not a refresh boundary */
+import { contentLanguages } from "@/lib/contentLocale";
 import { lazy, type ReactNode } from "react";
 import { Navigate, type RouteObject } from "react-router-dom";
 import { OpenRouterCallbackPage } from "@/pages/OpenRouterCallbackPage";
@@ -149,6 +150,10 @@ function suspended(element: ReactNode) {
 }
 
 export const publicRoutes: RouteObject[] = [
+  ...contentLanguages.filter(language => language !== "en").flatMap(language => [
+    { path: `/${language}/guides/:slug?`, element: suspended(<ContentPage />) },
+    { path: `/${language}/research/:slug?`, element: suspended(<ContentPage />) },
+  ]),
   { path: "/guides", element: suspended(<ContentPage />) },
   { path: "/guides/:slug", element: suspended(<ContentPage />) },
   { path: "/research", element: suspended(<ContentPage />) },

@@ -215,17 +215,17 @@ export function HomeFinalCTA() {
             </Link>
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
-            <TrackedOutboundLink href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label="Download on the App Store" destination="app_store" location="home_final" className="transition-opacity hover:opacity-80">
+            <TrackedOutboundLink href={StoreUrls.ios} target="_blank" rel="noreferrer" aria-label={t("content_app_store")} destination="app_store" location="home_final" className="transition-opacity hover:opacity-80">
               <img
                 src="/edge-brand/download-on-app-store.svg"
-                alt="Download on the App Store"
+                alt={t("content_app_store")}
                 className="h-[40px] w-auto"
               />
             </TrackedOutboundLink>
-            <TrackedOutboundLink href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label="Get it on Google Play" destination="play_store" location="home_final" className="transition-opacity hover:opacity-80">
+            <TrackedOutboundLink href={StoreUrls.android} target="_blank" rel="noreferrer" aria-label={t("content_google_play")} destination="play_store" location="home_final" className="transition-opacity hover:opacity-80">
               <img
                 src="/edge-brand/get-it-on-google-play.png"
-                alt="Get it on Google Play"
+                alt={t("content_google_play")}
                 className="h-[60px] w-auto"
               />
             </TrackedOutboundLink>

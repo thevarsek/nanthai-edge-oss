@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Menu, X } from "lucide-react";
+import { contentLanguage, localizeContentPath, parseContentPath } from "@/lib/contentLocale";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 
@@ -11,19 +12,27 @@ type EdgeSiteHeaderProps = {
 };
 
 const navItems = [
-  { href: "/guides", labelKey: "edge_nav_guides", page: "guides" as const },
   { href: "/workflows", labelKey: "edge_nav_research", page: "workflows" as const },
   { href: "/features", labelKey: "edge_nav_features", page: "features" as const },
   { href: "/privacy", labelKey: "edge_nav_privacy", page: "privacy" as const },
   { href: "/terms", labelKey: "edge_nav_terms", page: "terms" as const },
   { href: "/licensing", labelKey: "edge_nav_licensing", page: "licensing" as const },
   { href: "/support", labelKey: "edge_nav_support", page: "support" as const },
+  { href: "/guides", labelKey: "edge_nav_guides", page: "guides" as const },
 ];
 
 export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { isLoaded, isSignedIn } = useAuth();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const language = contentLanguage(i18n.resolvedLanguage ?? i18n.language);
+  const changeContentLanguage = (code: typeof language) => {
+    if (parseContentPath(location.pathname)) {
+      navigate(`${localizeContentPath(location.pathname, code)}${location.search}${location.hash}`);
+    }
+  };
 
   const appHref = isLoaded && isSignedIn ? "/app" : isLoaded ? "/sign-in" : undefined;
   const appLabel = isLoaded && isSignedIn ? t("edge_go_to_app") : isLoaded ? t("edge_start_free") : t("loading");
@@ -61,7 +70,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
           {navItems.map((item) => (
             <Link
               key={item.href}
-              to={item.href}
+              to={localizeContentPath(item.href, language)}
               className={
                 activePage === item.page
                   ? "relative px-3.5 py-2 text-[0.82rem] font-medium efg-90 transition-colors after:absolute after:bottom-0 after:left-3.5 after:right-3.5 after:h-px" + " after:bg-[rgba(var(--edge-fg),0.4)]"
@@ -75,7 +84,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
 
         {/* Desktop actions */}
         <div className="hidden items-center gap-2 xl:flex">
-          <LanguageSwitcher variant="header" />
+          <LanguageSwitcher variant="header" onLanguageChange={changeContentLanguage} />
           {appHref ? (
             <Link
               to={appHref}
@@ -110,7 +119,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
             {navItems.map((item) => (
               <Link
                 key={item.href}
-                to={item.href}
+                to={localizeContentPath(item.href, language)}
                 className={
                   activePage === item.page
                     ? "rounded-lg ebg-glass-06 px-4 py-3 text-[0.9rem] font-medium efg-heading"
@@ -139,7 +148,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
               </span>
             )}
             <div className="px-4 py-2">
-              <LanguageSwitcher variant="header" />
+              <LanguageSwitcher variant="header" onLanguageChange={changeContentLanguage} />
             </div>
           </nav>
         </div>

@@ -1,3 +1,4 @@
+import { ResearchLinkSection } from "./content/ResearchLinkSection";
 import { brandSchemas } from "@/lib/brandSchema";
 import { HomeWorkflowSection } from "./workflows/HomeWorkflowSection";
 import { Seo } from "@/components/Seo";
@@ -81,6 +82,7 @@ export function HomePage() {
       <HomeCapabilitiesSection />
       <HomeIntegrationsSection />
       <HomeWorkflowSection />
+      <ResearchLinkSection />
       <HomePricingSection />
       <HomeFinalCTA />
     </EdgeSiteLayout>

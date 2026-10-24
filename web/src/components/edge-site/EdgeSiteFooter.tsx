@@ -4,6 +4,7 @@ import { Github, Smartphone, TabletSmartphone } from "lucide-react";
 import { StoreUrls } from "../../lib/constants";
 import { TrackedOutboundLink } from "@/components/analytics/TrackedOutboundLink";
 import { showConsentPreferences } from "@/lib/consentEvents";
+import { contentLanguage, localizeContentPath } from "@/lib/contentLocale";
 import { NANTHAI_SOCIAL_LINKS } from "@/lib/seo";
 
 const footerLinks = [
@@ -16,7 +17,8 @@ const footerLinks = [
 ];
 
 export function EdgeSiteFooter() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const language = contentLanguage(i18n.resolvedLanguage ?? i18n.language);
 
   return (
     <footer className="relative">
@@ -85,7 +87,7 @@ export function EdgeSiteFooter() {
                 className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
               >
                 <Smartphone className="h-3.5 w-3.5" />
-                iOS App
+                {t("content_ios_app")}
               </TrackedOutboundLink>
               <TrackedOutboundLink
                 href={StoreUrls.android}
@@ -96,7 +98,7 @@ export function EdgeSiteFooter() {
                 className="inline-flex items-center gap-1.5 text-[0.84rem] efg-40 transition-colors hover:efg-80"
               >
                 <TabletSmartphone className="h-3.5 w-3.5" />
-                Android App
+                {t("content_android_app")}
               </TrackedOutboundLink>
             </div>
             <div className="flex flex-col gap-3">
@@ -120,7 +122,7 @@ export function EdgeSiteFooter() {
               {footerLinks.map((link) => (
                 <Link
                   key={link.to}
-                  to={link.to}
+                  to={localizeContentPath(link.to, language)}
                   className="text-[0.84rem] efg-40 transition-colors hover:efg-80"
                 >
                   {t(link.labelKey)}

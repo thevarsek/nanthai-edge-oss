@@ -20,6 +20,12 @@ describe("build-time SEO shell cleanup", () => {
     expect(document.querySelector('meta[name="theme-color"]')).toBeInTheDocument();
   });
 
+  it("cleans the language alternates when entering a localised route", () => {
+    document.head.insertAdjacentHTML("beforeend", '<link rel="alternate" hreflang="it" href="https://nanthai.tech/it/guides" data-seo-shell="true" />');
+    removeBuildTimeSeoShell("/it/guides");
+    expect(document.querySelector('link[hreflang]')).toBeNull();
+  });
+
   it("preserves the fallback metadata on private application routes", () => {
     removeBuildTimeSeoShell("/app");
 
@@ -41,5 +47,8 @@ describe("build-time SEO shell cleanup", () => {
     expect(isPublicSeoPath("/research/results")).toBe(true);
     expect(isPublicSeoPath("/research/methods")).toBe(true);
     expect(isPublicSeoPath("/sign-in")).toBe(false);
+    expect(isPublicSeoPath("/it/guides/ai-chat-memory")).toBe(true);
+    expect(isPublicSeoPath("/zh/research/")).toBe(true);
+    expect(isPublicSeoPath("/it/features")).toBe(false);
   });
 });
