@@ -1,5 +1,5 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation } from "../_generated/server";
+import { internalMutation, internalQuery } from "../_generated/server";
 
 const INSTALLER_CONTENT_TYPE = "application/x-apple-diskimage";
 
@@ -12,6 +12,20 @@ export const generateInstallerUploadUrl = internalMutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => await ctx.storage.generateUploadUrl(),
+});
+
+/** Resolves an uploaded installer to the public URL used for downloads. */
+export const getInstallerUrl = internalQuery({
+  args: { storageId: v.id("_storage") },
+  returns: v.string(),
+  handler: async (ctx, { storageId }) => {
+    const file = await ctx.db.system.get(storageId);
+    if (!file) throw new ConvexError({ code: "NOT_FOUND" });
+    if (file.contentType !== INSTALLER_CONTENT_TYPE) throw new ConvexError({ code: "NOT_AN_INSTALLER" });
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) throw new ConvexError({ code: "NOT_FOUND" });
+    return url;
+  },
 });
 
 /** Retires a superseded installer; refuses any stored file that is not a DMG. */

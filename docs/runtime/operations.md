@@ -98,7 +98,7 @@ Upload the verified DMG to production Convex file storage with the internal,
 operator-only `runtime_host/installer_storage:generateInstallerUploadUrl`
 (`npx convex run --prod`, then POST the DMG with
 `Content-Type: application/x-apple-diskimage`). Resolve the returned storage ID to
-its public URL with `ctx.storage.getUrl` and use it as both
+its public URL with `runtime_host/installer_storage:getInstallerUrl` and use it as both
 `NANTHAI_RUNTIME_HOST_DOWNLOAD_URL` in Convex and
 `VITE_NANTHAI_RUNTIME_HOST_DOWNLOAD_URL` in the Netlify site build environment.
 The public `/local-runtime` page and feature detail expose Download for Mac;
