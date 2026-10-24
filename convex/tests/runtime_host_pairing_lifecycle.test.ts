@@ -8,7 +8,10 @@ import {
   claimPairingHandler,
 } from "../runtime_host/pairing";
 import { heartbeatPresenceHandler } from "../runtime_host/presence";
-import { expireRuntimePresenceHandler } from "../runtime_host/presence_expiry";
+import {
+  expireRuntimePresenceHandler,
+  expireStaleRuntimePresencesHandler,
+} from "../runtime_host/presence_expiry";
 import { authenticateRuntimeHost } from "../runtime_host/security";
 import { listMyDevices } from "../runtime_host/devices";
 
@@ -147,14 +150,14 @@ test("presence renews one host session and rejects a competing owner", async () 
   assert.equal((await list._handler(queryCtx))[0].starterPersonaId, rows.personas[0]._id);
   assert.equal(first.presenceId, renewed.presenceId);
   assert.equal(rows.runtimeDevicePresences.length, 1);
-  assert.equal(rows.runtimeDevicePresences[0].expiresAt, 61_250);
-  assert.equal(stateful.scheduled.length, 2);
+  assert.equal(rows.runtimeDevicePresences[0].expiresAt, 151_250);
+  assert.equal(stateful.scheduled.length, 0, "heartbeats do not schedule a per-beat expiry");
   assert.equal(await expireRuntimePresenceHandler(ctx, {
     runtimeDeviceId: "runtimeDevices_1" as Id<"runtimeDevices">,
     presenceId: first.presenceId as Id<"runtimeDevicePresences">,
     presenceSessionId: "presence-1",
-    expectedExpiresAt: 61_200,
-    now: 61_200,
+    expectedExpiresAt: 151_200,
+    now: 151_200,
   }), false);
   await assert.rejects(
     heartbeatPresenceHandler(ctx, {
@@ -165,23 +168,19 @@ test("presence renews one host session and rejects a competing owner", async () 
     }),
     /already has an active Runtime Host/,
   );
-  assert.equal(await expireRuntimePresenceHandler(ctx, {
-    runtimeDeviceId: "runtimeDevices_1" as Id<"runtimeDevices">,
-    presenceId: first.presenceId as Id<"runtimeDevicePresences">,
-    presenceSessionId: "presence-1",
-    expectedExpiresAt: 61_250,
-    now: 61_250,
-  }), true);
+  assert.equal(await expireStaleRuntimePresencesHandler(ctx, 151_249), 0, "a live lease survives the sweep");
+  assert.equal(rows.runtimeDevicePresences[0].status, "online");
+  assert.equal(await expireStaleRuntimePresencesHandler(ctx, 151_250), 1);
   assert.equal(rows.runtimeDevicePresences[0].status, "offline");
   assert.equal(rows.runtimeDevices[0].currentPresenceId, undefined);
   rows.personas[0].displayName = "My renamed assistant";
   rows.personas[0].systemPrompt = "Keep my instructions";
-  await heartbeatPresenceHandler(ctx, { ...heartbeat, presenceSessionId: "presence-2", now: 70_000 });
+  await heartbeatPresenceHandler(ctx, { ...heartbeat, presenceSessionId: "presence-2", now: 160_000 });
   assert.equal(rows.personas.length, 1, "reconnect does not duplicate the starter Persona");
   assert.equal(rows.personas[0].displayName, "My renamed assistant");
   assert.equal(rows.personas[0].systemPrompt, "Keep my instructions");
   await ctx.db.delete(rows.personas[0]._id as Id<"personas">);
-  await heartbeatPresenceHandler(ctx, { ...heartbeat, presenceSessionId: "presence-2", now: 70_100 });
+  await heartbeatPresenceHandler(ctx, { ...heartbeat, presenceSessionId: "presence-2", now: 160_100 });
   assert.equal(rows.personas.length, 0, "intentional deletion is not undone by a heartbeat");
   assert.equal((await list._handler(queryCtx))[0].starterPersonaId, undefined);
 });

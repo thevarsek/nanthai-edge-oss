@@ -12,6 +12,7 @@ import { terminalizeExecution } from "./control_plane";
 import { reconcileAutonomousSessionWorkflowFailure } from
   "../autonomous/execution_lifecycle";
 import { requestRunTreeTeardown } from "./teardown_graph";
+import { finalizeRunCancellationIfSettled } from "./teardown_run";
 import { clearAudioGenerationForExecutionRun } from "../chat/audio_cleanup";
 import { reconcileToolVideoWorkflowFailure } from
   "../tools/video_generation_failure";
@@ -357,7 +358,11 @@ export async function reconcileOwnedWorkflowHandler(
     if (args.result.kind === "failed" && ref.attemptId) {
       const attempt = await ctx.db.get(ref.attemptId);
       const run = attempt ? await ctx.db.get(attempt.runId) : null;
-      if (
+      if (attempt && run?.state === "cancelling" && run.activeAttemptId === attempt._id) {
+        // A requested cancellation owns the terminal outcome; failure here only
+        // settles this component so teardown can finish the run.
+        await finalizeRunCancellationIfSettled(ctx, run._id, now);
+      } else if (
         attempt
         && run
         && run.activeAttemptId === attempt._id

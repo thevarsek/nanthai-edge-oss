@@ -1,13 +1,13 @@
 {
   "name": "@nanthai/runtime-host",
-  "version": "0.4.1",
+  "version": "0.4.3",
   "private": true,
   "type": "module",
   "bin": {
     "nanthai": "bin/nanthai.mjs"
   },
   "engines": {
-    "node": ">=22 <23"
+    "node": "^22.23.4"
   },
   "scripts": {
     "lint": "eslint .",

@@ -155,4 +155,11 @@ crons.cron(
   internal.tools.slack.drift_check.checkSlackMcpDrift,
 );
 
+// Mark Runtime Host presences offline once their heartbeat lease lapses.
+crons.interval(
+  "expireStaleRuntimePresences",
+  { minutes: 1 },
+  internal.runtime_host.presence_expiry.expireStaleRuntimePresences,
+);
+
 export default crons;

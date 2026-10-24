@@ -8,8 +8,15 @@ The native app lives under `runtime-host/macos-menu/`. Run from `runtime-host/`:
 ```sh
 npm ci
 npm run test:all
-npm run build:package -- /absolute/path/to/existing/node22/bin/node
+npm run build:package -- /absolute/path/to/node-v22.23.4-darwin-arm64/bin/node
 ```
+
+Bundle the official macOS Node 22.23.4 or a newer 22.x, verified against the
+release's `SHASUMS256.txt`. The builder refuses older 22.x binaries because they
+lack the October 2026 Node.js security fixes (CVE-2026-111497 Brotli decoding,
+CVE-2026-105482 DNS NUL truncation and TLS hostname checks); the floor is
+`MINIMUM_NODE_22` in `scripts/build-package.mjs`. A rebuilt package is the only
+remedy for an installed host, which keeps running the Node it shipped with.
 
 The package builder writes the archive and source/runtime manifest to ignored
 `dist/` by default. An optional second argument after the Node path selects a fresh
@@ -87,8 +94,11 @@ Gatekeeper and SHA-256. Signing credentials stay in Keychain; they are never
 committed or exported. Mac GUI and TypeScript Runtime Host source are included
 in the source-available export; generated builds, DMGs and credentials are excluded.
 
-Upload the verified DMG to production Convex file storage using the existing
-operator-authorized upload API. Use its public storage URL as both
+Upload the verified DMG to production Convex file storage with the internal,
+operator-only `runtime_host/installer_storage:generateInstallerUploadUrl`
+(`npx convex run --prod`, then POST the DMG with
+`Content-Type: application/x-apple-diskimage`). Resolve the returned storage ID to
+its public URL with `ctx.storage.getUrl` and use it as both
 `NANTHAI_RUNTIME_HOST_DOWNLOAD_URL` in Convex and
 `VITE_NANTHAI_RUNTIME_HOST_DOWNLOAD_URL` in the Netlify site build environment.
 The public `/local-runtime` page and feature detail expose Download for Mac;
@@ -98,4 +108,6 @@ Download is public, while pairing/use retains the Pro gate.
 The application backend must expose the reviewed runtime contracts before the
 new application frontend is published. Main integration triggers the production,
 Android and public-source workflows; monitor those runs and the Netlify deploy
-until they finish. Preserve older signed installer candidates for manual rollback.
+until they finish. Preserve older signed installer candidates for manual rollback
+unless they are withdrawn for a security fix; retire a superseded hosted DMG with
+`runtime_host/installer_storage:deleteInstaller` once the new URL is live.

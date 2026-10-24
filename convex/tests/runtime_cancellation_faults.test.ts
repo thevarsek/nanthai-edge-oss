@@ -9,6 +9,7 @@ import {
   isComponentCancellationConfirmed,
 } from "../execution/teardown";
 import { reconcileOwnedWorkflowHandler } from "../execution/workflow_lifecycle";
+import { createStatefulMockCtx } from "../../test_helpers/convex_mock_ctx";
 import { deletionTeardownRetryDelay } from
   "../execution/teardown_delete_handlers";
 
@@ -110,4 +111,30 @@ test("deletion teardown sleeps until the latest acknowledged drain boundary", ()
     { cancelSafeAfter: now + 30_000 },
     { cancelSafeAfter: now + 60_000 },
   ], now), 60_000);
+});
+
+test("a failed Workflow under a requested cancellation settles through teardown instead of throwing", async () => {
+  const rows: Record<string, Array<Record<string, unknown>>> = {
+    executionComponentRefs: [{
+      _id: "component_1", runId: "run_1", attemptId: "attempt_1",
+      adapterId: "convex-workflow", operationId: "workflow_1", status: "active",
+    }],
+    executionAttempts: [{ _id: "attempt_1", runId: "run_1", fence: 3, status: "running" }],
+    executionRuns: [{
+      _id: "run_1", userId: "user_1", activeAttemptId: "attempt_1", state: "cancelling",
+      kind: "maintenance", nextEventSequence: 1, nextFence: 4,
+    }],
+    executionRunEvents: [],
+  };
+  const ctx = createStatefulMockCtx(rows) as unknown as MutationCtx;
+
+  await reconcileOwnedWorkflowHandler(ctx, {
+    workflowId: "workflow_1",
+    result: { kind: "failed", error: "boom" },
+    context: {},
+  });
+
+  assert.equal(rows.executionComponentRefs[0].status, "failed");
+  assert.equal(rows.executionRuns[0].state, "cancelled");
+  assert.equal(rows.executionAttempts[0].status, "cancelled");
 });

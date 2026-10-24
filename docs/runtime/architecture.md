@@ -41,8 +41,12 @@ completion stay on the HTTP routes. Work that stays pending after a claim attemp
 is retried with backoff up to 30 seconds. If the realtime endpoint is missing, the
 URL is not HTTPS (except local development), or the subscription is disconnected
 or failing, the host falls back to one-second polling until push is live again.
-An idle host's remaining traffic is the 15-second presence heartbeat and one
-re-run of the watch query per heartbeat.
+An idle host's remaining traffic is the 60-second presence heartbeat (an HTTP
+route and its mutation) and one re-run of the watch query per heartbeat, about
+three billed calls a minute. The presence lease is 150 seconds, tolerating one
+missed beat. Expiry is not scheduled per heartbeat: a one-minute
+`expireStaleRuntimePresences` cron marks lapsed leases offline for all hosts,
+while authentication already rejects an expired lease on its own.
 
 `PreparedParticipantTurn` is the semantic preparation result. Local dispatch
 serializes it through the strict runtime packet with run/attempt/fence identity,

@@ -19,6 +19,7 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "cleanupExpiredMcpOAuthTransactions",
     "consolidateMemories",
     "ensureSecretCryptoRotation",
+    "expireStaleRuntimePresences",
     "reconcileExecutionCancellations",
     "refreshModelCatalog",
     "syncArtificialAnalysis",
@@ -38,6 +39,10 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   assert.deepEqual(entries.cleanStaleSandboxSessions.schedule, {
     type: "interval",
     minutes: 30,
+  });
+  assert.deepEqual(entries.expireStaleRuntimePresences.schedule, {
+    type: "interval",
+    minutes: 1,
   });
   assert.deepEqual(entries.checkSlackMcpDrift.schedule, {
     type: "cron",

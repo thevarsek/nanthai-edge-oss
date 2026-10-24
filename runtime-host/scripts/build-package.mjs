@@ -5,11 +5,21 @@ import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
+// Oldest bundled Node 22 without the October 2026 security fixes
+// (CVE-2026-111497 Brotli RCE, CVE-2026-105482 DNS NUL truncation, TLS hostname checks).
+// Keep in step with `engines.node` in package.json.
+const MINIMUM_NODE_22 = '22.23.4';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const nodeBinary = process.argv[2] || process.env.NANTHAI_NODE_BINARY;
-if (!nodeBinary) throw new Error('Supply an existing Node 22 binary: npm run build:package -- /absolute/path/to/node');
+if (!nodeBinary) throw new Error(`Supply an existing Node ${MINIMUM_NODE_22}+ binary: npm run build:package -- /absolute/path/to/node`);
 const identity = JSON.parse(execFileSync(nodeBinary, ['-p', 'JSON.stringify({version:process.versions.node,platform:process.platform,arch:process.arch})'], {encoding:'utf8'}));
 if (!identity.version.startsWith('22.') || identity.platform !== 'darwin') throw new Error('The preview package requires macOS Node 22');
+const [, minor, patch] = identity.version.split('.').map(Number);
+const [, minimumMinor, minimumPatch] = MINIMUM_NODE_22.split('.').map(Number);
+if (minor < minimumMinor || (minor === minimumMinor && patch < minimumPatch)) {
+  throw new Error(`Node ${identity.version} at ${nodeBinary} is vulnerable to CVE-2026-111497 (Brotli decoder RCE) and the other October 2026 Node.js security fixes; bundle Node ${MINIMUM_NODE_22} or newer 22.x`);
+}
 const pkg = JSON.parse(await readFile(join(root,'package.json'),'utf8'));
 const destination = process.argv[3] ? resolve(process.argv[3])
   : join(root, 'dist', `nanthai-${pkg.version}-darwin-${identity.arch}`);

@@ -227,7 +227,9 @@ export class ForegroundRuntimeHost {
   }
 
   private async heartbeatLoop(): Promise<void> {
-    const intervalMs = this.options.heartbeatIntervalMs ?? 15_000;
+    // Pending work arrives through the realtime watch; the beat only renews the
+    // 150s presence lease and running-attempt leases, so it stays infrequent.
+    const intervalMs = this.options.heartbeatIntervalMs ?? 60_000;
     while (!this.abort.signal.aborted) {
       await this.connection?.heartbeat(await this.heartbeat());
       const connection = this.connection;

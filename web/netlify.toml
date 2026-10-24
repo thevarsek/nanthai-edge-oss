@@ -7,6 +7,10 @@
   publish = "dist"
 
 [build.environment]
+  # Explicit Node major for the build and, through it, the Functions runtime
+  # (AWS Lambda nodejs24.x; AWS applies patch releases). Node 24.22.1+ carries the
+  # October 2026 security fixes used by the MCP egress proxy's DNS/TLS/HTTP paths.
+  NODE_VERSION = "24"
   # dom-to-pptx exports in the user's browser; its Node CLI dependency must not
   # download a headless Chrome binary during the Netlify frontend build.
   PUPPETEER_SKIP_DOWNLOAD = "true"

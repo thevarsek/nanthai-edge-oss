@@ -9,11 +9,11 @@ import {
   authenticateRuntimeHost,
   runtimeHostError,
 } from "./security";
-import { expireRuntimePresenceRef } from "./presence_expiry";
 import { provisionStarterPersona } from "./starter_persona";
 import { wakeRuntimeDeviceWaits } from "./device_wait";
 
-const PRESENCE_LEASE_MS = 60_000;
+// Hosts beat every 60s; the lease tolerates one missed beat plus network delay.
+const PRESENCE_LEASE_MS = 150_000;
 
 const operatingSystem = v.union(
   v.literal("macos"),
@@ -200,12 +200,6 @@ export async function heartbeatPresenceHandler(
     architecture: parsed.data.platform.architecture,
     platformRelease: parsed.data.platform.release,
     updatedAt: now,
-  });
-  await ctx.scheduler.runAt(expiresAt, expireRuntimePresenceRef, {
-    runtimeDeviceId: device._id,
-    presenceId,
-    presenceSessionId: parsed.data.presenceSessionId,
-    expectedExpiresAt: expiresAt,
   });
   if (parsed.data.adapters.some((adapter) => ["codex", "pi"].includes(adapter.adapterId) && adapter.authState === "ready")) {
     await provisionStarterPersona(ctx, device, now);

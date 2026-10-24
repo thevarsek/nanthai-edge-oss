@@ -3,7 +3,7 @@
 The Mac menu-bar app and `nanthai` CLI run Codex/Pi Personas for NanthAI web, iOS and
 Android. Convex owns connected conversations, execution, permissions, artifacts
 and usage. The host owns native process supervision, transport recovery and local
-saved tasks. Package version: 0.4.1; accepted development scope is integrated for
+saved tasks. Package version: 0.4.3; accepted development scope is integrated for
 review, with public release tracked in the [milestone index](../milestones/README.md).
 
 ## Package layout
@@ -37,7 +37,7 @@ See [setup and repair](../docs/runtime/setup.md),
 
 ## Foreground CLI
 
-The archive bundles Node 22 and dependencies; Codex/Pi remain user-installed.
+The archive bundles Node 22 (22.23.4 or newer) and dependencies; Codex/Pi remain user-installed.
 Extract the package and run `install.command`. It installs into
 `~/Applications/NanthAI Runtime Host` without adding global PATH or login items.
 Use the intended native account executable and the controller's deployment:
@@ -82,10 +82,19 @@ Run inside `runtime-host/`:
 ```sh
 npm ci
 npm run test:all
-npm run build:package -- /absolute/path/to/existing/node22/bin/node
+npm run build:package -- /absolute/path/to/node-v22.23.4-darwin-arm64/bin/node
 swift test --package-path macos-menu
 swift build --package-path macos-menu -c release
 ```
+
+The bundled Node must be the official macOS build of Node 22.23.4 or a newer 22.x.
+The builder refuses older 22.x releases, which are affected by the October 2026
+Node.js security release (including CVE-2026-111497); the floor is `MINIMUM_NODE_22`
+in `scripts/build-package.mjs` and `engines.node` in `package.json`. Fetch the
+`darwin-arm64` tarball and `SHASUMS256.txt` (plus `.sig`) from
+`https://nodejs.org/dist/v22.23.4/` into a temporary directory and check the hash
+before building; do not install it globally. `script/build_and_run.sh` reuses the
+Node from `dist/nanthai-<version>-darwin-<arch>` unless `NANTHAI_NODE_BINARY` is set.
 
 The builder bundles CLI and workers, copies Node/licenses and emits source/runtime
 manifests. It does not download or globally install native tools. For an explicitly

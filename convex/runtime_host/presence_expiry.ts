@@ -1,7 +1,3 @@
-import {
-  makeFunctionReference,
-  type FunctionReference,
-} from "convex/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
@@ -12,17 +8,6 @@ export type ExpireRuntimePresenceArgs = {
   presenceSessionId: string;
   expectedExpiresAt: number;
 };
-
-export const expireRuntimePresenceRef = makeFunctionReference<
-  "mutation",
-  ExpireRuntimePresenceArgs,
-  boolean
->("runtime_host/presence_expiry:expireRuntimePresence") as unknown as FunctionReference<
-  "mutation",
-  "internal",
-  ExpireRuntimePresenceArgs,
-  boolean
->;
 
 export async function expireRuntimePresenceHandler(
   ctx: MutationCtx,
@@ -53,6 +38,7 @@ export async function expireRuntimePresenceHandler(
   return true;
 }
 
+// Retained for expiries scheduled by earlier deployments; new leases use the sweep.
 export const expireRuntimePresence = internalMutation({
   args: {
     runtimeDeviceId: v.id("runtimeDevices"),
@@ -62,4 +48,35 @@ export const expireRuntimePresence = internalMutation({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => await expireRuntimePresenceHandler(ctx, args),
+});
+
+// One sweep per deployment replaces a scheduled expiry per heartbeat, so idle
+// hosts no longer cost a call each beat. Auth already rejects an expired lease;
+// the sweep only publishes the offline state to clients.
+const EXPIRY_SWEEP_BATCH = 100;
+
+export async function expireStaleRuntimePresencesHandler(
+  ctx: MutationCtx,
+  now = Date.now(),
+): Promise<number> {
+  const stale = await ctx.db.query("runtimeDevicePresences")
+    .withIndex("by_status_expiry", (q) => q.eq("status", "online").lte("expiresAt", now))
+    .take(EXPIRY_SWEEP_BATCH);
+  let expired = 0;
+  for (const presence of stale) {
+    if (await expireRuntimePresenceHandler(ctx, {
+      runtimeDeviceId: presence.runtimeDeviceId,
+      presenceId: presence._id,
+      presenceSessionId: presence.presenceSessionId,
+      expectedExpiresAt: presence.expiresAt,
+      now,
+    })) expired += 1;
+  }
+  return expired;
+}
+
+export const expireStaleRuntimePresences = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => await expireStaleRuntimePresencesHandler(ctx),
 });
