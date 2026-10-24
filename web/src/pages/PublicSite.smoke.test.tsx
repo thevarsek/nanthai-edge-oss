@@ -83,7 +83,7 @@ describe("public site smoke coverage", () => {
       "href",
       "https://nanthai.tech/app",
     );
-    expect(canonicalHref()).toBe("https://nanthai.tech");
+    expect(canonicalHref()).toBe("https://nanthai.tech/");
   });
 
   it("renders an auth-aware home header for signed-in users", () => {

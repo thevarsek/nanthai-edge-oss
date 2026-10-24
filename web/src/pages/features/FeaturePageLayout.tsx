@@ -1,5 +1,5 @@
 import { RelatedGuides } from "@/pages/content/RelatedGuides";
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { useAuth } from "@clerk/react";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
 import { useTranslation } from "react-i18next";

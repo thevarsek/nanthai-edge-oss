@@ -17,12 +17,12 @@ describe("production auth deployment configuration", () => {
     for (const callbackPath of ["/openrouter/callback", "/openrouter/callback/"]) {
       const escapedPath = callbackPath.replaceAll("/", "\\/");
       expect(netlifyConfig).toMatch(new RegExp(
-        `\\[\\[redirects\\]\\]\\s+from = "${escapedPath}"\\s+to = "\\/index\\.html"\\s+status = 200`,
+        `\\[\\[redirects\\]\\]\\s+from = "${escapedPath}"\\s+to = "\\/app-shell\\.html"\\s+status = 200`,
       ));
     }
 
     expect(netlifyConfig).not.toMatch(
-      /\[\[redirects\]\]\s+from = "\/openrouter\/\*"\s+to = "\/index\.html"/,
+      /\[\[redirects\]\]\s+from = "\/openrouter\/\*"\s+to = "\/app-shell\.html"/,
     );
   });
 

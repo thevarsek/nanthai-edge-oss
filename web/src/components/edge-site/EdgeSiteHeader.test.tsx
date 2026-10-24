@@ -2,6 +2,8 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import i18n from "@/i18n";
+import { PublicLocaleBoundary } from "@/app-routing/PublicLocaleBoundary";
+import { parsePublicPath } from "@/lib/publicLocale";
 import { EdgeSiteHeader } from "./EdgeSiteHeader";
 
 let authState: { isLoaded: boolean; isSignedIn?: boolean };
@@ -14,16 +16,21 @@ function CurrentPath() {
   return <output aria-label="Current URL">{useLocation().pathname}</output>;
 }
 
+function HeaderRoute() {
+  const { pathname } = useLocation();
+  return <PublicLocaleBoundary language={parsePublicPath(pathname)?.language ?? "en"}><EdgeSiteHeader /></PublicLocaleBoundary>;
+}
+
 function renderHeader(route = "/") {
   return render(
     <MemoryRouter initialEntries={[route]}>
-      <EdgeSiteHeader /><CurrentPath />
+      <HeaderRoute /><CurrentPath />
     </MemoryRouter>,
   );
 }
 
 describe("EdgeSiteHeader", () => {
-  afterEach(async () => { cleanup(); await i18n.changeLanguage("en"); });
+  afterEach(async () => { cleanup(); localStorage.removeItem("nanthai_language"); await i18n.changeLanguage("en"); });
 
   it("places Guides last, after Support", () => {
     authState = { isLoaded: true, isSignedIn: false };
@@ -42,13 +49,14 @@ describe("EdgeSiteHeader", () => {
     fireEvent.click(screen.getByRole("menuitemradio", { name: "English" }));
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent(/^\/guides\/ai-chat-memory$/));
   });
-  it("keeps the rest of the site's URL when changing language", async () => {
+  it("navigates feature URLs when changing language", async () => {
     authState = { isLoaded: true, isSignedIn: false };
     renderHeader("/features/byok");
     fireEvent.click(screen.getByRole("button", { name: "Change language, current language: English" }));
     fireEvent.click(screen.getByRole("menuitemradio", { name: "Italiano" }));
-    await waitFor(() => expect(i18n.resolvedLanguage).toBe("it"));
-    expect(screen.getByRole("status")).toHaveTextContent("/features/byok");
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("/it/features/byok"));
+    expect(i18n.resolvedLanguage).toBe("it");
+    expect(localStorage.getItem("nanthai_language")).toBe("it");
   });
   it("does not expose sign-in navigation before Clerk auth has loaded", () => {
     authState = { isLoaded: false, isSignedIn: undefined };

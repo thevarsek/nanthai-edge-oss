@@ -1,6 +1,6 @@
 import { CalendarClock, Code2, Download, FileText, Laptop, Link2, Smartphone } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { FeaturePageLayout } from "./FeaturePageLayout";
 import { getFeature } from "./featureData";
 import { MockPanel } from "./illustrations/IllustrationPrimitives";

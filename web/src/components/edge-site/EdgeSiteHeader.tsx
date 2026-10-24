@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 import { ArrowUpRight, Menu, X } from "lucide-react";
-import { contentLanguage, localizeContentPath, parseContentPath } from "@/lib/contentLocale";
+import { contentLanguage } from "@/lib/contentLocale";
+import { publicPath, parsePublicPath } from "@/lib/publicLocale";
 import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 
@@ -29,8 +30,8 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
   const navigate = useNavigate();
   const language = contentLanguage(i18n.resolvedLanguage ?? i18n.language);
   const changeContentLanguage = (code: typeof language) => {
-    if (parseContentPath(location.pathname)) {
-      navigate(`${localizeContentPath(location.pathname, code)}${location.search}${location.hash}`);
+    if (parsePublicPath(location.pathname)) {
+      navigate(`${publicPath(location.pathname, code)}${location.search}${location.hash}`);
     }
   };
 
@@ -51,7 +52,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
     <header className="sticky top-0 z-50 eborder-04 border-b backdrop-blur-2xl" style={{ backgroundColor: `rgba(var(--edge-fg), 0) `, background: `color-mix(in srgb, var(--edge-bg) 70%, transparent)` }}>
       <div className="container edge-sans flex h-16 items-center justify-between gap-6">
         {/* Logo — minimal, typographic */}
-        <Link to="/" className="group flex items-center gap-3" aria-label={t("edge_home_aria")} onClick={() => setIsMenuOpen(false)}>
+        <Link to={publicPath("/", language)} className="group flex items-center gap-3" aria-label={t("edge_home_aria")} onClick={() => setIsMenuOpen(false)}>
           <div className="flex h-9 w-9 items-center justify-center rounded-lg eborder-06 border ebg-glass-02 transition-all group-hover:eborder-12 group-hover:ebg-glass-04">
             <img
               src="/edge-brand/nanthai_edge_monogram_v2_transp.png"
@@ -70,7 +71,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
           {navItems.map((item) => (
             <Link
               key={item.href}
-              to={localizeContentPath(item.href, language)}
+              to={publicPath(item.href, language)}
               className={
                 activePage === item.page
                   ? "relative px-3.5 py-2 text-[0.82rem] font-medium efg-90 transition-colors after:absolute after:bottom-0 after:left-3.5 after:right-3.5 after:h-px" + " after:bg-[rgba(var(--edge-fg),0.4)]"
@@ -119,7 +120,7 @@ export function EdgeSiteHeader({ activePage }: EdgeSiteHeaderProps) {
             {navItems.map((item) => (
               <Link
                 key={item.href}
-                to={localizeContentPath(item.href, language)}
+                to={publicPath(item.href, language)}
                 className={
                   activePage === item.page
                     ? "rounded-lg ebg-glass-06 px-4 py-3 text-[0.9rem] font-medium efg-heading"

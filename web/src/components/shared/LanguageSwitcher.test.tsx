@@ -29,11 +29,13 @@ describe("LanguageSwitcher", () => {
     languageMock.changeLanguage.mockReset().mockResolvedValue(undefined);
   });
 
-  it("notifies its route owner after the selected language is ready", async () => {
+  it("notifies its route owner and persists an explicit language choice", async () => {
     const onLanguageChange = vi.fn();
     render(<LanguageSwitcher onLanguageChange={onLanguageChange} />);
     fireEvent.click(screen.getByRole("button", { name: "Italiano" }));
     await waitFor(() => expect(onLanguageChange).toHaveBeenCalledWith("it"));
+    expect(localStorage.getItem("nanthai_language")).toBe("it");
+    expect(languageMock.changeLanguage).not.toHaveBeenCalled();
   });
 
   it("marks the current app language and changes language from the app row", () => {

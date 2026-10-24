@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Seo } from "@/components/Seo";

@@ -49,6 +49,6 @@ describe("build-time SEO shell cleanup", () => {
     expect(isPublicSeoPath("/sign-in")).toBe(false);
     expect(isPublicSeoPath("/it/guides/ai-chat-memory")).toBe(true);
     expect(isPublicSeoPath("/zh/research/")).toBe(true);
-    expect(isPublicSeoPath("/it/features")).toBe(false);
+    expect(isPublicSeoPath("/it/features")).toBe(true);
   });
 });

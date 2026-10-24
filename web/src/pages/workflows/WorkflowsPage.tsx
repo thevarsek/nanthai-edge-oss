@@ -1,5 +1,5 @@
 import { Check, MessageSquareMore, PencilLine, ArrowRight, Cloud, Laptop } from "lucide-react";
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { useTranslation } from "react-i18next";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 import { AnimateOnScroll } from "@/pages/features/illustrations/IllustrationPrimitives";

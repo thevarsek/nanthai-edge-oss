@@ -1,5 +1,6 @@
-import { render } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { render, cleanup } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import i18n from "@/i18n";
 import { Seo } from "./Seo";
 import { buildBreadcrumbsJsonLd, buildOrganizationJsonLd } from "@/lib/seo";
 
@@ -8,6 +9,7 @@ function metaContent(selector: string) {
 }
 
 describe("Seo", () => {
+  afterEach(async () => { cleanup(); await i18n.changeLanguage("en"); });
   beforeEach(() => {
     document.head.innerHTML = "";
   });
@@ -28,9 +30,18 @@ describe("Seo", () => {
     expect(metaContent('meta[name="description"]')).toBe("Feature description");
     expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute("href", "https://nanthai.tech/features/search");
     expect(metaContent('meta[name="keywords"]')).toBe("AI search, research");
-    expect(metaContent('meta[property="og:url"]')).toBe("https://nanthai.tech/features/search?ref=share");
+    expect(metaContent('meta[property="og:url"]')).toBe("https://nanthai.tech/features/search");
     expect(metaContent('meta[property="og:image"]')).toBe("https://nanthai.tech/feature.png");
     expect(metaContent('meta[name="twitter:title"]')).toBe("Feature Title | NanthAI Edge");
+  });
+
+  it("emits localized self-canonicals, all alternates and language-labelled structured data", async () => {
+    await i18n.changeLanguage("it");
+    render(<Seo title="Una chiave tua" description="Descrizione italiana" url="https://nanthai.tech/features/byok" />);
+    expect(document.querySelector('link[rel="canonical"]')).toHaveAttribute("href", "https://nanthai.tech/it/features/byok");
+    expect(document.querySelectorAll("link[hreflang]")).toHaveLength(8);
+    expect(document.querySelector('link[hreflang="x-default"]')).toHaveAttribute("href", "https://nanthai.tech/features/byok");
+    expect(JSON.parse(document.querySelector('script[type="application/ld+json"]')!.textContent!)).toMatchObject({ "@type": "WebPage", inLanguage: "it", url: "https://nanthai.tech/it/features/byok" });
   });
 
   it("falls back to URL as canonical and builds structured data helpers", () => {

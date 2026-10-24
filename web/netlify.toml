@@ -3,7 +3,7 @@
 
 [build]
   base = "web"
-  command = "npm install && npx vite build && node scripts/generate-seo-shells.mjs"
+  command = "npm install && npx vite build && node scripts/generate-seo-shells.mjs && node scripts/verify-no-development-surfaces.mjs && node scripts/verify-seo-build.mjs"
   publish = "dist"
 
 [build.environment]
@@ -236,46 +236,107 @@
   to = "/index.html"
   status = 200
 
-# ── SPA fallback — serve index.html for private app routes ──
+# Localized marketing routes are emitted as real directory indexes and pretty HTML files.
+[[redirects]]
+  from = "/es"
+  to = "/es.html"
+  status = 200
+
+[[redirects]]
+  from = "/fr"
+  to = "/fr.html"
+  status = 200
+
+[[redirects]]
+  from = "/de"
+  to = "/de.html"
+  status = 200
+
+[[redirects]]
+  from = "/it"
+  to = "/it.html"
+  status = 200
+
+[[redirects]]
+  from = "/ja"
+  to = "/ja.html"
+  status = 200
+
+[[redirects]]
+  from = "/zh"
+  to = "/zh.html"
+  status = 200
+
+[[redirects]]
+  from = "/licensing"
+  to = "/licensing.html"
+  status = 200
+
+[[redirects]]
+  from = "/workflows"
+  to = "/workflows.html"
+  status = 200
+
+[[redirects]]
+  from = "/local-runtime"
+  to = "/local-runtime.html"
+  status = 200
+
+# ── SPA fallback — preserve the empty app shell for private routes ──
+[[redirects]]
+  from = "/runtime/connect"
+  to = "/app-shell.html"
+  status = 200
+
+[[redirects]]
+  from = "/mcp/authorize"
+  to = "/app-shell.html"
+  status = 200
+
+[[redirects]]
+  from = "/openrouter-required"
+  to = "/app-shell.html"
+  status = 200
+
 # OpenRouter returns directly to this route, including in fresh/private
 # browsing sessions where no service worker can provide the SPA fallback.
 [[redirects]]
   from = "/openrouter/callback"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[redirects]]
   from = "/openrouter/callback/"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 [[redirects]]
   from = "/app/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[redirects]]
   from = "/sign-in/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[redirects]]
   from = "/sign-up/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[redirects]]
   from = "/onboarding/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[redirects]]
   from = "/oauth/*"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 [[redirects]]
   from = "/mobile-drive-picker"
-  to = "/index.html"
+  to = "/app-shell.html"
   status = 200
 
 # Headers — cache immutable hashed assets aggressively, everything else revalidates.

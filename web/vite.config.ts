@@ -2,10 +2,28 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
+import { copyFile } from "node:fs/promises";
 
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: "private-app-shell",
+      configurePreviewServer(server) {
+        server.middlewares.use((request, _response, next) => {
+          // Match production's private rewrites when exercising the built preview.
+          if (/^\/(?:app|sign-in|sign-up|onboarding|oauth)(?:\/|$)|^\/openrouter\/callback(?:\/|$)|^\/mobile-drive-picker(?:\/|$)|^\/(?:runtime\/connect|mcp\/authorize|openrouter-required)(?:\/|$)/.test((request.url ?? "").split("?")[0])) {
+            request.url = "/app-shell.html";
+          }
+          next();
+        });
+      },
+      async writeBundle(options) {
+        // Preserve the SPA entry before public prerendering replaces the home document.
+        const output = options.dir ?? "dist";
+        await copyFile(path.join(output, "index.html"), path.join(output, "app-shell.html"));
+      },
+    },
     VitePWA({
       injectRegister: false,
       registerType: "autoUpdate",
@@ -49,7 +67,7 @@ export default defineConfig({
         globPatterns: ["**/*.{js,css,html,ico,svg,woff2,png,webmanifest}"],
         globIgnores: ["**/edge-brand/**", "**/screenshots/**"],
         importScripts: ["push-sw.js"],
-        navigateFallback: "/index.html",
+        navigateFallback: "/app-shell.html",
         navigateFallbackDenylist: [
           /^\/openrouter\/edge\/callback/,
           /^\/privacy/,

@@ -27,7 +27,8 @@ describe("syncDocumentLanguage", () => {
     await i18n.changeLanguage("it");
 
     expect(i18n.hasResourceBundle("it", "translation")).toBe(true);
-    expect(document.documentElement.lang).toBe("it");
+    // The public URL owns document language; app detection must not overwrite it.
+    expect(document.documentElement.lang).toBe("en");
     await i18n.changeLanguage("en");
   });
 
@@ -37,8 +38,10 @@ describe("syncDocumentLanguage", () => {
     link.id = "skip-to-content";
     document.body.append(link);
     await i18n.changeLanguage("it");
+    syncDocumentLanguage("it");
     expect(link).toHaveTextContent("Vai al contenuto principale");
     await i18n.changeLanguage("en");
+    syncDocumentLanguage("en");
     expect(link).toHaveTextContent("Skip to main content");
     link.remove();
   });

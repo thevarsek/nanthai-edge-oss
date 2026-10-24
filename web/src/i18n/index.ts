@@ -4,7 +4,7 @@ import { initReactI18next } from "react-i18next";
 import LanguageDetector from "i18next-browser-languagedetector";
 
 import en from "./locales/en.json";
-import { parseContentPath } from "@/lib/contentLocale";
+import { parsePublicPath } from "@/lib/publicLocale";
 
 export const SUPPORTED_LANGUAGES = [
   { code: "en", label: "English", nativeLabel: "English" },
@@ -64,7 +64,7 @@ export const initialization = i18n
   .use(LanguageDetector)
   .use(initReactI18next)
   .init({
-    lng: typeof window === "undefined" ? undefined : parseContentPath(window.location.pathname)?.language,
+    lng: typeof window === "undefined" ? "en" : undefined,
     resources: {
       en: { translation: en },
     },
@@ -72,9 +72,9 @@ export const initialization = i18n
     fallbackLng: "en",
     supportedLngs: ["en", "es", "fr", "de", "it", "ja", "zh"],
     detection: {
-      // Persist language choice in localStorage under key "nanthai_language"
+      // Detect app language as before; only an explicit switcher choice may persist it.
       order: ["localStorage", "navigator"],
-      caches: ["localStorage"],
+      caches: [],
       lookupLocalStorage: "nanthai_language",
     },
     interpolation: {
@@ -83,9 +83,11 @@ export const initialization = i18n
     },
   });
 
-i18n.on("languageChanged", syncDocumentLanguage);
-void initialization.then(() => {
-  syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language);
-});
+function syncAppDocumentLanguage(language: string | undefined) {
+  if (typeof window !== "undefined" && parsePublicPath(window.location.pathname)) return;
+  syncDocumentLanguage(language);
+}
+i18n.on("languageChanged", syncAppDocumentLanguage);
+void initialization.then(() => syncAppDocumentLanguage(i18n.resolvedLanguage ?? i18n.language));
 
 export default i18n;

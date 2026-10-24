@@ -1,4 +1,7 @@
 /* eslint-disable react-refresh/only-export-components -- route table, not a refresh boundary */
+import { marketingPages } from "./marketingPages";
+import { publicPath } from "@/lib/publicLocale";
+import { PublicLocaleBoundary } from "./PublicLocaleBoundary";
 import { contentLanguages } from "@/lib/contentLocale";
 import { lazy, type ReactNode } from "react";
 import { Navigate, type RouteObject } from "react-router-dom";
@@ -10,135 +13,6 @@ import { AppRouteBoundary } from "./AppRouteBoundary";
 
 const ContentPage = lazy(() => import("@/pages/content/ContentPage").then(module => ({ default: module.ContentPage })));
 
-const WorkflowsPage = lazy(() => import("@/pages/workflows/WorkflowsPage").then(module => ({ default: module.WorkflowsPage })));
-const PublicLocalRuntimePage = lazy(() => import("@/pages/workflows/LocalRuntimePage").then(module => ({ default: module.LocalRuntimePage })));
-const LocalRuntimeFeaturePage = lazy(() => import("@/pages/features/LocalRuntimeFeaturePage").then(module => ({ default: module.LocalRuntimeFeaturePage })));
-
-const HomePage = lazy(() =>
-  import("@/pages/HomePage").then((module) => ({ default: module.HomePage })),
-);
-const PrivacyPage = lazy(() =>
-  import("@/pages/PrivacyPage").then((module) => ({ default: module.PrivacyPage })),
-);
-const TermsPage = lazy(() =>
-  import("@/pages/TermsPage").then((module) => ({ default: module.TermsPage })),
-);
-const SupportPage = lazy(() =>
-  import("@/pages/SupportPage").then((module) => ({ default: module.SupportPage })),
-);
-const LicensingPage = lazy(() =>
-  import("@/pages/LicensingPage").then((module) => ({ default: module.LicensingPage })),
-);
-const FeaturesIndexPage = lazy(() =>
-  import("@/pages/features/FeaturesIndexPage").then((module) => ({
-    default: module.FeaturesIndexPage,
-  })),
-);
-const MultiModelChatPage = lazy(() =>
-  import("@/pages/features/MultiModelChatPage").then((module) => ({
-    default: module.MultiModelChatPage,
-  })),
-);
-const SearchPage = lazy(() =>
-  import("@/pages/features/SearchPage").then((module) => ({ default: module.SearchPage })),
-);
-const DocumentWorkflowsPage = lazy(() =>
-  import("@/pages/features/DocumentWorkflowsPage").then((module) => ({
-    default: module.DocumentWorkflowsPage,
-  })),
-);
-const SkillsHelpersPage = lazy(() =>
-  import("@/pages/features/SkillsHelpersPage").then((module) => ({
-    default: module.SkillsHelpersPage,
-  })),
-);
-const AnalysisCodePage = lazy(() =>
-  import("@/pages/features/AnalysisCodePage").then((module) => ({
-    default: module.AnalysisCodePage,
-  })),
-);
-const IdeascapesPage = lazy(() =>
-  import("@/pages/features/IdeascapesPage").then((module) => ({
-    default: module.IdeascapesPage,
-  })),
-);
-const ChatDefaultsPage = lazy(() =>
-  import("@/pages/features/ChatDefaultsPage").then((module) => ({
-    default: module.ChatDefaultsPage,
-  })),
-);
-const FoldersPage = lazy(() =>
-  import("@/pages/features/FoldersPage").then((module) => ({ default: module.FoldersPage })),
-);
-const AutomatedTasksPage = lazy(() =>
-  import("@/pages/features/AutomatedTasksPage").then((module) => ({
-    default: module.AutomatedTasksPage,
-  })),
-);
-const IntegrationsPage = lazy(() =>
-  import("@/pages/features/IntegrationsPage").then((module) => ({
-    default: module.IntegrationsPage,
-  })),
-);
-const RemoteMcpServersPage = lazy(() =>
-  import("@/pages/features/RemoteMcpServersPage").then((module) => ({
-    default: module.RemoteMcpServersPage,
-  })),
-);
-const PersonasFeaturePage = lazy(() =>
-  import("@/pages/features/PersonasPage").then((module) => ({ default: module.PersonasPage })),
-);
-const KnowledgeBaseFeaturePage = lazy(() =>
-  import("@/pages/features/KnowledgeBasePage").then((module) => ({
-    default: module.KnowledgeBasePage,
-  })),
-);
-const MemoriesFeaturePage = lazy(() =>
-  import("@/pages/features/MemoriesPage").then((module) => ({
-    default: module.MemoriesPage,
-  })),
-);
-const ThemesFeaturePage = lazy(() =>
-  import("@/pages/features/ThemesPage").then((module) => ({ default: module.ThemesPage })),
-);
-const ProVsFreeFeaturePage = lazy(() =>
-  import("@/pages/features/ProVsFreePage").then((module) => ({
-    default: module.ProVsFreePage,
-  })),
-);
-const BYOKFeaturePage = lazy(() =>
-  import("@/pages/features/BYOKPage").then((module) => ({ default: module.BYOKPage })),
-);
-const ParticipantOptionsFeaturePage = lazy(() =>
-  import("@/pages/features/ParticipantOptionsPage").then((module) => ({
-    default: module.ParticipantOptionsPage,
-  })),
-);
-const BranchingFeaturePage = lazy(() =>
-  import("@/pages/features/BranchingPage").then((module) => ({
-    default: module.BranchingPage,
-  })),
-);
-const PriceTransparencyFeaturePage = lazy(() =>
-  import("@/pages/features/PriceTransparencyPage").then((module) => ({
-    default: module.PriceTransparencyPage,
-  })),
-);
-const AudioGenerationPage = lazy(() =>
-  import("@/pages/features/AudioGenerationPage").then((module) => ({
-    default: module.AudioGenerationPage,
-  })),
-);
-const ImageGenerationPage = lazy(() =>
-  import("@/pages/features/ImageGenerationPage").then((module) => ({
-    default: module.ImageGenerationPage,
-  })),
-);
-const VideoGenerationPage = lazy(() =>
-  import("@/pages/features/VideoGenerationPage").then((module) => ({
-    default: module.VideoGenerationPage,
-  })),
-);
 const OpenRouterConnectPage = lazy(() =>
   import("@/routes/OpenRouterConnectPage").then((module) => ({
     default: module.OpenRouterConnectPage,
@@ -149,7 +23,16 @@ function suspended(element: ReactNode) {
   return <AppRouteBoundary>{element}</AppRouteBoundary>;
 }
 
+const marketingRoutes: RouteObject[] = marketingPages.flatMap(page => {
+  const Page = lazy(() => page.load().then(defaultExport => ({ default: defaultExport })));
+  return contentLanguages.map(language => ({
+    path: publicPath(page.path, language),
+    element: <PublicLocaleBoundary language={language}>{suspended(<Page />)}</PublicLocaleBoundary>,
+  }));
+});
+
 export const publicRoutes: RouteObject[] = [
+  ...marketingRoutes,
   ...contentLanguages.filter(language => language !== "en").flatMap(language => [
     { path: `/${language}/guides/:slug?`, element: suspended(<ContentPage />) },
     { path: `/${language}/research/:slug?`, element: suspended(<ContentPage />) },
@@ -158,46 +41,8 @@ export const publicRoutes: RouteObject[] = [
   { path: "/guides/:slug", element: suspended(<ContentPage />) },
   { path: "/research", element: suspended(<ContentPage />) },
   { path: "/research/:slug", element: suspended(<ContentPage />) },
-  { path: "/workflows", element: suspended(<WorkflowsPage />) },
   { path: "/research/results", element: <Navigate to="/workflows" replace /> },
-  { path: "/local-runtime", element: suspended(<PublicLocalRuntimePage />) },
   { path: "/research/methods", element: <Navigate to="/local-runtime" replace /> },
-  { path: "/", element: suspended(<HomePage />) },
-  { path: "/privacy", element: suspended(<PrivacyPage />) },
-  { path: "/terms", element: suspended(<TermsPage />) },
-  { path: "/support", element: suspended(<SupportPage />) },
-  { path: "/licensing", element: suspended(<LicensingPage />) },
-  { path: "/features", element: suspended(<FeaturesIndexPage />) },
-  { path: "/features/local-runtime", element: suspended(<LocalRuntimeFeaturePage />) },
-  { path: "/features/multi-model-chat", element: suspended(<MultiModelChatPage />) },
-  { path: "/features/search", element: suspended(<SearchPage />) },
-  { path: "/features/documents", element: suspended(<DocumentWorkflowsPage />) },
-  { path: "/features/skills-helpers", element: suspended(<SkillsHelpersPage />) },
-  { path: "/features/analysis-code", element: suspended(<AnalysisCodePage />) },
-  { path: "/features/ideascapes", element: suspended(<IdeascapesPage />) },
-  { path: "/features/chat-defaults", element: suspended(<ChatDefaultsPage />) },
-  { path: "/features/folders", element: suspended(<FoldersPage />) },
-  { path: "/features/automated-tasks", element: suspended(<AutomatedTasksPage />) },
-  { path: "/features/integrations", element: suspended(<IntegrationsPage />) },
-  { path: "/features/remote-mcp", element: suspended(<RemoteMcpServersPage />) },
-  { path: "/features/personas", element: suspended(<PersonasFeaturePage />) },
-  { path: "/features/knowledge-base", element: suspended(<KnowledgeBaseFeaturePage />) },
-  { path: "/features/memories", element: suspended(<MemoriesFeaturePage />) },
-  { path: "/features/themes", element: suspended(<ThemesFeaturePage />) },
-  { path: "/features/pro-vs-free", element: suspended(<ProVsFreeFeaturePage />) },
-  { path: "/features/byok", element: suspended(<BYOKFeaturePage />) },
-  {
-    path: "/features/participant-options",
-    element: suspended(<ParticipantOptionsFeaturePage />),
-  },
-  { path: "/features/branching", element: suspended(<BranchingFeaturePage />) },
-  {
-    path: "/features/price-transparency",
-    element: suspended(<PriceTransparencyFeaturePage />),
-  },
-  { path: "/features/audio-generation", element: suspended(<AudioGenerationPage />) },
-  { path: "/features/image-generation", element: suspended(<ImageGenerationPage />) },
-  { path: "/features/video-generation", element: suspended(<VideoGenerationPage />) },
   { path: "/sign-in/*", element: <SignInPage /> },
 
   // Native app OAuth relay — DO NOT REMOVE OR MODIFY.

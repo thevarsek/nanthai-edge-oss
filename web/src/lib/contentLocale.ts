@@ -1,4 +1,4 @@
-/** Content URLs own their language; the rest of the site keeps client-side switching. */
+/** Editorial URL helpers; marketing pages share these languages through publicLocale. */
 export const contentLanguages = ["en", "es", "fr", "de", "it", "ja", "zh"] as const;
 export type ContentLanguage = typeof contentLanguages[number];
 export type Collection = "guides" | "research";

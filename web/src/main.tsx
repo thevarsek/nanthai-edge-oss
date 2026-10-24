@@ -1,3 +1,4 @@
+import { I18nextProvider } from "react-i18next";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
@@ -12,7 +13,8 @@ import { ErrorBoundary } from "./components/shared/ErrorBoundary";
 import { AnalyticsBridge } from "./components/analytics/AnalyticsBridge";
 import { ConsentBridge } from "./components/analytics/ConsentBridge";
 import { removeBuildTimeSeoShellElements } from "./lib/seoShell";
-import { initialization as i18nInitialization } from "./i18n";
+import i18n, { initialization as i18nInitialization } from "./i18n";
+import { parsePublicPath, readLanguagePreference } from "./lib/publicLocale";
 import "./index.css";
 
 const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
@@ -30,28 +32,32 @@ if (typeof window !== "undefined") {
 
 async function renderApp() {
   await i18nInitialization;
+  const publicRoute = parsePublicPath(window.location.pathname);
+  if (publicRoute) await i18n.loadLanguages([publicRoute.language, readLanguagePreference() ?? "en"]);
   createRoot(document.getElementById("root")!).render(
     <StrictMode>
-      <ClerkProvider
-        publishableKey={CLERK_KEY}
-        afterSignOutUrl="/"
-        signInForceRedirectUrl="/app"
-        signUpForceRedirectUrl="/app"
-      >
-        <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
-          <BrowserRouter>
-            <ConsentBridge />
-            <AnalyticsBridge />
-            <SharedDataProvider>
-              <ToastProvider>
-                <ErrorBoundary level="app">
-                  <App />
-                </ErrorBoundary>
-              </ToastProvider>
-            </SharedDataProvider>
-          </BrowserRouter>
-        </ConvexProviderWithClerk>
-      </ClerkProvider>
+      <I18nextProvider i18n={i18n}>
+        <ClerkProvider
+          publishableKey={CLERK_KEY}
+          afterSignOutUrl="/"
+          signInForceRedirectUrl="/app"
+          signUpForceRedirectUrl="/app"
+        >
+          <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+            <BrowserRouter>
+              <ConsentBridge />
+              <AnalyticsBridge />
+              <SharedDataProvider>
+                <ToastProvider>
+                  <ErrorBoundary level="app">
+                    <App />
+                  </ErrorBoundary>
+                </ToastProvider>
+              </SharedDataProvider>
+            </BrowserRouter>
+          </ConvexProviderWithClerk>
+        </ClerkProvider>
+      </I18nextProvider>
     </StrictMode>,
   );
 }

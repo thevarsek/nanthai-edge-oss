@@ -1,4 +1,4 @@
-import { parseContentPath } from "./contentLocale";
+import { parsePublicPath } from "./publicLocale";
 
 const publicSeoPaths = new Set([
   "/",
@@ -13,7 +13,7 @@ const publicSeoPaths = new Set([
 ]);
 
 export function isPublicSeoPath(pathname: string) {
-  return Boolean(parseContentPath(pathname)) || pathname === "/guides" || pathname.startsWith("/guides/") || pathname === "/research" || pathname.startsWith("/research/") || publicSeoPaths.has(pathname) || pathname === "/features" || pathname.startsWith("/features/");
+  return Boolean(parsePublicPath(pathname)) || pathname === "/guides" || pathname.startsWith("/guides/") || pathname === "/research" || pathname.startsWith("/research/") || publicSeoPaths.has(pathname) || pathname === "/features" || pathname.startsWith("/features/");
 }
 
 export function removeBuildTimeSeoShell(pathname: string) {

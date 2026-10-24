@@ -1,5 +1,6 @@
-import { useEffect } from "react";
-import { Link, useLocation, useParams } from "react-router-dom";
+import { PublicLocaleBoundary } from "@/app-routing/PublicLocaleBoundary";
+import { useLocation, useParams } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { useTranslation } from "react-i18next";
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
@@ -20,14 +21,20 @@ function ArticleCard({ article, language }: { article: Article; language: Conten
 }
 
 export function ContentPage({ includeMetadata = true }: { includeMetadata?: boolean }) {
+  const location = useLocation();
+  const route = parseContentPath(location.pathname);
+  const available = route ? contentAlternates(route.collection, route.slug).map(entry => entry.language) : ["en"];
+  return <PublicLocaleBoundary language={route?.language ?? "en"} availableLanguages={available}>
+    <ContentPageBody includeMetadata={includeMetadata} />
+  </PublicLocaleBoundary>;
+}
+
+function ContentPageBody({ includeMetadata }: { includeMetadata: boolean }) {
   const { slug } = useParams();
   const location = useLocation();
   const { i18n } = useTranslation();
   const { collection, language } = parseContentPath(location.pathname) ?? { collection: "guides", language: "en" };
   const t = i18n.getFixedT(language);
-  useEffect(() => {
-    void i18n.changeLanguage(language);
-  }, [i18n, language]);
   const entries = localizedArticles(collection, language);
   const article = entries.find(entry => entry.slug === slug);
   const indexPath = contentPath(collection, language);

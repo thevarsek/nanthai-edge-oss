@@ -1,6 +1,6 @@
 import { ArrowRight, Link2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 
 import { getCapabilityCards, getHowItWorksSteps, getIntegrations } from "./HomePage.data";
 

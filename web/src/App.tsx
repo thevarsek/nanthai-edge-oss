@@ -1,3 +1,6 @@
+import { useLayoutEffect } from "react";
+import i18n, { syncDocumentLanguage } from "./i18n";
+import { parsePublicPath } from "./lib/publicLocale";
 import { useLocation, useRoutes, type RouteObject } from "react-router-dom";
 import { AppNotFound } from "./app-routing/AppNotFound";
 import { authenticatedRoutes } from "./app-routing/authenticatedRoutes";
@@ -13,6 +16,9 @@ const routes: RouteObject[] = [
 export function App() {
   const location = useLocation();
   const routeContent = useRoutes(routes);
+  useLayoutEffect(() => {
+    if (!parsePublicPath(location.pathname)) syncDocumentLanguage(i18n.resolvedLanguage ?? i18n.language);
+  }, [location.pathname]);
   const routeOwnsMetadata = isPublicSeoPath(location.pathname) ||
     location.pathname === "/openrouter/edge/callback";
 

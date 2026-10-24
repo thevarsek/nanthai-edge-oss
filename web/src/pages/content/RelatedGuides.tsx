@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { useTranslation } from "react-i18next";
 import { contentLanguage } from "@/lib/contentLocale";
 import { localizedArticles, articlePath } from "./articleData";

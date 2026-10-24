@@ -1,3 +1,5 @@
+import { parsePublicPath } from "./publicLocale";
+
 const CONSENT_STORAGE_KEY = "nanthai_consent";
 export const CONSENT_REVISION = 1;
 
@@ -69,6 +71,7 @@ export function subscribeAnalyticsConsent(listener: () => void): () => void {
 }
 
 export function isPublicConsentRoute(pathname: string): boolean {
+  pathname = parsePublicPath(pathname)?.path ?? pathname;
   return pathname === "/"
     || pathname === "/privacy"
     || pathname === "/terms"

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { Check, Globe } from "lucide-react";
-import { SUPPORTED_LANGUAGES, type SupportedLanguageCode } from "@/i18n";
+import appI18n, { SUPPORTED_LANGUAGES, type SupportedLanguageCode } from "@/i18n";
 
 interface LanguageSwitcherProps {
   /** "app" renders a list-row style matching AppearanceSection;
@@ -21,7 +21,9 @@ export function LanguageSwitcher({ variant = "app", onLanguageChange }: Language
   const currentLanguageLabel = currentLang?.nativeLabel ?? currentCode;
 
   const handleSelect = (code: SupportedLanguageCode) => {
-    void i18n.changeLanguage(code).then(() => onLanguageChange?.(code));
+    try { localStorage.setItem("nanthai_language", code); } catch { /* Language selection works without storage. */ }
+    if (onLanguageChange) void appI18n.changeLanguage(code).then(() => onLanguageChange(code));
+    else void i18n.changeLanguage(code);
     setOpen(false);
     if (variant === "header") {
       triggerRef.current?.focus();

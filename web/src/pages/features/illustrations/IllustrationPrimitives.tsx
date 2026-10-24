@@ -43,6 +43,7 @@ export function AnimateOnScroll({
   return (
     <div
       ref={ref}
+      data-scroll-reveal=""
       className={cn(
         "transition-none",
         visible ? animation : "opacity-0 translate-y-6",

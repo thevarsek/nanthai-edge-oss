@@ -1,7 +1,7 @@
 import { Children, isValidElement, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { useTranslation } from "react-i18next";
 import { localizeContentPath, type ContentLanguage } from "@/lib/contentLocale";
 import { headingId } from "./articleData";

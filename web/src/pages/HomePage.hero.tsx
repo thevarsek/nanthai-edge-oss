@@ -1,6 +1,6 @@
 import { ArrowRight } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { PublicLink as Link } from "@/components/edge-site/PublicLink";
 import { useAuth } from "@clerk/react";
 import { useTranslation } from "react-i18next";
 

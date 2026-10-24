@@ -7,6 +7,33 @@
     <meta name="description" content="NanthAI Edge is the cross-platform AI workspace for 300+ models, research, AI skills, sandboxed analysis, and Word, Excel, and PowerPoint creation." data-rh="true" data-seo-shell="true" />
     <meta name="robots" content="index, follow" data-rh="true" data-seo-shell="true" />
     <meta name="theme-color" content="#000000" />
+
+    <!--
+      Dark-mode no-flash script.
+      Runs synchronously before the first paint to apply the correct theme class
+      based on persisted preference or system setting. Prevents a flash of the
+      wrong theme (FOUT) when the page loads.
+    -->
+    <script id="theme-bootstrap">
+      (function () {
+        try {
+          var stored = localStorage.getItem("nanth_theme");
+          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          var theme = stored === "light" || stored === "dark" ? stored : (prefersDark ? "dark" : "light");
+          document.documentElement.setAttribute("data-theme", theme);
+          // Sync theme-color meta tag
+          document.querySelector('meta[name="theme-color"]').setAttribute(
+            "content",
+            theme === "dark" ? "#000000" : "#f5f7fb"
+          );
+          // Apply color theme (vibrant is default — no attribute needed)
+          var colorTheme = localStorage.getItem("nanth_color_theme");
+          if (colorTheme && colorTheme !== "vibrant") {
+            document.documentElement.setAttribute("data-color-theme", colorTheme);
+          }
+        } catch (_) {}
+      })();
+    </script>
     <link rel="canonical" href="https://nanthai.tech/" data-rh="true" data-seo-shell="true" />
 
     <link rel="icon" href="/favicon.ico" />
@@ -42,32 +69,7 @@
 
     <link rel="alternate" type="text/plain" href="https://nanthai.tech/llms.txt" />
 
-    <!--
-      Dark-mode no-flash script.
-      Runs synchronously before the first paint to apply the correct theme class
-      based on persisted preference or system setting. Prevents a flash of the
-      wrong theme (FOUT) when the page loads.
-    -->
-    <script>
-      (function () {
-        try {
-          var stored = localStorage.getItem("nanth_theme");
-          var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-          var theme = stored === "light" || stored === "dark" ? stored : (prefersDark ? "dark" : "light");
-          document.documentElement.setAttribute("data-theme", theme);
-          // Sync theme-color meta tag
-          document.querySelector('meta[name="theme-color"]').setAttribute(
-            "content",
-            theme === "dark" ? "#000000" : "#f5f7fb"
-          );
-          // Apply color theme (vibrant is default — no attribute needed)
-          var colorTheme = localStorage.getItem("nanth_color_theme");
-          if (colorTheme && colorTheme !== "vibrant") {
-            document.documentElement.setAttribute("data-color-theme", colorTheme);
-          }
-        } catch (_) {}
-      })();
-    </script>
+
   </head>
   <body>
     <!-- Skip to main content — screen reader / keyboard a11y -->

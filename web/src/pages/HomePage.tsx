@@ -18,7 +18,7 @@ import { HomeFinalCTA, HomePricingSection } from "./HomePage.pricing";
 import { HomeWorkflowProofSection } from "./HomePage.proof";
 
 export function HomePage() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   return (
     <EdgeSiteLayout activePage="home">
@@ -61,6 +61,7 @@ export function HomePage() {
             "@context": "https://schema.org",
             "@type": "MobileApplication",
             name: "NanthAI Edge",
+            inLanguage: i18n.resolvedLanguage ?? i18n.language,
             operatingSystem: "iOS, Android",
             applicationCategory: "ProductivityApplication",
             url: "https://nanthai.tech",
