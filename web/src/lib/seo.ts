@@ -3,6 +3,7 @@ export interface OrganizationInfo {
   url: string;
   logoUrl: string;
   sameAs?: string[];
+  alternateName?: string[];
 }
 
 export function buildOrganizationJsonLd(org: OrganizationInfo) {
@@ -10,6 +11,7 @@ export function buildOrganizationJsonLd(org: OrganizationInfo) {
     "@context": "https://schema.org",
     "@type": "Organization",
     name: org.name,
+    ...(org.alternateName ? { alternateName: org.alternateName } : {}),
     url: org.url,
     logo: {
       "@type": "ImageObject",
@@ -41,7 +43,7 @@ export const NANTHAI_SOCIAL_LINKS = [
   { destination: "x", label: "X", url: "https://x.com/nanth_ai" },
   { destination: "facebook", label: "Facebook", url: "https://www.facebook.com/profile.php?id=61576915574765" },
   { destination: "instagram", label: "Instagram", url: "https://www.instagram.com/nanth.ai/" },
-  { destination: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/company/107890980/" },
+  { destination: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com/company/nanthai/" },
 ] as const;
 
 export const NANTHAI_SOCIALS: string[] = NANTHAI_SOCIAL_LINKS.map((social) => social.url);

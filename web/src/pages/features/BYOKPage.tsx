@@ -133,7 +133,7 @@ function BYOKExplainer() {
             </li>
           </ul>
           <p className="mt-4 text-[0.82rem] efg-35">
-            {t("bk_explainer_learn_more")}{" "}
+            {t("bk_byok_fee_note")}{" "}
             <a
               href="https://openrouter.ai/docs/guides/overview/auth/byok"
               target="_blank"

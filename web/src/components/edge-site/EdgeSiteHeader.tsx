@@ -7,10 +7,11 @@ import { LanguageSwitcher } from "@/components/shared/LanguageSwitcher";
 import { captureCtaClick, ctaAuthState } from "@/lib/ctaAnalytics";
 
 type EdgeSiteHeaderProps = {
-  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing" | "workflows";
+  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing" | "workflows" | "guides";
 };
 
 const navItems = [
+  { href: "/guides", labelKey: "edge_nav_guides", page: "guides" as const },
   { href: "/workflows", labelKey: "edge_nav_research", page: "workflows" as const },
   { href: "/features", labelKey: "edge_nav_features", page: "features" as const },
   { href: "/privacy", labelKey: "edge_nav_privacy", page: "privacy" as const },

@@ -7,6 +7,8 @@ import { showConsentPreferences } from "@/lib/consentEvents";
 import { NANTHAI_SOCIAL_LINKS } from "@/lib/seo";
 
 const footerLinks = [
+  { to: "/guides", labelKey: "edge_nav_guides" },
+  { to: "/research", labelKey: "edge_nav_research_articles" },
   { to: "/privacy", labelKey: "edge_nav_privacy" },
   { to: "/terms", labelKey: "edge_nav_terms" },
   { to: "/licensing", labelKey: "edge_nav_licensing" },

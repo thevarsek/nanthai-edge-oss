@@ -244,7 +244,7 @@ const coreFeatures: FeatureMeta[] = [
     title: "Image Generation",
     tagline: "Turn text prompts into images using dedicated image models.",
     indexDescription:
-      "Pick an image-generation model, describe what you want, and receive an inline image. Download it, attach it to another chat, or find it later in the Knowledge Base.",
+      "Generate images for free when a free image model is available on OpenRouter, or choose a paid model. Images stay in the chat; saving to the Knowledge Base is Pro.",
     tier: "free",
     icon: Image,
     accentClass: "text-[var(--edge-amber)]",

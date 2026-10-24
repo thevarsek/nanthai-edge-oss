@@ -57,6 +57,8 @@ export default defineConfig({
           /^\/support/,
           /^\/sitemap/,
           /^\/llms/,
+          /^\/guides(?:\/|$)/,
+          /^\/research(?:\/|$)/,
           /^\/stripe-webhook/,
         ],
         runtimeCaching: [

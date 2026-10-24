@@ -32,6 +32,10 @@ describe("build-time SEO shell cleanup", () => {
     expect(isPublicSeoPath("/privacy")).toBe(true);
     expect(isPublicSeoPath("/features")).toBe(true);
     expect(isPublicSeoPath("/features/byok")).toBe(true);
+    expect(isPublicSeoPath("/guides")).toBe(true);
+    expect(isPublicSeoPath("/guides/ai-chat-memory")).toBe(true);
+    expect(isPublicSeoPath("/research")).toBe(true);
+    expect(isPublicSeoPath("/research/beyond-the-transcript")).toBe(true);
     expect(isPublicSeoPath("/workflows")).toBe(true);
     expect(isPublicSeoPath("/local-runtime")).toBe(true);
     expect(isPublicSeoPath("/research/results")).toBe(true);

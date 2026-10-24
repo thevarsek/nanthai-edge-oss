@@ -7,6 +7,8 @@ import { ProviderOAuthCallbackPage } from "@/routes/ProviderOAuthCallbackPage";
 import { SignInPage } from "@/routes/SignInPage";
 import { AppRouteBoundary } from "./AppRouteBoundary";
 
+const ContentPage = lazy(() => import("@/pages/content/ContentPage").then(module => ({ default: module.ContentPage })));
+
 const WorkflowsPage = lazy(() => import("@/pages/workflows/WorkflowsPage").then(module => ({ default: module.WorkflowsPage })));
 const PublicLocalRuntimePage = lazy(() => import("@/pages/workflows/LocalRuntimePage").then(module => ({ default: module.LocalRuntimePage })));
 const LocalRuntimeFeaturePage = lazy(() => import("@/pages/features/LocalRuntimeFeaturePage").then(module => ({ default: module.LocalRuntimeFeaturePage })));
@@ -147,6 +149,10 @@ function suspended(element: ReactNode) {
 }
 
 export const publicRoutes: RouteObject[] = [
+  { path: "/guides", element: suspended(<ContentPage />) },
+  { path: "/guides/:slug", element: suspended(<ContentPage />) },
+  { path: "/research", element: suspended(<ContentPage />) },
+  { path: "/research/:slug", element: suspended(<ContentPage />) },
   { path: "/workflows", element: suspended(<WorkflowsPage />) },
   { path: "/research/results", element: <Navigate to="/workflows" replace /> },
   { path: "/local-runtime", element: suspended(<PublicLocalRuntimePage />) },

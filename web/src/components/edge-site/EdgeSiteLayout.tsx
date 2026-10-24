@@ -4,7 +4,7 @@ import { EdgeSiteFooter } from "./EdgeSiteFooter";
 import { PublicPageScroll } from "./PublicPageScroll";
 
 type EdgeSiteLayoutProps = {
-  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing" | "workflows";
+  activePage?: "home" | "privacy" | "terms" | "support" | "features" | "licensing" | "workflows" | "guides";
   children: React.ReactNode;
   mainClassName?: string;
 };

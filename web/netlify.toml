@@ -73,6 +73,46 @@
   to = "/features/:slug.html"
   status = 200
 
+[[redirects]]
+  from = "/guides"
+  to = "/guides.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/"
+  to = "/guides.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/:slug"
+  to = "/guides/:slug.html"
+  status = 200
+
+[[redirects]]
+  from = "/guides/:slug/"
+  to = "/guides/:slug.html"
+  status = 200
+
+[[redirects]]
+  from = "/research"
+  to = "/research.html"
+  status = 200
+
+[[redirects]]
+  from = "/research/"
+  to = "/research.html"
+  status = 200
+
+[[redirects]]
+  from = "/research/:slug"
+  to = "/research/:slug.html"
+  status = 200
+
+[[redirects]]
+  from = "/research/:slug/"
+  to = "/research/:slug.html"
+  status = 200
+
 # ── SPA fallback — serve index.html for private app routes ──
 # OpenRouter returns directly to this route, including in fresh/private
 # browsing sessions where no service worker can provide the SPA fallback.

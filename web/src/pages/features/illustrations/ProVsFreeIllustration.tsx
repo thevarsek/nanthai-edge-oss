@@ -68,7 +68,7 @@ export function ProVsFreeIllustration() {
       <div className="grid grid-cols-[1fr_60px_60px] gap-2 px-3 py-3 border-t border-[rgba(var(--edge-fg),0.08)] bg-[rgba(var(--edge-fg),0.02)]">
         <span className="text-[10px] font-semibold efg-50">Price</span>
         <span className="text-[10px] font-semibold text-[var(--edge-cyan)] text-center">$0</span>
-        <span className="text-[10px] font-semibold text-[var(--edge-coral)] text-center">$4.99</span>
+        <span className="text-[10px] font-semibold text-[var(--edge-coral)] text-center">£4.99</span>
       </div>
     </MockPanel>
   );

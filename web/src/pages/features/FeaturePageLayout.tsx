@@ -1,3 +1,4 @@
+import { RelatedGuides } from "@/pages/content/RelatedGuides";
 import { Link } from "react-router-dom";
 import { useAuth } from "@clerk/react";
 import { ArrowRight, ArrowUpRight } from "lucide-react";
@@ -323,6 +324,8 @@ export function FeaturePageLayout({
             )}
           </div>
         </div>
+
+        <RelatedGuides feature={meta.slug} />
 
         {/* ── CTA ───────────────────────────────────────────────── */}
         <section className="container pb-24 md:pb-32">

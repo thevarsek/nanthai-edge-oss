@@ -1,10 +1,9 @@
+import { brandSchemas } from "@/lib/brandSchema";
 import { HomeWorkflowSection } from "./workflows/HomeWorkflowSection";
 import { Seo } from "@/components/Seo";
 import { EdgeSiteLayout } from "@/components/edge-site/EdgeSiteLayout";
 import {
   buildBreadcrumbsJsonLd,
-  buildOrganizationJsonLd,
-  NANTHAI_SOCIALS,
 } from "@/lib/seo";
 import { StoreUrls } from "@/lib/constants";
 import { useTranslation } from "react-i18next";
@@ -50,16 +49,7 @@ export function HomePage() {
       </Seo>
 
       <>
-        <script type="application/ld+json">
-          {JSON.stringify(
-            buildOrganizationJsonLd({
-              name: "NanthAI",
-              url: "https://nanthai.tech",
-              logoUrl: "https://nanthai.tech/apple-touch-icon.png",
-              sameAs: NANTHAI_SOCIALS,
-            }),
-          )}
-        </script>
+        {brandSchemas.map(schema => <script key={schema["@type"]} type="application/ld+json">{JSON.stringify(schema)}</script>)}
         <script type="application/ld+json">
           {JSON.stringify(
             buildBreadcrumbsJsonLd([{ name: "Home", url: "https://nanthai.tech/" }]),

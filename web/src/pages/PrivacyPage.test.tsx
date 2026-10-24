@@ -17,6 +17,8 @@ describe("PrivacyPage", () => {
 
     expect(screen.getByRole("heading", { name: /plain-language view/i })).toBeInTheDocument();
     expect(screen.getByText(/July 31, 2026/)).toBeInTheDocument();
+    expect(screen.getByText(/Google sign-in \(OAuth\) connects Google Drive and Google Calendar only/i)).toBeInTheDocument();
+    expect(screen.getByText(/Google app password over IMAP\/SMTP/i)).toBeInTheDocument();
     expect(screen.getByText(/PostHog Cloud EU/i)).toBeInTheDocument();
     expect(screen.getByText(/not shown inside the web app or installed PWA/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "support@nanthai.tech" })).toHaveAttribute(
