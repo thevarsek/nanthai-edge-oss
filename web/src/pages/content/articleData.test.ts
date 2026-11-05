@@ -35,10 +35,10 @@ describe("article content contract", () => {
     const source = `---\ntitle: "A title: with a colon"\ndescription: 'L''IA: une explication'\nupdated: "2026-10-24"\nrelated: ['byok', "memories"]\n---\n# A title: with a colon\n\nBody`;
     expect(parseArticle(source, "/guides/fr/example.md")).toMatchObject({ title: "A title: with a colon", description: "L'IA: une explication", updated: "2026-10-24", related: ["byok", "memories"], language: "fr" });
   });
-  it("loads the ten guides and three original research articles", () => {
-    expect(articles.filter(article => article.collection === "guides")).toHaveLength(10);
+  it("loads the eleven guides and three original research articles", () => {
+    expect(articles.filter(article => article.collection === "guides")).toHaveLength(11);
     expect(articles.filter(article => article.collection === "research")).toHaveLength(3);
-    expect(new Set(articles.map(article => article.slug)).size).toBe(13);
+    expect(new Set(articles.map(article => article.slug)).size).toBe(14);
   });
   it.each(articles.filter(article => article.collection === "guides"))("keeps $slug within the editorial contract", article => {
     expect(article.title.length).toBeLessThanOrEqual(60);
