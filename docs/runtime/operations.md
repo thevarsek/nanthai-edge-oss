@@ -52,8 +52,15 @@ place; this reconnect does not require restarting the host or creating a second 
 
 Only one installed tray/host owner should run. For manual upgrade/rollback, stop it,
 retain the old installation, install the replacement and start one copy. Preserve
-local spool/saved work until pending events drain. Revoked credentials require
-pairing again. See [the host README](../../runtime-host/README.md) for uninstall.
+local spool/saved work until pending events drain. Runtime 0.4.4 stops automatic
+restarts after the control plane rejects a device
+credential with `401 UNAUTHORIZED`, removes only the rejected local pairing and
+shows a reconnect message. Temporary network failures retain pairing and restart
+with backoff. Revoked credentials require pairing again. Older installed hosts
+can keep retrying until their owner quits or updates the Mac app. Convex keeps
+rejecting those heartbeats with HTTP 401, but treats the denial as an expected
+result rather than a failed mutation; it cannot remotely stop an old Mac process.
+See [the host README](../../runtime-host/README.md) for uninstall.
 
 ## Lifecycle qualification
 

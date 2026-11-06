@@ -10,6 +10,7 @@ import type {
 import type { CredentialStore } from "./credential_store.ts";
 import type { HostStatus } from "./host_status_store.ts";
 import type { UsageReader } from "./usage_history.ts";
+import { RUNTIME_RECONNECT_EXIT_CODE, runtimeAuthorizationRejected, startRuntime } from "./cli_runtime_start.ts";
 
 export interface RunnableHost {
   run(signal?: AbortSignal): Promise<void>;
@@ -49,6 +50,10 @@ export async function runCli(args: readonly string[], dependencies: CliDependenc
   try {
     return await dispatch(args, dependencies);
   } catch (error) {
+    if (args[0] === "runtime" && args[1] === "start" && runtimeAuthorizationRejected(error)) {
+      dependencies.stderr("This Mac's NanthAI connection is no longer authorized. Reconnect NanthAI from the Mac app.");
+      return RUNTIME_RECONNECT_EXIT_CODE;
+    }
     dependencies.stderr(publicError(error));
     return 1;
   }
@@ -140,16 +145,7 @@ async function runtime(
 ) {
   switch (subcommand) {
     case "start": {
-      const owner = options[0] === "--owner" && options[1] === "tray" ? "tray" : "foreground_cli";
-      const credential = await requireCredential(dependencies.credentials);
-      dependencies.stdout(JSON.stringify({
-        state: "starting",
-        deviceId: credential.deviceId,
-        owner,
-      }));
-      await dependencies.hostFactory.create(credential, owner)
-        .run(dependencies.shutdownSignal);
-      return 0;
+      return await startRuntime(dependencies, options);
     }
     case "status": {
       const [credential, status] = await Promise.all([
@@ -253,12 +249,6 @@ async function adapters(
 function parseAdapterName(value: string | undefined): AdapterName {
   if (value !== "codex" && value !== "pi") throw new Error("Choose codex or pi");
   return value;
-}
-
-async function requireCredential(store: CredentialStore): Promise<DeviceCredential> {
-  const credential = await store.readDeviceCredential();
-  if (credential === null) throw new Error("This machine is not paired; run nanthai pair first");
-  return credential;
 }
 
 function isMissingProcess(error: unknown): boolean {

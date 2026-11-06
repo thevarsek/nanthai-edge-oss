@@ -1,6 +1,6 @@
 import { wakeLocalCollaboration } from "../collaboration/runtime_wake";
 import { acknowledgeStoppedRuntimeHost } from "./host_stop_receipt";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import type { MutationCtx } from "../_generated/server";
 import { mutation } from "../_generated/server";
 import { PAIRING_PROTOCOL_VERSION } from "./protocol_common";
@@ -221,8 +221,23 @@ export const heartbeat = mutation({
     platform: v.object({ operatingSystem, architecture, release: v.string() }),
     adapters: v.array(presenceAdapter),
   },
-  returns: v.object({ presenceId: v.string(), serverTime: v.number(), expiresAt: v.number() }),
-  handler: async (ctx, args) => await heartbeatPresenceHandler(ctx, args),
+  returns: v.union(
+    v.object({ presenceId: v.string(), serverTime: v.number(), expiresAt: v.number() }),
+    v.object({ error: v.object({ code: v.literal("UNAUTHORIZED"), message: v.string() }) }),
+  ),
+  handler: async (ctx, args) => {
+    try {
+      return await heartbeatPresenceHandler(ctx, args);
+    } catch (error) {
+      // Old hosts can retry revoked credentials forever. Denial is an expected result.
+      const data: unknown = error instanceof ConvexError ? error.data : null;
+      if (typeof data === "object" && data !== null && "code" in data
+        && data.code === "UNAUTHORIZED" && "message" in data && typeof data.message === "string") {
+        return { error: { code: "UNAUTHORIZED" as const, message: data.message } };
+      }
+      throw error;
+    }
+  },
 });
 
 export const disconnect = mutation({

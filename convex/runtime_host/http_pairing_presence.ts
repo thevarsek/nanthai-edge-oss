@@ -17,7 +17,8 @@ import {
 type PairingClaim = z.infer<typeof PairingClaimSchema>;
 type PairingGrant = z.infer<typeof PairingGrantSchema>;
 type Presence = z.infer<typeof RuntimePresenceSchema>;
-type PresenceResult = { presenceId: string; serverTime: number; expiresAt: number };
+type PresenceResult = { presenceId: string; serverTime: number; expiresAt: number }
+  | { error: { code: "UNAUTHORIZED"; message: string } };
 
 const claimPairingRef = publicRef<"mutation", PairingClaim, PairingGrant>(
   "runtime_host/pairing:claimPairing",
@@ -88,7 +89,7 @@ export async function heartbeatPresenceHttp(
       ...presence,
       credential: host.credential,
     });
-    return jsonResponse(result);
+    return jsonResponse(result, "error" in result ? 401 : 200);
   });
 }
 

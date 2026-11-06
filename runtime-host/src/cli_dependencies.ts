@@ -32,7 +32,7 @@ import { syncSavedResults } from "./saved_task_sync.ts";
 import { SavedTaskStore, type SavedTask } from "./saved_task_store.ts";
 import { UsageHistory } from "./usage_history.ts";
 
-const HOST_VERSION = "0.4.3";
+const HOST_VERSION = "0.4.4";
 
 export function defaultCliDependencies(shutdownSignal?: AbortSignal) {
   if (process.platform !== "darwin") {

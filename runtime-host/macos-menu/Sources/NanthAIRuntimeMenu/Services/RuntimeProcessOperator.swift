@@ -5,6 +5,7 @@ public enum RuntimeAppError: LocalizedError {
     case commandFailed(String)
     case invalidPairing
     case runtimeOwnedByTerminal
+    case connectionRevoked
 
     public var errorDescription: String? {
         switch self {
@@ -12,6 +13,7 @@ public enum RuntimeAppError: LocalizedError {
         case .commandFailed(let message): message
         case .invalidPairing: "Paste the complete pairing command from NanthAI Settings → Local runtime."
         case .runtimeOwnedByTerminal: "The Runtime Host is running in a terminal. Stop it there before starting it from the menu bar."
+        case .connectionRevoked: "This Mac's NanthAI connection is no longer authorized. Connect your NanthAI account again."
         }
     }
 }
@@ -94,7 +96,13 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
     }
 
     public func restartExitedHost() async throws {
-        guard let host, !host.isRunning, Date() >= nextRestartAt else { return }
+        guard let host, !host.isRunning else { return }
+        if host.terminationStatus == 77 {
+            self.host = nil
+            restartDelay = 1
+            throw RuntimeAppError.connectionRevoked
+        }
+        guard Date() >= nextRestartAt else { return }
         nextRestartAt = Date().addingTimeInterval(restartDelay)
         restartDelay = min(restartDelay * 2, 30)
         try await start(owner: .tray)

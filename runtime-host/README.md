@@ -3,7 +3,7 @@
 The Mac menu-bar app and `nanthai` CLI run Codex/Pi Personas for NanthAI web, iOS and
 Android. Convex owns connected conversations, execution, permissions, artifacts
 and usage. The host owns native process supervision, transport recovery and local
-saved tasks. Package version: 0.4.3; accepted development scope is integrated for
+saved tasks. Package version: 0.4.4; accepted development scope is integrated for
 review, with public release tracked in the [milestone index](../milestones/README.md).
 
 ## Package layout
@@ -73,7 +73,8 @@ and saved results have drained.
 
 For manual upgrade/rollback, stop the host, retain the old installation, install the
 replacement and run one copy. The installer refuses an existing destination.
-Revoked credentials require pairing again. No automatic-update service is implied.
+A rejected device credential stops automatic restarts and requires pairing again.
+Temporary network failures remain restartable. No automatic-update service is implied.
 
 ## Development
 

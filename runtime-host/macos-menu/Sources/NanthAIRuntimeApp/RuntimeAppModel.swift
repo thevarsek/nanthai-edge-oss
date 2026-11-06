@@ -67,7 +67,10 @@ final class RuntimeAppModel {
                     if isReady && isPaired { await menu.startRuntime() }
                 }
                 do { try await operatorProcess.restartExitedHost() }
-                catch { self.error = error.localizedDescription }
+                catch {
+                    self.error = error.localizedDescription
+                    if case RuntimeAppError.connectionRevoked = error { self.isPaired = false }
+                }
             }
         }
     }

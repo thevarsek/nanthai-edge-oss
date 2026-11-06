@@ -5,6 +5,7 @@ import type { AdapterRegistry } from "../src/adapter_registry.ts";
 import { runCli, type CliDependencies } from "../src/cli.ts";
 import type { PairingClient } from "../src/control_plane.ts";
 import { InMemoryCredentialStore } from "../src/credential_store.ts";
+import { RuntimeHttpError } from "../src/http_json_client.ts";
 
 test("CLI pairs with the frozen two-part claim and reports offline status", async () => {
   const output: string[] = [];
@@ -72,6 +73,37 @@ test("CLI starts the production factory with foreground ownership", async () => 
     deviceId: "device-1",
     owner: "foreground_cli",
   });
+});
+
+test("revoked runtime authority clears only that pairing and requests no automatic restart", async () => {
+  for (const replacePairing of [false, true]) {
+    const output: string[] = [];
+    const dependencies = cliDependencies(new FakePairingClient(), output);
+    await runCli(["pair", "pairing-1", "123456"], dependencies);
+    dependencies.hostFactory = { create: () => ({ run: async () => {
+      if (replacePairing) {
+        await dependencies.credentials.writeDeviceCredential({
+          deviceId: "device-new", credentialId: "credential-new", credential: "new-secret",
+          controlPlaneUrl: "https://example.test",
+        });
+      }
+      throw new RuntimeHttpError(401, "UNAUTHORIZED", "Runtime Host credential is invalid or revoked");
+    } }) };
+    assert.equal(await runCli(["runtime", "start", "--owner", "tray"], dependencies), 77);
+    assert.equal((await dependencies.credentials.readDeviceCredential())?.credentialId ?? null,
+      replacePairing ? "credential-new" : null);
+    assert.match(output.at(-1) ?? "", /Reconnect NanthAI/);
+  }
+});
+
+test("temporary transport failures preserve pairing and remain restartable", async () => {
+  const dependencies = cliDependencies(new FakePairingClient(), []);
+  await runCli(["pair", "pairing-1", "123456"], dependencies);
+  dependencies.hostFactory = { create: () => ({ run: async () => {
+    throw new RuntimeHttpError(0, "NETWORK_ERROR", "Runtime endpoint could not be reached");
+  } }) };
+  assert.equal(await runCli(["runtime", "start"], dependencies), 1);
+  assert.equal((await dependencies.credentials.readDeviceCredential())?.credentialId, "credential-1");
 });
 
 class FakePairingClient implements PairingClient {
