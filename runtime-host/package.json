@@ -13,9 +13,11 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "test:all": "npm run lint && npm run typecheck && npm test",
+    "test:release": "node --test scripts/release-macos.test.mjs",
+    "test:all": "npm run lint && npm run typecheck && npm test && npm run test:release",
     "nanthai": "tsx src/cli_entry.ts",
-    "build:package": "node scripts/build-package.mjs"
+    "build:package": "node scripts/build-package.mjs",
+    "release:macos": "node scripts/release-macos.mjs"
   },
   "dependencies": {
     "convex": "1.46.0",

@@ -1,2 +1,12 @@
 dist/
 node_modules
+.env.*
+*.p12
+*.p8
+*.key
+*.pem
+*.keychain*
+*.mobileprovision
+*.dmg
+*.zip
+*.app/

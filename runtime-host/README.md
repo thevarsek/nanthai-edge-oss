@@ -88,6 +88,13 @@ swift test --package-path macos-menu
 swift build --package-path macos-menu -c release
 ```
 
+For signed installers, `npm run release:macos -- /absolute/path/to/Runtime.app`
+uses `NANTHAI_CODESIGN_IDENTITY` and `NANTHAI_NOTARY_PROFILE` from the local shell.
+There are no embedded team identifiers, profile names or credentials. Optional
+`--publish` requires an explicitly configured production deployment and verifies
+the downloaded installer before changing its URL. See
+[public installer publication](../docs/runtime/operations.md#public-installer-publication).
+
 The bundled Node must be the official macOS build of Node 22.23.4 or a newer 22.x.
 The builder refuses older 22.x releases, which are affected by the October 2026
 Node.js security release (including CVE-2026-111497); the floor is `MINIMUM_NODE_22`
