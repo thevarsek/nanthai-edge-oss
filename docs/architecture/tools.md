@@ -10,12 +10,29 @@ The app's hand-rolled `convex/lib/openrouter_*` streaming pipeline is extended w
 The current architecture now uses additive, skill-led profile expansion during the tool loop:
 
 1. start with a small base registry
-2. inject a NanthAI prelude, runtime guard, and lightweight skill catalog
+2. inject a skill prelude, runtime guard, and lightweight skill catalog after the always-on host product block
 3. when the model calls `load_skill`, read `requiredToolProfiles`
 4. rebuild the next-turn `tools` array from the expanded active profile set
 5. continue the loop with the newly available domain tools
 
 This keeps ordinary requests lightweight while still allowing specialized workflows to unlock docs, integrations, analytics, or workspace capabilities on demand.
+
+### Host product context
+
+Every ordinary participant turn (`generateForParticipant`, V8 and Node) starts its
+system prompt with one `<host_product>` block from `convex/chat/product_context.ts`,
+independent of plan, tools or skills. It states that the selected model runs inside
+NanthAI and is not NanthAI's provider, lets a selected persona keep its name and role,
+and lists headline facts that are easy to confuse: speech-to-text, "Listen",
+"Auto audio reply" and the absence of live voice; side-by-side models,
+Conversation mode collaboration and subagents; and what Pro adds. A final `Now:` line
+reports the turn's plan, tool and subagent availability, model count/mode and the
+resolved auto-audio setting. The model is told to mention NanthAI only when asked and
+to recommend other products honestly. The skill prelude and runtime guard no longer
+repeat the identity. Continuations reuse the assembled request, so the block is not
+added twice. Detailed, client-verified how-to guidance lives in the visible
+`nanthai-guide` skill and is loaded through `load_skill` only when relevant.
+`evals/product-awareness` holds the matching behavioural cases.
 
 For a product-facing summary of which tiers expose which skills and tool families, see [../product/tool-skill-access.md](../product/tool-skill-access.md).
 

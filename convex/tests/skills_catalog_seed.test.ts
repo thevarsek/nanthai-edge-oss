@@ -18,8 +18,8 @@ import { validateToolProfileIds } from "../skills/tool_profiles";
 // MARK: Catalog seed — structural integrity
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG contains 71 seeded skills", () => {
-  assert.equal(SYSTEM_SKILL_CATALOG.length, 71);
+test("SYSTEM_SKILL_CATALOG contains 72 seeded skills", () => {
+  assert.equal(SYSTEM_SKILL_CATALOG.length, 72);
 });
 
 test("SYSTEM_SKILL_CATALOG: all entries have required fields", () => {
@@ -122,11 +122,11 @@ test("SYSTEM_SKILL_CATALOG: integration ids stay aligned with trigger profiles",
 // MARK: Catalog seed — visible vs hidden partitioning
 // =============================================================================
 
-test("SYSTEM_SKILL_CATALOG: 60 visible + 1 hidden + 10 integration_managed skills", () => {
+test("SYSTEM_SKILL_CATALOG: 61 visible + 1 hidden + 10 integration_managed skills", () => {
   const visible = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "visible");
   const hidden = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "hidden");
   const integrationManaged = SYSTEM_SKILL_CATALOG.filter((s) => s.visibility === "integration_managed");
-  assert.equal(visible.length, 60);
+  assert.equal(visible.length, 61);
   assert.equal(hidden.length, 1);
   assert.equal(integrationManaged.length, 10);
 });

@@ -233,7 +233,7 @@ export function formatSkillCatalogXml(skills: SkillCatalogEntry[]): string {
  * The runtime guard text injected into the system prompt when skills are active.
  * NOT loaded via load_skill — always present when catalog is non-empty.
  */
-export const NANTHAI_RUNTIME_GUARD_BASIC = `You are running inside NanthAI, a mobile AI assistant. You do NOT have access to:
+export const NANTHAI_RUNTIME_GUARD_BASIC = `Inside NanthAI you do NOT have access to:
 - Local shell, bash, terminal, or command-line tools
 - Local filesystem read/write
 - Browser automation, screenshots, or desktop control
@@ -246,7 +246,6 @@ export function buildNanthAIPrelude(
   _profile: "mobileBasic",
 ): string {
   return [
-    "You are running inside NanthAI, a mobile AI assistant.",
     "Use direct conversation by default for normal requests such as explanation, summarization, rewriting, translation, brainstorming, or other tasks that can be completed from the conversation context and the standard chat/search behavior already available in this conversation.",
     "If a task cannot be completed well through direct conversation alone and appears to require a specialized workflow, inspect the available skills and use load_skill before proceeding.",
     "After calling load_skill, wait for the tool result before using any newly unlocked tools from that skill. Do not call a skill-specific tool in the same step as load_skill.",

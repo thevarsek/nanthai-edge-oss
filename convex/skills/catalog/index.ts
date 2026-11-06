@@ -30,6 +30,7 @@ import {
   SPEECH_GENERATION_SKILL,
   VIDEO_GENERATION_SKILL,
 } from "./media_generation";
+import { NANTHAI_GUIDE_SKILL } from "./nanthai_guide";
 import { NOTION_WORKSPACE_SKILL } from "./notion_workspace";
 import { SLACK_SKILL } from "./slack";
 
@@ -168,6 +169,7 @@ export const SYSTEM_SKILL_CATALOG: SystemSkillSeedData[] = [
   MICROSOFT_365_SKILL,
   MUSIC_GENERATION_SKILL,
   MULTI_PLATFORM_LAUNCH_SKILL,
+  NANTHAI_GUIDE_SKILL,
   NOTION_WORKSPACE_SKILL,
   PDF_SKILL,
   PARALLEL_SUBAGENTS_SKILL,

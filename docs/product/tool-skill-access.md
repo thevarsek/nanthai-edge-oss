@@ -135,6 +135,7 @@ Skills are curated or user-authored instruction packs that help the model choose
 | Documents | `documents`, `document-review`, `document-drafting`, `docx`, `pdf`, `pptx`, `xlsx`, `doc-coauthoring` | mostly `docs`; `pdf` uses `persistentRuntime`; `documents` spans `docs` + `persistentRuntime`; `xlsx` also carries `analytics` metadata | Generally Pro-useful |
 | Parallel decomposition | `parallel-subagents` plus selected strategy skills like `competitive-analysis`, `multi-platform-launch`, and `ai-pricing` | `subagents` | Pro-useful when subagents are enabled |
 | Connected apps | `google-drive`, `prod-calendar-scheduler`, `gmail`, `microsoft-365`, `notion-workspace`, `apple-calendar`, `slack`, `cloze` | `google`, `microsoft`, `notion`, `appleCalendar`, `slack`, `cloze` | Pro, plus matching connection for real use |
+| Product help | `nanthai-guide` | instruction-led; loaded only for questions about NanthAI itself | Pro (Free turns rely on the always-on host block) |
 | Productivity | `prod-brainstorming`, `prod-calendar-scheduler`, `prod-email-drafter`, `prod-meeting-notes` | instruction-led | Pro-useful |
 | Product / PM | `pm-adr`, `pm-competitive-analysis`, `pm-experiment-design`, `pm-launch-checklist`, `pm-persona`, `pm-prd`, `pm-problem-statement`, `pm-retrospective`, `pm-sprint-planning`, `pm-user-stories` | instruction-led | Pro-useful |
 | GTM / growth | `gtm-ai-pricing`, `gtm-cold-outreach`, `gtm-content-to-pipeline`, `gtm-expansion-retention`, `gtm-multi-platform-launch`, `gtm-positioning-icp`, `gtm-seo` | instruction-led | Pro-useful |
@@ -160,7 +161,7 @@ M33 added a dedicated document workflow layer on top of the lower-level file too
 
 ### catalog closeout
 
-The seeded system catalog is now 71 system skills: 60 visible active skills, 8 integration-managed active skills, 2 archived integration-managed compatibility skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
+The seeded system catalog is now 72 system skills: 61 visible active skills, 8 integration-managed active skills, 2 archived integration-managed compatibility skills, and 1 hidden runtime skill. `skills/actions:seedSystemCatalog` upserts active catalog rows, then hard-deletes removed system skill rows after pruning their IDs from user preferences, persona overrides, chat overrides, and scheduled job top-level/per-step skill overrides.
 
 ### Hidden built-in skills
 

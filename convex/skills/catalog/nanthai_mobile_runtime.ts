@@ -14,7 +14,7 @@ export const NANTHAI_MOBILE_RUNTIME_SKILL: SystemSkillSeedData = {
   summary:
     "Runtime environment constraints for NanthAI. Defines what capabilities are and are not " +
     "available in the mobile AI assistant environment. Hidden from catalog — automatically active.",
-  instructionsRaw: `You are running inside NanthAI, a mobile AI assistant. You do NOT have access to:
+  instructionsRaw: `Inside NanthAI you do NOT have access to:
 - Local shell, bash, terminal, or command-line tools
 - Local filesystem read/write
 - Visual browser control, external screen capture, or desktop app control

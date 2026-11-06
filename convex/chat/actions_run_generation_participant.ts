@@ -48,8 +48,10 @@ import {
 import { appendCurrentTurnAudioInput } from "./audio_input_request";
 import {
   preferredVoiceFromPreferences,
+  resolveAutoAudioResponseEnabled,
   STREAMING_TTS_FORMAT,
 } from "./audio_shared";
+import { buildProductContext, withProductContext } from "./product_context";
 import { runDedicatedImageGeneration } from "./action_image_generation";
 import { CITATION_SYSTEM_PROMPT_SUFFIX } from "../search/helpers";
 import {
@@ -529,9 +531,8 @@ export async function generateForParticipant(
           userId: args.userId,
         })
       : Promise.resolve(null),
-    // Chat doc is only needed for skill override resolution when not
-    // pre-resolved. Skip otherwise.
-    shouldBuildSkillCatalog && modelSupportsTools && !hasPreResolved
+    // Chat doc feeds skill overrides and the host-product audio state.
+    !requestMessagesOverride
       ? ctx.runQuery(internal.chat.queries.getChatInternal, {
           chatId: args.chatId,
         })
@@ -902,10 +903,23 @@ export async function generateForParticipant(
     const shouldAddDateContext = requestMessagesOverride == null &&
       shouldInjectDateContext(dateContextParams);
     const shouldUseDateOnly = shouldUseDateOnlyContext(dateContextParams);
+    // Host identity and live capability state; continuations reuse the
+    // already-assembled request, so this is added once per participant turn.
+    const toolsAvailable = Boolean(toolRegistry && !toolRegistry.isEmpty && modelSupportsTools);
+    const productContext = buildProductContext({
+      modelId: participant.modelId,
+      isPro,
+      toolsAvailable,
+      subagentsAvailable: toolsAvailable && progressiveTools?.allowSubagents === true,
+      modelCount: sharedToolCtx.turnParticipantCount ?? 1,
+      collaboration: (allMessages as unknown as ContextMessage[]).some((message) =>
+        message._id === participant.messageId && Boolean(message.collaborationExchangeId)),
+      autoAudioReply: resolveAutoAudioResponseEnabled(chatDocForPreflight, userPrefs),
+    });
     const legacyRequestMessages = requestMessagesOverride ?? buildRequestMessages({
       messages: allMessages as unknown as ContextMessage[],
       excludeMessageId: participant.messageId,
-      systemPrompt: skillAugmentedPrompt ?? undefined,
+      systemPrompt: withProductContext(skillAugmentedPrompt, productContext),
       dateContext: shouldAddDateContext
         ? shouldUseDateOnly
           ? buildCurrentDateOnlyPrompt()
