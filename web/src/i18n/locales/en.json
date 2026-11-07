@@ -2852,7 +2852,7 @@
   "bk_explainer_bullet2": "Traffic routes through your cloud account, which may be required for data residency or compliance.",
   "bk_explainer_bullet3": "You keep the same seamless Edge experience — no configuration changes needed in the app.",
   "bk_explainer_learn_more": "Learn more in the",
-  "bk_byok_fee_note": "* As of October 2026, OpenRouter charges 5% of the normal OpenRouter model/provider cost beyond its plan-dependent free BYOK allowance, deducted from OpenRouter credits. This is separate from the provider’s bill. See the",
+  "bk_byok_fee_note": "* As of November 2026, OpenRouter charges 5% of the normal OpenRouter model/provider cost beyond its plan-dependent free BYOK allowance, deducted from OpenRouter credits. This is separate from the provider’s bill. See the",
   "bk_explainer_docs_link": "OpenRouter BYOK documentation",
   "pf_seo_desc": "Compare NanthAI Edge Free and Pro tiers. Free includes multi-model chat, folders, themes, BYOK, and audio/image/video generation. Pro is a one-time £4.99 purchase that unlocks personas, memory, scheduled tasks, integrations, and more.",
   "pf_step1_title": "Start free — no credit card needed",

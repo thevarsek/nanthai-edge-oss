@@ -2850,7 +2850,7 @@
   "bk_explainer_bullet2": "トラフィックはクラウドアカウントを通じてルーティングされます。これはデータ居住地やコンプライアンスに必要な場合があります。",
   "bk_explainer_bullet3": "同じシームレスなEdgeエクスペリエンスを維持します — アプリでの設定変更は不要。",
   "bk_explainer_learn_more": "詳細は",
-  "bk_byok_fee_note": "* 2026年10月時点：OpenRouterはプランごとの無料BYOK枠を超えると、通常のOpenRouterモデル／プロバイダー料金の5%をOpenRouterクレジットから差し引きます。プロバイダーからの請求とは別料金です。詳細：",
+  "bk_byok_fee_note": "* 2026年11月時点：OpenRouterはプランごとの無料BYOK枠を超えると、通常のOpenRouterモデル／プロバイダー料金の5%をOpenRouterクレジットから差し引きます。プロバイダーからの請求とは別料金です。詳細：",
   "bk_explainer_docs_link": "OpenRouter BYOKドキュメント",
   "pf_seo_desc": "NanthAI Edgeの無料プランとProプランを比較。無料プランにはマルチモデルチャット、フォルダ、テーマ、BYOK、音声/画像/動画生成が含まれます。Proは£4.99の一回限りの購入で、ペルソナ、メモリ、スケジュールタスク、連携などをアンロックします。",
   "pf_step1_title": "無料で始める — クレジットカード不要",

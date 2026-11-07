@@ -2850,7 +2850,7 @@
   "bk_explainer_bullet2": "流量通过你的云账户路由，可满足数据驻留或合规要求。",
   "bk_explainer_bullet3": "继续使用同样流畅的 Edge 体验，无需更改应用内配置。",
   "bk_explainer_learn_more": "了解更多：",
-  "bk_byok_fee_note": "* 截至 2026 年 10 月，超出方案提供的免费 BYOK 额度后，OpenRouter 会按其常规模型／提供商费用的 5% 收费，并从 OpenRouter 余额扣除。此费用与提供商账单分开计算。请参阅",
+  "bk_byok_fee_note": "* 截至 2026 年 11 月，超出方案提供的免费 BYOK 额度后，OpenRouter 会按其常规模型／提供商费用的 5% 收费，并从 OpenRouter 余额扣除。此费用与提供商账单分开计算。请参阅",
   "bk_explainer_docs_link": "OpenRouter BYOK 文档",
   "pf_seo_desc": "比较 NanthAI Edge 的免费和 Pro 方案。免费方案包括多模型聊天、文件夹、主题、BYOK 以及音频/图像/视频生成。Pro 是一次性 £4.99 的购买，解锁 Persona、记忆、定时任务、集成等更多功能。",
   "pf_step1_title": "免费开始，无需信用卡",
