@@ -25,7 +25,7 @@ struct NanthAIRuntimeApp: App {
             }, openSavedWork: {
                 openWindow(id: "saved-work")
                 NSApp.activate(ignoringOtherApps: true)
-            }, quit: { Task { await model.quit() } })
+            }, quit: { NSApp.terminate(nil) })
         } label: {
             Image(nsImage: Self.menuIcon)
                 .overlay(alignment: .bottomTrailing) {
@@ -49,13 +49,17 @@ struct NanthAIRuntimeApp: App {
 
 @MainActor
 final class RuntimeAppDelegate: NSObject, NSApplicationDelegate {
+    private let termination = RuntimeTerminationCoordinator()
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.activate(ignoringOtherApps: true)
         Task { await RuntimeAppModel.shared.launch() }
     }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        Task { sender.reply(toApplicationShouldTerminate: await RuntimeAppModel.shared.stopBeforeQuit()) }
-        return .terminateLater
+        termination.requestTermination(
+            stop: { await RuntimeAppModel.shared.stopBeforeQuit() },
+            terminate: { sender.terminate(nil) }
+        )
     }
 }

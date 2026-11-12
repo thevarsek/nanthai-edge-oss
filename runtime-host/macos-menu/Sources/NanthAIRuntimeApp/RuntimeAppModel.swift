@@ -206,10 +206,6 @@ final class RuntimeAppModel {
         } catch { self.error = error.localizedDescription }
     }
 
-    func quit() async {
-        NSApp.terminate(nil)
-    }
-
     func stopBeforeQuit() async -> Bool {
         monitor?.cancel()
         do {

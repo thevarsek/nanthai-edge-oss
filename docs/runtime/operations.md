@@ -62,6 +62,10 @@ rejecting those heartbeats with HTTP 401, but treats the denial as an expected
 result rather than a failed mutation; it cannot remotely stop an old Mac process.
 See [the host README](../../runtime-host/README.md) for uninstall.
 
+Runtime 0.4.5 completes owned-host shutdown on the normal AppKit run loop before
+reissuing Quit, avoiding the deferred-termination hang. Repeated Quit requests
+share the same cleanup; a failed stop leaves the app available for another attempt.
+
 ## Lifecycle qualification
 
 Qualification covers actual installed startup, native input/permissions, long
