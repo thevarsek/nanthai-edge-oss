@@ -8,7 +8,7 @@
 // depends on bluebird and uses `new Function()` — banned in Convex V8.
 // =============================================================================
 
-import { Id } from "../_generated/dataModel";
+import { getOwnedFileBlob } from "./owned_storage_blob";
 import { extractDocxContent } from "./docx_reader";
 import { createTool } from "./registry";
 
@@ -36,15 +36,9 @@ export const readDocx = createTool({
     }
     const storageId = args.storageId as string;
 
-    let blob: Blob | null;
-    try {
-      blob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
-    } catch {
-      return { success: false, data: null, error: `Invalid storageId: "${storageId}"` };
-    }
-    if (!blob) {
-      return { success: false, data: null, error: `File not found for storageId: "${storageId}"` };
-    }
+    const owned = await getOwnedFileBlob(toolCtx.ctx, toolCtx.userId, storageId);
+    if (!owned.ok) return { success: false, data: null, error: owned.error };
+    const blob = owned.blob;
 
     try {
       const arrayBuffer = await blob.arrayBuffer();

@@ -424,18 +424,13 @@
 # /mobile-drive-picker is opened top-level by native Safari/Custom Tabs, not
 # embedded in an iframe/WebView, so DENY remains safe and prevents clickjacking.
 #
-# Content-Security-Policy is split in two:
-#   * The enforced policy holds only directives that cannot affect rendering:
-#     no plugins, no <base> injection, no framing.
-#   * The full policy ships as Report-Only first so violations show up in the
-#     browser console without breaking Clerk, Convex, PostHog or the Drive picker.
-#     Once a release has run clean, move its directives into the enforced header.
-#   * The Report-Only policy is written to dist/_headers at build time by
-#     scripts/write-csp-headers.mjs, so the Convex hosts come from
-#     VITE_CONVEX_URL (plus optional VITE_CONVEX_CSP_EXTRA_URLS) instead of being
-#     hard-coded. Hosts are listed explicitly rather than as a *.convex.cloud /
-#     *.convex.site wildcard, because those domains are shared by every Convex
-#     customer.
+# Content-Security-Policy is a single enforced policy written to dist/_headers
+# at build time by scripts/write-csp-headers.mjs (it is not set here, so the
+# two files never send competing policies). The Convex hosts come from
+# VITE_CONVEX_URL (plus optional VITE_CONVEX_CSP_EXTRA_URLS) instead of being
+# hard-coded, and the build fails when no Convex URL is configured. Hosts are
+# listed explicitly rather than as a *.convex.cloud / *.convex.site wildcard,
+# because those domains are shared by every Convex customer.
 # The script hashes cover the inline theme bootstrap in index.html /
 # app-shell.html, the offline page reload script, and the OpenRouter callback.
 [[headers]]
@@ -445,7 +440,6 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(self), microphone=(self), geolocation=()"
-    Content-Security-Policy = "object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 # Static legal/support pages — revalidate often so crawlers always get fresh content
 [[headers]]
   for = "/privacy.html"

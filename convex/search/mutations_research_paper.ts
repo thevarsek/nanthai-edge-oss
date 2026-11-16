@@ -3,6 +3,8 @@ import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
 import { assertOwnedUploadedStorage } from "../lib/storage_ownership";
+import { insertMessageFileAttachments } from "../lib/file_attachments";
+import { assertOwnedPersonas } from "../lib/persona_ownership";
 import { isAudioAttachment } from "../chat/audio_shared";
 import {
   normalizeMessageAttachments,
@@ -83,6 +85,7 @@ export const startResearchPaper = mutation({
     if (!chat || chat.userId !== userId) {
       throw new ConvexError({ code: "NOT_FOUND", message: "Chat not found" });
     }
+    await assertOwnedPersonas(ctx, userId, [args.participant.personaId]);
 
     const participantCount = await ctx.db
       .query("chatParticipants")
@@ -145,6 +148,9 @@ export const startResearchPaper = mutation({
       audioDurationMs: args.recordedAudio?.durationMs,
       attachments: normalizedAttachments,
       createdAt: now,
+    });
+    await insertMessageFileAttachments(ctx, {
+      userId, chatId: args.chatId, messageId: userMessageId, createdAt: now, attachments: normalizedAttachments,
     });
 
     const assistantMessageId = await ctx.db.insert("messages", {

@@ -62,6 +62,45 @@ export async function insertFileAttachment(
 }
 
 /**
+ * Index every stored attachment of one user message, exactly as `sendMessage`
+ * does. Keeping message attachments in `fileAttachments` makes them visible
+ * to Knowledge Base queries and to storage reference checks.
+ */
+export async function insertMessageFileAttachments(
+  ctx: MutationCtx,
+  args: {
+    userId: string;
+    chatId: Id<"chats">;
+    messageId: Id<"messages">;
+    createdAt: number;
+    attachments: ReadonlyArray<{
+      storageId?: Id<"_storage">;
+      name?: string;
+      mimeType?: string;
+      sizeBytes?: number;
+      driveFileId?: string;
+      lastRefreshedAt?: number;
+    }> | undefined;
+  },
+): Promise<void> {
+  for (const attachment of args.attachments ?? []) {
+    if (!attachment.storageId) continue;
+    await insertFileAttachment(ctx, {
+      userId: args.userId,
+      chatId: args.chatId,
+      messageId: args.messageId,
+      storageId: attachment.storageId,
+      filename: attachment.name ?? "attachment",
+      mimeType: attachment.mimeType ?? "application/octet-stream",
+      sizeBytes: attachment.sizeBytes,
+      driveFileId: attachment.driveFileId,
+      lastRefreshedAt: attachment.lastRefreshedAt,
+      createdAt: args.createdAt,
+    });
+  }
+}
+
+/**
  * Delete every `googleDriveFileGrants` cache row that points at `storageId`.
  *
  * Called from:

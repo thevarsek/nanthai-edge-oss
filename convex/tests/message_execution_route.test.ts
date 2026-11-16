@@ -63,3 +63,20 @@ test("both public message queries project the same recovery without mutating sto
   assert.deepEqual(page[0].generationRecovery, single?.generationRecovery);
   assert.equal(message.content, original);
 });
+
+test("message lists refresh avatars only from the caller's own Personas", async () => {
+  const { ctx, rows } = fixture();
+  rows.messages.push({
+    _id: "message_2", chatId: "chat_1", role: "assistant", content: "Own", status: "completed",
+    createdAt: 2, parentMessageIds: [], participantId: "own_persona",
+  });
+  rows.messages[0].participantId = "foreign_persona";
+  rows.personas.push(
+    { _id: "foreign_persona", userId: "other_user", avatarImageStorageId: "foreign_avatar" },
+    { _id: "own_persona", userId: "user_1", avatarImageStorageId: "own_avatar" },
+  );
+  const page = await listMessagesHandler(ctx, { chatId: "chat_1" as never });
+  const byId = new Map(page.map((message) => [String(message._id), message]));
+  assert.equal(byId.get("message_1")?.participantAvatarImageUrl, undefined);
+  assert.equal(byId.get("message_2")?.participantAvatarImageUrl, "https://storage.example/own_avatar");
+});

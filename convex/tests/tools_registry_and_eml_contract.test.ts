@@ -16,6 +16,7 @@ import { DOCUMENTS_SKILL } from "../skills/catalog/documents";
 import { GOOGLE_DRIVE_SKILL } from "../skills/catalog/google_drive";
 import { GOOGLE_WORKSPACE_SKILL } from "../skills/catalog/google_workspace";
 import { MICROSOFT_365_SKILL } from "../skills/catalog/microsoft_365";
+import { ownedStorageQueries } from "../../test_helpers/owned_storage";
 
 test("generateEml and readEml round-trip multipart email content", async () => {
   const stored: Blob[] = [];
@@ -68,6 +69,7 @@ test("generateEml and readEml round-trip multipart email content", async () => {
     {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async () => stored[0],
         },
@@ -115,7 +117,7 @@ test("generateEml and readEml preserve Unicode headers and quoted-printable text
 
   const parsed = await readEml.execute({
     userId: "user_1",
-    ctx: { storage: { get: async () => stored } },
+    ctx: { ...ownedStorageQueries, storage: { get: async () => stored } },
   } as any, { storageId: "storage_unicode" });
 
   assert.equal(parsed.success, true);
@@ -140,7 +142,7 @@ test("readEml decodes an unencoded 8-bit body with its declared charset", async 
 
   const parsed = await readEml.execute({
     userId: "user_1",
-    ctx: { storage: { get: async () => new Blob([bytes]) } },
+    ctx: { ...ownedStorageQueries, storage: { get: async () => new Blob([bytes]) } },
   } as any, { storageId: "latin_1" });
 
   assert.equal(parsed.success, true);
@@ -151,6 +153,7 @@ test("readEml preserves raw UTF-8 headers", async () => {
   const parsed = await readEml.execute({
     userId: "user_1",
     ctx: {
+      ...ownedStorageQueries,
       storage: {
         get: async () => new Blob([[
           "From: José <jose@example.com>",
@@ -174,6 +177,7 @@ test("readEml reads transfer encoding only from its named MIME header", async ()
   const parse = async (headers: string[], body: string) => await readEml.execute({
     userId: "user_1",
     ctx: {
+      ...ownedStorageQueries,
       storage: {
         get: async () => new Blob([[...headers, "", body].join("\r\n")]),
       },
@@ -198,7 +202,7 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
   const invalid = await readEml.execute(
     {
       userId: "user_1",
-      ctx: { storage: { get: async () => { throw new Error("bad id"); } } },
+      ctx: { ...ownedStorageQueries, storage: { get: async () => { throw new Error("bad id"); } } },
     } as any,
     { storageId: "bad" },
   );
@@ -206,14 +210,14 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
   assert.match(invalid.error ?? "", /Invalid storageId/);
 
   const missing = await readEml.execute(
-    { userId: "user_1", ctx: { storage: { get: async () => null } } } as any,
+    { userId: "user_1", ctx: { ...ownedStorageQueries, storage: { get: async () => null } } } as any,
     { storageId: "missing" },
   );
   assert.equal(missing.success, false);
   assert.match(missing.error ?? "", /File not found/);
 
   const empty = await readEml.execute(
-    { userId: "user_1", ctx: { storage: { get: async () => new Blob(["  \n "]) } } } as any,
+    { userId: "user_1", ctx: { ...ownedStorageQueries, storage: { get: async () => new Blob(["  \n "]) } } } as any,
     { storageId: "empty" },
   );
   assert.equal(empty.success, true);
@@ -223,6 +227,7 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
     {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async () => new Blob([
             [
@@ -247,6 +252,7 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
     {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async () => new Blob([
             [
@@ -284,6 +290,7 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
     {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async () => new Blob([
             [
@@ -305,6 +312,7 @@ test("readEml covers invalid, empty, HTML, encoded, duplicate, and large bodies"
     {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async () => new Blob([`Subject: Large\n\n${"x".repeat(50_001)}`]),
         },

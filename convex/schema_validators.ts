@@ -467,6 +467,9 @@ export const chatSource = v.union(
 export const messageSource = v.union(
   v.literal("user"),
   v.literal("scheduled_step"),
+  // Published by an external MCP client with `results:write`; framed as
+  // untrusted reference data in model context (see chat/external_content.ts).
+  v.literal("external_mcp_result"),
 );
 
 /** Scheduled job search mode. */

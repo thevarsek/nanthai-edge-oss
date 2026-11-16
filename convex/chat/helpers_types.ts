@@ -9,6 +9,8 @@ export interface ContextMessage {
   chatId: Id<"chats">;
   role: "user" | "assistant" | "system";
   content: string;
+  /** `external_mcp_result` marks untrusted content published by an MCP client. */
+  source?: "user" | "scheduled_step" | "external_mcp_result";
   modelId?: string;
   participantId?: Id<"personas">;
   chatParticipantId?: Id<"chatParticipants">;

@@ -7,7 +7,7 @@
 // No external dependencies — pure string parsing of the RFC 5322 format.
 // =============================================================================
 
-import { Id } from "../_generated/dataModel";
+import { getOwnedFileBlob } from "./owned_storage_blob";
 import { bytesToBinaryString, parseEml, stripHtml } from "./eml_parser";
 import { createTool } from "./registry";
 
@@ -36,15 +36,9 @@ export const readEml = createTool({
       return { success: false, data: null, error: "Missing or invalid 'storageId'" };
     }
 
-    let blob: Blob | null;
-    try {
-      blob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
-    } catch {
-      return { success: false, data: null, error: `Invalid storageId: ${storageId}` };
-    }
-    if (!blob) {
-      return { success: false, data: null, error: `File not found for storageId: ${storageId}` };
-    }
+    const owned = await getOwnedFileBlob(toolCtx.ctx, toolCtx.userId, storageId);
+    if (!owned.ok) return { success: false, data: null, error: owned.error };
+    const blob = owned.blob;
 
     // Keep the original octets intact until each MIME part's declared charset
     // is known. Blob.text() always decodes as UTF-8 and corrupts 8-bit mail.

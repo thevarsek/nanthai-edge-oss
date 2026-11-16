@@ -48,6 +48,15 @@ crons.interval(
   {},
 );
 
+// Reclaim client uploads still unreferenced after 24 hours and prune old
+// per-user daily usage counters.
+crons.interval(
+  "sweepUnreferencedUploads",
+  { hours: 1 },
+  internal.storage_upload_sweep.sweepUnreferencedUploads,
+  {},
+);
+
 // Reap old streaming projections whose message is gone or terminal. Normal
 // finalization deletes these immediately; this is a low-cost repair net for
 // interrupted historical cleanup.

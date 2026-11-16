@@ -6,6 +6,7 @@ import { generateTextFile } from "../tools/generate_text_file";
 import { readDocx } from "../tools/read_docx";
 import { readPptx } from "../tools/read_pptx";
 import { readXlsx } from "../tools/read_xlsx";
+import { ownedStorageQueries } from "../../test_helpers/owned_storage";
 
 test("generateTextFile validates inputs, sanitizes blank names, and falls back to storage URLs", async () => {
   const missingName = await generateTextFile.execute({} as any, {
@@ -33,6 +34,7 @@ test("generateTextFile validates inputs, sanitizes blank names, and falls back t
     const result = await generateTextFile.execute({
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           store: async (blob: Blob) => {
             stored.push(blob);
@@ -91,9 +93,7 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     const invalidId = await tool.execute({
       userId: "user_1",
       ctx: {
-        ...(name === "pptx" || name === "xlsx"
-          ? { runQuery: async () => { throw new Error("bad id"); } }
-          : {}),
+        runQuery: async () => { throw new Error("bad id"); },
         storage: {
           get: async () => {
             throw new Error("bad id");
@@ -107,9 +107,7 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     const missingFile = await tool.execute({
       userId: "user_1",
       ctx: {
-        ...(name === "pptx" || name === "xlsx"
-          ? { runQuery: async () => ({ storageId: `${name}_missing` }) }
-          : {}),
+        runQuery: async () => ({ storageId: `${name}_missing` }),
         storage: { get: async () => null },
       },
     } as any, { storageId: `${name}_missing` });
@@ -119,9 +117,7 @@ test("Office readers validate missing, invalid, absent, and corrupt storage inpu
     const corrupt = await tool.execute({
       userId: "user_1",
       ctx: {
-        ...(name === "pptx" || name === "xlsx"
-          ? { runQuery: async () => ({ storageId: `${name}_corrupt` }) }
-          : {}),
+        runQuery: async () => ({ storageId: `${name}_corrupt` }),
         storage: {
           get: async () => new Blob(["not an office archive"], { type: "text/plain" }),
         },

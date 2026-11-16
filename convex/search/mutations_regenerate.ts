@@ -2,6 +2,7 @@ import { mutation, MutationCtx } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
+import { assertOwnedPersonas } from "../lib/persona_ownership";
 import { Id } from "../_generated/dataModel";
 import {
   analyticsClientMetadataValidator,
@@ -78,6 +79,7 @@ export async function regeneratePaperHandler(
 ): Promise<{ assistantMessageId: Id<"messages"> }> {
   const { userId } = await requireAuth(ctx);
   await requirePro(ctx, userId);
+  await assertOwnedPersonas(ctx, userId, [args.personaId]);
   try {
     const now = Date.now();
 

@@ -13,6 +13,7 @@ import { generateXlsx } from "../tools/generate_xlsx";
 import { readDocx } from "../tools/read_docx";
 import { readPptx } from "../tools/read_pptx";
 import { readXlsx } from "../tools/read_xlsx";
+import { ownedStorageQueries } from "../../test_helpers/owned_storage";
 
 function createStorageHarness() {
   const files = new Map<string, Blob>();
@@ -418,6 +419,7 @@ test("editDocx covers validation, extraction failures, advanced options, and sit
   const throwingCtx = {
     userId: "user_1",
     ctx: {
+      ...ownedStorageQueries,
       storage: {
         get: async () => {
           throw new Error("bad id");
@@ -641,7 +643,7 @@ test("editPptx validates required arguments and missing source storage", async (
   assert.equal(missingSlides.success, false);
   assert.match(String(missingSlides.error), /non-empty array/);
   assert.equal(missingSource.success, false);
-  assert.match(String(missingSource.error), /Original file not found/);
+  assert.match(String(missingSource.error), /File not found/);
 });
 
 test("editPptx covers fallback layouts, image branches, warnings, and site download URLs", async () => {

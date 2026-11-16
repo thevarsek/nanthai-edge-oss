@@ -112,6 +112,7 @@ export const PURGE_TABLES = [
   "folders",
   "userPreferences",
   "scheduledJobs",
+  "userDailyUsage",
   "clientStorageUploads",
   "chats",
 ] as const;

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useAction } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { api } from "@convex/_generated/api";
 import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
 import {
@@ -47,9 +47,13 @@ function redirectToCallback(callbackScheme: string, fileIds: string[], state?: s
     : callbackUrl(callbackScheme, fileIds, state, code);
 }
 
+// Burning the relay handle must never strand the user on this page.
+const RELAY_BURN_TIMEOUT_MS = 1500;
+
 export function MobileDrivePickerPage() {
   const [message, setMessage] = useState("Opening Google Drive...");
   const redeemRelayHandle = useAction(api.oauth.google_onepick.redeemGoogleOnePickRelayHandle);
+  const burnRelayHandle = useMutation(api.oauth.google_onepick_sessions.burnGoogleOnePickRelayHandle);
   // The handle is single-use; share one redemption across effect re-runs.
   const relayTokenRequest = useRef<Promise<string> | null>(null);
   const config = useMemo(() => {
@@ -102,12 +106,24 @@ export function MobileDrivePickerPage() {
       timeoutIds.add(timeoutId);
     };
 
+    // When the page leaves without opening the Picker, a copy of the handle
+    // (from a log or browser history) must not be redeemable for a token.
+    const burnUnusedRelayHandle = async () => {
+      if (!config.relayHandle) return;
+      await Promise.race([
+        burnRelayHandle({ relayHandle: config.relayHandle }).catch(() => null),
+        new Promise((resolve) => window.setTimeout(resolve, RELAY_BURN_TIMEOUT_MS)),
+      ]);
+    };
+
     void (async () => {
       if (config.error) {
+        await burnUnusedRelayHandle();
         redirectToCallback(config.callbackScheme, [], config.state);
         return;
       }
       if (config.selectedFileIds.length > 0) {
+        await burnUnusedRelayHandle();
         redirectToCallback(
           config.callbackScheme,
           config.selectedFileIds,
@@ -147,7 +163,7 @@ export function MobileDrivePickerPage() {
       timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
       timeoutIds.clear();
     };
-  }, [config, redeemRelayHandle]);
+  }, [config, redeemRelayHandle, burnRelayHandle]);
 
   return (
     <main className="min-h-dvh bg-white text-neutral-950 flex items-center justify-center px-6">

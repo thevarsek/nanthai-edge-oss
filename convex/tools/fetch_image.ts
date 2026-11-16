@@ -21,6 +21,12 @@ import {
   isMediaToolError,
   requireMediaToolContext,
 } from "./media_generation_context";
+import {
+  FETCH_IMAGE_MAX_URL_LENGTH,
+  FETCH_IMAGE_UNTRUSTED_URL_ERROR,
+  fetchImageUrlCandidates,
+  isCitedSearchUrl,
+} from "./fetch_image_provenance";
 
 type FetchPublicImageArgs = {
   url: string;
@@ -61,7 +67,8 @@ export const fetchImage = createTool({
       url: {
         type: "string",
         description:
-          "Public HTTP(S) URL of the image to fetch. " +
+          "Public HTTP(S) URL of the image to fetch, exactly as the user wrote it in the chat " +
+          "or as a web_search citation returned it in this turn. Other URLs are rejected. " +
           "Provide either 'url' or 'storageId', not both.",
       },
       storageId: {
@@ -148,6 +155,19 @@ export const fetchImage = createTool({
       }
       if (targetUrl.protocol !== "http:" && targetUrl.protocol !== "https:") {
         return { success: false, data: null, error: "URL must start with http:// or https://" };
+      }
+      if (url!.length > FETCH_IMAGE_MAX_URL_LENGTH) {
+        return { success: false, data: null, error: `URL is longer than ${FETCH_IMAGE_MAX_URL_LENGTH} characters` };
+      }
+      const candidates = fetchImageUrlCandidates(url!, targetUrl.toString());
+      const trusted = isCitedSearchUrl(candidates, toolCtx.turnMessages)
+        || await toolCtx.ctx.runQuery(internal.tools.fetch_image_queries.userMessageContainsUrl, {
+          userId: toolCtx.userId,
+          chatId: context.chatId,
+          candidates,
+        });
+      if (!trusted) {
+        return { success: false, data: null, error: FETCH_IMAGE_UNTRUSTED_URL_ERROR };
       }
       return await toolCtx.ctx.runAction(fetchPublicImageRef, {
         url: targetUrl.toString(),

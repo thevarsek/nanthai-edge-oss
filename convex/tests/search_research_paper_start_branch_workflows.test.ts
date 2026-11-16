@@ -95,6 +95,11 @@ test("startResearchPaper rejects invalid chat, participant, prompt, and audio st
     { ctx: buildCtx().ctx, args: args({ text: "   " }), code: "VALIDATION" },
     {
       ctx: buildCtx().ctx,
+      args: args({ participant: { ...args().participant, personaId: "persona_other_user" } }),
+      code: "NOT_FOUND",
+    },
+    {
+      ctx: buildCtx().ctx,
       args: args({
         recordedAudio: { storageId: "audio_recorded", transcript: "voice" },
         attachments: [{ type: "audio", storageId: "audio_storage", mimeType: "audio/mpeg" }],
@@ -160,6 +165,10 @@ test("startResearchPaper stores audio-attachment transcript fallback and truncat
   )?.value;
   assert.equal(userMessage?.audioTranscript, longPrompt);
   assert.equal((userMessage?.attachments as any[])?.[0]?.url, "https://files.example/audio_storage");
+  const attachmentRow = state.inserts.find((entry) => entry.table === "fileAttachments")?.value;
+  assert.equal(attachmentRow?.storageId, "audio_storage");
+  assert.equal(attachmentRow?.messageId, "message_1");
+  assert.equal(attachmentRow?.userId, "user_1");
   const session = state.inserts.find((entry) => entry.table === "searchSessions")?.value;
   assert.equal(session?.complexity, 1);
   const assistantMessage = state.inserts.find((entry) =>

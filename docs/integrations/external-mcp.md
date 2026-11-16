@@ -14,6 +14,10 @@ NanthAI consumes another server's tools.
 | Run a schedule | Run an existing saved job through ordinary Run Now behavior |
 | Stop work | Cancel an owned run through centralized fencing and teardown |
 
+Published text is stored with `source: "external_mcp_result"`. Clients decode it
+as an ordinary optional message source, and context assembly frames it as
+untrusted external content (see [context assembly](../architecture/context-assembly.md)).
+
 Generation uses the selected Persona's normal route and costs. Published external
 output does not invent NanthAI inference usage. Shared-memory writes and schedule
 creation/editing are outside the current server scope. Access does not confer

@@ -26,7 +26,7 @@ import {
   ResolvedImage,
   resolveSlideImages,
 } from "./image_resolver";
-import type { Id } from "../_generated/dataModel";
+import { getOwnedFileBlob } from "./owned_storage_blob";
 
 // PptxGenJS 4.0.1 publishes an ESM entry with a .js extension but no
 // package-level module type, so Convex Node must select its valid CJS export.
@@ -442,15 +442,9 @@ export const editPptx = createTool({
     }
 
     // Step 1: Verify original exists and get stats.
-    let originalBlob: Blob | null;
-    try {
-      originalBlob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
-    } catch {
-      return { success: false, data: null, error: `Invalid storageId: "${storageId}"` };
-    }
-    if (!originalBlob) {
-      return { success: false, data: null, error: `Original file not found: "${storageId}"` };
-    }
+    const owned = await getOwnedFileBlob(toolCtx.ctx, toolCtx.userId, storageId);
+    if (!owned.ok) return { success: false, data: null, error: owned.error };
+    const originalBlob = owned.blob;
 
     let originalSlideCount = 0;
     let originalWordCount = 0;
@@ -504,7 +498,7 @@ export const editPptx = createTool({
       }
 
       if (slide.backgroundImage) {
-        const { resolved: bgImages, warnings: bgWarn } = await resolveSlideImages(toolCtx.ctx, [slide.backgroundImage]);
+        const { resolved: bgImages, warnings: bgWarn } = await resolveSlideImages(toolCtx.ctx, toolCtx.userId, [slide.backgroundImage]);
         allWarnings.push(...bgWarn);
         if (bgImages.length > 0) {
           s.background = { data: bgImages[0].data };
@@ -516,7 +510,7 @@ export const editPptx = createTool({
         s.slideNumber = { x: 12.0, y: 7.0, fontFace: theme.bodyFont, fontSize: 10, color: "888888" };
       }
 
-      const { resolved: images, warnings } = await resolveSlideImages(toolCtx.ctx, slide.images);
+      const { resolved: images, warnings } = await resolveSlideImages(toolCtx.ctx, toolCtx.userId, slide.images);
       allWarnings.push(...warnings);
       totalImages += images.length;
 

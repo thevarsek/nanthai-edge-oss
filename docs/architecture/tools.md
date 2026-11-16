@@ -133,6 +133,22 @@ Google, Microsoft, Notion, and Slack follow the same general iOS → Convex toke
 
 **API call pattern:** Google, Microsoft, Notion, and Cloze API calls use raw `fetch()` against provider REST APIs — no Node.js SDKs (`googleapis`, `@microsoft/microsoft-graph-client`). Slack uses raw `fetch()` against Slack's hosted MCP JSON-RPC endpoint instead of the Web API. Apple Calendar uses the repo's direct CalDAV client. Provider implementations load through internal action dispatchers instead of through the progressive registry import graph.
 
+### Storage and URL provenance
+
+Tools that read a model-supplied storage ID (`read_text_file`, `read_docx`,
+`read_eml`, `edit_docx`, `edit_pptx`, and slide images resolved for
+`generate_pptx`/`edit_pptx`) first resolve it through the caller's owned files,
+generated files, presentation assets or generated media. An ID the user does not
+own reads as unavailable and its blob is never loaded.
+
+`fetch_image` requests a remote URL only when it appears verbatim in a
+user-written message of the current chat (external MCP results excluded) or in
+the citation URLs that `web_search` returned during the current turn. The search
+summary text does not count because it can echo the model's own query. A URL the
+model composed itself is refused before any outbound request, so prompt-injected
+content cannot use the tool to send conversation data to another host. URLs are
+limited to 2,048 characters.
+
 ### File Storage & Download
 
 - Tools store generated files via `ctx.storage.store(blob)` → returns `storageId`

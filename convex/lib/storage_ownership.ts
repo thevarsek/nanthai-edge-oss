@@ -3,11 +3,15 @@ import type { Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 import { sha256Hex } from "../scheduledJobs/trigger_auth";
 
-/** The upload URL is the upload capability; the server records its resulting blob. */
+/**
+ * The upload URL is a single-use upload capability (one body, within an hour);
+ * the server records its resulting blob.
+ */
 export async function createOwnedUploadUrl(ctx: MutationCtx, userId: string): Promise<string> {
   const uploadToken = crypto.randomUUID();
   await ctx.db.insert("clientStorageUploads", {
-    userId, tokenHash: await sha256Hex(uploadToken), uploadUrl: await ctx.storage.generateUploadUrl(), createdAt: Date.now(),
+    userId, tokenHash: await sha256Hex(uploadToken), uploadUrl: await ctx.storage.generateUploadUrl(),
+    sweepEligible: true, createdAt: Date.now(),
   });
   return `${process.env.CONVEX_SITE_URL}/storage/upload?token=${uploadToken}`;
 }

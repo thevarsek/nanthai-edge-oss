@@ -64,7 +64,10 @@ test("createCheckoutSession surfaces upstream Stripe failures", async () => {
       }, {}),
       (error: unknown) => {
         assert.ok(error instanceof ConvexError);
-        return (error as ConvexError<any>).data?.code === "EXTERNAL_SERVICE";
+        const data = (error as ConvexError<any>).data;
+        assert.doesNotMatch(String(data?.message), /stripe exploded/);
+        assert.match(String(data?.message), /temporarily unavailable/);
+        return data?.code === "EXTERNAL_SERVICE";
       },
     );
   } finally {

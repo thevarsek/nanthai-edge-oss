@@ -1,8 +1,11 @@
 import { ConvexError } from "convex/values";
 import { MODEL_IDS, OPENROUTER_DEFAULT_PROVIDER_SORT } from "../lib/model_constants";
 import { HTTP_REFERER, X_TITLE } from "../lib/openrouter_constants";
+import { internal } from "../_generated/api";
 import type { ActionCtx } from "../_generated/server";
 import { getOptionalUserOpenRouterApiKey } from "../lib/user_secrets";
+
+export const PLATFORM_EMBEDDING_DAILY_LIMIT_CODE = "PLATFORM_EMBEDDING_DAILY_LIMIT";
 
 export interface EmbeddingUsage {
   promptTokens: number;
@@ -19,14 +22,25 @@ export interface EmbeddingResult {
 }
 
 export async function computeUserEmbedding(
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: string,
   text: string,
   options: { requireZdr?: boolean } = {},
 ): Promise<EmbeddingResult | null> {
   const apiKey = await getOptionalUserOpenRouterApiKey(ctx, userId);
-  if (!apiKey?.trim() && !process.env.OPENAI_API_KEY?.trim()) {
-    throw new ConvexError({ code: "MISSING_API_KEY", message: "No memory embedding connection is configured." });
+  if (!apiKey?.trim()) {
+    if (!process.env.OPENAI_API_KEY?.trim()) {
+      throw new ConvexError({ code: "MISSING_API_KEY", message: "No memory embedding connection is configured." });
+    }
+    // The platform key is shared by every user without OpenRouter: cap each
+    // user's daily share so one account cannot exhaust it for the others.
+    const reserved = await ctx.runMutation(internal.memory.embedding_budget.reservePlatformEmbedding, { userId });
+    if (!reserved) {
+      throw new ConvexError({
+        code: PLATFORM_EMBEDDING_DAILY_LIMIT_CODE,
+        message: "Today's memory embedding allowance is used up. Connect OpenRouter or try again tomorrow.",
+      });
+    }
   }
   return computeEmbedding(text, apiKey, options);
 }

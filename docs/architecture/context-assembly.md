@@ -19,6 +19,13 @@ Forks and duplicates remap copied participant and Retry identities to the new ro
 Provider-required role consolidation preserves each contributing message's source
 identity and text; citations remain tied to the original messages.
 
+Results published by an external MCP client are stored as `role: "user"` messages
+with `source: "external_mcp_result"`. Request assembly and summary chunks wrap
+that text in an untrusted-content notice and `<external_content>` boundary (tags
+inside the text are escaped), so the model treats it as reference data rather
+than the user's instructions. Other messages, and their source digests, are
+unchanged.
+
 ## Durable tools and artifacts
 
 Tool artifacts retain compact summaries and provenance with storage-backed raw

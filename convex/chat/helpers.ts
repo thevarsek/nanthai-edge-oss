@@ -11,6 +11,7 @@
 // =============================================================================
 
 import { recordMessageSource } from "./message_provenance";
+import { modelVisibleMessageContent } from "./external_content";
 import { ContentPart, OpenRouterMessage } from "../lib/openrouter";
 import { BuildRequestMessagesArgs, ContextMessage } from "./helpers_types";
 import {
@@ -125,7 +126,7 @@ export function buildRequestMessages(
     if (msg.role === "system" && msg.collaborationGoalAction !== "start_or_resume") continue;
     if (msg.status === "failed" || msg.status === "cancelled") continue;
 
-    const content = msg.content.trim();
+    const content = modelVisibleMessageContent({ ...msg, content: msg.content.trim() });
     const { imageParts, nonImageParts } = splitMessageAttachmentParts(msg);
     const parts: ContentPart[] = [];
 

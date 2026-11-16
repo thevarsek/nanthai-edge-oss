@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { generatePptx } from "../tools/generate_pptx";
+import { ownedStorageQueries } from "../../test_helpers/owned_storage";
 
 function createPptxToolCtx() {
   const stored: Blob[] = [];
@@ -16,6 +17,7 @@ function createPptxToolCtx() {
     toolCtx: {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async (id: string) => images.get(id) ?? null,
           store: async (blob: Blob) => {

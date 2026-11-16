@@ -74,8 +74,14 @@ export const createCheckoutSession = action({
     });
 
     if (!response.ok) {
-      const text = await response.text();
-      throw new ConvexError({ code: "EXTERNAL_SERVICE", message: `Stripe checkout error: ${response.status} ${text}` });
+      // Stripe error bodies name prices, accounts and request IDs: keep them
+      // in server logs and give the client a fixed message.
+      const text = await response.text().catch(() => "");
+      console.error("[stripe] checkout session creation failed", { status: response.status, body: text.slice(0, 2000) });
+      throw new ConvexError({
+        code: "EXTERNAL_SERVICE",
+        message: "Checkout is temporarily unavailable. Please try again.",
+      });
     }
 
     const session = (await response.json()) as { url: string };

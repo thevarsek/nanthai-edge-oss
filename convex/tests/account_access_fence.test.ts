@@ -11,7 +11,7 @@ import { isUserDataWritable } from "../lib/write_fence";
 import { createExecutionRun } from "../execution/runs";
 import { assertCurrentExecution } from "../execution/attempts";
 import { authenticateRuntimeHost, sha256Hex } from "../runtime_host/security";
-import { completeUpload, getUpload } from "../storage_uploads";
+import { claimUpload, completeUpload } from "../storage_uploads";
 import { triggerJobViaApi } from "../scheduledJobs/mutations";
 import { receive } from "../channels/telegram/ingress";
 import { admit } from "../channels/telegram/admission";
@@ -79,12 +79,12 @@ test("Runtime Host credentials, storage uploads and API triggers stop for a bloc
   const { ctx } = blockedState({
     runtimeDeviceCredentials: [{ _id: "cred", credentialId: "cred-1", deviceId: "dev-1", runtimeDeviceId: "device", status: "active", credentialHash: await sha256Hex(credential) }],
     runtimeDevices: [{ _id: "device", deviceId: "dev-1", userId: "user_1", status: "active" }],
-    clientStorageUploads: [{ _id: "upload", userId: "user_1", tokenHash: "hash", uploadUrl: "https://upload.invalid" }],
+    clientStorageUploads: [{ _id: "upload", userId: "user_1", tokenHash: "hash", uploadUrl: "https://upload.invalid", createdAt: Date.now() }],
     scheduledJobs: [{ _id: "job", userId: "user_1", status: "active" }],
   });
   await assert.rejects(authenticateRuntimeHost(ctx, { deviceId: "dev-1", credentialId: "cred-1", credential }), /UNAUTHORIZED/);
-  assert.equal(await handler<{ tokenHash: string }, unknown>(getUpload)(ctx, { tokenHash: "hash" }), null);
-  assert.equal(await handler<{ uploadId: string; storageId: string }, boolean>(completeUpload)(ctx, { uploadId: "upload", storageId: "storage" }), false);
+  assert.deepEqual(await handler<{ tokenHash: string }, unknown>(claimUpload)(ctx, { tokenHash: "hash" }), { status: "unauthorized" });
+  assert.equal(await handler<{ uploadId: string; storageId: string }, string>(completeUpload)(ctx, { uploadId: "upload", storageId: "storage" }), "rejected");
   await assert.rejects(handler<Record<string, unknown>, unknown>(triggerJobViaApi)(ctx, { jobId: "job", userId: "user_1", requestId: "req" }), /ACCOUNT_BLOCKED/);
 });
 

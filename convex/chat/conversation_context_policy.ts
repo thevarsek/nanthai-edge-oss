@@ -1,5 +1,6 @@
 import type { ContextMessage } from "./helpers_types";
 import { branchPathIds } from "./helpers_utils";
+import { isExternalMcpResult, modelVisibleMessageContent } from "./external_content";
 
 export const CONVERSATION_CONTEXT_POLICY = "summary-tail.v1";
 export const SUMMARY_CHUNK_CHARACTERS = 24_000;
@@ -18,7 +19,8 @@ export function sourceProjection(message: ContextMessage) {
     parents: message.parentMessageIds, attachments: (message.attachments ?? []).map(a => ({type:a.type,storageId:a.storageId,url:a.storageId?undefined:a.url,name:a.name,mimeType:a.mimeType})),
     imageUrls: message.imageUrls, documentEvents: message.documentEvents, presentationContext: message.presentationContext,
     toolCalls: message.toolCalls, toolResults: message.toolResults, mcpInvocationIds: message.mcpInvocationIds,
-    status: message.status, participantId: message.participantId ?? message.chatParticipantId ?? null };
+    status: message.status, participantId: message.participantId ?? message.chatParticipantId ?? null,
+    ...(isExternalMcpResult(message) ? { source: message.source } : {}) };
 }
 export async function conversationSourceDigest(messages: ContextMessage[]): Promise<string> {
   const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(messages.map(sourceProjection))));
@@ -55,7 +57,7 @@ export function summaryChunks(messages: ContextMessage[]) {
     // but their canonical IDs still belong to the immutable coverage manifest.
     const source = omitsTerminalContent(message)
       ? `[${message.role.toUpperCase()} ${String(message._id)}: ${message.status}; content omitted]\n`
-      : `[${message.role.toUpperCase()} ${String(message._id)}]: ${message.content}\n`
+      : `[${message.role.toUpperCase()} ${String(message._id)}]: ${modelVisibleMessageContent(message)}\n`
       + (message.toolCalls?.length || message.toolResults?.length ? `[Published tool calls/results: ${JSON.stringify({calls: message.toolCalls, results: message.toolResults})}]\n` : "")
       + (message.imageUrls?.length || message.documentEvents?.length || message.presentationContext ? `[Referenced artifacts; inspect canonical sources for exact media: ${JSON.stringify({images: message.imageUrls, documents: message.documentEvents, presentation: message.presentationContext})}]\n` : "")
       + (message.attachments?.length ? `[Referenced media; inspect the canonical source for exact content: ${JSON.stringify(message.attachments.map(a => ({type:a.type,storageId:a.storageId,name:a.name})))}]\n` : "");

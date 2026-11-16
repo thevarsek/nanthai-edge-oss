@@ -1,8 +1,11 @@
 import { v } from "convex/values";
-import { internalMutation } from "../_generated/server";
+import { internalMutation, mutation } from "../_generated/server";
 
 // Session lifetime covers Google consent plus file selection in the browser.
 export const ONEPICK_SESSION_TTL_MS = 15 * 60 * 1000;
+// The relay page redeems its handle as soon as it loads after Google consent,
+// so the bearer window for the picker token is much shorter than the session.
+export const ONEPICK_RELAY_REDEEM_WINDOW_MS = 5 * 60 * 1000;
 export const ONEPICK_HANDLE_MAX_LENGTH = 256;
 const EXPIRED_SESSION_PRUNE_LIMIT = 20;
 
@@ -78,16 +81,42 @@ export const claimRelayHandle = internalMutation({
       .query("googleOnePickSessions")
       .withIndex("by_handle_hash", (q) => q.eq("handleHash", args.handleHash))
       .unique();
+    const now = Date.now();
     if (
       !session
-      || session.expiresAt <= Date.now()
+      || session.expiresAt <= now
+      || session.createdAt + ONEPICK_RELAY_REDEEM_WINDOW_MS <= now
       || session.relayRedeemedAt !== undefined
       || session.consumedAt !== undefined
     ) {
       return null;
     }
-    await ctx.db.patch(session._id, { relayRedeemedAt: Date.now() });
+    await ctx.db.patch(session._id, { relayRedeemedAt: now });
     return { userId: session.userId };
+  },
+});
+
+/**
+ * Called by the signed-out relay page when it finishes without opening the
+ * Picker (Google already returned the picked files, or consent failed), so a
+ * handle copied from a log can never be redeemed for a token. Burning only
+ * removes the relay's token path; the app's code exchange still works. It
+ * returns nothing, so it reveals nothing about the handle.
+ */
+export const burnGoogleOnePickRelayHandle = mutation({
+  args: { relayHandle: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    if (!isWellFormedOnePickHandle(args.relayHandle)) return null;
+    const handleHash = await sha256Base64Url(args.relayHandle);
+    const session = await ctx.db
+      .query("googleOnePickSessions")
+      .withIndex("by_handle_hash", (q) => q.eq("handleHash", handleHash))
+      .unique();
+    if (session && session.relayRedeemedAt === undefined) {
+      await ctx.db.patch(session._id, { relayRedeemedAt: Date.now() });
+    }
+    return null;
   },
 });
 

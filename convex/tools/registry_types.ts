@@ -67,6 +67,8 @@ export interface ToolExecutionContext {
   providerDeadlineAtMs?: number;
   /** Branch-scoped transcript used by media tools to resolve image references. */
   imageContextMessages?: OpenRouterMessage[];
+  /** Running transcript of the current tool round, including this turn's earlier tool results. */
+  turnMessages?: readonly OpenRouterMessage[];
   sandboxSessionId?: string;
   workspaceSandbox?: unknown;
   workspaceSandboxCleanup?: () => Promise<void>;

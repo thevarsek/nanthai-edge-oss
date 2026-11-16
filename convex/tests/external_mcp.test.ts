@@ -71,6 +71,7 @@ test("publication joins the selected chat branch and replay does not duplicate h
     const receipt = await invoke(ctx, args);
     const published = rows.messages.at(-1);
     assert.deepEqual(published?.parentMessageIds, ["selected-leaf"]);
+    assert.equal(published?.source, "external_mcp_result");
     assert.equal(rows.chats[0].activeBranchLeafId, published?._id);
     assert.equal(await invoke(ctx, { ...args, storageId: "replay-storage" }), receipt);
     assert.equal(rows.messages.length, 3);

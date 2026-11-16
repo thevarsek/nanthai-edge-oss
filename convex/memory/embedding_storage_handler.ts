@@ -2,7 +2,7 @@ import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
-import { computeUserEmbedding } from "./embedding_helpers";
+import { computeUserEmbedding, PLATFORM_EMBEDDING_DAILY_LIMIT_CODE } from "./embedding_helpers";
 import { MODEL_IDS } from "../lib/model_constants";
 import { isZdrEnabled } from "../lib/openrouter_zdr";
 
@@ -42,6 +42,11 @@ export async function computeAndStoreEmbeddingHandler(
         memoryId: args.memoryId,
         userId: memory.userId,
       });
+      return;
+    }
+    if (error instanceof ConvexError && error.data?.code === PLATFORM_EMBEDDING_DAILY_LIMIT_CODE) {
+      // The memory row is kept; only its vector is skipped for today.
+      console.warn("[memory] skipped embedding storage: platform daily limit", { memoryId: args.memoryId });
       return;
     }
     throw error;

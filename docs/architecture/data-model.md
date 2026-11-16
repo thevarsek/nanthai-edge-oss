@@ -69,6 +69,29 @@ caller. Cleanup uses the bound ID and checks that receipt; client arguments and
 legacy unverified pending sessions never establish deletion authority. Account
 purge removes the receipt records and their remaining blobs.
 
+An upload capability is single-use and lasts one hour, the lifetime of the native
+upload URL behind it. A request claims it before streaming; a second request
+during or after a successful upload receives `401`, and a failed upstream upload
+releases the claim so the client can retry the same URL. Every client already
+requests a fresh URL per file. Accepted bytes count against a per-user daily
+ceiling in `userDailyUsage` (1 GiB per UTC day); a request whose declared or
+stored size exceeds what remains receives `413` and its blob is deleted.
+
+An hourly sweep deletes blobs uploaded through this route that are still
+unreferenced 24 hours later. It checks every durable consumer: attachments,
+generated files and media, message audio, presentation assets and snapshots,
+Drive grants, documents and versions, Knowledge Base and active chat upload
+sessions, and Persona avatars. Any reference keeps the blob and retires its
+receipt from the sweep. Receipts written before the sweep existed are never
+candidates. Research Paper sends record ordinary `fileAttachments` rows like
+other sends, so their attachments are visible to the sweep.
+
+Memory imports commit at most 200 items of at most 4,000 characters each.
+Memory and query embeddings computed with the platform key (accounts without an
+OpenRouter connection) are capped at 2,000 per user per UTC day. Past the cap the
+memory is still saved without a vector, and a turn whose query embedding is
+refused continues as it does after any failed query embedding.
+
 Existing durable attachments, generated files/media, document versions and Persona
 avatars retain their table ownership. Browser snapshots and memory imports check
 ownership before reading or adopting a client-supplied ID. A voice recording sent

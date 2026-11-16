@@ -17,6 +17,7 @@ import { MODEL_IDS } from "../lib/model_constants";
 import { authenticateGrant, grantedContext } from "./policy";
 import { assertTurnRoutesAllowed, turnAccess } from "./turn_access";
 import { findTool, toolsForScopes } from "./tools";
+import { EXTERNAL_MCP_RESULT_SOURCE } from "../chat/external_content";
 
 const args = { accessToken: v.string(), tool: v.string(), inputJson: v.string() };
 function notFound(): never { throw new ConvexError({ code: "NOT_FOUND", message: "Item not found in this account" }); }
@@ -122,7 +123,7 @@ export const write = internalMutation({ args: { ...args, storageId: v.optional(v
       chatId: chat._id, activeBranchLeafId: chat.activeBranchLeafId, expandMultiModelGroups: true,
     });
     const messageId = await ctx.db.insert("messages", { chatId: chat._id, userId: grant.userId,
-      role: "user", content: `${grant.name} · ${String(input.filename)}\n\n${String(input.content)}`, parentMessageIds, status: "completed", createdAt: Date.now() });
+      role: "user", source: EXTERNAL_MCP_RESULT_SOURCE, content: `${grant.name} · ${String(input.filename)}\n\n${String(input.content)}`, parentMessageIds, status: "completed", createdAt: Date.now() });
     const file = await ensureGeneratedFileRow(ctx, { userId: grant.userId, chatId: chat._id, messageId,
       file: { storageId: args.storageId, filename: String(input.filename), mimeType: String(input.mimeType), sizeBytes: metadata.size, toolName: tool.name } });
     await ctx.db.patch(messageId, { generatedFileIds: [file.id] });

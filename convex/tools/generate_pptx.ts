@@ -665,6 +665,7 @@ export const generatePptx = createTool({
       ) {
         const { resolved: bgImages, warnings: bgWarn } = await resolveSlideImages(
           toolCtx.ctx,
+          toolCtx.userId,
           [slide.backgroundImage],
         );
         allWarnings.push(...bgWarn);
@@ -682,6 +683,7 @@ export const generatePptx = createTool({
       // Resolve content images for image-bearing layouts
       const { resolved: images, warnings } = await resolveSlideImages(
         toolCtx.ctx,
+        toolCtx.userId,
         slide.images,
       );
       allWarnings.push(...warnings);

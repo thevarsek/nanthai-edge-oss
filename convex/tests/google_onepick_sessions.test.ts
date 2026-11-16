@@ -10,10 +10,12 @@ import {
   startGoogleOnePick,
 } from "../oauth/google_onepick";
 import {
+  burnGoogleOnePickRelayHandle,
   claimRelayHandle,
   consumeSession,
   createSession,
   isWellFormedOnePickHandle,
+  ONEPICK_RELAY_REDEEM_WINDOW_MS,
   ONEPICK_SESSION_TTL_MS,
   onePickPkceRequired,
   sha256Base64Url,
@@ -280,4 +282,19 @@ test("onePickPkceRequired only enables on an explicit true", () => {
   assert.equal(onePickPkceRequired({ OAUTH_ONEPICK_REQUIRE_PKCE: "false" }), false);
   assert.equal(onePickPkceRequired({ OAUTH_ONEPICK_REQUIRE_PKCE: "1" }), false);
   assert.equal(onePickPkceRequired({ OAUTH_ONEPICK_REQUIRE_PKCE: " TRUE " }), true);
+});
+
+test("relay redemption closes after the short window and after a burn", async () => {
+  const db = fakeDb();
+  const start = () => (startGoogleOnePick as any)._handler(actionCtx(db, "user_1"), { redirectUri: RELAY });
+  const redeem = (relayHandle: string) => (redeemGoogleOnePickRelayHandle as any)._handler(actionCtx(db, null), { relayHandle });
+  const burn = (relayHandle: string) => (burnGoogleOnePickRelayHandle as any)._handler({ db }, { relayHandle });
+  const stale = await start();
+  db.rows[0].createdAt = Date.now() - ONEPICK_RELAY_REDEEM_WINDOW_MS - 1;
+  await assert.rejects(redeem(stale.relayHandle), isConvexCode("ONEPICK_SESSION_INVALID"));
+  const unused = await start();
+  assert.equal(await burn("short"), null);
+  assert.equal(await burn(unused.relayHandle), null);
+  assert.equal(typeof db.rows[1].relayRedeemedAt, "number");
+  await assert.rejects(redeem(unused.relayHandle), isConvexCode("ONEPICK_SESSION_INVALID"));
 });

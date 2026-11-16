@@ -5,6 +5,7 @@ import { generateTextFile } from "../tools/generate_text_file";
 import { resolveImage, resolveSlideImages } from "../tools/image_resolver";
 import { loadSkill } from "../tools/load_skill";
 import { readTextFile } from "../tools/read_text_file";
+import { ownedStorageQueries } from "../../test_helpers/owned_storage";
 
 test("readTextFile returns CSV preview data and a large-file warning", async () => {
   const largeCell = "x".repeat(50010);
@@ -13,6 +14,7 @@ test("readTextFile returns CSV preview data and a large-file warning", async () 
     {
       userId: "user_1",
       ctx: {
+        ...ownedStorageQueries,
         storage: {
           get: async () =>
             new Blob([`name,notes\nAlice,"${largeCell}"\nBob,"hello"`], {
@@ -36,28 +38,28 @@ test("readTextFile validates storage and handles empty and plain text files", as
   assert.equal(missingArg.error, "Missing or invalid 'storageId'");
 
   const invalid = await readTextFile.execute(
-    { ctx: { storage: { get: async () => { throw new Error("bad id"); } } } } as any,
+    { ctx: { ...ownedStorageQueries, storage: { get: async () => { throw new Error("bad id"); } } } } as any,
     { storageId: "bad" },
   );
   assert.equal(invalid.success, false);
   assert.match(String(invalid.error), /Invalid storageId/);
 
   const missingFile = await readTextFile.execute(
-    { ctx: { storage: { get: async () => null } } } as any,
+    { ctx: { ...ownedStorageQueries, storage: { get: async () => null } } } as any,
     { storageId: "missing" },
   );
   assert.equal(missingFile.success, false);
   assert.match(String(missingFile.error), /File not found/);
 
   const empty = await readTextFile.execute(
-    { ctx: { storage: { get: async () => new Blob([" \n\t "], { type: "text/plain" }) } } } as any,
+    { ctx: { ...ownedStorageQueries, storage: { get: async () => new Blob([" \n\t "], { type: "text/plain" }) } } } as any,
     { storageId: "empty" },
   );
   assert.equal(empty.success, true);
   assert.equal((empty.data as any).message, "The file is empty.");
 
   const plain = await readTextFile.execute(
-    { ctx: { storage: { get: async () => new Blob(["# Notes\nNo table"], { type: "text/markdown" }) } } } as any,
+    { ctx: { ...ownedStorageQueries, storage: { get: async () => new Blob(["# Notes\nNo table"], { type: "text/markdown" }) } } } as any,
     { storageId: "notes" },
   );
   assert.equal(plain.success, true);
@@ -75,6 +77,7 @@ test("generateTextFile sanitizes filenames and prefers CONVEX_SITE_URL", async (
       {
         userId: "user_1",
         ctx: {
+          ...ownedStorageQueries,
           storage: {
             store: async (blob: Blob) => {
               stored.push(blob);
@@ -180,27 +183,39 @@ test("loadSkill validates slugs, preserves stored profiles, and surfaces lookup 
   assert.match(String(failedLookup.error), /Failed to load skill: db unavailable/);
 });
 
-test("image resolution supports direct data URIs and skips broken storage refs", async () => {
+test("image resolution supports direct data URIs and skips broken or foreign storage refs", async () => {
   const direct = await resolveImage(
     {
       storage: { get: async () => null },
     } as any,
+    "user_1",
     { data: "image/png;base64,AAAA", altText: "Inline" },
     0,
   );
 
+  const read: string[] = [];
   const slides = await resolveSlideImages(
     {
+      runQuery: async (_ref: unknown, args: { userId: string; storageIds: string[] }) =>
+        args.storageIds.filter((id) => id !== "foreign_image").map((storageId) => ({
+          storageId,
+          filename: "image.png",
+          mimeType: "image/png",
+        })),
       storage: {
-        get: async (id: string) =>
-          id === "image_ok"
+        get: async (id: string) => {
+          read.push(id);
+          return id === "image_ok"
             ? new Blob([new Uint8Array([0, 1, 2])], { type: "image/png" })
-            : null,
+            : null;
+        },
       },
     } as any,
+    "user_1",
     [
       { imageStorageId: "image_ok", altText: "Stored" },
       { imageStorageId: "missing_image" },
+      { imageStorageId: "foreign_image" },
     ],
   );
 
@@ -210,5 +225,7 @@ test("image resolution supports direct data URIs and skips broken storage refs",
   });
   assert.equal(slides.resolved[0]?.data, "image/png;base64,AAEC");
   assert.equal(slides.resolved[0]?.altText, "Stored");
-  assert.equal(slides.warnings.length, 1);
+  assert.equal(slides.warnings.length, 2);
+  assert.match(slides.warnings[1] ?? "", /not available to this user/);
+  assert.equal(read.includes("foreign_image"), false);
 });

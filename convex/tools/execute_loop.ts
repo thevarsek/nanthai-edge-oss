@@ -310,6 +310,7 @@ export async function runToolCallLoop(
     // Execute all tool calls in parallel to minimise round-trip latency.
     const roundToolCtx: ToolExecutionContext = {
       ...options.toolCtx,
+      turnMessages: conversationMessages,
       operationScope: options.toolCtx.operationScope
         ? `${options.toolCtx.operationScope}:round:${round}`
         : JSON.stringify(conversationMessages),

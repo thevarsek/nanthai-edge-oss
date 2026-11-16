@@ -57,8 +57,9 @@
   <div class="icon">N</div>
   <h1>You're offline</h1>
   <p>NanthAI Edge needs a connection to load your chats. Reconnect and try again.</p>
-  <button onclick="window.location.reload()">Try again</button>
+  <button id="retry" type="button">Try again</button>
   <script>
+    document.getElementById('retry').addEventListener('click', () => window.location.reload());
     window.addEventListener('online', () => window.location.reload());
   </script>
 </body>

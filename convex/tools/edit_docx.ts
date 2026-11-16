@@ -34,6 +34,7 @@ import {
   TableLayoutType,
 } from "docx";
 import { extractDocxContent } from "./docx_reader";
+import { getOwnedFileBlob } from "./owned_storage_blob";
 import { createTool } from "./registry";
 import { sanitizeFilename } from "./sanitize";
 import {
@@ -267,15 +268,9 @@ export const editDocx = createTool({
     }
 
     // Step 1: Verify the original file exists and extract old text for summary.
-    let originalBlob: Blob | null;
-    try {
-      originalBlob = await toolCtx.ctx.storage.get(storageId as Id<"_storage">);
-    } catch {
-      return { success: false, data: null, error: `Invalid storageId: "${storageId}"` };
-    }
-    if (!originalBlob) {
-      return { success: false, data: null, error: `Original file not found: "${storageId}"` };
-    }
+    const owned = await getOwnedFileBlob(toolCtx.ctx, toolCtx.userId, storageId);
+    if (!owned.ok) return { success: false, data: null, error: owned.error };
+    const originalBlob = owned.blob;
 
     let originalWordCount = 0;
     try {

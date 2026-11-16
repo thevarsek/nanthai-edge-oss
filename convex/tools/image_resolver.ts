@@ -13,7 +13,7 @@
 
 import { ConvexError } from "convex/values";
 import { ActionCtx } from "../_generated/server";
-import { Id } from "../_generated/dataModel";
+import { getOwnedImageBlob } from "./owned_storage_blob";
 
 export interface ImageInput {
   /** Convex storage ID from fetch_image tool (preferred) */
@@ -47,27 +47,25 @@ function arrayBufferToBase64(buffer: ArrayBuffer): string {
  * Resolve a single image input to a base64 data URI.
  *
  * Priority:
- * 1. If `imageStorageId` is provided, fetch from Convex storage
+ * 1. If `imageStorageId` is provided, fetch it from Convex storage when the
+ *    user owns it (upload, generated file or generated media)
  * 2. If `data` is provided, use as-is (legacy path)
  * 3. If neither, throw
  */
 export async function resolveImage(
-  ctx: ActionCtx,
+  ctx: Pick<ActionCtx, "runQuery" | "storage">,
+  userId: string,
   input: ImageInput,
   index: number,
 ): Promise<ResolvedImage> {
   const altText = input.altText ?? `Image ${index + 1}`;
 
   if (input.imageStorageId) {
-    const blob = await ctx.storage.get(
-      input.imageStorageId as Id<"_storage">,
-    );
-    if (!blob) {
-      throw new ConvexError({
-        code: "NOT_FOUND" as const,
-        message: `Image not found in storage: ${input.imageStorageId}`,
-      });
+    const owned = await getOwnedImageBlob(ctx, userId, input.imageStorageId);
+    if (!owned.ok) {
+      throw new ConvexError({ code: "NOT_FOUND" as const, message: owned.error });
     }
+    const blob = owned.blob;
 
     const buffer = await blob.arrayBuffer();
     if (buffer.byteLength === 0) {
@@ -101,7 +99,8 @@ export async function resolveImage(
  * Returns resolved images and any warning messages.
  */
 export async function resolveSlideImages(
-  ctx: ActionCtx,
+  ctx: Pick<ActionCtx, "runQuery" | "storage">,
+  userId: string,
   images: ImageInput[] | undefined,
 ): Promise<{ resolved: ResolvedImage[]; warnings: string[] }> {
   if (!images || images.length === 0) {
@@ -113,7 +112,7 @@ export async function resolveSlideImages(
 
   for (let i = 0; i < images.length; i++) {
     try {
-      const img = await resolveImage(ctx, images[i], i);
+      const img = await resolveImage(ctx, userId, images[i], i);
       resolved.push(img);
     } catch (e) {
       warnings.push(

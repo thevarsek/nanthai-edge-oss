@@ -31,7 +31,8 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "syncOpenRouterUseCases",
     "syncSpeechCapabilities",
     "syncVideoModels",
-  ]);
+    "sweepUnreferencedUploads",
+  ].sort());
   assert.deepEqual(entries.refreshModelCatalog.schedule, {
     type: "interval",
     hours: 4,
@@ -62,6 +63,10 @@ test("cron registry keeps the expected schedules and internal targets", () => {
   });
   assert.deepEqual(entries.pruneExternalMcpOAuthRows.schedule, { type: "interval", hours: 1 });
   assert.deepEqual(entries.pruneIdentityWebhookDeliveries.schedule, { type: "interval", hours: 1 });
+  assert.deepEqual(entries.sweepUnreferencedUploads.schedule, {
+    type: "interval",
+    hours: 1,
+  });
 });
 
 test("schema exposes the indexes and fields that shared clients depend on", () => {
