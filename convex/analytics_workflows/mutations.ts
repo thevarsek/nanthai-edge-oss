@@ -57,7 +57,7 @@ export const prepareRun = internalMutation({
         executorKind: "convex_workflow",
         placement: "cloud",
         adapterId: "convex-workflow",
-        runtimeLabel: args.toolName === "data_python_exec" ? "pyodide" : "vercel-sandbox",
+        runtimeLabel: "vercel-sandbox",
       },
     });
     const now = Date.now();

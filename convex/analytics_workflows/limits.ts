@@ -1,4 +1,4 @@
-export const PYODIDE_ACTION_TIMEOUT_MS = 2 * 60 * 1_000;
+export const DATA_PYTHON_EXEC_TIMEOUT_MS = 2 * 60 * 1_000;
 export const SANDBOX_ACTION_TIMEOUT_MS = 8 * 60 * 1_000;
 export const ANALYTICS_STDOUT_MAX_CHARS = 64_000;
 export const ANALYTICS_STDERR_MAX_CHARS = 16_000;
@@ -17,7 +17,7 @@ export function boundedAnalyticsTimeout(
 ): number | undefined {
   if (requested === undefined) return undefined;
   const maximum = toolName === "data_python_exec"
-    ? PYODIDE_ACTION_TIMEOUT_MS
+    ? DATA_PYTHON_EXEC_TIMEOUT_MS
     : SANDBOX_ACTION_TIMEOUT_MS;
   return Math.max(1, Math.min(Math.floor(requested), maximum));
 }

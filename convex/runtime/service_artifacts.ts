@@ -131,7 +131,7 @@ export async function resetWorkspace(
 
 /**
  * Store raw bytes in Convex durable storage and return download metadata.
- * Used by the analytics pipeline (Pyodide chart output, etc.).
+ * Used by the analytics pipeline (sandbox chart output, etc.).
  */
 export async function storeArtifactBytes(
   toolCtx: ToolExecutionContext,

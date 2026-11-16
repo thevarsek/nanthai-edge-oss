@@ -605,13 +605,13 @@ Model spawns parallel sub-tasks. Real-time subscription to batch progress.
 
 ## 16. Runtime / Code Execution
 
-Model executes Python/code via Pyodide WASM or Vercel Sandbox (tool calls), producing artifacts (files, charts). Workspace shell commands use ephemeral just-bash sandboxes.
+Model executes Python/code in the isolated Vercel Sandbox (tool calls), producing artifacts (files, charts). Workspace shell commands use ephemeral just-bash sandboxes.
 
 | Platform | Key Files |
 |----------|-----------|
 | iOS | `GeneratedFileCardView`, `GeneratedChartCardView`, `ToolCallAccordionView` (display) |
 | Android | `GeneratedFileComponents`, `GeneratedChartComponents` (display) |
-| Convex | `tools/workspace_exec.ts` (just-bash), `tools/data_python_exec.ts` (Pyodide), `tools/data_python_sandbox.ts` (Vercel Sandbox), `runtime/justbash_client.ts`, `runtime/pyodide_client.ts`, `runtime/vercel_sandbox_client.ts` |
+| Convex | `tools/workspace_exec.ts` (just-bash), `tools/data_python_exec.ts` and `tools/data_python_sandbox.ts` (Vercel Sandbox), `runtime/justbash_client.ts`, `runtime/vercel_sandbox_client.ts` |
 
 ---
 

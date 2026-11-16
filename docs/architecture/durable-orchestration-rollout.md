@@ -62,7 +62,8 @@ The component operation ID is stored on the domain record for cancellation and o
 
 ## Chart and uninterrupted-process boundary
 
-The Pyodide and Vercel Sandbox tools now checkpoint before execution and run as
+The Python analytics tools (`data_python_exec`, `data_python_sandbox`), both
+executed in the isolated Vercel Sandbox, checkpoint before execution and run as
 owned child analytics Workflows. Execution writes a raw, bounded envelope to
 Convex storage. Later steps collect chart/output bytes into deterministic
 artifact intents, normalize a bounded result, attach once, and signal the

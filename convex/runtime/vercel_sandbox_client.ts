@@ -2,7 +2,7 @@
 
 // convex/runtime/vercel_sandbox_client.ts
 // =============================================================================
-// Vercel Sandbox client for data_python_sandbox.
+// Vercel Sandbox client for data_python_exec and data_python_sandbox.
 //
 // Wraps the @vercel/sandbox SDK. Provides:
 //   - createVercelSandbox() — spin up a new Python 3.13 sandbox
@@ -21,6 +21,7 @@
 import { Sandbox } from "@vercel/sandbox";
 import { guessMimeTypeFromPath } from "./shared";
 import { SANDBOX_ACTION_TIMEOUT_MS } from "../analytics_workflows/limits";
+import { missingVercelSandboxEnv } from "./vercel_sandbox_config";
 
 export type { Sandbox };
 
@@ -55,7 +56,7 @@ export interface VercelSandboxExecResult {
 }
 
 // ---------------------------------------------------------------------------
-// Chart capture shim (same logic as pyodide_client.ts)
+// Chart capture shim
 // ---------------------------------------------------------------------------
 
 const CHART_CAPTURE_SHIM = `
@@ -116,20 +117,15 @@ export function getVercelCredentials(): {
   projectId: string;
   teamId: string;
 } {
-  const token = process.env.VERCEL_SANDBOX_TOKEN?.trim();
-  const projectId = process.env.VERCEL_SANDBOX_PROJECT_ID?.trim();
-  const teamId = process.env.VERCEL_SANDBOX_TEAM_ID?.trim();
-
-  if (!token || !projectId || !teamId) {
-    const missing = [
-      !token && "VERCEL_SANDBOX_TOKEN",
-      !projectId && "VERCEL_SANDBOX_PROJECT_ID",
-      !teamId && "VERCEL_SANDBOX_TEAM_ID",
-    ].filter(Boolean).join(", ");
-    throw new Error(`Vercel Sandbox not configured: missing ${missing}`);
+  const missing = missingVercelSandboxEnv();
+  if (missing.length > 0) {
+    throw new Error(`Vercel Sandbox not configured: missing ${missing.join(", ")}`);
   }
-
-  return { token, projectId, teamId };
+  return {
+    token: (process.env.VERCEL_SANDBOX_TOKEN ?? "").trim(),
+    projectId: (process.env.VERCEL_SANDBOX_PROJECT_ID ?? "").trim(),
+    teamId: (process.env.VERCEL_SANDBOX_TEAM_ID ?? "").trim(),
+  };
 }
 
 const SNAPSHOT_FILES_SCRIPT = [

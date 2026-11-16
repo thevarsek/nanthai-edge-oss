@@ -6,33 +6,39 @@ import { resumeParent } from "../analytics_workflows/actions";
 import { prepareArtifactIntent } from "../analytics_workflows/artifacts";
 import { rebindParentEvent } from "../analytics_workflows/mutations";
 import {
-  createRuntimeAnalyticsDepsForTest,
-  runDataPythonExec,
-} from "../runtime/service_analytics";
+  createRuntimeSandboxDepsForTest,
+  runDataPythonSandbox,
+} from "../runtime/service_analytics_sandbox";
 import { createMockCtx, createStatefulMockCtx } from "../../test_helpers/convex_mock_ctx";
 
 test("execution can checkpoint its raw envelope before any artifact attachment", async () => {
   let artifactWrites = 0;
   let stagedCharts = 0;
-  const deps = createRuntimeAnalyticsDepsForTest({
-    runPyodideCode: async () => ({
-      stdout: ["done"],
-      stderr: [],
+  const deps = createRuntimeSandboxDepsForTest({
+    runVercelSandboxCode: async () => ({
+      sandboxId: "sbx_1",
+      stdout: "done",
+      stderr: "",
+      exitCode: 0,
       charts: [{ pngBytes: new Uint8Array([1, 2, 3]), index: 0 }],
       outputFiles: [],
       error: null,
-      errorType: null,
-      canRetryWithSandbox: false,
-      returnValue: null,
-      memoryRssMiB: { baseline: 1, afterLoad: 2, afterPackages: 3, afterExecution: 4 },
+      sandbox: null,
     }),
     storeArtifactBytes: async () => {
       artifactWrites += 1;
       throw new Error("artifact persistence must happen in collect");
     },
   });
-  await runDataPythonExec(
-    { userId: "user_1", chatId: "chat_1", ctx: createMockCtx({}) } as never,
+  await runDataPythonSandbox(
+    {
+      userId: "user_1",
+      chatId: "chat_1",
+      ctx: createMockCtx({
+        runQuery: async () => null,
+        runMutation: async () => "session_1",
+      }),
+    } as never,
     {
       code: "print('done')",
       onExecutionReady: async (envelope) => {

@@ -2,9 +2,9 @@
 
 // convex/runtime/service_analytics_charts.ts
 // =============================================================================
-// Chart helpers for the Pyodide analytics pipeline.
+// Chart helpers for the sandboxed Python analytics pipeline.
 //
-// Pyodide outputs raw PNG bytes from matplotlib's Agg backend — there is no
+// The sandbox outputs raw PNG bytes from matplotlib's Agg backend — there is no
 // structured chart JSON, only PNG images.
 //
 // This module provides:
@@ -64,7 +64,7 @@ export interface RuntimeArtifactBlob {
 // buildChartPreviewArtifact
 //
 // Wraps raw PNG bytes in a RuntimeArtifactBlob ready for Convex storage.
-// Accepts Uint8Array (from Pyodide FS) or a base64 string.
+// Accepts Uint8Array (from the sandbox filesystem) or a base64 string.
 // ---------------------------------------------------------------------------
 
 export function buildChartPreviewArtifact(

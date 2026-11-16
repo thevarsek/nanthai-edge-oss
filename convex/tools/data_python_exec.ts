@@ -3,7 +3,11 @@
 import { createTool } from "./registry";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { PYODIDE_ACTION_TIMEOUT_MS } from "../analytics_workflows/limits";
+import { DATA_PYTHON_EXEC_TIMEOUT_MS } from "../analytics_workflows/limits";
+import {
+  missingVercelSandboxEnv,
+  PYTHON_SANDBOX_UNAVAILABLE_ERROR,
+} from "../runtime/vercel_sandbox_config";
 
 type DataPythonInputFileArg = {
   storageId?: unknown;
@@ -18,13 +22,14 @@ export const dataPythonExec = createTool({
   name: "data_python_exec",
   mayDefer: true,
   description:
-    "Run notebook-style Python (Pyodide/WebAssembly) for data analysis and chart generation. " +
-    "Pre-loaded packages: numpy, pandas, matplotlib. ~400 MB memory limit, 120s timeout, stateless per call. " +
+    "Run notebook-style Python for data analysis and chart generation in an isolated Linux sandbox. " +
+    "numpy, pandas and matplotlib are installed automatically when imported. 120s timeout. " +
+    "Python variables do not persist between calls; files on disk persist within this chat's sandbox. " +
     "Use for CSV/XLSX analysis, summary statistics, data cleaning, and chart creation with matplotlib. " +
     "To export output files (CSV, JSON, etc.), save them to /tmp/outputs/ — they are auto-captured and " +
     "stored as downloadable artifacts. Charts from plt.show() are captured automatically. " +
-    "If this tool fails due to missing packages (scipy, scikit-learn, etc.), memory limits, or timeouts, " +
-    "retry the same task using data_python_sandbox which provides a full Linux environment with pip.",
+    "If the task needs other pip packages, longer runs, or this tool times out, " +
+    "use data_python_sandbox instead.",
   parameters: {
     type: "object",
     properties: {
@@ -70,12 +75,18 @@ export const dataPythonExec = createTool({
       return { success: false, data: null, error: "Analytics Workflow requires generation context." };
     }
     const timeoutMs = typeof args.timeoutMs === "number" ? args.timeoutMs : undefined;
-    if (timeoutMs !== undefined && (timeoutMs < 1 || timeoutMs > PYODIDE_ACTION_TIMEOUT_MS)) {
+    if (timeoutMs !== undefined && (timeoutMs < 1 || timeoutMs > DATA_PYTHON_EXEC_TIMEOUT_MS)) {
       return {
         success: false,
         data: null,
-        error: "Pyodide execution is capped at 120000ms. Split the work into durable rounds or use the bounded sandbox tool.",
+        error: "data_python_exec is capped at 120000ms. Split the work into durable rounds or use the bounded sandbox tool.",
       };
+    }
+    // Fail closed: model-supplied code runs only in the isolated sandbox.
+    const missingSandboxEnv = missingVercelSandboxEnv();
+    if (missingSandboxEnv.length > 0) {
+      console.error(`[data_python_exec] sandbox not configured: missing ${missingSandboxEnv.join(", ")}`);
+      return { success: false, data: null, error: PYTHON_SANDBOX_UNAVAILABLE_ERROR };
     }
     const inputFiles = Array.isArray(args.inputFiles)
       ? args.inputFiles

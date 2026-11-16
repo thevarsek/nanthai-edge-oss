@@ -4,7 +4,6 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
-import { runDataPythonExec } from "../runtime/service_analytics";
 import { runDataPythonSandbox } from "../runtime/service_analytics_sandbox";
 import type { ToolExecutionContext } from "../tools/registry";
 import {
@@ -77,11 +76,9 @@ export const execute = internalAction({
           throw error;
         }
       };
-      if (run.toolName === "data_python_exec") {
-        await runDataPythonExec(toolCtx, { ...input, onExecutionReady });
-      } else {
-        await runDataPythonSandbox(toolCtx, { ...input, packages: run.packages, onExecutionReady });
-      }
+      // Both analytics tools execute model-supplied code only inside the
+      // isolated per-chat Vercel Sandbox. There is no in-process runtime.
+      await runDataPythonSandbox(toolCtx, { ...input, packages: run.packages, onExecutionReady });
     } catch (error) {
       const message = (error instanceof Error ? error.message : String(error))
         .slice(0, ANALYTICS_ERROR_MAX_CHARS);

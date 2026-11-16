@@ -2,8 +2,8 @@
 
 // convex/runtime/service_analytics_common.ts
 // =============================================================================
-// Shared chart/output processing logic for data_python_exec (Pyodide) and
-// data_python_sandbox (Vercel Sandbox).
+// Shared chart/output processing logic for data_python_exec and
+// data_python_sandbox (both executed in the isolated Vercel Sandbox).
 //
 // Both analytics services have the same post-execution pipeline:
 //   1. Store chart PNGs in Convex storage
@@ -162,7 +162,7 @@ export function buildResultSummary(
 ): string[] {
   const summary: string[] = [];
 
-  // stdout — may be string[] (Pyodide) or string (Vercel Sandbox)
+  // stdout — may be string[] (line-split callers) or string (Vercel Sandbox)
   const stdoutText = Array.isArray(stdout) ? stdout.join("\n") : stdout;
   if (stdoutText) summary.push(stdoutText);
 

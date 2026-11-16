@@ -46,6 +46,9 @@ test("data python tools require a durable generation Workflow context", async ()
 });
 
 test("data python exec ignores malformed inputFiles before preparing its durable run", async () => {
+  const sandboxEnvKeys = ["VERCEL_SANDBOX_TOKEN", "VERCEL_SANDBOX_PROJECT_ID", "VERCEL_SANDBOX_TEAM_ID"];
+  const previousEnv = sandboxEnvKeys.map((key) => [key, process.env[key]] as const);
+  for (const key of sandboxEnvKeys) process.env[key] = "configured";
   const mutations: Array<Record<string, unknown>> = [];
   const execResult = await dataPythonExec.execute(
     {
@@ -66,7 +69,12 @@ test("data python exec ignores malformed inputFiles before preparing its durable
       code: "print(1)",
       inputFiles: [null, "bad entry", { filename: "missing-storage.csv" }],
     },
-  );
+  ).finally(() => {
+    for (const [key, value] of previousEnv) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
 
   assert.equal(execResult.success, true);
   assert.equal(execResult.deferred?.kind, "analytics_workflow");

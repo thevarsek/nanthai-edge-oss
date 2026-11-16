@@ -39,7 +39,7 @@
 | Auth | Clerk JWT provider | Configured in `convex/auth.config.ts` |
 | Streaming | Convex actions + `StreamWriter` | Server-side OpenRouter streaming persisted into message state |
 | Model catalog | OpenRouter + Artificial Analysis enrichment | Model sync, guidance scoring, image/video catalog helpers |
-| Runtime tools | just-bash, Pyodide, Vercel Sandbox | Shell/file workspace, lightweight Python analytics, heavier sandbox execution |
+| Runtime tools | just-bash, Vercel Sandbox | Shell/file workspace, isolated sandbox Python analytics and runtime execution |
 | File generation | `docx`, `pptxgenjs`, custom OOXML readers/writers | DOCX/PPTX/XLSX/text/email generation and extraction |
 | Email/Calendar | `imapflow`, `mailparser`, `nodemailer`, direct CalDAV helpers | Manual Gmail and Apple Calendar-style CalDAV tooling |
 | Push | `web-push`, APNs/FCM helpers | Web push and provider-specific backend delivery helpers |

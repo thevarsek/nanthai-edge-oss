@@ -34,7 +34,7 @@ nanthai-edge-oss/
 │   ├── personas/                    # Persona CRUD
 │   ├── preferences/                 # User preferences, model defaults, entitlements
 │   ├── push/                        # Web/APNs/FCM push helpers and token storage
-│   ├── runtime/                     # just-bash, Pyodide, Vercel Sandbox runtime services
+│   ├── runtime/                     # just-bash, Vercel Sandbox runtime services
 │   ├── scheduledJobs/               # Recurring AI job execution and lifecycle
 │   ├── search/                      # Web search and research-paper workflows
 │   ├── skills/                      # Built-in skill catalog, CRUD, resolver, tool profiles
