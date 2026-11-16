@@ -55,7 +55,14 @@ function oauthDb(existing: any = null) {
 test("Slack OAuth actions cover config, HTTP, token, auth-test, and disconnect branches", async () => {
   const originalClientId = process.env.SLACK_CLIENT_ID;
   const originalClientSecret = process.env.SLACK_CLIENT_SECRET;
+  const originalAvailability = process.env.SLACK_INTEGRATION_AVAILABLE;
   const originalFetch = globalThis.fetch;
+  delete process.env.SLACK_INTEGRATION_AVAILABLE;
+  await assert.rejects(
+    (exchangeSlackCode as any)._handler(authCtx(), { code: "code", redirectUri: "app://slack" }),
+    (error: unknown) => error instanceof ConvexError && error.data?.code === "INTEGRATION_UNAVAILABLE",
+  );
+  process.env.SLACK_INTEGRATION_AVAILABLE = "true";
   delete process.env.SLACK_CLIENT_ID;
   delete process.env.SLACK_CLIENT_SECRET;
 
@@ -118,6 +125,8 @@ test("Slack OAuth actions cover config, HTTP, token, auth-test, and disconnect b
 
   process.env.SLACK_CLIENT_ID = originalClientId;
   process.env.SLACK_CLIENT_SECRET = originalClientSecret;
+  if (originalAvailability === undefined) delete process.env.SLACK_INTEGRATION_AVAILABLE;
+  else process.env.SLACK_INTEGRATION_AVAILABLE = originalAvailability;
   globalThis.fetch = originalFetch;
 });
 

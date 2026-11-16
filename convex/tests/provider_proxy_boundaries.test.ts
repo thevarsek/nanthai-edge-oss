@@ -209,7 +209,14 @@ test("provider action dispatchers reject unknown tool names", async () => {
   await assertRejectsUnknownTool(executeGoogleTool, "drive_unknown", /Unknown Google tool/);
   await assertRejectsUnknownTool(executeMicrosoftTool, "microsoft_unknown", /Unknown Microsoft tool/);
   await assertRejectsUnknownTool(executeNotionTool, "notion_unknown", /Unknown Notion tool/);
-  await assertRejectsUnknownTool(executeSlackTool, "slack_unknown", /Unknown Slack tool/);
+  const slackAvailability = process.env.SLACK_INTEGRATION_AVAILABLE;
+  process.env.SLACK_INTEGRATION_AVAILABLE = "true";
+  try {
+    await assertRejectsUnknownTool(executeSlackTool, "slack_unknown", /Unknown Slack tool/);
+  } finally {
+    if (slackAvailability === undefined) delete process.env.SLACK_INTEGRATION_AVAILABLE;
+    else process.env.SLACK_INTEGRATION_AVAILABLE = slackAvailability;
+  }
   await assertRejectsUnknownTool(executeClozeTool, "cloze_unknown", /Unknown Cloze tool/);
   await assertRejectsUnknownTool(executeGmailTool, "gmail_unknown", /Unknown Gmail tool/);
   await assertRejectsUnknownTool(executePptxTool, "pptx_unknown", /Unknown PPTX tool/);

@@ -328,9 +328,8 @@ test("store entitlements update canonical rows, delete duplicates, and preserve 
           apply?.({
             eq: (field: string, value: string) => {
               if (field === "externalPurchaseId") externalPurchaseId = value;
-              return {
-                eq: () => ({}),
-              };
+              const range: any = { eq: () => range, gt: () => range };
+              return range;
             },
             field: (name: string) => name,
           });
@@ -348,6 +347,7 @@ test("store entitlements update canonical rows, delete duplicates, and preserve 
               }
               return [];
             },
+            take: async () => [],
           };
         },
       }),
@@ -374,7 +374,7 @@ test("store entitlements update canonical rows, delete duplicates, and preserve 
     packageName: "com.nanthai.edge",
   }), "prefs_1");
   // ios_tx already has an active row, so only the expired Play purchase is re-verified.
-  assert.deepEqual(scheduled, [{ userId: "user_1", purchaseToken: "play_token", productId: "nanthai.pro.lifetime" }]);
+  assert.deepEqual(scheduled, [{ userId: "user_1", purchaseToken: "play_token", productId: "nanthai.pro.lifetime", attemptId: "storeVerificationAttempts_1" }]);
   assert.equal(patches.length, 0);
   scheduled.length = 0;
 
@@ -403,7 +403,8 @@ test("store entitlements update canonical rows, delete duplicates, and preserve 
   assert.ok(patches.some((entry) => entry.id === "play_revoke" && entry.patch.status === "expired"));
   assert.ok(patches.some((entry) => entry.id === "ios_revoke" && entry.patch.status === "revoked"));
   assert.deepEqual(deleted, ["ios_duplicate"]);
-  assert.deepEqual(inserts, []);
+  // Only the sync rate-limit attempt is inserted; no entitlement rows.
+  assert.deepEqual(inserts.map((entry) => entry.table), ["storeVerificationAttempts"]);
   assert.deepEqual(scheduled, []);
 });
 

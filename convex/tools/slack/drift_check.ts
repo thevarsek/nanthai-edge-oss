@@ -19,6 +19,7 @@ import { internalAction } from "../../_generated/server";
 import { internal } from "../../_generated/api";
 import { fetchLiveMcpTools, type McpTool } from "./mcp_probe";
 import { decryptOAuthCredentials } from "../../lib/secret_crypto";
+import { isSlackIntegrationAvailable } from "../../lib/integration_availability";
 import {
   SLACK_MCP_TOOLS_SNAPSHOT,
   type SlackMcpToolShape,
@@ -112,6 +113,10 @@ export function diffShapes(
 export const checkSlackMcpDrift = internalAction({
   args: {},
   handler: async (ctx) => {
+    if (!isSlackIntegrationAvailable()) {
+      console.log("[slack-drift] Slack is unavailable on this deployment; skipping drift check.");
+      return { skipped: true, reason: "integration_unavailable" };
+    }
     const connection = await ctx.runQuery(
       internal.oauth.slack.pickAnyActiveConnection,
       {},

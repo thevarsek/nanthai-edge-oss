@@ -866,6 +866,7 @@ test("exchangeSlackCode stores rotating user tokens and public query returns met
   let slackTokenCodeVerifier: string | null = null;
 
   try {
+    process.env.SLACK_INTEGRATION_AVAILABLE = "true";
     process.env.SLACK_CLIENT_ID = "slack_client";
     process.env.SLACK_CLIENT_SECRET = "slack_secret";
     globalThis.fetch = (async (url: string | URL, init?: RequestInit) => {

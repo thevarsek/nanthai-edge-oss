@@ -2,6 +2,7 @@
 
 import type { SkillToolProfileId } from "../skills/tool_profiles";
 import { ToolRegistry, type RegisteredTool } from "./registry";
+import { isSlackIntegrationAvailable } from "../lib/integration_availability";
 import { fetchImage } from "./fetch_image";
 import { updateCollaborationWork } from "./collaboration_work";
 import { searchChats } from "./search_chats";
@@ -264,7 +265,7 @@ export function registerProfileTools(
       }
       break;
     case "slack":
-      if ((options.enabledIntegrations ?? []).includes("slack")) {
+      if ((options.enabledIntegrations ?? []).includes("slack") && isSlackIntegrationAvailable()) {
         registerToolsIfMissing(registry, [
           slackSearchMessages,
           slackSearchUsers,

@@ -148,11 +148,26 @@ crons.interval(
 // Compares Slack's live tools/list response to our committed baseline in
 // convex/tools/slack/mcp_tools_snapshot.ts and logs warnings on drift.
 // Uses any active Slack OAuth connection (drift affects everyone equally).
-// Skips silently if no active connections exist.
+// Skips silently if no active connections exist or Slack is unavailable.
 crons.cron(
   "checkSlackMcpDrift",
   "0 6 * * 1",
   internal.tools.slack.drift_check.checkSlackMcpDrift,
+);
+
+// Re-check active App Store and Play entitlements not verified for 3 days, so
+// refunds and revocations remove Pro without the client reporting them.
+crons.cron(
+  "reverifyStoreEntitlements",
+  "40 3 * * *",
+  internal.preferences.store_purchase_reverification.reverifyStoreEntitlements,
+);
+
+// Drop day-old purchase-sync verification attempts (per-user rate limit rows).
+crons.interval(
+  "cleanupStoreVerificationAttempts",
+  { hours: 1 },
+  internal.preferences.store_verification_admission.cleanupStoreVerificationAttempts,
 );
 
 // Mark Runtime Host presences offline once their heartbeat lease lapses.

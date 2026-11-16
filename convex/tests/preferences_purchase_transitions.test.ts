@@ -20,9 +20,8 @@ test("syncEntitlement schedules App Store verification instead of granting an en
     db: {
       query: (table: string) => ({
         withIndex: (index: string, apply: (q: any) => unknown) => {
-          apply({
-            eq: () => ({ eq: () => ({}) }),
-          });
+          const range: any = { eq: () => range, gt: () => range, lt: () => range };
+          apply(range);
 
           return {
             first: async () => {
@@ -35,6 +34,7 @@ test("syncEntitlement schedules App Store verification instead of granting an en
               return null;
             },
             collect: async () => [],
+            take: async () => [],
           };
         },
       }),
@@ -61,7 +61,10 @@ test("syncEntitlement schedules App Store verification instead of granting an en
   assert.equal(result, "userPreferences_id");
 
   assert.ok(!inserts.some((entry) => entry.table === "purchaseEntitlements"));
-  assert.deepEqual(scheduled, [{ userId: "user_1", transactionId: "tx_123" }]);
+  assert.deepEqual(scheduled, [{ userId: "user_1", transactionId: "tx_123", attemptId: "storeVerificationAttempts_id" }]);
+  const attempt = inserts.find((entry) => entry.table === "storeVerificationAttempts");
+  assert.equal(attempt?.value.store, "app_store");
+  assert.match(String(attempt?.value.purchaseKey), /^[0-9a-f]{64}$/);
 
   const prefsInsert = inserts.find((entry) => entry.table === "userPreferences");
   assert.ok(prefsInsert);
@@ -82,9 +85,8 @@ test("syncPlayEntitlement schedules Play verification instead of granting an ent
     db: {
       query: (table: string) => ({
         withIndex: (index: string, apply: (q: any) => unknown) => {
-          apply({
-            eq: () => ({ eq: () => ({}) }),
-          });
+          const range: any = { eq: () => range, gt: () => range, lt: () => range };
+          apply(range);
 
           return {
             first: async () => {
@@ -97,6 +99,7 @@ test("syncPlayEntitlement schedules Play verification instead of granting an ent
               return null;
             },
             collect: async () => [],
+            take: async () => [],
           };
         },
       }),
@@ -126,7 +129,7 @@ test("syncPlayEntitlement schedules Play verification instead of granting an ent
   assert.equal(result, "userPreferences_id");
 
   assert.ok(!inserts.some((entry) => entry.table === "purchaseEntitlements"));
-  assert.deepEqual(scheduled, [{ userId: "user_1", purchaseToken: "play_token_123", productId: "nanthai.pro.monthly" }]);
+  assert.deepEqual(scheduled, [{ userId: "user_1", purchaseToken: "play_token_123", productId: "nanthai.pro.monthly", attemptId: "storeVerificationAttempts_id" }]);
 
   const prefsInsert = inserts.find((entry) => entry.table === "userPreferences");
   assert.ok(prefsInsert);
@@ -144,9 +147,8 @@ test("revokeEntitlement revokes only app_store entitlements when another platfor
     db: {
       query: (table: string) => ({
         withIndex: (index: string, apply: (q: any) => unknown) => {
-          apply({
-            eq: () => ({ eq: () => ({}) }),
-          });
+          const range: any = { eq: () => range, gt: () => range, lt: () => range };
+          apply(range);
 
           return {
             first: async () => {
@@ -203,9 +205,8 @@ test("revokePlayEntitlement revokes play_store entitlement and disables Pro-only
     db: {
       query: (table: string) => ({
         withIndex: (index: string, apply: (q: any) => unknown) => {
-          apply({
-            eq: () => ({ eq: () => ({}) }),
-          });
+          const range: any = { eq: () => range, gt: () => range, lt: () => range };
+          apply(range);
 
           return {
             first: async () => {

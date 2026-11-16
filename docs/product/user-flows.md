@@ -448,7 +448,7 @@ Upload, view, delete knowledge base files for RAG.
 ### 10.1 OAuth Connections (Google, Microsoft, Notion, Apple Calendar, Slack, Cloze)
 User connects external services via OAuth PKCE. Code exchanged through Convex backend.
 
-Slack is currently unavailable for new connections: each client gates its connect entry point on a single availability flag (`integrationAvailability.ts` on web, `IntegrationAvailability` on iOS and Android) and only shows a disconnect control for an existing active Slack connection. The Convex Slack OAuth and tool implementation remains in place for re-enablement.
+Slack is currently unavailable for new connections: each client gates its connect entry point on a single availability flag (`integrationAvailability.ts` on web, `IntegrationAvailability` on iOS and Android) and only shows a disconnect control for an existing active Slack connection. The backend enforces the same decision in `convex/lib/integration_availability.ts`: unless the deployment sets `SLACK_INTEGRATION_AVAILABLE=true`, `oauth/slack:exchangeSlackCode` fails with `INTEGRATION_UNAVAILABLE`, Slack tools are neither registered nor executed, a stored Slack connection is not offered to generation, and the weekly Slack drift check skips. `oauth/slack:disconnectSlack` always works. Re-enabling Slack means setting that variable and flipping the three client flags.
 
 | Platform | Key Files |
 |----------|-----------|

@@ -71,7 +71,16 @@ purge removes the receipt records and their remaining blobs.
 
 Existing durable attachments, generated files/media, document versions and Persona
 avatars retain their table ownership. Browser snapshots and memory imports check
-ownership before reading or adopting a client-supplied ID. Invalid browser
+ownership before reading or adopting a client-supplied ID. A voice recording sent
+with `chat/mutations:sendMessage` or `search/mutations_research_paper:startResearchPaper`
+must be an upload receipt owned by the caller; Telegram voice input checks its own
+upload session instead.
+
+Message attachments are owned storage blobs or inline `data:` URLs
+(`convex/chat/attachment_normalization.ts`). Any other URL fails with
+`VALIDATION`, so the backend never fetches a client-chosen host outside the
+egress gateway. Current-turn audio input is read from storage, capped at the
+25 MB per-turn attachment limit, and is never fetched by URL. Invalid browser
 snapshots are not deleted during action error handling, since persistence may
 have committed before an error reached the caller.
 

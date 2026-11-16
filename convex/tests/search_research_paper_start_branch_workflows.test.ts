@@ -97,8 +97,18 @@ test("startResearchPaper rejects invalid chat, participant, prompt, and audio st
       ctx: buildCtx().ctx,
       args: args({
         recordedAudio: { storageId: "audio_recorded", transcript: "voice" },
-        attachments: [{ type: "audio", url: "https://files.example/audio.mp3", mimeType: "audio/mpeg" }],
+        attachments: [{ type: "audio", storageId: "audio_storage", mimeType: "audio/mpeg" }],
       }),
+      code: "VALIDATION",
+    },
+    {
+      ctx: buildCtx().ctx,
+      args: args({ recordedAudio: { storageId: "audio_not_uploaded_by_user", transcript: "voice" } }),
+      code: "FORBIDDEN",
+    },
+    {
+      ctx: buildCtx().ctx,
+      args: args({ attachments: [{ type: "audio", url: "https://files.example/audio.mp3", mimeType: "audio/mpeg" }] }),
       code: "VALIDATION",
     },
     {

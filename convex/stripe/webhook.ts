@@ -73,12 +73,15 @@ export const updateStripeEntitlementStatus = internalMutation({
       v.literal("refunded"),
       v.literal("expired"),
     ),
+    // Only rows currently in this status change: a dispute revokes active rows
+    // and its reversal restores only rows the dispute revoked, never refunds.
+    onlyFromStatus: v.optional(v.union(v.literal("active"), v.literal("revoked"))),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
     const matches = new Map<
       Id<"purchaseEntitlements">,
-      { _id: Id<"purchaseEntitlements">; userId: string }
+      { _id: Id<"purchaseEntitlements">; userId: string; status: EntitlementStatus }
     >();
 
     for (const externalPurchaseId of args.externalPurchaseIds) {
@@ -90,7 +93,7 @@ export const updateStripeEntitlementStatus = internalMutation({
         .collect();
       for (const doc of docs) {
         if (doc.platform === "web" && doc.source === "stripe") {
-          matches.set(doc._id, { _id: doc._id, userId: doc.userId });
+          matches.set(doc._id, { _id: doc._id, userId: doc.userId, status: doc.status });
         }
       }
     }
@@ -106,11 +109,16 @@ export const updateStripeEntitlementStatus = internalMutation({
         if (
           entitlementMetadataMatches(doc.metadata, args.paymentIntentId, args.chargeId)
         ) {
-          matches.set(doc._id, { _id: doc._id, userId: doc.userId });
+          matches.set(doc._id, { _id: doc._id, userId: doc.userId, status: doc.status });
         }
       }
     }
 
+    if (args.onlyFromStatus) {
+      for (const [id, match] of matches) {
+        if (match.status !== args.onlyFromStatus) matches.delete(id);
+      }
+    }
     if (matches.size === 0) {
       return;
     }
@@ -126,6 +134,7 @@ export const updateStripeEntitlementStatus = internalMutation({
       affectedUserIds.add(match.userId);
     }
 
+    if (args.status === "active") return;
     for (const userId of affectedUserIds) {
       const stillActive = await ctx.db
         .query("purchaseEntitlements")
@@ -179,6 +188,15 @@ export const stripeWebhook = httpAction(async (ctx, request) => {
       paymentIntentId: update.paymentIntentId,
       chargeId: update.chargeId,
       status: update.status as EntitlementStatus,
+      onlyFromStatus: update.status === "revoked" ? "active" : undefined,
+    });
+  } else if (update?.kind === "restore") {
+    await ctx.runMutation(internal.stripe.webhook.updateStripeEntitlementStatus, {
+      externalPurchaseIds: update.externalPurchaseIds,
+      paymentIntentId: update.paymentIntentId,
+      chargeId: update.chargeId,
+      status: "active",
+      onlyFromStatus: "revoked",
     });
   }
 

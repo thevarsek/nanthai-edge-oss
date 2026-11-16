@@ -20,6 +20,7 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import { assertSlackIntegrationAvailable } from "../lib/integration_availability";
 import { revokeSlackConnection } from "./revocation";
 import {
   assertEncryptedSecret,
@@ -59,6 +60,7 @@ export const exchangeSlackCode = action({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
+    assertSlackIntegrationAvailable();
 
     const clientId = process.env.SLACK_CLIENT_ID;
     const clientSecret = process.env.SLACK_CLIENT_SECRET;

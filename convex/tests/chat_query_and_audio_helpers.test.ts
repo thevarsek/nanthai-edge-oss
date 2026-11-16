@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 
-import { appendCurrentTurnAudioInput } from "../chat/audio_input_request";
+import { appendCurrentTurnAudioInput, MAX_AUDIO_INPUT_BYTES } from "../chat/audio_input_request";
 import {
   getMessageAudioUrlHandler,
 } from "../chat/audio_query_handlers";
@@ -47,12 +47,13 @@ test("query helpers enforce ownership and refresh attachment URLs", async () => 
   assert.equal(refreshed.attachments?.[1]?.url, "keep");
 });
 
-test("appendCurrentTurnAudioInput appends audio payloads to the latest user message", async (t) => {
+test("appendCurrentTurnAudioInput reads stored audio and never fetches the attachment URL", async (t) => {
   t.after(() => mock.restoreAll());
 
   const fetchMock = mock.method(globalThis, "fetch", async () =>
-    new Response(new Uint8Array([0, 1, 2]), { status: 200 }),
+    new Response(new Uint8Array([9]), { status: 200 }),
   );
+  const reads: string[] = [];
 
   const messages = await appendCurrentTurnAudioInput(
     [
@@ -63,13 +64,18 @@ test("appendCurrentTurnAudioInput appends audio payloads to the latest user mess
       _id: "msg_user",
       content: "transcribe this",
       attachments: [
-        { type: "audio", url: "https://audio.example/input.m4a", mimeType: "audio/mp4" },
+        { type: "audio", storageId: "storage_audio", url: "https://audio.example/input.m4a", mimeType: "audio/mp4" },
       ],
     },
     true,
+    async (storageId) => {
+      reads.push(storageId);
+      return new Blob([new Uint8Array([0, 1, 2])]);
+    },
   );
 
-  assert.equal(fetchMock.mock.callCount(), 1);
+  assert.equal(fetchMock.mock.callCount(), 0);
+  assert.deepEqual(reads, ["storage_audio"]);
   const latest = messages[messages.length - 1] as any;
   assert.equal(Array.isArray(latest.content), true);
   assert.deepEqual(latest.content[0], { type: "text", text: "transcribe this" });
@@ -80,6 +86,46 @@ test("appendCurrentTurnAudioInput appends audio payloads to the latest user mess
       format: "m4a",
     },
   });
+});
+
+test("appendCurrentTurnAudioInput uses inline data and ignores remote audio URLs", async (t) => {
+  t.after(() => mock.restoreAll());
+  const fetchMock = mock.method(globalThis, "fetch", async () =>
+    new Response(new Uint8Array([9]), { status: 200 }),
+  );
+  const noStorage = async () => {
+    throw new Error("storage should not be read");
+  };
+  const base = [{ role: "user", content: "listen" }] as any;
+
+  const inline = await appendCurrentTurnAudioInput(base, {
+    _id: "msg_inline",
+    content: "listen",
+    attachments: [{ type: "audio", url: "data:audio/wav;base64,UklGRg==", mimeType: "audio/wav" }],
+  }, true, noStorage);
+  assert.deepEqual((inline[0] as any).content[1], {
+    type: "input_audio",
+    input_audio: { data: "UklGRg==", format: "wav" },
+  });
+
+  const remote = await appendCurrentTurnAudioInput(base, {
+    _id: "msg_remote",
+    content: "listen",
+    attachments: [{ type: "audio", url: "http://169.254.169.254/latest", mimeType: "audio/mp4" }],
+  }, true, noStorage);
+  assert.deepEqual(remote, base);
+  assert.equal(fetchMock.mock.callCount(), 0);
+});
+
+test("appendCurrentTurnAudioInput rejects stored audio above the per-turn cap", async () => {
+  await assert.rejects(
+    () => appendCurrentTurnAudioInput([{ role: "user", content: "x" }] as any, {
+      _id: "msg_big",
+      content: "x",
+      attachments: [{ type: "audio", storageId: "storage_big", mimeType: "audio/mp4" }],
+    }, true, async () => ({ size: MAX_AUDIO_INPUT_BYTES + 1 }) as Blob),
+    /too large/,
+  );
 });
 
 test("requestAudioGenerationHandler starts one owned audio workflow and short-circuits duplicates", async () => {

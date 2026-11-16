@@ -263,7 +263,20 @@ export const userSchemaTables = {
     .index("by_user", ["userId"])
     .index("by_user_status", ["userId", "status"])
     .index("by_external_purchase", ["externalPurchaseId"])
-    .index("by_platform_source", ["platform", "source"]),
+    .index("by_platform_source", ["platform", "source"])
+    .index("by_source_status_verified", ["source", "status", "lastVerifiedAt"]),
+
+  /** Store verification calls scheduled by purchase sync, for per-user limits. */
+  storeVerificationAttempts: defineTable({
+    userId: v.string(),
+    store: v.union(v.literal("app_store"), v.literal("play_store")),
+    // SHA-256 of the store and purchase identifier; tokens are not stored.
+    purchaseKey: v.string(),
+    createdAt: v.number(),
+    rejectedAt: v.optional(v.number()),
+  })
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_created", ["createdAt"]),
 
   // ── M13: Scheduled Jobs ──────────────────────────────────────────────
 

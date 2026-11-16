@@ -80,6 +80,7 @@ export const PURGE_TABLES = [
   "openRouterExchangeAttempts",
   "kbUploadSessions",
   "purchaseEntitlements",
+  "storeVerificationAttempts",
   "favorites",
   "integrationRequestGates",
   "userCapabilities",

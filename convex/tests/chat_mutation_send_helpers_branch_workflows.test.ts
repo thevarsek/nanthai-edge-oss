@@ -134,6 +134,29 @@ test("normalizeMessageAttachments resolves uploaded files, base64 sizes, and val
   );
 });
 
+test("normalizeMessageAttachments rejects remote URLs and counts inline data at its decoded size", async () => {
+  for (const url of [
+    "https://example.com/clip.m4a",
+    "http://169.254.169.254/latest/meta-data",
+    "  ftp://files.example/report.pdf",
+  ]) {
+    await assert.rejects(
+      () => normalizeMessageAttachments(buildCtx().ctx, "user_1", [
+        { type: "audio", url, sizeBytes: 1 },
+      ]),
+      (err) =>
+        err instanceof ConvexError &&
+        err.data.code === "VALIDATION" &&
+        /remote links are not supported/i.test(err.data.message),
+    );
+  }
+
+  const inline = await normalizeMessageAttachments(buildCtx().ctx, "user_1", [
+    { type: "image", url: `data:image/png;base64,${"A".repeat(68)}`, sizeBytes: 1 },
+  ]);
+  assert.equal(inline?.[0].sizeBytes, 51);
+});
+
 test("normalizeMessageAttachments enforces storage ownership and consumes chat upload sessions", async () => {
   const foreign = buildCtx({
     records: { foreign_storage: { _id: "foreign_storage", userId: "user_other" } },

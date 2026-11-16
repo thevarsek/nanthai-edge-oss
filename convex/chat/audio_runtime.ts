@@ -54,12 +54,3 @@ export function guessAudioInputFormat(
       return "m4a";
   }
 }
-
-export async function fetchBinaryAsBase64(url: string): Promise<string> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch audio payload (${response.status})`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  return bytesToBase64(new Uint8Array(arrayBuffer));
-}

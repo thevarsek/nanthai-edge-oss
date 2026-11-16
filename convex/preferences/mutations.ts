@@ -13,6 +13,8 @@ import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { optionalAuth, requireAuth, requirePro } from "../lib/auth";
 import { hasActiveEntitlementForPurchase } from "./purchase_entitlement_upsert";
+import { disableProClientState } from "./pro_client_state";
+import { admitStoreVerification } from "./store_verification_admission";
 import { validateImagePreferenceWrite } from "./image_defaults";
 import { validateSpeechPreferenceWrite } from "./speech_defaults";
 import { defaultModelWhenEnablingZdr } from "./zdr_default";
@@ -677,38 +679,6 @@ export const deleteModelSettings = mutation({
 
 // -- Pro Entitlement ----------------------------------------------------------
 
-async function disableProClientState(ctx: MutationCtx, userId: string, now: number): Promise<void> {
-  // 1. Reset Pro-gated preference fields.
-  const prefs = await ctx.db
-    .query("userPreferences")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
-    .first();
-
-  if (prefs) {
-    await ctx.db.patch(prefs._id, {
-      isMemoryEnabled: false,
-      memoryGatingMode: "disabled",
-      memoryExtractionModelId: undefined,
-      subagentsEnabledByDefault: false,
-      updatedAt: now,
-    });
-  }
-
-  // 2. Reset subagentOverride on all user chats, paginated to avoid the
-  //    16,384-document read limit. First batch runs immediately; subsequent
-  //    batches are scheduled so each runs in its own transaction.
-  await ctx.scheduler.runAfter(
-    0,
-    internal.preferences.mutations.disableProChatsBatch,
-    { userId, now },
-  );
-
-  // 3. Purge memories in a separate action.
-  await ctx.scheduler.runAfter(0, internal.memory.operations.purgeUserMemories, {
-    userId,
-  });
-}
-
 /**
  * Internal wrapper for non-authenticated callers (for example Stripe webhooks)
  * to apply the same Pro revocation cleanup path used by mobile clients.
@@ -768,7 +738,9 @@ export const disableProChatsBatch = internalMutation({
  * Called after a purchase and on launch for current entitlements. The
  * transaction is confirmed with the App Store Server API by a scheduled
  * action before any entitlement is granted; an already-active entitlement for
- * this user is not re-verified. Throws ENTITLEMENT_USER_MISMATCH synchronously
+ * this user is not re-verified here (the daily store re-verification cron owns
+ * that). Lookups are rate-limited per user; over the limit this returns
+ * normally without scheduling. Throws ENTITLEMENT_USER_MISMATCH synchronously
  * when the purchase belongs to another account.
  */
 export const syncEntitlement = mutation({
@@ -778,10 +750,16 @@ export const syncEntitlement = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     if (!(await hasActiveEntitlementForPurchase(ctx, userId, args.originalTransactionId))) {
-      await ctx.scheduler.runAfter(0, internal.preferences.store_purchase_actions.verifyAppStoreEntitlement, {
-        userId,
-        transactionId: args.originalTransactionId,
+      const attemptId = await admitStoreVerification(ctx, {
+        userId, store: "app_store", purchaseId: args.originalTransactionId, now: Date.now(),
       });
+      if (attemptId) {
+        await ctx.scheduler.runAfter(0, internal.preferences.store_purchase_actions.verifyAppStoreEntitlement, {
+          userId,
+          transactionId: args.originalTransactionId,
+          attemptId,
+        });
+      }
     }
     return await ensurePreferencesRow(ctx, userId);
   },
@@ -805,11 +783,17 @@ export const syncPlayEntitlement = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     if (!(await hasActiveEntitlementForPurchase(ctx, userId, args.purchaseToken))) {
-      await ctx.scheduler.runAfter(0, internal.preferences.store_purchase_actions.verifyPlayEntitlement, {
-        userId,
-        purchaseToken: args.purchaseToken,
-        productId: args.productId,
+      const attemptId = await admitStoreVerification(ctx, {
+        userId, store: "play_store", purchaseId: args.purchaseToken, now: Date.now(),
       });
+      if (attemptId) {
+        await ctx.scheduler.runAfter(0, internal.preferences.store_purchase_actions.verifyPlayEntitlement, {
+          userId,
+          purchaseToken: args.purchaseToken,
+          productId: args.productId,
+          attemptId,
+        });
+      }
     }
     return await ensurePreferencesRow(ctx, userId);
   },

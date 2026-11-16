@@ -2,6 +2,7 @@ import { mutation } from "../_generated/server";
 import { v, ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireAuth, requirePro } from "../lib/auth";
+import { assertOwnedUploadedStorage } from "../lib/storage_ownership";
 import { isAudioAttachment } from "../chat/audio_shared";
 import {
   normalizeMessageAttachments,
@@ -117,6 +118,9 @@ export const startResearchPaper = mutation({
     ).length ?? 0;
     if (args.recordedAudio && audioAttachmentCount > 0) {
       throw new ConvexError({ code: "VALIDATION", message: "Choose one audio source before sending." });
+    }
+    if (args.recordedAudio) {
+      await assertOwnedUploadedStorage(ctx, userId, args.recordedAudio.storageId);
     }
 
     const expandMultiModelGroups = args.expandMultiModelGroups ?? true;

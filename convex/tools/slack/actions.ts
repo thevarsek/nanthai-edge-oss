@@ -4,6 +4,7 @@ import { ConvexError, v } from "convex/values";
 import { internalAction } from "../../_generated/server";
 import { serializableToolContextValidator } from "../proxy_context";
 import type { RegisteredTool, ToolExecutionContext, ToolResult } from "../registry";
+import { isSlackIntegrationAvailable, SLACK_UNAVAILABLE_MESSAGE } from "../../lib/integration_availability";
 
 const slackToolNames = new Set<string>([
   "slack_search_messages",
@@ -47,6 +48,9 @@ export const executeSlackTool = internalAction({
     toolContext: serializableToolContextValidator,
   },
   handler: async (ctx, args): Promise<ToolResult> => {
+    if (!isSlackIntegrationAvailable()) {
+      return { success: false, data: null, error: SLACK_UNAVAILABLE_MESSAGE };
+    }
     if (!slackToolNames.has(args.toolName)) {
       throw new ConvexError({
         code: "UNKNOWN_SLACK_TOOL" as const,

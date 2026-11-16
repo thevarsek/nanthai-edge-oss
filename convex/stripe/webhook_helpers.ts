@@ -29,11 +29,27 @@ export type StripeEntitlementUpdate =
     }
   | {
       kind: "revoke";
-      status: "refunded";
+      status: "refunded" | "revoked";
+      externalPurchaseIds: string[];
+      paymentIntentId?: string;
+      chargeId?: string;
+    }
+  | {
+      // A dispute closed in the merchant's favour: undo the dispute revocation.
+      kind: "restore";
       externalPurchaseIds: string[];
       paymentIntentId?: string;
       chargeId?: string;
     };
+
+export interface StripeDispute {
+  id: string;
+  charge?: string | { id?: string } | null;
+  payment_intent?: string | { id?: string } | null;
+}
+
+const stripeId = (value: string | { id?: string } | null | undefined): string | undefined =>
+  typeof value === "string" ? value : value?.id ?? undefined;
 
 export function extractStripeEntitlementUpdate(
   event: StripeEvent,
@@ -72,6 +88,18 @@ export function extractStripeEntitlementUpdate(
       paymentIntentId: charge.payment_intent ?? undefined,
       chargeId: charge.id,
     };
+  }
+
+  // Chargebacks: funds withdrawn revokes Pro; funds reinstated restores it.
+  if (event.type === "charge.dispute.funds_withdrawn" || event.type === "charge.dispute.funds_reinstated") {
+    const dispute = event.data.object as StripeDispute;
+    const chargeId = stripeId(dispute.charge);
+    const paymentIntentId = stripeId(dispute.payment_intent);
+    if (!chargeId && !paymentIntentId) return null;
+    const match = { externalPurchaseIds: chargeId ? [chargeId] : [], paymentIntentId, chargeId };
+    return event.type === "charge.dispute.funds_withdrawn"
+      ? { kind: "revoke", status: "revoked", ...match }
+      : { kind: "restore", ...match };
   }
 
   return null;

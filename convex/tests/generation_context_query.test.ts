@@ -150,12 +150,27 @@ test("getGenerationContextHandler handles all 6 providers correctly", async () =
     },
   });
 
-  const result = await getGenerationContextHandler(ctx, {
+  const load = () => getGenerationContextHandler(ctx, {
     userId: "u1",
     chatId: "chat_1" as any,
     messageId: "msg_1" as any,
     personaIds: [],
   });
+  const slackAvailability = process.env.SLACK_INTEGRATION_AVAILABLE;
+  delete process.env.SLACK_INTEGRATION_AVAILABLE;
+  // Slack is unavailable by default, so a stored connection is not offered.
+  const withoutSlack = (await load()).connectedIntegrationIds;
+  assert.equal(withoutSlack.includes("slack"), false);
+  assert.equal(withoutSlack.length, 9);
+
+  process.env.SLACK_INTEGRATION_AVAILABLE = "true";
+  let result: Awaited<ReturnType<typeof load>>;
+  try {
+    result = await load();
+  } finally {
+    if (slackAvailability === undefined) delete process.env.SLACK_INTEGRATION_AVAILABLE;
+    else process.env.SLACK_INTEGRATION_AVAILABLE = slackAvailability;
+  }
 
   const ids = result.connectedIntegrationIds;
   assert.ok(ids.includes("gmail"));

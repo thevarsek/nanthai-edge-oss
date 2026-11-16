@@ -69,7 +69,7 @@ M43 restored the previously disabled heavy tool families with this boundary:
 
 - **Base tools**: Minimal shared registry for normal tool-capable chats (`load_skill`, `list_skills`, `search_chats`, `fetch_image`).
 - **Profile-expanded tools**: Documents, scheduled jobs, personas, skill-management mutators, connected apps, runtime/analytics, and subagents are added on later turns after a loaded skill unlocks the corresponding `requiredToolProfiles`.
-- **Connection-gated tools**: Google Workspace, Microsoft 365, Notion, Apple Calendar, Slack, and Cloze profiles only register tools when the relevant integrations are both requested and actually connected.
+- **Connection-gated tools**: Google Workspace, Microsoft 365, Notion, Apple Calendar, Slack, and Cloze profiles only register tools when the relevant integrations are both requested and actually connected. Slack additionally requires the deployment-level availability check in `convex/lib/integration_availability.ts` (`SLACK_INTEGRATION_AVAILABLE=true`); while it is off, Slack tools are not registered and `tools/slack/actions:executeSlackTool` returns an unavailable result.
 - **Subagent tool**: `spawn_subagents` now lives behind the `subagents` profile, so it is only exposed after a loaded skill calls for delegated parallel work. Child runs never receive this tool.
 
 ### Subagent Execution Flow

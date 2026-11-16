@@ -125,7 +125,8 @@ test("entitlement duplicates and final Play revocation preserve ownership bounda
           apply?.({
             eq: (field: string, value: string) => {
               if (field === "externalPurchaseId") externalPurchaseId = value;
-              return { eq: () => ({}) };
+              const range: any = { eq: () => range, gt: () => range };
+              return range;
             },
             field: (name: string) => name,
           });
@@ -139,6 +140,7 @@ test("entitlement duplicates and final Play revocation preserve ownership bounda
               table === "purchaseEntitlements" && index === "by_external_purchase"
                 ? (externalMatches[externalPurchaseId] ?? [])
                 : [],
+            take: async () => [],
           };
         },
       }),

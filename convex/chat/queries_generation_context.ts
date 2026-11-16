@@ -13,6 +13,7 @@ import type {
   IntegrationOverrideEntry,
   SkillOverrideEntry,
 } from "../skills/resolver";
+import { isSlackIntegrationAvailable } from "../lib/integration_availability";
 import type { ContextAttachment } from "./helpers_types";
 import {
   imageConfigFromPreferences,
@@ -161,7 +162,7 @@ export async function getGenerationContextHandler(
         connectedIntegrationIds.push("cloze");
         break;
       case "slack":
-        connectedIntegrationIds.push("slack");
+        if (isSlackIntegrationAvailable()) connectedIntegrationIds.push("slack");
         break;
     }
   }

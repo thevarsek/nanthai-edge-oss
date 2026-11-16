@@ -1000,6 +1000,7 @@ export async function generateForParticipant(
       promotedRequest.messages,
       allMessages.find((message) => message._id === args.userMessageId),
       caps?.hasAudioInput,
+      (storageId) => ctx.storage.get(storageId as Id<"_storage">),
     );
     requestMessages = appendCollaborationHandoff(
       requestMessages,

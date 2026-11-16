@@ -2,9 +2,12 @@
 // One-shot verification actions scheduled by syncEntitlement /
 // syncPlayEntitlement. A purchase becomes an active entitlement only after the
 // store confirms it. Clients re-sync on launch, so a transient store failure is
-// retried by the next sync rather than by a scheduler chain.
+// retried by the next sync rather than by a scheduler chain. A definitive
+// rejection marks the sync attempt so the same identifier is not re-checked
+// for a short time (store_verification_admission.ts).
 import { v } from "convex/values";
-import { internalAction, internalMutation } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
+import { internalAction, internalMutation, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { upsertPurchaseEntitlement } from "./purchase_entitlement_upsert";
 import {
@@ -15,13 +18,26 @@ import {
   type StoreVerification,
 } from "./store_purchase_verification";
 
-function logRejection(store: string, userId: string, result: StoreVerification): void {
+async function recordRejection(
+  ctx: ActionCtx,
+  store: string,
+  userId: string,
+  result: StoreVerification,
+  attemptId: Id<"storeVerificationAttempts"> | undefined,
+): Promise<void> {
   if (result.ok) return;
   console.warn(`[entitlements] ${store} purchase not granted for ${userId}: ${result.reason}${result.retryable ? " (retryable)" : ""}`);
+  if (!result.retryable && attemptId) {
+    await ctx.runMutation(internal.preferences.store_verification_admission.markStoreVerificationRejected, { attemptId });
+  }
 }
 
 export const verifyAppStoreEntitlement = internalAction({
-  args: { userId: v.string(), transactionId: v.string() },
+  args: {
+    userId: v.string(),
+    transactionId: v.string(),
+    attemptId: v.optional(v.id("storeVerificationAttempts")),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const config = resolveAppStoreConfig();
@@ -31,7 +47,7 @@ export const verifyAppStoreEntitlement = internalAction({
     }
     const result = await verifyAppStorePurchase(args.transactionId, config);
     if (!result.ok) {
-      logRejection("App Store", args.userId, result);
+      await recordRejection(ctx, "App Store", args.userId, result, args.attemptId);
       return null;
     }
     await ctx.runMutation(internal.preferences.store_purchase_actions.recordVerifiedStoreEntitlement, {
@@ -46,7 +62,12 @@ export const verifyAppStoreEntitlement = internalAction({
 });
 
 export const verifyPlayEntitlement = internalAction({
-  args: { userId: v.string(), purchaseToken: v.string(), productId: v.string() },
+  args: {
+    userId: v.string(),
+    purchaseToken: v.string(),
+    productId: v.string(),
+    attemptId: v.optional(v.id("storeVerificationAttempts")),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
     const config = resolvePlayConfig();
@@ -56,7 +77,7 @@ export const verifyPlayEntitlement = internalAction({
     }
     const result = await verifyPlayPurchase(args.purchaseToken, args.productId, config);
     if (!result.ok) {
-      logRejection("Play", args.userId, result);
+      await recordRejection(ctx, "Play", args.userId, result, args.attemptId);
       return null;
     }
     await ctx.runMutation(internal.preferences.store_purchase_actions.recordVerifiedStoreEntitlement, {

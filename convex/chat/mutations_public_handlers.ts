@@ -1,4 +1,4 @@
-import { createOwnedUploadUrl } from "../lib/storage_ownership";
+import { assertOwnedUploadedStorage, createOwnedUploadUrl } from "../lib/storage_ownership";
 import { wakeChannelTurns } from "../channels/turn_queue";
 import { cancelPreparingTelegramInputs } from "../channels/telegram/media_cancellation";
 import { internal } from "../_generated/api";
@@ -201,6 +201,11 @@ export async function sendMessageHandler(
   args: SendMessageArgs,
 ): Promise<SendMessageResult> {
   const { userId } = await requireAuth(ctx);
+  // Recordings are fresh client uploads. Server-side callers that pass a
+  // recording (Telegram voice) verify their own upload session instead.
+  if (args.recordedAudio) {
+    await assertOwnedUploadedStorage(ctx, userId, args.recordedAudio.storageId);
+  }
   return await sendMessageForActor(ctx, args, userId);
 }
 

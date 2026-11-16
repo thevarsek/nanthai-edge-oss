@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test, { mock } from "node:test";
+import { ConvexError } from "convex/values";
 
 import { sendMessageHandler } from "../chat/mutations_public_handlers";
 import { durableWorkflow } from "../execution/components";
@@ -132,6 +133,13 @@ test("sendMessageHandler rejects mixed recorded and uploaded audio sources", asy
               }),
             };
           }
+          if (table === "clientStorageUploads") {
+            return {
+              withIndex: () => ({
+                first: async () => ({ userId: "user_1", storageId: "storage_recording" }),
+              }),
+            };
+          }
           if (table === "fileAttachments") {
             return {
               withIndex: () => ({
@@ -183,6 +191,39 @@ test("sendMessageHandler rejects mixed recorded and uploaded audio sources", asy
   );
 
   assert.equal(inserts.length, 0);
+});
+
+test("sendMessageHandler refuses a recording uploaded by another user", async () => {
+  const inserts: string[] = [];
+  const ctx = {
+    auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
+    db: {
+      get: async () => null,
+      insert: async (table: string) => {
+        inserts.push(table);
+        return `${table}_id`;
+      },
+      patch: async () => undefined,
+      query: (table: string) => ({
+        withIndex: () => ({
+          first: async () => table === "clientStorageUploads"
+            ? { userId: "user_other", storageId: "storage_victim" }
+            : null,
+        }),
+      }),
+    },
+  } as any;
+
+  await assert.rejects(
+    sendMessageHandler(ctx, {
+      chatId: "chat_1",
+      text: "",
+      recordedAudio: { storageId: "storage_victim", transcript: "x" },
+      participants: [{ modelId: "openai/gpt-5.2" }],
+    } as any),
+    (err: unknown) => err instanceof ConvexError && (err.data as { code?: string }).code === "FORBIDDEN",
+  );
+  assert.deepEqual(inserts, []);
 });
 
 test("regeneratePaperHandler creates a fresh paper session and makes regenerated output active", async () => {
