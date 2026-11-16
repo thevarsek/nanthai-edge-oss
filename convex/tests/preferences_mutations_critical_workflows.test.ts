@@ -21,6 +21,7 @@ import {
   upsertModelSettings,
   upsertPreferences,
 } from "../preferences/mutations";
+import { recordVerifiedStoreEntitlement } from "../preferences/store_purchase_actions";
 function auth(userId = "user_1") {
   return { getUserIdentity: async () => ({ subject: userId }) };
 }
@@ -368,10 +369,21 @@ test("store entitlements update canonical rows, delete duplicates, and preserve 
   assert.equal(await (syncEntitlement as any)._handler(ctx, { originalTransactionId: "ios_tx" }), "prefs_1");
   assert.equal(await (syncPlayEntitlement as any)._handler(ctx, {
     purchaseToken: "play_token",
-    productId: "nanthai.pro.monthly",
+    productId: "nanthai.pro.lifetime",
     environment: "sandbox",
     packageName: "com.nanthai.edge",
   }), "prefs_1");
+  // ios_tx already has an active row, so only the expired Play purchase is re-verified.
+  assert.deepEqual(scheduled, [{ userId: "user_1", purchaseToken: "play_token", productId: "nanthai.pro.lifetime" }]);
+  assert.equal(patches.length, 0);
+  scheduled.length = 0;
+
+  await (recordVerifiedStoreEntitlement as any)._handler(ctx, {
+    userId: "user_1", platform: "ios", productId: "tech.nanthai.edge.pro.lifetime", externalPurchaseId: "ios_tx", environment: "Production",
+  });
+  await (recordVerifiedStoreEntitlement as any)._handler(ctx, {
+    userId: "user_1", platform: "android", productId: "nanthai.pro.lifetime", externalPurchaseId: "play_token", environment: "Production", packageName: "com.nanthai.edge",
+  });
   await (revokePlayEntitlement as any)._handler(ctx, {
     purchaseToken: "play_revoke",
     status: "expired",

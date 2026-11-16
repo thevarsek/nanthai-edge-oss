@@ -12,6 +12,7 @@ import { mutation, internalMutation, MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import type { Doc } from "../_generated/dataModel";
 import { optionalAuth, requireAuth, requirePro } from "../lib/auth";
+import { hasActiveEntitlementForPurchase } from "./purchase_entitlement_upsert";
 import { validateImagePreferenceWrite } from "./image_defaults";
 import { validateSpeechPreferenceWrite } from "./speech_defaults";
 import { defaultModelWhenEnablingZdr } from "./zdr_default";
@@ -676,83 +677,6 @@ export const deleteModelSettings = mutation({
 
 // -- Pro Entitlement ----------------------------------------------------------
 
-async function upsertPurchaseEntitlement(
-  ctx: MutationCtx,
-  args: {
-    userId: string;
-    externalPurchaseId: string;
-    productId: string;
-    platform: "ios" | "android";
-    source: "app_store" | "play_store";
-    rawEnvironment?: string;
-    metadata?: Record<string, unknown>;
-    now: number;
-    status: "active" | "revoked" | "refunded" | "expired";
-  },
-): Promise<void> {
-  const matches = await ctx.db
-    .query("purchaseEntitlements")
-    .withIndex("by_external_purchase", (q) =>
-      q.eq("externalPurchaseId", args.externalPurchaseId),
-    )
-    .collect();
-
-  const canonical = matches[0] ?? null;
-  const duplicates = matches.slice(1);
-
-  if (canonical && canonical.userId !== args.userId) {
-    throw new ConvexError({
-      code: "ENTITLEMENT_USER_MISMATCH" as const,
-      message: "This purchase is already linked to a different account.",
-    });
-  }
-
-  for (const duplicate of duplicates) {
-    if (duplicate.userId !== args.userId) {
-      throw new ConvexError({
-        code: "ENTITLEMENT_USER_MISMATCH" as const,
-        message: "This purchase is already linked to a different account.",
-      });
-    }
-  }
-
-  if (canonical) {
-    await ctx.db.patch(canonical._id, {
-      platform: args.platform,
-      source: args.source,
-      productId: args.productId,
-      externalPurchaseId: args.externalPurchaseId,
-      status: args.status,
-      activatedAt: canonical.activatedAt,
-      revokedAt: args.status === "active" ? undefined : args.now,
-      lastVerifiedAt: args.now,
-      rawEnvironment: args.rawEnvironment,
-      metadata: args.metadata,
-      updatedAt: args.now,
-    });
-
-    for (const duplicate of duplicates) {
-      await ctx.db.delete(duplicate._id);
-    }
-    return;
-  }
-
-  await ctx.db.insert("purchaseEntitlements", {
-    userId: args.userId,
-    platform: args.platform,
-    source: args.source,
-    productId: args.productId,
-    externalPurchaseId: args.externalPurchaseId,
-    status: args.status,
-    activatedAt: args.now,
-    revokedAt: args.status === "active" ? undefined : args.now,
-    lastVerifiedAt: args.now,
-    rawEnvironment: args.rawEnvironment,
-    metadata: args.metadata,
-    updatedAt: args.now,
-  });
-}
-
 async function disableProClientState(ctx: MutationCtx, userId: string, now: number): Promise<void> {
   // 1. Reset Pro-gated preference fields.
   const prefs = await ctx.db
@@ -839,14 +763,13 @@ export const disableProChatsBatch = internalMutation({
 });
 
 /**
- * Sync a StoreKit 2 entitlement from the iOS client.
+ * Report a StoreKit 2 purchase from the iOS client.
  *
- * Called after a successful purchase or when the transaction listener
- * detects a verified transaction on app launch. Client-side trust is
- * acceptable for launch — no server-side receipt validation.
- *
- * Idempotent: re-calling with the same originalTransactionId updates the
- * entitlement row without depending on mirrored preference fields.
+ * Called after a purchase and on launch for current entitlements. The
+ * transaction is confirmed with the App Store Server API by a scheduled
+ * action before any entitlement is granted; an already-active entitlement for
+ * this user is not re-verified. Throws ENTITLEMENT_USER_MISMATCH synchronously
+ * when the purchase belongs to another account.
  */
 export const syncEntitlement = mutation({
   args: {
@@ -854,39 +777,23 @@ export const syncEntitlement = mutation({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    const now = Date.now();
-
-    await upsertPurchaseEntitlement(ctx, {
-      userId,
-      externalPurchaseId: args.originalTransactionId,
-      productId: "nanthai.pro",
-      platform: "ios",
-      source: "app_store",
-      now,
-      status: "active",
-    });
-
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .first();
-
-    if (!prefs) {
-      return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, now));
+    if (!(await hasActiveEntitlementForPurchase(ctx, userId, args.originalTransactionId))) {
+      await ctx.scheduler.runAfter(0, internal.preferences.store_purchase_actions.verifyAppStoreEntitlement, {
+        userId,
+        transactionId: args.originalTransactionId,
+      });
     }
-
-    return prefs._id;
+    return await ensurePreferencesRow(ctx, userId);
   },
 });
 
-
 /**
- * Sync an Android Play Billing entitlement from the Android client.
+ * Report a Play Billing purchase from the Android client.
  *
- * The Android client is expected to pass the purchase token and product ID.
- * For the current tester flow we trust the verified client purchase and mark
- * the entitlement active immediately, while keeping `userPreferences` limited
- * to non-billing client state.
+ * The purchase token is confirmed with the Google Play Developer API by a
+ * scheduled action before any entitlement is granted. `environment` and
+ * `packageName` are accepted for older clients and ignored: the server uses
+ * its own package name and the store's answer.
  */
 export const syncPlayEntitlement = mutation({
   args: {
@@ -897,32 +804,25 @@ export const syncPlayEntitlement = mutation({
   },
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
-    const now = Date.now();
-
-    await upsertPurchaseEntitlement(ctx, {
-      userId,
-      externalPurchaseId: args.purchaseToken,
-      productId: args.productId,
-      platform: "android",
-      source: "play_store",
-      rawEnvironment: args.environment,
-      metadata: args.packageName ? { packageName: args.packageName } : undefined,
-      now,
-      status: "active",
-    });
-
-    const prefs = await ctx.db
-      .query("userPreferences")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .first();
-
-    if (!prefs) {
-      return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, now));
+    if (!(await hasActiveEntitlementForPurchase(ctx, userId, args.purchaseToken))) {
+      await ctx.scheduler.runAfter(0, internal.preferences.store_purchase_actions.verifyPlayEntitlement, {
+        userId,
+        purchaseToken: args.purchaseToken,
+        productId: args.productId,
+      });
     }
-
-    return prefs._id;
+    return await ensurePreferencesRow(ctx, userId);
   },
 });
+
+async function ensurePreferencesRow(ctx: MutationCtx, userId: string) {
+  const prefs = await ctx.db
+    .query("userPreferences")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .first();
+  if (prefs) return prefs._id;
+  return await ctx.db.insert("userPreferences", buildDefaultUserPreferencesInsert(userId, Date.now()));
+}
 
 /**
  * Revoke Android Play Billing entitlement.

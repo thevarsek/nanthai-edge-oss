@@ -82,7 +82,7 @@ Returning users: `onboardingCompleted: true` in Convex preferences takes precede
 
 | Mutation / Query | Purpose |
 |-----------------|---------|
-| `syncEntitlement({ originalTransactionId })` | Called after purchase. Idempotent — re-calling with same ID updates the App Store entitlement row in `purchaseEntitlements`. |
+| `syncEntitlement({ originalTransactionId })` | Called after purchase and on launch. Schedules `store_purchase_actions:verifyAppStoreEntitlement`; the entitlement row becomes active only after the App Store Server API confirms the transaction (see [store purchase verification](../product/monetization.md#store-purchase-verification)). Skips re-verification when this user already holds an active row for the transaction. |
 | `revokeEntitlement()` | Called on StoreKit revocation/refund. Revokes active App Store entitlement rows, disables Pro-only preference toggles, and schedules `purgeUserMemories`. |
 | `setOnboardingCompleted()` | Called after OpenRouter key stored. Sets `onboardingCompleted: true`. |
 | `getProStatus()` | Public query. Returns entitlement-backed Pro status for native client UI gating. |

@@ -8,7 +8,8 @@ import {
   syncPlayEntitlement,
 } from "../preferences/mutations";
 
-test("syncEntitlement creates purchase entitlement without mirroring Pro into preferences", async () => {
+test("syncEntitlement schedules App Store verification instead of granting an entitlement", async () => {
+  const scheduled: Array<Record<string, unknown>> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
 
@@ -45,6 +46,11 @@ test("syncEntitlement creates purchase entitlement without mirroring Pro into pr
         return `${table}_id`;
       },
       delete: async () => {},
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
     },
   } as any;
 
@@ -54,12 +60,8 @@ test("syncEntitlement creates purchase entitlement without mirroring Pro into pr
 
   assert.equal(result, "userPreferences_id");
 
-  const entitlementInsert = inserts.find((entry) => entry.table === "purchaseEntitlements");
-  assert.ok(entitlementInsert);
-  assert.equal(entitlementInsert.value.userId, "user_1");
-  assert.equal(entitlementInsert.value.source, "app_store");
-  assert.equal(entitlementInsert.value.externalPurchaseId, "tx_123");
-  assert.equal(entitlementInsert.value.status, "active");
+  assert.ok(!inserts.some((entry) => entry.table === "purchaseEntitlements"));
+  assert.deepEqual(scheduled, [{ userId: "user_1", transactionId: "tx_123" }]);
 
   const prefsInsert = inserts.find((entry) => entry.table === "userPreferences");
   assert.ok(prefsInsert);
@@ -68,7 +70,8 @@ test("syncEntitlement creates purchase entitlement without mirroring Pro into pr
   assert.equal(patches.length, 0);
 });
 
-test("syncPlayEntitlement creates an active play_store entitlement without mirroring Pro into preferences", async () => {
+test("syncPlayEntitlement schedules Play verification instead of granting an entitlement", async () => {
+  const scheduled: Array<Record<string, unknown>> = [];
   const inserts: Array<{ table: string; value: Record<string, unknown> }> = [];
   const patches: Array<{ id: string; patch: Record<string, unknown> }> = [];
 
@@ -105,6 +108,11 @@ test("syncPlayEntitlement creates an active play_store entitlement without mirro
         return `${table}_id`;
       },
       delete: async () => {},
+    },
+    scheduler: {
+      runAfter: async (_delay: number, _fn: unknown, payload: Record<string, unknown>) => {
+        scheduled.push(payload);
+      },
     },
   } as any;
 
@@ -117,14 +125,8 @@ test("syncPlayEntitlement creates an active play_store entitlement without mirro
 
   assert.equal(result, "userPreferences_id");
 
-  const entitlementInsert = inserts.find((entry) => entry.table === "purchaseEntitlements");
-  assert.ok(entitlementInsert);
-  assert.equal(entitlementInsert.value.platform, "android");
-  assert.equal(entitlementInsert.value.source, "play_store");
-  assert.equal(entitlementInsert.value.externalPurchaseId, "play_token_123");
-  assert.equal(entitlementInsert.value.productId, "nanthai.pro.monthly");
-  assert.equal(entitlementInsert.value.rawEnvironment, "sandbox");
-  assert.equal(entitlementInsert.value.status, "active");
+  assert.ok(!inserts.some((entry) => entry.table === "purchaseEntitlements"));
+  assert.deepEqual(scheduled, [{ userId: "user_1", purchaseToken: "play_token_123", productId: "nanthai.pro.monthly" }]);
 
   const prefsInsert = inserts.find((entry) => entry.table === "userPreferences");
   assert.ok(prefsInsert);

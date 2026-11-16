@@ -163,14 +163,12 @@ test("entitlement duplicates and final Play revocation preserve ownership bounda
 
   await (syncPlayEntitlement as any)._handler(ctx, {
     purchaseToken: "play_without_metadata",
-    productId: "nanthai.pro.monthly",
+    productId: "nanthai.pro.lifetime",
   });
   await (revokePlayEntitlement as any)._handler(ctx, { purchaseToken: "revoke_play" });
 
-  assert.ok(inserts.some((entry) =>
-    entry.table === "purchaseEntitlements"
-      && entry.value.externalPurchaseId === "play_without_metadata"
-      && entry.value.metadata === undefined));
+  assert.ok(!inserts.some((entry) => entry.table === "purchaseEntitlements"));
+  assert.ok(scheduled.some((entry) => entry.purchaseToken === "play_without_metadata" && entry.productId === "nanthai.pro.lifetime"));
   assert.ok(patches.some((entry) => entry.id === "play_owned" && entry.patch.status === "revoked"));
   assert.ok(!patches.some((entry) => entry.id === "ios_skip" || entry.id === "play_foreign"));
   assert.ok(patches.some((entry) =>
