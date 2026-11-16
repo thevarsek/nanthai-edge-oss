@@ -618,6 +618,7 @@ test("triggerJobViaApi omits blank idempotency keys from stored audit rows", asy
       query: () => ({
         withIndex: () => ({
           first: async () => null,
+          unique: async () => null,
         }),
       }),
       insert: async (_table: string, value: Record<string, unknown>) => {

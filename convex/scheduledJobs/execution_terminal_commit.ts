@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
+import { isAccountActive } from "../lib/account_access";
 import { terminalizeDomainExecution } from "../execution/domain_lifecycle";
 import {
   scheduledExecutionRef,
@@ -52,13 +53,11 @@ export const commitScheduledExecutionSuccess = internalMutation({
     const now = Date.now();
     const job = await ctx.db.get(args.jobId);
     if (!job || job.activeExecutionId !== args.executionId) return false;
-    const [chat, tombstone] = await Promise.all([
+    const [chat, accountActive] = await Promise.all([
       ctx.db.get(args.chatId),
-      ctx.db.query("accountDeletionTombstones")
-        .withIndex("by_user", (query) => query.eq("userId", job.userId))
-        .unique(),
+      isAccountActive(ctx.db, job.userId),
     ]);
-    if (!chat || chat.userId !== job.userId || chat.isDeleting === true || tombstone) {
+    if (!chat || chat.userId !== job.userId || chat.isDeleting === true || !accountActive) {
       await clearInvalidSuccess(ctx, args.jobId, args.executionId);
       return false;
     }

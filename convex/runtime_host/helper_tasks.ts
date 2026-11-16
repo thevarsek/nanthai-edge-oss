@@ -8,6 +8,7 @@ import { terminalizeExecution } from "../execution/control_plane";
 import { terminalizeExecutionComponentsForRun } from "../execution/component_refs";
 import { transitionRuntimeCommand } from "../execution/commands";
 import { isUserDataWritable } from "../lib/write_fence";
+import { isAccountActive } from "../lib/account_access";
 import { getCollaborationDecisionDeadline } from "./decision_deadline";
 import { signalRuntimeCompletionHandler } from "./runtime_workflow_events";
 
@@ -111,8 +112,8 @@ export const assertReady = internalQuery({
     const task = await ctx.db.get(taskId);
     if (!task?.runId || task.status !== "ready") return false;
     const run = await ctx.db.get(task.runId);
-    const [chat, tombstone] = await Promise.all([ctx.db.get(task.chatId), ctx.db.query("accountDeletionTombstones").withIndex("by_user", q => q.eq("userId", task.userId)).unique()]);
-    return run?.state === "running" && chat?.userId === task.userId && !chat.isDeleting && !tombstone;
+    const [chat, accountActive] = await Promise.all([ctx.db.get(task.chatId), isAccountActive(ctx.db, task.userId)]);
+    return run?.state === "running" && chat?.userId === task.userId && !chat.isDeleting && accountActive;
   },
 });
 

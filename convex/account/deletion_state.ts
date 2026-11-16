@@ -1,25 +1,31 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery } from "../_generated/server";
+import { internalMutation, internalQuery, type MutationCtx } from "../_generated/server";
+import { accountAccessState } from "../lib/account_access";
+
+/** Install the deletion tombstone. Returns false when it already existed. */
+export async function beginAccountDeletionHandler(ctx: MutationCtx, userId: string): Promise<boolean> {
+  const existing = await ctx.db
+    .query("accountDeletionTombstones")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .unique();
+  if (existing) return false;
+  const now = Date.now();
+  await ctx.db.insert("accountDeletionTombstones", {
+    userId,
+    requestedAt: now,
+    status: "cancelling",
+    totalDeleted: 0,
+    purgeTableIndex: 0,
+    updatedAt: now,
+  });
+  return true;
+}
 
 export const beginAccountDeletion = internalMutation({
   args: { userId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const existing = await ctx.db
-      .query("accountDeletionTombstones")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .unique();
-    if (!existing) {
-      const now = Date.now();
-      await ctx.db.insert("accountDeletionTombstones", {
-        userId: args.userId,
-        requestedAt: now,
-        status: "cancelling",
-        totalDeleted: 0,
-        purgeTableIndex: 0,
-        updatedAt: now,
-      });
-    }
+    await beginAccountDeletionHandler(ctx, args.userId);
     return null;
   },
 });
@@ -39,6 +45,13 @@ export const isAccountDeletionStarted = internalQuery({
     .query("accountDeletionTombstones")
     .withIndex("by_user", (q) => q.eq("userId", args.userId))
     .unique()),
+});
+
+/** Tombstone or access block, for actions that have no database reader. */
+export const getAccountAccessState = internalQuery({
+  args: { userId: v.string() },
+  returns: v.union(v.literal("active"), v.literal("deleting"), v.literal("blocked")),
+  handler: async (ctx, args) => await accountAccessState(ctx.db, args.userId),
 });
 
 export const acquireAccountPurgeLease = internalMutation({

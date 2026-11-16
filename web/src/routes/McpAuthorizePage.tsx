@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { api } from "@convex/_generated/api";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { MCP_SCOPE_DEPENDENCIES, selectedMcpScopes } from "@/lib/mcpScopes";
 
 
 export function McpAuthorizePage() {
@@ -14,14 +15,15 @@ export function McpAuthorizePage() {
   const request = params.get("request") ?? "";
   const consent = useQuery(api.external_mcp.oauth.getConsent, { request });
   const authorize = useMutation(api.external_mcp.oauth.consent);
-  const [excluded, setExcluded] = useState<string[]>([]);
+  // Scopes the user changed from their default (ticked, or unticked for opt-in scopes).
+  const [toggled, setToggled] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   async function answer(allow: boolean) {
     if (!consent) return;
     setBusy(true); setError(undefined);
     try {
-      const redirect = await authorize({ request, allow, scopes: consent.scopes.filter(scope => !excluded.includes(scope)) });
+      const redirect = await authorize({ request, allow, scopes: selectedMcpScopes(consent.scopes, toggled) });
       window.location.assign(redirect);
     } catch (cause) { setError(convexErrorMessage(cause, t("something_went_wrong"))); setBusy(false); }
   }
@@ -40,10 +42,15 @@ export function McpAuthorizePage() {
         <p className="text-sm break-all">{consent.redirectUri}</p>
         <p>{t("external_mcp_choose_access")}</p>
         <fieldset disabled={busy} className="space-y-3">
-          {consent.scopes.map(scope => <label key={scope} className="flex items-start gap-3">
-            <input type="checkbox" checked={!excluded.includes(scope)} onChange={event => setExcluded(current => event.target.checked ? current.filter(value => value !== scope) : [...current, scope])} />
-            <span>{t(`external_mcp_scope_${scope.replace(":", "_")}`)}</span>
-          </label>)}
+          {consent.scopes.map(scope => {
+            const selected = selectedMcpScopes(consent.scopes, toggled);
+            const dependency = MCP_SCOPE_DEPENDENCIES[scope];
+            const blocked = Boolean(dependency && !selected.includes(dependency));
+            return <label key={scope} className={`flex items-start gap-3 ${blocked ? "opacity-50" : ""}`}>
+              <input type="checkbox" disabled={blocked} checked={selected.includes(scope)} onChange={() => setToggled(current => current.includes(scope) ? current.filter(value => value !== scope) : [...current, scope])} />
+              <span>{t(`external_mcp_scope_${scope.replace(":", "_")}`)}</span>
+            </label>;
+          })}
         </fieldset>
         <p className="text-sm text-muted">{t("external_mcp_connection_policy")}</p>
         <div className="flex gap-3">

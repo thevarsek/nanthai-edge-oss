@@ -506,7 +506,7 @@ test("generateAudioForMessageHandler stores synthesized audio and previewVoiceHa
     },
     runQuery: async (ref: unknown) => {
       const name = getFunctionName(ref as any);
-      if (name === "account/deletion_state:isAccountDeletionStarted") return false;
+      if (name === "account/deletion_state:getAccountAccessState") return false;
       if (name === keyRef) return "sk-test";
       if (name === prefsRef) return { preferredVoice: "nova" };
       if (name === capsRef) {

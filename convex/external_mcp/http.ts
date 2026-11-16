@@ -2,20 +2,23 @@ import { z } from "zod";
 import { httpAction, type ActionCtx } from "../_generated/server";
 import type { HttpRouter } from "convex/server";
 import { internal } from "../_generated/api";
+import { readBoundedText } from "../lib/http_body";
 import { MCP_SCOPES } from "./policy";
+import { CLIENT_NAME_MAX, REDIRECT_URIS_MAX, REDIRECT_URI_MAX } from "./oauth";
 import { findTool, toolsForScopes } from "./tools";
 
 const headers = { "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*", "Access-Control-Expose-Headers": "WWW-Authenticate" };
 const json = (body: unknown, status = 200, extra: Record<string, string> = {}) => Response.json(body, { status, headers: { ...headers, ...extra } });
 const rpcSchema = z.object({ jsonrpc: z.literal("2.0"), id: z.union([z.string(), z.number()]).optional(), method: z.string(), params: z.record(z.string(), z.unknown()).optional() });
-const registration = z.object({ client_name: z.string().optional(), redirect_uris: z.array(z.string()), token_endpoint_auth_method: z.literal("none").optional() });
+const REGISTRATION_BODY_MAX = 8 * 1024;
+const registration = z.object({ client_name: z.string().max(CLIENT_NAME_MAX).optional(), redirect_uris: z.array(z.string().max(REDIRECT_URI_MAX)).min(1).max(REDIRECT_URIS_MAX), token_endpoint_auth_method: z.literal("none").optional() });
 function issuer(): string { return process.env.CONVEX_SITE_URL ?? ""; }
 function failure(error: unknown): string {
   const data = error && typeof error === "object" && "data" in error ? error.data : undefined;
   if (data && typeof data === "object" && "error" in data && typeof data.error === "string") return data.error;
   // Convex HTTP action wrappers can stringify ConvexError data across internal calls.
   const message = error instanceof Error ? error.message : "";
-  for (const code of ["insufficient_scope", "invalid_token", "invalid_grant", "invalid_scope", "invalid_request", "invalid_target", "unsupported_grant_type", "invalid_redirect_uri"])
+  for (const code of ["insufficient_scope", "invalid_token", "invalid_grant", "invalid_scope", "invalid_request", "invalid_target", "unsupported_grant_type", "invalid_redirect_uri", "invalid_client_metadata"])
     if (message.includes(`"${code}"`)) return code;
   return "invalid_request";
 }
@@ -24,11 +27,16 @@ function authFailure(error: string): Response {
     "WWW-Authenticate": `Bearer resource_metadata="${issuer()}/.well-known/oauth-protected-resource/mcp", error="${error}"`,
   });
 }
-async function oauthHttp(ctx: ActionCtx, request: Request): Promise<Response> {
+export async function oauthHttp(ctx: ActionCtx, request: Request): Promise<Response> {
   try {
     const url = new URL(request.url);
     if (url.pathname === "/oauth/register") {
-      const body = registration.parse(await request.json());
+      let raw: string;
+      try { raw = await readBoundedText(request, REGISTRATION_BODY_MAX); }
+      catch { return json({ error: "invalid_client_metadata" }, 413); }
+      const parsed = registration.safeParse(JSON.parse(raw));
+      if (!parsed.success) return json({ error: "invalid_client_metadata" }, 400);
+      const body = parsed.data;
       return json(await ctx.runMutation(internal.external_mcp.oauth.registerClient, { name: body.client_name ?? "MCP client", redirectUris: body.redirect_uris }), 201);
     }
     if (url.pathname === "/oauth/authorize") {
@@ -45,8 +53,10 @@ async function oauthHttp(ctx: ActionCtx, request: Request): Promise<Response> {
     }
     const form = new URLSearchParams(await request.text());
     const optional = (key: string) => form.has(key) ? form.get(key) ?? "" : undefined;
-    return json(await ctx.runMutation(internal.external_mcp.oauth.exchange, { grantType: form.get("grant_type") ?? "", clientId: form.get("client_id") ?? "",
-      code: optional("code"), verifier: optional("code_verifier"), redirectUri: optional("redirect_uri"), refreshToken: optional("refresh_token"), resource: optional("resource"), scope: optional("scope") }));
+    const result = await ctx.runMutation(internal.external_mcp.oauth.exchange, { grantType: form.get("grant_type") ?? "", clientId: form.get("client_id") ?? "",
+      code: optional("code"), verifier: optional("code_verifier"), redirectUri: optional("redirect_uri"), refreshToken: optional("refresh_token"), resource: optional("resource"), scope: optional("scope") });
+    // Revocation outcomes are returned, not thrown, so the revocation commits.
+    return "error" in result ? json({ error: result.error }, 400) : json(result);
   } catch (error) { return json({ error: failure(error) }, 400); }
 }
 

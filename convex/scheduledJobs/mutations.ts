@@ -9,6 +9,7 @@ import { mutation, internalMutation, type MutationCtx } from "../_generated/serv
 import { internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
+import { assertAccountActive, isAccountActive } from "../lib/account_access";
 import { filterToolIncompatibleOptions } from "../lib/tool_capability";
 import { deleteOpenRouterCredentials } from "../lib/openrouter_credentials";
 import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
@@ -1418,14 +1419,11 @@ export const recordRunSuccess = internalMutation({
     const now = Date.now();
     const job = await ctx.db.get(args.jobId);
     if (!job || job.activeExecutionId !== args.executionId) return false;
-    const [chat, tombstone] = await Promise.all([
+    const [chat, accountActive] = await Promise.all([
       ctx.db.get(args.chatId),
-      ctx.db
-        .query("accountDeletionTombstones")
-        .withIndex("by_user", (q) => q.eq("userId", job.userId))
-        .unique(),
+      isAccountActive(ctx.db, job.userId),
     ]);
-    if (!chat || chat.userId !== job.userId || chat.isDeleting === true || tombstone) {
+    if (!chat || chat.userId !== job.userId || chat.isDeleting === true || !accountActive) {
       return false;
     }
 
@@ -1576,6 +1574,7 @@ export const triggerJobViaApi = internalMutation({
         message: "Job not found or unauthorized",
       });
     }
+    await assertAccountActive(ctx.db, args.userId);
 
     if (effectiveIdempotencyKey) {
       const existing = await ctx.db

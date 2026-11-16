@@ -67,7 +67,7 @@ test("storeAncillaryCostHandler inserts a usageRecord with source and provided c
       insert,
       get: ownedUsageParent,
       query: (table: string) => {
-        if (table === "accountDeletionTombstones") return emptyDeletionTombstoneQuery();
+        if ((table === "accountDeletionTombstones" || table === "accountAccessBlocks")) return emptyDeletionTombstoneQuery();
         throw new Error("should not query cachedModels when cost is provided");
       },
     },
@@ -107,7 +107,7 @@ test("storeAncillaryCostHandler computes cost from cachedModels when cost is not
       insert,
       get: ownedUsageParent,
       query: (table: string) => {
-        if (table === "accountDeletionTombstones") return emptyDeletionTombstoneQuery();
+        if ((table === "accountDeletionTombstones" || table === "accountAccessBlocks")) return emptyDeletionTombstoneQuery();
         assert.equal(table, "cachedModels");
         return {
           withIndex: () => ({
@@ -148,7 +148,7 @@ test("storeAncillaryCostHandler stores undefined cost when model not found and c
     db: {
       insert,
       get: ownedUsageParent,
-      query: (table: string) => table === "accountDeletionTombstones"
+      query: (table: string) => (table === "accountDeletionTombstones" || table === "accountAccessBlocks")
         ? emptyDeletionTombstoneQuery()
         : ({
         withIndex: () => ({
@@ -193,7 +193,7 @@ test("storeAncillaryCostHandler does not recreate usage after message or chat de
           if (deletedParent === "message") {
             throw new Error("a deleted message should short-circuit");
           }
-          assert.equal(table, "accountDeletionTombstones");
+          assert.ok(["accountDeletionTombstones", "accountAccessBlocks"].includes(table));
           return emptyDeletionTombstoneQuery();
         },
         insert: async () => { inserts += 1; },
@@ -658,7 +658,7 @@ test("storeAncillaryCostHandler prefers provided cost over model-computed cost",
       insert,
       get: ownedUsageParent,
       // Even though model is available, provided cost should take precedence
-      query: (table: string) => table === "accountDeletionTombstones"
+      query: (table: string) => (table === "accountDeletionTombstones" || table === "accountAccessBlocks")
         ? emptyDeletionTombstoneQuery()
         : ({
         withIndex: () => ({

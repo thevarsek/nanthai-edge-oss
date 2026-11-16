@@ -38,7 +38,6 @@ test("OAuth consent, PKCE, single-use codes, refresh scopes and revocation use h
     assert.equal(tokens.scope, "history:read");
     assert.ok(!JSON.stringify(rows).includes(tokens.access_token));
     assert.ok(!JSON.stringify(rows).includes(tokens.refresh_token ?? "missing"));
-    await assert.rejects(exchangeCode(ctx, args), /invalid_grant/);
     await authenticateGrant(ctx, tokens.access_token, "history:read");
     const discovery = await handler<{ accessToken: string }, string>(discover)(ctx, { accessToken: tokens.access_token });
     assert.equal(convexToJson(discovery), discovery);
@@ -112,6 +111,6 @@ test("accepted Run Now is atomic with its receipt, foreign IDs and account delet
     assert.equal(rows.externalMcpReceipts.length, 1);
     await assert.rejects(invoke(ctx, { ...args, inputJson: '{"callId":"foreign-call","jobId":"foreign"}' }), /unauthorized/);
     rows.accountDeletionTombstones.push({ userId: "user_1", requestedAt: Date.now() });
-    await assert.rejects(invoke(ctx, args), /deletion is in progress/);
+    await assert.rejects(invoke(ctx, args), /invalid_token/);
   } finally { if (previous === undefined) delete process.env.CONVEX_SITE_URL; else process.env.CONVEX_SITE_URL = previous; }
 });

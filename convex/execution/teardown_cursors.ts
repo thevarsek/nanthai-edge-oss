@@ -9,8 +9,13 @@ export const saveAccountCancellationCursor = internalMutation({
       .query("accountDeletionTombstones")
       .withIndex("by_user", (q) => q.eq("userId", args.userId))
       .unique();
-    if (tombstone) {
-      await ctx.db.patch(tombstone._id, {
+    // Deletion owns the sweep when both fences exist; a block sweep uses its row.
+    const owner = tombstone ?? await ctx.db
+      .query("accountAccessBlocks")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (owner) {
+      await ctx.db.patch(owner._id, {
         cancellationCursor: args.cursor,
         updatedAt: Date.now(),
       });

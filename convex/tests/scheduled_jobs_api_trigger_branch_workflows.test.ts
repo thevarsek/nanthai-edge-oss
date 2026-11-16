@@ -28,6 +28,7 @@ function buildCtx(options?: {
           apply?.(q);
           return {
             first: async () => (tableRows.get(table) ?? [])[0] ?? null,
+            unique: async () => (tableRows.get(table) ?? [])[0] ?? null,
           };
         },
       }),

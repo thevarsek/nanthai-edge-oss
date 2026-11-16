@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 import { action, internalMutation } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import { isAccountActive } from "../lib/account_access";
 import {
   assertEncryptedSecret,
   encryptSecret,
@@ -100,11 +101,7 @@ export const beginExchange = internalMutation({
   args: { userId: v.string(), attemptId: v.string() },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const deleting = await ctx.db
-      .query("accountDeletionTombstones")
-      .withIndex("by_user", (query) => query.eq("userId", args.userId))
-      .unique();
-    if (deleting) return false;
+    if (!await isAccountActive(ctx.db, args.userId)) return false;
     const existing = await ctx.db
       .query("openRouterExchangeAttempts")
       .withIndex("by_user", (query) => query.eq("userId", args.userId))
@@ -131,10 +128,7 @@ export const upsertEncryptedApiKey = internalMutation({
         .query("openRouterExchangeAttempts")
         .withIndex("by_user", (query) => query.eq("userId", args.userId))
         .unique(),
-      ctx.db
-        .query("accountDeletionTombstones")
-        .withIndex("by_user", (query) => query.eq("userId", args.userId))
-        .unique(),
+      isAccountActive(ctx.db, args.userId).then((active) => !active),
     ]);
     if (!attempt || attempt.attemptId !== args.attemptId || deleting) return false;
     assertEncryptedSecret(args.encryptedApiKey);

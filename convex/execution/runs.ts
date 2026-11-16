@@ -1,6 +1,7 @@
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { appendRunEventUnchecked } from "./events";
+import { accountAccessState } from "../lib/account_access";
 import type {
   ExecutionPlacement,
   ExecutionRunKind,
@@ -60,11 +61,9 @@ export async function createExecutionRun(
       || args.initialAttempt.executorKind === "external_cloud"
       ? "runtime_adapter"
       : "convex_workflow");
-  const deletionTombstone = await ctx.db
-    .query("accountDeletionTombstones")
-    .withIndex("by_user", (q) => q.eq("userId", args.userId))
-    .unique();
-  if (deletionTombstone) throw new Error("ACCOUNT_DELETION_IN_PROGRESS");
+  const accountState = await accountAccessState(ctx.db, args.userId);
+  if (accountState === "deleting") throw new Error("ACCOUNT_DELETION_IN_PROGRESS");
+  if (accountState === "blocked") throw new Error("ACCOUNT_BLOCKED");
   if (args.runKey) {
     const existing = await ctx.db
       .query("executionRuns")

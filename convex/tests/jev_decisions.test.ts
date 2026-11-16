@@ -124,7 +124,7 @@ test("Decisions with unknown cost never borrow cached chat-model pricing", async
   const inserted: Array<Record<string, unknown>> = [];
   const ctx = { db: {
     get: async (id: string) => id === "message" ? { _id: id, userId: "user", chatId: "chat" } : { _id: id, userId: "user" },
-    query: (table: string) => { assert.equal(table, "accountDeletionTombstones"); return { withIndex: () => ({ unique: async () => null }) }; },
+    query: (table: string) => { assert.ok(["accountDeletionTombstones", "accountAccessBlocks"].includes(table)); return { withIndex: () => ({ unique: async () => null }) }; },
     insert: async (_table: string, value: Record<string, unknown>) => { inserted.push(value); return "usage"; },
   } } as unknown as import("../_generated/server").MutationCtx;
   await storeAncillaryCostHandler(ctx, { userId: "user", chatId: "chat" as import("../_generated/dataModel").Id<"chats">, messageId: "message" as import("../_generated/dataModel").Id<"messages">, modelId: "typesafe/jev-1.13", promptTokens: 1, completionTokens: 1, totalTokens: 2, source: "jev_memory" });

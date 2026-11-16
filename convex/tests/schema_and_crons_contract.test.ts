@@ -21,6 +21,8 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     "consolidateMemories",
     "ensureSecretCryptoRotation",
     "expireStaleRuntimePresences",
+    "pruneExternalMcpOAuthRows",
+    "pruneIdentityWebhookDeliveries",
     "reconcileExecutionCancellations",
     "refreshModelCatalog",
     "reverifyStoreEntitlements",
@@ -58,6 +60,8 @@ test("cron registry keeps the expected schedules and internal targets", () => {
     type: "cron",
     cron: "0 6 * * 1",
   });
+  assert.deepEqual(entries.pruneExternalMcpOAuthRows.schedule, { type: "interval", hours: 1 });
+  assert.deepEqual(entries.pruneIdentityWebhookDeliveries.schedule, { type: "interval", hours: 1 });
 });
 
 test("schema exposes the indexes and fields that shared clients depend on", () => {

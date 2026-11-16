@@ -86,7 +86,7 @@ function actionCtx(db: ReturnType<typeof fakeDb>, userId: string | null, upserts
   return {
     auth: { getUserIdentity: async () => (userId ? { subject: userId } : null) },
     runQuery: async (fn: unknown, args: { userId?: string }) => {
-      if (getFunctionName(fn as never) === "account/deletion_state:isAccountDeletionStarted") return false;
+      if (getFunctionName(fn as never) === "account/deletion_state:getAccountAccessState") return false;
       return args.userId ? googleConnection(args.userId) : null;
     },
     runMutation: async (fn: unknown, args: Record<string, unknown>) => {

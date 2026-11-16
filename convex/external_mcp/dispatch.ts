@@ -15,6 +15,7 @@ import { personaRuntimeIdentity } from "../runtime_host/identity_projection";
 import { sha256Hex } from "../runtime_host/security";
 import { MODEL_IDS } from "../lib/model_constants";
 import { authenticateGrant, grantedContext } from "./policy";
+import { assertTurnRoutesAllowed, turnAccess } from "./turn_access";
 import { findTool, toolsForScopes } from "./tools";
 
 const args = { accessToken: v.string(), tool: v.string(), inputJson: v.string() };
@@ -94,7 +95,9 @@ export const write = internalMutation({ args: { ...args, storageId: v.optional(v
   } else if (tool.name === "nanthai_send_message") {
     const chat = await ownedChat(ctx, grant.userId, input.chatId);
     const participants = await ctx.db.query("chatParticipants").withIndex("by_chat", q => q.eq("chatId", chat._id)).collect();
-    result = await sendMessageHandler(account, { chatId: chat._id, text: String(input.text), participants: participants.map(participant => ({
+    const access = turnAccess(grant.accessScopes);
+    await assertTurnRoutesAllowed(ctx, grant.userId, participants, access);
+    result = await sendMessageHandler(account, { chatId: chat._id, text: String(input.text), ...(access.tools ? {} : { disableTools: true }), participants: participants.map(participant => ({
       participantKey: String(participant._id), modelId: participant.modelId, personaId: participant.personaId,
       personaName: participant.personaName, temperature: participant.temperature, maxTokens: participant.maxTokens,
       includeReasoning: participant.includeReasoning, reasoningEffort: participant.reasoningEffort,

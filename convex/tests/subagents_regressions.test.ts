@@ -120,7 +120,7 @@ test("sendMessageHandler downgrades stale non-Pro subagent requests", async () =
         if (table === "chatAdvisors") {
           return { withIndex: () => ({ collect: async () => [] }) };
         }
-        if (table === "accountDeletionTombstones") {
+        if ((table === "accountDeletionTombstones" || table === "accountAccessBlocks")) {
           return { withIndex: () => ({ unique: async () => null }) };
         }
         if (table === "executionRuns" || table === "runEvents") {

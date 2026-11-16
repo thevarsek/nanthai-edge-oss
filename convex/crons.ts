@@ -177,4 +177,18 @@ crons.interval(
   internal.runtime_host.presence_expiry.expireStaleRuntimePresences,
 );
 
+// Bound unauthenticated OAuth rows: expired requests and clients never granted.
+crons.interval(
+  "pruneExternalMcpOAuthRows",
+  { hours: 1 },
+  internal.external_mcp.cleanup.pruneExpiredOAuthRows,
+);
+
+// Forget identity-provider webhook delivery IDs after the replay window.
+crons.interval(
+  "pruneIdentityWebhookDeliveries",
+  { hours: 1 },
+  internal.account.clerk_webhook_events.pruneWebhookDeliveries,
+);
+
 export default crons;

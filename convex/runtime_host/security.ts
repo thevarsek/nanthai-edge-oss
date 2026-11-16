@@ -1,6 +1,7 @@
 import { ConvexError } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
+import { isAccountActive } from "../lib/account_access";
 
 const CREDENTIAL_PREFIX = "nrh_";
 const PAIRING_CODE_PREFIX = "nrp_";
@@ -67,6 +68,10 @@ export async function authenticateRuntimeHost(
   }
   const device = await ctx.db.get(credential.runtimeDeviceId);
   if (!device || device.status !== "active" || device.deviceId !== args.deviceId) {
+    throw runtimeHostError("UNAUTHORIZED", "Runtime Host credential is invalid or revoked");
+  }
+  // A blocked or deleting account cannot use a credential it issued earlier.
+  if (!await isAccountActive(ctx.db, device.userId)) {
     throw runtimeHostError("UNAUTHORIZED", "Runtime Host credential is invalid or revoked");
   }
   return { credential, device };

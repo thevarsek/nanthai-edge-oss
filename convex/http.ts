@@ -1,5 +1,6 @@
 import { uploadStorageHttp } from "./storage_uploads";
 import { telegramWebhook } from "./channels/telegram/http";
+import { clerkWebhookHttp } from "./account/clerk_webhook";
 // convex/http.ts
 // =============================================================================
 // HTTP router for public endpoints that live outside the Convex function API.
@@ -52,6 +53,7 @@ http.route({ path: "/storage/upload", method: "OPTIONS", handler: httpAction(asy
   status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" },
 })) });
 http.route({ path: "/channels/telegram/webhook", method: "POST", handler: httpAction(telegramWebhook) });
+http.route({ path: "/clerk/webhook", method: "POST", handler: httpAction(clerkWebhookHttp) });
 
 registerExternalMcpHttp(http);
 http.route({ path: "/runtime-host/v1/usage/history", method: "POST", handler: httpAction(usageHistoryHttp) });

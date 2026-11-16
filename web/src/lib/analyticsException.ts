@@ -131,7 +131,7 @@ function categoryForCode(code: string): AnalyticsErrorCategory | undefined {
   if (["ERR_NETWORK", "NETWORK_ERROR"].includes(code)) return "network_failure";
   if (["RATE_LIMITED", "TOO_MANY_REQUESTS"].includes(code)) return "rate_limited";
   if (["UNAUTHORIZED"].includes(code)) return "authentication";
-  if (["FORBIDDEN", "NOT_AUTHORIZED"].includes(code)) return "authorization";
+  if (["FORBIDDEN", "NOT_AUTHORIZED", "ACCOUNT_BLOCKED"].includes(code)) return "authorization";
   if (code === "NOT_FOUND") return "not_found";
   if (code === "CONFLICT") return "conflict";
   if (["VALIDATION", "VALIDATION_ERROR"].includes(code)) return "validation";

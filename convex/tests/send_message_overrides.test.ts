@@ -152,8 +152,8 @@ function buildMockCtx(overrides: {
             }),
           };
         }
-        if (table === "accountDeletionTombstones") {
-          return { withIndex: () => ({ unique: async () => null }) };
+        if (table === "accountDeletionTombstones" || table === "accountAccessBlocks") {
+          return { withIndex: () => ({ unique: async () => null, first: async () => null }) };
         }
         if (table === "executionRuns" || table === "runEvents") {
           const rows = [...insertedDocs.values()].filter((row) => row.__table === table);
@@ -773,4 +773,16 @@ test("retryMessageHandler rejects assistant messages without a source user messa
     () => retryMessageHandler(ctx, { messageId: "msg_assist_1" } as any),
     /source user message/,
   );
+});
+
+test("sendMessageHandler forwards a server-side tool-off turn only when requested", async () => {
+  const { ctx, scheduled } = buildMockCtx();
+  await sendMessageHandler(ctx, {
+    chatId: "chat_1", text: "Hello", participants: [{ modelId: "openai/gpt-4o" }], disableTools: true,
+  } as any);
+  const genCall = scheduled.find((entry) => entry.args.assistantMessageIds);
+  assert.equal(genCall?.args.disableTools, true);
+  const plain = buildMockCtx();
+  await sendMessageHandler(plain.ctx, { chatId: "chat_1", text: "Hello", participants: [{ modelId: "openai/gpt-4o" }] } as any);
+  assert.equal("disableTools" in (plain.scheduled.find((entry) => entry.args.assistantMessageIds)?.args ?? {}), false);
 });

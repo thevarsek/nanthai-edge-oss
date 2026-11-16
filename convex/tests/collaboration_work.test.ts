@@ -181,7 +181,7 @@ test("cancelled or completed goals cannot create a synthetic continuation messag
 test("a human-attached committed result follows the same optional-review completion policy", async (t) => {
   const f = fixture();
   t.mock.method(f.ctx.auth, "getUserIdentity", async () => ({ subject: "owner" }) as never);
-  t.mock.method(f.ctx, "runQuery", async (ref: unknown) => { assert.equal(getFunctionName(ref as never), "account/deletion_state:isAccountDeletionStarted"); return false as never; });
+  t.mock.method(f.ctx, "runQuery", async (ref: unknown) => { assert.equal(getFunctionName(ref as never), "account/deletion_state:getAccountAccessState"); return false as never; });
   await f.ctx.db.patch(f.work()._id, { reviewerIds: [] });
   await f.ctx.db.patch(f.job("a").messageId, { status: "completed" });
   const handler = publishWork as unknown as { _handler: (ctx: MutationCtx, args: { workId: Id<"collaborationWork">; revision: number; evidence: Array<{ messageId: Id<"messages">; sourceRevision: string; description: string }> }) => Promise<null> };
@@ -208,7 +208,7 @@ for (const reviewerIds of [[], ["reviewer"]]) {
     const f = fixture();
     t.mock.method(f.ctx.auth, "getUserIdentity", async () => ({ subject: "owner" }) as never);
     t.mock.method(f.ctx, "runQuery", async (ref: unknown) => {
-      assert.equal(getFunctionName(ref as never), "account/deletion_state:isAccountDeletionStarted");
+      assert.equal(getFunctionName(ref as never), "account/deletion_state:getAccountAccessState");
       return false as never;
     });
     const dependencyId = id<"collaborationWork">("dependency");

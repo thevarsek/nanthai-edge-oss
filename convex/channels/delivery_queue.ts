@@ -3,6 +3,7 @@ import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalMutation,type MutationCtx } from "../_generated/server";
 import type { Doc,Id } from "../_generated/dataModel";
+import { isAccountActive } from "../lib/account_access";
 import { backgroundWorkpool } from "../execution/components";
 import { createExecutionRun } from "../execution/runs";
 import { linkExecutionComponent } from "../execution/component_refs";
@@ -46,7 +47,7 @@ export async function deliveryAuthority(ctx:MutationCtx,item:Doc<"channelDeliver
   const chat=binding?await ctx.db.get(binding.chatId):null;
   if (item.sourceMessageId) { const source = await ctx.db.get(item.sourceMessageId); if (!source || source.userId !== item.userId || source.chatId !== item.chatId || (item.storageId && source.audioStorageId !== item.storageId)) return false; }
   const userId=item.userId;
-  const deleted=userId?await ctx.db.query("accountDeletionTombstones").withIndex("by_user",q=>q.eq("userId",userId)).unique():null;
+  const deleted=userId?!await isAccountActive(ctx.db,userId):false;
   return Boolean(!deleted&&binding?.active&&identity?.active&&binding.revision===item.bindingRevision&&chat&&!chat.isDeleting&&chat.userId===item.userId);
 }
 export const dispatch=internalMutation({args:{botId:v.string(),externalChatId:v.string()},handler:async(ctx,args)=>{await dispatchNextDelivery(ctx,args.botId,args.externalChatId);return null;}});

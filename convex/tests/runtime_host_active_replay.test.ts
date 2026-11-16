@@ -93,7 +93,8 @@ test("replay cannot reopen stopped, replaced, terminal, revoked or deleting exec
     ["EXECUTION_CLAIMANT_MISMATCH", rows => { rows.executionAttempts[0].claimantId = "replacement"; }],
     ["UNAUTHORIZED", rows => { rows.runtimeDeviceCredentials[0].status = "revoked"; }],
     ["EXECUTION_CHAT_DELETING", rows => { rows.chats[0].isDeleting = true; }],
-    ["EXECUTION_OWNER_DELETING", rows => { rows.accountDeletionTombstones.push({ userId: "user-1" }); }],
+    // Host authentication now stops a deleting owner before the attempt fence.
+    ["UNAUTHORIZED", rows => { rows.accountDeletionTombstones.push({ userId: "user-1" }); }],
   ];
   for (const [error, change] of cases) {
     const { ctx, rows } = await recoveryFixture();

@@ -22,6 +22,7 @@ import { runtimePermissionSchemaTables } from "./schema_tables_runtime_permissio
 import { runtimeNativeAgentSchemaTables } from "./schema_tables_runtime_native_agents";
 import { externalMcpSchemaTables } from "./schema_tables_external_mcp";
 import { oauthFlowSchemaTables } from "./schema_tables_oauth_flows";
+import { accountAccessSchemaTables } from "./schema_tables_account_access";
 
 // =============================================================================
 // NanthAI Edge — Convex Schema
@@ -31,6 +32,7 @@ import { oauthFlowSchemaTables } from "./schema_tables_oauth_flows";
 // =============================================================================
 
 export default defineSchema({
+  ...accountAccessSchemaTables,
   ...storageSchemaTables,
   ...channelSchemaTables,
   ...conversationContextSchemaTables,

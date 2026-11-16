@@ -316,7 +316,7 @@ test("getDrivePickerAccessToken refreshes expired Drive tokens before returning 
     const result = await (getDrivePickerAccessToken as any)._handler({
       auth: buildAuth(),
       runQuery: async (fn: unknown) => {
-        if (getFunctionName(fn as never) === "account/deletion_state:isAccountDeletionStarted") {
+        if (getFunctionName(fn as never) === "account/deletion_state:getAccountAccessState") {
           return false;
         }
         return queryResults.shift() ?? null;

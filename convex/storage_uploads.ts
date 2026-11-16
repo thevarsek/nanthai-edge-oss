@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { assertOwnedStorage } from "./lib/storage_ownership";
+import { isAccountActive } from "./lib/account_access";
 import { sha256Hex } from "./scheduledJobs/trigger_auth";
 
 export const getUpload = internalQuery({
@@ -11,9 +12,8 @@ export const getUpload = internalQuery({
     const upload = await ctx.db.query("clientStorageUploads")
       .withIndex("by_token", q => q.eq("tokenHash", args.tokenHash)).first();
     if (!upload?.uploadUrl) return null;
-    const deleted = await ctx.db.query("accountDeletionTombstones")
-      .withIndex("by_user", q => q.eq("userId", upload.userId)).unique();
-    return deleted ? null : { uploadId: upload._id, uploadUrl: upload.uploadUrl };
+    return await isAccountActive(ctx.db, upload.userId)
+      ? { uploadId: upload._id, uploadUrl: upload.uploadUrl } : null;
   },
 });
 
@@ -23,9 +23,7 @@ export const completeUpload = internalMutation({
   handler: async (ctx, args) => {
     const upload = await ctx.db.get(args.uploadId);
     if (!upload?.uploadUrl) return false;
-    const deleted = await ctx.db.query("accountDeletionTombstones")
-      .withIndex("by_user", q => q.eq("userId", upload.userId)).unique();
-    if (deleted) return false;
+    if (!await isAccountActive(ctx.db, upload.userId)) return false;
     const existing = await ctx.db.query("clientStorageUploads")
       .withIndex("by_storage", q => q.eq("storageId", args.storageId)).first();
     if (existing) return existing.userId === upload.userId;

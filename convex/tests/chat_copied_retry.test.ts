@@ -32,7 +32,7 @@ for (const mode of ["duplicate", "fork"] as const) {
     const ctx = createStatefulMockCtx(rows, {
       runQuery: async (ref: Parameters<typeof getFunctionName>[0]) => {
         const name = getFunctionName(ref);
-        if (name === "account/deletion_state:isAccountDeletionStarted") return false;
+        if (name === "account/deletion_state:getAccountAccessState") return false;
         throw new Error(`Unexpected query ${name}`);
       },
     }) as unknown as MutationCtx;

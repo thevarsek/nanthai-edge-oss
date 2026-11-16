@@ -51,7 +51,10 @@ subscription bills. Codex account allowance is presented separately.
 The [external MCP service](../integrations/external-mcp.md) allows an authorized
 client to read owned context, send work to a Persona, publish a result, run an
 existing schedule or stop owned work. It uses the same conversation and execution
-owners. It does not expose arbitrary shell access or provider credentials.
+owners. Sends are text-only cloud turns unless the user also allows tools.
+Reaching a Persona routed to the paired computer needs a separate opt-in, "Run on
+your paired computer", which itself needs tools. It does not expose arbitrary shell
+access or provider credentials.
 
 ## Availability and public explanation
 

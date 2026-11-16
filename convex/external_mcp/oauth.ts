@@ -2,12 +2,20 @@ import { v } from "convex/values";
 import { internalMutation, mutation, query } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
 import { sha256Hex } from "../runtime_host/security";
-import { ACCESS_MS, CODE_MS, grantedContext, oauthError, pkceChallenge, requestedScopes, token, validRedirect } from "./policy";
+import { CODE_MS, assertScopeSet, grantRefreshExpired, oauthError, requestedScopes, token, validRedirect } from "./policy";
+import { exchangeHandler } from "./token_exchange";
+
+// Unauthenticated registration limits (also enforced on the HTTP body).
+export const CLIENT_NAME_MAX = 100;
+export const REDIRECT_URIS_MAX = 5;
+export const REDIRECT_URI_MAX = 512;
 
 export const registerClient = internalMutation({
   args: { name: v.string(), redirectUris: v.array(v.string()) },
   handler: async (ctx, args) => {
-    if (!args.redirectUris.length || args.redirectUris.some(uri => !validRedirect(uri))) oauthError("invalid_redirect_uri");
+    if (!args.redirectUris.length || args.redirectUris.length > REDIRECT_URIS_MAX
+      || args.redirectUris.some(uri => uri.length > REDIRECT_URI_MAX || !validRedirect(uri))) oauthError("invalid_redirect_uri");
+    if (args.name.length > CLIENT_NAME_MAX) oauthError("invalid_client_metadata");
     const clientId = crypto.randomUUID();
     await ctx.db.insert("externalMcpClients", { clientId, ...args, createdAt: Date.now() });
     return { client_id: clientId, client_name: args.name, redirect_uris: args.redirectUris, token_endpoint_auth_method: "none", grant_types: ["authorization_code", "refresh_token"], response_types: ["code"] };
@@ -45,6 +53,7 @@ export const consent = mutation({
     const pending = await ctx.db.query("externalMcpAuthorizations").withIndex("by_request", q => q.eq("requestHash", hash)).unique();
     if (!pending || pending.expiresAt <= Date.now() || pending.userId) oauthError("invalid_request");
     if (args.scopes.some(scope => !pending.scopes.includes(scope))) oauthError("invalid_scope");
+    if (args.allow) assertScopeSet(args.scopes);
     const redirect = new URL(pending.redirectUri);
     if (pending.state !== undefined) redirect.searchParams.set("state", pending.state);
     if (args.allow) {
@@ -60,40 +69,13 @@ export const consent = mutation({
 });
 export const exchange = internalMutation({
   args: { grantType: v.string(), clientId: v.string(), code: v.optional(v.string()), verifier: v.optional(v.string()), redirectUri: v.optional(v.string()), refreshToken: v.optional(v.string()), resource: v.optional(v.string()), scope: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const now = Date.now();
-    const accessToken = token();
-    const accessHash = await sha256Hex(accessToken);
-    if (args.grantType === "refresh_token") {
-      const hash = await sha256Hex(args.refreshToken ?? "");
-      const grant = await ctx.db.query("externalMcpGrants").withIndex("by_refresh", q => q.eq("refreshHash", hash)).unique();
-      if (!grant || grant.revokedAt !== undefined || grant.clientId !== args.clientId || (args.resource && grant.resource !== args.resource)) oauthError("invalid_grant");
-      await requireAuth(grantedContext(ctx, grant.userId));
-      const scopes = args.scope !== undefined ? requestedScopes(args.scope) : grant.scopes;
-      if (scopes.some(scope => !grant.scopes.includes(scope))) oauthError("invalid_scope");
-      await ctx.db.patch(grant._id, { accessHash, accessScopes: scopes, accessExpiresAt: now + ACCESS_MS });
-      return { access_token: accessToken, token_type: "Bearer", expires_in: ACCESS_MS / 1000, scope: scopes.join(" ") };
-    }
-    if (args.grantType !== "authorization_code") oauthError("unsupported_grant_type");
-    const hash = await sha256Hex(args.code ?? "");
-    const pending = await ctx.db.query("externalMcpAuthorizations").withIndex("by_code", q => q.eq("codeHash", hash)).unique();
-    if (!pending?.userId || pending.consumedAt !== undefined || (pending.codeExpiresAt ?? 0) <= now || pending.clientId !== args.clientId
-      || pending.redirectUri !== args.redirectUri || (args.resource && args.resource !== pending.resource)
-      || await pkceChallenge(args.verifier ?? "") !== pending.challenge) oauthError("invalid_grant");
-    await requireAuth(grantedContext(ctx, pending.userId));
-    const refreshToken = token();
-    const client = await ctx.db.query("externalMcpClients").withIndex("by_client", q => q.eq("clientId", pending.clientId)).unique();
-    await ctx.db.insert("externalMcpGrants", { userId: pending.userId, clientId: pending.clientId, name: client?.name ?? "MCP client", resource: pending.resource,
-      scopes: pending.scopes, accessScopes: pending.scopes, accessHash, accessExpiresAt: now + ACCESS_MS, refreshHash: await sha256Hex(refreshToken), createdAt: now });
-    await ctx.db.patch(pending._id, { consumedAt: now });
-    return { access_token: accessToken, refresh_token: refreshToken, token_type: "Bearer", expires_in: ACCESS_MS / 1000, scope: pending.scopes.join(" ") };
-  },
+  handler: async (ctx, args) => await exchangeHandler(ctx, args),
 });
 export const listMyConnections = query({
   args: {}, handler: async ctx => {
     const { userId } = await requireAuth(ctx);
     return (await ctx.db.query("externalMcpGrants").withIndex("by_user", q => q.eq("userId", userId)).collect())
-      .filter(grant => grant.revokedAt === undefined).map(grant => ({ id: grant._id, name: grant.name, scopes: grant.scopes, createdAt: grant.createdAt }));
+      .filter(grant => grant.revokedAt === undefined && !grantRefreshExpired(grant, Date.now())).map(grant => ({ id: grant._id, name: grant.name, scopes: grant.scopes, createdAt: grant.createdAt }));
   },
 });
 export const revoke = mutation({

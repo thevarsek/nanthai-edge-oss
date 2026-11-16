@@ -66,7 +66,7 @@ test("failed Workflow resume signals retry without a generation fallback", async
         };
         if (name === getConnectionRef) return connection();
         if (name === getGrantRef) return null;
-        if (name.endsWith("deletion_state:isAccountDeletionStarted")) return false;
+        if (name.endsWith("deletion_state:getAccountAccessState")) return false;
         throw new Error(`unexpected query ${name}`);
       },
       runMutation: async (ref: unknown, args: Record<string, unknown>) => {
@@ -123,7 +123,7 @@ test("empty and oversized selections cancel without a generation fallback", asyn
         paramsSnapshot: { workflowResumeEventId: "event_1" },
       };
       if (name === getConnectionRef) return connection();
-      if (name.endsWith("deletion_state:isAccountDeletionStarted")) return false;
+      if (name.endsWith("deletion_state:getAccountAccessState")) return false;
       return null;
     },
     runMutation: async (_ref: unknown, args: Record<string, unknown>) => {

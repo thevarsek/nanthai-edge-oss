@@ -1,13 +1,15 @@
 import { v } from "convex/values";
 import { internalQuery } from "../_generated/server";
+import { accountAccessState } from "../lib/account_access";
 
 export const pageMessages = internalQuery({
   args: { chatId: v.id("chats"), userId: v.string(), cursor: v.union(v.string(), v.null()) },
   handler: async (ctx, args) => {
     const chat = await ctx.db.get(args.chatId);
     if (!chat || chat.userId !== args.userId || chat.isDeleting) throw new Error("CHAT_NOT_AVAILABLE");
-    const deletion = await ctx.db.query("accountDeletionTombstones").withIndex("by_user", q => q.eq("userId", args.userId)).unique();
-    if (deletion) throw new Error("ACCOUNT_DELETION_IN_PROGRESS");
+    const accountState = await accountAccessState(ctx.db, args.userId);
+    if (accountState === "deleting") throw new Error("ACCOUNT_DELETION_IN_PROGRESS");
+    if (accountState === "blocked") throw new Error("ACCOUNT_BLOCKED");
     return await ctx.db.query("messages").withIndex("by_chat", q => q.eq("chatId", args.chatId))
       .order("asc").paginate({cursor: args.cursor, numItems: 128, maximumBytesRead: 250_000});
   },

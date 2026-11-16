@@ -2,6 +2,7 @@ import { transferWorkAttempt } from "../collaboration/work_attempt_ownership";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { appendRunEventUnchecked } from "./events";
+import { accountAccessState } from "../lib/account_access";
 import type { ExecutionAttemptState, ExecutionRunState } from "./validators";
 import { TERMINAL_ATTEMPT_STATES, TERMINAL_RUN_STATES } from "./validators";
 import { closeRuntimeNativeAgentGroupForAttempt } from
@@ -179,11 +180,9 @@ export async function assertCurrentExecution(
   const run = await ctx.db.get(attempt.runId);
   if (!run || run.activeAttemptId !== attempt._id) throw new Error("STALE_EXECUTION_ATTEMPT");
   if (!args.allowDeletingOwner) {
-    const tombstone = await ctx.db
-      .query("accountDeletionTombstones")
-      .withIndex("by_user", (q) => q.eq("userId", run.userId))
-      .unique();
-    if (tombstone) throw new Error("EXECUTION_OWNER_DELETING");
+    const accountState = await accountAccessState(ctx.db, run.userId);
+    if (accountState === "deleting") throw new Error("EXECUTION_OWNER_DELETING");
+    if (accountState === "blocked") throw new Error("EXECUTION_OWNER_BLOCKED");
     if (run.chatId) {
       const chat = await ctx.db.get(run.chatId);
       if (!chat || chat.isDeleting === true) throw new Error("EXECUTION_CHAT_DELETING");

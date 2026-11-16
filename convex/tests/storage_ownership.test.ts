@@ -125,7 +125,7 @@ test("a foreign snapshot ID is rejected before blob reads, writes or deletion", 
     auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
     runQuery: async (ref: Parameters<typeof getFunctionName>[0]) => {
       const name = getFunctionName(ref);
-      if (name === "account/deletion_state:isAccountDeletionStarted") return false;
+      if (name === "account/deletion_state:getAccountAccessState") return false;
       if (name === "storage_uploads:assertOwnedUpload") throw new Error("not owned");
       return { _id: "project", userId: "user_1", revision: 1 };
     },

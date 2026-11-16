@@ -56,8 +56,8 @@ function checkpointDb(roundPhase: "pre_dispatch" | "dispatched" = "dispatched") 
     if (table === "generationRoundJournal") {
       return { unique: async () => round.roundKey === "event_1" ? round : null };
     }
-    if (table === "accountDeletionTombstones") {
-      return { unique: async () => null };
+    if (table === "accountDeletionTombstones" || table === "accountAccessBlocks") {
+      return { unique: async () => null, first: async () => null };
     }
     if (table === "runtimeSessionBindings") {
       return { collect: async () => [] };

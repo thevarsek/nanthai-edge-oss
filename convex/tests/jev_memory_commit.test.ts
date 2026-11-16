@@ -20,7 +20,7 @@ function fixture() {
       insert: async (_table: string, value: Record<string, unknown>) => { rows.set("new", { _id: "new", ...value }); return "new"; },
       query: (table: string) => ({ withIndex: (_name: string, callback: (q: unknown) => unknown) => {
         callback({ eq: () => ({ eq: () => ({}) }) });
-        return { first: async () => table === "userPreferences" ? preferences : null, unique: async () => deleting ? {} : null };
+        return { first: async () => table === "userPreferences" ? preferences : null, unique: async () => deleting && table === "accountDeletionTombstones" ? { userId: "user" } : null };
       } }),
     },
     runMutation: async (_ref: unknown, args: unknown) => { embeddings.push(args); },

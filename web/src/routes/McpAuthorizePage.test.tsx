@@ -50,3 +50,23 @@ it("identifies the destination prominently and labels impersonated app names as 
   expect(screen.getByText("NanthAI for Mac").parentElement).toHaveTextContent("external_mcp_self_reported_name");
   expect(authorize).not.toHaveBeenCalled();
 });
+it("leaves tool and paired-computer access unticked and requires tools before local execution", async () => {
+  consent.value = { name: "QA AI client", isVerified: false, redirectHost: "127.0.0.1", redirectUri: "http://127.0.0.1/callback", scopes: ["chat:write", "chat:tools", "runtime:local"] };
+  authorize.mockReturnValue(new Promise(() => {}));
+  page();
+  const tools = screen.getByLabelText("external_mcp_scope_chat_tools");
+  const local = screen.getByLabelText("external_mcp_scope_runtime_local");
+  expect(screen.getByLabelText("external_mcp_scope_chat_write")).toBeChecked();
+  expect(tools).not.toBeChecked();
+  expect(local).not.toBeChecked();
+  expect(local).toBeDisabled();
+  fireEvent.click(tools);
+  expect(local).toBeEnabled();
+  fireEvent.click(local);
+  expect(local).toBeChecked();
+  fireEvent.click(tools);
+  expect(local).not.toBeChecked();
+  expect(local).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "external_mcp_connect" }));
+  await waitFor(() => expect(authorize).toHaveBeenCalledWith({ request: "qa", allow: true, scopes: ["chat:write"] }));
+});

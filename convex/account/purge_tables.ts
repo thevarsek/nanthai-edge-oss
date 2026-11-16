@@ -3,6 +3,7 @@ export const PURGE_TABLES = [
   "conversationSummaries", "conversationSummarySources", "conversationCompactions", "conversationCompactionChunks",
   "externalMcpReceipts",
   "externalMcpAuthorizations",
+  "externalMcpRefreshHistory",
   "externalMcpGrants",
   "mcpInvocations",
   "mcpCatalogItems",

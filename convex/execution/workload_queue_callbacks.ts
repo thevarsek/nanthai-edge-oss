@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import type { DataModel } from "../_generated/dataModel";
+import { isAccountActive } from "../lib/account_access";
 import { terminalizeExecutionComponentByOperation } from "./component_refs";
 import { backgroundWorkpool, maintenanceWorkpool } from "./components";
 import { terminalizeExecution } from "./control_plane";
@@ -39,10 +40,7 @@ export const reconcileMaintenanceWork = maintenanceWorkpool.defineOnComplete<
       let outcome: "completed" | "failed" | "cancelled" = args.result.kind === "success"
         ? "completed"
         : args.result.kind === "canceled" ? "cancelled" : "failed";
-      const tombstone = await ctx.db.query("accountDeletionTombstones")
-        .withIndex("by_user", (query) => query.eq("userId", run.userId))
-        .unique();
-      if (tombstone || run.state === "cancelling") outcome = "cancelled";
+      if (!await isAccountActive(ctx.db, run.userId) || run.state === "cancelling") outcome = "cancelled";
       await terminalizeExecution(ctx, {
         attemptId: attempt._id,
         fence: attempt.fence,

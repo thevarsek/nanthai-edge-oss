@@ -189,6 +189,9 @@ export interface SendMessageArgs extends Record<string, unknown> {
   advisorSelections?: AdvisorSelectionInput[];
   advisorBrief?: string;
   analytics?: AnalyticsClientMetadata;
+  // Server-only (not in the public validator): a text-only turn with no tools,
+  // integrations or subagents, used by external MCP clients without chat:tools.
+  disableTools?: boolean;
 }
 
 export interface SendMessageResult {
@@ -295,6 +298,12 @@ export async function sendMessageForActor(
   );
   const isCollaborationSend =
     chat.groupBehavior === "collaboration" && requestedParticipants.length > 1;
+  if (args.disableTools && (isCollaborationSend || effectiveSearchMode === "web")) {
+    throw new ConvexError({
+      code: "VALIDATION",
+      message: "Collaboration and advanced research turns need tool access.",
+    });
+  }
   if (isCollaborationSend && effectiveSearchMode === "web") {
     throw new ConvexError({
       code: "VALIDATION",
@@ -642,6 +651,7 @@ export async function sendMessageForActor(
       // Phase 1 TTFT: scheduler hop #1 measurement
       enqueuedAt: Date.now(),
       analytics: args.analytics,
+      ...(args.disableTools ? { disableTools: true } : {}),
     };
     const advisorBatchId = await createAdvisorBatchForTurn(ctx, {
       userId,

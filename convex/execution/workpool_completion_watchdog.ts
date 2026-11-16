@@ -3,6 +3,7 @@ import type { WorkId } from "@convex-dev/workpool";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalMutation, type MutationCtx } from "../_generated/server";
+import { isAccountActive } from "../lib/account_access";
 import { finalizeAdvisorRun } from "../advisors/lifecycle";
 import { isTerminalAdvisorRun } from "../advisors/shared";
 import { failPresentationFanoutHandler } from
@@ -210,12 +211,8 @@ async function defaultReconcile(
   } else if (target.kind === "maintenance_work") {
     const run = await ctx.db.get(target.runId);
     const attempt = run?.activeAttemptId ? await ctx.db.get(run.activeAttemptId) : null;
-    const tombstone = run
-      ? await ctx.db.query("accountDeletionTombstones")
-        .withIndex("by_user", (q) => q.eq("userId", run.userId))
-        .unique()
-      : null;
-    const cancelled = Boolean(tombstone) || run?.state === "cancelling";
+    const ownerInactive = run ? !await isAccountActive(ctx.db, run.userId) : false;
+    const cancelled = ownerInactive || run?.state === "cancelling";
     if (run && attempt && !["completed", "failed", "cancelled"].includes(run.state)) {
       await terminalizeExecution(ctx, {
         attemptId: attempt._id,

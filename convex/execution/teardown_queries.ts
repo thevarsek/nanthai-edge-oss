@@ -46,12 +46,21 @@ export const listChatRootRuns = internalQuery({
   },
 });
 
+/** Account-wide teardown runs only behind a deletion tombstone or access block. */
 export const getAccountCancellationState = internalQuery({
   args: { userId: v.string() },
-  handler: async (ctx, args) => await ctx.db
-    .query("accountDeletionTombstones")
-    .withIndex("by_user", (q) => q.eq("userId", args.userId))
-    .unique(),
+  handler: async (ctx, args) => {
+    const tombstone = await ctx.db
+      .query("accountDeletionTombstones")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (tombstone) return { cancellationCursor: tombstone.cancellationCursor };
+    const block = await ctx.db
+      .query("accountAccessBlocks")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    return block ? { cancellationCursor: block.cancellationCursor } : null;
+  },
 });
 
 export const getChatCancellationState = internalQuery({

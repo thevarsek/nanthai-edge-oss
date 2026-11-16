@@ -104,6 +104,59 @@ user to reconnect. They are internal only and are run by the owner with
 - Summaries contain provider names, counts and short error codes, never token
   values.
 
+## Account access blocks
+
+One account-access fence covers every authentication path and background writer.
+It checks the account-deletion tombstone and the `accountAccessBlocks` table.
+When a user is blocked:
+
+- `requireAuth` fails with the structured ConvexError code `ACCOUNT_BLOCKED`.
+- Background writers, execution creation and attempt fences stop, but
+  cancellation can still terminalize the user's work.
+- Runtime Host credentials, upload tokens, schedule API triggers, linked channel
+  identities and external MCP grants stop working.
+
+Clients treat the code like `ACCOUNT_DELETION_IN_PROGRESS`: an ordinary error,
+with no sign-out or token-refresh loop. The user can still delete their account.
+
+The internal functions in `convex/security/account_access_blocks.ts` are run by
+the owner with `npx convex run`:
+
+- `blockUser { userId, reason, source? }` records the block. `source` defaults to
+  `admin`. It then revokes every credential NanthAI issued to the account, 50 rows
+  per page, continuing in the background until done:
+  - external MCP grants and pending authorizations;
+  - Runtime Host devices and pending pairings;
+  - schedule trigger tokens;
+  - linked channel identities and link grants;
+  - push device tokens.
+
+  It pauses the user's schedules and starts centralized cancellation of active runs.
+- `unblockUser { userId, source? }` removes the block. Revoked credentials stay
+  revoked and paused schedules stay paused; the user reconnects or resumes them.
+  An `admin` block can only be lifted with the default source. An identity
+  provider unban never lifts it.
+
+### Identity provider webhook
+
+`POST /clerk/webhook` receives Clerk events.
+
+- **Verification.** The handler checks the Svix signature with
+  `CLERK_WEBHOOK_SECRET` (HMAC-SHA256, five-minute timestamp window) before
+  touching the database. Each delivery ID is applied once and kept for 24 hours.
+  - Missing secret: 503.
+  - Bad or stale signature: 401.
+  - Ignored event types: 200.
+- **`user.updated`.** A banned or locked user gets a block with source `clerk`.
+  Lifting the ban or lock in Clerk removes a `clerk` block only.
+- **`user.deleted`.** Writes the deletion tombstone, cancels the account's
+  executions and purges its data through the normal account-deletion path.
+
+Subscribe the endpoint to `user.updated` and `user.deleted`, and set the signing
+secret as `CLERK_WEBHOOK_SECRET` in each deployment. Users who were already
+banned, locked or deleted before the webhook was live need a one-time
+`blockUser` (or deletion) by the owner.
+
 ## Video upload migration
 
 New sessions store only a SHA-256 token hash and required expiry; jobs store the

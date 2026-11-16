@@ -2,6 +2,7 @@ import { internalQuery, query, type QueryCtx } from "../_generated/server";
 import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
+import { isAccountActive } from "../lib/account_access";
 import { projectExecution } from "./projection";
 
 const executionProjection = v.object({
@@ -59,11 +60,7 @@ export async function isCancellationRequestedHandler(
     || run.activeAttemptId !== attempt._id
     || ["cancelling", "completed", "failed", "cancelled"].includes(run.state)
   ) return true;
-  const tombstone = await ctx.db
-    .query("accountDeletionTombstones")
-    .withIndex("by_user", (query) => query.eq("userId", run.userId))
-    .unique();
-  if (tombstone) return true;
+  if (!await isAccountActive(ctx.db, run.userId)) return true;
   if (!run.chatId) return false;
   const chat = await ctx.db.get(run.chatId);
   return !chat || chat.isDeleting === true;
