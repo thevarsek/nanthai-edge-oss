@@ -1,3 +1,4 @@
+import { controlPlaneOrigin } from "./control_plane_origin.ts";
 import { z } from "zod";
 
 export type FetchImplementation = typeof fetch;
@@ -28,6 +29,7 @@ export class HttpJsonClient {
     private readonly baseUrl: string,
     options: HttpJsonClientOptions = {},
   ) {
+    controlPlaneOrigin(baseUrl, false);
     this.fetchImplementation = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 30_000;
     this.maxResponseBytes = options.maxResponseBytes ?? 4 * 1024 * 1024;
@@ -80,7 +82,7 @@ export class HttpJsonClient {
   private async request(path: string, init: RequestInit): Promise<Response> {
     let response: Response;
     try {
-      response = await this.fetchImplementation(new URL(path, normalizedBase(this.baseUrl)), init);
+      response = await this.fetchImplementation(new URL(path, normalizedBase(this.baseUrl)), { ...init, redirect: "error" });
     } catch (error) {
       throw new RuntimeHttpError(0, "NETWORK_ERROR", publicNetworkError(error));
     }

@@ -73,6 +73,7 @@ export const PURGE_TABLES = [
   "modelSettings",
   "memoryRelationships",
   "oauthConnections",
+  "googleOnePickSessions",
   "deviceTokens",
   "usageRecords",
   "userSecrets",
@@ -109,6 +110,7 @@ export const PURGE_TABLES = [
   "folders",
   "userPreferences",
   "scheduledJobs",
+  "clientStorageUploads",
   "chats",
 ] as const;
 

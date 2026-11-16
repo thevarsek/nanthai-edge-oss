@@ -514,6 +514,7 @@ test("deleteUserTableBatch reclaims only unreferenced KB upload blobs", async ()
             take: async () => table === "kbUploadSessions" ? [...sessions] : [],
             first: async () => {
               const storageId = filters.get("storageId");
+              if (table === "clientStorageUploads") return { userId: "user_1", storageId };
               if (table === "fileAttachments" && storageId === "storage_shared") {
                 return { _id: "attachment_1", storageId };
               }

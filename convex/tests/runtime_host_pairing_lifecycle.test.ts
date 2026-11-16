@@ -184,3 +184,33 @@ test("presence renews one host session and rejects a competing owner", async () 
   assert.equal(rows.personas.length, 0, "intentional deletion is not undone by a heartbeat");
   assert.equal((await list._handler(queryCtx))[0].starterPersonaId, undefined);
 });
+
+test("pairing grant carries the account email only when account identity is requested", async () => {
+  const claimFor = async (accountEmail: string | undefined, includeAccountIdentity?: boolean) => {
+    const rows: Record<string, Array<Record<string, unknown>>> = {
+      runtimePairingRequests: [], runtimeDevices: [], runtimeDeviceCredentials: [],
+    };
+    const ctx = createStatefulMockCtx(rows) as unknown as MutationCtx;
+    const initiation = await beginPairingHandler(ctx, "user_1", 1_000, false, accountEmail);
+    assert.equal(rows.runtimePairingRequests[0].accountEmail, accountEmail);
+    const grant = await claimPairingHandler(ctx, {
+      pairingId: initiation.pairingId, oneTimeCode: initiation.oneTimeCode,
+      ...(includeAccountIdentity === undefined ? {} : { includeAccountIdentity }),
+      hostNonce: "host-nonce", hostPublicKey: "host-public-key", displayName: "Mac",
+      operatingSystem: "macos", architecture: "arm64", platformRelease: "26.0", hostVersion: "0.1.0", now: 1_100,
+    });
+    assert.equal(rows.runtimeDeviceCredentials[0].accountEmail, undefined);
+    assert.equal(rows.runtimeDevices[0].accountEmail, undefined);
+    return grant;
+  };
+  const withIdentity = await claimFor("owner@example.test", true);
+  assert.equal(withIdentity.accountId, "user_1");
+  assert.equal(withIdentity.accountEmail, "owner@example.test");
+  for (const grant of [await claimFor("owner@example.test"), await claimFor("owner@example.test", false)]) {
+    assert.equal("accountId" in grant, false);
+    assert.equal("accountEmail" in grant, false);
+  }
+  const withoutEmail = await claimFor(undefined, true);
+  assert.equal(withoutEmail.accountId, "user_1");
+  assert.equal("accountEmail" in withoutEmail, false);
+});

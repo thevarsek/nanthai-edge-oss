@@ -3,7 +3,7 @@
 The Mac menu-bar app and `nanthai` CLI run Codex/Pi Personas for NanthAI web, iOS and
 Android. Convex owns connected conversations, execution, permissions, artifacts
 and usage. The host owns native process supervision, transport recovery and local
-saved tasks. Package version: 0.4.5; accepted development scope is integrated for
+saved tasks. Package version: 0.4.6; accepted development scope is integrated for
 review, with public release tracked in the [milestone index](../milestones/README.md).
 
 ## Package layout
@@ -82,6 +82,7 @@ Run inside `runtime-host/`:
 
 ```sh
 npm ci
+swift build --package-path macos-menu --product NanthAIKeychain
 npm run test:all
 npm run build:package -- /absolute/path/to/node-v22.23.4-darwin-arm64/bin/node
 swift test --package-path macos-menu
@@ -116,3 +117,52 @@ That smoke covers native dynamic context, continuation and frontier rebuild; it
 does not pair a device or replace connected qualification. Read
 [architecture](../docs/runtime/architecture.md) and
 [operations](../docs/runtime/operations.md) before changing lifecycle or packaging.
+
+## Local authority and data
+
+Codex keeps `danger-full-access` as its default. Codex and Pi execute as the Mac
+user with access to files, commands and the network, including scheduled work.
+The Mac setup window discloses this access. Tool evidence, memory, summaries,
+attachments and other third-party context are reference data, never developer
+instructions. Persona prompts and NanthAI-authored helper instructions retain
+instruction authority. This separation reduces prompt-injection exposure; it
+cannot make a full-access agent a security sandbox.
+
+New Mac pairing claims remain in memory until the user confirms the server and
+server-returned NanthAI account ID. The backend has no cached Clerk email/profile,
+so this is the canonical account ID, not an inferred email. Pasted GUI commands
+can select only the configured HTTPS origin. CLI development can explicitly use
+`--server http://localhost:<port>` (also loopback IPs); remote control planes must
+use HTTPS. Existing saved URLs are checked before credentials are transmitted,
+and control-plane requests do not follow redirects. An older backend must be
+updated before the new Mac pairing confirmation can obtain account identity.
+Existing pairings keep working without pairing again.
+
+The signed menu app stores the credential through Security.framework, with only
+its own app identity trusted for silent access, and passes credentials and pairing
+codes to Node through inherited stdin pipes. No credential is passed to the
+`security` executable, process arguments or the environment. Existing login
+Keychain items are migrated in place; macOS may ask for Keychain approval. The
+standalone CLI's native helper trusts no application for silent reads, so its
+Keychain access may require approval. The helper is bundled and signed separately.
+This preserves the existing login Keychain and CLI access; it does not claim
+Data Protection Keychain `WhenUnlockedThisDeviceOnly` semantics or Secure Enclave
+proof of possession. A same-user compromise that can inspect the supervisor's
+memory, or a user-approved Keychain read, can still obtain the bearer credential.
+
+At startup, rotation prepares a replacement, saves it locally, then revokes its
+predecessor. Pending finalization is retried after interruption. Active hosts are
+not rotated underneath running attempts. Rotation against an older/offline backend
+leaves the stored pairing usable. No expiry is retroactively imposed on older
+credentials; a continuously running host retains its credential until restart.
+
+Saved checkpoints and their copied attachments remain private local plaintext.
+Terminal checkpoints with no unsynchronized results expire after 30 days of
+inactivity; unfinished local results stay available for synchronization. Stopped
+online checkpoints are marked interrupted. **Clear finished saved tasks** removes
+finished checkpoints, local results and copied attachments, including unsynced
+finished results; running work remains. `nanthai saved clear` provides the same
+control. Unpairing or confirmed credential rejection deletes all saved checkpoints
+and local results for that device/deployment. Published NanthAI results and the
+native harness's independent history are preserved. Saved-task control sockets
+require a real `0700` directory owned by the current user, checked before use.

@@ -56,6 +56,7 @@ test("createChat inserts up to three normalized participants and createUploadUrl
 
   const uploadUrl = await (createUploadUrl as any)._handler({
     auth: buildAuth(),
+    db: { insert: async () => "upload" },
     storage: {
       generateUploadUrl: async () => "https://upload.example/url",
     },
@@ -67,7 +68,7 @@ test("createChat inserts up to three normalized participants and createUploadUrl
     "parallel",
   );
   assert.equal(inserts.filter((entry) => entry.table === "chatParticipants").length, 3);
-  assert.equal(uploadUrl, "https://upload.example/url");
+  assert.match(uploadUrl, /\/storage\/upload\?token=/);
 });
 
 test("updateChat folder-only move preserves ordering semantics by skipping updatedAt", async () => {
@@ -269,7 +270,7 @@ test("deleteKnowledgeBaseFile uses fileAttachmentId to disambiguate shared stora
         withIndex: (indexName: string) => ({
           first: async () => {
             if (table === "fileAttachments" && !attachmentDeleted) {
-              throw new Error("storage fallback should not be used when fileAttachmentId is provided");
+              return { _id: "fa_kb", userId: "user_1", storageId: "storage_shared" };
             }
             assert.notEqual(indexName, "by_source_storage");
             return null;

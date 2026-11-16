@@ -235,7 +235,7 @@ describe("ProviderOAuthCallbackPage", () => {
 
     await waitFor(() => {
       expect(redirectToNativeOAuthCallback).toHaveBeenCalledWith(
-        "tech.nanthai.NanthAi-Edge://oauth/google/callback?code=code_1&state=expected",
+        "intent://oauth/google/callback?code=code_1&state=expected#Intent;scheme=tech.nanthai.NanthAi-Edge;package=com.nanthai.edge;end",
       );
     });
     expect(exchangeGoogleCode).not.toHaveBeenCalled();
@@ -289,7 +289,7 @@ describe("ProviderOAuthCallbackPage", () => {
 
     await waitFor(() => {
       expect(redirectToNativeOAuthCallback).toHaveBeenCalledWith(
-        "tech.nanthai.NanthAi-Edge://oauth/slack/callback?code=slack_code&state=native_state",
+        "intent://oauth/slack/callback?code=slack_code&state=native_state#Intent;scheme=tech.nanthai.NanthAi-Edge;package=com.nanthai.edge;end",
       );
     });
     expect(exchangeSlackCode).not.toHaveBeenCalled();
@@ -302,8 +302,19 @@ describe("ProviderOAuthCallbackPage", () => {
       state: "state_1",
     });
 
-    expect(nativeOAuthCallbackUrl("notion", params)).toBe(
+    expect(nativeOAuthCallbackUrl("notion", params, "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)")).toBe(
       "tech.nanthai.NanthAi-Edge://oauth/notion/callback?code=notion_code&state=state_1",
+    );
+  });
+
+  it("pins the Android Notion hand-off to the NanthAI package", () => {
+    const params = new URLSearchParams({
+      code: "notion_code",
+      state: "state_1",
+    });
+
+    expect(nativeOAuthCallbackUrl("notion", params, "Mozilla/5.0 (Linux; Android 15; Pixel 7)")).toBe(
+      "intent://oauth/notion/callback?code=notion_code&state=state_1#Intent;scheme=tech.nanthai.NanthAi-Edge;package=com.nanthai.edge;end",
     );
   });
 

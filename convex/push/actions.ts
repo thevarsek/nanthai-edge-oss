@@ -13,6 +13,7 @@ import { v } from "convex/values";
 import type { Id } from "../_generated/dataModel";
 import { internalAction, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { parseWebPushSubscription } from "./subscription";
 import webpush from "web-push";
 import http2 from "node:http2";
 import { buildApnsPayload, buildWebPushPayload, splitPushTokensByProvider } from "./payloads";
@@ -249,7 +250,7 @@ async function sendWebPushNotifications(
   for (const tokenDoc of args.tokens) {
     if (!tokenDoc.subscription) continue;
     try {
-      const subscription = JSON.parse(tokenDoc.subscription) as webpush.PushSubscription;
+      const subscription = parseWebPushSubscription(tokenDoc.subscription);
       await webpush.sendNotification(subscription, payload);
       console.log(`[push] Web push sent to ${tokenDoc.token.slice(0, 8)}...`);
     } catch (error) {

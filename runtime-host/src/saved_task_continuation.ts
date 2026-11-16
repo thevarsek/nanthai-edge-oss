@@ -34,7 +34,7 @@ export function continuationCommand(task: SavedTask, result: LocalResult, histor
   packet.causality.replyToMessageIds = [messageId];
   packet.causality.liveDiscussion = null;
   const note = "Continue this saved NanthAI task in a separate local branch. The context is a saved snapshot, not current shared state. NanthAI publication saves local files for later synchronization. Do not replay earlier actions; carry out only this new follow-up.";
-  packet.instructions.system.push({ instructionId: `local-note-${result.id}`, name: "Saved task continuation", text: note, sourceHash: digest(note) });
+  packet.instructions.persona.push({ instructionId: `local-note-${result.id}`, name: "Saved task continuation", text: note, sourceHash: digest(note) });
   packet.command = { commandId: result.id, idempotencyKey: result.id,
     commandInputHash: digest(result.prompt).slice(0, 8), packetHash: "0".repeat(64), cancellationId: `cancel-${result.id}` };
   packet.command.packetHash = computePacketHash(packet);

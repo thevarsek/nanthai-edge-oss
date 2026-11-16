@@ -1,3 +1,5 @@
+import { rotateStoredCredential } from "./credential_rotation.ts";
+import type { CredentialStore } from "./credential_store.ts";
 import { join } from "node:path";
 import { CanonicalUsageHistory } from "./canonical_usage_history.ts";
 import { resultBridge } from "./result_bridge.ts";
@@ -32,9 +34,9 @@ import { syncSavedResults } from "./saved_task_sync.ts";
 import { SavedTaskStore, type SavedTask } from "./saved_task_store.ts";
 import { UsageHistory } from "./usage_history.ts";
 
-const HOST_VERSION = "0.4.5";
+const HOST_VERSION = "0.4.6";
 
-export function defaultCliDependencies(shutdownSignal?: AbortSignal) {
+export function defaultCliDependencies(shutdownSignal?: AbortSignal, credentials: CredentialStore = new MacOSKeychainCredentialStore()) {
   if (process.platform !== "darwin") {
     throw new Error("This M45 release slice supports macOS Runtime Hosts only");
   }
@@ -43,12 +45,14 @@ export function defaultCliDependencies(shutdownSignal?: AbortSignal) {
   const controlPlaneUrl = process.env.NANTHAI_CONTROL_PLANE_URL?.trim();
   return {
     savedWork: new SavedWorkService(new SavedTaskStore(join(paths.root, "saved-work")),
-      new MacOSKeychainCredentialStore(), savedWorkOptions(paths.root)),
-    credentials: new MacOSKeychainCredentialStore(),
+      credentials, savedWorkOptions(paths.root)),
+    credentials,
+    credentialLockPath: paths.hostLock,
+    ...(credentials instanceof MacOSKeychainCredentialStore ? { rotateCredential: () => rotateStoredCredential(credentials, paths.hostLock) } : {}),
     pairing: new HttpPairingClient({ controlPlaneUrl: controlPlaneUrl ?? "", hostVersion: HOST_VERSION }),
     adapters,
     status: new HostStatusStore(paths.hostStatus),
-    usage: new CanonicalUsageHistory(new MacOSKeychainCredentialStore(), join(paths.root, "canonical-usage")),
+    usage: new CanonicalUsageHistory(credentials, join(paths.root, "canonical-usage")),
     hostFactory: new ProductionRuntimeHostFactory(adapters),
     signalProcess: (pid: number, signal: NodeJS.Signals) => process.kill(pid, signal),
     processExists: isProcessPresent,

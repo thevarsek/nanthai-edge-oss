@@ -49,7 +49,8 @@ export const catalogSchemaTables = {
     updatedAt: v.number(),
   })
     .index("by_user", ["userId"])
-    .index("by_user_default", ["userId", "isDefault"]),
+    .index("by_user_default", ["userId", "isDefault"])
+    .index("by_avatar_storage", ["avatarImageStorageId"]),
 
   memories: defineTable({
     userId: v.string(),

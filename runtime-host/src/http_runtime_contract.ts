@@ -18,6 +18,8 @@ export const PairingGrantSchema = z.strictObject({
   credentialId: z.string().min(1),
   credential: z.string().min(1),
   issuedAt: z.number().int().nonnegative(),
+  accountId: z.string().min(1).optional(),
+  accountEmail: z.string().min(1).max(512).optional(),
 });
 
 export const PresenceResponseSchema = z.strictObject({

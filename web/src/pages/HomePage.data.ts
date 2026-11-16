@@ -193,11 +193,6 @@ export function getIntegrations(t: (k: string) => string) {
       body: t("home_int_apple_body"),
     },
     {
-      name: t("home_int_slack_name"),
-      services: [t("home_int_slack_s1"), t("home_int_slack_s2")],
-      body: t("home_int_slack_body"),
-    },
-    {
       name: t("home_int_cloze_name"),
       services: [t("home_int_cloze_s1"), t("home_int_cloze_s2")],
       body: t("home_int_cloze_body"),

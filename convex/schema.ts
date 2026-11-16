@@ -1,3 +1,4 @@
+import { storageSchemaTables } from "./schema_tables_storage";
 import { channelSchemaTables } from "./schema_tables_channels";
 import { conversationContextSchemaTables } from "./schema_tables_conversation_context";
 import { runtimeOfflineSchemaTables } from "./schema_tables_runtime_offline";
@@ -20,6 +21,7 @@ import { runtimeRoutingSchemaTables } from "./schema_tables_runtime_routing";
 import { runtimePermissionSchemaTables } from "./schema_tables_runtime_permissions";
 import { runtimeNativeAgentSchemaTables } from "./schema_tables_runtime_native_agents";
 import { externalMcpSchemaTables } from "./schema_tables_external_mcp";
+import { oauthFlowSchemaTables } from "./schema_tables_oauth_flows";
 
 // =============================================================================
 // NanthAI Edge — Convex Schema
@@ -29,6 +31,7 @@ import { externalMcpSchemaTables } from "./schema_tables_external_mcp";
 // =============================================================================
 
 export default defineSchema({
+  ...storageSchemaTables,
   ...channelSchemaTables,
   ...conversationContextSchemaTables,
   ...advisorSchemaTables,
@@ -37,6 +40,7 @@ export default defineSchema({
   ...executionSchemaTables,
   ...externalMcpSchemaTables,
   ...mcpSchemaTables,
+  ...oauthFlowSchemaTables,
   ...presentationSchemaTables,
   ...reportSchemaTables,
   ...catalogSchemaTables,

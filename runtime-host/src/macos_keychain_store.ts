@@ -1,35 +1,35 @@
 import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
 import type { DeviceCredential } from "./control_plane.ts";
 import type { CredentialStore } from "./credential_store.ts";
 
-const execFileAsync = promisify(execFile);
 
-const DeviceCredentialSchema = z.strictObject({
+export const DeviceCredentialSchema = z.strictObject({
   deviceId: z.string().min(1),
   credentialId: z.string().min(1),
   controlPlaneUrl: z.string().url(),
   credential: z.string().min(1),
+  accountId: z.string().min(1).optional(),
+  previousCredentialId: z.string().min(1).optional(),
 });
 
-export type SecurityCommandRunner = (
+export type KeychainCommandRunner = (
   args: readonly string[],
+  input?: string,
 ) => Promise<{ stdout: string }>;
 
 export class MacOSKeychainCredentialStore implements CredentialStore {
   constructor(
-    private readonly service = "ai.nanthai.runtime-host",
-    private readonly account = "paired-device",
-    private readonly runSecurity: SecurityCommandRunner = defaultSecurityRunner,
+    private readonly runKeychain: KeychainCommandRunner = defaultKeychainRunner,
   ) {}
 
   async readDeviceCredential(): Promise<DeviceCredential | null> {
     try {
-      const result = await this.runSecurity([
-        "find-generic-password", "-a", this.account, "-s", this.service, "-w",
+      const result = await this.runKeychain([
+        "read",
       ]);
       return DeviceCredentialSchema.parse(JSON.parse(result.stdout.trim()) as unknown);
     } catch (error) {
@@ -41,10 +41,9 @@ export class MacOSKeychainCredentialStore implements CredentialStore {
   async writeDeviceCredential(credential: DeviceCredential): Promise<void> {
     const validated = DeviceCredentialSchema.parse(credential);
     try {
-      await this.runSecurity([
-        "add-generic-password", "-U", "-a", this.account, "-s", this.service,
-        "-w", JSON.stringify(validated),
-      ]);
+      await this.runKeychain([
+        "write",
+      ], JSON.stringify(validated));
     } catch {
       throw credentialError("save");
     }
@@ -52,8 +51,8 @@ export class MacOSKeychainCredentialStore implements CredentialStore {
 
   async deleteDeviceCredential(): Promise<void> {
     try {
-      await this.runSecurity([
-        "delete-generic-password", "-a", this.account, "-s", this.service,
+      await this.runKeychain([
+        "delete",
       ]);
     } catch (error) {
       if (!isMissingKeychainItem(error)) throw credentialError("remove");
@@ -62,16 +61,20 @@ export class MacOSKeychainCredentialStore implements CredentialStore {
 }
 
 function credentialError(operation: string): Error {
-  // execFile errors include the full command, including the secret passed to -w.
+  // Never expose native helper output or subprocess details.
   return new Error(`macOS Keychain could not ${operation} the NanthAI device credential. Unlock the login Keychain and try again.`);
 }
 
-async function defaultSecurityRunner(args: readonly string[]): Promise<{ stdout: string }> {
-  const result = await execFileAsync("security", [...args], {
-    encoding: "utf8",
-    maxBuffer: 64 * 1024,
+async function defaultKeychainRunner(args: readonly string[], input?: string): Promise<{ stdout: string }> {
+  const helper = fileURLToPath(new URL(import.meta.url.endsWith(".mjs")
+    ? "../runtime/NanthAIKeychain" : "../macos-menu/.build/debug/NanthAIKeychain", import.meta.url));
+  return new Promise((resolve, reject) => {
+    const child = execFile(helper, [...args], { encoding: "utf8", maxBuffer: 64 * 1024 }, (error, stdout) => {
+      if (error) reject(error); else resolve({ stdout });
+    });
+    child.stdin?.once("error", reject);
+    child.stdin?.end(input ?? "");
   });
-  return { stdout: result.stdout };
 }
 
 function isMissingKeychainItem(error: unknown): boolean {

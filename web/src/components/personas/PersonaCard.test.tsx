@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import { PersonaCard, type PersonaCardData } from "./PersonaCard";
 
@@ -17,6 +17,14 @@ const persona: PersonaCardData = {
 };
 
 describe("PersonaCard", () => {
+  // Avatar images are only trusted from the app's own Convex deployment.
+  beforeEach(() => {
+    vi.stubEnv("VITE_CONVEX_URL", "https://files.convex.cloud");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("renders list actions visibly and dispatches callbacks with persona id", () => {
     const onNewChat = vi.fn();
     const onEdit = vi.fn();

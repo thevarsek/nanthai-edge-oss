@@ -65,86 +65,36 @@ export const triggerScheduledJob = httpAction(async (ctx, request) => {
     }), { status: 400, headers: { "Content-Type": "application/json" } });
   }
 
+  const unauthorized = () => new Response(JSON.stringify({
+    error: "Unauthorized", requestId,
+  }), { status: 401, headers: { "Content-Type": "application/json" } });
   const jobId = body.jobId as Id<"scheduledJobs">;
-  const job = await ctx.runQuery(internal.scheduledJobs.queries.getJobInternal, { jobId });
-  if (!job) {
-    return new Response(JSON.stringify({
-      error: "Scheduled job not found",
-      requestId,
-    }), { status: 404, headers: { "Content-Type": "application/json" } });
-  }
-  if (job.isDeleting) {
-    return new Response(JSON.stringify({
-      error: "Scheduled job not found",
-      requestId,
-    }), { status: 404, headers: { "Content-Type": "application/json" } });
-  }
-
-  const variables = normalizeVariables(body.variables);
-
   let authorizedUserId: string | null = null;
   let tokenId: Id<"scheduledJobTriggerTokens"> | undefined;
 
   if (bearerToken?.startsWith(SCHEDULED_TRIGGER_TOKEN_PREFIX)) {
     const tokenHash = await sha256Hex(bearerToken);
     const token = await ctx.runQuery(
-      internal.scheduledJobs.queries.getActiveTriggerTokenByHash,
-      { tokenHash },
+      internal.scheduledJobs.queries.getActiveTriggerTokenByHash, { tokenHash },
     );
-    if (!token || token.jobId !== jobId) {
-      await ctx.runMutation(internal.scheduledJobs.mutations.logApiInvocation, {
-        userId: job.userId,
-        jobId,
-        requestId,
-        idempotencyKey,
-        status: "unauthorized",
-        variables,
-        note: "Invalid or mismatched trigger token",
-      });
-      return new Response(JSON.stringify({
-        error: "Unauthorized",
-        requestId,
-      }), { status: 401, headers: { "Content-Type": "application/json" } });
-    }
-    if (token.userId !== job.userId) {
-      await ctx.runMutation(internal.scheduledJobs.mutations.logApiInvocation, {
-        userId: job.userId,
-        jobId,
-        requestId,
-        idempotencyKey,
-        status: "unauthorized",
-        variables,
-        note: "Trigger token user did not match the job owner",
-      });
-      return new Response(JSON.stringify({
-        error: "Unauthorized",
-        requestId,
-      }), { status: 401, headers: { "Content-Type": "application/json" } });
-    }
+    if (!token || token.jobId !== jobId) return unauthorized();
     authorizedUserId = token.userId;
     tokenId = token._id;
   } else {
     const identity = await ctx.auth.getUserIdentity();
-    if (identity?.subject && identity.subject === job.userId) {
-      authorizedUserId = identity.subject;
-    }
+    authorizedUserId = identity?.subject ?? null;
   }
+  if (!authorizedUserId) return unauthorized();
 
-  if (!authorizedUserId) {
-    await ctx.runMutation(internal.scheduledJobs.mutations.logApiInvocation, {
-      userId: job.userId,
-      jobId,
-      requestId,
-      idempotencyKey,
-      status: "unauthorized",
-      variables,
-      note: "Missing valid trigger token or authenticated owner identity",
-    });
-    return new Response(JSON.stringify({
-      error: "Unauthorized",
-      requestId,
-    }), { status: 401, headers: { "Content-Type": "application/json" } });
+  let job;
+  try {
+    job = await ctx.runQuery(internal.scheduledJobs.queries.getJobInternal, { jobId });
+  } catch {
+    // Invalid document IDs must not reveal a different authorization outcome.
+    return unauthorized();
   }
+  if (!job || job.isDeleting || job.userId !== authorizedUserId) return unauthorized();
+  const variables = normalizeVariables(body.variables);
 
   try {
     const result = await ctx.runMutation(internal.scheduledJobs.mutations.triggerJobViaApi, {

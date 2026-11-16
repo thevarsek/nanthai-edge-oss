@@ -36,13 +36,17 @@ test("copied pairing commands select their server without environment setup and 
   const pairing: PairingClient = {
     pair: async (request) => {
       requests.push(request);
-      return { deviceId: "qa", credentialId: "credential", credential: "secret", controlPlaneUrl: request.controlPlaneUrl ?? "https://wrong.test" };
+      return { deviceId: "qa", credentialId: "credential", credential: "secret", controlPlaneUrl: request.controlPlaneUrl ?? "https://wrong.test",
+        accountId: "user_owner", accountEmail: "owner@example.test" };
     },
   };
   const dependencies = cliDependencies(pairing, []);
   assert.equal(await runCli(["pair", "qa", "123456", "--server", "https://dev.convex.site"], dependencies), 0);
   assert.equal(requests[0]?.controlPlaneUrl, "https://dev.convex.site");
-  assert.equal((await dependencies.credentials.readDeviceCredential())?.controlPlaneUrl, "https://dev.convex.site");
+  const stored = await dependencies.credentials.readDeviceCredential();
+  assert.equal(stored?.controlPlaneUrl, "https://dev.convex.site");
+  assert.equal(stored?.accountId, "user_owner");
+  assert.equal("accountEmail" in (stored ?? {}), false, "account email is display-only and never stored");
   for (const options of [["--unknown", "https://dev.test"], ["--server"], ["--server", "file:///tmp/qa"], ["--server", "https://secret@example.test"]]) {
     assert.equal(await runCli(["pair", "qa", "123456", ...options], dependencies), 1);
   }
@@ -89,7 +93,14 @@ test("revoked runtime authority clears only that pairing and requests no automat
       }
       throw new RuntimeHttpError(401, "UNAUTHORIZED", "Runtime Host credential is invalid or revoked");
     } }) };
+    const cleaned: string[] = [];
+    dependencies.savedWork = {
+      list: async () => [], continue: async () => undefined, sync: async () => 0,
+      removeDevice: async (deviceId, server) => { cleaned.push(`${deviceId}:${server}`); return 1; },
+    };
     assert.equal(await runCli(["runtime", "start", "--owner", "tray"], dependencies), 77);
+    assert.equal(cleaned.length, replacePairing ? 0 : 1);
+
     assert.equal((await dependencies.credentials.readDeviceCredential())?.credentialId ?? null,
       replacePairing ? "credential-new" : null);
     assert.match(output.at(-1) ?? "", /Reconnect NanthAI/);
@@ -177,4 +188,23 @@ test("uninstall waits for the owned host to stop before removing only its pairin
   assert.equal(await runCli(["runtime", "stop", "--wait"], deps), 0);
   assert.equal(await runCli(["unpair"], deps), 0);
   assert.equal(await deps.credentials.readDeviceCredential(), null);
+});
+
+test("Mac pairing preparation returns account identity over stdout without storing or starting the host", async () => {
+  const output: string[] = [];
+  const dependencies = cliDependencies({ pair: async request => ({ deviceId: "device", credentialId: "credential",
+    credential: "secret", controlPlaneUrl: request.controlPlaneUrl ?? "https://safe.test", accountId: "user_owner",
+    accountEmail: "owner@example.test" }) }, output);
+  dependencies.stdin = async () => JSON.stringify(["pair-code", "1234-5678-90AB-CDEF", "--server", "https://safe.test"]);
+  let starts = 0;
+  dependencies.hostFactory = { create: () => { starts++; throw new Error("Must not start before confirmation"); } };
+  assert.equal(await runCli(["pair-prepare"], dependencies), 0);
+  assert.equal(await dependencies.credentials.readDeviceCredential(), null);
+  assert.equal(starts, 0);
+  assert.equal(JSON.parse(output.at(-1) ?? "{}").accountId, "user_owner");
+  assert.equal(JSON.parse(output.at(-1) ?? "{}").accountEmail, "owner@example.test");
+  const oldServer = cliDependencies(new FakePairingClient(), []);
+  oldServer.stdin = dependencies.stdin;
+  assert.equal(await runCli(["pair-prepare"], oldServer), 1);
+  assert.equal(await oldServer.credentials.readDeviceCredential(), null);
 });

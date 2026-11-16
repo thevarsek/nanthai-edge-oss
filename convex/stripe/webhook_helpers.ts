@@ -6,6 +6,8 @@ export interface StripeEvent {
 export interface StripeCheckoutSession {
   id: string;
   payment_intent?: string | null;
+  payment_status?: string;
+  mode?: string;
   metadata?: Record<string, string>;
   amount_total?: number;
   currency?: string;
@@ -36,10 +38,10 @@ export type StripeEntitlementUpdate =
 export function extractStripeEntitlementUpdate(
   event: StripeEvent,
 ): StripeEntitlementUpdate | null {
-  if (event.type === "checkout.session.completed") {
+  if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
     const session = event.data.object as StripeCheckoutSession;
     const userId = session.metadata?.convexUserId;
-    if (!userId) {
+    if (!userId || session.mode !== "payment" || session.payment_status !== "paid") {
       return null;
     }
     return {
@@ -49,6 +51,9 @@ export function extractStripeEntitlementUpdate(
       paymentIntentId: session.payment_intent ?? undefined,
     };
   }
+
+  // Failed delayed payments never grant access; completed unpaid sessions were ignored.
+  if (event.type === "checkout.session.async_payment_failed") return null;
 
   // Business rule: only full refunds revoke Pro. Partial refunds are ignored.
   if (event.type === "refund.created" || event.type === "refund.updated") {

@@ -74,7 +74,7 @@ test("registerDeviceToken rejects web push registration without subscription", a
 
   await assert.rejects(
     (registerDeviceToken as any)._handler(ctx, {
-      token: "https://push.example/subscription",
+      token: "https://fcm.googleapis.com/subscription",
       provider: "webpush",
       platform: "web",
     }),
@@ -88,7 +88,7 @@ test("registerDeviceToken rejects web push registration without subscription", a
 test("registerDeviceToken replaces existing token and normalizes provider payload", async () => {
   const { ctx, replacements, inserts } = buildRegisterCtx({
     _id: "token_existing",
-    userId: "user_2",
+    userId: "user_1",
     token: "same_token",
     provider: "apns",
     environment: "sandbox",
@@ -119,20 +119,27 @@ test("registerDeviceToken stores web push subscription payload", async () => {
   const { ctx, inserts } = buildRegisterCtx(null);
 
   const result = await (registerDeviceToken as any)._handler(ctx, {
-    token: "https://push.example/subscription",
+    token: "https://fcm.googleapis.com/subscription",
     provider: "webpush",
     platform: "web",
-    subscription: "{\"endpoint\":\"https://push.example/subscription\"}",
+    subscription: JSON.stringify({ endpoint: "https://fcm.googleapis.com/subscription", keys: { p256dh: "test-key", auth: "test-auth" } }),
   });
 
   assert.equal(result, "new_token_id");
   assert.equal(inserts.length, 1);
   assert.deepEqual(inserts[0]?.value, {
     userId: "user_1",
-    token: "https://push.example/subscription",
+    token: "https://fcm.googleapis.com/subscription",
     platform: "web",
     provider: "webpush",
-    subscription: "{\"endpoint\":\"https://push.example/subscription\"}",
+    subscription: JSON.stringify({ endpoint: "https://fcm.googleapis.com/subscription", keys: { p256dh: "test-key", auth: "test-auth" } }),
     updatedAt: inserts[0]?.value.updatedAt,
   });
+});
+
+test("registerDeviceToken cannot reassign a known device token from another user", async () => {
+  const { ctx, replacements, inserts } = buildRegisterCtx({ _id: "foreign", userId: "user_2" });
+  await assert.rejects((registerDeviceToken as any)._handler(ctx, { token: "known-token", provider: "fcm", platform: "android" }), /another account/);
+  assert.deepEqual(replacements, []);
+  assert.deepEqual(inserts, []);
 });

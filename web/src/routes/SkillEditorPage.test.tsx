@@ -131,7 +131,8 @@ describe("SkillEditorPage", () => {
     fireEvent.click(screen.getByText("skill_runtime_workspace_label"));
     fireEvent.click(screen.getByRole("switch", { name: "skill_uses_coding_workspace" }));
     fireEvent.click(screen.getByRole("switch", { name: "Google Drive" }));
-    fireEvent.click(screen.getByRole("switch", { name: "Slack" }));
+    expect(screen.queryByRole("switch", { name: "Slack" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("switch", { name: "Notion" }));
     fireEvent.click(screen.getByText("save"));
 
     await waitFor(() => {
@@ -139,12 +140,37 @@ describe("SkillEditorPage", () => {
         skillId: "skill_1",
         name: "Existing Skill",
         runtimeMode: "sandboxAugmented",
-        requiredToolProfiles: ["docs", "slack", "workspace"],
+        requiredToolProfiles: ["docs", "notion", "workspace"],
         requiredCapabilities: ["future_capability"],
-        requiredIntegrationIds: ["slack"],
+        requiredIntegrationIds: ["notion"],
       }));
     });
     expect(mockState.navigate).toHaveBeenCalledWith("/app/settings/skills");
+  });
+
+  it("keeps an existing Slack requirement removable while Slack is unavailable", async () => {
+    mockState.params = { skillId: "skill_1" };
+    mockState.existingSkill = {
+      _id: "skill_1",
+      name: "Existing Skill",
+      summary: "Existing summary",
+      instructionsRaw: "Existing instructions",
+      runtimeMode: "toolAugmented",
+      requiredToolProfiles: ["slack"],
+      requiredIntegrationIds: ["slack"],
+      requiredCapabilities: [],
+    };
+    renderEditor();
+
+    fireEvent.click(screen.getByRole("switch", { name: "Slack" }));
+    fireEvent.click(screen.getByText("save"));
+
+    await waitFor(() => {
+      expect(mockState.updateSkill).toHaveBeenCalledWith(expect.objectContaining({
+        requiredToolProfiles: [],
+        requiredIntegrationIds: [],
+      }));
+    });
   });
 
   it("adds an active Remote MCP server as a skill integration target", async () => {

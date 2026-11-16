@@ -2,15 +2,23 @@ import { render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MobileDrivePickerPage } from "./MobileDrivePickerPage";
 
-const { pickGoogleDriveFiles } = vi.hoisted(() => ({
+const { pickGoogleDriveFiles, redeemRelayHandle } = vi.hoisted(() => ({
   pickGoogleDriveFiles: vi.fn((args: unknown) => {
     void args;
     return new Promise(() => {});
+  }),
+  redeemRelayHandle: vi.fn(async (args: { relayHandle: string }) => {
+    void args;
+    return { accessToken: "redeemed_token" };
   }),
 }));
 
 vi.mock("@/lib/googleDrivePicker", () => ({
   pickGoogleDriveFiles: (args: unknown) => pickGoogleDriveFiles(args),
+}));
+
+vi.mock("convex/react", () => ({
+  useAction: () => redeemRelayHandle,
 }));
 
 describe("MobileDrivePickerPage", () => {
@@ -84,7 +92,34 @@ describe("MobileDrivePickerPage", () => {
       });
     });
     expect(window.location.hash).toBe("");
-    expect(window.location.search).toBe("?code=code_1");
+    expect(window.location.search).toBe("");
+    expect(redeemRelayHandle).not.toHaveBeenCalled();
+  });
+
+  it("redeems a single-use relay handle instead of reading a token from the URL", async () => {
+    const state = encodedRelayState({
+      request_state: "request_state_1",
+      relay_handle: "relay_handle_1",
+      app_id: "app_1",
+      developer_key: "dev_1",
+      callback_scheme: "nanthai-edge",
+      allow_multiple: true,
+    });
+    window.history.replaceState(null, "", `/mobile-drive-picker?code=code_1&state=${state}`);
+
+    render(<MobileDrivePickerPage />);
+
+    await waitFor(() => {
+      expect(pickGoogleDriveFiles).toHaveBeenCalledWith({
+        accessToken: "redeemed_token",
+        appId: "app_1",
+        developerKey: "dev_1",
+        multiselect: true,
+      });
+    });
+    expect(redeemRelayHandle).toHaveBeenCalledTimes(1);
+    expect(redeemRelayHandle).toHaveBeenCalledWith({ relayHandle: "relay_handle_1" });
+    expect(window.location.search).toBe("");
   });
 
   it("cancels delayed fallback redirects when the page unmounts", () => {

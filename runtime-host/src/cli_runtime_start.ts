@@ -14,6 +14,11 @@ export async function startRuntime(
   options: readonly string[],
 ): Promise<number> {
   const owner = options[0] === "--owner" && options[1] === "tray" ? "tray" : "foreground_cli";
+  if (dependencies.rotateCredential) {
+    // An older/offline backend leaves the existing authority usable. No forced re-pairing.
+    try { await dependencies.rotateCredential(); }
+    catch { dependencies.stderr("Device credential rotation is pending; the saved pairing is retained."); }
+  }
   const credential = await dependencies.credentials.readDeviceCredential();
   if (credential === null) throw new Error("This machine is not paired; run nanthai pair first");
   dependencies.stdout(JSON.stringify({ state: "starting", deviceId: credential.deviceId, owner }));
@@ -26,6 +31,7 @@ export async function startRuntime(
         const current = await dependencies.credentials.readDeviceCredential();
         // Pairing may have replaced the credential while the old host shut down.
         if (current?.credentialId === credential.credentialId && current.credential === credential.credential) {
+          await dependencies.savedWork?.removeDevice?.(credential.deviceId, credential.controlPlaneUrl);
           await dependencies.credentials.deleteDeviceCredential();
         }
       } catch {

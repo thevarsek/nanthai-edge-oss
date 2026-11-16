@@ -8,6 +8,7 @@ let package = Package(
         .macOS(.v14),
     ],
     products: [
+        .executable(name: "NanthAIKeychain", targets: ["NanthAIKeychain"]),
         .executable(name: "NanthAIRuntime", targets: ["NanthAIRuntimeApp"]),
         .library(
             name: "NanthAIRuntimeMenu",
@@ -15,8 +16,9 @@ let package = Package(
         ),
     ],
     targets: [
-        .executableTarget(name: "NanthAIRuntimeApp", dependencies: ["NanthAIRuntimeMenu"]),
-        .target(name: "NanthAIRuntimeMenu"),
+        .executableTarget(name: "NanthAIKeychain", dependencies: ["NanthAIRuntimeMenu"]),        .executableTarget(name: "NanthAIRuntimeApp", dependencies: ["NanthAIRuntimeMenu"]),
+        .target(name: "RuntimeKeychainAccess", linkerSettings: [.linkedFramework("Security")]),
+        .target(name: "NanthAIRuntimeMenu", dependencies: ["RuntimeKeychainAccess"]),
         .testTarget(
             name: "NanthAIRuntimeMenuTests",
             dependencies: ["NanthAIRuntimeMenu"]

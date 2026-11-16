@@ -33,6 +33,7 @@ export async function syncSavedResults(store: SavedTaskStore, credential: Device
     } catch (error) { blockedTasks.add(result.taskId); failures.push(error); }
   }
   if (failures.length) throw new AggregateError(failures, `Saved work remains on this Mac: ${failures.map(String).join("; ")}`);
+  await store.prune();
   return count;
 }
 

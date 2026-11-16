@@ -54,6 +54,7 @@ test("createFavorite stores explicit persona and model participants", async () =
   await (createFavorite as any)._handler({
     auth: buildAuth(),
     db: {
+      get: async (id: string) => ({ _id: id, userId: "user_1" }),
       query: (table: string) => ({
         withIndex: () => ({
           collect: async () => table === "favorites" ? [] : [],
@@ -198,7 +199,7 @@ test("listFavorites refreshes persona avatar urls and preserves stale snapshot f
       }),
       get: async (id: string) => {
         if (id === "persona_1") {
-          return { _id: "persona_1", avatarImageStorageId: "storage_1" };
+          return { _id: "persona_1", userId: "user_1", avatarImageStorageId: "storage_1" };
         }
         throw new Error("missing persona");
       },

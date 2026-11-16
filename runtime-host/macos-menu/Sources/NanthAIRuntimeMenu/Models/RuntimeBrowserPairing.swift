@@ -10,8 +10,8 @@ public struct RuntimeBrowserPairing: Sendable {
                 state: String = UUID().uuidString, now: Date = .now) throws {
         guard Self.isOrigin(webOrigin), Self.isOrigin(serverOrigin),
               var url = URLComponents(url: webOrigin, resolvingAgainstBaseURL: false),
-              let normalizedServer = URL(string: serverOrigin.absoluteString.hasSuffix("/")
-                ? String(serverOrigin.absoluteString.dropLast()) : serverOrigin.absoluteString)
+              let origin = RuntimePairingCommand.normalizedOrigin(serverOrigin),
+              let normalizedServer = URL(string: origin)
         else { throw RuntimeAppError.invalidPairing }
         self.state = state
         self.serverOrigin = normalizedServer
@@ -23,7 +23,7 @@ public struct RuntimeBrowserPairing: Sendable {
     }
 
     private static func isOrigin(_ url: URL) -> Bool {
-        guard let scheme = url.scheme, ["https", "http"].contains(scheme), url.host != nil,
+        guard let scheme = url.scheme, (scheme == "https" || (scheme == "http" && ["localhost", "127.0.0.1", "::1"].contains(url.host ?? ""))), url.host != nil,
               url.user == nil, url.password == nil, url.query == nil, url.fragment == nil else { return false }
         return url.path.isEmpty || url.path == "/"
     }
@@ -38,6 +38,6 @@ public struct RuntimeBrowserPairing: Sendable {
               let pairingID = items.first(where: { $0.name == "pairingId" })?.value,
               let code = items.first(where: { $0.name == "code" })?.value
         else { throw RuntimeAppError.invalidPairing }
-        return try RuntimePairingCommand("nanthai pair \(pairingID) \(code) --server \(serverOrigin.absoluteString)").arguments
+        return try RuntimePairingCommand("nanthai pair \(pairingID) \(code) --server \(serverOrigin.absoluteString)", allowedOrigins: [serverOrigin.absoluteString]).arguments
     }
 }

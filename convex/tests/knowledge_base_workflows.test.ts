@@ -89,7 +89,8 @@ test("Knowledge Base upload flow creates, binds, consumes, and rejects duplicate
   };
 
   const created = await (createKnowledgeBaseUploadUrl as any)._handler(ctx, {});
-  assert.equal(created.uploadUrl, "https://upload.example/session");
+  assert.match(created.uploadUrl, /\/storage\/upload\?token=/);
+  rows.clientStorageUploads.push({ userId: "user_1", storageId: "storage_1" });
   await (bindKnowledgeBaseUploadSession as any)._handler(ctx, {
     uploadSessionId: created.uploadSessionId,
     storageId: "storage_1",
@@ -139,6 +140,7 @@ test("Knowledge Base upload rejects files over the Settings KB size cap before c
 
 test("cleanupUnclaimedUpload deletes unreferenced pending upload storage and cancels the session", async () => {
   const rows: Record<string, any[]> = {
+    clientStorageUploads: [{ userId: "user_1", storageId: "storage_orphan" }],
     kbUploadSessions: [{ _id: "session_1", userId: "user_1", status: "pending", storageId: "storage_orphan" }],
     fileAttachments: [],
     generatedFiles: [],

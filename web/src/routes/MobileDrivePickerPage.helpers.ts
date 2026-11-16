@@ -2,7 +2,10 @@ const relayStatePrefix = "onepick.";
 
 export interface DrivePickerRelayState {
   requestState: string;
-  accessToken: string;
+  /** Legacy app builds embed the Google access token itself. */
+  accessToken?: string;
+  /** Current app builds send a single-use handle the page redeems with Convex. */
+  relayHandle?: string;
   appId?: string;
   developerKey?: string;
   callbackScheme?: string;
@@ -59,10 +62,12 @@ export function decodeDrivePickerRelayState(value: string | null): DrivePickerRe
     const payload = parsed as Record<string, unknown>;
     const requestState = stringValue(payload.request_state);
     const accessToken = stringValue(payload.access_token);
-    if (!requestState || !accessToken) return null;
+    const relayHandle = stringValue(payload.relay_handle);
+    if (!requestState || (!accessToken && !relayHandle)) return null;
     return {
       requestState,
       accessToken,
+      relayHandle,
       appId: stringValue(payload.app_id),
       developerKey: stringValue(payload.developer_key),
       callbackScheme: stringValue(payload.callback_scheme),

@@ -68,6 +68,8 @@ export async function releaseMacosInstaller({ appPath, publish = false, env = pr
   run("codesign", ["--force", "--sign", identity, "--options", "runtime", "--timestamp",
     "--entitlements", join(root, "runtime-host/packaging/node.entitlements.plist"),
     join(app, "Contents/Resources/host/runtime/node")]);
+  run("codesign", ["--force", "--sign", identity, "--options", "runtime", "--timestamp",
+    join(app, "Contents/Resources/host/runtime/NanthAIKeychain")]);
   run("codesign", ["--force", "--sign", identity, "--options", "runtime", "--timestamp", app]);
   run("codesign", ["--verify", "--deep", "--strict", app]);
   run("hdiutil", ["create", "-volname", "NanthAI Runtime", "-srcfolder", layout, "-format", "UDZO", dmg]);

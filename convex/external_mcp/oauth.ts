@@ -34,7 +34,7 @@ export const getConsent = query({
     const pending = await ctx.db.query("externalMcpAuthorizations").withIndex("by_request", q => q.eq("requestHash", hash)).unique();
     if (!pending || pending.expiresAt <= Date.now() || pending.userId) return null;
     const client = await ctx.db.query("externalMcpClients").withIndex("by_client", q => q.eq("clientId", pending.clientId)).unique();
-    return client ? { name: client.name, redirectUri: pending.redirectUri, scopes: pending.scopes } : null;
+    return client ? { name: client.name, isVerified: false, redirectUri: pending.redirectUri, redirectHost: new URL(pending.redirectUri).host, scopes: pending.scopes } : null;
   },
 });
 export const consent = mutation({

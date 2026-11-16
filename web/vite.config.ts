@@ -84,11 +84,16 @@ export default defineConfig({
             // Cache Convex API requests. Matches any *.convex.cloud origin so
             // self-hosters don't need to edit this. Note: if the browser somehow
             // encounters another Convex deployment's URL it would also be cached.
+            // Responses can contain a signed-in user's files, so only complete
+            // (status 200) responses are kept, with a bounded size and age, and
+            // the cache is deleted on sign-out (see SignOutCacheBridge).
             urlPattern: /^https:\/\/.*\.convex\.cloud\/.*/,
             handler: "NetworkFirst",
             options: {
               cacheName: "convex-api",
               networkTimeoutSeconds: 5,
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 60, maxAgeSeconds: 24 * 60 * 60 },
             },
           },
         ],

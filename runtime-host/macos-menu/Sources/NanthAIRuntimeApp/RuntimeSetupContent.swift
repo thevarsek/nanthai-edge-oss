@@ -8,6 +8,9 @@ struct RuntimeSetupContent: View {
     var body: some View {
         VStack(spacing: 0) {
             Form {
+                Section("Full access to this Mac") {
+                    Text("Codex and Pi agents run with full access to this Mac as your signed-in macOS user. They can read and change files, run commands, and access the network, including for scheduled tasks. NanthAI does not add a filesystem sandbox or an approval gate to Pi.")
+                }
                 Section("Start with your Mac") {
                     RuntimeLoginControl(store: model.menu)
                 }
@@ -100,6 +103,28 @@ struct RuntimeSetupContent: View {
                 Spacer()
                 Button("Settings & usage…") { showSettings = true }
             }.padding()
+        }
+        .sheet(isPresented: Binding(get: { model.pendingPairing != nil }, set: { if !$0 { model.pendingPairing = nil } })) {
+            if let review = model.pendingPairing {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Connect this Mac?").font(.title2)
+                    Text("This Mac will take instructions from this NanthAI account, with full access to files, commands, and the network.")
+                    LabeledContent("NanthAI account") {
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text(review.accountDisplayName)
+                            if review.accountEmail != nil {
+                                Text(review.accountId).font(.caption).foregroundStyle(.secondary)
+                            }
+                        }.textSelection(.enabled)
+                    }
+                    LabeledContent("Server", value: review.controlPlaneUrl).textSelection(.enabled)
+                    HStack {
+                        Button("Cancel") { model.pendingPairing = nil }.disabled(model.busy)
+                        Button("Connect and start") { Task { await model.confirmPairing() } }.disabled(model.busy)
+                    }
+                    if let error = model.error { Text(error).foregroundStyle(.red) }
+                }.padding(24).frame(width: 480)
+            }
         }
         .sheet(isPresented: $showSettings) { RuntimeSettingsContent(store: model.menu) }
     }

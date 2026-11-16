@@ -31,9 +31,12 @@ test("HTTP pairing command selects the explicit server on a fresh install", asyn
 test("HTTP short-code pairing claims the canonical device grant without an ID lookup", async () => {
   const requests: CapturedRequest[] = [];
   const client = new HttpPairingClient({ controlPlaneUrl, hostVersion: "0.3.0",
-    fetch: captureFetch(requests, () => json({ protocolVersion: "nanthai.runtime.pairing.v1", pairingId: "pairing_qa", deviceId: "device-1", credentialId: "credential-1", credential: "opaque-secret", issuedAt: 2000 })) });
+    fetch: captureFetch(requests, () => json({ protocolVersion: "nanthai.runtime.pairing.v1", pairingId: "pairing_qa", deviceId: "device-1", credentialId: "credential-1", credential: "opaque-secret", issuedAt: 2000,
+      accountId: "user_owner", accountEmail: "owner@example.test" })) });
   const result = await client.pair({ shortCode: true, oneTimeCode: "0123-4567-89AB-CDEF", hostname: "QA Mac", platform: "darwin", architecture: "arm64" });
   assert.equal(result.deviceId, "device-1");
+  assert.equal(result.accountId, "user_owner");
+  assert.equal(result.accountEmail, "owner@example.test");
   assert.equal(requests[0]?.url.pathname, "/runtime-host/v1/pairing/claim-code");
   assert.equal(requests[0]?.body?.shortCode, "0123-4567-89AB-CDEF");
   assert.equal(requests[0]?.body?.pairingId, undefined);
@@ -67,6 +70,7 @@ test("HTTP pairing claim sends the frozen v1 identity and returns opaque credent
   assert.equal(requests[0]?.headers.get("Authorization"), null);
   assert.deepEqual(requests[0]?.body, {
     protocolVersion: "nanthai.runtime.pairing.v1",
+    includeAccountIdentity: true,
     pairingId: "pairing-1",
     oneTimeCode: "one-time-code",
     hostNonce: "nonce-1",

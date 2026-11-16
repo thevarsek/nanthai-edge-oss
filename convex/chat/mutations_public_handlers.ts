@@ -1,3 +1,4 @@
+import { createOwnedUploadUrl } from "../lib/storage_ownership";
 import { wakeChannelTurns } from "../channels/turn_queue";
 import { cancelPreparingTelegramInputs } from "../channels/telegram/media_cancellation";
 import { internal } from "../_generated/api";
@@ -131,8 +132,8 @@ export async function createChatForActor(
 }
 
 export async function createUploadUrlHandler(ctx: MutationCtx): Promise<string> {
-  await requireAuth(ctx);
-  return await ctx.storage.generateUploadUrl();
+  const { userId } = await requireAuth(ctx);
+  return await createOwnedUploadUrl(ctx, userId);
 }
 
 export interface SendMessageAttachment {

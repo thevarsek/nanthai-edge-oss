@@ -41,7 +41,6 @@ type ConnectedAccountsMock = {
 type StatusConnectionKey =
   | "microsoftConnection"
   | "notionConnection"
-  | "slackConnection"
   | "appleCalendarConnection";
 
 let connectedAccounts: ConnectedAccountsMock = {
@@ -127,7 +126,6 @@ describe("ConnectedAccountsSection", () => {
     expect(connectProviderWithPopup).toHaveBeenCalledTimes(1);
     expect(rowButton("Microsoft 365", "Connect")).toBeDisabled();
     expect(rowButton("Notion", "Connect")).toBeDisabled();
-    expect(rowButton("Slack", "Connect")).toBeDisabled();
 
     fireEvent.click(rowButton("Notion", "Connect"));
     expect(connectProviderWithPopup).toHaveBeenCalledTimes(1);
@@ -162,7 +160,7 @@ describe("ConnectedAccountsSection", () => {
     };
     render(<ConnectedAccountsSection />);
 
-    for (const label of ["Google Workspace", "Gmail", "Microsoft 365", "Notion", "Slack", "Apple Calendar", "Cloze CRM"]) {
+    for (const label of ["Google Workspace", "Gmail", "Microsoft 365", "Notion", "Apple Calendar", "Cloze CRM"]) {
       expect(rowButton(label, /Loading/i)).toBeDisabled();
     }
 
@@ -176,12 +174,11 @@ describe("ConnectedAccountsSection", () => {
   it.each([
     { label: "Microsoft 365", key: "microsoftConnection", provider: "microsoft" },
     { label: "Notion", key: "notionConnection", provider: "notion" },
-    { label: "Slack", key: "slackConnection", provider: "slack" },
     { label: "Apple Calendar", key: "appleCalendarConnection", provider: null },
   ] satisfies Array<{
     label: string;
     key: StatusConnectionKey;
-    provider: "microsoft" | "notion" | "slack" | null;
+    provider: "microsoft" | "notion" | null;
   }>)("renders $label non-active statuses as reconnectable", async ({ label, key, provider }) => {
     connectedAccounts = {
       ...connectedAccounts,
@@ -219,9 +216,31 @@ describe("ConnectedAccountsSection", () => {
     oauthClientId = "client-id";
     connectProviderWithPopup.mockRejectedValueOnce(new Error("denied"));
     rerender(<ConnectedAccountsSection />);
-    fireEvent.click(rowButton("Slack", "Connect"));
-    await waitFor(() => expect(clearOAuthContext).toHaveBeenCalledWith("slack"));
+    fireEvent.click(rowButton("Microsoft 365", "Connect"));
+    await waitFor(() => expect(clearOAuthContext).toHaveBeenCalledWith("microsoft"));
     expect(await screen.findByText(/denied|cancelled|canceled|failed/i)).toBeInTheDocument();
+  });
+
+  it.each([null, undefined, { status: "expired", errorMessage: "Token refresh failed." }])(
+    "does not offer Slack connect while the integration is unavailable (%o)",
+    (slackConnection) => {
+      connectedAccounts = { ...connectedAccounts, slackConnection };
+      render(<ConnectedAccountsSection />);
+
+      expect(screen.queryByText("Slack")).not.toBeInTheDocument();
+    },
+  );
+
+  it("keeps a disconnect-only Slack row for an existing active connection", async () => {
+    connectedAccounts = { ...connectedAccounts, slackConnection: { status: "active" } };
+    disconnectSlack.mockResolvedValue(undefined);
+    render(<ConnectedAccountsSection />);
+
+    expect(within(accountRow("Slack")).queryByRole("button", { name: "Connect" })).not.toBeInTheDocument();
+    fireEvent.click(rowButton("Slack", "Disconnect"));
+
+    await waitFor(() => expect(disconnectSlack).toHaveBeenCalledTimes(1));
+    expect(connectProviderWithPopup).not.toHaveBeenCalled();
   });
 
   it("connects manual Gmail, Apple Calendar, and Cloze with form payloads", async () => {

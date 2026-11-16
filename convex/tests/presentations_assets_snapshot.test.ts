@@ -101,7 +101,7 @@ test("browser snapshot persistence is revision checked and refreshes the latest 
   const ctx = {
     db: {
       get: async () => project,
-      query: (table: string) => table === "generatedFiles"
+      query: (table: string) => table === "clientStorageUploads" ? queryResult({ userId: "user_1" }) : table === "generatedFiles"
         ? queryResult(generatedFile)
         : queryResult(null),
       patch: async (table: string, id: string, value: Record<string, unknown>) => {
@@ -178,6 +178,7 @@ test("snapshot replacement reclaims an unreferenced prior Convex storage blob", 
           },
           order: () => chain,
           first: async () => {
+            if (table === "clientStorageUploads") return { userId: "user_1" };
             if (table === "generatedFiles" && index === "by_presentation_project") {
               return { _id: "file_1", userId: "user_1" };
             }
@@ -227,6 +228,7 @@ test("snapshot replacement preserves prior blobs that still back a generated fil
           },
           order: () => chain,
           first: async () => {
+            if (table === "clientStorageUploads") return { userId: "user_1" };
             if (table === "generatedFiles" && index === "by_presentation_project") {
               return { _id: "file_1", userId: "user_1" };
             }

@@ -19,6 +19,7 @@ final class RuntimeAppModel {
     var codexReadinessError: String?
     var piReadinessError: String?
     private var configurationChanged = false
+    var pendingPairing: RuntimePairingReview?
     var pairingCommand = ""
     var pairingCode = ""
     var connectionPending = false
@@ -41,7 +42,7 @@ final class RuntimeAppModel {
         piPath = selectedPi
         piWorkingDirectory = directory
         let executable = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/host/nanthai")
-        let process = RuntimeProcessOperator(executable: executable, codexPath: selected, piPath: selectedPi, piWorkingDirectory: directory)
+        let process = RuntimeProcessOperator(executable: executable, codexPath: selected, piPath: selectedPi, piWorkingDirectory: directory, managesCredentials: true)
         operatorProcess = process
         savedWork = SavedWorkStore(commands: process)
         menu = RuntimeMenuStore(
@@ -151,13 +152,12 @@ final class RuntimeAppModel {
         busy = true
         defer { busy = false }
         do {
-            let arguments = pairingCode.isEmpty ? try RuntimePairingCommand(pairingCommand).arguments
+            var arguments = pairingCode.isEmpty ? try RuntimePairingCommand(pairingCommand, allowedOrigins: [try pairingServer().absoluteString]).arguments
                 : ["pair-code", pairingCode, "--server", try pairingServer().absoluteString]
-            _ = try await operatorProcess.output(arguments: arguments)
+            if arguments.count == 3 { arguments += ["--server", try pairingServer().absoluteString] }
+            try await preparePairing(arguments)
             pairingCommand = ""
             pairingCode = ""
-            await refreshReadiness()
-            if isReady && isPaired { await menu.startRuntime() }
         } catch { self.error = error.localizedDescription }
     }
 
@@ -174,8 +174,10 @@ final class RuntimeAppModel {
 
     private func pairingServer() throws -> URL {
         guard let value = Bundle.main.object(forInfoDictionaryKey: "NanthAIControlPlaneURL") as? String,
-              let url = URL(string: value) else { throw RuntimeAppError.invalidPairing }
-        return url
+              let url = URL(string: value),
+              let origin = RuntimePairingCommand.normalizedOrigin(url),
+              let normalized = URL(string: origin) else { throw RuntimeAppError.invalidPairing }
+        return normalized
     }
 
     func connectAccount() {
@@ -198,9 +200,25 @@ final class RuntimeAppModel {
         do {
             guard let pending = browserPairing else { throw RuntimeAppError.invalidPairing }
             let arguments = try pending.claimArguments(from: url)
-            _ = try await operatorProcess.output(arguments: arguments)
+            try await preparePairing(arguments)
             browserPairing = nil
             connectionPending = false
+        } catch { self.error = error.localizedDescription }
+    }
+
+    private func preparePairing(_ arguments: [String]) async throws {
+        let data = try await operatorProcess.output(arguments: ["pair-prepare"],
+            input: JSONEncoder().encode(arguments))
+        pendingPairing = try RuntimePairingReview(data: data, allowedOrigins: [try pairingServer().absoluteString])
+    }
+
+    func confirmPairing() async {
+        guard let pendingPairing, !busy else { return }
+        busy = true
+        defer { busy = false }
+        do {
+            try await operatorProcess.confirmPairing(pendingPairing)
+            self.pendingPairing = nil
             await refreshReadiness()
             if isReady && isPaired { await menu.startRuntime() }
         } catch { self.error = error.localizedDescription }

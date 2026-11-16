@@ -196,6 +196,7 @@ export async function extractImportCandidatesHandler(
     : detectMemoryExclusionRules("Do not save contact details to memory.");
 
   for (const file of args.files) {
+    await ctx.runQuery(internal.storage_uploads.assertOwnedUpload, { userId, storageId: file.storageId });
     const blob = await ctx.storage.get(file.storageId);
     if (!blob) continue;
 

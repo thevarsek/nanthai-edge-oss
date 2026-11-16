@@ -34,6 +34,8 @@ test("Stripe checkout events without Convex user metadata are ignored", () => {
     data: {
       object: {
         id: "cs_123",
+        mode: "payment",
+        payment_status: "paid",
         payment_intent: null,
         metadata: {},
       },

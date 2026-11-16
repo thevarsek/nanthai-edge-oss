@@ -13,6 +13,8 @@ test("extractStripeEntitlementUpdate returns grant payload for checkout completi
     data: {
       object: {
         id: "cs_123",
+        mode: "payment",
+        payment_status: "paid",
         payment_intent: "pi_123",
         metadata: { convexUserId: "user_1" },
       },

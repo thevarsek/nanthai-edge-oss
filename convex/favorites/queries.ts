@@ -35,7 +35,7 @@ export const listFavorites = query({
         [...personaIds].map(async (pid) => {
           try {
             const persona = await ctx.db.get(pid as Id<"personas">);
-            if (persona?.avatarImageStorageId) {
+            if (persona?.userId === auth.userId && persona.avatarImageStorageId) {
               const url = await ctx.storage.getUrl(persona.avatarImageStorageId);
               if (url) personaAvatarUrls.set(pid, url);
             }

@@ -10,6 +10,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { assertOwnedPersonas } from "../lib/persona_ownership";
 import { requireAuth } from "../lib/auth";
 import { validateSameModality } from "../lib/modality_utils";
 import { favoriteParticipant } from "../schema_validators";
@@ -33,6 +34,7 @@ export const createFavorite = mutation({
     const { userId } = await requireAuth(ctx);
     const now = Date.now();
     const participants = normalizeFavoriteParticipants(args);
+    await assertOwnedPersonas(ctx, userId, [args.personaId, ...participants.map(p => p.personaId)]);
     const modelIds = participants.map((participant) => participant.modelId);
     const legacyPersona = legacyPersonaSnapshot(participants);
 
@@ -146,6 +148,7 @@ export const updateFavorite = mutation({
       }
     }
 
+    await assertOwnedPersonas(ctx, userId, [args.personaId, ...(participants ?? []).map(p => p.personaId)]);
     const patch: Record<string, unknown> = { updatedAt: Date.now() };
     if (args.name !== undefined) patch.name = args.name.trim();
     if (participants !== undefined) {

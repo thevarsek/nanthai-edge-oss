@@ -30,6 +30,7 @@ export const PairingClaimSchema = z.strictObject({
   protocolVersion: z.literal(PAIRING_PROTOCOL_VERSION),
   pairingId: IdentifierSchema,
   oneTimeCode: boundedString(128),
+  includeAccountIdentity: z.boolean().optional(),
   hostNonce: boundedString(512),
   hostPublicKey: boundedString(8_192),
   device: z.strictObject({
@@ -49,6 +50,8 @@ export const PairingGrantSchema = z.strictObject({
   credentialId: IdentifierSchema,
   credential: boundedString(8_192),
   issuedAt: TimestampSchema,
+  accountId: z.string().min(1).optional(),
+  accountEmail: z.string().min(1).max(512).optional(),
 });
 
 export const RuntimePresenceSchema = z.strictObject({

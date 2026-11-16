@@ -5,6 +5,7 @@ import type { RemoteMcpConnectionOption } from "@/lib/remoteMcp";
 import { IntegrationRow } from "./PersonaEditorHelpers";
 import { SKILL_INTEGRATION_OPTIONS } from "./SkillMetadataSelection";
 import { useTranslation } from "react-i18next";
+import { isIntegrationOffered } from "@/lib/integrationAvailability";
 
 interface Props {
   selection: SkillMetadataSelection;
@@ -43,7 +44,9 @@ function integrationSlug(integrationId: string): string {
 export function SkillEditorMetadataSection({ selection, remoteMcpConnections = [], onChange }: Props) {
   const { t } = useTranslation();
   const integrationOptions = [
-    ...SKILL_INTEGRATION_OPTIONS.map((option) => ({
+    ...SKILL_INTEGRATION_OPTIONS.filter((option) =>
+      isIntegrationOffered(option.id) || selection.selectedIntegrationIds.has(option.id),
+    ).map((option) => ({
       ...option,
       slug: integrationSlug(option.id),
       remoteMcp: false,

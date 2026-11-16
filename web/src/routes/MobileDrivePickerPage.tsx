@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAction } from "convex/react";
+import { api } from "@convex/_generated/api";
 import { pickGoogleDriveFiles } from "@/lib/googleDrivePicker";
 import {
   androidIntentCallbackUrl,
@@ -30,7 +32,10 @@ function googlePickerAppId(): string {
 function sanitizedMobilePickerUrl(pathname: string, search: string, stripRelayState = false): string {
   const params = new URLSearchParams(search);
   params.delete("access_token");
-  if (stripRelayState) params.delete("state");
+  if (stripRelayState) {
+    params.delete("state");
+    params.delete("code");
+  }
   const nextSearch = params.toString();
   return `${pathname}${nextSearch ? `?${nextSearch}` : ""}`;
 }
@@ -44,6 +49,9 @@ function redirectToCallback(callbackScheme: string, fileIds: string[], state?: s
 
 export function MobileDrivePickerPage() {
   const [message, setMessage] = useState("Opening Google Drive...");
+  const redeemRelayHandle = useAction(api.oauth.google_onepick.redeemGoogleOnePickRelayHandle);
+  // The handle is single-use; share one redemption across effect re-runs.
+  const relayTokenRequest = useRef<Promise<string> | null>(null);
   const config = useMemo(() => {
     const query = readQueryParams();
     const params = readFragmentParams();
@@ -64,6 +72,7 @@ export function MobileDrivePickerPage() {
     }
     return {
       accessToken,
+      relayHandle: relayState?.relayHandle ?? "",
       appId: firstNonEmpty(params.get("app_id"), query.get("app_id"), relayState?.appId, googlePickerAppId()),
       developerKey: firstNonEmpty(
         params.get("developer_key"),
@@ -107,14 +116,19 @@ export function MobileDrivePickerPage() {
         );
         return;
       }
-      if (!config.accessToken || !config.appId || !config.developerKey) {
+      if ((!config.accessToken && !config.relayHandle) || !config.appId || !config.developerKey) {
         setMessage("Google Drive Picker is not configured.");
         scheduleFallbackRedirect();
         return;
       }
       try {
+        relayTokenRequest.current ??= config.accessToken
+          ? Promise.resolve(config.accessToken)
+          : redeemRelayHandle({ relayHandle: config.relayHandle }).then((result) => result.accessToken);
+        const accessToken = await relayTokenRequest.current;
+        if (cancelled) return;
         const picked = await pickGoogleDriveFiles({
-          accessToken: config.accessToken,
+          accessToken,
           appId: config.appId,
           developerKey: config.developerKey,
           multiselect: config.multiselect,
@@ -133,7 +147,7 @@ export function MobileDrivePickerPage() {
       timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
       timeoutIds.clear();
     };
-  }, [config]);
+  }, [config, redeemRelayHandle]);
 
   return (
     <main className="min-h-dvh bg-white text-neutral-950 flex items-center justify-center px-6">

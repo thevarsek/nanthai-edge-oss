@@ -8,6 +8,8 @@ import { mutation } from "../_generated/server";
 import { requireAuth } from "../lib/auth";
 import { pushPlatform, pushProvider } from "../schema_validators";
 
+import { parseWebPushSubscription } from "./subscription";
+
 const apnsEnvironment = v.union(v.literal("sandbox"), v.literal("production"));
 
 /**
@@ -49,6 +51,8 @@ export const registerDeviceToken = mutation({
       });
     }
 
+    if (provider === "webpush" && args.subscription) parseWebPushSubscription(args.subscription);
+
     const tokenPayload = {
       userId,
       token: args.token,
@@ -70,8 +74,10 @@ export const registerDeviceToken = mutation({
       .first();
 
     if (existing) {
-      // Update timestamp (and userId in case token migrated between accounts)
-      // and normalize the payload to remove stale optional fields.
+      if (existing.userId !== userId) {
+        throw new ConvexError({ code: "FORBIDDEN", message: "Device token belongs to another account." });
+      }
+      // Normalize the payload to remove stale optional fields.
       await ctx.db.replace(existing._id, tokenPayload);
       return existing._id;
     }

@@ -117,8 +117,8 @@ test("helper packets bind the canonical source and isolate helper prompts from P
     personaId: "persona-1" as Id<"personas">,
   });
   assert.equal(packet.messages.at(-1)?.messageId, packet.sourceMessageId);
-  assert.equal(packet.instructions.system[0].text, "Extract facts as JSON");
-  assert.deepEqual(packet.instructions.persona, []);
+  assert.equal(packet.instructions.persona[0].text, "Extract facts as JSON");
+  assert.deepEqual(packet.instructions.system, []);
   assert.equal(packet.placement.selectedModel.modelId, "gpt-6-luna");
   assert.equal(packet.command.packetHash, await computeRuntimePacketHash(packet));
 });

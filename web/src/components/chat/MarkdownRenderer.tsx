@@ -13,6 +13,8 @@ import { useTranslation } from "react-i18next";
 import type { Components } from "react-markdown";
 import type { PluggableList } from "unified";
 import { copyToClipboard } from "@/lib/clipboard";
+import { isConvexImageUrl } from "@/lib/markdownImageHost";
+import { MarkdownExternalLink } from "./MarkdownExternalLink";
 
 export interface MarkdownDocumentCitationLink {
   ref: number;
@@ -21,25 +23,6 @@ export interface MarkdownDocumentCitationLink {
 }
 
 // ─── Convex image URL detection ───────────────────────────────────────────────
-
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp"]);
-
-/** Check if a URL is a Convex storage download link pointing to an image file. */
-function isConvexImageUrl(url: string): boolean {
-  try {
-    const parsed = new URL(url);
-    if (!parsed.hostname.endsWith(".convex.site") && !parsed.hostname.endsWith(".convex.cloud")) {
-      return false;
-    }
-    if (parsed.pathname !== "/download") return false;
-    const filename = parsed.searchParams.get("filename");
-    if (!filename) return false;
-    const ext = filename.slice(filename.lastIndexOf(".")).toLowerCase();
-    return IMAGE_EXTENSIONS.has(ext);
-  } catch {
-    return false;
-  }
-}
 
 /** Extract the filename from a convex download URL. */
 function getFilenameFromUrl(url: string): string | null {
@@ -507,14 +490,12 @@ function buildComponents(content: string, documentCitationLinks?: MarkdownDocume
         );
       }
       return (
-        <a
+        <MarkdownExternalLink
           href={href}
-          target="_blank"
-          rel="noopener noreferrer"
           className="text-primary underline underline-offset-2 hover:opacity-80 transition-opacity"
         >
           {children}
-        </a>
+        </MarkdownExternalLink>
       );
     },
 

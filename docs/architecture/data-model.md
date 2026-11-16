@@ -17,6 +17,7 @@ instead of maintaining milestone-era schema snapshots. Shared validators live in
 | [schema_tables_execution.ts](../../convex/schema_tables_execution.ts) | Canonical runs, attempts, commands, events and effects |
 | [schema_tables_external_mcp.ts](../../convex/schema_tables_external_mcp.ts) | External client authorization and receipts |
 | [schema_tables_mcp.ts](../../convex/schema_tables_mcp.ts) | Connections to remote MCP servers |
+| [schema_tables_oauth_flows.ts](../../convex/schema_tables_oauth_flows.ts) | Short-lived, server-bound OAuth attempts (native Drive OnePick PKCE sessions) |
 | [schema_tables_presentations.ts](../../convex/schema_tables_presentations.ts) | Presentation projects and workflows |
 | [schema_tables_reports.ts](../../convex/schema_tables_reports.ts) | Published reports |
 | [schema_tables_runtime.ts](../../convex/schema_tables_runtime.ts) | Cloud workspace/runtime capabilities and state |
@@ -26,6 +27,7 @@ instead of maintaining milestone-era schema snapshots. Shared validators live in
 | [schema_tables_runtime_permissions.ts](../../convex/schema_tables_runtime_permissions.ts) | Native question and permission state |
 | [schema_tables_runtime_routing.ts](../../convex/schema_tables_runtime_routing.ts) | Persona routes and conversation bindings |
 | [schema_tables_search.ts](../../convex/schema_tables_search.ts) | Search orchestration |
+| [schema_tables_storage.ts](../../convex/schema_tables_storage.ts) | Client upload capabilities and server-recorded blob ownership |
 | [schema_tables_user.ts](../../convex/schema_tables_user.ts) | Preferences, credentials, entitlements, schedules and devices |
 
 ## Identity and conversations
@@ -56,6 +58,26 @@ Documents have canonical identity and immutable versions. Generated files/media
 link through ordinary artifact and storage owners. Large extracted text and file
 bytes stay in storage, not oversized lifecycle events. Quote-bearing source records
 support client citations without exposing private native reasoning.
+
+## File upload ownership
+
+Client upload URL mutations retain their existing result shapes. The returned
+`/storage/upload` capability streams to native Convex storage and records the
+resulting blob's owner in `clientStorageUploads` before returning its ID. Chat
+and Knowledge Base sessions can bind only an upload receipt owned by their
+caller. Cleanup uses the bound ID and checks that receipt; client arguments and
+legacy unverified pending sessions never establish deletion authority. Account
+purge removes the receipt records and their remaining blobs.
+
+Existing durable attachments, generated files/media, document versions and Persona
+avatars retain their table ownership. Browser snapshots and memory imports check
+ownership before reading or adopting a client-supplied ID. Invalid browser
+snapshots are not deleted during action error handling, since persistence may
+have committed before an error reached the caller.
+
+Public download URLs remain bearer links without authentication or expiry. This
+is an accepted residual confidentiality risk required for existing chat images on
+all clients; the upload ownership changes do not alter `GET /download`.
 
 ## Execution and local state
 

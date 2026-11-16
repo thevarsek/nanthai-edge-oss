@@ -1,3 +1,5 @@
+import { assertOwnedUploadedStorage, createOwnedUploadUrl, ownsUploadedStorage } from "../lib/storage_ownership";
+import { storageHasDurableReferences } from "../knowledge_base/delete_helpers";
 import { MutationCtx } from "../_generated/server";
 import { Id } from "../_generated/dataModel";
 import { ConvexError } from "convex/values";
@@ -18,7 +20,7 @@ export async function createChatUploadUrlHandler(
 }
 
 export async function createChatUploadUrlForActor(ctx: MutationCtx, userId: string): Promise<ChatUploadSessionResult> {
-  const uploadUrl = await ctx.storage.generateUploadUrl();
+  const uploadUrl = await createOwnedUploadUrl(ctx, userId);
   const uploadSessionId = await ctx.db.insert("chatUploadSessions", {
     userId,
     status: "pending",
@@ -55,6 +57,7 @@ export async function bindChatUploadSessionForActor(ctx: MutationCtx, args: {upl
       message: "Uploaded file is missing.",
     });
   }
+  await assertOwnedUploadedStorage(ctx, userId, args.storageId);
   await ctx.db.patch(args.uploadSessionId, { storageId: args.storageId });
   return null;
 }
@@ -79,13 +82,10 @@ export async function cleanupChatUploadSessionHandler(
     });
   }
 
-  const storageId = session.storageId ?? args.storageId;
+  const storageId = session.storageId;
   if (storageId) {
-    const refs = await ctx.db
-      .query("fileAttachments")
-      .withIndex("by_storage", (q) => q.eq("storageId", storageId))
-      .take(1);
-    if (refs.length === 0) {
+    const owned = await ownsUploadedStorage(ctx, userId, storageId);
+    if (owned && !await storageHasDurableReferences(ctx, userId, storageId)) {
       try {
         await ctx.storage.delete(storageId);
       } catch {
@@ -111,11 +111,8 @@ export async function cleanupExpiredChatUploadSessionsHandler(
   let cleaned = 0;
   for (const session of sessions) {
     if (session.storageId) {
-      const refs = await ctx.db
-        .query("fileAttachments")
-        .withIndex("by_storage", (q) => q.eq("storageId", session.storageId!))
-        .take(1);
-      if (refs.length === 0) {
+      const owned = await ownsUploadedStorage(ctx, session.userId, session.storageId);
+      if (owned && !await storageHasDurableReferences(ctx, session.userId, session.storageId)) {
         try {
           await ctx.storage.delete(session.storageId);
         } catch {

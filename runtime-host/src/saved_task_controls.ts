@@ -1,5 +1,5 @@
 import { createServer, createConnection } from "node:net";
-import { chmod, mkdir, rm } from "node:fs/promises";
+import { chmod, mkdir, rm, lstat } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -26,6 +26,7 @@ export function savedControlPath(root: string, taskId: string) {
 }
 export async function callSavedControl(root: string, taskId: string, value: unknown): Promise<unknown> {
   const request = ControlSchema.parse(value);
+  await validateControlDirectory(join("/tmp", `nanthai-saved-${process.getuid?.() ?? "local"}`));
   return new Promise((resolve, reject) => {
     const socket = createConnection(savedControlPath(root, taskId));
     let data = "";
@@ -71,7 +72,7 @@ export class SavedTaskControls {
     this.path = savedControlPath(root, taskId);
     const directory = join("/tmp", `nanthai-saved-${process.getuid?.() ?? "local"}`);
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    await chmod(directory, 0o700);
+    await validateControlDirectory(directory);
     await rm(this.path, { force: true }); // Per-task lock is already owned.
     this.server = createServer({ allowHalfOpen: true }, socket => {
       let data = "";
@@ -116,5 +117,13 @@ export class SavedTaskControls {
     if (this.server) await new Promise<void>(resolve => this.server!.close(() => resolve()));
     if (this.path) await rm(this.path, { force: true });
     this.requests.clear();
+  }
+}
+
+export async function validateControlDirectory(directory: string): Promise<void> {
+  const info = await lstat(directory);
+  if (!info.isDirectory() || info.isSymbolicLink() || info.uid !== process.getuid?.()
+    || (info.mode & 0o777) !== 0o700) {
+    throw new Error("Saved-task controls require a private directory owned by this user.");
   }
 }

@@ -1,5 +1,5 @@
 import { readFile } from "node:fs/promises";
-import { speakerText } from "./codex_context_projection.ts";
+import { speakerText, untrustedContext, REFERENCE_DATA_INSTRUCTIONS } from "./codex_context_projection.ts";
 import { LocalRuntimePartResolver } from "./local_runtime_part_resolver.ts";
 import { rejectUnboundCapabilities } from "./packet_translation.ts";
 import type { LocalRuntimeTurnPacket } from "./protocol.ts";
@@ -13,7 +13,9 @@ export async function translatePiPacket(packet: LocalRuntimeTurnPacket, director
     const content: Record<string, unknown>[] = [];
     for (const part of message.content) {
       if (part.type === "text") {
-        content.push({ type: "text", text: speakerText(message.name, message.participantId, part.text) });
+        content.push({ type: "text", text: ["tool", "system"].includes(message.role)
+          ? untrustedContext(`NanthAI ${message.role} context`, speakerText(message.name, message.participantId, part.text))
+          : speakerText(message.name, message.participantId, part.text) });
       } else {
         if (!resolver) throw new Error("Pi attachment resolver is unavailable");
         const local = await resolver.resolve(part);
@@ -21,7 +23,7 @@ export async function translatePiPacket(packet: LocalRuntimeTurnPacket, director
         if (part.type === "image") {
           content.push({ type: "image", mimeType: part.mimeType, data: (await readFile(local.path)).toString("base64") });
         } else if (["file", "document", "tool_evidence"].includes(part.type)) {
-          content.push({ type: "text", text: `[NanthAI attachment ${JSON.stringify(part.name)}]\nUse the native read tool for ${JSON.stringify(local.path)}${part.type === "document" && part.extractedText ? `\n${part.extractedText}` : ""}` });
+          content.push({ type: "text", text: untrustedContext("NanthAI attachment", JSON.stringify({ name: part.name, path: local.path, extractedText: part.type === "document" ? part.extractedText ?? null : null })) });
         } else throw new Error(`Pi cannot consume canonical ${part.type}`);
       }
     }
@@ -40,10 +42,12 @@ export async function translatePiPacket(packet: LocalRuntimeTurnPacket, director
   const source = messages[sourceIndex]!;
   const parts = source.content as Array<Record<string, unknown>>;
   return {
-    history: messages.filter((_, index) => index !== sourceIndex),
+    history: [...messages.filter((_, index) => index !== sourceIndex), ...packet.instructions.system.map(item => ({
+      role: "user", content: [{ type: "text", text: untrustedContext(item.name, item.text) }], timestamp: Date.now(),
+    }))],
     message: parts.filter(part => part.type === "text").map(part => String(part.text)).join("\n"),
     images: parts.filter(part => part.type === "image"),
-    instructions: [...packet.instructions.system, ...packet.instructions.persona]
-      .map(item => `## ${item.name}\n${item.text}`).join("\n\n"),
+    instructions: [REFERENCE_DATA_INSTRUCTIONS, ...packet.instructions.persona
+      .map(item => `## ${item.name}\n${item.text}`)].join("\n\n"),
   };
 }

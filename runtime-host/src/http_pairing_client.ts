@@ -2,7 +2,7 @@ import { generateKeyPairSync, randomBytes } from "node:crypto";
 import { release } from "node:os";
 
 import type {
-  DeviceCredential,
+  PairedDeviceCredential,
   PairingClient,
   PairingRequest,
 } from "./control_plane.ts";
@@ -31,7 +31,7 @@ export class HttpPairingClient implements PairingClient {
     this.createIdentity = options.createIdentity ?? createPairingIdentity;
   }
 
-  async pair(request: PairingRequest): Promise<DeviceCredential> {
+  async pair(request: PairingRequest): Promise<PairedDeviceCredential> {
     const controlPlaneUrl = request.controlPlaneUrl ?? this.options.controlPlaneUrl;
     if (!controlPlaneUrl) throw new Error("Use the pairing command from NanthAI, including --server, or set NANTHAI_CONTROL_PLANE_URL.");
     const client = new HttpJsonClient(controlPlaneUrl, {
@@ -42,6 +42,7 @@ export class HttpPairingClient implements PairingClient {
       request.shortCode ? "/runtime-host/v1/pairing/claim-code" : "/runtime-host/v1/pairing/claim",
       {
         protocolVersion: PAIRING_PROTOCOL_VERSION,
+        includeAccountIdentity: true,
         ...(request.shortCode ? { shortCode: request.oneTimeCode } : {
           pairingId: request.pairingId, oneTimeCode: request.oneTimeCode }),
         ...identity,
@@ -65,6 +66,8 @@ export class HttpPairingClient implements PairingClient {
       credentialId: grant.credentialId,
       controlPlaneUrl,
       credential: grant.credential,
+      ...(grant.accountId ? { accountId: grant.accountId } : {}),
+      ...(grant.accountId && grant.accountEmail ? { accountEmail: grant.accountEmail } : {}),
     };
   }
 }

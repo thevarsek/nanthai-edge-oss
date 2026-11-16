@@ -234,6 +234,6 @@ test("scheduled trigger route treats a deletion-marked job as unavailable", asyn
     }),
   );
 
-  assert.equal(response.status, 404);
+  assert.equal(response.status, 401);
   assert.equal(mutations, 0);
 });

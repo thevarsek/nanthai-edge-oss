@@ -7,6 +7,7 @@ import { ProGateWrapper } from "@/hooks/useProGate";
 import { ConnectedAccountsSection } from "@/components/settings/ConnectedAccountsSection";
 import { convexErrorMessage } from "@/lib/convexErrors";
 import { useToast } from "@/components/shared/Toast.context";
+import { isIntegrationOffered } from "@/lib/integrationAvailability";
 
 const INTEGRATIONS = [
   { id: "gmail", labelKey: "integration_gmail" },
@@ -42,12 +43,14 @@ function IntegrationDefaultsCard() {
   const serverDefaultsRef = useRef(serverDefaults);
   const defaults = localDefaults ?? serverDefaults;
   const integrationOptions = useMemo(() => [
-    ...INTEGRATIONS.map((integration) => ({ id: integration.id, label: t(integration.labelKey) })),
+    ...INTEGRATIONS
+      .filter((integration) => isIntegrationOffered(integration.id) || serverDefaults.has(integration.id))
+      .map((integration) => ({ id: integration.id, label: t(integration.labelKey) })),
     ...(Array.isArray(remoteConnections) ? remoteConnections.map((connection) => ({
       id: connection.integrationId,
       label: connection.displayName,
     })) : []),
-  ], [remoteConnections, t]);
+  ], [remoteConnections, serverDefaults, t]);
 
   useEffect(() => {
     serverDefaultsRef.current = serverDefaults;

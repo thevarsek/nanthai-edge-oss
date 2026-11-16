@@ -1,9 +1,17 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SharedDataContext, type SharedDataContextValue } from "@/hooks/useSharedData";
 import { PersonaAvatar } from "./PersonaAvatar";
 
 describe("PersonaAvatar", () => {
+  // Avatar images are only trusted from the app's own Convex deployment.
+  beforeEach(() => {
+    vi.stubEnv("VITE_CONVEX_URL", "https://files.convex.cloud");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("uses the OpenAI logo for Codex and preserves custom avatars", () => {
     const { rerender } = render(<PersonaAvatar personaName="OpenAI Codex" runtimeAdapterId="codex" />);
     expect(screen.getByRole("img", { name: "openai logo" })).toHaveAttribute("src", "/providers/provider_openai.png");

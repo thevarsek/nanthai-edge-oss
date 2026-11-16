@@ -96,6 +96,7 @@ test("extractImportCandidatesHandler handles text, pdf, and docx imports while f
   const ctx = createMockCtx({
     runQuery: async (ref: unknown) => {
       const refKey = getFunctionName(ref as any);
+      if (refKey === "storage_uploads:assertOwnedUpload") return null;
       if (refKey === checkProStatusRef) {
         return true;
       }
@@ -188,6 +189,7 @@ test("extractImportCandidatesHandler caps accepted candidates at 32", async () =
   const ctx = createMockCtx({
     runQuery: async (ref: unknown) => {
       const refKey = getFunctionName(ref as any);
+      if (refKey === "storage_uploads:assertOwnedUpload") return null;
       if (refKey === checkProStatusRef) {
         return true;
       }
@@ -216,4 +218,28 @@ test("extractImportCandidatesHandler caps accepted candidates at 32", async () =
   assert.equal(result.length, 32);
   assert.equal(result[0]?.content, "User topic1 skill1 region1 project1 hobby1.");
   assert.equal(result.at(-1)?.content, "User topic32 skill32 region32 project32 hobby32.");
+});
+
+test("memory import rejects a foreign storage ID before reading bytes or invoking the model", async () => {
+  let reads = 0;
+  const deps = createMemoryImportDepsForTest({
+    requireAuth: async () => ({ userId: "user_1" }),
+    getRequiredUserOpenRouterApiKey: async () => "test-key",
+    callOpenRouterNonStreaming: async () => { throw new Error("unexpected provider call"); },
+  });
+  const ctx = createMockCtx({
+    runQuery: async (ref: unknown) => {
+      const name = getFunctionName(ref as Parameters<typeof getFunctionName>[0]);
+      if (name === checkProStatusRef) return true;
+      if (name === getUserMemoriesRef) return [];
+      if (name === getUserPreferencesRef) return {};
+      if (name === "storage_uploads:assertOwnedUpload") throw new Error("File not owned by user");
+      throw new Error(`unexpected query: ${name}`);
+    },
+    storage: { get: async () => { reads += 1; return new Blob(["private profile"]); } },
+  });
+  await assert.rejects(extractImportCandidatesHandler(ctx, {
+    files: [{ storageId: "foreign" as import("../_generated/dataModel").Id<"_storage">, filename: "profile.txt", mimeType: "text/plain" }],
+  }, deps), /not owned/);
+  assert.equal(reads, 0);
 });

@@ -6,6 +6,7 @@ import { useConnectedAccounts } from "@/hooks/useSharedData";
 import { IntegrationLogo } from "@/components/shared/IntegrationLogo";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { convexErrorMessage } from "@/lib/convexErrors";
+import { shouldShowSlackConnectionRow } from "@/lib/integrationAvailability";
 import {
   clearOAuthContext,
   connectProviderWithPopup,
@@ -473,7 +474,7 @@ export function ConnectedAccountsSection() {
           disabled={notionState.isLoading || isOAuthLocked || isActionBusy("disconnect-notion")}
           isLoading={notionState.isLoading}
         />
-        <ConnectionRow
+        {shouldShowSlackConnectionRow(slackState.isConnected) && <ConnectionRow
           label={t("integration_slack")}
           description={t("slack_description")}
           icon={<IntegrationLogo slug="slack" size={32} />}
@@ -482,7 +483,7 @@ export function ConnectedAccountsSection() {
           onDisconnect={() => { void runAccountAction("disconnect-slack", () => disconnectSlack({})); }}
           disabled={slackState.isLoading || isOAuthLocked || isActionBusy("disconnect-slack")}
           isLoading={slackState.isLoading}
-        />
+        />}
         <ConnectionRow
           label="Apple Calendar"
           description={t("apple_calendar_description")}

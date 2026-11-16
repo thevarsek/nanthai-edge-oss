@@ -1,3 +1,4 @@
+import { assertOwnedStorage } from "../lib/storage_ownership";
 // convex/personas/mutations.ts
 // =============================================================================
 // Persona CRUD mutations.
@@ -70,6 +71,7 @@ export const create = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
+    if (args.avatarImageStorageId) await assertOwnedStorage(ctx, userId, args.avatarImageStorageId);
     await assertOwnedRemoteMcpTargets(ctx, userId, args.integrationOverrides);
     await assertUniquePersonaDisplayName(ctx, userId, args.displayName);
     const now = Date.now();
@@ -146,6 +148,7 @@ export const update = mutation({
   handler: async (ctx, args) => {
     const { userId } = await requireAuth(ctx);
     await requirePro(ctx, userId);
+    if (args.avatarImageStorageId) await assertOwnedStorage(ctx, userId, args.avatarImageStorageId);
     await assertOwnedRemoteMcpTargets(ctx, userId, args.integrationOverrides);
     const persona = await ctx.db.get(args.personaId);
     if (!persona || persona.userId !== userId) {

@@ -30,14 +30,14 @@ test("macOS credential store delegates secret persistence to Keychain", async ()
   const calls: readonly string[][] = [];
   const mutableCalls = calls as string[][];
   let stored: string | null = null;
-  const store = new MacOSKeychainCredentialStore("service", "account", async (args) => {
+  const store = new MacOSKeychainCredentialStore(async (args, input) => {
     mutableCalls.push([...args]);
-    if (args[0] === "add-generic-password") {
-      stored = args.at(-1) ?? null;
+    if (args[0] === "write") {
+      stored = input ?? null;
       return { stdout: "" };
     }
-    if (args[0] === "find-generic-password" && stored !== null) return { stdout: stored };
-    if (args[0] === "delete-generic-password") {
+    if (args[0] === "read" && stored !== null) return { stdout: stored };
+    if (args[0] === "delete") {
       stored = null;
       return { stdout: "" };
     }
@@ -50,7 +50,8 @@ test("macOS credential store delegates secret persistence to Keychain", async ()
   assert.deepEqual(await store.readDeviceCredential(), credential);
   await store.deleteDeviceCredential();
   assert.equal(await store.readDeviceCredential(), null);
-  assert.equal(calls.some((args) => args.includes("-U")), true);
+  assert.ok(calls.some(args => args[0] === "write"));
+  assert.equal(JSON.stringify(calls).includes(credential.credential), false);
 });
 
 test("usage history keeps truthful monthly model and cost buckets without expiry", async () => {
@@ -79,7 +80,7 @@ test("usage history keeps truthful monthly model and cost buckets without expiry
 });
 
 test("Keychain failures never expose subprocess arguments or malformed stored secrets", async () => {
-  const store = new MacOSKeychainCredentialStore("service", "account", async (args) => {
+  const store = new MacOSKeychainCredentialStore(async (args) => {
     throw new Error(`Command failed: security ${args.join(" ")} ${credential.credential}`);
   });
   for (const [operation, action] of [
@@ -96,7 +97,7 @@ test("Keychain failures never expose subprocess arguments or malformed stored se
       return true;
     });
   }
-  const malformed = new MacOSKeychainCredentialStore("service", "account", async () => ({ stdout: "secret-token is not JSON" }));
+  const malformed = new MacOSKeychainCredentialStore(async () => ({ stdout: "secret-token is not JSON" }));
   await assert.rejects(() => malformed.readDeviceCredential(), /^Error: macOS Keychain could not read/);
 });
 

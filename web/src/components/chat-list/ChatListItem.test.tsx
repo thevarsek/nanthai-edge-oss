@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ComponentProps } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ChatListItem, type ChatListItemData } from "./ChatListItem";
 
 vi.mock("react-i18next", () => ({
@@ -44,6 +44,14 @@ function openMenu() {
 }
 
 describe("ChatListItem", () => {
+  // Avatar images are only trusted from the app's own Convex deployment.
+  beforeEach(() => {
+    vi.stubEnv("VITE_CONVEX_URL", "https://files.convex.cloud");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("selects chats in normal mode and toggles checks in edit mode", () => {
     const normal = renderItem();
     fireEvent.click(screen.getByText("Quarterly planning"));

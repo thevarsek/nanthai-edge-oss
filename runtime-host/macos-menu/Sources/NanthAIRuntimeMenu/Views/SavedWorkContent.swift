@@ -61,6 +61,7 @@ public struct SavedWorkContent: View {
             } else { ContentUnavailableView("Select a saved task", systemImage: "text.bubble") }
         }
         .toolbar {
+            Button("Clear finished saved tasks", systemImage: "trash") { Task { await store.clearFinished() } }
             Button("Refresh", systemImage: "arrow.clockwise") { Task { await store.refresh() } }
             Button("Sync saved work", systemImage: "arrow.triangle.2.circlepath") { Task { await store.synchronize() } }
         }

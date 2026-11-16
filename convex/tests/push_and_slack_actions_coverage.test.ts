@@ -80,7 +80,7 @@ test("sendPushNotification skips provider branches with missing credentials", as
           _id: "web_1",
           token: "web-token",
           provider: "webpush",
-          subscription: JSON.stringify({ endpoint: "https://push.example/sub" }),
+          subscription: JSON.stringify({ endpoint: "https://fcm.googleapis.com/sub" }),
         },
       ],
       runMutation: async (_ref: unknown, args: Record<string, unknown>) => {
@@ -121,7 +121,7 @@ test("sendPushNotification deletes stale web push subscriptions", async () => {
             token: "web-token",
             provider: "webpush",
             subscription: JSON.stringify({
-              endpoint: "https://push.example/sub",
+              endpoint: "https://fcm.googleapis.com/sub",
               keys: { p256dh: "p256dh", auth: "auth" },
             }),
           },
@@ -170,7 +170,7 @@ test("sendPushNotification handles web push success, malformed subscriptions, an
             token: "web-success",
             provider: "webpush",
             subscription: JSON.stringify({
-              endpoint: "https://push.example/success",
+              endpoint: "https://fcm.googleapis.com/success",
               keys: { p256dh: "p256dh", auth: "auth" },
             }),
           },
@@ -185,7 +185,7 @@ test("sendPushNotification handles web push success, malformed subscriptions, an
             token: "web-server-error",
             provider: "webpush",
             subscription: JSON.stringify({
-              endpoint: "https://push.example/error",
+              endpoint: "https://fcm.googleapis.com/error",
               keys: { p256dh: "p256dh", auth: "auth" },
             }),
           },

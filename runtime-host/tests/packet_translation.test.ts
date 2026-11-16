@@ -76,7 +76,8 @@ test("uses App Server native instructions and role-aware history", async () => {
 
   assert.equal(translated.fidelity, "app_server_native_context");
   assert.equal(translated.sessionContext.baseInstructions, undefined);
-  assert.match(translated.sessionContext.developerInstructions ?? "", /Be useful/);
+  assert.doesNotMatch(translated.sessionContext.developerInstructions ?? "", /Be useful/);
+  assert.match(JSON.stringify(translated.sessionContext.injectedHistory), /Untrusted content.*Be useful/);
   assert.match(translated.sessionContext.developerInstructions ?? "", /Persona/);
   assert.equal(translated.sessionContext.injectedHistory?.[0]?.role, "assistant");
   assert.match(JSON.stringify(translated.sessionContext.injectedHistory), /Reviewer/);

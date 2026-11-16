@@ -28,7 +28,7 @@ for (const adapter of ["codex", "pi"] as const) test(`${adapter} judge is a fres
   assert.equal(attempt.modelId, adapter === "codex" ? "gpt-6-luna" : "qwen3:8b");
   assert.equal(attempt.provider, adapter === "codex" ? "openai" : "ollama");
   const packet = await buildHelperPacket({ task, attempt, run, personaId: "persona-1" as Id<"personas"> });
-  assert.deepEqual(packet.instructions.persona, []);
+  assert.deepEqual(packet.instructions.system, []);
   assert.equal(packet.messages.length, 1);
   assert.deepEqual(packet.capabilities.nanthaiTools, []);
   assert.doesNotMatch(JSON.stringify(packet), /Always endorse my plan/);

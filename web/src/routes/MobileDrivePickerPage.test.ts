@@ -60,6 +60,19 @@ test("decodeDrivePickerRelayState reads the encoded mobile OAuth relay payload",
   expect(decodeDrivePickerRelayState("state_1")).toBeNull();
 });
 
+test("decodeDrivePickerRelayState accepts a relay handle in place of an access token", () => {
+  const decoded = decodeDrivePickerRelayState(encodedRelayState({
+    request_state: "state_1",
+    relay_handle: "handle_1",
+    callback_scheme: "nanthai-edge",
+  }));
+
+  expect(decoded?.requestState).toBe("state_1");
+  expect(decoded?.relayHandle).toBe("handle_1");
+  expect(decoded?.accessToken).toBeUndefined();
+  expect(decodeDrivePickerRelayState(encodedRelayState({ request_state: "state_1" }))).toBeNull();
+});
+
 function encodedRelayState(payload: Record<string, unknown>): string {
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join("");

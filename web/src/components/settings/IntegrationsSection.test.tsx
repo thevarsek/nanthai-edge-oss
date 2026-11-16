@@ -37,6 +37,23 @@ describe("IntegrationDefaultsCard", () => {
     removeIntegrationDefault.mockResolvedValue(undefined);
   });
 
+  it("does not offer a Slack default while the integration is unavailable", () => {
+    prefs = { integrationDefaults: [] };
+
+    render(<IntegrationDefaultsCard />);
+
+    expect(screen.getByRole("button", { name: /notion/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /slack/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps an existing Slack default visible so it can be cleared", () => {
+    prefs = { integrationDefaults: [{ integrationId: "slack", enabled: true }] };
+
+    render(<IntegrationDefaultsCard />);
+
+    expect(screen.getByRole("button", { name: /slack/i })).toBeInTheDocument();
+  });
+
   it("does not write defaults while preferences are still loading", () => {
     prefs = undefined;
 

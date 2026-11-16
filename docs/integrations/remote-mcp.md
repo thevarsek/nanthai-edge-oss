@@ -28,7 +28,7 @@ Limits are 1 MiB request body, 4 MiB streamed response, 30 seconds at the egress
 
 ## controlled conformance fixture
 
-`web/netlify/functions/mcp-conformance.mts` is a deterministic v2-only server. It covers discovery; tools; prompts; resources; resource templates; bearer and API-key authentication; text, image, audio, embedded, binary, mixed, and oversized results; form and URL multi-round-trip input; Tasks get/update/cancel and terminal/input states; and strict request/header mismatch rejection. Older protocol traffic is rejected.
+`web/test-fixtures/mcpConformance.mts` is a deterministic v2-only server imported by local conformance tests. It lives outside the Netlify functions directory and is not deployed as a public endpoint. It covers discovery; tools; prompts; resources; resource templates; bearer and API-key authentication; text, image, audio, embedded, binary, mixed, and oversized results; form and URL multi-round-trip input; Tasks get/update/cancel and terminal/input states; and strict request/header mismatch rejection. Older protocol traffic is rejected.
 
 The fixture is authoritative in CI. Live public servers are compatibility evidence, never a deterministic test dependency or a source of provider-specific product logic.
 

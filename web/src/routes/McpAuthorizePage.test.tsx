@@ -3,13 +3,13 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 import { McpAuthorizePage } from "./McpAuthorizePage";
 
-const { consent, authorize } = vi.hoisted(() => ({ consent: { value: { name: "QA AI client", redirectUri: "http://127.0.0.1/callback", scopes: ["history:read", "chat:write"] } as object | null }, authorize: vi.fn() }));
+const { consent, authorize } = vi.hoisted(() => ({ consent: { value: { name: "QA AI client", isVerified: false, redirectHost: "127.0.0.1", redirectUri: "http://127.0.0.1/callback", scopes: ["history:read", "chat:write"] } as object | null }, authorize: vi.fn() }));
 vi.mock("@clerk/react", () => ({ useUser: () => ({ user: { primaryEmailAddress: { emailAddress: "review@example.test" } } }) }));
 vi.mock("convex/react", () => ({ useQuery: () => consent.value, useMutation: () => authorize }));
 vi.mock("@convex/_generated/api", () => ({ api: { external_mcp: { oauth: { getConsent: "get", consent: "consent" } } } }));
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 beforeEach(() => {
-  consent.value = { name: "QA AI client", redirectUri: "http://127.0.0.1/callback", scopes: ["history:read", "chat:write"] };
+  consent.value = { name: "QA AI client", isVerified: false, redirectHost: "127.0.0.1", redirectUri: "http://127.0.0.1/callback", scopes: ["history:read", "chat:write"] };
   authorize.mockReset();
 });
 function page() { return render(<MemoryRouter initialEntries={["/mcp/authorize?request=qa"]}><McpAuthorizePage /></MemoryRouter>); }
@@ -39,4 +39,14 @@ it("an expired handshake offers no connect button", () => {
   page();
   expect(screen.getByRole("alert")).toHaveTextContent("external_mcp_restart");
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
+});
+it("identifies the destination prominently and labels impersonated app names as unverified", () => {
+  consent.value = { name: "NanthAI for Mac", isVerified: false, redirectUri: "https://attacker.example/callback", redirectHost: "attacker.example", scopes: ["history:read"] };
+  page();
+  expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("attacker.example");
+  expect(screen.queryByRole("heading", { name: "NanthAI for Mac" })).not.toBeInTheDocument();
+  expect(screen.getByRole("note")).toHaveTextContent("external_mcp_unverified_app");
+  expect(screen.getByRole("note")).toHaveTextContent("external_mcp_unverified_warning");
+  expect(screen.getByText("NanthAI for Mac").parentElement).toHaveTextContent("external_mcp_self_reported_name");
+  expect(authorize).not.toHaveBeenCalled();
 });

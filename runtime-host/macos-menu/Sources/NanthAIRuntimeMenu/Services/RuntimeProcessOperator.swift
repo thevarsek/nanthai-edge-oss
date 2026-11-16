@@ -20,14 +20,20 @@ public enum RuntimeAppError: LocalizedError {
 
 public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSupervising {
     private let executable: URL
+    private let managesCredentials: Bool
+    private var migratedCredential = false
+    private let vault: any RuntimeCredentialStoring
     private var codexPath: String
     private var piPath: String
     private var piWorkingDirectory: String
     private var host: Process?
+    private var hostCredential: Data?
     private var nextRestartAt = Date.distantPast
     private var restartDelay: TimeInterval = 1
 
-    public init(executable: URL, codexPath: String, piPath: String = "", piWorkingDirectory: String = "") {
+    public init(executable: URL, codexPath: String, piPath: String = "", piWorkingDirectory: String = "", managesCredentials: Bool = false, credentialVault: any RuntimeCredentialStoring = RuntimeCredentialVault()) {
+        self.vault = credentialVault
+        self.managesCredentials = managesCredentials
         self.executable = executable
         self.codexPath = codexPath
         self.piPath = piPath
@@ -48,8 +54,21 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
 
     private func execute(arguments: [String], input: Data?) async throws -> Data {
         let executable = executable
-        let environment = environment()
-        return try await Task.detached {
+        var environment = environment()
+        var requestInput = input
+        if managesCredentials {
+            let credential = try vault.read()
+            if let credential, !migratedCredential {
+                try vault.write(credential) // Preserve existing pairings, replace the legacy security-tool ACL.
+                migratedCredential = true
+            }
+            let object: Any = try credential.map { try JSONSerialization.jsonObject(with: $0) } ?? NSNull()
+            requestInput = try JSONSerialization.data(withJSONObject: ["credential": object,
+                "input": input.flatMap { String(data: $0, encoding: .utf8) } ?? ""])
+            environment["NANTHAI_APP_REQUEST_STDIN"] = "1"
+        }
+        let transmittedInput = requestInput
+        let result = try await Task.detached {
             let process = Process()
             process.executableURL = executable
             process.arguments = arguments
@@ -58,10 +77,10 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
             process.standardOutput = stdout
             process.standardError = stderr
             let stdin = Pipe()
-            process.standardInput = input == nil ? FileHandle.nullDevice : stdin
+            process.standardInput = transmittedInput == nil ? FileHandle.nullDevice : stdin
             try process.run()
-            if let input {
-                try stdin.fileHandleForWriting.write(contentsOf: input)
+            if let transmittedInput {
+                try stdin.fileHandleForWriting.write(contentsOf: transmittedInput)
                 try stdin.fileHandleForWriting.close()
             }
             async let data = Task.detached { stdout.fileHandleForReading.readDataToEndOfFile() }.value
@@ -74,6 +93,13 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
             }
             return result.0
         }.value
+        if managesCredentials && arguments.first == "unpair" { try vault.delete() }
+        return result
+    }
+
+    public func confirmPairing(_ review: RuntimePairingReview) throws {
+        try vault.write(JSONEncoder().encode(review))
+        migratedCredential = true
     }
 
     public func start(owner: RuntimeHostOwner) async throws {
@@ -83,6 +109,21 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
             if active.owner == .foregroundCLI { throw RuntimeAppError.runtimeOwnedByTerminal }
             return
         }
+        if managesCredentials {
+            // Persist before finalization. Older servers/offline connections keep the saved pairing.
+            do {
+                let prepared = try await output(arguments: ["credentials", "prepare-rotation"])
+                try vault.write(prepared)
+                let finalized = try await output(arguments: ["credentials", "finish-rotation"])
+                try vault.write(finalized)
+            } catch { FileHandle.standardError.write(Data("NanthAI credential rotation remains pending.\n".utf8)) }
+        }
+        let credentialInput: Data?
+        let currentCredential = try managesCredentials ? vault.read() : nil
+        if managesCredentials {
+            let object: Any = try currentCredential.map { try JSONSerialization.jsonObject(with: $0) } ?? NSNull()
+            credentialInput = try JSONSerialization.data(withJSONObject: ["credential": object])
+        } else { credentialInput = nil }
         let process = Process()
         process.executableURL = executable
         process.arguments = ["runtime", "start", "--owner", owner.rawValue]
@@ -91,7 +132,17 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
         // Canonical status/events carry errors. Never write credentials or native content to a tray log.
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        let stdin = Pipe()
+        if managesCredentials {
+            process.standardInput = stdin
+            process.environment?["NANTHAI_APP_REQUEST_STDIN"] = "1"
+        }
         try process.run()
+        if let credentialInput {
+            try stdin.fileHandleForWriting.write(contentsOf: credentialInput)
+            try stdin.fileHandleForWriting.close()
+        }
+        hostCredential = currentCredential
         host = process
     }
 
@@ -99,6 +150,7 @@ public actor RuntimeProcessOperator: RuntimeOperatorOutputReading, RuntimeHostSu
         guard let host, !host.isRunning else { return }
         if host.terminationStatus == 77 {
             self.host = nil
+            if managesCredentials, try vault.read() == hostCredential { try vault.delete() }
             restartDelay = 1
             throw RuntimeAppError.connectionRevoked
         }

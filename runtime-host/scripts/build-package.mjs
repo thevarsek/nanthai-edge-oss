@@ -27,6 +27,9 @@ await mkdir(dirname(destination), {recursive:true});
 await mkdir(destination, {recursive:false});
 await mkdir(join(destination,'runtime'));
 await copyFile(nodeBinary, join(destination,'runtime/node'));
+execFileSync('swift', ['build', '--package-path', join(root, 'macos-menu'), '-c', 'release', '--product', 'NanthAIKeychain'], {stdio:'inherit'});
+await copyFile(join(root, 'macos-menu/.build/release/NanthAIKeychain'), join(destination, 'runtime/NanthAIKeychain'));
+
 let nodeLicense = join(dirname(nodeBinary),'../LICENSE');
 try { await access(nodeLicense); }
 catch { nodeLicense = join(dirname(nodeBinary),'NODE-LICENSE'); }
@@ -42,7 +45,7 @@ const sourceDocs = 'https://github.com/thevarsek/nanthai-edge-oss/blob/main/';
 await writeFile(join(destination,'README.md'), (await readFile(join(root,'README.md'),'utf8')).replaceAll('](../', `](${sourceDocs}`));
 await copyFile(join(root,'node_modules/zod/LICENSE'),join(destination,'ZOD-LICENSE'));
 await copyFile(join(root,'node_modules/convex/LICENSE'),join(destination,'CONVEX-LICENSE'));
-for (const file of ['nanthai','install.command','uninstall.command','runtime/node']) await chmod(join(destination,file),0o755);
+for (const file of ['nanthai','install.command','uninstall.command','runtime/node','runtime/NanthAIKeychain']) await chmod(join(destination,file),0o755);
 await writeFile(join(destination,'manifest.json'),JSON.stringify({version:pkg.version,node:identity,sourceRevision:execFileSync('git',['describe','--always','--dirty'],{cwd:root,encoding:'utf8'}).trim(),nodeSha256:createHash('sha256').update(await readFile(nodeBinary)).digest('hex')},null,2)+'\n');
 execFileSync('tar',['-czf',`${destination}.tar.gz`,'-C',dirname(destination),destination.split('/').at(-1)]);
 console.log(destination);

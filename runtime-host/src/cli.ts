@@ -1,5 +1,5 @@
 import { setTimeout } from "node:timers/promises";
-import { hostname } from "node:os";
+import { pair, preparePairing, credentialCommand } from "./cli_pairing.ts";
 
 import type { AdapterName, AdapterRegistry } from "./adapter_registry.ts";
 import type {
@@ -28,10 +28,14 @@ export interface RuntimeStatusReader {
 export type CliDependencies = {
   savedWork?: {
     list(): Promise<unknown>;
+    clear?(): Promise<number>;
+    removeDevice?(deviceId: string, server: string): Promise<number>;
     control?(taskId: string, input: unknown): Promise<unknown>;
     continue(taskId: string, prompt: string, signal: AbortSignal): Promise<unknown>;
     sync(signal?: AbortSignal): Promise<number>;
   };
+  rotateCredential?: () => Promise<void>;
+  credentialLockPath?: string;
   credentials: CredentialStore;
   pairing: PairingClient;
   adapters: AdapterRegistry;
@@ -69,20 +73,25 @@ async function dispatch(args: readonly string[], dependencies: CliDependencies) 
     case "saved": {
       if (!dependencies.savedWork) throw new Error("Saved tasks are unavailable in this build");
       if (subcommand === "list") dependencies.stdout(JSON.stringify(await dependencies.savedWork.list()));
+      else if (subcommand === "clear" && dependencies.savedWork.clear) dependencies.stdout(JSON.stringify({ removed: await dependencies.savedWork.clear() }));
       else if (subcommand === "continue" && name && args[3]) {
         await dependencies.savedWork.continue(name, args[3], dependencies.shutdownSignal ?? new AbortController().signal);
         dependencies.stdout(JSON.stringify({ completed: true }));
       } else if (subcommand === "control" && name && dependencies.savedWork.control && dependencies.stdin) {
         dependencies.stdout(JSON.stringify(await dependencies.savedWork.control(name, JSON.parse(await dependencies.stdin()) as unknown)));
       } else if (subcommand === "sync") dependencies.stdout(JSON.stringify({ synchronized: await dependencies.savedWork.sync(dependencies.shutdownSignal) }));
-      else throw new Error("Usage: nanthai saved list | continue <task-id> <follow-up> | sync");
+      else throw new Error("Usage: nanthai saved list | continue <task-id> <follow-up> | sync | clear");
       return 0;
     }
+    case "credentials": return credentialCommand(subcommand, dependencies);
+    case "pair-prepare": return preparePairing(dependencies);
     case "pair": return pair(subcommand, name, dependencies, args.slice(3));
     case "pair-code": return pair(undefined, subcommand, dependencies, args.slice(2), true);
     case "unpair": {
       const status = await dependencies.status.read();
       if (status && dependencies.processExists(status.pid)) throw new Error("Stop the runtime before removing its local pairing credential.");
+      const credential = await dependencies.credentials.readDeviceCredential();
+      if (credential) await dependencies.savedWork?.removeDevice?.(credential.deviceId, credential.controlPlaneUrl);
       await dependencies.credentials.deleteDeviceCredential();
       dependencies.stdout("Local device credential removed. Canonical results remain in NanthAI. Revoke the device in NanthAI settings if retiring this machine.");
       return 0;
@@ -100,40 +109,6 @@ async function usage(month: string | undefined, dependencies: CliDependencies) {
     throw new Error("Usage: nanthai usage [YYYY-MM]");
   }
   dependencies.stdout(JSON.stringify(await dependencies.usage.list(month)));
-  return 0;
-}
-
-async function pair(
-  pairingId: string | undefined,
-  oneTimeCode: string | undefined,
-  dependencies: CliDependencies,
-  options: readonly string[] = [],
-  shortCode = false,
-) {
-  if ((!shortCode && (pairingId === undefined || pairingId.trim().length === 0))
-    || oneTimeCode === undefined || oneTimeCode.trim().length === 0) {
-    throw new Error("Usage: nanthai pair <pairing-id> <one-time-code>");
-  }
-  if (options.length && (options.length !== 2 || options[0] !== "--server")) {
-    throw new Error("Usage: nanthai pair <pairing-id> <one-time-code> [--server <URL>]");
-  }
-  const controlPlaneUrl = options[1];
-  if (controlPlaneUrl) {
-    const url = new URL(controlPlaneUrl);
-    if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) {
-      throw new Error("The pairing server must be an HTTP(S) origin without credentials, query or fragment.");
-    }
-  }
-  const credential = await dependencies.pairing.pair({
-    ...(shortCode ? { shortCode: true as const } : { pairingId: pairingId ?? "" }),
-    oneTimeCode,
-    hostname: hostname(),
-    platform: process.platform,
-    architecture: process.arch,
-    ...(controlPlaneUrl ? { controlPlaneUrl } : {}),
-  });
-  await dependencies.credentials.writeDeviceCredential(credential);
-  dependencies.stdout(JSON.stringify({ paired: true, deviceId: credential.deviceId }));
   return 0;
 }
 

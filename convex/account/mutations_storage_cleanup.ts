@@ -1,3 +1,4 @@
+import { ownsUploadedStorage } from "../lib/storage_ownership";
 import type { MutationCtx } from "../_generated/server";
 import type { PurgeTable } from "./purge_tables";
 import { storageHasDurableReferences } from "../knowledge_base/delete_helpers";
@@ -9,6 +10,16 @@ export async function deleteAccountStorageBatch(
   userId: string,
   batchSize: number,
 ): Promise<number | undefined> {
+  if (tableName === "clientStorageUploads") {
+    const rows = await ctx.db.query("clientStorageUploads")
+      .withIndex("by_user", q => q.eq("userId", userId)).take(batchSize);
+    for (const row of rows) {
+      await ctx.db.delete(row._id);
+      if (row.storageId) await ctx.storage.delete(row.storageId).catch(() => undefined);
+    }
+    return rows.length;
+  }
+
   if (tableName === "runtimeTurnPackets") {
     const rows = await ctx.db
       .query("runtimeTurnPackets")
@@ -50,6 +61,7 @@ export async function deleteAccountStorageBatch(
       await ctx.db.delete(row._id);
       if (
         row.storageId
+        && await ownsUploadedStorage(ctx, userId, row.storageId)
         && !await storageHasDurableReferences(ctx, userId, row.storageId)
       ) {
         await ctx.storage.delete(row.storageId).catch(() => undefined);

@@ -35,15 +35,15 @@ test("scheduled trigger route rejects malformed JSON and missing job ids", async
   assert.equal((await missingJobId.json() as { error: string }).error, "Missing required field: jobId");
 });
 
-test("scheduled trigger route reports missing jobs before authorization checks", async () => {
+test("scheduled trigger route does not distinguish missing jobs from unauthorized jobs", async () => {
   const response = await getScheduledTriggerHandler()({
     auth: { getUserIdentity: async () => ({ subject: "user_1" }) },
     runQuery: async () => null,
     runMutation: async () => undefined,
   }, request(JSON.stringify({ jobId: "job_missing" })));
 
-  assert.equal(response.status, 404);
-  assert.equal((await response.json() as { error: string }).error, "Scheduled job not found");
+  assert.equal(response.status, 401);
+  assert.equal((await response.json() as { error: string }).error, "Unauthorized");
 });
 
 test("scheduled trigger route rejects trigger tokens bound to another job", async () => {
@@ -64,8 +64,8 @@ test("scheduled trigger route rejects trigger tokens bound to another job", asyn
   }));
 
   assert.equal(response.status, 401);
-  assert.equal(mutations[0]?.status, "unauthorized");
-  assert.match(String(mutations[0]?.note), /mismatched trigger token/);
+  assert.equal(queryCount, 1);
+  assert.deepEqual(mutations, []);
 });
 
 test("scheduled trigger route normalizes variables and returns duplicate API results as ok", async () => {
@@ -130,4 +130,20 @@ test("scheduled trigger route logs API trigger failures with request context", a
   assert.equal(mutations[1]?.status, "error");
   assert.equal(mutations[1]?.variables, undefined);
   assert.match(String(mutations[1]?.note), /queue unavailable/);
+});
+
+test("unauthenticated callers neither look up jobs nor write invocation variables", async () => {
+  let reads = 0;
+  let writes = 0;
+  const handler = getScheduledTriggerHandler();
+  for (const jobId of ["known-job", "unknown-job", "invalid-id"]) {
+    const response = await handler({
+      auth: { getUserIdentity: async () => null },
+      runQuery: async () => { reads += 1; throw new Error("unexpected read"); },
+      runMutation: async () => { writes += 1; },
+    }, request(JSON.stringify({ jobId, variables: { text: "untrusted" } })));
+    assert.equal(response.status, 401);
+  }
+  assert.equal(reads, 0);
+  assert.equal(writes, 0);
 });

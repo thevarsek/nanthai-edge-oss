@@ -301,6 +301,8 @@ In practice there are now two runtime shapes:
 
 ## Slack MCP Tools — Hosted MCP And Drift Detection
 
+Slack is currently unavailable for new connections. Clients hide the Slack connect flow and do not offer Slack in integration defaults or skill metadata unless it is already selected; the tools below stay dormant and reachable only through an existing active connection.
+
 Unlike the Google / Microsoft / Notion / Cloze tools which call raw provider REST APIs, Slack tools call Slack's hosted Model Context Protocol endpoint at `https://mcp.slack.com/mcp`. The public NanthAI tool IDs (`slack_send_message`, `slack_search_messages`, etc.) are stable Convex wrappers around the live Slack MCP tools. Wrapper names never change; the MCP tool names and argument schemas they call through to are allowed to evolve on Slack's side.
 
 Key properties of this layer:

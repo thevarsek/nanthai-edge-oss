@@ -1,5 +1,7 @@
 import { callSavedControl, pendingSavedControls } from "./saved_task_controls.ts";
-import { join } from "node:path";
+import { HostStatusStore } from "./host_status_store.ts";
+import { isProcessPresent } from "./host_lock.ts";
+import { join, dirname } from "node:path";
 import type { CredentialStore } from "./credential_store.ts";
 import type { CodexCommandExecutorOptions } from "./codex_command_executor.ts";
 import { reconcileInterruptedResults } from "./saved_task_sync.ts";
@@ -12,6 +14,13 @@ export class SavedWorkService {
     private readonly options: CodexCommandExecutorOptions) {}
   async list() {
     await reconcileInterruptedResults(this.store);
+    const host = await new HostStatusStore(join(dirname(this.store.root), "host-status.json")).read();
+    if (!host || !isProcessPresent(host.pid)) {
+      for (const task of await this.store.tasks()) {
+        if (task.outcome === null) { task.outcome = "interrupted"; await this.store.saveTask(task); }
+      }
+    }
+    await this.store.prune();
     const results = await this.store.results();
     const credential = await this.credentials.readDeviceCredential();
     const tasks = (await this.store.tasks()).filter(task => credential?.deviceId === task.deviceId && credential.controlPlaneUrl === task.server);
@@ -25,6 +34,8 @@ export class SavedWorkService {
         filenames: result.files.map(file => file.filename), artifacts: await this.store.artifactPaths(result.id, result.files, true) }))),
     }))) };
   }
+  async clear() { await this.list(); return this.store.clearFinished(); }
+  async removeDevice(deviceId: string, server: string) { return this.store.removeDevice(deviceId, server); }
   async continue(taskId: string, prompt: string, signal: AbortSignal) {
     await this.list(); // Reconcile only exited local owners, never rerun their work.
     const task = await this.store.task(taskId);

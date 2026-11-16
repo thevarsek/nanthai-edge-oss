@@ -67,6 +67,11 @@ public final class SavedWorkStore {
         } catch { self.error = error.localizedDescription }
         await refresh()
     }
+    public func clearFinished() async {
+        do { _ = try await commands.output(arguments: ["saved", "clear"]) }
+        catch { self.error = error.localizedDescription }
+        await refresh()
+    }
     public func synchronize() async {
         do { _ = try await commands.output(arguments: ["saved", "sync"]) }
         catch { self.error = error.localizedDescription }

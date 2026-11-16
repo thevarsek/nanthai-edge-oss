@@ -21,9 +21,9 @@ export async function buildHelperPacket(context: {
         content: [{ type: "text", partId: `${String(taskId)}-text-${ordinal}`, text: message.content }],
       })),
       instructions: {
-        system: await Promise.all(task.messages.filter(message => message.role === "system").map(async (message, index) => ({
+        system: [], persona: await Promise.all(task.messages.filter(message => message.role === "system").map(async (message, index) => ({
           instructionId: `helper-${index}`, name: "NanthAI helper", text: message.content, sourceHash: await contextDigest(message.content),
-        }))), persona: [],
+        }))),
       },
       context: { assemblerVersion: "m45-helper-v1", canonicalHeadMessageId: String(task.sourceMessageId), references: [], omissions: [], omittedPartCount: 0 },
       capabilities: { nanthaiTools: [], skills: [], integrations: [], adapterNativePolicy: "preserve" },

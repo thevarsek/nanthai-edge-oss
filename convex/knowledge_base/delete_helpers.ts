@@ -75,19 +75,24 @@ export async function storageHasDurableReferences(
   ctx: MutationCtx,
   userId: string,
   storageId: Id<"_storage">,
+  excludedKbUploadSessionId?: Id<"kbUploadSessions">,
 ): Promise<boolean> {
-  const [hasSourceReference, documentVersionRef, uploadSessionRef] = await Promise.all([
+  const [hasSourceReference, documentVersionRef, uploadSessionRef, personaRef] = await Promise.all([
     storageHasSourceReferences(ctx, userId, storageId),
     ctx.db
       .query("documentVersions")
       .withIndex("by_storage", (q) => q.eq("storageId", storageId))
       .first(),
-    ctx.db
-      .query("kbUploadSessions")
-      .withIndex("by_user_storage", (q) => q.eq("userId", userId).eq("storageId", storageId))
-      .first(),
+    excludedKbUploadSessionId
+      ? ctx.db.query("kbUploadSessions")
+        .withIndex("by_user_storage", q => q.eq("userId", userId).eq("storageId", storageId))
+        .take(2).then(rows => rows.find(row => row._id !== excludedKbUploadSessionId) ?? null)
+      : ctx.db.query("kbUploadSessions")
+        .withIndex("by_user_storage", q => q.eq("userId", userId).eq("storageId", storageId))
+        .first(),
+    ctx.db.query("personas").withIndex("by_avatar_storage", q => q.eq("avatarImageStorageId", storageId)).first(),
   ]);
-  return hasSourceReference || !!documentVersionRef || !!uploadSessionRef;
+  return hasSourceReference || !!documentVersionRef || !!uploadSessionRef || !!personaRef;
 }
 
 export async function deleteDocumentForDeletedRecord(

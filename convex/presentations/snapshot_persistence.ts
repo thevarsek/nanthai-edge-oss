@@ -1,3 +1,5 @@
+import { internal } from "../_generated/api";
+import { assertOwnedUploadedStorage } from "../lib/storage_ownership";
 import JSZip from "jszip";
 import type { Id } from "../_generated/dataModel";
 import type { ActionCtx, MutationCtx } from "../_generated/server";
@@ -60,6 +62,7 @@ export async function recordPresentationSnapshotHandler(
   if (project.revision !== args.expectedRevision) {
     throwRevisionConflict("project", project.revision);
   }
+  if (args.kind === "browser_html") await assertOwnedUploadedStorage(ctx, args.userId, args.storageId);
   const previousStorageId = project.snapshotStorageId;
   await ctx.db.patch("presentationProjects", project._id, {
     snapshotStorageId: args.storageId,
@@ -127,26 +130,18 @@ export async function persistBrowserSnapshotHandler(
   if (project.revision !== args.expectedRevision) {
     throwRevisionConflict("project", project.revision);
   }
+  await ctx.runQuery(internal.storage_uploads.assertOwnedUpload, { userId, storageId: args.storageId });
   const blob = await ctx.storage.get(args.storageId);
   if (!blob || blob.size !== args.sizeBytes) {
     throw presentationError("VALIDATION", "The uploaded PowerPoint snapshot is unavailable.");
   }
-  try {
-    await assertPptxBlob(blob);
-    return await ctx.runMutation(recordSnapshotRef, {
-      projectId: project._id,
-      userId,
-      expectedRevision: args.expectedRevision,
-      storageId: args.storageId,
-      sizeBytes: blob.size,
-      kind: "browser_html",
-    });
-  } catch (error) {
-    try {
-      await ctx.storage.delete(args.storageId);
-    } catch {
-      // Best-effort orphan cleanup.
-    }
-    throw error;
-  }
+  await assertPptxBlob(blob);
+  return await ctx.runMutation(recordSnapshotRef, {
+    projectId: project._id,
+    userId,
+    expectedRevision: args.expectedRevision,
+    storageId: args.storageId,
+    sizeBytes: blob.size,
+    kind: "browser_html",
+  });
 }

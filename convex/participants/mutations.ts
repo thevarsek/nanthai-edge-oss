@@ -1,6 +1,7 @@
 import { v, ConvexError } from "convex/values";
 import { mutation, type MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+import { assertOwnedPersonas } from "../lib/persona_ownership";
 import { requireAuth } from "../lib/auth";
 import {
   clearParticipantRuntimeSnapshotHandler,
@@ -58,6 +59,8 @@ export const addParticipant = mutation({
       throw new ConvexError({ code: "NOT_FOUND" as const, message: "Chat not found" });
     }
     await assertNoActiveAutonomousSession(ctx, args.chatId);
+
+    await assertOwnedPersonas(ctx, userId, [args.personaId]);
 
     // Count existing participants
     const existing = await ctx.db
@@ -167,6 +170,8 @@ export const updateParticipant = mutation({
     }
     await assertNoActiveAutonomousSession(ctx, participant.chatId);
 
+    await assertOwnedPersonas(ctx, userId, [args.personaId]);
+
     const patch: Record<string, unknown> = {};
     if (args.modelId !== undefined) patch.modelId = args.modelId;
     if (args.personaId !== undefined) patch.personaId = args.personaId;
@@ -225,6 +230,8 @@ export const setParticipants = mutation({
     if (args.participants.length > 3) {
       throw new ConvexError({ code: "VALIDATION" as const, message: "Maximum 3 participants per chat" });
     }
+
+    await assertOwnedPersonas(ctx, userId, args.participants.map(p => p.personaId));
 
     // Delete existing
     const existing = await ctx.db

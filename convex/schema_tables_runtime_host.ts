@@ -72,6 +72,8 @@ export const runtimeHostSchemaTables = {
     userId: v.string(),
     pairingId: v.string(),
     codeHash: v.string(),
+    // Display-only account label shown on the host's pairing review.
+    accountEmail: v.optional(v.string()),
     status: v.union(
       v.literal("pending"),
       v.literal("claimed"),

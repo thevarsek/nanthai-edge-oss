@@ -141,7 +141,7 @@ test("update persona deletes replaced avatar storage ids", async () => {
       query: (table: string) => ({
         withIndex: () => ({
           first: async () =>
-            table === "advisorRuns"
+            table === "clientStorageUploads" ? { userId: "user_1", storageId: "storage_new" } : table === "advisorRuns"
               ? null
               : table === "purchaseEntitlements"
               ? { userId: "user_1", status: "active" }

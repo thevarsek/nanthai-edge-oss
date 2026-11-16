@@ -1,3 +1,4 @@
+import { uploadStorageHttp } from "./storage_uploads";
 import { telegramWebhook } from "./channels/telegram/http";
 // convex/http.ts
 // =============================================================================
@@ -46,6 +47,10 @@ import {
 } from "./runtime_host/http_model_discovery";
 
 const http = httpRouter();
+http.route({ path: "/storage/upload", method: "POST", handler: httpAction(uploadStorageHttp) });
+http.route({ path: "/storage/upload", method: "OPTIONS", handler: httpAction(async () => new Response(null, {
+  status: 204, headers: { "Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "POST, OPTIONS", "Access-Control-Allow-Headers": "Content-Type" },
+})) });
 http.route({ path: "/channels/telegram/webhook", method: "POST", handler: httpAction(telegramWebhook) });
 
 registerExternalMcpHttp(http);

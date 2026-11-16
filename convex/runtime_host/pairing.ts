@@ -41,6 +41,8 @@ export const pairingGrant = v.object({
   credentialId: v.string(),
   credential: v.string(),
   issuedAt: v.number(),
+  accountId: v.optional(v.string()),
+  accountEmail: v.optional(v.string()),
 });
 
 export async function beginPairingHandler(
@@ -48,6 +50,7 @@ export async function beginPairingHandler(
   userId: string,
   now = Date.now(),
   shortCode = false,
+  accountEmail?: string,
 ) {
   const pairingId = createRuntimeIdentifier("pairing");
   const oneTimeCode = shortCode ? createShortPairingCode() : createPairingCode();
@@ -56,6 +59,7 @@ export async function beginPairingHandler(
     userId,
     pairingId,
     codeHash: await sha256Hex(oneTimeCode),
+    ...(accountEmail ? { accountEmail } : {}),
     status: "pending",
     expiresAt,
     createdAt: now,
@@ -72,9 +76,9 @@ export const beginPairing = mutation({
   args: { shortCode: v.optional(v.boolean()) },
   returns: pairingInitiation,
   handler: async (ctx, args) => {
-    const { userId } = await requireAuth(ctx);
+    const { userId, email } = await requireAuth(ctx);
     await requirePro(ctx, userId);
-    return await beginPairingHandler(ctx, userId, Date.now(), args.shortCode ?? false);
+    return await beginPairingHandler(ctx, userId, Date.now(), args.shortCode ?? false, email);
   },
 });
 
@@ -83,6 +87,7 @@ export async function claimPairingHandler(
   args: {
     pairingId: string;
     oneTimeCode: string;
+    includeAccountIdentity?: boolean;
     hostNonce: string;
     hostPublicKey: string;
     displayName: string;
@@ -148,6 +153,10 @@ export async function claimPairingHandler(
   });
   return {
     protocolVersion: PAIRING_PROTOCOL_VERSION,
+    ...(args.includeAccountIdentity ? {
+      accountId: pairing.userId,
+      ...(pairing.accountEmail ? { accountEmail: pairing.accountEmail } : {}),
+    } : {}),
     pairingId: pairing.pairingId,
     deviceId,
     credentialId,
@@ -161,6 +170,7 @@ export const claimPairing = mutation({
     protocolVersion: v.literal(PAIRING_PROTOCOL_VERSION),
     pairingId: v.string(),
     oneTimeCode: v.string(),
+    includeAccountIdentity: v.optional(v.boolean()),
     hostNonce: v.string(),
     hostPublicKey: v.string(),
     device: v.object({
@@ -173,6 +183,7 @@ export const claimPairing = mutation({
   handler: async (ctx, args) => await claimPairingHandler(ctx, {
     pairingId: args.pairingId,
     oneTimeCode: args.oneTimeCode,
+    ...(args.includeAccountIdentity === undefined ? {} : { includeAccountIdentity: args.includeAccountIdentity }),
     hostNonce: args.hostNonce,
     hostPublicKey: args.hostPublicKey,
     displayName: args.device.displayName,

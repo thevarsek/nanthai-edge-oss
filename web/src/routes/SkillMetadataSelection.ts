@@ -1,4 +1,5 @@
 import type { Id } from "@convex/_generated/dataModel";
+import { isIntegrationOffered } from "@/lib/integrationAvailability";
 
 export const SKILL_INTEGRATION_OPTIONS = [
   { id: "gmail", label: "Gmail" },
@@ -14,6 +15,10 @@ export const SKILL_INTEGRATION_OPTIONS = [
 ] as const;
 
 export type SkillIntegrationId = (typeof SKILL_INTEGRATION_OPTIONS)[number]["id"];
+/** Integration options a skill author can newly pick; unavailable ones only survive on existing skills. */
+export const OFFERED_SKILL_INTEGRATION_OPTIONS = SKILL_INTEGRATION_OPTIONS.filter((option) =>
+  isIntegrationOffered(option.id),
+);
 export type SkillToolProfileId =
   | "docs"
   | "analytics"
@@ -208,7 +213,7 @@ export function inferSkillMetadataSelection(summary: string, instructionsRaw: st
 
   next.usesCodingWorkspace = usesWorkspace && !next.usesDataAnalysis;
 
-  for (const option of SKILL_INTEGRATION_OPTIONS) {
+  for (const option of OFFERED_SKILL_INTEGRATION_OPTIONS) {
     if (text.includes(option.id.replace(/_/g, " ")) || text.includes(option.label.toLowerCase())) {
       next.selectedIntegrationIds.add(option.id);
     }

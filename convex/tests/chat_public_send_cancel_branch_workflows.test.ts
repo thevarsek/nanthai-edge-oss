@@ -119,7 +119,7 @@ test("createChatHandler persists optional web participants and createUploadUrl r
   const uploadUrl = await createUploadUrlHandler(ctx);
 
   assert.equal(chatId, "chats_1");
-  assert.equal(uploadUrl, "https://uploads.example/new");
+  assert.match(uploadUrl, /\/storage\/upload\?token=/);
   assert.equal(inserts.find((entry) => entry.table === "chats")?.value.folderId, "folder_1");
   const participants = inserts.filter((entry) => entry.table === "chatParticipants");
   assert.equal(participants.length, 3);

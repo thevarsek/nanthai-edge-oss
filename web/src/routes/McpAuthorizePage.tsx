@@ -30,8 +30,14 @@ export function McpAuthorizePage() {
       <h1 className="text-xl font-semibold">{t("external_mcp_connect")}</h1>
       <p>{user?.primaryEmailAddress?.emailAddress ?? user?.fullName}</p>
       {busy || consent === undefined ? <p role="status">{t("loading")}</p> : !consent ? <p role="alert">{t("external_mcp_restart")}</p> : <>
-        <h2 className="font-semibold">{consent.name}</h2>
-        <p className="text-sm text-muted break-all">{consent.redirectUri}</p>
+        <h2 className="text-xl font-semibold break-all">{consent.redirectHost}</h2>
+        {!consent.isVerified && <div role="note" className="rounded-lg border border-border p-4 space-y-2">
+          <p className="font-semibold">{t("external_mcp_unverified_app")}</p>
+          <p>{t("external_mcp_unverified_warning")}</p>
+        </div>}
+        <p>{t("external_mcp_redirect_destination")} <strong className="break-all">{consent.redirectHost}</strong></p>
+        <p className="break-all">{t("external_mcp_self_reported_name")} <bdi>{consent.name}</bdi></p>
+        <p className="text-sm break-all">{consent.redirectUri}</p>
         <p>{t("external_mcp_choose_access")}</p>
         <fieldset disabled={busy} className="space-y-3">
           {consent.scopes.map(scope => <label key={scope} className="flex items-start gap-3">

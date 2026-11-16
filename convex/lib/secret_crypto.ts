@@ -43,7 +43,8 @@ export type SecretContext =
     issuerOrOrigin: string;
     transactionId: string;
     field: "pkceVerifier" | "clientSecret";
-  };
+  }
+  | { namespace: "googleOnePickSessions"; userId: string; handleHash: string; field: "pkceVerifier" };
 
 export interface SecretEnvelopeMetadata {
   envelopeVersion: 2;
@@ -168,6 +169,9 @@ function associatedData(context: SecretContext): Uint8Array {
       context.issuerOrOrigin,
       context.field,
     ];
+  } else if (context.namespace === "googleOnePickSessions") {
+    if (!context.handleHash.trim()) throw credentialUnavailable();
+    parts = ["nanthai", context.namespace, context.userId, context.handleHash, context.field];
   } else {
     if (
       !context.connectionId.trim()
@@ -230,6 +234,9 @@ export function mcpOAuthTransactionSecretContext(args: {
   field: "pkceVerifier" | "clientSecret";
 }): SecretContext {
   return { namespace: "mcpOAuthTransactions", ...args };
+}
+export function googleOnePickSessionSecretContext(userId: string, handleHash: string): SecretContext {
+  return { namespace: "googleOnePickSessions", userId, handleHash, field: "pkceVerifier" };
 }
 export function parseSecretEnvelope(value: string): SecretEnvelopeMetadata | null {
   if (!value.startsWith(ENVELOPE_PREFIX)) return null;

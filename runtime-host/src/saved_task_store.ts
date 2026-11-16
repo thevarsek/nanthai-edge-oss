@@ -32,7 +32,8 @@ export class SavedTaskStore {
   taskDirectory(id: string): string { return join(this.root, "tasks", digest(id)); }
   resultDirectory(id: string): string { return join(this.root, "results", digest(id)); }
   async saveTask(task: SavedTask): Promise<void> {
-    await atomicJson(join(this.taskDirectory(task.id), "task.json"), SavedTaskSchema.parse(task));
+    if (!await this.removed(task.id)) await atomicJson(join(this.taskDirectory(task.id), "task.json"), SavedTaskSchema.parse(task));
+    if (await this.removed(task.id)) await rm(this.taskDirectory(task.id), { recursive: true, force: true });
   }
   async task(id: string): Promise<SavedTask> {
     return SavedTaskSchema.parse(JSON.parse(await readFile(join(this.taskDirectory(id), "task.json"), "utf8")));
@@ -40,9 +41,14 @@ export class SavedTaskStore {
   async tasks(): Promise<SavedTask[]> { return this.list("tasks", "task.json", SavedTaskSchema); }
   async results(): Promise<LocalResult[]> { return this.list("results", "result.json", LocalResultSchema); }
   async saveResult(result: LocalResult): Promise<void> {
-    await atomicJson(join(this.resultDirectory(result.id), "result.json"), LocalResultSchema.parse(result));
+    if (!await this.removed(result.taskId)) await atomicJson(join(this.resultDirectory(result.id), "result.json"), LocalResultSchema.parse(result));
+    if (await this.removed(result.taskId)) {
+      await this.markRemoved(result.id);
+      await rm(this.resultDirectory(result.id), { recursive: true, force: true });
+    }
   }
   async artifactPaths(owner: string, files: SavedTask["files"], result = false): Promise<Array<{ filename: string; path: string }>> {
+    if (await this.removed(owner)) return [];
     const paths: Array<{ filename: string; path: string }> = [];
     for (const file of files) {
       const path = join(result ? this.resultDirectory(owner) : this.taskDirectory(owner), "artifacts", `${digest(file.callId)}-${file.filename}`);
@@ -50,6 +56,10 @@ export class SavedTaskStore {
       try { identical = await readFile(path, "utf8") === file.content; } catch (error) { if (!missing(error)) throw error; }
       if (!identical) await atomicText(path, file.content);
       paths.push({ filename: file.filename, path });
+    }
+    if (await this.removed(owner)) {
+      await rm(result ? this.resultDirectory(owner) : this.taskDirectory(owner), { recursive: true, force: true });
+      return [];
     }
     return paths;
   }
@@ -73,6 +83,42 @@ export class SavedTaskStore {
     if (task.outcome) task.output = stripSourceEvidence(task.output);
     task.updatedAt = event.emittedAtMs;
     if (delta !== null || task.outcome !== null || task.nativeSessionId !== null) await this.saveTask(task);
+  }
+  /** Synced terminal work expires after 30 days; pending local results are preserved. */
+  async prune(now = Date.now()): Promise<number> {
+    const results = await this.results();
+    const cutoff = now - 30 * 24 * 60 * 60 * 1000;
+    const expired = (await this.tasks()).filter(task => task.outcome !== null && task.updatedAt < cutoff
+      && results.filter(result => result.taskId === task.id).every(result => result.synced && result.createdAt < cutoff));
+    return this.removeTasks(expired);
+  }
+  async removeDevice(deviceId: string, server: string): Promise<number> {
+    return this.removeTasks((await this.tasks()).filter(task => task.deviceId === deviceId && task.server === server));
+  }
+  async clearFinished(): Promise<number> {
+    const results = await this.results();
+    return this.removeTasks((await this.tasks()).filter(task => task.outcome !== null
+      && !results.some(result => result.taskId === task.id && result.outcome === null)));
+  }
+  private async removeTasks(tasks: SavedTask[]): Promise<number> {
+    const ids = new Set(tasks.map(task => task.id));
+    // Content-free tombstones stop late worker writes from resurrecting deleted data.
+    for (const task of tasks) await this.markRemoved(task.id);
+    for (const result of await this.results()) {
+      if (ids.has(result.taskId)) {
+        await this.markRemoved(result.id);
+        await rm(this.resultDirectory(result.id), { recursive: true, force: true });
+      }
+    }
+    for (const task of tasks) await rm(this.taskDirectory(task.id), { recursive: true, force: true });
+    return tasks.length;
+  }
+  private async markRemoved(id: string): Promise<void> {
+    await atomicJson(join(this.root, "removed", digest(id)), { removed: true });
+  }
+  private async removed(id: string): Promise<boolean> {
+    try { await readFile(join(this.root, "removed", digest(id))); return true; }
+    catch (error) { if (missing(error)) return false; throw error; }
   }
   private async list<T>(folder: string, file: string, schema: z.ZodType<T>): Promise<T[]> {
     let names: string[];

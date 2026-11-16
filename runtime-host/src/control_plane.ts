@@ -9,6 +9,8 @@ export type DeviceCredential = {
   credentialId: string;
   controlPlaneUrl: string;
   credential: string;
+  accountId?: string | undefined;
+  previousCredentialId?: string | undefined;
 };
 
 export type HostRegistration = {
@@ -117,8 +119,11 @@ export type PairingRequest = {
   architecture: string;
 } & ({ pairingId: string; shortCode?: never } | { pairingId?: never; shortCode: true });
 
+/** Display-only account label for pairing review; never persisted with the credential. */
+export type PairedDeviceCredential = DeviceCredential & { accountEmail?: string | undefined };
+
 export interface PairingClient {
-  pair(request: PairingRequest): Promise<DeviceCredential>;
+  pair(request: PairingRequest): Promise<PairedDeviceCredential>;
 }
 
 export class InMemoryControlPlane implements ControlPlaneTransport, ControlPlaneConnection {
