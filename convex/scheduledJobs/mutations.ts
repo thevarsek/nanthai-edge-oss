@@ -10,6 +10,7 @@ import { internal } from "../_generated/api";
 import { Doc, Id } from "../_generated/dataModel";
 import { requireAuth, requirePro } from "../lib/auth";
 import { filterToolIncompatibleOptions } from "../lib/tool_capability";
+import { deleteOpenRouterCredentials } from "../lib/openrouter_credentials";
 import { unknownOwnedRemoteMcpIntegrationIds } from "../mcp/integration_targets";
 import { isGoogleDataAllowedModel } from "../models/google_data_providers";
 import {
@@ -860,18 +861,7 @@ export const deleteApiKey = mutation({
   args: {},
   handler: async (ctx) => {
     const { userId } = await requireAuth(ctx);
-    const existing = await ctx.db
-      .query("userSecrets")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
-    if (existing) {
-      await ctx.db.delete(existing._id);
-    }
-    const exchangeAttempt = await ctx.db
-      .query("openRouterExchangeAttempts")
-      .withIndex("by_user", (q) => q.eq("userId", userId))
-      .unique();
-    if (exchangeAttempt) await ctx.db.delete(exchangeAttempt._id);
+    await deleteOpenRouterCredentials(ctx, userId);
   },
 });
 

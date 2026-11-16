@@ -24,9 +24,9 @@ import {
 } from "./google_capabilities";
 import { getGoogleAccessToken } from "../tools/google/auth";
 import { fetchDriveMetadata } from "../drive_picker/ingest";
+import { revokeGoogleConnection } from "./revocation";
 import {
   assertEncryptedSecret,
-  decryptOAuthCredentials,
   encryptOAuthCredentials,
 } from "../lib/secret_crypto";
 
@@ -37,7 +37,6 @@ import {
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL =
   "https://www.googleapis.com/oauth2/v2/userinfo";
-const GOOGLE_REVOKE_URL = "https://oauth2.googleapis.com/revoke";
 
 // ---------------------------------------------------------------------------
 // exchangeGoogleCode — Action (needs network access for token exchange)
@@ -492,22 +491,8 @@ export const disconnectGoogle = action({
     }
 
     // Attempt to revoke the token with Google (best-effort)
-    try {
-      const credentials = await decryptOAuthCredentials({
-        userId,
-        provider: "google",
-        accessToken: connection.accessToken,
-        refreshToken: connection.refreshToken,
-      });
-      await fetch(
-        GOOGLE_REVOKE_URL,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams({ token: credentials.refreshToken || credentials.accessToken }),
-        },
-      );
-    } catch {
+    const revocation = await revokeGoogleConnection(userId, connection);
+    if (!revocation.revoked) {
       console.warn("Google token revocation failed (non-fatal)");
     }
 

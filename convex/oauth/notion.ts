@@ -9,13 +9,12 @@ import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
 import {
   getNotionOAuthClientConfig,
-  NOTION_OAUTH_REVOKE_URL,
   NOTION_OAUTH_TOKEN_URL,
   notionOAuthHeaders,
 } from "./notion_oauth";
+import { prepareNotionRevocation, sendNotionRevocation } from "./revocation";
 import {
   assertEncryptedSecret,
-  decryptOAuthCredentials,
   encryptOAuthCredentials,
 } from "../lib/secret_crypto";
 export const exchangeNotionCode = action({
@@ -225,37 +224,16 @@ export const disconnectNotion = action({
       throw new ConvexError({ code: "NOT_FOUND", message: "No Notion connection found." });
     }
 
-    let revocation: { headers: Record<string, string>; token: string } | undefined;
-    try {
-      const credentials = await decryptOAuthCredentials({
-        userId,
-        provider: "notion",
-        accessToken: connection.accessToken,
-        refreshToken: connection.refreshToken,
-      });
-      revocation = {
-        headers: notionOAuthHeaders(getNotionOAuthClientConfig()),
-        token: credentials.accessToken,
-      };
-    } catch {
-      // Local deletion remains authoritative if revocation cannot be prepared.
-    }
+    // Local deletion remains authoritative if revocation cannot be prepared.
+    const prepared = await prepareNotionRevocation(userId, connection);
 
     await ctx.runMutation(internal.oauth.notion.deleteConnection, {
       userId,
     });
 
-    if (revocation) {
-      try {
-        await fetch(NOTION_OAUTH_REVOKE_URL, {
-          method: "POST",
-          redirect: "manual",
-          headers: revocation.headers,
-          body: JSON.stringify({ token: revocation.token }),
-        });
-      } catch {
-        // Remote revocation is best effort after the local credential is gone.
-      }
+    // Remote revocation is best effort after the local credential is gone.
+    if ("request" in prepared) {
+      await sendNotionRevocation(prepared.request);
     }
 
     return { success: true };

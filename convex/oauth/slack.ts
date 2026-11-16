@@ -20,9 +20,9 @@ import {
 } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireAuth } from "../lib/auth";
+import { revokeSlackConnection } from "./revocation";
 import {
   assertEncryptedSecret,
-  decryptOAuthCredentials,
   encryptOAuthCredentials,
 } from "../lib/secret_crypto";
 
@@ -334,24 +334,8 @@ export const disconnectSlack = action({
       });
     }
 
-    // Try to revoke the token with Slack (best-effort)
-    try {
-      const credentials = await decryptOAuthCredentials({
-        userId,
-        provider: "slack",
-        accessToken: connection.accessToken,
-        refreshToken: connection.refreshToken,
-      });
-      await fetch("https://slack.com/api/auth.revoke", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${credentials.accessToken}`,
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-      });
-    } catch {
-      // Non-fatal — we still delete the local connection
-    }
+    // Try to revoke the token with Slack (best-effort; local deletion proceeds regardless)
+    await revokeSlackConnection(userId, connection);
 
     await ctx.runMutation(internal.oauth.slack.deleteConnection, { userId });
 

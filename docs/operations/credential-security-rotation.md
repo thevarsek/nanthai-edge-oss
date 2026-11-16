@@ -8,16 +8,17 @@ keys are compromised.
 ## Current deployed state
 
 The format migration and k2 rotation completed in development and production on
-2026-07-31.
+2026-07-31. Production was rotated again to `k3` on 2026-11-16.
 
-- `k2` is the active writer in both environments, using different key material.
+- Production: `k3` is the active writer. All credential rows are `enc:v2`/`k3`
+  (11 OAuth connections, 103 user secrets, no MCP credentials at rotation time).
+  `k1` and `k2` key material has been removed from the production runtime, so
+  backups taken before 2026-11-16 restore with unreadable credential rows and
+  affected users reconnect.
+- Development: `k2` is the active writer with its own key material.
 - Legacy plaintext and `enc:v1` reads are disabled.
 - Automatic rotation is disabled until an operator deliberately starts another
   documented rotation.
-- Production has 62 credential rows: all are `enc:v2`/`k2`, with zero plaintext,
-  `enc:v1`, or `k1` rows.
-- `k1` remains configured only for rollback and restoration of older backups. It
-  must remain until both the 30-day and backup-retention conditions are met.
 - The raw video-upload-token compatibility fields, indexes, migration and cron
   have been removed. Video jobs also no longer persist polling URLs; provider
   endpoints are constructed locally from the stable provider job ID.
@@ -30,9 +31,10 @@ compatibility path for released clients.
 
 | Variable | Purpose |
 |---|---|
-| `CONVEX_SECRET_ENCRYPTION_KEY` | Retained `k1` material for rollback/restored backups. Do not change before the retention gate. |
-| `CONVEX_SECRET_ENCRYPTION_KEY_K2` | Active independently generated 32-byte key material. |
-| `CONVEX_SECRET_ENCRYPTION_ACTIVE_KID` | Active writer key ID; currently `k2`. |
+| `CONVEX_SECRET_ENCRYPTION_KEY` | Legacy `k1` material. Removed from production; retained in development only for older development backups. |
+| `CONVEX_SECRET_ENCRYPTION_KEY_K3` | Production active key material. |
+| `CONVEX_SECRET_ENCRYPTION_KEY_K2` | Development active key material; removed from production. |
+| `CONVEX_SECRET_ENCRYPTION_ACTIVE_KID` | Active writer key ID; currently `k3` in production and `k2` in development. |
 | `CONVEX_SECRET_LEGACY_READ_MODE` | Currently `disabled`; `migrate` is used only during an approved migration or older-backup restore. |
 | `CONVEX_SECRET_ROTATION_MODE` | Currently `disabled`; operators may temporarily select `dry_run` or `rotate`. |
 
@@ -78,6 +80,29 @@ future rotation.
 Rollback after activating k2 changes only the active writer ID back to `k1`.
 Do not deploy code that cannot read k2. Restoring an older database backup may
 require temporarily restoring k1 and setting legacy read mode to `migrate`.
+
+## Targeted credential invalidation
+
+When specific users' stored credentials are exposed, the internal functions in
+`convex/security/credential_invalidation.ts` delete them so each app prompts the
+user to reconnect. They are internal only and are run by the owner with
+`npx convex run`.
+
+- `invalidateUsers { userIds, dryRun }` processes users sequentially (at most 200
+  per call) and returns aggregate counts plus a per-user summary. Run
+  `dryRun: true` first: it only reports what exists and contacts no provider.
+- OpenRouter: deletes the `userSecrets` and `openRouterExchangeAttempts` rows
+  (the same code as `deleteApiKey`); `MISSING_API_KEY` then triggers
+  `reconnect_openrouter`.
+- OAuth: Google, Notion and Slack tokens are revoked at the provider on a best
+  effort basis, then every connection row is deleted (Google also deletes Drive
+  file grants). A provider failure never blocks deletion.
+- Microsoft (no revoke endpoint), Gmail manual and Apple Calendar (app
+  passwords) and Cloze (API key) are deleted only. Their summary entries have
+  `userActionRequired: true`: the user must revoke app access or rotate the
+  credential at the provider. Failed revocations are flagged the same way.
+- Summaries contain provider names, counts and short error codes, never token
+  values.
 
 ## Video upload migration
 
