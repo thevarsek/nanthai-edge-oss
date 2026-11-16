@@ -94,8 +94,11 @@ export const generateEml = createTool({
     const bodyHtml = args.body_html as string | undefined;
     const dateStr = args.date as string | undefined;
 
-    if (!fromEmail) {
-      return { success: false, data: null, error: "Missing 'from_email'" };
+    if (!fromEmail || typeof fromEmail !== "string") {
+      return { success: false, data: null, error: "Missing or invalid 'from_email'" };
+    }
+    if (fromName !== undefined && typeof fromName !== "string") {
+      return { success: false, data: null, error: "'from_name' must be a string" };
     }
     if (!Array.isArray(to) || to.length === 0) {
       return { success: false, data: null, error: "'to' must be a non-empty array" };
@@ -105,6 +108,16 @@ export const generateEml = createTool({
     }
     if (!bodyText || typeof bodyText !== "string") {
       return { success: false, data: null, error: "Missing or invalid 'body_text'" };
+    }
+    if (bodyHtml !== undefined && typeof bodyHtml !== "string") {
+      return { success: false, data: null, error: "'body_html' must be a string" };
+    }
+    const recipients = [...to, ...(Array.isArray(cc) ? cc : [])];
+    if (cc !== undefined && !Array.isArray(cc)) {
+      return { success: false, data: null, error: "'cc' must be an array" };
+    }
+    if (recipients.some((recipient) => !isRecipient(recipient))) {
+      return { success: false, data: null, error: "Each recipient needs a string 'email' and an optional string 'name'" };
     }
 
     const date = dateStr ? new Date(dateStr) : new Date();
@@ -122,6 +135,10 @@ export const generateEml = createTool({
       date,
       messageId: `<${randomUUID()}@nanthai.app>`,
       headers: { "X-Mailer": "NanthAI" },
+      // Content is always inline strings or buffers; never let nodemailer
+      // resolve { path } or { href } values from the action's filesystem or network.
+      disableFileAccess: true,
+      disableUrlAccess: true,
       attachments: attachments.map((attachment) => ({
         filename: attachment.filename,
         contentType: attachment.contentType,
@@ -155,3 +172,9 @@ export const generateEml = createTool({
     };
   },
 });
+
+function isRecipient(value: unknown): value is { name?: string; email: string } {
+  if (!value || typeof value !== "object") return false;
+  const recipient = value as { name?: unknown; email?: unknown };
+  return typeof recipient.email === "string" && (recipient.name === undefined || typeof recipient.name === "string");
+}

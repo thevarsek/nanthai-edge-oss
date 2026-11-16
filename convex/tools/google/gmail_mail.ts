@@ -45,6 +45,9 @@ export const gmailSend = createTool({
     if (!to || !subject || !body) {
       return { success: false, data: null, error: "Missing 'to', 'subject', or 'body'." };
     }
+    if (!hasOnlyStringFields(args, ["to", "subject", "body", "cc", "bcc"])) {
+      return { success: false, data: null, error: "'to', 'subject', 'body', 'cc' and 'bcc' must be strings." };
+    }
 
     let attachments;
     let credentials;
@@ -107,6 +110,9 @@ export const gmailCreateDraft = createTool({
     if (!to || !subject || !body) {
       return { success: false, data: null, error: "Missing 'to', 'subject', or 'body'." };
     }
+    if (!hasOnlyStringFields(args, ["to", "subject", "body", "cc", "bcc"])) {
+      return { success: false, data: null, error: "'to', 'subject', 'body', 'cc' and 'bcc' must be strings." };
+    }
 
     let attachments;
     let credentials;
@@ -143,3 +149,7 @@ export const gmailCreateDraft = createTool({
     };
   },
 });
+
+function hasOnlyStringFields(args: Record<string, unknown>, keys: string[]): boolean {
+  return keys.every((key) => args[key] === undefined || typeof args[key] === "string");
+}

@@ -198,6 +198,8 @@ export async function sendGmailManualMail(
     text: args.isHtml ? undefined : args.body,
     html: args.isHtml ? args.body : undefined,
     attachments: args.attachments,
+    disableFileAccess: true,
+    disableUrlAccess: true,
   });
 }
 
@@ -225,6 +227,8 @@ async function buildRawDraftMessage(
     messageId: `<${randomUUID()}@nanthai.local>`,
     headers: { "X-Mailer": "NanthAI" },
     attachments: args.attachments,
+    disableFileAccess: true,
+    disableUrlAccess: true,
   }).compile();
   // SMTP strips Bcc from the wire by design, but an IMAP-appended draft must
   // retain it so Gmail can show and send the user's configured recipients.
