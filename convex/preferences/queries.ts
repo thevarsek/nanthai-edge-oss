@@ -3,6 +3,7 @@
 // User Preferences & Model Settings queries.
 // =============================================================================
 
+import { storeAccountTokenForUser } from "./store_account_token";
 import { v } from "convex/values";
 import { query, internalQuery } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
@@ -63,6 +64,8 @@ export const getProStatus = query({
     return {
       isPro,
       source: isPro ? "entitlement" : "none",
+      // Clients set this as StoreKit appAccountToken / Play obfuscatedAccountId.
+      storeAccountToken: await storeAccountTokenForUser(identity.userId),
     };
   },
 });

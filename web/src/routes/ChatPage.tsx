@@ -98,6 +98,7 @@ import type { PersonaItem } from "@/components/chat/ChatParticipantPicker.helper
 import type { QueuedAdvisorSnapshot } from "@/advisors/types";
 import { RemoteMcpPendingPanel } from "@/components/chat/RemoteMcpPendingPanel";
 import { RuntimePermissionCards } from "@/components/chat/RuntimePermissionCards";
+import { ToolConfirmationCards } from "@/components/chat/ToolConfirmationCards";
 import {
   RemoteMcpContentPicker,
   type StagedRemoteMcpContext,
@@ -150,7 +151,7 @@ export function ChatPage() {
     }),
     [gmailManualConnection, googleConnection, microsoftConnection, appleCalendarConnection, notionConnection, clozeConnection, slackConnection],
   );
-  const { chat, messages, isLoading, isGenerating, sendMessage, cancelGeneration, retryMessage, updateChat, switchBranchAtFork } = useChat(typedChatId ?? null);
+  const { chat, messages, isLoading, isGenerating, executionRuns, sendMessage, cancelGeneration, retryMessage, updateChat, switchBranchAtFork } = useChat(typedChatId ?? null);
   const collaboration = useCollaboration(typedChatId);
   const activePersona = useMemo(() => {
     const participantPersonaId = convexParticipants.find((participant) => participant.personaId)?.personaId;
@@ -915,9 +916,10 @@ export function ChatPage() {
         collaboration={collaboration}
         autonomousActive={isAutonomousActive}
       /></>}
-      runtimePermissionControl={typedChatId ? (
+      runtimePermissionControl={typedChatId ? (<>
+        <ToolConfirmationCards runs={executionRuns} />
         <RuntimePermissionCards chatId={typedChatId} participants={participants} />
-      ) : null}
+      </>) : null}
       balanceIndicator={<><FundingNotice guidance={selectedFundingGuidance(participants, modelSummaries, personas)} onChooseModel={() => overrides.setActivePanel("participants")} />{typedPrefs?.showBalanceInChat === true ? <BalanceIndicator balance={creditBalance} /> : null}</>}
       turnOverrideChips={<>
         <TurnOverrideChips

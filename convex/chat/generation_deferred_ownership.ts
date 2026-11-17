@@ -1,3 +1,4 @@
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
 import { startAnalyticsRunHandler } from "../analytics_workflows/mutations";
@@ -125,6 +126,25 @@ export async function reconcileGenerationDeferredOwnership(
           executionFence: args.executionFence ?? params.executionFence,
         },
         updatedAt: Date.now(),
+      });
+    }
+    return;
+  }
+
+  if (ownership.kind === "tool_confirmation") {
+    const request = await ctx.db.get(ownership.confirmationId);
+    if (
+      !request
+      || request.userId !== args.userId
+      || request.generationJobId !== args.jobId
+      || request.toolCallId !== ownership.toolCallId
+    ) {
+      throw new Error("GENERATION_TOOL_CONFIRMATION_OWNERSHIP_MISMATCH");
+    }
+    // A decision that landed before the rebind is redelivered to the new event.
+    if (request.status !== "pending" && request.deliveredAt === undefined) {
+      await ctx.scheduler.runAfter(0, internal.tool_confirmations.mutations.redeliver, {
+        confirmationId: request._id,
       });
     }
     return;

@@ -472,6 +472,12 @@ export const messageSource = v.union(
   v.literal("external_mcp_result"),
 );
 
+/** Non-app channel that admitted a user-role message; absent for in-app turns. */
+export const messageTurnOrigin = v.union(
+  v.literal("telegram"),
+  v.literal("external_mcp"),
+);
+
 /** Scheduled job search mode. */
 export const scheduledJobSearchMode = v.union(
   v.literal("none"),
@@ -636,6 +642,7 @@ export const deferredToolKind = v.union(
   v.literal("video_generation"),
   v.literal("analytics_workflow"),
   v.literal("remote_mcp"),
+  v.literal("tool_confirmation"),
 );
 
 export const toolMemoryBranchScope = v.union(

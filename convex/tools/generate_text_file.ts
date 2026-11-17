@@ -7,6 +7,7 @@
 // controls the file extension and MIME type.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import { createTool } from "./registry";
 
 const FORMAT_META: Record<string, { ext: string; mime: string }> = {
@@ -75,10 +76,8 @@ export const generateTextFile = createTool({
     const blob = new Blob([content], { type: meta.mime });
     const storageId = await toolCtx.ctx.storage.store(blob);
 
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(fullFilename)}`
-      : await toolCtx.ctx.storage.getUrl(storageId);
+    const downloadUrl = (await buildDownloadUrl(storageId, fullFilename))
+      ?? await toolCtx.ctx.storage.getUrl(storageId);
 
     return {
       success: true,

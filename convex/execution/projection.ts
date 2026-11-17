@@ -1,4 +1,5 @@
 import type { Doc } from "../_generated/dataModel";
+import type { PendingToolConfirmation } from "../tool_confirmations/validators";
 
 export interface ExecutionProjection {
   runId: string;
@@ -30,14 +31,18 @@ export interface ExecutionProjection {
   needsPermission: boolean;
   terminalOutcome?: Doc<"executionRuns">["terminalOutcome"];
   terminalSummary?: string;
+  /** Tool call waiting for the user's Approve / Deny. */
+  pendingConfirmation?: PendingToolConfirmation;
 }
 
 export function projectExecution(
   run: Doc<"executionRuns">,
   attempt: Doc<"executionAttempts"> | null,
   lastEvent: Doc<"runEvents"> | null,
+  pendingConfirmation?: PendingToolConfirmation,
 ): ExecutionProjection {
   const isTerminal = ["completed", "failed", "cancelled"].includes(run.state);
+  const confirmation = !isTerminal && run.state !== "cancelling" ? pendingConfirmation : undefined;
   return {
     runId: String(run._id),
     attemptId: attempt ? String(attempt._id) : undefined,
@@ -65,8 +70,9 @@ export function projectExecution(
     cancelAvailable: !isTerminal && run.state !== "cancelling",
     cancelRequested: run.cancelRequestedAt !== undefined,
     needsInput: run.state === "waiting_for_input",
-    needsPermission: run.state === "waiting_for_permission",
+    needsPermission: run.state === "waiting_for_permission" || confirmation !== undefined,
     terminalOutcome: run.terminalOutcome,
     terminalSummary: run.terminalSummary,
+    ...(confirmation ? { pendingConfirmation: confirmation } : {}),
   };
 }

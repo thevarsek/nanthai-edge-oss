@@ -2,7 +2,8 @@ import { ConvexError, v } from "convex/values";
 import type { Doc, Id, TableNames } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import { internalMutation, internalQuery, type QueryCtx } from "../_generated/server";
-import { createChatHandler, sendMessageHandler, cancelGenerationHandler } from "../chat/mutations_public_handlers";
+import { createChatHandler, sendMessageForActor, cancelGenerationHandler } from "../chat/mutations_public_handlers";
+import { requireAuth } from "../lib/auth";
 import { listChatsHandler } from "../chat/queries_handlers_public";
 import { listMessagesHandler } from "../chat/queries_message_handlers";
 import { getGeneratedFilesByMessageHandler } from "../chat/queries_generated_files_handlers";
@@ -98,11 +99,13 @@ export const write = internalMutation({ args: { ...args, storageId: v.optional(v
     const participants = await ctx.db.query("chatParticipants").withIndex("by_chat", q => q.eq("chatId", chat._id)).collect();
     const access = turnAccess(grant.accessScopes);
     await assertTurnRoutesAllowed(ctx, grant.userId, participants, access);
-    result = await sendMessageHandler(account, { chatId: chat._id, text: String(input.text), ...(access.tools ? {} : { disableTools: true }), participants: participants.map(participant => ({
+    const { userId } = await requireAuth(account);
+    // MCP-originated turns have no interactive user to confirm consequential tools.
+    result = await sendMessageForActor(account, { chatId: chat._id, text: String(input.text), ...(access.tools ? {} : { disableTools: true }), participants: participants.map(participant => ({
       participantKey: String(participant._id), modelId: participant.modelId, personaId: participant.personaId,
       personaName: participant.personaName, temperature: participant.temperature, maxTokens: participant.maxTokens,
       includeReasoning: participant.includeReasoning, reasoningEffort: participant.reasoningEffort,
-    })) });
+    })) }, userId, { turnOrigin: "external_mcp" });
   } else if (tool.name === "nanthai_run_job") {
     result = await runJobNowHandler(account, { jobId: id(ctx, "scheduledJobs", input.jobId) });
   } else if (tool.name === "nanthai_stop_run") {
@@ -123,7 +126,7 @@ export const write = internalMutation({ args: { ...args, storageId: v.optional(v
       chatId: chat._id, activeBranchLeafId: chat.activeBranchLeafId, expandMultiModelGroups: true,
     });
     const messageId = await ctx.db.insert("messages", { chatId: chat._id, userId: grant.userId,
-      role: "user", source: EXTERNAL_MCP_RESULT_SOURCE, content: `${grant.name} · ${String(input.filename)}\n\n${String(input.content)}`, parentMessageIds, status: "completed", createdAt: Date.now() });
+      role: "user", source: EXTERNAL_MCP_RESULT_SOURCE, turnOrigin: "external_mcp", content: `${grant.name} · ${String(input.filename)}\n\n${String(input.content)}`, parentMessageIds, status: "completed", createdAt: Date.now() });
     const file = await ensureGeneratedFileRow(ctx, { userId: grant.userId, chatId: chat._id, messageId,
       file: { storageId: args.storageId, filename: String(input.filename), mimeType: String(input.mimeType), sizeBytes: metadata.size, toolName: tool.name } });
     await ctx.db.patch(messageId, { generatedFileIds: [file.id] });

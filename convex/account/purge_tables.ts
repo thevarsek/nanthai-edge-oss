@@ -60,6 +60,7 @@ export const PURGE_TABLES = [
   "collaborationWork", "collaborationRequirements", "collaborationReviews",
   "collaborationSettings", "collaborationWorkOperations",
   "drivePickerBatches",
+  "toolConfirmationRequests",
   "messageQueryEmbeddings",
   "messageMemoryContexts",
   "videoOutputUploads",

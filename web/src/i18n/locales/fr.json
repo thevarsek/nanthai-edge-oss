@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "Nom fourni par l’application :",
   "markdown_link_confirm_title": "Ouvrir ce lien ?",
   "markdown_link_confirm_description": "Le texte du lien suggère un autre site. Il ouvre {{host}}.\n\n{{url}}",
-  "markdown_link_confirm_open": "Ouvrir le lien"
+  "markdown_link_confirm_open": "Ouvrir le lien",
+  "tool_confirmation_requests": "Actions en attente de ton approbation",
+  "tool_confirmation_title_external_send": "Approuver l’envoi ?",
+  "tool_confirmation_title_scheduled_job": "Approuver les accès de cette tâche planifiée ?",
+  "tool_confirmation_title_skill_change": "Approuver cette modification de skill ?",
+  "tool_confirmation_help_external_send": "L’IA veut envoyer ceci depuis ton compte connecté à des destinataires que tu n’as pas indiqués dans cette discussion.",
+  "tool_confirmation_help_scheduled_job": "Cette tâche s’exécutera plus tard sans toi, avec les accès indiqués ci-dessous.",
+  "tool_confirmation_help_skill_change": "Les skills modifient le comportement de l’IA dans les prochaines discussions.",
+  "tool_confirmation_recipients": "Destinataires",
+  "tool_confirmation_access": "Accès",
+  "tool_confirmation_web_search": "Recherche web",
+  "tool_confirmation_approve": "Approuver",
+  "tool_confirmation_deny": "Refuser",
+  "tool_confirmation_sending": "Envoi…",
+  "tool_confirmation_countdown": "Refusée automatiquement dans {{time}}",
+  "tool_confirmation_response_failed": "Impossible d’envoyer ta réponse. Réessaie."
 }

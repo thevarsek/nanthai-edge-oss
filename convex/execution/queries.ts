@@ -4,6 +4,8 @@ import type { Id } from "../_generated/dataModel";
 import { requireAuth } from "../lib/auth";
 import { isAccountActive } from "../lib/account_access";
 import { projectExecution } from "./projection";
+import { pendingToolConfirmation } from "../tool_confirmations/validators";
+import { pendingConfirmationsByRun } from "../tool_confirmations/projection";
 
 const executionProjection = v.object({
   runId: v.string(),
@@ -35,6 +37,7 @@ const executionProjection = v.object({
   needsPermission: v.boolean(),
   terminalOutcome: v.optional(v.string()),
   terminalSummary: v.optional(v.string()),
+  pendingConfirmation: v.optional(pendingToolConfirmation),
 });
 
 export const getComponentRefInternal = internalQuery({
@@ -207,6 +210,7 @@ export async function listMyRunProjectionsHandler(ctx: QueryCtx, args: { chatId:
     const runs = [...active, ...recent].filter((run, index, all) =>
       all.findIndex((candidate) => candidate._id === run._id) === index,
     ).slice(0, limit);
+    const confirmations = await pendingConfirmationsByRun(ctx, userId, args.chatId);
     return await Promise.all(runs.map(async (run) => {
       const [attempt, events] = await Promise.all([
         run.activeAttemptId ? ctx.db.get(run.activeAttemptId) : null,
@@ -216,6 +220,6 @@ export async function listMyRunProjectionsHandler(ctx: QueryCtx, args: { chatId:
           .order("desc")
           .take(1),
       ]);
-      return projectExecution(run, attempt, events[0] ?? null);
+      return projectExecution(run, attempt, events[0] ?? null, confirmations.get(String(run._id)));
     }));
 }

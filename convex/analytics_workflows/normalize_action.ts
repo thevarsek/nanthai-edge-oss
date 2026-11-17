@@ -1,5 +1,6 @@
 "use node";
 
+import { buildDownloadUrl } from "../downloads/links";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { internalAction } from "../_generated/server";
@@ -37,10 +38,8 @@ export const normalize = internalAction({
     const exportedFiles: StoredFileEntry[] = await Promise.all(stored.map(async (intent) => {
       const storageId = intent.storageId;
       if (!storageId) throw new Error("ANALYTICS_ARTIFACT_STORAGE_MISSING");
-      const siteUrl = process.env.CONVEX_SITE_URL?.replace(/\/$/, "");
-      const downloadUrl = siteUrl
-        ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(intent.filename)}`
-        : await ctx.storage.getUrl(storageId);
+      const downloadUrl = (await buildDownloadUrl(storageId, intent.filename))
+        ?? await ctx.storage.getUrl(storageId);
       return {
         storageId,
         filename: intent.filename,

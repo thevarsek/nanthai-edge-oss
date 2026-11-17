@@ -64,6 +64,7 @@ const {
     isLoading: false,
     isGenerating: false,
     pendingPermissions: [] as Array<Record<string, unknown>>,
+    executionRuns: [] as Array<Record<string, unknown>>,
     runtimeRoutes: [] as Array<{
       chatParticipantId: string;
       placement: "cloud" | "local";
@@ -166,6 +167,7 @@ vi.mock("@convex/_generated/api", () => ({
         startResearchPaper: "startResearchPaper",
       },
     },
+    tool_confirmations: { mutations: { respond: "respondToToolConfirmation" } },
     runtime_host: {
       permissions: {
         listMyPending: "listMyPendingRuntimePermissions",
@@ -226,6 +228,7 @@ vi.mock("@/hooks/useChat", () => ({
     messages: testState.messages,
     isLoading: testState.isLoading,
     isGenerating: testState.isGenerating,
+    executionRuns: testState.executionRuns,
     sendMessage,
     cancelGeneration,
     retryMessage,
@@ -471,6 +474,7 @@ describe("ChatPage composed send behavior", () => {
     testState.isLoading = false;
     testState.isGenerating = false;
     testState.pendingPermissions = [];
+    testState.executionRuns = [];
     testState.runtimeRoutes = [];
     testState.kbFiles = [];
     testState.overrides.enabledIntegrations = new Set();
@@ -506,6 +510,37 @@ describe("ChatPage composed send behavior", () => {
     view.rerender(<ChatPage />);
 
     expect(screen.getByText("empty-chat-state")).toBeInTheDocument();
+  });
+
+  it("shows a pending tool confirmation from the run projection above the composer", () => {
+    testState.isGenerating = true;
+    testState.executionRuns = [{
+      runId: "run_1",
+      state: "running",
+      placement: "cloud",
+      updatedAt: 1.0,
+      cancelAvailable: true,
+      cancelRequested: false,
+      needsInput: false,
+      needsPermission: true,
+      pendingConfirmation: {
+        confirmationId: "confirmation_1",
+        kind: "external_send",
+        toolName: "gmail_send",
+        summary: "Q3 numbers",
+        recipients: ["mallory@example.com"],
+        integrations: [],
+        expiresAt: Date.now() + 60_000.0,
+        createdAt: 1.0,
+      },
+    }];
+
+    render(<ChatPage />);
+
+    expect(screen.getByText("Q3 numbers")).toBeVisible();
+    expect(screen.getByText("mallory@example.com")).toBeVisible();
+    expect(screen.getByRole("button", { name: "tool_confirmation_approve" })).toBeVisible();
+    expect(screen.getByTitle("stop_generation")).toBeVisible();
   });
 
   it("shows a local Runtime permission card while retaining the canonical composer Stop", async () => {

@@ -374,6 +374,11 @@ export const saveGenerationContinuationArgs = {
         invocationId: v.id("mcpInvocations"),
         toolCallId: v.string(),
       }),
+      v.object({
+        kind: v.literal("tool_confirmation"),
+        confirmationId: v.id("toolConfirmationRequests"),
+        toolCallId: v.string(),
+      }),
     )),
     participant: generationParticipantValidator,
     group: v.object({

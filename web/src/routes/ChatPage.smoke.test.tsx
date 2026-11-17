@@ -70,6 +70,7 @@ vi.mock("@/hooks/useChat", () => ({
     messages: chatState.messages,
     isLoading: chatState.isLoading,
     isGenerating: chatState.isGenerating,
+    executionRuns: [],
     sendMessage: vi.fn(),
     cancelGeneration: vi.fn(),
     retryMessage,

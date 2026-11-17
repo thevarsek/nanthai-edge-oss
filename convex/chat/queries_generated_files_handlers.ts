@@ -1,3 +1,4 @@
+import { buildDownloadUrl } from "../downloads/links";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
 import { optionalAuth } from "../lib/auth";
@@ -35,10 +36,8 @@ async function generatedFileProjection(
   file: Doc<"generatedFiles">,
 ): Promise<GeneratedFileProjection> {
   const storageUrl = await ctx.storage.getUrl(file.storageId);
-  const siteUrl = process.env.CONVEX_SITE_URL?.trim().replace(/\/$/, "");
-  const downloadUrl = siteUrl
-    ? `${siteUrl}/download?storageId=${encodeURIComponent(file.storageId)}&filename=${encodeURIComponent(file.filename)}`
-    : storageUrl;
+  const downloadUrl = (await buildDownloadUrl(file.storageId, file.filename))
+    ?? storageUrl;
   return {
     _id: file._id,
     _creationTime: file._creationTime,

@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "Von der App angegebener Name:",
   "markdown_link_confirm_title": "Diesen Link öffnen?",
   "markdown_link_confirm_description": "Der Linktext deutet auf eine andere Website hin. Geöffnet wird {{host}}.\n\n{{url}}",
-  "markdown_link_confirm_open": "Link öffnen"
+  "markdown_link_confirm_open": "Link öffnen",
+  "tool_confirmation_requests": "Aktionen, die auf deine Freigabe warten",
+  "tool_confirmation_title_external_send": "Senden freigeben?",
+  "tool_confirmation_title_scheduled_job": "Zugriffe dieses geplanten Jobs freigeben?",
+  "tool_confirmation_title_skill_change": "Diese Skill-Änderung freigeben?",
+  "tool_confirmation_help_external_send": "Die KI möchte dies über dein verbundenes Konto an Empfänger senden, die du in diesem Chat nicht genannt hast.",
+  "tool_confirmation_help_scheduled_job": "Dieser Job läuft später ohne dich und nutzt die unten aufgeführten Zugriffe.",
+  "tool_confirmation_help_skill_change": "Skills ändern, wie sich die KI in künftigen Chats verhält.",
+  "tool_confirmation_recipients": "Empfänger",
+  "tool_confirmation_access": "Zugriff",
+  "tool_confirmation_web_search": "Websuche",
+  "tool_confirmation_approve": "Freigeben",
+  "tool_confirmation_deny": "Ablehnen",
+  "tool_confirmation_sending": "Wird gesendet…",
+  "tool_confirmation_countdown": "Wird in {{time}} automatisch abgelehnt",
+  "tool_confirmation_response_failed": "Deine Antwort konnte nicht gesendet werden. Versuche es erneut."
 }

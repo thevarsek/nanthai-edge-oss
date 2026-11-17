@@ -14,6 +14,7 @@ import {
   messageRole,
   messageStatus,
   messageSource,
+  messageTurnOrigin,
   searchPhaseStatus,
   searchPhaseType,
   searchSessionStatus,
@@ -258,6 +259,7 @@ export const coreSchemaTables = {
     mcpInvocationIds: v.optional(v.array(v.id("mcpInvocations"))),
     enabledIntegrations: v.optional(v.array(v.string())),
     source: v.optional(messageSource),
+    turnOrigin: v.optional(messageTurnOrigin),
     sourceJobId: v.optional(v.id("scheduledJobs")),
     sourceStepIndex: v.optional(v.number()),
     sourceStepTitle: v.optional(v.string()),
@@ -589,6 +591,11 @@ export const coreSchemaTables = {
       v.object({
         kind: v.literal("remote_mcp"),
         invocationId: v.id("mcpInvocations"),
+        toolCallId: v.string(),
+      }),
+      v.object({
+        kind: v.literal("tool_confirmation"),
+        confirmationId: v.id("toolConfirmationRequests"),
         toolCallId: v.string(),
       }),
     )),

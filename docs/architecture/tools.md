@@ -152,8 +152,9 @@ limited to 2,048 characters.
 ### File Storage & Download
 
 - Tools store generated files via `ctx.storage.store(blob)` → returns `storageId`
-- `convex/http.ts` exposes a `/download?storageId=X&filename=Y` HTTP endpoint for named file downloads
-- Security: no auth on download endpoint — relies on unguessability of 128-bit random storage IDs (same as Convex's built-in `storage.getUrl()` signed URLs)
+- `convex/http.ts` routes `GET /download` to `convex/downloads/http.ts`. Payloads carry links built by `buildDownloadUrl` in `convex/downloads/links.ts`: `/download?t=<storageId>.<expiry>.<HMAC-SHA256>&filename=Y`, signed with `DOWNLOAD_LINK_SECRET` (at least 32 characters). Expiry is bucketed to the hour and lasts at least 24 hours, because reactive queries do not re-run as time passes; an expired link returns 410 and the file card's next payload carries a fresh one.
+- Clients never build download links. Audio and other storage-only files use `downloads/mutations:createDownloadUrl`, which checks ownership.
+- Transition: released builds that construct `/download?storageId=` themselves keep working without a session until `LEGACY_DOWNLOAD_LINKS_UNTIL` (epoch ms or ISO date; default 2027-02-01; `0` ends it now). After that the legacy form needs a Clerk bearer token for the file's owner. Without `DOWNLOAD_LINK_SECRET`, the server still issues the legacy form.
 
 ### OpenRouter Tool-Call Protocol
 

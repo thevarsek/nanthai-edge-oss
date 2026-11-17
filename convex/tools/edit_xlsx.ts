@@ -4,6 +4,7 @@
 // workbook parts. Complete sheet rebuilding remains an explicit fallback.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import { patchXlsxBlob } from "./xlsx_patcher";
@@ -164,10 +165,8 @@ export const editXlsx = createTool({
 
     const safeTitle = sanitizeFilename(title, "spreadsheet");
     const filename = `${safeTitle}.xlsx`;
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(newStorageId)}&filename=${encodeURIComponent(filename)}`
-      : await toolCtx.ctx.storage.getUrl(newStorageId);
+    const downloadUrl = (await buildDownloadUrl(newStorageId, filename))
+      ?? await toolCtx.ctx.storage.getUrl(newStorageId);
 
     return {
       success: true,

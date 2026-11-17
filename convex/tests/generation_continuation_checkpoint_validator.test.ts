@@ -77,6 +77,7 @@ test("checkpoint validator covers every top-level durable checkpoint field", () 
     "video",
     "drive_picker",
     "remote_mcp",
+    "tool_confirmation",
   ]);
 });
 

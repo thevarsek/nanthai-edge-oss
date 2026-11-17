@@ -330,6 +330,20 @@ export interface ExecutionProjection {
   needsPermission: boolean;
   terminalOutcome?: string;
   terminalSummary?: string;
+  pendingConfirmation?: PendingToolConfirmation;
+}
+
+/** Consequential tool call paused for the user's Approve / Deny. */
+export interface PendingToolConfirmation {
+  confirmationId: string;
+  kind: "external_send" | "scheduled_job" | "skill_change";
+  toolName: string;
+  summary: string;
+  detail?: string;
+  recipients: string[];
+  integrations: string[];
+  expiresAt: number;
+  createdAt: number;
 }
 
 export interface SendMessageArgs extends Record<string, unknown> {

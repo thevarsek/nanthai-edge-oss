@@ -21,6 +21,7 @@
 // small. Legacy `data` (raw base64) is also accepted as a fallback.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import type PptxGenJS from "pptxgenjs";
 import { createTool } from "./registry";
 import {
@@ -732,10 +733,8 @@ export const generatePptx = createTool({
     const safeTitle = sanitizeFilename(title, "presentation");
     const filename = `${safeTitle}.pptx`;
 
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(filename)}`
-      : await toolCtx.ctx.storage.getUrl(storageId);
+    const downloadUrl = (await buildDownloadUrl(storageId, filename))
+      ?? await toolCtx.ctx.storage.getUrl(storageId);
 
     const slideCount = slides.length + (includeTitleSlide ? 1 : 0);
     let message =

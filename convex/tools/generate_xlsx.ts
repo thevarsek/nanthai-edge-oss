@@ -11,6 +11,7 @@
 // deterministic package QA, and a best-effort companion PDF preview.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import { createTool } from "./registry";
 import { buildXlsxBlob } from "./xlsx_writer";
 import { normalizeXlsxOptions } from "./xlsx_validation";
@@ -97,10 +98,8 @@ export const generateXlsx = createTool({
     const safeTitle = sanitizeFilename(title, "spreadsheet");
     const filename = `${safeTitle}.xlsx`;
 
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(filename)}`
-      : url;
+    const downloadUrl = (await buildDownloadUrl(storageId, filename))
+      ?? url;
 
     return {
       success: true,

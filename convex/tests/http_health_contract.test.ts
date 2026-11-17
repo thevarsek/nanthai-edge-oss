@@ -61,7 +61,7 @@ test("download route validates storageId and missing blobs", async () => {
   );
 
   assert.equal(missingParam.status, 400);
-  assert.equal(await missingParam.text(), "Missing storageId parameter");
+  assert.equal(await missingParam.text(), "Missing download token");
   assert.equal(invalidId.status, 400);
   assert.equal(await invalidId.text(), "Invalid storageId");
   assert.equal(notFound.status, 404);

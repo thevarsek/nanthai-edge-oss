@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "Nome fornito dall’app:",
   "markdown_link_confirm_title": "Aprire questo link?",
   "markdown_link_confirm_description": "Il testo del link indica un altro sito. Si apre {{host}}.\n\n{{url}}",
-  "markdown_link_confirm_open": "Apri link"
+  "markdown_link_confirm_open": "Apri link",
+  "tool_confirmation_requests": "Azioni in attesa della tua approvazione",
+  "tool_confirmation_title_external_send": "Approvi l’invio?",
+  "tool_confirmation_title_scheduled_job": "Approvi gli accessi di questa attività pianificata?",
+  "tool_confirmation_title_skill_change": "Approvi questa modifica alla skill?",
+  "tool_confirmation_help_external_send": "L’AI vuole inviare questo contenuto dal tuo account collegato a destinatari che non hai indicato in questa chat.",
+  "tool_confirmation_help_scheduled_job": "L’attività verrà eseguita in seguito senza di te, con gli accessi indicati qui sotto.",
+  "tool_confirmation_help_skill_change": "Le skill cambiano il comportamento dell’AI nelle chat future.",
+  "tool_confirmation_recipients": "Destinatari",
+  "tool_confirmation_access": "Accessi",
+  "tool_confirmation_web_search": "Ricerca web",
+  "tool_confirmation_approve": "Approva",
+  "tool_confirmation_deny": "Nega",
+  "tool_confirmation_sending": "Invio…",
+  "tool_confirmation_countdown": "Negata automaticamente tra {{time}}",
+  "tool_confirmation_response_failed": "Impossibile inviare la risposta. Riprova."
 }

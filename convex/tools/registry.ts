@@ -13,6 +13,9 @@ import type {
 } from "./registry_types";
 import { executeToolCallBatch } from "./tool_call_batch";
 import { canonicalizeRawJson, stableJsonStringify } from "./stable_json";
+import { isConfirmationGatedTool } from "./confirmation_policy";
+import { gateToolConfirmation } from "./confirmation_gate";
+import { serializeToolResult, sha256Hex } from "./registry_serialization";
 export type {
   PresentationToolContext,
   RegisteredTool,
@@ -41,7 +44,9 @@ export function createTool(config: ToolConfig): RegisteredTool {
     },
     execute: config.execute,
     effectPolicy: config.effectPolicy ?? declaredToolEffectPolicy(config.name),
-    mayDefer: config.mayDefer === true,
+    // Confirmation-gated tools can pause the turn, so a round runs at most
+    // one of them (with any other deferrable tool) at a time.
+    mayDefer: config.mayDefer === true || isConfirmationGatedTool(config.name),
   };
 }
 
@@ -142,6 +147,16 @@ export class ToolRegistry {
 
     const canonicalArguments = stableJsonStringify(parsedArgs);
     const inputHash = await sha256Hex(`${tool.name}\n${canonicalArguments}`);
+    const confirmationResult = await gateToolConfirmation(
+      tool.name,
+      parsedArgs,
+      inputHash,
+      toolCall.id,
+      toolCtx,
+    );
+    if (confirmationResult) {
+      return { toolCallId: toolCall.id, result: confirmationResult };
+    }
     const scopeHash = toolCtx.operationScope
       ? await sha256Hex(toolCtx.operationScope)
       : undefined;
@@ -261,13 +276,9 @@ export class ToolRegistry {
   }
 
   /**
-   * Execute all tool calls from a single model response in parallel.
-   * Parallel execution minimises latency when a round contains multiple calls.
-   * Notion also has a provider-wide request gate in the HTTP client so
-   * concurrent generations for the same user stay coordinated across actions.
-   * We still serialize same-round Notion tool calls here to avoid avoidable
-   * queue contention inside one model step.
-   * Returns results in the same order as the input tool calls.
+   * Execute all tool calls from a single model response in parallel, except
+   * same-round Notion/workspace calls and deferrable tools, which serialize
+   * (see tool_call_batch.ts). Results keep the input tool-call order.
    */
   async executeAllToolCalls(
     toolCalls: ToolCall[],
@@ -284,22 +295,4 @@ export class ToolRegistry {
       ),
     );
   }
-}
-
-async function sha256Hex(value: string): Promise<string> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
-  return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-function serializeToolResult(result: ToolResult): string {
-  const serialized = JSON.stringify(result);
-  if (serialized.length <= 700_000) return serialized;
-  return JSON.stringify({
-    success: result.success,
-    data: null,
-    error: result.error,
-    replayTruncated: true,
-  });
 }

@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "Nombre proporcionado por la aplicación:",
   "markdown_link_confirm_title": "¿Abrir este enlace?",
   "markdown_link_confirm_description": "El texto del enlace sugiere otro sitio. Se abrirá {{host}}.\n\n{{url}}",
-  "markdown_link_confirm_open": "Abrir enlace"
+  "markdown_link_confirm_open": "Abrir enlace",
+  "tool_confirmation_requests": "Acciones pendientes de tu aprobación",
+  "tool_confirmation_title_external_send": "¿Apruebas el envío?",
+  "tool_confirmation_title_scheduled_job": "¿Apruebas los accesos de esta tarea programada?",
+  "tool_confirmation_title_skill_change": "¿Apruebas este cambio en la skill?",
+  "tool_confirmation_help_external_send": "La IA quiere enviar esto desde tu cuenta conectada a destinatarios que no has indicado en este chat.",
+  "tool_confirmation_help_scheduled_job": "Esta tarea se ejecutará más tarde sin ti, con los accesos que se indican abajo.",
+  "tool_confirmation_help_skill_change": "Las skills cambian cómo se comporta la IA en chats futuros.",
+  "tool_confirmation_recipients": "Destinatarios",
+  "tool_confirmation_access": "Accesos",
+  "tool_confirmation_web_search": "Búsqueda web",
+  "tool_confirmation_approve": "Aprobar",
+  "tool_confirmation_deny": "Denegar",
+  "tool_confirmation_sending": "Enviando…",
+  "tool_confirmation_countdown": "Se denegará automáticamente en {{time}}",
+  "tool_confirmation_response_failed": "No se pudo enviar tu respuesta. Inténtalo de nuevo."
 }

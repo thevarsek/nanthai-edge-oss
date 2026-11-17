@@ -76,7 +76,7 @@ export const admit=internalMutation({
       attachments:item.uploads?.filter(file=>file!==voiceUpload).map(({storageId,uploadSessionId,type,name,mimeType,sizeBytes})=>({storageId,uploadSessionId,type,name,mimeType,sizeBytes})),
       recordedAudio:voiceUpload ? {storageId:voiceUpload.storageId,transcript:item.transcript ?? "",mimeType:voiceUpload.mimeType,durationMs:voiceUpload.durationMs} : undefined,
       participants:participants.map(participant=>({participantKey:participant._id,modelId:participant.modelId,personaId:participant.personaId,personaName:participant.personaName})),
-      expandMultiModelGroups:true},identity.userId,item.files?.length && item.canonicalMessageId ? {preacceptedMessageId:item.canonicalMessageId} : undefined);
+      expandMultiModelGroups:true},identity.userId,{turnOrigin:"telegram",...(item.files?.length && item.canonicalMessageId ? {preacceptedMessageId:item.canonicalMessageId} : {})});
     await ctx.db.patch(item._id,{status:"accepted",canonicalMessageId:accepted.userMessageId});
     await wakeChannelTurns(ctx,current.chatId);
     if (item.late) await reply("This late Telegram update was accepted after the newer messages already received, in arrival order.");

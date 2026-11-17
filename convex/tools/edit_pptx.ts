@@ -17,6 +17,7 @@
 // internally — keeping the conversation context small.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import type PptxGenJS from "pptxgenjs";
 import { extractPptxContent } from "./pptx_reader";
 import { createTool } from "./registry";
@@ -554,10 +555,8 @@ export const editPptx = createTool({
     const safeTitle = sanitizeFilename(title, "presentation");
     const filename = `${safeTitle}.pptx`;
 
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(newStorageId)}&filename=${encodeURIComponent(filename)}`
-      : await toolCtx.ctx.storage.getUrl(newStorageId);
+    const downloadUrl = (await buildDownloadUrl(newStorageId, filename))
+      ?? await toolCtx.ctx.storage.getUrl(newStorageId);
 
     let message =
       `Presentation edited. Present the download link to the user using markdown: [${filename}](${downloadUrl})`;

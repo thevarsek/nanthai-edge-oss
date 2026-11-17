@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "アプリが申告した名前：",
   "markdown_link_confirm_title": "このリンクを開きますか?",
   "markdown_link_confirm_description": "リンクのテキストは別のサイトを示していますが、実際には {{host}} を開きます。\n\n{{url}}",
-  "markdown_link_confirm_open": "リンクを開く"
+  "markdown_link_confirm_open": "リンクを開く",
+  "tool_confirmation_requests": "承認待ちの操作",
+  "tool_confirmation_title_external_send": "送信を承認しますか？",
+  "tool_confirmation_title_scheduled_job": "このスケジュールジョブのアクセスを承認しますか？",
+  "tool_confirmation_title_skill_change": "このスキルの変更を承認しますか？",
+  "tool_confirmation_help_external_send": "AI が、このチャットであなたが指定していない宛先に、連携アカウントから送信しようとしています。",
+  "tool_confirmation_help_scheduled_job": "このジョブは後であなたの操作なしで実行され、下記のアクセスを使用します。",
+  "tool_confirmation_help_skill_change": "スキルは今後のチャットでの AI の動作を変更します。",
+  "tool_confirmation_recipients": "宛先",
+  "tool_confirmation_access": "アクセス",
+  "tool_confirmation_web_search": "ウェブ検索",
+  "tool_confirmation_approve": "承認",
+  "tool_confirmation_deny": "拒否",
+  "tool_confirmation_sending": "送信中…",
+  "tool_confirmation_countdown": "{{time}} 後に自動的に拒否されます",
+  "tool_confirmation_response_failed": "回答を送信できませんでした。もう一度お試しください。"
 }

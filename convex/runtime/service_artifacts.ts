@@ -14,6 +14,7 @@
 // structure. The sandbox itself stays alive for the rest of the generation.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import { ConvexError } from "convex/values";
 import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
@@ -168,10 +169,8 @@ export async function storeArtifactBytes(
     });
   }
 
-  const siteUrl = process.env.CONVEX_SITE_URL;
-  const downloadUrl = siteUrl
-    ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(filename)}`
-    : await toolCtx.ctx.storage.getUrl(storageId);
+  const downloadUrl = (await buildDownloadUrl(storageId, filename))
+    ?? await toolCtx.ctx.storage.getUrl(storageId);
 
   return {
     storageId,

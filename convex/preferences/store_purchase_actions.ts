@@ -10,6 +10,7 @@ import type { Id } from "../_generated/dataModel";
 import { internalAction, internalMutation, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { upsertPurchaseEntitlement } from "./purchase_entitlement_upsert";
+import { storeAccountTokenForUser } from "./store_account_token";
 import {
   resolveAppStoreConfig,
   resolvePlayConfig,
@@ -45,7 +46,12 @@ export const verifyAppStoreEntitlement = internalAction({
       console.error("[entitlements] Missing APP_STORE_IAP_* / APP_STORE_BUNDLE_ID env vars; App Store purchase not verified");
       return null;
     }
-    const result = await verifyAppStorePurchase(args.transactionId, config);
+    const result = await verifyAppStorePurchase(
+      args.transactionId,
+      config,
+      fetch,
+      await storeAccountTokenForUser(args.userId),
+    );
     if (!result.ok) {
       await recordRejection(ctx, "App Store", args.userId, result, args.attemptId);
       return null;
@@ -75,7 +81,13 @@ export const verifyPlayEntitlement = internalAction({
       console.error("[entitlements] Missing PLAY_* env vars; Play purchase not verified");
       return null;
     }
-    const result = await verifyPlayPurchase(args.purchaseToken, args.productId, config);
+    const result = await verifyPlayPurchase(
+      args.purchaseToken,
+      args.productId,
+      config,
+      fetch,
+      await storeAccountTokenForUser(args.userId),
+    );
     if (!result.ok) {
       await recordRejection(ctx, "Play", args.userId, result, args.attemptId);
       return null;

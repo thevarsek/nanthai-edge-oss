@@ -9,6 +9,7 @@
 
 "use node";
 
+import { buildDownloadUrl } from "../downloads/links";
 import { randomUUID } from "node:crypto";
 import MailComposer from "nodemailer/lib/mail-composer";
 import { createTool } from "./registry";
@@ -154,10 +155,8 @@ export const generateEml = createTool({
       subject.replace(/[^a-zA-Z0-9 _-]/g, "").trim().substring(0, 60) || "email";
     const filename = `${safeSubject}.eml`;
 
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(filename)}`
-      : await toolCtx.ctx.storage.getUrl(storageId);
+    const downloadUrl = (await buildDownloadUrl(storageId, filename))
+      ?? await toolCtx.ctx.storage.getUrl(storageId);
 
     return {
       success: true,

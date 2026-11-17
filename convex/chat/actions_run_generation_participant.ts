@@ -1,4 +1,5 @@
 import { makeFunctionReference } from "convex/server";
+import { bindDeferredToolConfirmation } from "../tool_confirmations/deferred_checkpoint";
 import { ConvexError } from "convex/values";
 import { Id } from "../_generated/dataModel";
 import { ActionCtx } from "../_generated/server";
@@ -631,6 +632,8 @@ export async function generateForParticipant(
     authorizationSource: args.analyticsSource === "scheduled_job"
       ? "configured_automation"
       : "explicit_user_turn",
+    // Only a Workflow-driven turn can durably pause for a confirmation.
+    confirmationAvailable: Boolean(args.workflowResumeEventId && continuationHandoff),
     generationKey: String(participant.jobId),
     // Stable across a retry/recovery of this action, unlike hydrated request
     // messages (which may contain refreshed signed URLs). The generation loop
@@ -1788,6 +1791,9 @@ export async function generateForParticipant(
       const remoteMcpDeferred = genResult.deferredToolRound.deferredResults.find(
         (entry) => entry.payload.kind === "remote_mcp",
       );
+      const confirmationDeferred = genResult.deferredToolRound.deferredResults.find(
+        (entry) => entry.payload.kind === "tool_confirmation",
+      );
       const deferredCheckpoint: GenerationContinuationCheckpoint = {
         deferredResumeEventId: args.workflowResumeEventId,
         participant,
@@ -1877,6 +1883,35 @@ export async function generateForParticipant(
           deferredCheckpoint,
           analyticsRunId as Id<"analyticsWorkflowRuns">,
         );
+        return {
+          deferredForSubagents: false,
+          cancelled: false,
+          failed: false,
+          continued: true,
+          usage: genResult.totalUsage,
+          generationId: result.generationId,
+          latencies: latencyMetrics,
+        };
+      }
+      if (confirmationDeferred) {
+        const confirmationId = (
+          confirmationDeferred.payload.data as { confirmationId?: unknown } | undefined
+        )?.confirmationId;
+        if (typeof confirmationId !== "string") {
+          throw new ConvexError({
+            code: "INTERNAL_ERROR" as const,
+            message: "Tool confirmation paused without a confirmation request.",
+          });
+        }
+        await bindDeferredToolConfirmation(ctx, {
+          chatId: args.chatId,
+          userId: args.userId,
+          messageId: participant.messageId,
+          jobId: participant.jobId,
+          workflowResumeEventId: args.workflowResumeEventId,
+          executionAttemptId: args.executionAttemptId,
+          executionFence: args.executionFence,
+        }, deferredCheckpoint, { confirmationId, toolCallId: confirmationDeferred.toolCallId });
         return {
           deferredForSubagents: false,
           cancelled: false,

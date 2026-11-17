@@ -27,7 +27,8 @@ export interface ToolDeferredPayload {
     | "presentation_workflow"
     | "video_generation"
     | "analytics_workflow"
-    | "remote_mcp";
+    | "remote_mcp"
+    | "tool_confirmation";
   data: unknown;
 }
 
@@ -72,6 +73,11 @@ export interface ToolExecutionContext {
   sandboxSessionId?: string;
   workspaceSandbox?: unknown;
   workspaceSandboxCleanup?: () => Promise<void>;
+  /**
+   * True only when this turn can durably pause for a user confirmation
+   * (an interactive chat generation driven by a Workflow resume event).
+   */
+  confirmationAvailable?: boolean;
 }
 
 export interface ToolConfig {

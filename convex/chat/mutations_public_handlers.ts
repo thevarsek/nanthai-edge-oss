@@ -216,7 +216,11 @@ export async function sendMessageForActor(
   ctx: MutationCtx,
   args: SendMessageArgs,
   userId: string,
-  internalInput?: { preacceptedMessageId: Id<"messages"> },
+  internalInput?: {
+    preacceptedMessageId?: Id<"messages">;
+    /** Non-app channel that admitted this turn; such turns cannot confirm tools. */
+    turnOrigin?: "telegram" | "external_mcp";
+  },
 ): Promise<SendMessageResult> {
 
   const requestedComplexity = Math.max(1, Math.min(3, Math.round(args.complexity ?? 1)));
@@ -398,8 +402,9 @@ export async function sendMessageForActor(
     args.recordedAudio?.transcript?.trim() ||
     (audioAttachmentCount > 0 ? trimmedText : undefined);
 
-  const preaccepted = internalInput ? await ctx.db.get(internalInput.preacceptedMessageId) : null;
-  if (internalInput && (!preaccepted || preaccepted.userId !== userId || preaccepted.chatId !== args.chatId || preaccepted.role !== "user" || preaccepted.status !== "pending")) throw new ConvexError({code: "VALIDATION", message: "The retained input is no longer pending."});
+  const preacceptedMessageId = internalInput?.preacceptedMessageId;
+  const preaccepted = preacceptedMessageId ? await ctx.db.get(preacceptedMessageId) : null;
+  if (preacceptedMessageId && (!preaccepted || preaccepted.userId !== userId || preaccepted.chatId !== args.chatId || preaccepted.role !== "user" || preaccepted.status !== "pending")) throw new ConvexError({code: "VALIDATION", message: "The retained input is no longer pending."});
   // Media reserved its position before preparation. Keep a newer follow-up
   // selected when admitting that earlier input into ordinary or team chat.
   const preservedBranchLeafId = preaccepted && chat.activeBranchLeafId !== preaccepted._id
@@ -420,6 +425,7 @@ export async function sendMessageForActor(
     voiceCloning: args.voiceCloning,
     presentationContext: args.presentationContext,
     mcpInvocationIds: mcpInvocationIds.length > 0 ? mcpInvocationIds : undefined,
+    turnOrigin: internalInput?.turnOrigin,
     createdAt: preaccepted?.createdAt ?? now,
     inputProcessingNotice: undefined,
   };

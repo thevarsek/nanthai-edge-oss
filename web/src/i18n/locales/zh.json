@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "应用提供的名称：",
   "markdown_link_confirm_title": "要打开此链接吗?",
   "markdown_link_confirm_description": "链接文字显示的是另一个网站,实际会打开 {{host}}。\n\n{{url}}",
-  "markdown_link_confirm_open": "打开链接"
+  "markdown_link_confirm_open": "打开链接",
+  "tool_confirmation_requests": "等待你批准的操作",
+  "tool_confirmation_title_external_send": "批准发送？",
+  "tool_confirmation_title_scheduled_job": "批准此定时任务的访问权限？",
+  "tool_confirmation_title_skill_change": "批准此技能更改？",
+  "tool_confirmation_help_external_send": "AI 想从你已连接的账户向你未在此聊天中指定的收件人发送此内容。",
+  "tool_confirmation_help_scheduled_job": "此任务稍后会在你不参与的情况下运行，并使用下列访问权限。",
+  "tool_confirmation_help_skill_change": "技能会改变 AI 在以后聊天中的行为。",
+  "tool_confirmation_recipients": "收件人",
+  "tool_confirmation_access": "访问权限",
+  "tool_confirmation_web_search": "网页搜索",
+  "tool_confirmation_approve": "批准",
+  "tool_confirmation_deny": "拒绝",
+  "tool_confirmation_sending": "正在发送…",
+  "tool_confirmation_countdown": "将在 {{time}} 后自动拒绝",
+  "tool_confirmation_response_failed": "无法发送你的回答，请重试。"
 }

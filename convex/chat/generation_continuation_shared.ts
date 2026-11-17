@@ -125,6 +125,11 @@ export type GenerationDeferredOwnership =
       kind: "remote_mcp";
       invocationId: Id<"mcpInvocations">;
       toolCallId: string;
+    }
+  | {
+      kind: "tool_confirmation";
+      confirmationId: Id<"toolConfirmationRequests">;
+      toolCallId: string;
     };
 
 export interface GenerationContinuationCheckpoint {

@@ -9,6 +9,8 @@
 // Runs in the default Convex runtime (Web Crypto + fetch), no Node required.
 // =============================================================================
 
+import { storeAccountTokenMatches } from "./store_account_token";
+
 export const APP_STORE_PRO_PRODUCT_IDS = ["tech.nanthai.edge.pro.lifetime"];
 export const PLAY_PRO_PRODUCT_IDS = ["nanthai.pro.lifetime"];
 
@@ -94,9 +96,13 @@ export function evaluateAppStoreTransaction(
   transaction: Record<string, unknown>,
   requestedId: string,
   config: Pick<AppStoreConfig, "bundleId" | "acceptTest">,
+  expectedAccountToken?: string,
 ): StoreVerification {
   const reject = (reason: string): StoreVerification => ({ ok: false, reason, retryable: false });
   if (transaction.bundleId !== config.bundleId) return reject("bundle_mismatch");
+  if (expectedAccountToken !== undefined && !storeAccountTokenMatches(transaction.appAccountToken, expectedAccountToken)) {
+    return reject("account_mismatch");
+  }
   const productId = String(transaction.productId ?? "");
   if (!APP_STORE_PRO_PRODUCT_IDS.includes(productId)) return reject("product_not_pro");
   if (String(transaction.originalTransactionId ?? "") !== requestedId) return reject("not_original_transaction");
@@ -110,6 +116,7 @@ export async function verifyAppStorePurchase(
   transactionId: string,
   config: AppStoreConfig,
   fetchImpl: FetchLike = fetch,
+  expectedAccountToken?: string,
 ): Promise<StoreVerification> {
   if (!/^\d{1,32}$/.test(transactionId)) return { ok: false, reason: "malformed_transaction_id", retryable: false };
   const now = Math.floor(Date.now() / 1000);
@@ -125,7 +132,12 @@ export async function verifyAppStorePurchase(
     if (!response.ok) return { ok: false, reason: `app_store_http_${response.status}`, retryable: retryableStatus(response.status) };
     const body = (await response.json()) as { signedTransactionInfo?: string };
     if (!body.signedTransactionInfo) return { ok: false, reason: "app_store_missing_transaction", retryable: true };
-    return evaluateAppStoreTransaction(decodeJwsPayload(body.signedTransactionInfo), transactionId, config);
+    return evaluateAppStoreTransaction(
+      decodeJwsPayload(body.signedTransactionInfo),
+      transactionId,
+      config,
+      expectedAccountToken,
+    );
   }
   return { ok: false, reason: "transaction_not_found", retryable: false };
 }
@@ -138,8 +150,13 @@ export function evaluatePlayPurchase(
   productId: string,
   purchaseToken: string,
   config: Pick<PlayConfig, "acceptTest">,
+  expectedAccountToken?: string,
 ): StoreVerification {
   const reject = (reason: string): StoreVerification => ({ ok: false, reason, retryable: false });
+  if (
+    expectedAccountToken !== undefined
+    && !storeAccountTokenMatches(purchase.obfuscatedExternalAccountId, expectedAccountToken)
+  ) return reject("account_mismatch");
   if (purchase.purchaseState !== 0) return reject(purchase.purchaseState === 2 ? "pending" : "not_purchased");
   // purchaseType is absent for real purchases; 0 = license test, 1 = promo code, 2 = rewarded.
   const type = purchase.purchaseType;
@@ -153,6 +170,7 @@ export async function verifyPlayPurchase(
   productId: string,
   config: PlayConfig,
   fetchImpl: FetchLike = fetch,
+  expectedAccountToken?: string,
 ): Promise<StoreVerification> {
   if (!PLAY_PRO_PRODUCT_IDS.includes(productId)) return { ok: false, reason: "product_not_pro", retryable: false };
   if (!purchaseToken || purchaseToken.length > 4096) return { ok: false, reason: "malformed_token", retryable: false };
@@ -174,5 +192,11 @@ export async function verifyPlayPurchase(
     return { ok: false, reason: "token_not_found", retryable: false };
   }
   if (!response.ok) return { ok: false, reason: `play_http_${response.status}`, retryable: retryableStatus(response.status) };
-  return evaluatePlayPurchase((await response.json()) as Record<string, unknown>, productId, purchaseToken, config);
+  return evaluatePlayPurchase(
+    (await response.json()) as Record<string, unknown>,
+    productId,
+    purchaseToken,
+    config,
+    expectedAccountToken,
+  );
 }

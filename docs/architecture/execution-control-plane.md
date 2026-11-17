@@ -77,6 +77,37 @@ Commands are idempotent transport, not an approval system. The user's current tu
 
 Each command has a stable caller-supplied command ID, exact input hash, expected fence, authorization source, expiry, claimant, acknowledgement, and disposition. Only pending commands may be claimed or expire; only the claimant may consume an acknowledged command; terminal commands cannot regress. Replaying the same command and input returns the existing record. Reusing an ID for different input is rejected. This supports future local runtimes without introducing redundant confirmation dialogs.
 
+### Consequential tool confirmation
+
+A small set of tool calls needs the user's explicit Approve / Deny because the
+current turn alone is not enough authorization. The policy lives in
+`convex/tools/confirmation_policy.ts`; the registry gates the call before the
+operation journal records it:
+
+- a send or post from a connected account (`gmail_send`, `outlook_send`,
+  `slack_send_message`, `slack_schedule_message`, `ms_calendar_create` with
+  attendees) when a recipient is not named in a user-authored message of the
+  chat — assistant text, tool output, scheduled-step prompts and MCP-published
+  messages do not count;
+- `create_scheduled_job` / `update_scheduled_job` that enable an integration or
+  web search;
+- model-initiated `create_skill` / `update_skill`.
+
+An interactive turn records a `toolConfirmationRequests` row bound to the job,
+attempt, fence, tool call and input hash, and the call returns a deferred
+result. The participant saves the checkpoint with `tool_confirmation` deferred
+ownership on the Workflow resume event, exactly like other deferred tools. The
+user's response (`tool_confirmations/mutations:respond`) or the timeout
+(`localQuestionTimeoutMinutes`, 15 minutes when unset or "never") patches the
+checkpoint's tool result and signals the event. Approval issues a single-use,
+15-minute grant for the same tool and input hash, and the model is told to call
+the tool again; deny and timeout return an error result. A stale fence or
+cancelled job closes the request without resuming.
+
+Turns with no interactive user deny automatically: configured automation
+(scheduled jobs), messages admitted from Telegram or the external MCP server
+(`messages.turnOrigin`), and subagent child turns that cannot pause durably.
+
 ## Tool effect and replay contract
 
 Every registered tool receives a resolved policy at registration:
@@ -117,7 +148,7 @@ Account purge uses the fixed allowlist in `convex/account/purge_tables.ts`; new 
 
 ## Canonical client projection
 
-`execution/queries:listMyRunProjections` is the shared authenticated lifecycle query. It exposes bounded state, kind/domain/parent identity, active attempt number and fence, placement, executor/runtime label, provider/model, checkpoint/lease, phase/progress, last event and artifact summary, cancellation state, input/permission waits, and terminal outcome.
+`execution/queries:listMyRunProjections` is the shared authenticated lifecycle query. It exposes bounded state, kind/domain/parent identity, active attempt number and fence, placement, executor/runtime label, provider/model, checkpoint/lease, phase/progress, last event and artifact summary, cancellation state, input/permission waits, terminal outcome, and the oldest bound `pendingConfirmation` (confirmation ID, kind, tool, summary, recipients, integrations, expiry) for a nonterminal run. A pending confirmation also sets `needsPermission`. Clients render it natively and answer with `tool_confirmations/mutations:respond`; builds that ignore the field fall back to the timeout, which denies.
 
 Web, iOS, and Android subscribe to this projection. Streaming messages remain the low-latency content overlay, while the execution projection decides whether work is still active. DTO tests use live Convex number shapes and tolerate nullable and future fields.
 

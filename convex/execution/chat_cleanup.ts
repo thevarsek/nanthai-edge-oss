@@ -21,13 +21,17 @@ export async function deleteChatExecutionBatch(
     .withIndex("by_chat", (q) => q.eq("chatId", chatId))
     .take(limit);
   for (const task of teardownTasks) await ctx.db.delete(task._id);
+  const confirmations = await ctx.db.query("toolConfirmationRequests")
+    .withIndex("by_chat", (q) => q.eq("chatId", chatId)).take(limit);
+  for (const confirmation of confirmations) await ctx.db.delete(confirmation._id);
   const runs = await ctx.db
     .query("executionRuns")
     .withIndex("by_chat", (q) => q.eq("chatId", chatId))
     .take(limit);
   let hasMore = offlineImports.length === limit || nativeAgentsRemain
     || runs.length === limit
-    || teardownTasks.length === limit;
+    || teardownTasks.length === limit
+    || confirmations.length === limit;
   for (const run of runs) {
     const [commands, helpers, permissions, events, operations, attempts, components] = await Promise.all([
       ctx.db.query("runtimeCommands").withIndex("by_run_command", (q) => q.eq("runId", run._id)).take(limit),

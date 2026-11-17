@@ -5,10 +5,23 @@ import { getFunctionName } from "convex/server";
 import { createMockCtx } from "../../test_helpers/convex_mock_ctx";
 import { createTool, ToolRegistry } from "../tools/registry";
 
+// These tests cover the operation journal. Send tools are also confirmation
+// gated; the user named the recipient here, so the gate lets the call proceed.
+function journalCtx<T extends { runMutation: (reference: never, args: never) => Promise<unknown> }>(overrides: T) {
+  const runMutation = overrides.runMutation as (reference: unknown, args: unknown) => Promise<unknown>;
+  return createMockCtx({
+    ...overrides,
+    runMutation: async (reference: unknown, args: unknown) =>
+      getFunctionName(reference as never) === "tool_confirmations/gate:evaluate"
+        ? { decision: "proceed" as const }
+        : await runMutation(reference, args),
+  });
+}
+
 test("registry journals a side effect before dispatch and completes it afterward", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
   let executions = 0;
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
       mutationCalls.push(args);
       if ("inputHash" in args) return { decision: "execute" as const };
@@ -32,6 +45,8 @@ test("registry journals a side effect before dispatch and completes it afterward
   }, {
     ctx,
     userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
     jobId: "job_1",
     executionAttemptId: "attempt_1" as Id<"executionAttempts">,
     executionFence: 4,
@@ -50,7 +65,7 @@ test("registry journals a side effect before dispatch and completes it afterward
 test("registry replays a completed operation without dispatching the tool", async () => {
   let executions = 0;
   const replay = { success: true, data: { messageId: "existing" } };
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async () => ({
       decision: "replay" as const,
       resultJson: JSON.stringify(replay),
@@ -73,6 +88,8 @@ test("registry replays a completed operation without dispatching the tool", asyn
   }, {
     ctx,
     userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
     jobId: "job_1",
     executionAttemptId: "attempt_1" as Id<"executionAttempts">,
     executionFence: 5,
@@ -83,7 +100,7 @@ test("registry replays a completed operation without dispatching the tool", asyn
 
 test("semantic write replay keeps one operation key across changed model tool-call ids", async () => {
   const operationKeys: string[] = [];
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
       if (typeof args.operationKey === "string") operationKeys.push(args.operationKey);
       if ("inputHash" in args) return { decision: "execute" as const };
@@ -105,6 +122,8 @@ test("semantic write replay keeps one operation key across changed model tool-ca
     }, {
       ctx,
       userId: "user_1",
+      chatId: "chat_1",
+      messageId: "message_1",
       jobId: "job_1",
       executionAttemptId: "attempt_1" as Id<"executionAttempts">,
       executionFence: 7,
@@ -115,7 +134,7 @@ test("semantic write replay keeps one operation key across changed model tool-ca
 
 test("semantic write identity canonicalizes object-key order and whitespace", async () => {
   const operationKeys: string[] = [];
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
       if (typeof args.operationKey === "string") operationKeys.push(args.operationKey);
       if ("inputHash" in args) return { decision: "execute" as const };
@@ -140,6 +159,8 @@ test("semantic write identity canonicalizes object-key order and whitespace", as
     }, {
       ctx,
       userId: "user_1",
+      chatId: "chat_1",
+      messageId: "message_1",
       jobId: "job_1",
       executionAttemptId: "attempt_1" as Id<"executionAttempts">,
       executionFence: 7,
@@ -150,7 +171,7 @@ test("semantic write identity canonicalizes object-key order and whitespace", as
 
 test("intentional identical writes in one round receive distinct stable occurrence keys", async () => {
   const preparedKeys: string[] = [];
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
       if ("inputHash" in args) {
         preparedKeys.push(String(args.operationKey));
@@ -172,6 +193,8 @@ test("intentional identical writes in one round receive distinct stable occurren
   ], {
     ctx,
     userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
     jobId: "job_1",
     executionAttemptId: "attempt_1" as Id<"executionAttempts">,
     executionFence: 8,
@@ -182,7 +205,7 @@ test("intentional identical writes in one round receive distinct stable occurren
 
 test("identical writes in later durable rounds receive distinct operation keys", async () => {
   const preparedKeys: string[] = [];
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (_reference: unknown, args: Record<string, unknown>) => {
       if ("inputHash" in args) {
         preparedKeys.push(String(args.operationKey));
@@ -206,6 +229,8 @@ test("identical writes in later durable rounds receive distinct operation keys",
     }, {
       ctx,
       userId: "user_1",
+      chatId: "chat_1",
+      messageId: "message_1",
       jobId: "job_1",
       executionAttemptId: "attempt_1" as Id<"executionAttempts">,
       executionFence: 8,
@@ -218,7 +243,7 @@ test("identical writes in later durable rounds receive distinct operation keys",
 test("safe read failures reset for retry instead of becoming outcome unknown", async () => {
   const mutationCalls: Array<Record<string, unknown>> = [];
   const mutationNames: string[] = [];
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (reference: unknown, args: Record<string, unknown>) => {
       mutationCalls.push(args);
       mutationNames.push(getFunctionName(reference as never));
@@ -242,6 +267,8 @@ test("safe read failures reset for retry instead of becoming outcome unknown", a
   }, {
     ctx,
     userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
     jobId: "job_1",
     executionAttemptId: "attempt_1" as Id<"executionAttempts">,
     executionFence: 9,
@@ -254,7 +281,7 @@ test("safe read failures reset for retry instead of becoming outcome unknown", a
 test("a successful provider write is reconciled when fenced journal completion loses its lease", async () => {
   const mutationNames: string[] = [];
   let executions = 0;
-  const ctx = createMockCtx({
+  const ctx = journalCtx({
     runMutation: async (reference: unknown) => {
       const name = getFunctionName(reference as never);
       mutationNames.push(name);
@@ -285,6 +312,8 @@ test("a successful provider write is reconciled when fenced journal completion l
   }, {
     ctx,
     userId: "user_1",
+    chatId: "chat_1",
+    messageId: "message_1",
     jobId: "job_1",
     executionAttemptId: "attempt_1" as Id<"executionAttempts">,
     executionFence: 11,

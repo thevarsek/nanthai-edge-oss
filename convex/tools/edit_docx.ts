@@ -12,6 +12,7 @@
 // heading levels H1-H6, tables, headers/footers, TOC, inline bold/italic.
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import { internal } from "../_generated/api";
 import { Id } from "../_generated/dataModel";
 import {
@@ -404,10 +405,8 @@ export const editDocx = createTool({
     const filename = `${safeTitle}.docx`;
     const mimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(newStorageId)}&filename=${encodeURIComponent(filename)}`
-      : await toolCtx.ctx.storage.getUrl(newStorageId);
+    const downloadUrl = (await buildDownloadUrl(newStorageId, filename))
+      ?? await toolCtx.ctx.storage.getUrl(newStorageId);
 
     const newWordCount = sections.reduce((sum, s) => {
       return sum + s.body.split(/\s+/).filter(Boolean).length;

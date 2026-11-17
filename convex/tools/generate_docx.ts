@@ -16,6 +16,7 @@
 // - Bold / italic via **bold** and *italic* markers in body text
 // =============================================================================
 
+import { buildDownloadUrl } from "../downloads/links";
 import {
   Document,
   Packer,
@@ -734,10 +735,8 @@ export const generateDocx = createTool({
 
     // Build a download URL through our HTTP endpoint so the file downloads
     // with the correct filename (Convex storage URLs use opaque IDs).
-    const siteUrl = process.env.CONVEX_SITE_URL;
-    const downloadUrl = siteUrl
-      ? `${siteUrl}/download?storageId=${encodeURIComponent(storageId)}&filename=${encodeURIComponent(filename)}`
-      : await toolCtx.ctx.storage.getUrl(storageId);
+    const downloadUrl = (await buildDownloadUrl(storageId, filename))
+      ?? await toolCtx.ctx.storage.getUrl(storageId);
 
     return {
       success: true,

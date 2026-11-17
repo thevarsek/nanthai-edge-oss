@@ -36,7 +36,7 @@ export const artifactInput = v.object({
   deferredKind: v.optional(v.union(v.literal("spawn_subagents"), v.literal("drive_picker"),
     v.literal("presentation_workflow"), v.literal("video_generation"),
     v.literal("analytics_workflow"),
-    v.literal("remote_mcp"))),
+    v.literal("remote_mcp"), v.literal("tool_confirmation"))),
   provider: v.optional(v.string()), runtime: v.optional(v.string()), integrationId: v.optional(v.string()),
   skillIds: v.optional(v.array(v.id("skills"))), activeProfiles: v.optional(v.array(v.string())),
   privacyClassification: v.union(v.literal("normal"), v.literal("oauth_data"), v.literal("google_data"),

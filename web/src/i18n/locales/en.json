@@ -3782,5 +3782,20 @@
   "external_mcp_self_reported_name": "Name provided by the app:",
   "markdown_link_confirm_title": "Open this link?",
   "markdown_link_confirm_description": "The link text suggests a different site. It opens {{host}}.\n\n{{url}}",
-  "markdown_link_confirm_open": "Open link"
+  "markdown_link_confirm_open": "Open link",
+  "tool_confirmation_requests": "Actions waiting for your approval",
+  "tool_confirmation_title_external_send": "Approve sending this?",
+  "tool_confirmation_title_scheduled_job": "Approve this scheduled job's access?",
+  "tool_confirmation_title_skill_change": "Approve this skill change?",
+  "tool_confirmation_help_external_send": "The AI wants to send this from your connected account to recipients you didn't name in this chat.",
+  "tool_confirmation_help_scheduled_job": "This job will run later without you, using the access listed below.",
+  "tool_confirmation_help_skill_change": "Skills change how the AI behaves in future chats.",
+  "tool_confirmation_recipients": "Recipients",
+  "tool_confirmation_access": "Access",
+  "tool_confirmation_web_search": "Web search",
+  "tool_confirmation_approve": "Approve",
+  "tool_confirmation_deny": "Deny",
+  "tool_confirmation_sending": "Sending…",
+  "tool_confirmation_countdown": "Denied automatically in {{time}}",
+  "tool_confirmation_response_failed": "Couldn't send your answer. Try again."
 }
